@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AI Implementation — where small-business AI projects stall, and how to get them shipped</title>
-<meta name="description" content="Most AI projects don't fail — they stall. The nine places a small-business AI rollout breaks between the demo and production, and what to do about each.">
-<meta property="og:title" content="AI Implementation">
-<meta property="og:description" content="Where small-business AI projects stall — failed pilots, hallucinations, no adoption, broken integrations — and how to get them shipped.">
+<title>Small Business Tools — the stack you actually need, no coding</title>
+<meta name="description" content="The small-business software that actually earns its place: what to install, what to cut, and how to get an all-in-one setup running in an afternoon — no coding, no IT.">
+<meta property="og:title" content="Small Business Tools">
+<meta property="og:description" content="The small-business tool stack, mapped — which tools you need, which ones overlap, and how to get an all-in-one setup running fast with no coding.">
 <meta property="og:type" content="website">
 <meta name="robots" content="index,follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,7 +37,7 @@
   --font-body:    "Hanken Grotesk", system-ui, sans-serif;
   --font-mono:    "JetBrains Mono", ui-monospace, monospace;
 
-  --logo-text: "AI Implementation";
+  --logo-text: "Small Business Tools";
   --logo-img:  none;
 }
 
@@ -213,7 +213,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     <a class="brand" href="#top" id="brand"></a>
     <button class="nav-toggle" aria-label="Menu" aria-expanded="false" id="navToggle">☰</button>
     <nav class="nav" id="nav"></nav>
-    <a class="nav-cta" href="#report">The teardown</a>
+    <a class="nav-cta" href="#report">The audit</a>
   </div>
 </header>
 
@@ -318,69 +318,69 @@ const HUB = {
   campaignTag: "hub-ai-implementation",
   campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597",              // Sm business software tools — campaign whose Logins feed the social links
 
-  brand: "AI Implementation",
-  logoImg: "./logo.png",
+  brand: "Small Business Tools",
+  logoImg: null,   // ./logo.png still reads "AI Implementation" — swap it for a "Small Business Tools" mark, then restore this to "./logo.png"
 
   nav: [
-    { label: "Where it breaks", href: "#trips" },
-    { label: "The teardown",    href: "#report" },
-    { label: "Field notes",     href: "#journal" },
+    { label: "The stack",   href: "#trips" },
+    { label: "Free audit",   href: "#report" },
+    { label: "Field notes",  href: "#journal" },
   ],
 
-  // Signature strip: an implementation status readout — the vitals of an AI rollout that's actually shipping.
+  // Signature strip: a tool-stack readout — the vitals of a small-business software stack that's actually under control.
   ribbon: [
-    "Pilot → production — 4 of 5 stall", "Time-to-value target — 30 days",
-    "Rollback plan — required", "Model change — contract-tested",
-    "Owner — a named human", "Adoption — measured weekly",
+    "Tools the average small business runs — 12+", "That quietly overlap — about a third",
+    "Setup target — under 10 minutes, no code", "All-in-one before à la carte",
+    "Every tool — one owner, one login", "Monthly stack cost — reviewed, not autopiloted",
   ],
 
   hero: {
-    eyebrow: "For small businesses that bought AI and are still waiting on the results",
-    headline: "Most AI projects don't fail. They stall.",
-    sub: "Between the demo that impressed everyone and the version that actually runs your business, there are about nine places it breaks. This is a map of all of them — the stalled pilot, the chatbot that lies, the tool nobody opens, the integration that never landed — and what to do about each.",
-    ctaPrimary:   { label: "Get the stalled-pilot teardown", href: "#report" },
-    ctaSecondary: { label: "See where it breaks",            href: "#trips" },
+    eyebrow: "For small business owners running too many apps and paying for every one of them",
+    headline: "Twelve tools. Half of them overlap. None of them talk.",
+    sub: "Between the free trial that looked great and the stack you're actually billed for every month, a small business collects software the way a garage collects boxes. This is a map of the tools a small business actually needs — the six categories that matter, what each one is for, where an all-in-one beats buying à la carte, and how to get the whole thing running with no coding and no IT department.",
+    ctaPrimary:   { label: "Get the free stack audit", href: "#report" },
+    ctaSecondary: { label: "See the six categories",   href: "#trips" },
   },
 
   trips: {
-    label: "The map",
-    title: "The nine places an AI rollout breaks",
-    note: "Between the demo and production. Pick the one that sounds like your project.",
+    label: "The stack",
+    title: "The six categories a small business actually runs on",
+    note: "Every small-business tool falls into one of six. Pick the one that's a mess right now.",
     items: [],
     empty: {
-      heading: "The map is being drawn.",
-      body: "Nine failure modes, from the stalled pilot to the agent that annoys your customers — each with the fix.",
+      heading: "The stack map is being drawn.",
+      body: "Six categories — money in, customers, scheduling, the website, the back office, and the glue between them — each with the two or three tools that cover it and the ones you can drop.",
     },
   },
 
   report: {
-    label: "Start here — the free teardown",
-    title: "Why your AI pilot stalled: the teardown.",
-    blurb: "A short diagnostic you run on your own stuck project. It walks the same nine failure modes above, asks the questions that surface which one you're actually in, and hands you the first three moves for that specific failure. Free. It's also where the deeper reviews start from.",
-    note: "You'll get the occasional field note too. Unsubscribe in one click.",
-    buttonLabel: "Send me the teardown",
-    link: { label: "See a redacted teardown", url: "#" },
+    label: "Start here — the free stack audit",
+    title: "What's in your stack, what it costs, and what to cut.",
+    blurb: "A short worksheet you run on your own setup. List what you're paying for and it sorts each tool into the six categories, flags the overlaps, and shows where one all-in-one tool would replace three subscriptions. Free. It's also where the deeper reviews start — the ones that actually set the replacement up for you, no coding, in an afternoon.",
+    note: "You'll get the occasional field note on tools worth switching to. Unsubscribe in one click.",
+    buttonLabel: "Send me the audit",
+    link: { label: "See a sample audit", url: "#" },
   },
 
   journal: {
     label: "Field notes",
-    title: "How AI implementations actually go",
-    note: "Plain write-ups of the failure modes above — what breaks, why, and the fix.",
+    title: "Notes from cleaning up small-business stacks",
+    note: "Plain write-ups on the tools themselves — what a category actually needs, which all-in-one is worth it, and what to migrate off first.",
     items: [],
     empty: {
       heading: "First notes are in progress.",
-      body: "They cover why pilots don't reach production, stopping a chatbot from hallucinating on customer questions, getting a team to actually use the tool, and connecting an agent to a CRM without a six-month project.",
+      body: "They cover what tools you actually need to start a small business, moving off four subscriptions onto one all-in-one, the 10-minute setups that don't need a developer, and getting your tools to share data instead of re-typing it.",
     },
   },
 
   news: {
     label: "Signal",
-    title: "What's changing under AI systems",
-    note: "Short dated notes on model changes, pricing shifts, and tooling that affects a live rollout.",
+    title: "What's changing in small-business software",
+    note: "Short dated notes on price hikes, plan changes, shutdowns, and new tools worth a look before you commit.",
     items: [],
     empty: {
       heading: "Signal starts soon.",
-      body: "Get the teardown and these land in your inbox first — the model, pricing and platform changes that break running systems.",
+      body: "Get the audit and these land in your inbox first — the price hikes, plan nerfs and shutdowns that hit small-business tools.",
     },
   },
 
@@ -393,8 +393,8 @@ const HUB = {
   },
 
   footer: {
-    tagline: "A field guide to getting small-business AI projects out of the demo and into production. Part of the Small Business Software & Tools project.",
-    legal: "© 2026 AI Implementation",
+    tagline: "A field guide to the small-business tool stack — what to install, what to cut, and how to run it with no coding and no IT department. Part of the Small Business Software & Tools project.",
+    legal: "© 2026 Small Business Tools",
   },
 };
 

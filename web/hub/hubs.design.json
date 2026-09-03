@@ -61,17 +61,17 @@
   "hubs": {
     "ai-implementation": {
       "meta": {
-        "title": "AI Implementation — where small-business AI projects stall, and how to get them shipped",
-        "description": "Most AI projects don't fail — they stall. The nine places a small-business AI rollout breaks between the demo and production, and what to do about each.",
-        "ogTitle": "AI Implementation",
-        "ogDescription": "Where small-business AI projects stall — failed pilots, hallucinations, no adoption, broken integrations — and how to get them shipped."
+        "title": "Small Business Tools — the stack you actually need, no coding",
+        "description": "The small-business software that actually earns its place: what to install, what to cut, and how to get an all-in-one setup running in an afternoon — no coding, no IT.",
+        "ogTitle": "Small Business Tools",
+        "ogDescription": "The small-business tool stack, mapped — which tools you need, which ones overlap, and how to get an all-in-one setup running fast with no coding."
       },
       "fonts": {
         "display": "Bricolage Grotesque",
         "body": "Hanken Grotesk",
         "mono": "JetBrains Mono"
       },
-      "logoText": "AI Implementation",
+      "logoText": "Small Business Tools",
       "tokens": {
         "bg": "#ffffff",
         "surface": "#f2f7f2",
@@ -98,11 +98,11 @@
         "ink-head": "headings (h1-h3) — defaults to --ink"
       },
       "design": {
-        "subject": "A field guide for a small business that bought AI and is still waiting on results — a map of where a rollout breaks between the impressive demo and the version that runs the business. Not a vendor, not a hype site.",
-        "audience": "SMB owner/operator mid-rollout — skeptical, often already burned by an agency that overpromised, reading for the failure that sounds like their project. Campaign keywords also reach earlier-stage 'no coding / for beginners' searchers.",
-        "job": "Request the free stalled-pilot teardown (email capture in the report band). The deeper paid reviews start from it.",
+        "subject": "A field guide for a small business paying for a dozen half-overlapping apps — a map of the software a small business actually needs, sorted into six categories, with what to keep, what to cut, and where an all-in-one beats buying a la carte. Not a vendor, not an affiliate farm.",
+        "audience": "SMB owner/operator with a sprawling, expensive tool stack — solution-aware, already searching 'no coding required' and '10-minute setup', tired of vendors selling capability over convenience. Campaign keywords also reach earlier-stage 'what tools do I need to start a small business / small business software for beginners' searchers.",
+        "job": "Request the free stack audit (email capture in the report band). The deeper paid reviews — the ones that set up the replacement, no coding, in an afternoon — start from it.",
         "type": "Space Grotesk (600) display — geometric, reads as engineering not editorial. Inter body for dense failure-mode copy. JetBrains Mono on every label, so the page reads as a status readout.",
-        "signature": "The ribbon is an implementation status readout — mono stat-chips under the hero showing the vitals of a rollout that's actually shipping (pilot-to-production stall rate, time-to-value target, rollback plan, named owner, adoption cadence). The 01-09 card numbering is a real sequence: the order a rollout tends to break in.",
+        "signature": "The ribbon is a tool-stack readout — mono stat-chips under the hero showing the vitals of a stack that's under control (tool count, overlap rate, sub-10-minute no-code setup, all-in-one-first, one owner + one login per tool, cost reviewed not autopiloted). The card numbering runs 01-06 for the six categories, ordered the way money flows through a business.",
         "risk": "Daylight white + a green primary + mono labels is close to 'well-made SaaS onboarding' with no strong point of view. The mono status-readout treatment (ribbon, 01-09 numbering, code-type labels) is what keeps it specific. If it drifts bland, push the postmortem idea: red-thread margin annotations, timestamps, a reviewed/open/fixed state per failure mode.",
         "avoided": [
           "The warm-cream + high-contrast serif + terracotta cluster",
@@ -111,7 +111,7 @@
           "Marketing voice — every label names what a person controls ('Rollback plan', 'Owner', 'Adoption'), not how the system is built",
           "Console-navy + cyan (the original palette) — the exact look of the vendors this audience already distrusts"
         ],
-        "superseded": "2026-09-01 to 09-02: --bg #080c14 console navy / --sea #60a5fa signal blue / --accent #06b6d4 cyan (type unchanged). Dropped because navy+cyan is the vendors' palette and leaned on the near-black-plus-acid-accent AI default."
+        "superseded": "2026-09-01 to 09-02: --bg #080c14 console navy / --sea #60a5fa signal blue / --accent #06b6d4 cyan (type unchanged). Dropped because navy+cyan is the vendors' palette and leaned on the near-black-plus-acid-accent AI default.  2026-09-03: content re-pointed from 'AI rollout postmortem' to the Sm-business-software-tools campaign keywords (small business tools/software, tool-stack consolidation, all-in-one, no coding, 10-minute setup, affordable) — domain/slug stay ai-implementation; logo.png still reads 'AI Implementation' and needs replacing."
       }
     },
     "care-gap": {
