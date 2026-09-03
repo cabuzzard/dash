@@ -9,5 +9,8 @@
     "House watch while you travel",
     "Paid, work-trade, or a mix",
     "Furniture and Interior Assembly"
-  ]
+  ],
+  "report": {
+    "image": "./signup.png"
+  }
 }
