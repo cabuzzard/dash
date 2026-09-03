@@ -1473,6 +1473,17 @@
   </div>
 </div>
 
+<!-- Hub images modal — hero + signup right-third images -->
+<div class="modal-bg" id="hubImgModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title" id="himTitle">Section images</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">The right-third image in the hero and the signup section (stacks above the text on mobile). Upload a file, paste a URL, or generate one from the campaign keywords. Saved to <code>content.json</code>.</div>
+    <div id="himRows"></div>
+    <div id="himMsg" style="font-size:12px;margin-top:10px;min-height:16px;"></div>
+    <div style="display:flex;margin-top:12px;"><button class="modal-btn" onclick="document.getElementById('hubImgModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Close</button></div>
+  </div>
+</div>
+
 <!-- Hub launch-checklist modal -->
 <div class="modal-bg" id="hubChecklistModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:520px;">
@@ -10125,14 +10136,14 @@ async function hubTextSave(){
     const p = el.dataset.p, isArr = el.dataset.arr==='1';
     if(isArr){
       const lines = el.value.split('\n').map(s=>s.trim()).filter(Boolean);
-      if(!lines.length) return;
+      if(!lines.length){ htxSet(next, p, null); return; }
       if(p==='nav') htxSet(next, p, lines.map(l=>{ const parts=l.split('|').map(s=>s.trim()); return { label: parts[0]||l, href: parts[1]||'#' }; }));
       else htxSet(next, p, lines);
       return;
     }
     const val = el.value.trim();
     const df = htxGet(HTX.defaults, p); const dfs = df==null ? '' : String(df);
-    if(val && val !== dfs) htxSet(next, p, val);
+    htxSet(next, p, (val && val !== dfs) ? val : null);   // null → worker deletes it (revert to default)
   });
   btn.disabled = true; btn.textContent = 'Saving…';
   msg.style.color = 'var(--text3)'; msg.textContent = 'Committing content.json…';
@@ -10144,6 +10155,59 @@ async function hubTextSave(){
   } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
   btn.disabled = false; btn.textContent = 'Save & publish';
 }
+
+// ── Hub images modal ──
+let HIM = { slug:'', content:{} };
+function himUrlFor(kind){ const c = HIM.content || {}; return kind === 'signup' ? (c.report && c.report.image) : (c.hero && c.hero.image); }
+function himResolve(u){ if(!u) return ''; if(/^https?:/i.test(u)) return u; return 'https://cabuzzard.github.io/dash/web/hub/'+HIM.slug+'/'+String(u).replace(/^\.\//,''); }
+async function openHubImageModal(slug){
+  const h = HUB_SITES.find(x=>x.slug===slug); if(!h) return;
+  HIM = { slug, content:{} };
+  document.getElementById('himTitle').textContent = 'Section images — ' + h.name;
+  document.getElementById('himMsg').textContent = '';
+  document.getElementById('himRows').innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading…</div>';
+  document.getElementById('hubImgModal').classList.add('open');
+  try { const r = await call('getHubContent', { slug }); HIM.content = r.overrides || {}; himRender(); }
+  catch(e){ document.getElementById('himRows').innerHTML = '<div style="color:#ff6b6b;font-size:12px;">'+esc(e.message)+'</div>'; }
+}
+function himRender(){
+  document.getElementById('himRows').innerHTML = [['hero','Hero image'],['signup','Signup section image']].map(([kind,label])=>{
+    const u = himResolve(himUrlFor(kind));
+    return `<div style="display:flex;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--border);">
+      <div style="width:74px;height:56px;border-radius:6px;flex-shrink:0;background:${u?`center/cover url('${esc(u)}')`:'linear-gradient(135deg,var(--accent),var(--text3))'};border:1px solid var(--border2);"></div>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12px;color:var(--text);font-weight:600;">${label}</div>
+        <div style="font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${u?esc(u):'not set'}</div>
+        <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
+          <label style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;color:var(--text3);">⬆ file<input type="file" accept="image/*" onchange="himUpload('${kind}',this)" style="display:none;"></label>
+          <button onclick="himUrl('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">🔗 URL</button>
+          <button onclick="himGen('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>
+          ${u?`<button onclick="himClear('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕ clear</button>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+async function himCall(payload, working){
+  const msg = document.getElementById('himMsg');
+  msg.style.color = 'var(--text3)'; msg.textContent = working;
+  try {
+    const r = await call('hubImage', { slug: HIM.slug, ...payload });
+    HIM.content = r.content || HIM.content;
+    himRender();
+    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min.';
+  } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+}
+async function himUpload(kind, input){
+  const f = input.files && input.files[0]; input.value = '';
+  if(!f) return;
+  if(f.size > 5000000){ document.getElementById('himMsg').style.color='#ff6b6b'; document.getElementById('himMsg').textContent='Keep it under 5 MB.'; return; }
+  const dataUrl = await new Promise((res,rej)=>{ const rd=new FileReader(); rd.onload=()=>res(rd.result); rd.onerror=()=>rej(new Error('read failed')); rd.readAsDataURL(f); });
+  himCall({ kind, op:'upload', fileName:f.name, contentType:f.type, fileData:String(dataUrl).split(',')[1] }, 'Uploading…');
+}
+function himUrl(kind){ const u = prompt('Paste an image URL for the ' + kind + ' image:'); if(u && u.trim()) himCall({ kind, op:'url', url:u.trim() }, 'Setting…'); }
+function himGen(kind){ if(confirm('Generate a '+kind+' image from this campaign\'s research + palette? (~15s, uses image credits)')) himCall({ kind, op:'generate' }, 'Generating image (~15s)…'); }
+function himClear(kind){ if(confirm('Clear the '+kind+' image? The placeholder gradient shows instead.')) himCall({ kind, op:'clear' }, 'Clearing…'); }
 
 function hubRoutingInfo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug);
@@ -10312,6 +10376,7 @@ function renderHubsTab() {
         ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
         <button onclick="openHubBriefModal('${slug}')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
         <button onclick="openHubTextModal('${slug}')" title="Edit every fixed heading / subhead / blurb / ribbon / nav label on this hub" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
+        <button onclick="openHubImageModal('${slug}')" title="Hero + signup section images (right third / stacked on mobile)" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">🖼 Images</button>
         <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with this campaign's research + this hub's tokens/fonts" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
         <label style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
       </div>

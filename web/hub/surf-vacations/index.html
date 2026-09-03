@@ -195,6 +195,14 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
   .dispatch a{grid-template-columns:1fr;gap:.3rem}
   .dispatch .d-src{display:none}
 }
+.hero .wrap, .sec.report .wrap { display:grid; gap:1.8rem; }
+.hub-aside { margin:0; align-self:center; }
+.hub-aside img { display:block; width:100%; height:auto; border-radius:14px; }
+.hub-aside.ph { aspect-ratio:4/3; border-radius:14px; background:linear-gradient(135deg, var(--sea) 0%, var(--accent) 100%); opacity:.30; }
+@media (min-width:820px){
+  .hero .wrap, .sec.report .wrap { grid-template-columns: minmax(0,2fr) minmax(0,1fr); align-items:center; }
+  .hub-aside { order:2; }
+}
 </style>
 </head>
 <body>
@@ -214,12 +222,15 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 
   <section class="hero">
     <div class="wrap">
+      <figure class="hub-aside" id="heroAside" hidden></figure>
+      <div class="hub-main">
       <span class="eyebrow" id="heroEyebrow"></span>
       <h1 id="heroHeadline"></h1>
       <p id="heroSub"></p>
       <div class="hero-actions">
         <a class="btn" id="heroCta"></a>
         <a class="btn btn-ghost" id="heroCta2"></a>
+      </div>
       </div>
     </div>
   </section>
@@ -237,6 +248,8 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 
   <section class="sec report" id="report">
     <div class="wrap">
+      <figure class="hub-aside" id="reportAside" hidden></figure>
+      <div class="hub-main">
       <span class="eyebrow" id="reportLabel"></span>
       <h2 id="reportTitle"></h2>
       <p id="reportBlurb"></p>
@@ -248,6 +261,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
       <p class="signup-note" id="reportNote"></p>
       <p class="report-link" id="reportLink" hidden></p>
       <p class="form-msg" id="formMsg" role="status"></p>
+      </div>
     </div>
   </section>
 
@@ -408,6 +422,13 @@ function renderHero() {
   c1.textContent = p.label; c1.href = p.href;
   if (s && s.label) { c2.textContent = s.label; c2.href = s.href; c2.hidden = false; }
   else { c2.hidden = true; }
+  paintAside("heroAside", HUB.hero.image);
+}
+function paintAside(id, url) {
+  const el = document.getElementById(id); if (!el) return;
+  if (url) { el.innerHTML = `<img src="${esc(url)}" alt="" loading="lazy">`; el.className = "hub-aside"; }
+  else { el.innerHTML = ""; el.className = "hub-aside ph"; }
+  el.hidden = false;
 }
 
 function emptyState(e) {
@@ -478,6 +499,7 @@ function renderReport() {
   const rl = $("reportLink"), lk = HUB.report.link;
   if (lk && lk.label) { rl.innerHTML = `<a href="${esc(lk.url)}">${esc(lk.label)} →</a>`; rl.hidden = false; }
   else { rl.hidden = true; }
+  paintAside("reportAside", HUB.report.image);
 }
 
 async function renderSocial() {

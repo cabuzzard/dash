@@ -5421,25 +5421,88 @@ Return: the logo on a transparent background, plus one preview placed on the sit
         } catch (e) { return json({ error: e.message }, 502); }
       }
 
-      if (body.action === "saveHubContent") {
+      // saveHubContent — deep-MERGES the submitted patch into the existing
+      // content.json (so the section-text modal and the image modal don't
+      // wipe each other's keys). A value of null / "" deletes that key
+      // (revert to the baked default). hubImage — set/generate/clear the
+      // hero or signup image; the URL lands in the same content.json.
+      if (body.action === "saveHubContent" || body.action === "hubImage") {
         const GT = (env.GITHUB_TOKEN || "").trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
         const slug = String(body.slug || "").trim();
         if (!HUB_SITES.find(h => h.slug === slug)) return json({ error: "unknown hub" }, 400);
-        const overrides = (body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)) ? body.overrides : {};
         const REPO = "cabuzzard/dash", BRANCH = "main";
         const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
         const toB64Text = str => { const b = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
+        const getF = async p => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}?ref=${BRANCH}`, { headers: gh }); if (!r.ok) return {}; const j = await r.json().catch(() => ({})); return { sha: j.sha, content: j.content }; };
+        const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+        const putF = async (p, contentB64, msg, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, content: contentB64, branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${p}`); } };
+        const deepMerge = (t, s) => { for (const k in s) { const v = s[k]; if (v === null || v === "" || v === undefined) { if (t && typeof t === "object") delete t[k]; } else if (v && typeof v === "object" && !Array.isArray(v)) { t[k] = (t[k] && typeof t[k] === "object" && !Array.isArray(t[k])) ? t[k] : {}; deepMerge(t[k], v); if (!Object.keys(t[k]).length) delete t[k]; } else t[k] = v; } return t; };
+
         try {
-          const path = `web/hub/${slug}/content.json`;
-          const cr = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
-          const sha = cr.ok ? (await cr.json().catch(() => ({}))).sha : null;
-          const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-            method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
-            body: JSON.stringify({ message: `hub ${slug}: section text`, content: toB64Text(JSON.stringify(overrides, null, 2) + "\n"), branch: BRANCH, ...(sha ? { sha } : {}) }),
-          });
-          if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || "commit failed"); }
-          return json({ ok: true, note: "committed — live on the hub in ~1 min" });
+          const cpath = `web/hub/${slug}/content.json`;
+          const cf = await getF(cpath);
+          let content = {};
+          try { content = cf.content ? JSON.parse(fromB64(cf.content)) : {}; } catch (e) { content = {}; }
+
+          let patch = {}, commitMsg = `hub ${slug}: content`;
+          if (body.action === "saveHubContent") {
+            patch = (body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)) ? body.overrides : {};
+            commitMsg = `hub ${slug}: section text`;
+          } else {
+            const kind = body.kind === "signup" ? "report" : "hero";   // hero image → hero.image, signup → report.image
+            const op = String(body.op || "url");
+            if (op === "clear") {
+              patch = { [kind]: { image: null } };
+              commitMsg = `hub ${slug}: clear ${body.kind || "hero"} image`;
+            } else if (op === "url") {
+              const url = String(body.url || "").trim();
+              if (!/^https?:\/\//i.test(url) && !url.startsWith("./")) return json({ error: "give a full https:// URL" }, 400);
+              patch = { [kind]: { image: url } };
+              commitMsg = `hub ${slug}: ${body.kind || "hero"} image (url)`;
+            } else if (op === "upload") {
+              const dataB64 = String(body.fileData || "").replace(/^data:[^,]+,/, "").replace(/\s/g, "");
+              if (!dataB64) return json({ error: "fileData (base64) required" }, 400);
+              const src = `${body.contentType || ""} ${body.fileName || ""}`;
+              const ext = /webp/i.test(src) ? "webp" : /jpe?g/i.test(src) ? "jpg" : /svg/i.test(src) ? "svg" : "png";
+              const name = body.kind === "signup" ? "signup" : "hero";
+              const cur = await getF(`web/hub/${slug}/${name}.${ext}`);
+              await putF(`web/hub/${slug}/${name}.${ext}`, dataB64, `hub ${slug}: ${name} image`, cur.sha);
+              patch = { [kind]: { image: `./${name}.${ext}` } };
+              commitMsg = `hub ${slug}: ${name} image (upload)`;
+            } else if (op === "generate") {
+              const OPENAI = (env.OPENAI_API_KEY || "").trim();
+              if (!OPENAI) return json({ error: "OPENAI_API_KEY not configured" }, 500);
+              const hub = HUB_SITES.find(h => h.slug === slug);
+              // prompt from campaign research + hub tokens/brief
+              const dashId = raw => { const x = String(raw).replace(/-/g, ""); return x.slice(0,8)+'-'+x.slice(8,12)+'-'+x.slice(12,16)+'-'+x.slice(16,20)+'-'+x.slice(20); };
+              const nhdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+              const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashId(hub.campaignId) } } }).catch(() => []);
+              const rq = k => { for (const r of rows) { const v = (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim(); if (v) return v; } return ""; };
+              let ds = {};
+              try { const t = fromB64((await getF("web/hub/hubs.design.json")).content || ""); ds = JSON.parse(t).hubs?.[slug] || {}; } catch (e) {}
+              const brief = ds.design || {}, tk = ds.tokens || {};
+              const imgPrompt = `A clean, editorial ${body.kind === "signup" ? "supporting" : "hero"} photograph / illustration for a website about: ${rq("Statement") || brief.subject || hub.name}. Audience: ${rq("Pain Points") ? "people dealing with — " + rq("Pain Points").slice(0, 180) : brief.audience || "a focused niche"}. Keywords: ${(rq("Keywords") || "").slice(0, 160)}. Mood: understated, real, not stocky; palette leaning to ${tk.bg || "#f4f2ec"} / ${tk.sea || "#555"} / ${tk.accent || "#333"}. Composition works cropped to a vertical-ish third of a page. Absolutely NO text, letters, words, numbers, logos, or watermarks anywhere — pure image only.`;
+              const gr = await fetch("https://api.openai.com/v1/images/generations", {
+                method: "POST", headers: { "Authorization": `Bearer ${OPENAI}`, "Content-Type": "application/json" },
+                body: JSON.stringify({ model: "gpt-image-1", prompt: imgPrompt, size: "1024x1536", quality: "medium", n: 1 }),
+              });
+              if (!gr.ok) { const tt = await gr.text(); return json({ error: `image generation failed (HTTP ${gr.status}): ${tt.slice(0, 250)}` }, 502); }
+              const gd = await gr.json();
+              const b64img = gd.data?.[0]?.b64_json;
+              if (!b64img) return json({ error: "no image returned" }, 502);
+              const name = body.kind === "signup" ? "signup" : "hero";
+              const cur = await getF(`web/hub/${slug}/${name}.png`);
+              await putF(`web/hub/${slug}/${name}.png`, b64img, `hub ${slug}: ${name} image (generated)`, cur.sha);
+              patch = { [kind]: { image: `./${name}.png` } };
+              commitMsg = `hub ${slug}: ${name} image (generated)`;
+            } else return json({ error: "unknown op" }, 400);
+          }
+
+          deepMerge(content, patch);
+          const freshSha = (await getF(cpath)).sha;   // re-read after any image commit above
+          await putF(cpath, toB64Text(JSON.stringify(content, null, 2) + "\n"), commitMsg, freshSha);
+          return json({ ok: true, content, note: "committed — live on the hub in ~1 min" });
         } catch (e) { return json({ error: e.message }, 502); }
       }
 
