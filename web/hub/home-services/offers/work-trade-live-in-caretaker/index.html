@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Work-Trade Live-In Caretaker — Home Services</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#f4f2ec; --ink:#22201c; --accent:#35526b; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
+.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:.85rem; color:var(--accent); }
+.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
+h1,h2 { font-family:"Familjen Grotesk", system-ui, sans-serif; color:var(--ink); line-height:1.2; }
+h1 { font-size:2.2rem; margin:.3rem 0 14px; }
+h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.lede { font-size:1.2rem; }
+ul.inc { list-style:none; padding:0; margin:0 0 18px; }
+ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
+.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
+.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
+.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
+.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
+.cf-turnstile { margin:12px 0; }
+.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
+.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
+footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+.offerlist { list-style:none; margin:0; padding:0; }
+.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:"Familjen Grotesk", system-ui, sans-serif; font-size:1.3rem; }
+.offerlist a:hover { color:var(--accent); }
+.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="../../index.html">Home Services</a>
+  <a class="back" href="../index.html">&larr; All offers</a>
+</header>
+<div class="kicker">Paid · Work-Trade · or Mix — Northern California</div>
+<h1>Work-Trade Live-In Caretaker</h1>
+<p class="lede">Hand one trusted person the keys and a list, and come home to a lived-in house, cared-for pets, and a shorter repair list — without coordinating four separate people.</p>
+<p><strong>Who it's for:</strong> Northern California homeowners leaving for a weekend to several months</p>
+<h2>What's included</h2>
+<ul class="inc"><li>Live-in presence for the full duration — house is occupied, secure, and watched</li><li>Daily pet care following your written routine (dogs, cats, fish, small livestock, aquariums)</li><li>Yard, plant, and mail upkeep so nothing goes feral or piles up</li><li>Sub-threshold handyman repairs and yard projects worked through during the stay (work-trade or mix option)</li><li>Written scope agreed before arrival — pet routine, property tasks, repair list, escalation contacts</li></ul>
+<h2>Why it works</h2>
+<p>One experienced person with real handyman skills lives in rather than dropping by, so problems get noticed and handled the day they happen — not discovered when you get home. References, a background check, and a written scope before any keys change hands mean you're not betting on an app profile.</p>
+<h2>The objection it answers</h2>
+<p>Work-for-stay sounds complicated — it's one written scope agreed before the stay begins, same as any simple contract, with repairs priced transparently against the nightly rate. Only no-permit, sub-threshold work is in scope; anything bigger gets flagged for a licensed contractor.</p>
+<h2>Terms</h2>
+<p>Three structures: (1) Paid — nightly or weekly rate for house, pet, and light property care. (2) Work-trade — the stay exchanged for an agreed repair and yard scope, valued against the nightly rate. (3) Mix — reduced rate plus a written work list. Longer stays and repeat bookings get better terms. Rates set by scope, dates, and location — contact to get a written estimate.</p>
+<h2>Talk Through Your Dates</h2>
+<form class="offer-form" id="of" novalidate>
+  <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="ofTs"></div>
+  <button class="btn" type="submit" id="ob">Talk Through Your Dates</button>
+  
+  <p class="msg" id="om" role="status"></p>
+</form>
+<footer class="site">Home Services</footer>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('of'), b=document.getElementById('ob'), m=document.getElementById('om'), tok='';
+  window.ofTs=function(t){tok=t;};
+  if(!f) return;
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var email=(f.email.value||'').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){m.textContent='Check that email address.';m.className='msg err';return;}
+    if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
+    b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
+    try{
+      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Home Services — offer: Work-Trade Live-In Caretaker",email:email,fraudType:'Other',note:"Offer interest - Work-Trade Live-In Caretaker",tsToken:tok})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
+      f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
+    }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
+    finally{ b.disabled=false;b.textContent="Talk Through Your Dates"; tok=''; if(window.turnstile)window.turnstile.reset(); }
+  });
+})();
+</script>
+</body>
+</html>
