@@ -1,17 +1,17 @@
 [
   {
-    "slug": "music-merch-for-the-crossover-listener",
-    "name": "Music Merch for the Crossover Listener",
-    "kicker": "Graphic tees · $28–$45",
-    "promise": "Stop settling for generic band shirts — finally find the tee that makes someone across the room say 'where did you get that.'",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
     "slug": "original-covers-music-downloads",
     "name": "Original & Covers — Music Downloads",
     "kicker": "Digital Download · Per track & per project",
     "promise": "Own the recordings permanently — real acoustic and country rock performances, delivered instantly to your device, with every dollar going straight to the artist.",
+    "ctaUrl": "",
+    "date": "2026-09-03"
+  },
+  {
+    "slug": "music-merch-for-the-crossover-listener",
+    "name": "Music Merch for the Crossover Listener",
+    "kicker": "Graphic tees · $28–$45",
+    "promise": "Stop settling for generic band shirts — finally find the tee that makes someone across the room say 'where did you get that.'",
     "ctaUrl": "",
     "date": "2026-09-03"
   }
