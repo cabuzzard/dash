@@ -885,22 +885,30 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
   return { gh, getFile, putFile, basePath, campName, s, hub };
 }
 
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources }) {
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId }) {
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub: 'blog' });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
 
   const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
   const displayTitle = String(seoTitle || workingTitle || 'Untitled Post');
-  const slug = slugify(displayTitle) || 'post';
+  const aid = assetId ? String(assetId).replace(/-/g, '') : '';
 
   const { text: postsRaw } = await getFile(`${basePath}/posts.json`);
   let posts = [];
   try { posts = postsRaw ? JSON.parse(postsRaw) : []; } catch (e) { posts = []; }
   if (!Array.isArray(posts)) posts = [];
   const today = new Date().toISOString().slice(0, 10);
-  posts = posts.filter(p => p && p.slug !== slug);
-  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').slice(0, 300), date: today });
+  // Two different assets can slugify to the same headline (a near-duplicate
+  // AI title, or a concurrent batch run). Keep the URL stable per ASSET:
+  // this asset's own prior entry (matched by assetId) keeps its slug; a
+  // clash with a DIFFERENT asset's slug gets a -<id> suffix.
+  const base0 = slugify(displayTitle) || 'post';
+  const mine = aid ? posts.find(p => p && p.assetId === aid) : null;
+  let slug = mine ? mine.slug : base0;
+  if (!mine && aid && posts.some(p => p && p.slug === base0 && p.assetId && p.assetId !== aid)) slug = `${base0}-${aid.slice(-4)}`;
+  posts = posts.filter(p => p && p.slug !== slug && !(aid && p.assetId === aid));
+  posts.unshift({ slug, title: displayTitle, intro: String(intro || '').slice(0, 300), date: today, ...(aid ? { assetId: aid } : {}) });
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
@@ -976,7 +984,7 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
 // path) and, when the product has a checkout URL, an outbound "Buy now" button.
 // `offer` = { kicker, name, promise, forWho, included[], whyItWorks, objection,
 // terms, ctaLabel, ctaUrl }. Best-effort; caller treats a failure as non-fatal.
-async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTitle }) {
+async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTitle, assetId }) {
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, sub: 'offers' });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
@@ -984,17 +992,24 @@ async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTit
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
   const name = String(offer.name || workingTitle || 'Offer');
-  const slug = slugify(name) || 'offer';
   const included = (Array.isArray(offer.included) ? offer.included : []).map(x => String(x).trim()).filter(Boolean);
   const ctaUrl = String(offer.ctaUrl || '').trim();
   const ctaLabel = String(offer.ctaLabel || 'Get access').trim().slice(0, 40);
+  const aid = assetId ? String(assetId).replace(/-/g, '') : '';
 
   const { text: raw } = await getFile(`${basePath}/offers.json`);
   let offers = []; try { offers = raw ? JSON.parse(raw) : []; } catch (e) {}
   if (!Array.isArray(offers)) offers = [];
   const today = new Date().toISOString().slice(0, 10);
-  offers = offers.filter(o => o && o.slug !== slug);
-  offers.unshift({ slug, name, kicker: String(offer.kicker || ''), promise: String(offer.promise || '').slice(0, 300), ctaUrl, date: today });
+  // Keep the URL stable per ASSET — two offers whose AI name collides (or a
+  // concurrent batch run) don't clobber one page. This asset's own prior
+  // entry keeps its slug; a clash with a DIFFERENT asset gets a -<id> suffix.
+  const base0 = slugify(name) || 'offer';
+  const mine = aid ? offers.find(o => o && o.assetId === aid) : null;
+  let slug = mine ? mine.slug : base0;
+  if (!mine && aid && offers.some(o => o && o.slug === base0 && o.assetId && o.assetId !== aid)) slug = `${base0}-${aid.slice(-4)}`;
+  offers = offers.filter(o => o && o.slug !== slug && !(aid && o.assetId === aid));
+  offers.unshift({ slug, name, kicker: String(offer.kicker || ''), promise: String(offer.promise || '').slice(0, 300), ctaUrl, date: today, ...(aid ? { assetId: aid } : {}) });
 
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
   const fontsImport = s.fontQuery
@@ -4938,7 +4953,11 @@ export default {
             url,
           });
         }
-        return json({ products: cards, hasIndex });
+        // Two assets can resolve to the same offer page (AI name collision) —
+        // show one card, not the same one twice.
+        const _seen = new Set();
+        const products = cards.filter(c => { const k = c.url || c.title; if (!k || _seen.has(k)) return false; _seen.add(k); return true; });
+        return json({ products, hasIndex });
       } catch (e) {
         if (slug) {
           try {
@@ -5029,7 +5048,9 @@ export default {
             url,
           };
         });
-        return json({ posts, hasIndex });
+        const _seen = new Set();
+        const deduped = posts.filter(c => { const k = c.url || c.title; if (!k || _seen.has(k)) return false; _seen.add(k); return true; });
+        return json({ posts: deduped, hasIndex });
       } catch (e) {
         // Notion failed — last-ditch posts.json so the hub isn't blanked
         if (slug) {
@@ -5181,7 +5202,7 @@ Return ONLY this JSON, no other text, no fences:
 
             const site = await publishSeoPostToLiveSite({
               env, hdr, dash: dashId, campaignId: h.campaignId, spec: null,
-              seoTitle, workingTitle, intro, sections, conclusion, sources,
+              seoTitle, workingTitle, intro, sections, conclusion, sources, assetId: aid,
             }).catch(e => ({ published: false, error: e.message }));
             if (site.published && site.liveUrl) {
               await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
@@ -5227,7 +5248,7 @@ Return ONLY this JSON, no other text, no fences:
               }
             }
             const osite = await publishOfferToHub({
-              env, hdr, dash: dashId, campaignId: h.campaignId, workingTitle: oname, offer: offerObj,
+              env, hdr, dash: dashId, campaignId: h.campaignId, workingTitle: oname, offer: offerObj, assetId: aid,
             }).catch(e => ({ published: false, error: e.message }));
             if (osite.published && osite.liveUrl) {
               await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
@@ -14991,7 +15012,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             siteResult = await publishSeoPostToLiveSite({
               env, hdr: dsHdr, dash: dsDash, campaignId, spec,
               seoTitle: post.seoTitle, workingTitle: title,
-              intro: post.intro, sections, conclusion: post.conclusion,
+              intro: post.intro, sections, conclusion: post.conclusion, assetId,
             });
             if (siteResult.published && siteResult.liveUrl) {
               await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
@@ -15060,10 +15081,25 @@ Return ONLY this JSON object, no other text, no markdown fences:
             ].filter(Boolean).join("\n");
           }
 
+          // Offer names already live on this campaign — so the model doesn't
+          // hand two different offers the same name (→ same slug → one page).
+          let takenNames = "";
+          try {
+            const exRows = await notionQuery(ASSETS_DB, {
+              filter: { and: [
+                { property: "Campaign", relation: { contains: dsDash(campaignId) } },
+                { property: "Asset Type", select: { equals: assetType } },
+              ] },
+            }).catch(() => []);
+            const ns = exRows.map(r => (r.properties?.["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim())
+              .filter(n => n && n.toLowerCase() !== String(title).toLowerCase());
+            if (ns.length) takenNames = Array.from(new Set(ns)).slice(0, 20).join("; ");
+          } catch (e) {}
+
           const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing ONE finished, publish-ready OFFER for a product — the way that offer is presented on a content hub or sales page. Not N options, not a brief: the actual offer, ready to drop in.
 
 PRODUCT: ${productName}
-WORKING TITLE / ANGLE FOR THIS OFFER: ${title}${description ? `\nOPERATOR NOTES: ${description}` : ""}${researchInstructions ? `\nRESEARCH INSTRUCTIONS: ${researchInstructions}` : ""}
+WORKING TITLE / ANGLE FOR THIS OFFER: ${title}${description ? `\nOPERATOR NOTES: ${description}` : ""}${researchInstructions ? `\nRESEARCH INSTRUCTIONS: ${researchInstructions}` : ""}${takenNames ? `\nOFFER NAMES ALREADY IN USE ON THIS CAMPAIGN (pick a clearly different "offerName" — do NOT reuse or lightly reword any of these): ${takenNames}` : ""}
 
 ${methodFrameworkText ? `OFFER METHOD FRAMEWORK (how this operator wants offers structured — follow it):\n${methodFrameworkText}\n\n` : ""}PRODUCT PAGE FIELDS:
 ${productLines || "(sparse — infer from the research and title)"}
@@ -15173,7 +15209,7 @@ Return ONLY this JSON object:
           let offerSite = { published: false };
           try {
             offerSite = await publishOfferToHub({
-              env, hdr: dsHdr, dash: dsDash, campaignId,
+              env, hdr: dsHdr, dash: dsDash, campaignId, assetId,
               workingTitle: title,
               offer: {
                 kicker: offer.kicker, name: offer.offerName || title, promise: offer.promise,
