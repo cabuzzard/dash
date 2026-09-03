@@ -1,5 +1,13 @@
 {
   "hero": {
     "headline": "All the Little Things that make up a Home"
-  }
+  },
+  "ribbon": [
+    "Small repairs",
+    "Yard & seasonal cleanup",
+    "Pets, aquariums, livestock",
+    "House watch while you travel",
+    "Paid, work-trade, or a mix",
+    "Furniture and Interior Assembly"
+  ]
 }
