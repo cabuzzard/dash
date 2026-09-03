@@ -1,7 +1,8 @@
 {
   "hero": {
     "eyebrow": "A philanthropic briefing from the Stable Home Foundation",
-    "headline": "The Caregiving Crisis."
+    "headline": "The Caregiving Crisis.",
+    "image": "./hero.png"
   },
   "ribbon": [
     "9.7M direct-care openings by 2034",
