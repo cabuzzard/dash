@@ -10017,10 +10017,12 @@ async function hubRebuildBlog(slug) {
     const res = r.results || [];
     const posts = res.filter(x => x.published && x.kind !== 'offer').length;
     const offers = res.filter(x => x.published && x.kind === 'offer').length;
+    const pruned = res.filter(x => x.pruned).reduce((n, x) => n + x.pruned, 0);
     const skip = res.filter(x => x.skipped).length;
     const errs = res.filter(x => x.error);
+    const prunedNote = pruned ? `, ${pruned} stale removed` : '';
     if (!res.length) { msg.style.color = '#ffb020'; msg.textContent = 'No published articles or offers found on this campaign.'; }
-    else if (posts || offers) { msg.style.color = '#4cff4c'; msg.textContent = `${posts} post${posts !== 1 ? 's' : ''} + ${offers} offer${offers !== 1 ? 's' : ''} published${errs.length ? `, ${errs.length} failed` : ''}. Live in ~1 min — reload the preview.`; }
+    else if (posts || offers || pruned) { msg.style.color = '#4cff4c'; msg.textContent = `${posts} post${posts !== 1 ? 's' : ''} + ${offers} offer${offers !== 1 ? 's' : ''} published${prunedNote}${errs.length ? `, ${errs.length} failed` : ''}. Live in ~1 min — reload the preview.`; }
     else { msg.style.color = '#ff6b6b'; msg.textContent = `0 published${skip ? `, ${skip} skipped` : ''}. First error: ${errs[0] ? errs[0].error : 'unknown'}`; }
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
   btn.disabled = false; btn.textContent = '⟳ Rebuild blog + offers';
