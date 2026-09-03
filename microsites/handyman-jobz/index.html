@@ -10349,39 +10349,67 @@ function gaBatchSync() {
 }
 function gaBatchSelectAll() { document.querySelectorAll('#devTitles .gabatch-cb').forEach(c => c.checked = true); gaBatchSync(); }
 function gaBatchClear() { document.querySelectorAll('.gabatch-cb').forEach(c => c.checked = false); gaBatchSync(); }
+let GABATCH_CANCEL = false;
+function gaBatchStop() {
+  if (!GABATCH_RUNNING || GABATCH_CANCEL) return;
+  GABATCH_CANCEL = true;
+  const s = document.getElementById('gabatchStop'); if (s) { s.textContent = '⏹ stopping after current…'; s.disabled = true; }
+}
 async function gaBatchRun() {
-  if (GABATCH_RUNNING) return;
+  if (GABATCH_RUNNING) {   // already going — just make sure they can see it
+    const bar = document.getElementById('gabatchBar');
+    if (bar) { bar.scrollIntoView({ block: 'nearest' }); bar.animate([{ filter: 'brightness(1)' }, { filter: 'brightness(1.8)' }, { filter: 'brightness(1)' }], { duration: 500, iterations: 2 }); }
+    document.getElementById('gabatchLogWrap').style.display = 'block';
+    return;
+  }
   const items = gaBatchSelected();
   if (!items.length) return;
   const conc = Math.max(1, Math.min(5, parseInt(document.getElementById('gabatchConc').value, 10) || 3));
   const pickMethodId = document.getElementById('gabatchMethod') ? document.getElementById('gabatchMethod').value : '';
   const pickMethod = pickMethodId ? (AT_METHODS || []).find(m => m.id === pickMethodId) : null;
   const methodLine = pickMethod ? `Applies the "${pickMethod.name}" method to every selected title.` : `Uses each title's own method (titles with none are skipped).`;
-  if (!confirm(`Generate assets for ${items.length} title${items.length !== 1 ? 's' : ''}, ${conc} at a time?\n\n${methodLine}\nKeep this tab open until it finishes.`)) return;
-  GABATCH_RUNNING = true;
+  if (!confirm(`Generate assets for ${items.length} title${items.length !== 1 ? 's' : ''}, ${conc} at a time?\n\n${methodLine}\nKeep this tab open until it finishes. Each title can take a couple of minutes.`)) return;
+
+  GABATCH_RUNNING = true; GABATCH_CANCEL = false;
+  const bar = document.getElementById('gabatchBar');
+  const btn = document.getElementById('gabatchBtn');
+  const prog = document.getElementById('gabatchProg');
+  const started = Date.now();
   const st = {}; items.forEach(it => st[it.id] = { s: 'wait', msg: '' });
-  const icon = s => ({ wait: '•', run: '⏳', ok: '✅', err: '❌' }[s] || '•');
+  const icon = s => ({ wait: '•', run: '⏳', ok: '✅', err: '❌', skip: '⤫' }[s] || '•');
   const paint = () => {
-    const done = items.filter(it => st[it.id].s === 'ok' || st[it.id].s === 'err').length;
-    const p = document.getElementById('gabatchProg'); if (p) p.textContent = `${done}/${items.length} done`;
+    const done = items.filter(it => ['ok','err','skip'].includes(st[it.id].s)).length;
+    const running = items.filter(it => st[it.id].s === 'run').length;
+    const secs = Math.round((Date.now() - started) / 1000);
+    const spin = '◐◓◑◒'[Math.floor(Date.now() / 250) % 4];
+    if (prog) prog.textContent = `${GABATCH_RUNNING ? spin + ' ' : ''}${done}/${items.length} done${running ? ` · ${running} running` : ''} · ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')}`;
     const l = document.getElementById('gabatchLog'); if (l) l.innerHTML = items.map(it =>
       `<div style="font-size:11px;padding:2px 0;"><span style="display:inline-block;width:18px">${icon(st[it.id].s)}</span>${esc(it.name).slice(0, 72)}${st[it.id].msg ? ` <span style="opacity:.6">— ${esc(st[it.id].msg)}</span>` : ''}</div>`).join('');
   };
-  const setBtn = (d, t) => { const b = document.getElementById('gabatchBtn'); if (b) { b.disabled = d; b.textContent = t; } };
-  setBtn(true, 'Running…');
+  // running state — make it unmissable
+  bar.style.borderTop = '3px solid #68d391';
+  bar.style.background = '#16241d';
+  bar.style.display = 'flex';
+  bar.scrollIntoView({ block: 'nearest' });
   document.getElementById('gabatchLogWrap').style.display = 'block';
+  document.querySelectorAll('.gabatch-cb, #gabatchMethod, #gabatchConc').forEach(el => el.disabled = true);
+  btn.disabled = true; btn.textContent = '⏳ Running…';
+  const stopB = document.getElementById('gabatchStop'); if (stopB) { stopB.hidden = false; stopB.disabled = false; stopB.textContent = '⏹ Stop'; }
+  const ticker = setInterval(paint, 250);
   paint();
+
   const queue = items.slice();
   const runOne = async () => {
     while (queue.length) {
+      if (GABATCH_CANCEL) { const it = queue.shift(); st[it.id] = { s: 'skip', msg: 'stopped' }; continue; }
       const it = queue.shift();
-      st[it.id] = { s: 'run', msg: '' }; paint();
+      st[it.id] = { s: 'run', msg: '' };
       try {
         const d = await w('getTitleDetails', { titleId: it.id });
         const methodId = pickMethodId || d.methodId;
         const methodName = pickMethod ? pickMethod.name : d.methodName;
-        if (!methodId) { st[it.id] = { s: 'err', msg: 'no method — pick one in the bar' }; paint(); continue; }
-        if (pickMethodId && d.methodId !== pickMethodId) { try { await w('setTitleMethod', { titleId: it.id, methodId: pickMethodId }); } catch (e) { /* generation still uses methodId */ } }
+        if (!methodId) { st[it.id] = { s: 'err', msg: 'no method — pick one in the bar' }; continue; }
+        if (pickMethodId && d.methodId !== pickMethodId) { try { await w('setTitleMethod', { titleId: it.id, methodId: pickMethodId }); } catch (e) {} }
         const r = await w('generateTitleAssets', {
           titleId: it.id, campaignId: d.campaignId || CAMPAIGN_ID,
           methodId, productId: d.productId || undefined,
@@ -10393,16 +10421,27 @@ async function gaBatchRun() {
       } catch (e) {
         st[it.id] = { s: 'err', msg: String(e.message).slice(0, 70) };
       }
-      paint();
     }
   };
-  await Promise.all(Array.from({ length: conc }, runOne));
-  GABATCH_RUNNING = false;
-  setBtn(false, '⚡ Generate selected');
-  const ok = items.filter(it => st[it.id].s === 'ok').length, bad = items.length - ok;
-  const p = document.getElementById('gabatchProg'); if (p) p.textContent = `Done — ${ok} ok${bad ? `, ${bad} failed` : ''}. Refreshing…`;
-  await loadTitles();
-  gaBatchSync();
+  try {
+    await Promise.all(Array.from({ length: conc }, runOne));
+  } finally {
+    clearInterval(ticker);
+    GABATCH_RUNNING = false;
+    bar.style.borderTop = '1px solid #2b3444';
+    bar.style.background = '#161b26';
+    document.querySelectorAll('.gabatch-cb, #gabatchMethod, #gabatchConc').forEach(el => el.disabled = false);
+    btn.disabled = false; btn.textContent = '⚡ Generate selected';
+    const sb = document.getElementById('gabatchStop'); if (sb) sb.hidden = true;
+    const ok = items.filter(it => st[it.id].s === 'ok').length;
+    const bad = items.filter(it => st[it.id].s === 'err').length;
+    const skip = items.filter(it => st[it.id].s === 'skip').length;
+    const secs = Math.round((Date.now() - started) / 1000);
+    if (prog) prog.textContent = `Done in ${Math.floor(secs/60)}:${String(secs%60).padStart(2,'0')} — ${ok} ok${bad ? `, ${bad} failed` : ''}${skip ? `, ${skip} stopped` : ''}. "clear" to dismiss.`;
+    paint();
+    await loadTitles().catch(() => {});
+    bar.style.display = 'flex';   // keep the result visible until the operator hits "clear"
+  }
 }
 window.addEventListener('beforeunload', e => { if (GABATCH_RUNNING) { e.preventDefault(); e.returnValue = ''; return ''; } });
 
@@ -10414,7 +10453,8 @@ window.addEventListener('beforeunload', e => { if (GABATCH_RUNNING) { e.preventD
   <label style="font-size:11px;color:#8a97a8;">method <select id="gabatchMethod" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;max-width:200px;"><option value="">— each title's own —</option></select></label>
   <label style="font-size:11px;color:#8a97a8;">run <select id="gabatchConc" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select> at once</label>
   <button id="gabatchBtn" onclick="gaBatchRun()" style="font-size:12px;padding:6px 14px;border:0;border-radius:6px;background:#68d391;color:#0b1220;font-weight:700;cursor:pointer;">⚡ Generate selected</button>
-  <span id="gabatchProg" style="font-size:11px;color:#8a97a8;"></span>
+  <button id="gabatchStop" hidden onclick="gaBatchStop()" style="font-size:11px;padding:6px 12px;border:1px solid #fc8181;border-radius:6px;background:transparent;color:#fc8181;font-weight:600;cursor:pointer;">⏹ Stop</button>
+  <span id="gabatchProg" style="font-size:11px;color:#cbd5e0;font-weight:600;"></span>
   <div id="gabatchLogWrap" style="display:none;flex-basis:100%;max-height:170px;overflow:auto;margin-top:6px;border-top:1px solid #2b3444;padding-top:6px;"><div id="gabatchLog"></div></div>
 </div>
 </body>
