@@ -11,5 +11,8 @@
     "Burnout & Stress",
     "Relationships & Loneliness",
     "Midlife Reinvention"
-  ]
+  ],
+  "report": {
+    "image": "./signup.png"
+  }
 }
