@@ -2,32 +2,31 @@
 # Same Bluehost account/SSH key for all. rsync has no --delete — it only
 # adds/updates, never removes files already on the server.
 #
-# CONTENT HUBS — publishing policy:
+# ── CONTENT HUBS ──────────────────────────────────────────────────────────
 # A hub is ALWAYS served from GitHub Pages at
 #   https://cabuzzard.github.io/dash/web/hub/{slug}/
-# That is the home of every "pre-domain" (not-yet-connected) hub — do not try to
-# route those to Bluehost. Add a `web/hub/{slug}  <domain>` line here ONLY once
-# that hub's domain is actually connected to this hosting account and serving.
+# — the home of every hub that has no custom domain yet (e.g. mountainwize).
 #
-# The Bluehost target for a hub is /home3/evraymon/<domain>/ — the folder
-# Bluehost auto-creates for the domain at registration and uses as the doc root
-# once the domain is connected. So remote_path is just the domain name.
-# Per hub, also: worker.js HUB_ORIGINS (apex + www) + index.html HUB_SITES[].domain.
-# See CLAUDE.md "Content Hubs".
+# Bluehost routing (2026-09-02): the hosting plan is at its 50-website cap, so
+# hub domains can't be added as addon domains ("An unknown error occurred").
+# Instead each hub domain is PARKED (aliased on evraymond.com) via
+#   cpapi2 Park park domain=<domain>
+# and a SINGLE generic RewriteRule in ~/public_html/.htaccess routes any host
+# whose folder public_html/hub-<host>/ exists to that folder. So the deploy
+# target for a hub is public_html/hub-<domain>/ (named by DOMAIN, so the one
+# generic rule needs no per-hub edit — just add a line here + park the domain).
+# Full runbook: web/hub/BLUEHOST-ROUTING.md. Bluehost DNS / hosting / email
+# stay unchanged. Also per hub: worker.js HUB_ORIGINS (apex + www) +
+# index.html HUB_SITES[].domain.
 #
-# Status 2026-09-02: the hub domains that couldn't be added as Bluehost
-# "websites" (50/50 cap) are instead PARKED (aliased on evraymond.com) via
-# `cpapi2 Park park domain=<domain>` — aliases don't count against the cap.
-# Each parked hub domain then routes to its own folder below via a HTTP_HOST
-# RewriteRule block in ~/public_html/.htaccess (see web/hub/BLUEHOST-ROUTING.md).
-# So remote_path here is the hub's own public_html/hub-<slug> folder, NOT a
-# per-domain docroot. Per hub, also: worker.js HUB_ORIGINS (apex + www) +
-# index.html HUB_SITES[].domain. See CLAUDE.md "Content Hubs".
+# creative-flow-guitar → creativeflowguitar.com predates this and is served the
+# old way from ~/creativeflowguitar.com — left as-is, not on the generic rule.
+# mountainwize has no domain yet — GitHub Pages only, no line here.
 web/sm-business-software-tools	public_html/webguyleadgeneration
 web/hub/creative-flow-guitar	creativeflowguitar.com
-web/hub/surf-vacations	public_html/hub-surf-vacations
-web/hub/sunflower-acres	public_html/hub-sunflower-acres
-web/hub/care-gap	public_html/hub-care-gap
-web/hub/owners-rep	public_html/hub-owners-rep
-web/hub/home-services	public_html/hub-home-services
-web/hub/ai-implementation	public_html/hub-ai-implementation
+web/hub/surf-vacations	public_html/hub-outsidesessions.com
+web/hub/sunflower-acres	public_html/hub-accessiblefarms.com
+web/hub/care-gap	public_html/hub-stablehomefoundation.com
+web/hub/owners-rep	public_html/hub-homestructionconsulting.com
+web/hub/home-services	public_html/hub-generalservices2020.com
+web/hub/ai-implementation	public_html/hub-aisystemimplementation.com
