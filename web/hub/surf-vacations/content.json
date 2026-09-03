@@ -1,8 +1,32 @@
 {
   "hero": {
-    "image": "./hero.png"
+    "image": "./hero.png",
+    "eyebrow": "Surf travel, Dream it and it will be done.",
+    "headline": "You Dared to Dream it.  And it came to be True."
   },
   "report": {
     "image": "./signup.png"
-  }
+  },
+  "ribbon": [
+    "Swell 6–8ft",
+    "Period 14s",
+    "Wind offshore",
+    "Tide pushing",
+    "Water 82°F",
+    "Season: Apr–Oct"
+  ],
+  "nav": [
+    {
+      "label": "Trips",
+      "href": "#trips"
+    },
+    {
+      "label": "Journal",
+      "href": "#journal"
+    },
+    {
+      "label": "Dispatch",
+      "href": "#news"
+    }
+  ]
 }
