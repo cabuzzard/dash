@@ -1,6 +1,7 @@
 {
   "hero": {
-    "headline": "Acoustic Instrumental, Classic, and Relevant"
+    "headline": "Acoustic Instrumental, Classic, and Relevant",
+    "image": "./hero.jpg"
   },
   "ribbon": [
     "Acoustic Rock",
