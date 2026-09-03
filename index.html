@@ -879,6 +879,7 @@
           <select id="glAffHub" onchange="renderAffList()" style="font-size:12px;padding:6px 9px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;"></select>
           <button id="glAffFind" onclick="affFind()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">🔎 Find programs</button>
           <button id="glAffRank" onclick="affRank()" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">⚖ Rank</button>
+          <button id="glAffWalk" onclick="affWalk()" title="Copy a browser-walk prompt for this hub — paste it into a Claude session to run the walk" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">🚶 Walk</button>
           <button onclick="loadGlAffiliate(true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
           <span id="glAffStatus" style="font-size:11px;color:var(--text3);"></span>
         </div>
@@ -11810,6 +11811,32 @@ async function affRank() {
     renderAffList();
   } catch (e) { st.textContent = 'Error: ' + e.message; }
   finally { btn.disabled = false; btn.textContent = '⚖ Rank'; }
+}
+// The browser walk can't run in the worker (no browser). This copies a
+// ready-to-run prompt for the selected hub — paste it into a Claude session
+// (Claude Code / Claude in Chrome) and it drives the walk.
+function affWalk() {
+  const slug = document.getElementById('glAffHub').value;
+  const st = document.getElementById('glAffStatus');
+  if (!slug) { st.textContent = 'Pick a hub first.'; return; }
+  const hubName = (HUB_SITES.find(h => h.slug === slug) || {}).name || slug;
+  const pending = AFF_DATA.filter(r => r.hub === slug && ['New', 'Reviewing'].includes(r.status) && !r.signupLog);
+  const prompt =
+`Run an affiliate signup browser walk for the "${hubName}" content hub (slug: ${slug}), using Claude in Chrome.
+
+Programs live in the Notion DB "🤝 Affiliate Programs" (id 1dee16c0bc2743ed9155d7649f0d9e51). Walk every row where Hub = ${slug}, Status is New or Reviewing, and Signup Log is empty${pending.length ? ' (' + pending.length + ' right now: ' + pending.map(p => p.name).join(', ') + ')' : ''}.
+
+For each program:
+1. Open its Signup URL — or, if blank/wrong, find the program's real affiliate page from its own site (footer "Affiliates"/"Partners").
+2. Click through as far as you can toward the actual "apply / get your affiliate link" page.
+3. Write into that row's "Signup Log": the EXACT URL of the application page, and precisely where it stops — an open application form (list the fields), "needs a <network> account first" (+ that network's signup URL), a login / CAPTCHA / bot wall, or dead/deactivated.
+4. Correct "Signup URL" if you found a better one. Set "Status": Reviewing if a real form was reached, "Stopped at login" for a login/bot wall, Rejected if the program is dead or a duplicate of another row.
+
+Hard rule: do NOT create accounts, submit any form, or accept any terms — stop at that point and record it. Chrome is signed in to some networks already; note that in the log if relevant.`;
+  navigator.clipboard.writeText(prompt).then(
+    () => { st.textContent = 'Walk prompt for ' + hubName + ' copied (' + (pending.length || 'no') + ' pending). Paste it into a Claude session.'; },
+    () => { st.textContent = 'Could not copy — check clipboard permissions.'; }
+  );
 }
 async function affResearchSetup(id) {
   const st = document.getElementById('glAffStatus');
