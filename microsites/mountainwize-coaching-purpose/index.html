@@ -2718,7 +2718,8 @@ async function loadTitles() {
       // (behind 🧩 Generate Assets) writes the pillar itself, on first run,
       // if this title doesn't have one yet, and promotes Planning →
       // Development the same way the old 📝 Write Pillar button used to.
-      div.innerHTML = `<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="title-status-btn" onclick="addTitleToWeeklyPlanner('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Add to This Week — schedules this title as an action item on whichever day is lightest">TD</button><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      const _bn = t.title.replace(/"/g,'&quot;');
+      div.innerHTML = `${section !== 'pub' ? `<input type="checkbox" class="gabatch-cb" data-id="${t.id}" data-name="${_bn}" onclick="event.stopPropagation()" onchange="gaBatchSync()" title="Select for batch / queued Generate Assets" style="margin-right:6px;flex-shrink:0;">` : ''}<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="title-status-btn" onclick="addTitleToWeeklyPlanner('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Add to This Week — schedules this title as an action item on whichever day is lightest">TD</button><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Assets never render under a Development title row — Method/Asset
       // Type is an ASSET-level concept (Assets DB has no Method relation at
       // all, only its own "Asset Type" select), not a title-level one, and
@@ -10303,6 +10304,86 @@ async function commitProductMethods() {
   }
 }
 
+// ── BATCH / QUEUED GENERATE ASSETS ─────────────────────────────────────
+// Each generateTitleAssets call is an independent, stateless Worker request,
+// so "run several at once" is just a client-side queue that fires them with a
+// concurrency cap. Uses each title's OWN method + product (getTitleDetails) —
+// no per-title modal. Closing the ✕ / a modal never aborts a running
+// generation (the fetch keeps going, the Worker finishes, Notion gets
+// written) — only closing the whole TAB can leave one half-finished, which
+// is what the beforeunload guard below is for.
+let GABATCH_RUNNING = false;
+function gaBatchSelected() {
+  return Array.from(document.querySelectorAll('.gabatch-cb:checked')).map(c => ({ id: c.dataset.id, name: c.dataset.name || 'Untitled' }));
+}
+function gaBatchSync() {
+  const bar = document.getElementById('gabatchBar'); if (!bar) return;
+  const n = gaBatchSelected().length;
+  const cnt = document.getElementById('gabatchCount'); if (cnt) cnt.textContent = n;
+  bar.style.display = (n > 0 || GABATCH_RUNNING) ? 'flex' : 'none';
+}
+function gaBatchSelectAll() { document.querySelectorAll('#devTitles .gabatch-cb').forEach(c => c.checked = true); gaBatchSync(); }
+function gaBatchClear() { document.querySelectorAll('.gabatch-cb').forEach(c => c.checked = false); gaBatchSync(); }
+async function gaBatchRun() {
+  if (GABATCH_RUNNING) return;
+  const items = gaBatchSelected();
+  if (!items.length) return;
+  const conc = Math.max(1, Math.min(5, parseInt(document.getElementById('gabatchConc').value, 10) || 3));
+  if (!confirm(`Generate assets for ${items.length} title${items.length !== 1 ? 's' : ''}, ${conc} at a time?\n\nUses each title's own method + product. Keep this tab open until it finishes.`)) return;
+  GABATCH_RUNNING = true;
+  const st = {}; items.forEach(it => st[it.id] = { s: 'wait', msg: '' });
+  const icon = s => ({ wait: '•', run: '⏳', ok: '✅', err: '❌' }[s] || '•');
+  const paint = () => {
+    const done = items.filter(it => st[it.id].s === 'ok' || st[it.id].s === 'err').length;
+    const p = document.getElementById('gabatchProg'); if (p) p.textContent = `${done}/${items.length} done`;
+    const l = document.getElementById('gabatchLog'); if (l) l.innerHTML = items.map(it =>
+      `<div style="font-size:11px;padding:2px 0;"><span style="display:inline-block;width:18px">${icon(st[it.id].s)}</span>${esc(it.name).slice(0, 72)}${st[it.id].msg ? ` <span style="opacity:.6">— ${esc(st[it.id].msg)}</span>` : ''}</div>`).join('');
+  };
+  const setBtn = (d, t) => { const b = document.getElementById('gabatchBtn'); if (b) { b.disabled = d; b.textContent = t; } };
+  setBtn(true, 'Running…');
+  document.getElementById('gabatchLogWrap').style.display = 'block';
+  paint();
+  const queue = items.slice();
+  const runOne = async () => {
+    while (queue.length) {
+      const it = queue.shift();
+      st[it.id] = { s: 'run', msg: '' }; paint();
+      try {
+        const d = await w('getTitleDetails', { titleId: it.id });
+        if (!d.methodId) { st[it.id] = { s: 'err', msg: 'no method set on this title' }; paint(); continue; }
+        const r = await w('generateTitleAssets', {
+          titleId: it.id, campaignId: d.campaignId || CAMPAIGN_ID,
+          methodId: d.methodId, productId: d.productId || undefined,
+          assetType: d.methodName || 'Post', title: d.title || it.name,
+          count: 4, contextMode: 'isolate',
+        });
+        gaAutoAttachMethod(d.methodId);
+        st[it.id] = { s: 'ok', msg: (r.sitePublished && r.liveUrl) ? 'published live' : (r.siteError ? 'asset ok · site: ' + String(r.siteError).slice(0, 38) : (r.sectionCount != null ? `${r.sectionCount}-section post` : (r.created != null ? `${r.created} option${r.created === 1 ? '' : 's'}` : 'done'))) };
+      } catch (e) {
+        st[it.id] = { s: 'err', msg: String(e.message).slice(0, 70) };
+      }
+      paint();
+    }
+  };
+  await Promise.all(Array.from({ length: conc }, runOne));
+  GABATCH_RUNNING = false;
+  setBtn(false, '⚡ Generate selected');
+  const ok = items.filter(it => st[it.id].s === 'ok').length, bad = items.length - ok;
+  const p = document.getElementById('gabatchProg'); if (p) p.textContent = `Done — ${ok} ok${bad ? `, ${bad} failed` : ''}. Refreshing…`;
+  await loadTitles();
+  gaBatchSync();
+}
+window.addEventListener('beforeunload', e => { if (GABATCH_RUNNING) { e.preventDefault(); e.returnValue = ''; return ''; } });
+
 </script>
+<div id="gabatchBar" style="display:none;position:fixed;left:0;right:0;bottom:0;z-index:9000;background:#161b26;border-top:1px solid #2b3444;padding:9px 14px;align-items:center;gap:12px;flex-wrap:wrap;box-shadow:0 -6px 20px rgba(0,0,0,.45);">
+  <strong style="font-size:12px;color:#e2e8f0;"><span id="gabatchCount">0</span> selected</strong>
+  <button onclick="gaBatchSelectAll()" style="font-size:11px;padding:4px 9px;border:1px solid #3a4557;border-radius:5px;background:#232a38;color:#cbd5e0;cursor:pointer;">select all Dev</button>
+  <button onclick="gaBatchClear()" style="font-size:11px;padding:4px 9px;border:1px solid #3a4557;border-radius:5px;background:#232a38;color:#cbd5e0;cursor:pointer;">clear</button>
+  <label style="font-size:11px;color:#8a97a8;">run <select id="gabatchConc" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select> at once</label>
+  <button id="gabatchBtn" onclick="gaBatchRun()" style="font-size:12px;padding:6px 14px;border:0;border-radius:6px;background:#68d391;color:#0b1220;font-weight:700;cursor:pointer;">⚡ Generate selected</button>
+  <span id="gabatchProg" style="font-size:11px;color:#8a97a8;"></span>
+  <div id="gabatchLogWrap" style="display:none;flex-basis:100%;max-height:170px;overflow:auto;margin-top:6px;border-top:1px solid #2b3444;padding-top:6px;"><div id="gabatchLog"></div></div>
+</div>
 </body>
 </html>
