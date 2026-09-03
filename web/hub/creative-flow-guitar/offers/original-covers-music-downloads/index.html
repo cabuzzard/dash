@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Original &amp; Covers — Music Downloads — Creative Flow Guitar</title>
+<title>Original &amp; Covers: Music Downloads — Creative Flow Guitar</title>
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Hanken+Grotesk:wght@400;500;600&display=swap');
@@ -44,18 +44,18 @@ footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(
   <a href="../../index.html">Creative Flow Guitar</a>
   <a class="back" href="../index.html">&larr; All offers</a>
 </header>
-<div class="kicker">Digital Download · Per track &amp; per project</div>
-<h1>Original &amp; Covers — Music Downloads</h1>
-<p class="lede">Own the recordings permanently — real acoustic and country rock performances, delivered instantly to your device, with every dollar going straight to the artist.</p>
-<p><strong>Who it's for:</strong> Music fans who still believe in owning what they love</p>
+<div class="kicker">Digital Download · Per track or full project</div>
+<h1>Original &amp; Covers: Music Downloads</h1>
+<p class="lede">Own the recordings you actually love — originals and covers, delivered instantly as permanent files that belong to you, not a platform.</p>
+<p><strong>Who it's for:</strong> Acoustic and country rock fans who still believe in owning the music they love</p>
 <h2>What's included</h2>
-<ul class="inc"><li>Instant high-quality digital file delivery — download once, keep forever, play on any device</li><li>Original songs spanning acoustic rock, instrumental guitar, and country rock</li><li>Cover recordings of familiar songs — hear the artist's style on material you already know before you commit to originals</li><li>Full catalog access: individual track purchases or complete album and EP downloads</li><li>Licensing options available for sync and commercial use</li></ul>
+<ul class="inc"><li>Instant high-quality digital file delivery upon purchase — yours to keep, transfer, and play on any device</li><li>Full catalog of original songs spanning acoustic rock, instrumental guitar, and country rock</li><li>Cover recordings of familiar songs that let you hear the artist's range and style before you go deeper</li><li>Individual track purchases or full album/EP downloads — buy one song or the whole project</li><li>Sync and commercial licensing available as a separate tier for buyers with professional needs</li></ul>
 <h2>Why it works</h2>
-<p>Cover recordings give you an immediate trust reference — if you know the song, you can judge the performance before spending a dollar. The catalog is built across acoustic, instrumental, and country rock so your full range of taste is served in one place, from one artist you can buy from directly.</p>
+<p>Cover recordings give you an immediate reference point — you already know the song, so you can judge the feel and quality before you spend a dollar on an original. Every purchase goes directly to the artist, which means your money funds the next recording, not a platform's recommendation algorithm.</p>
 <h2>The objection it answers</h2>
-<p>You can stream it free — but streaming pays the artist a fraction of a cent per play and leaves you with nothing you own. A download costs a few dollars once, funds the next recording, and gives you a file that never disappears when a license expires.</p>
+<p>Streaming is free, so why buy? Because streaming pays the artist a fraction of a cent per play and gives you nothing you own — a download costs a few dollars once, supports the artist in a way streaming never will, and produces a file that never disappears when a license expires or a platform shuts down.</p>
 <h2>Terms</h2>
-<p>Per-track and per-project pricing at indie-standard rates. Instant delivery upon purchase. No subscription, no account lock-in, no platform dependency. Files are yours to keep, transfer, and play anywhere.</p>
+<p>Per-track and full project pricing at indie-standard rates — instant delivery, no subscription, no account lock-in, no platform dependency. Files are yours permanently from the moment of purchase.</p>
 <h2>Browse the Catalog</h2>
 <form class="offer-form" id="of" novalidate>
   <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
@@ -78,7 +78,7 @@ footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(
     if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
     b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
     try{
-      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Creative Flow Guitar — offer: Original & Covers — Music Downloads",email:email,fraudType:'Other',note:"Offer interest - Original & Covers — Music Downloads",tsToken:tok})});
+      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Creative Flow Guitar — offer: Original & Covers: Music Downloads",email:email,fraudType:'Other',note:"Offer interest - Original & Covers: Music Downloads",tsToken:tok})});
       var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
       f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
     }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
