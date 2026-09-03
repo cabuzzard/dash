@@ -864,6 +864,23 @@
     </div>
 
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('affiliate')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🤝 Affiliate Programs <span id="glAffCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glAffIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glAffBody" style="display:none;padding:0 13px 13px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">Searches a content hub's Research keywords against the affiliate networks and stages any real, currently-open programs it finds.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+          <select id="glAffHub" onchange="renderAffList()" style="font-size:12px;padding:6px 9px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;"></select>
+          <button id="glAffFind" onclick="affFind()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">🔎 Find programs</button>
+          <button onclick="loadGlAffiliate(true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
+          <span id="glAffStatus" style="font-size:11px;color:var(--text3);"></span>
+        </div>
+        <div id="glAffList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('tools')">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧰 Tools</span>
         <span id="glToolsIcon" style="font-size:11px;color:var(--text3);">▸</span>
@@ -11457,6 +11474,7 @@ const GL_SECTIONS = {
   podcast:  { icon: 'glPodcastIcon',  body: 'glPodcastBody',  load: () => loadGlPodcast() },
   method:   { icon: 'glMethodIcon',   body: 'glMethodBody',   load: () => loadGlMethod() },
   trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
+  affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
   tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
   stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
 };
@@ -11668,6 +11686,100 @@ async function loadGlTrading() {
       + '</div>'
     ).join('');
   } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+
+// ── Affiliate Programs — search hub keywords + the networks, stage results ──
+let AFF_DATA = [];
+let AFF_HUB_FILTER = '';
+const AFF_FIT_COLOR = { Strong: '#68d391', Possible: '#f6ad55', Weak: '#a0aec0' };
+const AFF_STATUS = ['New', 'Reviewing', 'Applied', 'Approved', 'Rejected'];
+
+async function loadGlAffiliate(force) {
+  const sel = document.getElementById('glAffHub');
+  if (sel && !sel.options.length) {
+    sel.innerHTML = '<option value="">All hubs</option>' + HUB_SITES.map(h => '<option value="' + esc(h.slug) + '">' + esc(h.name) + '</option>').join('');
+  }
+  const el = document.getElementById('glAffList');
+  if (force || !AFF_DATA.length) el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getAffiliatePrograms', {});
+    if (data.error) throw new Error(data.error);
+    AFF_DATA = data.items || [];
+    document.getElementById('glAffCount').textContent = '· ' + AFF_DATA.length;
+    renderAffList();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+function renderAffList() {
+  const el = document.getElementById('glAffList');
+  const hub = document.getElementById('glAffHub').value;
+  AFF_HUB_FILTER = hub;
+  const rows = AFF_DATA.filter(r => !hub || r.hub === hub)
+    .sort((a, b) => (a.hub || '').localeCompare(b.hub || '')
+      || ({ Strong: 0, Possible: 1, Weak: 2 }[a.fit] ?? 3) - ({ Strong: 0, Possible: 1, Weak: 2 }[b.fit] ?? 3)
+      || (a.name || '').localeCompare(b.name || ''));
+  if (!rows.length) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">No programs' + (hub ? ' for this hub' : '') + ' yet. Pick a hub and hit “Find programs”.</div>';
+    return;
+  }
+  el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+    + '<thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;">'
+    + '<th style="padding:5px 8px;">Program</th><th style="padding:5px 8px;">Hub</th><th style="padding:5px 8px;">Network</th><th style="padding:5px 8px;">Commission</th><th style="padding:5px 8px;">Cookie</th><th style="padding:5px 8px;">Fit</th><th style="padding:5px 8px;">Status</th><th style="padding:5px 8px;"></th>'
+    + '</tr></thead><tbody>' + rows.map(affRow).join('') + '</tbody></table></div>';
+}
+function affRow(r) {
+  const fitColor = AFF_FIT_COLOR[r.fit] || 'var(--text3)';
+  const statusSel = '<select onchange="affSetStatus(\'' + r.id + '\',this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text2);">'
+    + AFF_STATUS.map(s => '<option' + (s === r.status ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>';
+  const hubName = (HUB_SITES.find(h => h.slug === r.hub) || {}).name || r.hub;
+  return '<tr style="border-top:1px solid var(--border);">'
+    + '<td style="padding:6px 8px;font-weight:600;">' + (r.url ? '<a href="' + esc(r.url) + '" target="_blank" style="color:var(--text);text-decoration:none;">' + esc(r.name) + ' <span style="color:var(--accent);font-size:10px;">↗</span></a>' : esc(r.name))
+      + (r.notes ? '<div style="font-size:10px;color:var(--text3);font-weight:400;margin-top:2px;max-width:340px;">' + esc(r.notes) + '</div>' : '')
+      + (r.keyword ? '<div style="font-size:9px;color:var(--text3);font-weight:400;margin-top:1px;">kw: ' + esc(r.keyword) + '</div>' : '') + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);white-space:nowrap;">' + esc(hubName) + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text2);white-space:nowrap;">' + esc(r.network || '') + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text2);">' + esc(r.commission || '') + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);white-space:nowrap;">' + esc(r.cookie || '') + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;"><span style="color:' + fitColor + ';">●</span> ' + esc(r.fit || '') + '</td>'
+    + '<td style="padding:6px 8px;">' + statusSel + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;"><button onclick="affDelete(\'' + r.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕</button></td>'
+    + '</tr>';
+}
+async function affFind() {
+  const slug = document.getElementById('glAffHub').value;
+  if (!slug) { document.getElementById('glAffStatus').textContent = 'Pick a hub first.'; return; }
+  const btn = document.getElementById('glAffFind');
+  const st = document.getElementById('glAffStatus');
+  btn.disabled = true; btn.textContent = '🔎 Searching…';
+  st.textContent = 'Searching the networks — this takes a minute…';
+  try {
+    const r = await call('findAffiliatePrograms', { slug });
+    if (r.error) throw new Error(r.error);
+    st.textContent = 'Found ' + (r.found || 0) + ', added ' + (r.added || 0) + (r.skipped ? ', skipped ' + r.skipped + ' (dupes)' : '') + '.';
+    await loadGlAffiliate(true);
+    document.getElementById('glAffHub').value = slug;
+    renderAffList();
+  } catch (e) {
+    st.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = '🔎 Find programs';
+  }
+}
+async function affSetStatus(id, status) {
+  try { const r = await call('updateAffiliateProgram', { id, status }); if (r.error) throw new Error(r.error);
+    const row = AFF_DATA.find(x => x.id === id); if (row) row.status = status;
+  } catch (e) { alert('Error: ' + e.message); }
+}
+async function affDelete(id) {
+  if (!confirm('Remove this program?')) return;
+  try {
+    const r = await call('deleteAffiliateProgram', { id });
+    if (r.error) throw new Error(r.error);
+    AFF_DATA = AFF_DATA.filter(x => x.id !== id);
+    document.getElementById('glAffCount').textContent = '· ' + AFF_DATA.length;
+    renderAffList();
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 // ── ECOSYSTEM TAB (🌐) — 3D force-directed map of the Notion data ecosystem ─

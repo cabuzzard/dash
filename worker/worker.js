@@ -75,6 +75,7 @@ const CREATORS_DB        = "dafa452e816a41daae061590f83bfd39"; // Name/Handles/P
 const PODCAST_IDEAS_DB   = "f61c012e75b742cf949c93228bc0328e"; // Name/Angle/Subject Matter/Status/Source Post/Creator
 const METHOD_IDEAS_DB    = "9b094862f32a40c994093610f8696a8c"; // Name/Description/Closest Method/Platform/Subject Matter/Status/Source Post/Creator — holding area, never writes to real METHODS_DB
 const TRADING_STRATEGIES_DB = "49940bac8cdc4310a8f54e10833673f9"; // Name/Thesis/Entry/Exit / Risk/Instruments/Timeframe/Status/Notes/Source Post/Creator — reference library, not wired into runAutoTradeScan yet
+const AFFILIATE_DB       = "1dee16c0bc2743ed9155d7649f0d9e51"; // Name/Hub/Keyword/Network/Commission/Cookie Window/Signup URL/Fit/Notes/Status/Found — found by searching hub keywords + "affiliate" (Globals tab)
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -27635,6 +27636,133 @@ ${assemblyManifest}`;
           };
         });
         return json({ items });
+      }
+
+      // ── Affiliate Programs (Globals tab) ── search a content hub's keywords
+      // against the affiliate networks for real, currently-open programs and
+      // stage them in AFFILIATE_DB.
+      if (body.action === "findAffiliatePrograms") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const slug = String(body.slug || "").trim();
+        const hub = HUB_SITES.find(h => h.slug === slug)
+          || (body.campaignId ? HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === String(body.campaignId).replace(/-/g, "")) : null);
+        if (!hub) return json({ error: "unknown hub" }, 400);
+        const dashId = raw => { const s = String(raw).replace(/-/g, ""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        let keywords = String(body.keywords || "").trim();
+        if (!keywords) {
+          const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashId(hub.campaignId) } } }).catch(() => []);
+          for (const r of rows) { const v = (r.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").trim(); if (v) { keywords = v; break; } }
+        }
+        if (!keywords) return json({ error: "no Keywords on this campaign's Research record — add some first, or pass keywords explicitly" }, 400);
+        const terms = keywords.replace(/CLUSTER\s+[^:]+:/gi, "").split(/[,\n;]+/).map(s => s.trim()).filter(s => s.length > 2).slice(0, 10);
+
+        const existing = await notionQuery(AFFILIATE_DB, { filter: { property: "Hub", select: { equals: slug } } }).catch(() => []);
+        const have = new Set(existing.map(r => (r.properties?.Name?.title || []).map(t => t.plain_text).join("").trim().toLowerCase()));
+
+        const prompt = `You are researching AFFILIATE / PARTNER PROGRAMS for a niche content site.
+
+SITE: ${hub.name}
+KEYWORDS / TOPICS: ${terms.join(", ")}
+
+Search the web (queries like "<keyword> affiliate program", "<keyword> partner program", plus the major networks — Impact, CJ, ShareASale, Awin, Rakuten, PartnerStack, FlexOffers, Amazon Associates). Find REAL programs that are currently open and genuinely relevant to this audience — products, tools, services, or brands a site on these topics could credibly recommend.
+
+For each program:
+- "name": the brand / product name
+- "network": one of Direct, Impact, CJ, ShareASale, Awin, Rakuten, PartnerStack, FlexOffers, Amazon Associates, Other
+- "commission": the rate / structure as stated (e.g. "30% recurring", "$50 per sale")
+- "cookie": cookie / attribution window if stated (e.g. "30 days")
+- "url": the direct signup / apply page URL
+- "keyword": which keyword above it best matches
+- "fit": "Strong" | "Possible" | "Weak" — fit for THIS site's audience
+- "notes": one line — what it is and why it fits (or the catch)
+
+Only include programs you actually found evidence for. 5-15 is a good result. Do not invent programs, rates, or URLs.
+
+Return ONLY a JSON array, no other text, no markdown fences:
+[ { "name": "...", "network": "...", "commission": "...", "cookie": "...", "url": "...", "keyword": "...", "fit": "...", "notes": "..." } ]`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }], messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        let raw = "";
+        for (const b of (aiData.content || [])) if (b.type === "text") raw += b.text;
+        let list;
+        try {
+          const s = raw.indexOf("["), e = raw.lastIndexOf("]");
+          if (s === -1 || e === -1 || e < s) throw new Error("no JSON array in the response");
+          list = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+        } catch (e) { return json({ error: "couldn't parse results: " + e.message }, 502); }
+        if (!Array.isArray(list)) list = [];
+
+        const NETWORKS = ["Direct","Impact","CJ","ShareASale","Awin","Rakuten","PartnerStack","FlexOffers","Amazon Associates","Other"];
+        const FITS = ["Strong","Possible","Weak"];
+        let added = 0, skipped = 0;
+        for (const p of list) {
+          const name = String(p && p.name || "").trim();
+          if (!name || have.has(name.toLowerCase())) { skipped++; continue; }
+          have.add(name.toLowerCase());
+          const props = {
+            "Name":   { title: [{ text: { content: name.slice(0, 200) } }] },
+            "Hub":    { select: { name: slug } },
+            "Status": { select: { name: "New" } },
+          };
+          const rt = (k, v) => { if (v && String(v).trim()) props[k] = { rich_text: [{ text: { content: String(v).slice(0, 1900) } }] }; };
+          rt("Keyword", p.keyword); rt("Commission", p.commission); rt("Cookie Window", p.cookie); rt("Notes", p.notes);
+          if (NETWORKS.includes(p.network)) props["Network"] = { select: { name: p.network } };
+          if (FITS.includes(p.fit)) props["Fit"] = { select: { name: p.fit } };
+          if (p.url && /^https?:\/\//i.test(p.url)) props["Signup URL"] = { url: String(p.url).slice(0, 1900) };
+          const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: AFFILIATE_DB }, properties: props }) });
+          if (r.ok) added++; else { skipped++; console.error("findAffiliatePrograms write:", (await r.json().catch(() => ({}))).message); }
+        }
+        return json({ success: true, added, skipped, found: list.length, terms });
+      }
+
+      if (body.action === "getAffiliatePrograms") {
+        const slug = String(body.slug || "").trim();
+        const q = { sorts: [{ timestamp: "created_time", direction: "descending" }] };
+        if (slug) q.filter = { property: "Hub", select: { equals: slug } };
+        const rows = await notionQuery(AFFILIATE_DB, q).catch(e => { console.error("getAffiliatePrograms:", e.message); return []; });
+        const items = rows.map(p => {
+          const pr = p.properties;
+          return {
+            id: p.id.replace(/-/g, ""),
+            name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+            hub: pr.Hub?.select?.name || "",
+            keyword: (pr.Keyword?.rich_text || []).map(t => t.plain_text).join(""),
+            network: pr.Network?.select?.name || "",
+            commission: (pr.Commission?.rich_text || []).map(t => t.plain_text).join(""),
+            cookie: (pr["Cookie Window"]?.rich_text || []).map(t => t.plain_text).join(""),
+            url: pr["Signup URL"]?.url || "",
+            fit: pr.Fit?.select?.name || "",
+            status: pr.Status?.select?.name || "New",
+            notes: (pr.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+          };
+        });
+        return json({ items });
+      }
+
+      if (body.action === "updateAffiliateProgram" || body.action === "deleteAffiliateProgram") {
+        const { id, status, fit } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let payload;
+        if (body.action === "deleteAffiliateProgram") payload = { archived: true };
+        else {
+          const props = {};
+          if (status && ["New","Reviewing","Applied","Approved","Rejected"].includes(status)) props["Status"] = { select: { name: status } };
+          if (fit && ["Strong","Possible","Weak"].includes(fit)) props["Fit"] = { select: { name: fit } };
+          if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
+          payload = { properties: props };
+        }
+        const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "failed" }, r.status);
+        return json({ success: true });
       }
 
       // Clear a post's Mined flag so it re-runs on the next integrate — for
