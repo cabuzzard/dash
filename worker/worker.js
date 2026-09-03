@@ -4771,9 +4771,11 @@ export default {
             excerpt: bodyProp.slice(0, 220),
             url:     contentUrl,
           };
-        }).filter(c => c.url);   // no page yet → not a real card (run "Rebuild blog")
-        // hasIndex:false — this scan can't guarantee a blog/index.html exists,
-        // so the hub suppresses its "All posts →" link on this path.
+        });
+        // Cards with no Content URL yet still show (blurb visible, not
+        // clickable — the hub renders them as a plain card) until "Rebuild
+        // blog" gives them a real page. hasIndex:false so the hub suppresses
+        // its "All posts →" link on this path (no blog/index.html guaranteed).
         return json({ posts, hasIndex: false });
       } catch (e) {
         return json({ posts: [], error: e.message });
