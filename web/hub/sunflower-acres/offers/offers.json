@@ -1,5 +1,13 @@
 [
   {
+    "slug": "little-brown-birds",
+    "name": "Little Brown Birds",
+    "kicker": "Coloring book · paperback + printable PDF",
+    "promise": "Color your way through 40 'drab' backyard birds and come out the other side actually knowing which one is which.",
+    "ctaUrl": "",
+    "date": "2026-09-03"
+  },
+  {
     "slug": "book-your-garden-visit",
     "name": "Book Your Garden Visit",
     "kicker": "Private field booking · priced per group",
@@ -12,14 +20,6 @@
     "name": "Independent Living Multi-Session Package",
     "kicker": "Consulting package · pricing set at intake",
     "promise": "A complete, working plan for your specific situation — housing, attendant care, benefits, and next steps — built across multiple sessions with a case manager who already knows how these systems actually work.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "little-brown-birds",
-    "name": "Little Brown Birds",
-    "kicker": "Coloring book · paperback + printable PDF",
-    "promise": "Color your way through 40 'drab' backyard birds and come out the other side actually knowing which one is which.",
     "ctaUrl": "",
     "date": "2026-09-03"
   }
