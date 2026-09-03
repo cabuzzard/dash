@@ -2,18 +2,19 @@
   "hero": {
     "image": "./hero.png",
     "eyebrow": "Surf travel, Dream it and it will be done.",
-    "headline": "You Dared to Dream it.  And it came to be True."
+    "headline": "You Dared to Dream it.  And it came to be True.",
+    "sub": "It's never been a better time.  The Ultimate form of travel is ready for you to find it."
   },
   "report": {
     "image": "./signup.png"
   },
   "ribbon": [
-    "Swell 6–8ft",
-    "Period 14s",
-    "Wind offshore",
-    "Tide pushing",
-    "Water 82°F",
-    "Season: Apr–Oct"
+    "Maldives",
+    "Mentawai Islands",
+    "Fiji",
+    "Indonesia",
+    "Costa Rica",
+    "Nicaragua"
   ],
   "nav": [
     {
@@ -28,5 +29,10 @@
       "label": "Dispatch",
       "href": "#news"
     }
-  ]
+  ],
+  "trips": {
+    "label": "The Life",
+    "title": "Ways of the Water",
+    "note": "Knowledge for a life of remote luxury Surf Travel"
+  }
 }
