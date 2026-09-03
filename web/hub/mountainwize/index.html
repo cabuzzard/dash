@@ -435,15 +435,16 @@ function renderCards(sec, bodyId, labelId, titleId, noteId) {
 
 async function renderHubJournal() {
   // Blog section: static HUB.journal.items as the instant fallback, then live —
-  // published "Blog - SEO - News" assets for this campaign (getHubBlog), each a
-  // { kicker, title, excerpt, url } card. Replaces the old unfiltered News Feed
-  // section (removed). Mirrors renderHubProducts / getHubProducts exactly.
+  // the campaign's published blog posts (getHubBlog → the hub's own
+  // web/hub/<slug>/blog/ dir), each a { kicker, title, excerpt, url } card
+  // linking to its sub-page. Replaces the old unfiltered News Feed section
+  // (removed). Mirrors renderHubProducts / getHubProducts.
   const s = HUB.journal;
   $("journalLabel").textContent = s.label;
   $("journalTitle").textContent = s.title;
   $("journalNote").textContent = s.note || "";
   const body = $("journalBody");
-  const paint = (items) => {
+  const paint = (items, isLive) => {
     if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => {
       const tag = it.url && it.url !== "#" ? "a" : "div";
@@ -454,9 +455,9 @@ async function renderHubJournal() {
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
         ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
       </${tag}>`;
-    }).join("") + `</div>`;
+    }).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
   };
-  paint(s.items);                                     // static fallback, instant
+  paint(s.items, false);                              // static fallback, instant
   if (!HUB.campaignId) return;
   try {
     const res = await fetch(WORKER_URL, {
@@ -465,7 +466,7 @@ async function renderHubJournal() {
       body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug }),
     });
     const data = await res.json();
-    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts);
+    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts, true);
   } catch (e) { /* keep the static fallback */ }
 }
 

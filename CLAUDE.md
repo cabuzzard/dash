@@ -345,17 +345,24 @@ Content-marketing home pages (blog / newsletter / social / product links)
 at `web/hub/{slug}/index.html` — one per campaign or product, all sharing the
 `web/hub/hub-template.html` layout. See `web/hub/README.md` for how to build one.
 
-**News Feed section removed (2026-09-02).** The old unfiltered bottom-of-page
-News Feed section (`renderNews` / `getHubNews`) is gone from the template and all
-8 hubs. The **journal** (blog) section above it is now live-fed by a new
-`getHubBlog` worker action — the campaign's published `SEO Post` / blog+SEO/news
-assets as `{kicker,title,excerpt,url}` cards (static `HUB.journal.items`
-fallback), mirroring `getHubProducts`. Operators turn individual News Feed items
-into original blog posts from the campaign microsite: the **📝 make into
-article** link on each News Feed row → `createNewsBlogTitle` (writes a fresh
-headline + an original-news-analysis pillar, title at Development, `Blog - SEO -
-News` method set as the default) → 🧩 Generate Assets, where `Blog - SEO - News`
-(or any blog+SEO name) now satisfies the broadened `isSeoPost` test and rides the
+**Content-hub blog (2026-09-02).** Every hub now has a real blog:
+`publishSeoPostToLiveSite` writes each published `SEO Post` / `Blog - SEO - News`
+asset for a hub campaign (`HUB_SITES`) to **`web/hub/{slug}/blog/{post-slug}/
+index.html`** + `blog/index.html` + `blog/posts.json`, styled from that hub's own
+tokens/fonts in `web/hub/hubs.design.json` (incl. `fontRegistry` for correct
+Google-Fonts queries). One identical structure for all 8 hubs. Non-hub campaigns
+still fall back to `web/{deployPath}/blog/` off their Design Spec.
+
+The old unfiltered bottom-of-page **News Feed** section (`renderNews` /
+`getHubNews`) is gone from the template and all 8 hubs. The **journal** (blog)
+section above it is now live-fed by `getHubBlog` — reads that hub's
+`blog/posts.json` (GitHub contents API → Pages-URL fallback → Notion asset scan →
+static `HUB.journal.items`) into cards linking `./blog/{slug}/`, plus an
+"All posts →" link. Operators create the posts from the campaign microsite: the
+**📝 make into article** link on each News Feed row → `createNewsBlogTitle`
+(fresh headline + original-news-analysis pillar, title at Development, `Blog - SEO
+- News` method as the default) → 🧩 Generate Assets, where `Blog - SEO - News`
+(or any blog+SEO name) satisfies the broadened `isSeoPost` test and rides the
 existing SEO Post branch — no dedicated routing. Full flow:
 `docs/methods-titles-assets.md` § "Blog - SEO - News". Structural JS edits to the
 hub template are hand-synced across the 8 hub files (`build-hubs.mjs` only owns

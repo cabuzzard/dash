@@ -391,12 +391,22 @@ Content+SEO) carries the editor/research-writer framework in its page body
   (Guardrails / original-angle / don't-reproduce-the-source) reaches the
   article-writing prompt through the branch's existing `METHOD FRAMEWORK`
   grounding. The operator can route the pillar to any other method instead.
-- **Content hubs read these back.** The hub template's old bottom-of-page
+- **Blog posts are real sub-pages of the content hub.** For a campaign that has
+  a hub (`HUB_SITES`), `publishSeoPostToLiveSite` writes the post to
+  **`web/hub/{slug}/blog/{post-slug}/index.html`** — plus a `blog/index.html`
+  and `blog/posts.json` — styled from that hub's own tokens + fonts
+  (`web/hub/hubs.design.json`, `fontRegistry`). One identical blog structure for
+  every hub. (A campaign with no hub still falls back to
+  `web/{deployPath}/blog/` off its Design Spec.) These deploy on the worker's
+  API commit (GitHub Pages + the Bluehost workflow for connected domains).
+- **The hub's journal (blog) section reads them back.** The old bottom-of-page
   unfiltered News Feed section (`renderNews`/`getHubNews`) was **removed**; the
-  blog/**journal** section above it is now live-fed by `getHubBlog` (published
-  `SEO Post` **or** blog+SEO/news assets for the campaign →
-  `{kicker,title,excerpt,url}` cards), falling back to the static
-  `HUB.journal.items`. Same pattern as `getHubProducts`.
+  **journal** section above it is now live-fed by `getHubBlog`, which reads that
+  hub's `blog/posts.json` (GitHub contents API → Pages URL fallback) into
+  `{kicker,title,excerpt,url}` cards linking `./blog/{slug}/`, with an
+  "All posts →" link to `./blog/`. Falls back to a Notion scan of the
+  campaign's published `SEO Post` / blog+SEO/news assets when no `posts.json`
+  exists yet, then to the static `HUB.journal.items`.
 
 **Platform** (always visible, per the pillar-content stripdown above): a
 Platform picker (from the real Platforms DB via `getPlatforms`) feeds the

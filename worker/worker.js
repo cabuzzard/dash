@@ -788,45 +788,25 @@ async function resolveDeployPath(campaignId, hdr, dash) {
   return deployPath;
 }
 
-// Publishes a finished SEO Post article as a real static page on the
-// campaign's own live GitHub Pages site (web/{deployPath}/blog/) — creates
-// the blog section itself the first time a campaign publishes one, appends
-// to it every time after. `posts.json` is the durable list this
-// reads-modifies-writes on every call; `index.html` is fully re-rendered
-// from it each time rather than parsed/patched, so there's never any
-// brittle HTML-diffing involved. Styled from the campaign's own Design Spec
-// (passed in already-resolved by the caller, since the dsFromPage/
-// DESIGN_SPEC_DEFAULTS helpers live inside the request-dispatcher scope,
-// not module scope) rather than trying to replicate each bespoke live
-// site's exact header/nav — a clean, on-brand blog, not a pixel-matched
-// skin. Best-effort by contract: callers should catch this and treat a
-// failure as non-fatal — the Notion asset itself is always the source of
-// truth, this is just publishing a copy of it.
+// Publishes a finished SEO Post / Blog - SEO - News article as a real static
+// page. **Content-hub campaigns publish INTO the hub itself**
+// (web/hub/{slug}/blog/) styled from that hub's own design tokens
+// (web/hub/hubs.design.json) — one identical blog structure for every hub, the
+// global content-hub blog. A campaign with no hub falls back to its own live /
+// microsite site (web/{deployPath}/blog/), styled from its Design Spec.
+// Either way: `{blog}/posts.json` is the durable list this reads-modifies-
+// writes; `{blog}/index.html` is fully re-rendered from it each time (no
+// brittle HTML-diffing); `{blog}/{slug}/index.html` is the post sub-page.
+// Best-effort by contract: callers catch this and treat a failure as
+// non-fatal — the Notion asset is always the source of truth.
 async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources }) {
   const GT = (env.GITHUB_TOKEN || '').trim();
   if (!GT) return { published: false, error: "GITHUB_TOKEN not set — asset saved, but not pushed to the live site" };
-
-  const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-  if (!deployPath || deployPath === 'campaign') return { published: false, error: "Could not resolve this campaign's live site — set a live site/microsite URL on the Campaign record first" };
-
-  let campName = 'Blog';
-  try {
-    const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
-    campName = (campPage?.properties?.Name?.title || []).map(t => t.plain_text).join('') || campName;
-  } catch (e) { /* best-effort */ }
-
-  const s = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond',
-    ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
-
-  const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
-  const displayTitle = String(seoTitle || workingTitle || 'Untitled Post');
-  const slug = slugify(displayTitle) || 'post';
 
   const REPO = 'cabuzzard/dash', BRANCH = 'main';
   const gh = { Authorization: `Bearer ${GT}`, Accept: 'application/vnd.github+json', 'User-Agent': 'dash-worker' };
   const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
   const fromB64Text = b64 => new TextDecoder().decode(Uint8Array.from(atob(String(b64).replace(/\n/g, '')), c => c.charCodeAt(0)));
-
   const getFile = async path => {
     const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
     if (!r.ok) return { sha: null, text: null };
@@ -841,7 +821,56 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `GitHub commit failed for ${path}`); }
   };
 
-  const basePath = `web/${deployPath}/blog`;
+  const cidNorm = String(campaignId || '').replace(/-/g, '');
+  const hub = HUB_SITES.find(h => h.campaignId.replace(/-/g, '') === cidNorm);
+
+  let basePath, campName, s;
+  if (hub) {
+    basePath = `web/hub/${hub.slug}/blog`;
+    campName = hub.name;
+    s = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond' };
+    try {
+      const { text } = await getFile('web/hub/hubs.design.json');
+      const dj = text ? JSON.parse(text) : null;
+      const hd = dj?.hubs?.[hub.slug] || null;
+      if (hd) {
+        s = {
+          bg:           hd.tokens?.bg || s.bg,
+          ink:          hd.tokens?.ink || s.ink,
+          // headings/links: --sea is each hub's *primary*, --accent is its
+          // "used once, loudly" colour — primary reads better across a page.
+          accent:       hd.tokens?.sea || hd.tokens?.accent || s.accent,
+          headlineFont: hd.fonts?.display || s.headlineFont,
+          bodyFont:     hd.fonts?.body || s.bodyFont,
+        };
+        campName = hd.logoText || hd.meta?.ogTitle || campName;
+        // Exact Google-Fonts query + fallback stack from the shared registry,
+        // so hub-specific faces (many are single-weight display serifs that a
+        // guessed :wght@600;700 request would 404) load correctly.
+        const hReg = dj?.fontRegistry?.[s.headlineFont];
+        const bReg = dj?.fontRegistry?.[s.bodyFont];
+        s.fontQuery     = [hReg?.query, bReg?.query].filter(Boolean).join('&family=') || null;
+        s.headlineStack = hReg?.fallback ? `"${s.headlineFont}", ${hReg.fallback}` : null;
+        s.bodyStack     = bReg?.fallback ? `"${s.bodyFont}", ${bReg.fallback}` : null;
+      }
+    } catch (e) { /* fall back to the editorial default palette */ }
+  } else {
+    const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+    if (!deployPath || deployPath === 'campaign') return { published: false, error: "Could not resolve where to publish — this campaign has no content hub and no live site/microsite URL on its Campaign record" };
+    basePath = `web/${deployPath}/blog`;
+    campName = 'Blog';
+    try {
+      const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+      campName = (campPage?.properties?.Name?.title || []).map(t => t.plain_text).join('') || campName;
+    } catch (e) { /* best-effort */ }
+    s = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond',
+      ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
+  }
+
+  const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
+  const displayTitle = String(seoTitle || workingTitle || 'Untitled Post');
+  const slug = slugify(displayTitle) || 'post';
+
   const { text: postsRaw } = await getFile(`${basePath}/posts.json`);
   let posts = [];
   try { posts = postsRaw ? JSON.parse(postsRaw) : []; } catch (e) { posts = []; }
@@ -852,7 +881,11 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
-  const fontsImport = `@import url('https://fonts.googleapis.com/css2?family=${fontParam(s.headlineFont)}:wght@600;700&family=${fontParam(s.bodyFont)}:wght@400;500&display=swap');`;
+  const fontsImport = s.fontQuery
+    ? `@import url('https://fonts.googleapis.com/css2?family=${s.fontQuery}&display=swap');`
+    : `@import url('https://fonts.googleapis.com/css2?family=${fontParam(s.headlineFont)}:wght@600;700&family=${fontParam(s.bodyFont)}:wght@400;500&display=swap');`;
+  const headlineStack = s.headlineStack || `'${esc(s.headlineFont)}', Georgia, serif`;
+  const bodyStack     = s.bodyStack     || `'${esc(s.bodyFont)}', Georgia, serif`;
 
   const pageShell = (title, bodyHtml, { siteHref, blogHref }) => `<!doctype html>
 <html lang="en">
@@ -864,19 +897,19 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
 ${fontsImport}
 :root { --bg:${s.bg}; --ink:${s.ink}; --accent:${s.accent}; }
 * { box-sizing: border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font-family:'${esc(s.bodyFont)}', Georgia, serif; line-height:1.7; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:${bodyStack}; line-height:1.7; }
 .wrap { max-width:760px; margin:0 auto; padding:48px 24px 80px; }
 header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
 header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
 header.site .back { font-size:0.85rem; color:var(--accent); }
-h1, h2 { font-family:'${esc(s.headlineFont)}', Georgia, serif; color:var(--ink); line-height:1.25; }
+h1, h2 { font-family:${headlineStack}; color:var(--ink); line-height:1.25; }
 h1 { font-size:2.1rem; margin:0 0 8px; }
 h2 { font-size:1.4rem; margin:40px 0 14px; color:var(--accent); }
 p { margin:0 0 18px; font-size:1.08rem; }
 .meta { color:var(--accent); font-size:0.85rem; margin-bottom:28px; }
 .postlist { list-style:none; margin:0; padding:0; }
 .postlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
-.postlist a { color:var(--ink); text-decoration:none; font-family:'${esc(s.headlineFont)}', Georgia, serif; font-size:1.3rem; }
+.postlist a { color:var(--ink); text-decoration:none; font-family:${headlineStack}; font-size:1.3rem; }
 .postlist a:hover { color:var(--accent); }
 .postlist .excerpt { margin-top:6px; color:var(--ink); opacity:0.75; font-size:0.98rem; }
 footer.site { margin-top:60px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:0.85rem; opacity:0.7; }
@@ -4666,19 +4699,49 @@ export default {
     }
 
     // ── getHubBlog ── public, no token. A content hub calls this on load with
-    // { campaignId, slug }. Returns the campaign's published blog-post assets —
-    // any "SEO Post" or blog+SEO/news asset type, so a news→blog pillar routed
-    // through "Blog - SEO - News" OR plain "SEO Post" both land here — as
-    // { kicker, title, excerpt, url } cards for the hub's blog/journal section
-    // (replacing the old unfiltered News Feed section, which was removed).
+    // { campaignId, slug }. The real blog pages live at web/hub/{slug}/blog/
+    // (written by publishSeoPostToLiveSite), so the authoritative card list is
+    // that dir's own posts.json — read first, mapped to hub-relative
+    // ./blog/{slug}/ links. Falls back to a Notion scan of the campaign's
+    // published SEO Post / blog+SEO/news assets when no posts.json exists yet.
     // Best-effort and silent-safe — an empty result leaves the hub's static
     // HUB.journal.items fallback in place, exactly like getHubProducts.
     if (body.action === "getHubBlog") {
       const raw = String(body.campaignId || "").replace(/-/g, "");
       if (raw.length !== 32) return json({ posts: [] });
       const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
-      const slug = String(body.slug || "").trim();
+      let slug = String(body.slug || "").trim();
+      if (!slug) slug = (HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === raw) || {}).slug || "";
       const lim = Math.max(1, Math.min(24, Number(body.limit) || 9));
+
+      // 1) authoritative — the hub blog dir's own posts.json
+      if (slug) {
+        try {
+          const GT = (env.GITHUB_TOKEN || "").trim();
+          let text = null;
+          if (GT) {
+            const gr = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/web/hub/${slug}/blog/posts.json?ref=main`,
+              { headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" } });
+            if (gr.ok) text = await gr.text();
+          }
+          if (!text) {
+            const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/blog/posts.json`);
+            if (pr.ok) text = await pr.text();
+          }
+          const list = text ? JSON.parse(text) : null;
+          if (Array.isArray(list) && list.length) {
+            return json({ posts: list.slice(0, lim).map(p => ({
+              kicker:  "Article",
+              title:   String(p.title || "Untitled"),
+              excerpt: String(p.intro || ""),
+              date:    String(p.date || ""),
+              url:     `./blog/${p.slug}/`,
+            })) });
+          }
+        } catch (e) { /* fall through to the Notion scan */ }
+      }
+
+      // 2) fallback — scan the campaign's published blog-post assets
       try {
         const rows = await notionQuery(ASSETS_DB, {
           filter: { and: [
