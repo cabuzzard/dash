@@ -4824,12 +4824,13 @@ export default {
             const existingUrl = (p["Content URL"]?.url || "").trim();
             if (existingUrl && !force) { results.push({ hub: h.slug, asset: aid, skipped: "already published" }); continue; }
             const workingTitle = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
-            const seoTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || workingTitle;
+            let seoTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || workingTitle;
+            const titleId = (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g, "") || null;
             const kids = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
             const blocks = kids.results || [];
             const btxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
-            let intro = "";
-            const sections = [];
+            let intro = "", conclusion = "";
+            let sections = [];
             const sources = [];
             let inSources = false;
             for (const b of blocks) {
@@ -4848,10 +4849,74 @@ export default {
                 else { const s = sections[sections.length - 1]; s.body = s.body ? s.body + "\n\n" + t : t; }
               }
             }
-            if (!sections.length) { results.push({ hub: h.slug, asset: aid, error: "no article blocks on this asset page" }); continue; }
+
+            // Blank asset page (the pre-fix block-write 502'd and left it
+            // empty) — rebuild the article from the source title's Pillar
+            // Content, one Claude call, then write it back onto THIS asset.
+            if (!sections.length) {
+              if (!titleId || !env.ANTHROPIC_API_KEY) { results.push({ hub: h.slug, asset: aid, error: "blank asset page and can't rebuild (no linked title or no ANTHROPIC_API_KEY)" }); continue; }
+              const pillar = await extractPillarContent(hdr, dashId(titleId)).catch(() => "");
+              if (!pillar) { results.push({ hub: h.slug, asset: aid, error: "blank asset page and the source title has no Pillar Content to rebuild from" }); continue; }
+              const genPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content editor. FORMAT the pillar piece below into a complete, publish-ready blog post — a structuring/polishing pass, not a rewrite. Preserve its substance, claims and examples; invent nothing new; no generic filler.
+
+TITLE: ${workingTitle}
+PILLAR CONTENT:
+${pillar.slice(0, 12000)}
+
+Requirements:
+- 3 to 6 H2 sections, each a natural division of the pillar (specific headings, never "Introduction"/"Conclusion" alone). Roughly 250-550 words per section.
+- A 2-3 sentence intro before the first H2 and a short concluding paragraph after the last section.
+- No meta-commentary.
+
+Also write "seoTitle": the title-tag/headline this should publish under.
+
+Return ONLY this JSON, no other text, no fences:
+{ "intro": "...", "sections": [ { "heading": "...", "body": "..." } ], "conclusion": "...", "seoTitle": "..." }`;
+              const gr = await fetch("https://api.anthropic.com/v1/messages", {
+                method: "POST",
+                headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 7000, messages: [{ role: "user", content: genPrompt }] }),
+              }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
+              if (gr.error) { results.push({ hub: h.slug, asset: aid, error: "rebuild failed: " + (gr.error.message || "Claude error") }); continue; }
+              let gp;
+              try {
+                const rawg = gr.content?.[0]?.text || "";
+                gp = JSON.parse(sanitizeJsonControlChars(rawg.slice(rawg.indexOf("{"), rawg.lastIndexOf("}") + 1)));
+              } catch (e) { results.push({ hub: h.slug, asset: aid, error: "rebuild parse failed: " + e.message }); continue; }
+              sections = (Array.isArray(gp.sections) ? gp.sections : []).filter(s => s && s.heading);
+              if (!sections.length) { results.push({ hub: h.slug, asset: aid, error: "rebuild produced no sections" }); continue; }
+              intro = String(gp.intro || "").trim();
+              conclusion = String(gp.conclusion || "").trim();
+              if (gp.seoTitle) seoTitle = String(gp.seoTitle).trim().slice(0, 200);
+              // write the article onto the existing asset page (chunked)
+              const rtB = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null } }] : [];
+              const kid = [];
+              const pushParas = txt => String(txt || "").split(/\n{2,}/).forEach(pp => { const t = pp.trim(); if (!t) return; for (let i = 0; i < t.length; i += 1900) kid.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtB(t.slice(i, i + 1900)) } }); });
+              pushParas(intro);
+              sections.forEach(s => { kid.push({ object: "block", type: "heading_2", heading_2: { rich_text: rtB(s.heading) } }); pushParas(s.body); });
+              pushParas(conclusion);
+              let wrote = true;
+              for (let i = 0; i < kid.length && wrote; i += 100) {
+                const wr = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children`, {
+                  method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                  body: JSON.stringify({ children: kid.slice(i, i + 100) }),
+                }).catch(() => ({ ok: false }));
+                if (!wr.ok) wrote = false;
+              }
+              if (!wrote) { results.push({ hub: h.slug, asset: aid, error: "rebuild wrote article but the block PATCH failed" }); continue; }
+              await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: intro.slice(0, 2000) } }] }, "Platform Title": { rich_text: [{ text: { content: seoTitle } }] } } }),
+              }).catch(() => {});
+              if (titleId) await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+              }).catch(() => {});
+            }
+
             const site = await publishSeoPostToLiveSite({
               env, hdr, dash: dashId, campaignId: h.campaignId, spec: null,
-              seoTitle, workingTitle, intro, sections, conclusion: "", sources,
+              seoTitle, workingTitle, intro, sections, conclusion, sources,
             }).catch(e => ({ published: false, error: e.message }));
             if (site.published && site.liveUrl) {
               await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
@@ -14526,21 +14591,30 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create SEO Post asset" }, 502);
           const assetId = assetResult.id.replace(/-/g, "");
 
-          // Write the full article into the asset's page body.
-          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          // Write the full article into the asset's page body. Notion caps a
+          // single rich_text run at 2000 chars, so every paragraph is split
+          // into ≤1900-char blocks (section bodies here run 400-700 words) and
+          // the PATCH is batched at 100 blocks — without this the whole write
+          // 502s and the page is left blank.
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text).slice(0, 1990), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
           const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
           const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
+            const t = p.trim(); if (!t) return [];
+            const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
+            return out;
+          });
           const children = [];
-          if (post.intro) children.push(para(post.intro));
-          sections.forEach(s => { children.push(heading2(s.heading)); if (s.body) children.push(para(s.body)); });
-          if (post.conclusion) children.push(para(post.conclusion));
-          if (children.length) {
+          if (post.intro) children.push(...paras(post.intro));
+          sections.forEach(s => { children.push(heading2(s.heading)); children.push(...paras(s.body)); });
+          if (post.conclusion) children.push(...paras(post.conclusion));
+          for (let i = 0; i < children.length; i += 100) {
             const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
               method: "PATCH",
               headers: { ...dsHdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ children }),
+              body: JSON.stringify({ children: children.slice(i, i + 100) }),
             });
-            if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Asset created but failed to write post body" }, 502); }
+            if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Asset created but failed to write post body" }, 502); }
           }
 
           // Publish the source title too — the pillar post is done, not pending.
