@@ -380,21 +380,25 @@ hub template are hand-synced across the 8 hub files (`build-hubs.mjs` only owns
   directly, not a hand-made `public_html/hub-*` dir (the SSH user can't create
   dirs under `public_html` anyway; home-dir folders it can). rsync, no `--delete`.
 
-**2026-09-02 — hub domains now routed via PARKED domains + `.htaccess`, not
-addon domains.** The hosting plan hit its 50-website cap, so `addaddondomain`
-(and the Bluehost "Add Website" flow) fail with "An unknown error occurred".
-Workaround: `cpapi2 Park park domain=<domain>` (aliases don't count against the
-cap), all sharing `evraymond.com`'s docroot, then a `HTTP_HOST` RewriteRule per
-hub at the top of `~/public_html/.htaccess` routes each domain to
-`public_html/hub-<slug>/`. `.github/bluehost-sites.tsv` deploys `web/hub/<slug>/`
-→ `public_html/hub-<slug>/`. Full runbook + slug↔domain↔folder table:
-`web/hub/BLUEHOST-ROUTING.md`. Bluehost DNS / hosting / email all unchanged.
-`outsidesessions.com` + `accessiblefarms.com` parked 2026-09-02; the other three
-(`stablehomefoundation.com`, `homestructionconsulting.com`,
-`generalservices2020.com`) + `aisystemimplementation.com` (currently an addon,
-empty docroot) still to finish. Also 2026-09-02: ~29 dead cPanel
-domains/subdomains removed for hygiene (didn't free the portal "website" counter
-— that's a separate Bluehost-portal registry).
+**2026-09-03 — hubs moved OFF Bluehost to CLOUDFLARE PAGES.** Bluehost was a
+dead end: hosting plan at its 50-website cap (`addaddondomain` → "An unknown
+error occurred"), the primary domain `evraymond.com` isn't even owned
+(NameBright/HugeDomains nameservers — the cPanel account is just *named* after
+it), and Bluehost's registrar DNS doesn't sync with its hosting DNS. One
+Cloudflare Pages project **`dash-hubs`** (account `Trailnotes2026@proton.me`,
+`9d5b533bbd24bbd32be65bb747a13d8c`) now publishes `web/hub/` — every hub is a
+subdir — and **`web/hub/_worker.js`** (Pages advanced mode) routes each custom
+domain to its subdir by `Host` header (map in the `HUBS` const). Deploy:
+`.github/workflows/deploy-hub-pages.yml` (`wrangler pages deploy web/hub`).
+Preview any hub at `https://dash-hubs.pages.dev/<slug>/`. **Email stays on
+Bluehost** — moving a domain to Cloudflare only changes nameservers; Cloudflare's
+"Add a Site" imports the existing MX records. Full runbook (per-domain steps,
+email checklist): **`web/hub/CLOUDFLARE-ROUTING.md`**.
+`creative-flow-guitar`/`creativeflowguitar.com` stays on Bluehost for now (it
+works — in the `_worker.js` map so it's a one-step migration later).
+Also 2026-09-02: ~29 dead cPanel domains/subdomains removed for hygiene, and
+`outsidesessions.com` + `accessiblefarms.com` briefly parked as aliases (a
+now-abandoned Bluehost approach — harmless leftovers, remove if tidying).
 
 The hub pages are self-contained (relative/anchor links, Google Fonts, one
 absolute `WORKER_URL` fetch) so they serve correctly from a domain root — no

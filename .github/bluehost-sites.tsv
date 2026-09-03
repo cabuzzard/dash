@@ -3,30 +3,15 @@
 # adds/updates, never removes files already on the server.
 #
 # ── CONTENT HUBS ──────────────────────────────────────────────────────────
-# A hub is ALWAYS served from GitHub Pages at
-#   https://cabuzzard.github.io/dash/web/hub/{slug}/
-# — the home of every hub that has no custom domain yet (e.g. mountainwize).
+# As of 2026-09-03 the hubs are served from CLOUDFLARE PAGES, not Bluehost —
+# the Bluehost plan is at its 50-website cap and the account is a mess. One
+# Pages project ("dash-hubs") holds every hub as a subdir and routes each
+# custom domain to its subdir by Host header (web/hub/_worker.js). Deploy:
+# .github/workflows/deploy-hub-pages.yml. Domains/DNS/email: see
+# web/hub/CLOUDFLARE-ROUTING.md. Bluehost keeps the mail (MX stays on Bluehost).
 #
-# Bluehost routing (2026-09-02): the hosting plan is at its 50-website cap, so
-# hub domains can't be added as addon domains ("An unknown error occurred").
-# Instead each hub domain is PARKED (aliased on evraymond.com) via
-#   cpapi2 Park park domain=<domain>
-# and a SINGLE generic RewriteRule in ~/public_html/.htaccess routes any host
-# whose folder public_html/hub-<host>/ exists to that folder. So the deploy
-# target for a hub is public_html/hub-<domain>/ (named by DOMAIN, so the one
-# generic rule needs no per-hub edit — just add a line here + park the domain).
-# Full runbook: web/hub/BLUEHOST-ROUTING.md. Bluehost DNS / hosting / email
-# stay unchanged. Also per hub: worker.js HUB_ORIGINS (apex + www) +
-# index.html HUB_SITES[].domain.
-#
-# creative-flow-guitar → creativeflowguitar.com predates this and is served the
-# old way from ~/creativeflowguitar.com — left as-is, not on the generic rule.
-# mountainwize has no domain yet — GitHub Pages only, no line here.
+# creative-flow-guitar → creativeflowguitar.com is still served the OLD way
+# from ~/creativeflowguitar.com and stays here — it works; migrate to Cloudflare
+# later if wanted (it's already in the _worker.js HUBS map).
 web/sm-business-software-tools	public_html/webguyleadgeneration
 web/hub/creative-flow-guitar	creativeflowguitar.com
-web/hub/surf-vacations	public_html/hub-outsidesessions.com
-web/hub/sunflower-acres	public_html/hub-accessiblefarms.com
-web/hub/care-gap	public_html/hub-stablehomefoundation.com
-web/hub/owners-rep	public_html/hub-homestructionconsulting.com
-web/hub/home-services	public_html/hub-generalservices2020.com
-web/hub/ai-implementation	public_html/hub-aisystemimplementation.com
