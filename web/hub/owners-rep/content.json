@@ -1,8 +1,31 @@
 {
   "hero": {
-    "image": "./hero.png"
+    "image": "./hero.png",
+    "sub": "Your architect manages design. Your contractor manages what's on the page. It's still up to you to manage the project.  Some contractors are great and help the owners.  Others take advantage.  Others just get in over their head.  None of them are required to look out for the entirety of their project.   That responsibility ultimately lands with you.  We manage the budget, schedule, scope and risk — for you, and with you — For us, you the owner are our first interest."
   },
   "report": {
     "image": "./signup.png"
-  }
+  },
+  "ribbon": [
+    "Scope — locked",
+    "Schedule — 0 days slip",
+    "Budget — 98% committed",
+    "Change orders — reviewed",
+    "RFI turnaround — 4 days",
+    "One agenda: yours"
+  ],
+  "nav": [
+    {
+      "label": "Services",
+      "href": "#trips"
+    },
+    {
+      "label": "The checklist",
+      "href": "#report"
+    },
+    {
+      "label": "Field notes",
+      "href": "#journal"
+    }
+  ]
 }
