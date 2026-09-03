@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Distressed Project Assessment — Build Watcher</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#f5f3ee; --ink:#1c1713; --accent:#8a6a1f; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
+.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:.85rem; color:var(--accent); }
+.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
+h1,h2 { font-family:"Archivo", system-ui, sans-serif; color:var(--ink); line-height:1.2; }
+h1 { font-size:2.2rem; margin:.3rem 0 14px; }
+h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.lede { font-size:1.2rem; }
+ul.inc { list-style:none; padding:0; margin:0 0 18px; }
+ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
+.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
+.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
+.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
+.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
+.cf-turnstile { margin:12px 0; }
+.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
+.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
+footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+.offerlist { list-style:none; margin:0; padding:0; }
+.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:"Archivo", system-ui, sans-serif; font-size:1.3rem; }
+.offerlist a:hover { color:var(--accent); }
+.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="../../index.html">Build Watcher</a>
+  <a class="back" href="../index.html">&larr; All offers</a>
+</header>
+<div class="kicker">Fixed-fee assessment · $2,500</div>
+<h1>Distressed Project Assessment</h1>
+<p class="lede">From a frozen job site and a contractor who's gone dark to a written, step-by-step plan to get your project finished.</p>
+<p><strong>Who it's for:</strong> Owners with a stalled or troubled build</p>
+<h2>What's included</h2>
+<ul class="inc"><li>On-site condition and completion assessment — what's actually done, what isn't, and what it will cost to finish</li><li>Schedule and budget reality check — where the project actually stands against the original contract</li><li>Contract and lien position review — who has claims, what exposure you're carrying, and what your options are</li><li>Clear recommendation: revive the current contract, renegotiate, or terminate and re-bid</li><li>Written recovery plan with sequenced next steps and costs</li></ul>
+<h2>Why it works</h2>
+<p>This assessment is built specifically for projects that have already gone wrong — not a generic audit, but a clear-eyed read on whether your current contractor can be salvaged and exactly what it takes to get to a finished building. The written plan gives you — and any attorney who needs to be involved — a grounded document to act from.</p>
+<h2>The objection it answers</h2>
+<p>If you're thinking it might sort itself out, distressed projects rarely self-correct and the cost of waiting compounds. If you're headed to an attorney, they'll need exactly this assessment to work from — it's not either/or.</p>
+<h2>Terms</h2>
+<p>$2,500 flat fee. Includes site visit and document review. Written recovery plan delivered in 1–2 weeks. Assessment typically converts to a turnaround retainer if you want help executing the plan.</p>
+<h2>Get the Assessment</h2>
+<form class="offer-form" id="of" novalidate>
+  <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="ofTs"></div>
+  <button class="btn" type="submit" id="ob">Get the Assessment</button>
+  
+  <p class="msg" id="om" role="status"></p>
+</form>
+<footer class="site">Build Watcher</footer>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('of'), b=document.getElementById('ob'), m=document.getElementById('om'), tok='';
+  window.ofTs=function(t){tok=t;};
+  if(!f) return;
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var email=(f.email.value||'').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){m.textContent='Check that email address.';m.className='msg err';return;}
+    if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
+    b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
+    try{
+      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Build Watcher — offer: Distressed Project Assessment",email:email,fraudType:'Other',note:"Offer interest - Distressed Project Assessment",tsToken:tok})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
+      f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
+    }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
+    finally{ b.disabled=false;b.textContent="Get the Assessment"; tok=''; if(window.turnstile)window.turnstile.reset(); }
+  });
+})();
+</script>
+</body>
+</html>
