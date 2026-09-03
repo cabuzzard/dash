@@ -4,5 +4,13 @@
   },
   "hero": {
     "image": "./hero.png"
-  }
+  },
+  "ribbon": [
+    "Traffic → Attention",
+    "Attention → Lead",
+    "Lead → Customer",
+    "Customer → Fulfillment",
+    "Fulfillment → Feedback",
+    "Feedback → Optimization"
+  ]
 }
