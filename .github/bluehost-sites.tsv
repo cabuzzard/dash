@@ -3,15 +3,12 @@
 # adds/updates, never removes files already on the server.
 #
 # ── CONTENT HUBS ──────────────────────────────────────────────────────────
-# As of 2026-09-03 the hubs are served from CLOUDFLARE PAGES, not Bluehost —
-# the Bluehost plan is at its 50-website cap and the account is a mess. One
-# Pages project ("dash-hubs") holds every hub as a subdir and routes each
+# As of 2026-09-03 ALL 8 hubs are served from CLOUDFLARE PAGES, not Bluehost.
+# One Pages project ("dash-hubs") holds every hub as a subdir and routes each
 # custom domain to its subdir by Host header (web/hub/_worker.js). Deploy:
 # .github/workflows/deploy-hub-pages.yml. Domains/DNS/email: see
 # web/hub/CLOUDFLARE-ROUTING.md. Bluehost keeps the mail (MX stays on Bluehost).
-#
-# creative-flow-guitar → creativeflowguitar.com is still served the OLD way
-# from ~/creativeflowguitar.com and stays here — it works; migrate to Cloudflare
-# later if wanted (it's already in the _worker.js HUBS map).
+# creativeflowguitar.com was the last holdout — migrated 2026-09-03; the old
+# files under ~/creativeflowguitar.com stay on the server but the domain now
+# points at dash-hubs.
 web/sm-business-software-tools	public_html/webguyleadgeneration
-web/hub/creative-flow-guitar	creativeflowguitar.com

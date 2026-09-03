@@ -22,7 +22,7 @@ subdirectory by `Host` header.
 | homestructionconsulting.com | owners-rep |
 | generalservices2020.com | home-services |
 | aisystemimplementation.com | ai-implementation |
-| creativeflowguitar.com | creative-flow-guitar (still on Bluehost — optional to migrate) |
+| creativeflowguitar.com | creative-flow-guitar (migrated 2026-09-03; old ~/creativeflowguitar.com files left on Bluehost) |
 | mountainwize.com | mountainwize (old WordPress "Mountain Wize Coaching" site left on Bluehost, domain pointed away) |
 
 Map lives in `web/hub/_worker.js` `HUBS`.
