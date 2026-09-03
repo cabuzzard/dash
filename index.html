@@ -1484,6 +1484,19 @@
   </div>
 </div>
 
+<!-- Hub inline (tap-to-edit) modal — one field at a time from the live preview -->
+<div class="modal-bg" id="hubInlineModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title" id="hpiTitle">Edit</div>
+    <div id="hpiBody"></div>
+    <div id="hpiMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="modal-btn" id="hpiSaveBtn" onclick="hpiSave()">Save</button>
+      <button class="modal-btn" onclick="document.getElementById('hubInlineModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Hub launch-checklist modal -->
 <div class="modal-bg" id="hubChecklistModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:520px;">
@@ -10209,6 +10222,131 @@ function himUrl(kind){ const u = prompt('Paste an image URL for the ' + kind + '
 function himGen(kind){ if(confirm('Generate a '+kind+' image from this campaign\'s research + palette? (~15s, uses image credits)')) himCall({ kind, op:'generate' }, 'Generating image (~15s)…'); }
 function himClear(kind){ if(confirm('Clear the '+kind+' image? The placeholder gradient shows instead.')) himCall({ kind, op:'clear' }, 'Clearing…'); }
 
+// ── Tap-to-edit the live preview — one field at a time, same field set as
+// the ✎ Section text modal. The preview iframe is same-origin
+// (cabuzzard.github.io/dash/web/hub/…), so the dashboard can reach into its
+// document, outline the editable elements, and open a one-field modal on tap.
+const HPI_MAP = [
+  ['#footBrand','brand','Brand name',0],
+  ['#heroEyebrow','hero.eyebrow','Hero eyebrow',0],
+  ['#heroHeadline','hero.headline','Hero headline',1],
+  ['#heroSub','hero.sub','Hero subhead',1],
+  ['#heroCta','hero.ctaPrimary.label','Hero primary button',0],
+  ['#heroCta2','hero.ctaSecondary.label','Hero secondary button',0],
+  ['#ribbon','ribbon','Ribbon — one phrase per line',2],
+  ['#nav','nav','Nav — "label | #anchor" per line',2],
+  ['#tripsLabel','trips.label','Products/Routes eyebrow',0],
+  ['#tripsTitle','trips.title','Products/Routes heading',1],
+  ['#tripsNote','trips.note','Products/Routes note',1],
+  ['#tripsBody .empty',['trips.empty.heading','trips.empty.body'],'Products/Routes empty state',1],
+  ['#reportLabel','report.label','Signup eyebrow',0],
+  ['#reportTitle','report.title','Signup heading',1],
+  ['#reportBlurb','report.blurb','Signup blurb',1],
+  ['#reportNote','report.note','Signup fine print',0],
+  ['#signupBtn','report.buttonLabel','Signup button',0],
+  ['#reportLink a','report.link.label','Signup secondary link',0],
+  ['#journalLabel','journal.label','Blog eyebrow',0],
+  ['#journalTitle','journal.title','Blog heading',1],
+  ['#journalNote','journal.note','Blog note',1],
+  ['#journalBody .empty',['journal.empty.heading','journal.empty.body'],'Blog empty state',1],
+  ['#elsewhereLabel','social.label','Social row label',0],
+  ['#footTagline','footer.tagline','Footer tagline',1],
+  ['#footLegal','footer.legal','Footer legal',0],
+];
+const HPI_ON = {}; let _hpiTry = {}; let HPI_CTX = null;
+function hpiDoc(slug){ try { const f = document.getElementById('hpiFrame-'+slug); return f ? f.contentDocument : null; } catch(e){ return null; } }
+function hubPreviewLoaded(slug){ _hpiTry[slug] = 0; if (HPI_ON[slug]) setTimeout(()=>wireHubPreview(slug), 350); }
+function toggleHubPreviewEdit(slug){
+  HPI_ON[slug] = !HPI_ON[slug];
+  const b = document.getElementById('hpiEdit-'+slug);
+  if (b){ b.textContent = '✎ Tap-to-edit: ' + (HPI_ON[slug] ? 'on' : 'off'); b.style.color = HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'; b.style.borderColor = HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'; }
+  if (HPI_ON[slug]) wireHubPreview(slug);
+  else { const f = document.getElementById("hpiFrame-"+slug); if (f) { try { f.contentWindow.location.reload(); } catch(e){ f.src = f.src; } } }   // reload strips outlines + handlers
+}
+function wireHubPreview(slug){
+  const d = hpiDoc(slug);
+  if (!d){ const b = document.getElementById('hpiEdit-'+slug); if (b) b.textContent = '✎ preview not reachable'; return; }
+  const hh = d.getElementById('heroHeadline');
+  if (!hh || !hh.textContent.trim()){ _hpiTry[slug] = (_hpiTry[slug]||0)+1; if (_hpiTry[slug] < 30) setTimeout(()=>wireHubPreview(slug), 300); return; }
+  if (!d.getElementById('hpi-style')){
+    const st = d.createElement('style'); st.id = 'hpi-style';
+    st.textContent = '.hpi-hot{outline:1.5px dashed rgba(80,140,255,.55);outline-offset:2px;cursor:pointer;border-radius:2px;} .hpi-hot:hover,.hpi-hot:active{outline-color:#3b82f6;background:rgba(80,140,255,.08);}';
+    d.head.appendChild(st);
+  }
+  HPI_MAP.forEach(([sel, path, label, big])=>{
+    const el = d.querySelector(sel); if (!el) return;
+    el.classList.add('hpi-hot');
+    if (el._hpi) return; el._hpi = true;
+    el.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); hpiOpen(slug, path, label, big, el); }, true);
+  });
+}
+function hpiCurrent(slug, path, el){
+  const d = hpiDoc(slug);
+  if (path === 'ribbon') return d ? [...d.querySelectorAll('#ribbon span')].map(s=>s.textContent.trim()).filter(Boolean).join('\n') : '';
+  if (path === 'nav') return d ? [...d.querySelectorAll('#nav a')].map(a=>a.textContent.trim()+' | '+a.getAttribute('href')).join('\n') : '';
+  if (Array.isArray(path)){ const st = el.querySelector('strong'); return { h: st ? st.textContent.trim() : '', b: st ? el.textContent.replace(st.textContent,'').trim() : el.textContent.trim() }; }
+  let t = el.textContent.trim();
+  if (el.tagName === 'A') t = t.replace(/\s*→\s*$/,'');
+  return t;
+}
+function hpiOpen(slug, path, label, big, el){
+  const cur = hpiCurrent(slug, path, el);
+  const listKind = path === 'ribbon' ? 'ribbon' : (path === 'nav' ? 'nav' : null);
+  HPI_CTX = { slug, path, el, isArr: Array.isArray(path), listKind };
+  document.getElementById('hpiTitle').textContent = label;
+  const body = document.getElementById('hpiBody');
+  if (HPI_CTX.isArr){
+    body.innerHTML = '<label style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">Heading</label>'
+      + '<input id="hpiV1" class="modal-input" value="'+esc(cur.h)+'">'
+      + '<label style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);margin-top:8px;display:block;">Body</label>'
+      + '<textarea id="hpiV2" class="modal-input" rows="3">'+esc(cur.b)+'</textarea>';
+  } else if (big){
+    body.innerHTML = '<textarea id="hpiV" class="modal-input" rows="'+(listKind?5:4)+'">'+esc(cur)+'</textarea>'
+      + (listKind ? '<div style="font-size:10px;color:var(--text3);margin-top:4px;">One '+(listKind==='nav'?'"label | #anchor"':'phrase')+' per line</div>' : '');
+  } else {
+    body.innerHTML = '<input id="hpiV" class="modal-input" value="'+esc(cur)+'">';
+  }
+  document.getElementById('hpiMsg').textContent = '';
+  document.getElementById('hubInlineModal').classList.add('open');
+  setTimeout(()=>{ const i = document.getElementById('hpiV') || document.getElementById('hpiV1'); if (i){ i.focus(); if (i.select) i.select(); } }, 40);
+}
+async function hpiSave(){
+  if (!HPI_CTX) return;
+  const { slug, path, el, isArr, listKind } = HPI_CTX;
+  const msg = document.getElementById('hpiMsg'), btn = document.getElementById('hpiSaveBtn');
+  const setP = (o,p,v)=>{ const ks=p.split('.'); let x=o; for(let i=0;i<ks.length-1;i++){ x[ks[i]]=x[ks[i]]||{}; x=x[ks[i]]; } x[ks[ks.length-1]]=v; };
+  const ov = {};
+  if (isArr){
+    setP(ov, path[0], (document.getElementById('hpiV1').value.trim() || null));
+    setP(ov, path[1], (document.getElementById('hpiV2').value.trim() || null));
+  } else if (listKind === 'ribbon'){
+    const arr = document.getElementById('hpiV').value.split('\n').map(s=>s.trim()).filter(Boolean);
+    ov.ribbon = arr.length ? arr : null;
+  } else if (listKind === 'nav'){
+    const arr = document.getElementById('hpiV').value.split('\n').map(s=>s.trim()).filter(Boolean).map(l=>{ const p=l.split('|').map(x=>x.trim()); return { label: p[0]||l, href: p[1]||'#' }; });
+    ov.nav = arr.length ? arr : null;
+  } else {
+    setP(ov, path, (document.getElementById('hpiV').value.trim() || null));
+  }
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.style.color = 'var(--text3)'; msg.textContent = 'Committing content.json…';
+  try {
+    await call('saveHubContent', { slug, overrides: ov });
+    if (isArr){
+      const h = document.getElementById('hpiV1').value.trim(), b = document.getElementById('hpiV2').value.trim();
+      el.innerHTML = '<strong>'+esc(h)+'</strong>'+esc(b);
+    } else if (listKind){
+      const f = document.getElementById('hpiFrame-'+slug); if (f) { try { f.contentWindow.location.reload(); } catch(e){ f.src = f.src; } }   // list rebuilds on reload
+    } else {
+      const v = document.getElementById('hpiV').value.trim();
+      if (el.tagName === 'A') el.textContent = v + ' →'; else el.textContent = v;
+    }
+    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min.';
+    setTimeout(()=>document.getElementById('hubInlineModal').classList.remove('open'), 1100);
+  } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Save';
+}
+
 function hubRoutingInfo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug);
   alert((h.name) + ' — routing\n\n' + (h.routingNote || 'No domain set / not routed yet.'));
@@ -10425,7 +10563,12 @@ function renderHubsTab() {
       <span style="font-size:11px;color:var(--text3);margin-left:auto;">${doneCrit}/${totalCrit} critical · <span style="color:${badge.color};">${badge.text}</span></span>
     </div>
 
-    <iframe src="${hubUrl}" title="${esc(h.name)} — live" loading="lazy" style="display:block;width:100%;height:560px;border:0;background:#fff;"></iframe>
+    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Live preview</span>
+      <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Tap-to-edit: off</button>
+      <span style="font-size:10px;color:var(--text3);">— tap any heading / blurb in the preview to edit that one field</span>
+    </div>
+    <iframe id="hpiFrame-${slug}" src="${hubUrl}" title="${esc(h.name)} — live" loading="lazy" onload="hubPreviewLoaded('${slug}')" style="display:block;width:100%;height:560px;border:0;background:#fff;"></iframe>
   </div>
 
   <div style="margin-top:10px;font-size:10px;color:var(--text3);line-height:1.7;">
