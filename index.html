@@ -873,6 +873,7 @@
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
           <select id="glAffHub" onchange="renderAffList()" style="font-size:12px;padding:6px 9px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;"></select>
           <button id="glAffFind" onclick="affFind()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">🔎 Find programs</button>
+          <button id="glAffRank" onclick="affRank()" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">⚖ Rank</button>
           <button onclick="loadGlAffiliate(true)" style="font-size:11px;padding:5px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
           <span id="glAffStatus" style="font-size:11px;color:var(--text3);"></span>
         </div>
@@ -11692,7 +11693,7 @@ async function loadGlTrading() {
 let AFF_DATA = [];
 let AFF_HUB_FILTER = '';
 const AFF_FIT_COLOR = { Strong: '#68d391', Possible: '#f6ad55', Weak: '#a0aec0' };
-const AFF_STATUS = ['New', 'Reviewing', 'Applied', 'Approved', 'Rejected'];
+const AFF_STATUS = ['New', 'Reviewing', 'Stopped at login', 'Applied', 'Approved', 'Rejected'];
 
 async function loadGlAffiliate(force) {
   const sel = document.getElementById('glAffHub');
@@ -11711,12 +11712,15 @@ async function loadGlAffiliate(force) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
 }
+const AFF_OPEN = {};
 function renderAffList() {
   const el = document.getElementById('glAffList');
   const hub = document.getElementById('glAffHub').value;
   AFF_HUB_FILTER = hub;
+  const rank = r => (r.priority ?? 999);
   const rows = AFF_DATA.filter(r => !hub || r.hub === hub)
     .sort((a, b) => (a.hub || '').localeCompare(b.hub || '')
+      || rank(a) - rank(b)
       || ({ Strong: 0, Possible: 1, Weak: 2 }[a.fit] ?? 3) - ({ Strong: 0, Possible: 1, Weak: 2 }[b.fit] ?? 3)
       || (a.name || '').localeCompare(b.name || ''));
   if (!rows.length) {
@@ -11725,7 +11729,7 @@ function renderAffList() {
   }
   el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
     + '<thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;">'
-    + '<th style="padding:5px 8px;">Program</th><th style="padding:5px 8px;">Hub</th><th style="padding:5px 8px;">Network</th><th style="padding:5px 8px;">Commission</th><th style="padding:5px 8px;">Cookie</th><th style="padding:5px 8px;">Fit</th><th style="padding:5px 8px;">Status</th><th style="padding:5px 8px;"></th>'
+    + '<th style="padding:5px 6px;">#</th><th style="padding:5px 8px;">Program</th><th style="padding:5px 8px;">Hub</th><th style="padding:5px 8px;">Network</th><th style="padding:5px 8px;">Commission</th><th style="padding:5px 8px;">Cookie</th><th style="padding:5px 8px;">Fit</th><th style="padding:5px 8px;">Status</th><th style="padding:5px 8px;"></th>'
     + '</tr></thead><tbody>' + rows.map(affRow).join('') + '</tbody></table></div>';
 }
 function affRow(r) {
@@ -11733,19 +11737,31 @@ function affRow(r) {
   const statusSel = '<select onchange="affSetStatus(\'' + r.id + '\',this.value)" style="font-size:10px;padding:2px 4px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text2);">'
     + AFF_STATUS.map(s => '<option' + (s === r.status ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>';
   const hubName = (HUB_SITES.find(h => h.slug === r.hub) || {}).name || r.hub;
-  return '<tr style="border-top:1px solid var(--border);">'
-    + '<td style="padding:6px 8px;font-weight:600;">' + (r.url ? '<a href="' + esc(r.url) + '" target="_blank" style="color:var(--text);text-decoration:none;">' + esc(r.name) + ' <span style="color:var(--accent);font-size:10px;">↗</span></a>' : esc(r.name))
-      + (r.notes ? '<div style="font-size:10px;color:var(--text3);font-weight:400;margin-top:2px;max-width:340px;">' + esc(r.notes) + '</div>' : '')
-      + (r.keyword ? '<div style="font-size:9px;color:var(--text3);font-weight:400;margin-top:1px;">kw: ' + esc(r.keyword) + '</div>' : '') + '</td>'
+  const hasDetail = r.matchNotes || r.setupNotes || r.signupLog || r.notes;
+  const open = !!AFF_OPEN[r.id];
+  const detailBox = (label, val, color) => val ? '<div style="margin-top:6px;"><span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">' + label + '</span><div style="font-size:11px;color:' + (color || 'var(--text2)') + ';white-space:pre-wrap;line-height:1.45;margin-top:2px;">' + esc(val) + '</div></div>' : '';
+  return '<tr style="border-top:1px solid var(--border);cursor:' + (hasDetail ? 'pointer' : 'default') + ';"' + (hasDetail ? ' onclick="affToggleDetail(\'' + r.id + '\')"' : '') + '>'
+    + '<td style="padding:6px 6px;color:var(--text3);text-align:center;">' + (r.priority != null ? r.priority : '') + '</td>'
+    + '<td style="padding:6px 8px;font-weight:600;">' + (r.url ? '<a href="' + esc(r.url) + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--text);text-decoration:none;">' + esc(r.name) + ' <span style="color:var(--accent);font-size:10px;">↗</span></a>' : esc(r.name))
+      + (r.matchNotes ? '<div style="font-size:10px;color:var(--text3);font-weight:400;margin-top:2px;max-width:360px;">' + esc(r.matchNotes) + '</div>' : (r.notes ? '<div style="font-size:10px;color:var(--text3);font-weight:400;margin-top:2px;max-width:360px;">' + esc(r.notes) + '</div>' : ''))
+      + (r.keyword ? '<div style="font-size:9px;color:var(--text3);font-weight:400;margin-top:1px;">kw: ' + esc(r.keyword) + (hasDetail ? ' · ' + (open ? '▾ hide' : '▸ setup notes') : '') + '</div>' : (hasDetail ? '<div style="font-size:9px;color:var(--text3);margin-top:1px;">' + (open ? '▾ hide' : '▸ setup notes') + '</div>' : '')) + '</td>'
     + '<td style="padding:6px 8px;color:var(--text3);white-space:nowrap;">' + esc(hubName) + '</td>'
     + '<td style="padding:6px 8px;color:var(--text2);white-space:nowrap;">' + esc(r.network || '') + '</td>'
     + '<td style="padding:6px 8px;color:var(--text2);">' + esc(r.commission || '') + '</td>'
     + '<td style="padding:6px 8px;color:var(--text3);white-space:nowrap;">' + esc(r.cookie || '') + '</td>'
     + '<td style="padding:6px 8px;white-space:nowrap;"><span style="color:' + fitColor + ';">●</span> ' + esc(r.fit || '') + '</td>'
-    + '<td style="padding:6px 8px;">' + statusSel + '</td>'
-    + '<td style="padding:6px 8px;text-align:right;"><button onclick="affDelete(\'' + r.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕</button></td>'
-    + '</tr>';
+    + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">' + statusSel + '</td>'
+    + '<td style="padding:6px 8px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">'
+      + '<button onclick="affResearchSetup(\'' + r.id + '\')" title="Web-search this program’s signup process" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">🔍 Setup</button>'
+      + '<button onclick="affDelete(\'' + r.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:4px;">✕</button></td>'
+    + '</tr>'
+    + (open && hasDetail ? '<tr><td colspan="9" style="padding:4px 14px 12px;background:var(--surface2);">'
+        + detailBox('Match notes', r.matchNotes)
+        + detailBox('Setup notes', r.setupNotes)
+        + detailBox('Signup log', r.signupLog, /stopped at login/i.test(r.signupLog || '') ? '#f6ad55' : 'var(--text2)')
+        + '</td></tr>' : '');
 }
+function affToggleDetail(id) { AFF_OPEN[id] = !AFF_OPEN[id]; renderAffList(); }
 async function affFind() {
   const slug = document.getElementById('glAffHub').value;
   if (!slug) { document.getElementById('glAffStatus').textContent = 'Pick a hub first.'; return; }
@@ -11756,15 +11772,46 @@ async function affFind() {
   try {
     const r = await call('findAffiliatePrograms', { slug });
     if (r.error) throw new Error(r.error);
-    st.textContent = 'Found ' + (r.found || 0) + ', added ' + (r.added || 0) + (r.skipped ? ', skipped ' + r.skipped + ' (dupes)' : '') + '.';
+    st.textContent = 'Found ' + (r.found || 0) + ', added ' + (r.added || 0) + (r.skipped ? ', skipped ' + r.skipped + ' (dupes)' : '') + '. Ranking…';
+    try { await call('rankAffiliatePrograms', { slug }); } catch (e) {}
     await loadGlAffiliate(true);
     document.getElementById('glAffHub').value = slug;
     renderAffList();
+    st.textContent = 'Found ' + (r.found || 0) + ', added ' + (r.added || 0) + (r.skipped ? ', skipped ' + r.skipped + ' (dupes)' : '') + '.';
   } catch (e) {
     st.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false; btn.textContent = '🔎 Find programs';
   }
+}
+async function affRank() {
+  const slug = document.getElementById('glAffHub').value;
+  if (!slug) { document.getElementById('glAffStatus').textContent = 'Pick a hub first.'; return; }
+  const btn = document.getElementById('glAffRank');
+  const st = document.getElementById('glAffStatus');
+  btn.disabled = true; btn.textContent = '⚖ Ranking…';
+  try {
+    const r = await call('rankAffiliatePrograms', { slug });
+    if (r.error) throw new Error(r.error);
+    st.textContent = 'Ranked ' + (r.ranked || 0) + '.';
+    await loadGlAffiliate(true);
+    document.getElementById('glAffHub').value = slug;
+    renderAffList();
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+  finally { btn.disabled = false; btn.textContent = '⚖ Rank'; }
+}
+async function affResearchSetup(id) {
+  const st = document.getElementById('glAffStatus');
+  const row = AFF_DATA.find(x => x.id === id);
+  st.textContent = 'Researching signup for ' + (row ? row.name : 'program') + '…';
+  try {
+    const r = await call('researchAffiliateSignup', { id });
+    if (r.error) throw new Error(r.error);
+    AFF_OPEN[id] = true;
+    await loadGlAffiliate(true);
+    renderAffList();
+    st.textContent = 'Setup notes written for ' + (row ? row.name : 'program') + (r.loginFirst ? ' (needs a network login first).' : '.');
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
 }
 async function affSetStatus(id, status) {
   try { const r = await call('updateAffiliateProgram', { id, status }); if (r.error) throw new Error(r.error);

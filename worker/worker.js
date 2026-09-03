@@ -4352,18 +4352,198 @@ Return ONLY a JSON array, no other text, no markdown fences:
   return { found: list.length, added, skipped, terms };
 }
 
-// Nightly: run the finder for every hub that has Research Keywords, one at a
-// time (each is a multi-search Claude call — no point hammering in parallel).
-// Best-effort per hub; a hub with no Keywords is skipped silently.
+// Read a hub's campaign Research context (best-effort, all optional).
+async function affiliateHubContext(hub) {
+  const dashId = raw => { const s = String(raw).replace(/-/g, ""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+  const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashId(hub.campaignId) } } }).catch(() => []);
+  const rt = (p, k) => (p?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  let ctx = { keywords: "", statement: "", opportunity: "" };
+  for (const r of rows) {
+    ctx.keywords = ctx.keywords || rt(r, "Keywords");
+    ctx.statement = ctx.statement || rt(r, "Statement");
+    ctx.opportunity = ctx.opportunity || rt(r, "Unique Opportunity");
+  }
+  return ctx;
+}
+
+// ── Rank a hub's staged affiliate programs against each other ──
+// One Claude call (no web search) that reads every AFFILIATE_DB row for the
+// hub plus its Research context and returns a comparative ranking — which to
+// pursue first. Writes Priority (1 = pursue first), Match Notes (why), and
+// refreshes Fit. Returns { ranked }.
+async function rankAffiliateProgramsForHub(env, hub) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  if (!hub) throw new Error("unknown hub");
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const undash = raw => String(raw || "").replace(/-/g, "");
+  const dash = raw => { const s = undash(raw); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+  const rows = await notionQuery(AFFILIATE_DB, { filter: { property: "Hub", select: { equals: hub.slug } } }).catch(() => []);
+  if (!rows.length) return { ranked: 0 };
+  const ctx = await affiliateHubContext(hub);
+  const txt = (p, k) => (p?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const progs = rows.map(r => ({
+    id: undash(r.id),
+    name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
+    network: r.properties?.Network?.select?.name || "",
+    commission: txt(r, "Commission"),
+    cookie: txt(r, "Cookie Window"),
+    keyword: txt(r, "Keyword"),
+    notes: txt(r, "Notes"),
+    status: r.properties?.Status?.select?.name || "New",
+  })).filter(p => p.name);
+  if (!progs.length) return { ranked: 0 };
+
+  const prompt = `You are the affiliate-marketing lead for this niche content site. Rank the candidate programs below from best to worst for THIS site — the ones worth applying to first.
+
+SITE: ${hub.name}
+${ctx.statement ? `POSITIONING: ${ctx.statement}\n` : ""}${ctx.opportunity ? `OPPORTUNITY: ${ctx.opportunity}\n` : ""}KEYWORDS: ${ctx.keywords || "(none on file)"}
+
+Judge each on: relevance to what this audience actually buys, commission economics (rate × realistic order value × recurring vs one-off), cookie window, brand credibility, and how gettable approval is for a newer site. A high commission on something the audience won't buy ranks low.
+
+CANDIDATES (JSON):
+${JSON.stringify(progs.map(({ id, name, network, commission, cookie, keyword, notes }) => ({ id, name, network, commission, cookie, keyword, notes })), null, 1)}
+
+Return ONLY a JSON array, best first, one entry per candidate (use the exact id):
+[ { "id": "...", "priority": 1, "fit": "Strong" | "Possible" | "Weak", "why": "one sentence — why it ranks here" } ]`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  let raw = "";
+  for (const b of (aiData.content || [])) if (b.type === "text") raw += b.text;
+  let list;
+  try {
+    const s = raw.indexOf("["), e = raw.lastIndexOf("]");
+    list = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+  } catch (e) { throw new Error("couldn't parse ranking: " + e.message); }
+  if (!Array.isArray(list)) list = [];
+
+  let ranked = 0;
+  for (const item of list) {
+    const id = undash(item && item.id);
+    if (!id || !progs.some(p => p.id === id)) continue;
+    const props = {};
+    if (Number.isFinite(item.priority)) props["Priority"] = { number: Math.round(item.priority) };
+    if (AFFILIATE_FITS.includes(item.fit)) props["Fit"] = { select: { name: item.fit } };
+    if (item.why && String(item.why).trim()) props["Match Notes"] = { rich_text: [{ text: { content: String(item.why).slice(0, 1900) } }] };
+    if (!Object.keys(props).length) continue;
+    const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+    if (r.ok) ranked++; else console.error("rankAffiliateProgramsForHub write:", (await r.json().catch(() => ({}))).message);
+  }
+  return { ranked };
+}
+
+// ── Research one program's signup process ──
+// A web_search Claude call for a single AFFILIATE_DB row: find the real
+// application page and document how to get the account set up. Writes
+// Setup Notes + refreshes Signup URL, sets Status -> Reviewing (unless
+// already further along). Returns { ok, url }.
+async function researchAffiliateSignup(env, pageId) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const undash = raw => String(raw || "").replace(/-/g, "");
+  const dash = raw => { const s = undash(raw); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+  const pr = await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { headers: hdr }).then(r => r.json());
+  if (pr.object === "error") throw new Error(pr.message || "program not found");
+  const P = pr.properties || {};
+  const name = (P.Name?.title || []).map(t => t.plain_text).join("").trim();
+  if (!name) throw new Error("program has no name");
+  const network = P.Network?.select?.name || "";
+  const knownUrl = P["Signup URL"]?.url || "";
+  const status = P.Status?.select?.name || "New";
+  const hubSlug = P.Hub?.select?.name || "";
+  const hub = HUB_SITES.find(h => h.slug === hubSlug);
+  const siteUrl = hub && hub.domain ? `https://${hub.domain}/` : hub ? `https://cabuzzard.github.io/dash/web/hub/${hub.slug}/` : "";
+
+  const prompt = `Find out how to sign up for the affiliate / partner program for "${name}"${network && network !== "Other" ? ` (via ${network})` : ""}${knownUrl ? `\nKnown/likely signup URL: ${knownUrl}` : ""}.
+
+Search the web for the current, official affiliate program page. Then document exactly how to apply, as of today.
+
+Return ONLY this JSON object, no other text:
+{
+  "signupUrl": "the direct application / signup page URL (official only)",
+  "howTo": "numbered steps to apply, plain text",
+  "requirements": "what they require to approve (existing site + traffic? niche match? social following? region limits?)",
+  "infoNeeded": "what you must have ready to fill the form (business/legal name, email, site URL, tax form W-9/W-8BEN, payout method, promo-methods description, EIN/SSN, etc.)",
+  "approvalTime": "how long approval typically takes, if stated",
+  "gotchas": "anything that gets applications rejected or that surprises people; empty string if none",
+  "loginFirst": true or false — does applying require creating a network account / logging in first?
+}
+
+Context for the "infoNeeded" answer: the site applying is ${hub ? hub.name : "a niche content site"}${siteUrl ? ` (${siteUrl})` : ""}.`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 }], messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  let raw = "";
+  for (const b of (aiData.content || [])) if (b.type === "text") raw += b.text;
+  let obj;
+  try {
+    const s = raw.indexOf("{"), e = raw.lastIndexOf("}");
+    obj = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+  } catch (e) { throw new Error("couldn't parse the signup research: " + e.message); }
+
+  const notes = [
+    obj.howTo && `HOW TO APPLY:\n${obj.howTo}`,
+    obj.requirements && `REQUIREMENTS: ${obj.requirements}`,
+    obj.infoNeeded && `INFO TO HAVE READY: ${obj.infoNeeded}`,
+    obj.approvalTime && `APPROVAL TIME: ${obj.approvalTime}`,
+    obj.gotchas && `GOTCHAS: ${obj.gotchas}`,
+    obj.loginFirst ? `NOTE: requires a network account / login before you can apply.` : "",
+  ].filter(Boolean).join("\n\n").slice(0, 1900);
+
+  const props = { "Setup Notes": { rich_text: [{ text: { content: notes || "(no details found)" } }] } };
+  if (obj.signupUrl && /^https?:\/\//i.test(obj.signupUrl)) props["Signup URL"] = { url: String(obj.signupUrl).slice(0, 1900) };
+  if (["New"].includes(status)) props["Status"] = { select: { name: "Reviewing" } };
+  await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+  return { ok: true, url: obj.signupUrl || knownUrl, loginFirst: !!obj.loginFirst };
+}
+
+// Nightly: for every hub with Research Keywords — discover new programs, then
+// re-rank the hub's set, then research signup for any row still missing
+// Setup Notes (capped per run so one night can't blow the search budget).
+// Each step is best-effort; a hub with no Keywords is skipped silently.
+// The actual signups are a browser job (Claude in Chrome), not something a
+// Worker can do — run those on demand from a session.
 async function runAffiliateScan(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return;
+  const undash = raw => String(raw || "").replace(/-/g, "");
+  let researchBudget = 12;
   for (const hub of HUB_SITES) {
     try {
       const res = await findAffiliateProgramsForHub(env, hub);
       if (res.added) console.log(`runAffiliateScan ${hub.slug}: +${res.added} (${res.found} found, ${res.skipped} skipped)`);
     } catch (e) {
-      if (!/no Keywords/.test(e.message)) console.error(`runAffiliateScan ${hub.slug}:`, e.message);
+      if (/no Keywords/.test(e.message)) continue;
+      console.error(`runAffiliateScan ${hub.slug} discover:`, e.message);
+      continue;
+    }
+    try { await rankAffiliateProgramsForHub(env, hub); }
+    catch (e) { console.error(`runAffiliateScan ${hub.slug} rank:`, e.message); }
+
+    if (researchBudget > 0) {
+      const rows = await notionQuery(AFFILIATE_DB, { filter: { property: "Hub", select: { equals: hub.slug } } }).catch(() => []);
+      const missing = rows.filter(r => !((r.properties?.["Setup Notes"]?.rich_text || []).length))
+        .sort((a, b) => (a.properties?.Priority?.number ?? 999) - (b.properties?.Priority?.number ?? 999));
+      for (const r of missing) {
+        if (researchBudget <= 0) break;
+        researchBudget--;
+        try { await researchAffiliateSignup(env, undash(r.id)); }
+        catch (e) { console.error(`runAffiliateScan signup research:`, e.message); }
+      }
     }
   }
 }
@@ -27763,35 +27943,57 @@ ${assemblyManifest}`;
         const q = { sorts: [{ timestamp: "created_time", direction: "descending" }] };
         if (slug) q.filter = { property: "Hub", select: { equals: slug } };
         const rows = await notionQuery(AFFILIATE_DB, q).catch(e => { console.error("getAffiliatePrograms:", e.message); return []; });
+        const tx = (pr, k) => (pr[k]?.rich_text || []).map(t => t.plain_text).join("");
         const items = rows.map(p => {
           const pr = p.properties;
           return {
             id: p.id.replace(/-/g, ""),
             name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
             hub: pr.Hub?.select?.name || "",
-            keyword: (pr.Keyword?.rich_text || []).map(t => t.plain_text).join(""),
+            keyword: tx(pr, "Keyword"),
             network: pr.Network?.select?.name || "",
-            commission: (pr.Commission?.rich_text || []).map(t => t.plain_text).join(""),
-            cookie: (pr["Cookie Window"]?.rich_text || []).map(t => t.plain_text).join(""),
+            commission: tx(pr, "Commission"),
+            cookie: tx(pr, "Cookie Window"),
             url: pr["Signup URL"]?.url || "",
             fit: pr.Fit?.select?.name || "",
             status: pr.Status?.select?.name || "New",
-            notes: (pr.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+            notes: tx(pr, "Notes"),
+            priority: pr.Priority?.number ?? null,
+            matchNotes: tx(pr, "Match Notes"),
+            setupNotes: tx(pr, "Setup Notes"),
+            signupLog: tx(pr, "Signup Log"),
           };
         });
         return json({ items });
       }
 
+      // Comparative ranking pass for one hub's staged programs.
+      if (body.action === "rankAffiliatePrograms") {
+        const hub = HUB_SITES.find(h => h.slug === String(body.slug || "").trim());
+        if (!hub) return json({ error: "unknown hub" }, 400);
+        try { return json({ success: true, ...(await rankAffiliateProgramsForHub(env, hub)) }); }
+        catch (e) { return json({ error: e.message }, 502); }
+      }
+
+      // Web-search one program's signup process -> Setup Notes.
+      if (body.action === "researchAffiliateSignup") {
+        if (!body.id) return json({ error: "id required" }, 400);
+        try { return json({ success: true, ...(await researchAffiliateSignup(env, body.id)) }); }
+        catch (e) { return json({ error: e.message }, 502); }
+      }
+
       if (body.action === "updateAffiliateProgram" || body.action === "deleteAffiliateProgram") {
-        const { id, status, fit } = body;
+        const { id, status, fit, priority, signupLog } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         let payload;
         if (body.action === "deleteAffiliateProgram") payload = { archived: true };
         else {
           const props = {};
-          if (status && ["New","Reviewing","Applied","Approved","Rejected"].includes(status)) props["Status"] = { select: { name: status } };
+          if (status && ["New","Reviewing","Stopped at login","Applied","Approved","Rejected"].includes(status)) props["Status"] = { select: { name: status } };
           if (fit && ["Strong","Possible","Weak"].includes(fit)) props["Fit"] = { select: { name: fit } };
+          if (Number.isFinite(priority)) props["Priority"] = { number: Math.round(priority) };
+          if (typeof signupLog === "string") props["Signup Log"] = { rich_text: signupLog ? [{ text: { content: signupLog.slice(0, 1900) } }] : [] };
           if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
           payload = { properties: props };
         }
