@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Construction Contract Review — Build Watcher</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#f5f3ee; --ink:#1c1713; --accent:#8a6a1f; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
+.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:.85rem; color:var(--accent); }
+.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
+h1,h2 { font-family:"Archivo", system-ui, sans-serif; color:var(--ink); line-height:1.2; }
+h1 { font-size:2.2rem; margin:.3rem 0 14px; }
+h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.lede { font-size:1.2rem; }
+ul.inc { list-style:none; padding:0; margin:0 0 18px; }
+ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
+.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
+.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
+.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
+.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
+.cf-turnstile { margin:12px 0; }
+.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
+.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
+footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+.offerlist { list-style:none; margin:0; padding:0; }
+.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:"Archivo", system-ui, sans-serif; font-size:1.3rem; }
+.offerlist a:hover { color:var(--accent); }
+.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="../../index.html">Build Watcher</a>
+  <a class="back" href="../index.html">&larr; All offers</a>
+</header>
+<div class="kicker">Fixed-fee review · $450</div>
+<h1>Construction Contract Review</h1>
+<p class="lede">Know exactly what you're signing — and what to change — before you're locked in.</p>
+<p><strong>Who it's for:</strong> Owners handed a contractor's agreement and about to sign</p>
+<h2>What's included</h2>
+<ul class="inc"><li>Redlined contract with specific recommended changes</li><li>Plain-English risk memo covering payment, retainage, change orders, schedule and delay, termination, warranty, and dispute resolution</li><li>Optional 30-minute intake call to flag your priorities</li><li>3–5 business day turnaround</li><li>$450 credit toward a Pre-Construction Advisory or retainer if you engage within 30 days</li></ul>
+<h2>Why it works</h2>
+<p>Construction contracts aren't general legal documents — every clause around change orders, retainage, and delay determines who absorbs cost overruns when things go sideways. This review is owner-only and construction-specific, so the markup targets the clauses that actually decide whether your money and schedule are protected.</p>
+<h2>The objection it answers</h2>
+<p>'It's a standard AIA contract, so it should be fine.' Standard forms still carry owner-unfriendly defaults, and the contractor's edits are exactly where the real risk hides — those are the first things the redline catches.</p>
+<h2>Terms</h2>
+<p>$450 flat fee. Upload your contract to get started; 30-minute intake call optional. Delivered as a redlined contract plus risk memo within 3–5 business days. Fee credits toward a Pre-Construction Advisory or retainer if you engage within 30 days of delivery.</p>
+<h2>Submit Your Contract</h2>
+<form class="offer-form" id="of" novalidate>
+  <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="ofTs"></div>
+  <button class="btn" type="submit" id="ob">Submit Your Contract</button>
+  
+  <p class="msg" id="om" role="status"></p>
+</form>
+<footer class="site">Build Watcher</footer>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('of'), b=document.getElementById('ob'), m=document.getElementById('om'), tok='';
+  window.ofTs=function(t){tok=t;};
+  if(!f) return;
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var email=(f.email.value||'').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){m.textContent='Check that email address.';m.className='msg err';return;}
+    if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
+    b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
+    try{
+      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Build Watcher — offer: Construction Contract Review",email:email,fraudType:'Other',note:"Offer interest - Construction Contract Review",tsToken:tok})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
+      f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
+    }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
+    finally{ b.disabled=false;b.textContent="Submit Your Contract"; tok=''; if(window.turnstile)window.turnstile.reset(); }
+  });
+})();
+</script>
+</body>
+</html>
