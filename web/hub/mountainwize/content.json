@@ -16,5 +16,8 @@
     "image": "./signup.png",
     "blurb": "A short self-assessment for people who feel the gap but can't name it. It sorts what you're actually dealing with, and tells you which of the routes above fits — or whether it's not coaching you need right now. Free, no call required.",
     "title": "Internal States are the Key to everything.  But why are they so hard to maintain?"
+  },
+  "trips": {
+    "title": "Trip Prep - Gearing up for Everyday Life."
   }
 }
