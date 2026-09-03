@@ -13,5 +13,8 @@
   ],
   "trips": {
     "title": "Get on my Wavelength"
+  },
+  "report": {
+    "image": "./signup.jpg"
   }
 }
