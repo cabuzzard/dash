@@ -11744,7 +11744,7 @@ function affRow(r) {
   const hubName = (HUB_SITES.find(h => h.slug === r.hub) || {}).name || r.hub;
   const hasDetail = r.matchNotes || r.setupNotes || r.signupLog || r.notes;
   const open = !!AFF_OPEN[r.id];
-  const detailBox = (label, val, color) => val ? '<div style="margin-top:6px;"><span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">' + label + '</span><div style="font-size:11px;color:' + (color || 'var(--text2)') + ';white-space:pre-wrap;line-height:1.45;margin-top:2px;">' + esc(val) + '</div></div>' : '';
+  const detailBox = (label, val, color) => val ? '<div style="margin-top:6px;"><span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">' + label + '</span><div style="font-size:11px;color:' + (color || 'var(--text2)') + ';white-space:pre-wrap;line-height:1.45;margin-top:2px;">' + affLinkify(val) + '</div></div>' : '';
   return '<tr style="border-top:1px solid var(--border);cursor:' + (hasDetail ? 'pointer' : 'default') + ';"' + (hasDetail ? ' onclick="affToggleDetail(\'' + r.id + '\')"' : '') + '>'
     + '<td style="padding:6px 6px;color:var(--text3);text-align:center;">' + (r.priority != null ? r.priority : '') + '</td>'
     + '<td style="padding:6px 8px;font-weight:600;">' + (r.url ? '<a href="' + esc(r.url) + '" target="_blank" onclick="event.stopPropagation()" style="color:var(--text);text-decoration:none;">' + esc(r.name) + ' <span style="color:var(--accent);font-size:10px;">↗</span></a>' : esc(r.name))
@@ -11761,10 +11761,16 @@ function affRow(r) {
       + '<button onclick="affDelete(\'' + r.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:4px;">✕</button></td>'
     + '</tr>'
     + (open && hasDetail ? '<tr><td colspan="9" style="padding:4px 14px 12px;background:var(--surface2);">'
+        + (r.url ? '<div style="margin-top:4px;font-size:11px;"><span style="font-size:9px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);">Signup URL</span><br><a href="' + esc(r.url) + '" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">' + esc(r.url) + '</a></div>' : '')
         + detailBox('Match notes', r.matchNotes)
         + detailBox('Setup notes', r.setupNotes)
-        + detailBox('Signup log', r.signupLog, /stopped at login/i.test(r.signupLog || '') ? '#f6ad55' : 'var(--text2)')
+        + detailBox('Signup log', r.signupLog, /stopped at login|dead|no working|deactivated/i.test(r.signupLog || '') ? '#f6ad55' : 'var(--text2)')
         + '</td></tr>' : '');
+}
+// Turn bare http(s) URLs in a text blob into clickable links (esc first).
+function affLinkify(s) {
+  return esc(String(s || '')).replace(/(https?:\/\/[^\s<>"']+?)([.,;:)\]]*(?:\s|$))/g,
+    '<a href="$1" target="_blank" rel="noopener" style="color:var(--accent);word-break:break-all;">$1</a>$2');
 }
 function affToggleDetail(id) { AFF_OPEN[id] = !AFF_OPEN[id]; renderAffList(); }
 async function affFind() {
