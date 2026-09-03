@@ -10327,11 +10327,25 @@ let GABATCH_RUNNING = false;
 function gaBatchSelected() {
   return Array.from(document.querySelectorAll('.gabatch-cb:checked')).map(c => ({ id: c.dataset.id, name: c.dataset.name || 'Untitled' }));
 }
+let _gabatchMethodsFilled = false;
+function gaBatchFillMethods() {
+  const sel = document.getElementById('gabatchMethod'); if (!sel) return;
+  atEnsureLists().then(() => {
+    if (_gabatchMethodsFilled && sel.options.length > 1) return;
+    const keep = sel.value;
+    sel.innerHTML = '<option value="">— use each title\'s own method —</option>' +
+      (AT_METHODS || []).map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    if (keep) sel.value = keep;
+    _gabatchMethodsFilled = true;
+  });
+}
 function gaBatchSync() {
   const bar = document.getElementById('gabatchBar'); if (!bar) return;
   const n = gaBatchSelected().length;
   const cnt = document.getElementById('gabatchCount'); if (cnt) cnt.textContent = n;
-  bar.style.display = (n > 0 || GABATCH_RUNNING) ? 'flex' : 'none';
+  const show = (n > 0 || GABATCH_RUNNING);
+  bar.style.display = show ? 'flex' : 'none';
+  if (show) gaBatchFillMethods();
 }
 function gaBatchSelectAll() { document.querySelectorAll('#devTitles .gabatch-cb').forEach(c => c.checked = true); gaBatchSync(); }
 function gaBatchClear() { document.querySelectorAll('.gabatch-cb').forEach(c => c.checked = false); gaBatchSync(); }
@@ -10340,7 +10354,10 @@ async function gaBatchRun() {
   const items = gaBatchSelected();
   if (!items.length) return;
   const conc = Math.max(1, Math.min(5, parseInt(document.getElementById('gabatchConc').value, 10) || 3));
-  if (!confirm(`Generate assets for ${items.length} title${items.length !== 1 ? 's' : ''}, ${conc} at a time?\n\nUses each title's own method + product. Keep this tab open until it finishes.`)) return;
+  const pickMethodId = document.getElementById('gabatchMethod') ? document.getElementById('gabatchMethod').value : '';
+  const pickMethod = pickMethodId ? (AT_METHODS || []).find(m => m.id === pickMethodId) : null;
+  const methodLine = pickMethod ? `Applies the "${pickMethod.name}" method to every selected title.` : `Uses each title's own method (titles with none are skipped).`;
+  if (!confirm(`Generate assets for ${items.length} title${items.length !== 1 ? 's' : ''}, ${conc} at a time?\n\n${methodLine}\nKeep this tab open until it finishes.`)) return;
   GABATCH_RUNNING = true;
   const st = {}; items.forEach(it => st[it.id] = { s: 'wait', msg: '' });
   const icon = s => ({ wait: '•', run: '⏳', ok: '✅', err: '❌' }[s] || '•');
@@ -10361,14 +10378,17 @@ async function gaBatchRun() {
       st[it.id] = { s: 'run', msg: '' }; paint();
       try {
         const d = await w('getTitleDetails', { titleId: it.id });
-        if (!d.methodId) { st[it.id] = { s: 'err', msg: 'no method set on this title' }; paint(); continue; }
+        const methodId = pickMethodId || d.methodId;
+        const methodName = pickMethod ? pickMethod.name : d.methodName;
+        if (!methodId) { st[it.id] = { s: 'err', msg: 'no method — pick one in the bar' }; paint(); continue; }
+        if (pickMethodId && d.methodId !== pickMethodId) { try { await w('setTitleMethod', { titleId: it.id, methodId: pickMethodId }); } catch (e) { /* generation still uses methodId */ } }
         const r = await w('generateTitleAssets', {
           titleId: it.id, campaignId: d.campaignId || CAMPAIGN_ID,
-          methodId: d.methodId, productId: d.productId || undefined,
-          assetType: d.methodName || 'Post', title: d.title || it.name,
+          methodId, productId: d.productId || undefined,
+          assetType: methodName || 'Post', title: d.title || it.name,
           count: 4, contextMode: 'isolate',
         });
-        gaAutoAttachMethod(d.methodId);
+        gaAutoAttachMethod(methodId);
         st[it.id] = { s: 'ok', msg: (r.sitePublished && r.liveUrl) ? 'published live' : (r.siteError ? 'asset ok · site: ' + String(r.siteError).slice(0, 38) : (r.sectionCount != null ? `${r.sectionCount}-section post` : (r.created != null ? `${r.created} option${r.created === 1 ? '' : 's'}` : 'done'))) };
       } catch (e) {
         st[it.id] = { s: 'err', msg: String(e.message).slice(0, 70) };
@@ -10391,6 +10411,7 @@ window.addEventListener('beforeunload', e => { if (GABATCH_RUNNING) { e.preventD
   <strong style="font-size:12px;color:#e2e8f0;"><span id="gabatchCount">0</span> selected</strong>
   <button onclick="gaBatchSelectAll()" style="font-size:11px;padding:4px 9px;border:1px solid #3a4557;border-radius:5px;background:#232a38;color:#cbd5e0;cursor:pointer;">select all Dev</button>
   <button onclick="gaBatchClear()" style="font-size:11px;padding:4px 9px;border:1px solid #3a4557;border-radius:5px;background:#232a38;color:#cbd5e0;cursor:pointer;">clear</button>
+  <label style="font-size:11px;color:#8a97a8;">method <select id="gabatchMethod" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;max-width:200px;"><option value="">— each title's own —</option></select></label>
   <label style="font-size:11px;color:#8a97a8;">run <select id="gabatchConc" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select> at once</label>
   <button id="gabatchBtn" onclick="gaBatchRun()" style="font-size:12px;padding:6px 14px;border:0;border-radius:6px;background:#68d391;color:#0b1220;font-weight:700;cursor:pointer;">⚡ Generate selected</button>
   <span id="gabatchProg" style="font-size:11px;color:#8a97a8;"></span>

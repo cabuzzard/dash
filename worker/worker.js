@@ -18985,6 +18985,23 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       }
 
       // â"€â"€ MICROSITE: updateTitleStage â"€â"€
+      // ── setTitleMethod ── attach/replace a Method on an existing Content
+      // Strategy title. Used by the microsite's bulk asset creator so one
+      // method pick can apply to a batch of titles that have none.
+      if (body.action === "setTitleMethod") {
+        const { titleId, methodId } = body;
+        if (!titleId || !methodId) return json({ error: "titleId and methodId required" }, 400);
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { method: { relation: [{ id: dash(methodId) }] } } }),
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
       if (body.action === "updateTitleStage") {
         const { titleId, stage } = body;
         if (!titleId || !stage) return json({ error: "titleId and stage required" }, 400);
