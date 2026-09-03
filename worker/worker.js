@@ -166,6 +166,10 @@ function resolveOrigin(request) {
 // mirror of index.html's HUB_SITES (keep in sync when a hub ships). Feeds
 // getContentHubs (the Publish modal's Content Hub picker for an
 // "Offer – Content Hub" asset) and getHubProducts (resolve slug ⇄ campaign).
+// Per-request write pacer for the hub static-page publishers — GitHub's
+// contents API secondary-rate-limits writes hard. Reset implicitly each
+// isolate; only ever read/written by hubSiteTarget's putFile.
+let HUB_PUT_LAST = 0;
 const HUB_SITES = [
   { slug: "surf-vacations",       name: "Surf Vacations",       campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770" },
   { slug: "sunflower-acres",      name: "Sunflower Acres",      campaignId: "3871f7d3a4bb814997e5f3400fc3ff57" },
@@ -821,7 +825,19 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
     const { sha } = await getFile(path);
     const putBody = { message, content: toB64Text(text), branch: BRANCH };
     if (sha) putBody.sha = sha;
-    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: { ...gh, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
+    // GitHub's contents API has a strict SECONDARY rate limit on writes
+    // (~1/sec sustained). A batch rebuild does 3 commits per post/offer, so
+    // pace them — a 429/403 secondary-limit response is retried once after
+    // its Retry-After.
+    const gap = 1100 - (Date.now() - HUB_PUT_LAST);
+    if (gap > 0) await new Promise(res => setTimeout(res, gap));
+    let r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: { ...gh, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
+    if ((r.status === 429 || r.status === 403) && /rate limit|secondary/i.test(await r.clone().text().catch(() => ''))) {
+      const wait = Math.min(20, Math.max(3, parseInt(r.headers.get('retry-after') || '10', 10))) * 1000;
+      await new Promise(res => setTimeout(res, wait));
+      r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: 'PUT', headers: { ...gh, 'Content-Type': 'application/json' }, body: JSON.stringify(putBody) });
+    }
+    HUB_PUT_LAST = Date.now();
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `GitHub commit failed for ${path}`); }
   };
 
@@ -6030,6 +6046,22 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
           ].filter(Boolean).join("\n");
         }
 
+        // Existing News-group titles on this campaign — so the model picks a
+        // genuinely different angle (or flags a true duplicate) instead of
+        // rephrasing one we already have.
+        let existingNews = "";
+        try {
+          const exRows = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { and: [
+              { property: "Campaign", relation: { contains: dashId(campaignId) } },
+              { property: "Grouping", rich_text: { equals: "News" } },
+            ] }, page_size: 40 }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const names = (exRows.results || []).map(r => (r.properties?.Title?.title || []).map(t => t.plain_text).join("").trim()).filter(Boolean);
+          if (names.length) existingNews = names.slice(0, 30).map(n => `- ${n}`).join("\n");
+        } catch (e) {}
+
         // ── Headline + angle + primary search intent (one Claude call) ──
         const planPrompt = `You are an editor and research writer for a niche content site.
 
@@ -6040,15 +6072,16 @@ ${campContext || "(general — infer from the news item)"}
 ${prodContext ? prodContext + "\n" : ""}
 NEWS ITEM:
 ${newsBody.slice(0, 6000)}
-
+${existingNews ? `\nWE HAVE ALREADY PUBLISHED THESE NEWS-ANALYSIS ARTICLES. Your headline AND angle must be clearly distinct from every one of them — a different question, a different practical takeaway — not a rephrasing or a near-synonym:\n${existingNews}\nIf this news item is essentially the SAME story as one already covered above, set "duplicate": true (still fill the other fields with the most distinct angle you can find).\n` : ""}
 Decide:
-- "headline": a useful, descriptive, search-friendly blog headline for OUR original article — must NOT copy the source's headline or framing.
+- "headline": a useful, descriptive, search-friendly blog headline for OUR original article — must NOT copy the source's headline or framing, and must not echo the structure of the already-published headlines above.
 - "searchIntent": the ONE primary search intent that naturally arises from this story for our audience (one sentence).
 - "angle": 2-3 sentences — why this matters to OUR audience specifically, and the practical question it creates that typical coverage doesn't answer.
 - "keywords": 3-6 comma-separated search phrases a reader with that intent would actually type.
+- "duplicate": true only if this is essentially a story we've already covered above, else false.
 
 Return ONLY this JSON, no other text, no markdown fences:
-{ "headline": "...", "searchIntent": "...", "angle": "...", "keywords": "..." }`;
+{ "headline": "...", "searchIntent": "...", "angle": "...", "keywords": "...", "duplicate": false }`;
 
         const planResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -6070,6 +6103,13 @@ Return ONLY this JSON, no other text, no markdown fences:
         const searchIntent = String(plan.searchIntent || "").trim();
         const angle = String(plan.angle || "").trim();
         const keywords = String(plan.keywords || "").trim();
+
+        // Near-duplicate of something already in the News group — stop and let
+        // the operator decide rather than quietly making a 3rd article on the
+        // same story (retry with allowDuplicate:true to force it through).
+        if (plan.duplicate === true && !body.allowDuplicate) {
+          return json({ duplicate: true, headline, angle, message: "This reads as the same story as a News article this campaign already has. Create it anyway?" });
+        }
 
         // ── Create the Content Strategy title (shape mirrors createDevTitle) ──
         const rtProp = v => ({ rich_text: [{ type: "text", text: { content: String(v).slice(0, 1990) } }] });

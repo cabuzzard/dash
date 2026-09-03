@@ -2254,15 +2254,26 @@ async function runCreateNewsBlog() {
   status.textContent = 'Writing the headline + original-article pillar (this takes ~30–60s)…';
   status.style.color = '#888';
   try {
-    const r = await w('createNewsBlogTitle', {
+    const payload = {
       campaignId: CAMPAIGN_ID,
       productId: document.getElementById('newsBlogProduct').value || undefined,
       newsTitle: (body.split('\n')[0] || body).slice(0, 300),
       newsBody: body,
       newsSource: ta.dataset.src || undefined,
       newsDate: ta.dataset.date || undefined,
-    });
+    };
+    let r = await w('createNewsBlogTitle', payload);
     if (r.error) throw new Error(r.error);
+    if (r.duplicate) {
+      if (!confirm(`${r.message}\n\nProposed headline:\n"${r.headline}"`)) {
+        status.textContent = 'Cancelled — no title created.'; status.style.color = '#f0b429';
+        btn.disabled = false; btn.textContent = 'Create Blog Title';
+        return;
+      }
+      status.textContent = 'Creating anyway…'; status.style.color = '#888';
+      r = await w('createNewsBlogTitle', { ...payload, allowDuplicate: true });
+      if (r.error) throw new Error(r.error);
+    }
     status.innerHTML = `✓ "<strong>${esc(r.headline || 'Title')}</strong>" created in Development${r.pillarWritten ? ` — pillar written (${r.pillarWords || '?'} words)` : (r.pillarError ? ` — pillar failed: ${esc(r.pillarError)}` : '')}.<br>Open the Titles tab and run 🧩 Generate Assets → <strong>Blog - SEO - News</strong> to publish the post.`;
     status.style.color = '#5ec95e';
     btn.textContent = 'Done';
