@@ -44,23 +44,23 @@ footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(
   <a href="../../index.html">AI Implementation</a>
   <a class="back" href="../index.html">&larr; All offers</a>
 </header>
-<div class="kicker">One-time diagnostic · flat fee · instant delivery</div>
+<div class="kicker">One-time diagnostic · flat fee · no subscription</div>
 <h1>AI Business Audit</h1>
-<p class="lede">Stop guessing where your business is bleeding time and money — walk away with a ranked, plain-language diagnosis and a clear fix order, in under 30 minutes.</p>
-<p><strong>Who it's for:</strong> Small business owners (1–20 employees) who know something is wrong but can't name it</p>
+<p class="lede">In under 30 minutes, get a ranked, plain-language list of exactly where your business is leaking time and money — and what to fix first.</p>
+<p><strong>Who it's for:</strong> Small business owners running on instinct who know something is wrong but can't pin down what</p>
 <h2>What's included</h2>
-<ul class="inc"><li>A structured, self-guided diagnostic session — no installs, no integrations, done in under 30 minutes</li><li>A Verdict Report naming exactly where your business is leaking time, money, and capacity — ranked by impact</li><li>A plain-language action order attached to each finding — not raw data, not a dashboard, a prioritized fix list built from your specific operation</li><li>Instant delivery — your report is generated and ready before you close the tab, no waiting period or follow-up call required</li></ul>
+<ul class="inc"><li>A structured self-guided diagnostic session — no software to install, nothing to connect, nothing to configure</li><li>A plain-language Verdict Report naming your specific operational gaps, ranked by impact</li><li>A clear recommended fix attached to every identified problem — not raw data, a prioritized action order</li><li>Instant delivery — the report is ready before you close the session, no waiting, no follow-up call required</li><li>A satisfaction guarantee — if the audit doesn't surface at least one specific inefficiency you weren't already actively fixing, you get a full refund</li></ul>
 <h2>Why it works</h2>
-<p>The diagnostic maps your real operational inputs against structural patterns that surface across every business type — the same analysis a consultant runs in their first week of discovery, systematized and delivered in a single session. When it surfaces something you've felt but never been able to articulate, you'll know immediately it's reading your business accurately.</p>
+<p>The diagnostic maps your actual operational inputs against the structural patterns that show up across small businesses — the same analysis a consultant runs, without the invoice or the wait. The output is self-evidencing: when it names something you've felt but never been able to articulate, you'll know immediately that it's reading your business accurately.</p>
 <h2>The objection it answers</h2>
-<p>If you're thinking 'I already roughly know where the problems are' — knowing a problem exists and knowing its root cause, downstream impact, and correct fix order are three different things. The audit surfaces both what you can see and the compounding inefficiencies that don't announce themselves until they cost you something serious.</p>
+<p>If you've tried software before and got a dashboard full of data you had to interpret yourself, this is different — you get a named diagnosis with a specific fix attached, not metrics to figure out alone. And at a price point built for small business budgets, the satisfaction guarantee means the only real risk is reading a report that finally confirms what you already suspected.</p>
 <h2>Terms</h2>
-<p>One-time flat fee — no subscription, no recurring charge, no upsell gated behind your findings. Satisfaction guarantee: if the audit doesn't surface at least one specific, actionable inefficiency you weren't already actively fixing, the fee is refunded with no forms and no friction.</p>
-<h2>Start Your Audit</h2>
+<p>One-time flat fee — no subscription, no recurring charge, no upsell gating the core findings. Full refund if the audit fails to surface at least one specific, actionable inefficiency you weren't already actively fixing.</p>
+<h2>Start the Audit</h2>
 <form class="offer-form" id="of" novalidate>
   <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
   <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="ofTs"></div>
-  <button class="btn" type="submit" id="ob">Start Your Audit</button>
+  <button class="btn" type="submit" id="ob">Start the Audit</button>
   
   <p class="msg" id="om" role="status"></p>
 </form>
@@ -82,7 +82,7 @@ footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(
       var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
       f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
     }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
-    finally{ b.disabled=false;b.textContent="Start Your Audit"; tok=''; if(window.turnstile)window.turnstile.reset(); }
+    finally{ b.disabled=false;b.textContent="Start the Audit"; tok=''; if(window.turnstile)window.turnstile.reset(); }
   });
 })();
 </script>
