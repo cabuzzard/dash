@@ -1,5 +1,8 @@
 {
   "hero": {
     "image": "./hero.jpg"
+  },
+  "report": {
+    "image": "./signup.jpg"
   }
 }
