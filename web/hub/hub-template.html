@@ -580,16 +580,16 @@ function reveal() {
 }
 
 async function renderHubProducts() {
-  // Products section: same card grid as renderCards, but live — published
-  // "Offer – Content Hub" assets for this hub (getHubProducts) replace the
-  // static HUB.trips.items, which stay as the instant fallback. Mirrors
-  // renderHubJournal / getHubBlog exactly.
+  // Products / Offers section: static HUB.trips.items as the instant fallback,
+  // then live — the campaign's published Offers (getHubProducts → the hub's own
+  // web/hub/<slug>/offers/ dir), each a card linking to its offer page (pitch +
+  // lead form). Mirrors renderHubJournal / getHubBlog.
   const s = HUB.trips;
   $("tripsLabel").textContent = s.label;
   $("tripsTitle").textContent = s.title;
   $("tripsNote").textContent = s.note || "";
   const body = $("tripsBody");
-  const paint = (items) => {
+  const paint = (items, isLive) => {
     if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => {
       const tag = it.url && it.url !== "#" ? "a" : "div";
@@ -600,9 +600,9 @@ async function renderHubProducts() {
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
         ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
       </${tag}>`;
-    }).join("") + `</div>`;
+    }).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./offers/">All offers →</a></p>` : "");
   };
-  paint(s.items);                                     // static fallback, instant
+  paint(s.items, false);                              // static fallback, instant
   if (!HUB.campaignId) return;
   try {
     const res = await fetch(WORKER_URL, {
@@ -611,7 +611,7 @@ async function renderHubProducts() {
       body: JSON.stringify({ action: "getHubProducts", campaignId: HUB.campaignId, slug: HUB.slug }),
     });
     const data = await res.json();
-    if (res.ok && Array.isArray(data.products) && data.products.length) paint(data.products);
+    if (res.ok && Array.isArray(data.products) && data.products.length) paint(data.products, !!data.hasIndex);
   } catch (e) { /* keep the static fallback */ }
 }
 

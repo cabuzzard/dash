@@ -10002,27 +10002,28 @@ async function hpPush(slug) {
     renderHubsTab();
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Push to hub'; }
 }
-// Backfill / rebuild this hub's blog: (re)publishes every published SEO Post /
-// Blog - SEO - News asset on the campaign as a real page under
-// web/hub/{slug}/blog/, reading each article straight from its Notion page
-// blocks (no regeneration). One-time fix for posts published before the
-// hub-blog target existed; also safe to re-run any time.
+// Backfill / rebuild this hub's blog AND offers: (re)publishes every published
+// SEO Post / Blog - SEO - News article to web/hub/{slug}/blog/{post}/ and every
+// published Offer to web/hub/{slug}/offers/{offer}/ (a hub-styled page with a
+// lead form), reading each from its own Notion page blocks. One-time fix for
+// content published before the hub targets existed; safe to re-run any time.
 async function hubRebuildBlog(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   const btn = document.getElementById('hpBlog'), msg = document.getElementById('hpMsg');
-  if (!confirm('Rebuild the "' + slug + '" hub blog?\n\nRepublishes every published SEO Post / Blog - SEO - News asset on this campaign to web/hub/' + slug + '/blog/ (from its existing article text — no regeneration) and redeploys (~1 min).')) return;
+  if (!confirm('Rebuild the "' + slug + '" hub blog + offers?\n\nRepublishes every published article and offer on this campaign to web/hub/' + slug + '/ (from its existing text) and redeploys (~1 min).')) return;
   btn.disabled = true; btn.textContent = 'Rebuilding…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Reading published assets + writing pages…';
   try {
     const r = await call('backfillHubBlog', { campaignId: h.campaignId, force: true });
     const res = r.results || [];
-    const ok = res.filter(x => x.published).length;
+    const posts = res.filter(x => x.published && x.kind !== 'offer').length;
+    const offers = res.filter(x => x.published && x.kind === 'offer').length;
     const skip = res.filter(x => x.skipped).length;
     const errs = res.filter(x => x.error);
-    if (!res.length) { msg.style.color = '#ffb020'; msg.textContent = 'No published SEO Post / Blog - SEO - News assets found on this campaign.'; }
-    else if (ok) { msg.style.color = '#4cff4c'; msg.textContent = `${ok} post${ok !== 1 ? 's' : ''} published to /blog/${errs.length ? `, ${errs.length} failed` : ''}. Live in ~1 min — reload the preview.`; }
+    if (!res.length) { msg.style.color = '#ffb020'; msg.textContent = 'No published articles or offers found on this campaign.'; }
+    else if (posts || offers) { msg.style.color = '#4cff4c'; msg.textContent = `${posts} post${posts !== 1 ? 's' : ''} + ${offers} offer${offers !== 1 ? 's' : ''} published${errs.length ? `, ${errs.length} failed` : ''}. Live in ~1 min — reload the preview.`; }
     else { msg.style.color = '#ff6b6b'; msg.textContent = `0 published${skip ? `, ${skip} skipped` : ''}. First error: ${errs[0] ? errs[0].error : 'unknown'}`; }
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
-  btn.disabled = false; btn.textContent = '⟳ Rebuild blog';
+  btn.disabled = false; btn.textContent = '⟳ Rebuild blog + offers';
 }
 
 function hubRoutingInfo(slug) {
@@ -10210,7 +10211,7 @@ function renderHubsTab() {
             <button id="hpGen" onclick="hpGen('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
             <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
             <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub</button>
-            <button id="hpBlog" onclick="hubRebuildBlog('${slug}')" title="Republish every published SEO Post / Blog - SEO - News asset on this campaign as a page under web/hub/${slug}/blog/ — from its existing text, no regeneration" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">⟳ Rebuild blog</button>
+            <button id="hpBlog" onclick="hubRebuildBlog('${slug}')" title="Republish every published article (→ web/hub/${slug}/blog/) and offer (→ web/hub/${slug}/offers/) on this campaign, from its existing text" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">⟳ Rebuild blog + offers</button>
           </div>
           <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
           <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>

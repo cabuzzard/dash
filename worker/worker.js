@@ -799,10 +799,14 @@ async function resolveDeployPath(campaignId, hdr, dash) {
 // brittle HTML-diffing); `{blog}/{slug}/index.html` is the post sub-page.
 // Best-effort by contract: callers catch this and treat a failure as
 // non-fatal — the Notion asset is always the source of truth.
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources }) {
+// Shared setup for the hub static-page publishers (blog posts → sub='blog',
+// offers → sub='offers'). Returns the GitHub client + the resolved target:
+// for a content-hub campaign that's web/hub/{slug}/{sub}/ styled from the
+// hub's own hubs.design.json tokens+fonts; otherwise the campaign's own
+// site web/{deployPath}/{sub}/ styled from `spec`. `{ error }` on failure.
+async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
   const GT = (env.GITHUB_TOKEN || '').trim();
-  if (!GT) return { published: false, error: "GITHUB_TOKEN not set — asset saved, but not pushed to the live site" };
-
+  if (!GT) return { error: "GITHUB_TOKEN not set — asset saved, but not pushed to the live site" };
   const REPO = 'cabuzzard/dash', BRANCH = 'main';
   const gh = { Authorization: `Bearer ${GT}`, Accept: 'application/vnd.github+json', 'User-Agent': 'dash-worker' };
   const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ''; const chunk = 0x8000; for (let i = 0; i < bytes.length; i += chunk) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk)); return btoa(bin); };
@@ -821,14 +825,14 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
     if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `GitHub commit failed for ${path}`); }
   };
 
+  const EDITORIAL = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond' };
   const cidNorm = String(campaignId || '').replace(/-/g, '');
   const hub = HUB_SITES.find(h => h.campaignId.replace(/-/g, '') === cidNorm);
-
   let basePath, campName, s;
   if (hub) {
-    basePath = `web/hub/${hub.slug}/blog`;
+    basePath = `web/hub/${hub.slug}/${sub}`;
     campName = hub.name;
-    s = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond' };
+    s = { ...EDITORIAL };
     try {
       const { text } = await getFile('web/hub/hubs.design.json');
       const dj = text ? JSON.parse(text) : null;
@@ -837,35 +841,38 @@ async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoT
         s = {
           bg:           hd.tokens?.bg || s.bg,
           ink:          hd.tokens?.ink || s.ink,
-          // headings/links: --sea is each hub's *primary*, --accent is its
-          // "used once, loudly" colour — primary reads better across a page.
+          // --sea is each hub's *primary*, --accent its "used once, loudly" —
+          // primary reads better across a whole page.
           accent:       hd.tokens?.sea || hd.tokens?.accent || s.accent,
           headlineFont: hd.fonts?.display || s.headlineFont,
           bodyFont:     hd.fonts?.body || s.bodyFont,
         };
         campName = hd.logoText || hd.meta?.ogTitle || campName;
-        // Exact Google-Fonts query + fallback stack from the shared registry,
-        // so hub-specific faces (many are single-weight display serifs that a
-        // guessed :wght@600;700 request would 404) load correctly.
         const hReg = dj?.fontRegistry?.[s.headlineFont];
         const bReg = dj?.fontRegistry?.[s.bodyFont];
         s.fontQuery     = [hReg?.query, bReg?.query].filter(Boolean).join('&family=') || null;
         s.headlineStack = hReg?.fallback ? `"${s.headlineFont}", ${hReg.fallback}` : null;
         s.bodyStack     = bReg?.fallback ? `"${s.bodyFont}", ${bReg.fallback}` : null;
       }
-    } catch (e) { /* fall back to the editorial default palette */ }
+    } catch (e) { /* editorial default */ }
   } else {
     const deployPath = await resolveDeployPath(campaignId, hdr, dash);
-    if (!deployPath || deployPath === 'campaign') return { published: false, error: "Could not resolve where to publish — this campaign has no content hub and no live site/microsite URL on its Campaign record" };
-    basePath = `web/${deployPath}/blog`;
+    if (!deployPath || deployPath === 'campaign') return { error: "Could not resolve where to publish — this campaign has no content hub and no live site/microsite URL on its Campaign record" };
+    basePath = `web/${deployPath}/${sub}`;
     campName = 'Blog';
     try {
       const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
       campName = (campPage?.properties?.Name?.title || []).map(t => t.plain_text).join('') || campName;
     } catch (e) { /* best-effort */ }
-    s = { bg: '#F7F1E6', ink: '#2B2620', accent: '#8A6D4B', headlineFont: 'Playfair Display', bodyFont: 'EB Garamond',
-      ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
+    s = { ...EDITORIAL, ...Object.fromEntries(Object.entries(spec || {}).filter(([k, v]) => k !== 'id' && k !== 'name' && v)) };
   }
+  return { gh, getFile, putFile, basePath, campName, s, hub };
+}
+
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources }) {
+  const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub: 'blog' });
+  if (t.error) return { published: false, error: t.error };
+  const { getFile, putFile, basePath, campName, s } = t;
 
   const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
   const displayTitle = String(seoTitle || workingTitle || 'Untitled Post');
@@ -942,6 +949,145 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
   await putFile(`${basePath}/${slug}/index.html`, pageShell(displayTitle, postBody, { siteHref: '../../index.html', blogHref: '../index.html' }), `Blog post: ${displayTitle}`);
   await putFile(`${basePath}/index.html`, pageShell('Blog', indexBody, { siteHref: '../index.html', blogHref: null }), `Blog index: add ${displayTitle}`);
   await putFile(`${basePath}/posts.json`, JSON.stringify(posts, null, 2), `Blog posts.json: add ${displayTitle}`);
+
+  return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${basePath}/${slug}/` };
+}
+
+// Publishes one Offer as a real hub sub-page — web/hub/{slug}/offers/{slug}/ —
+// styled from the hub's own tokens/fonts, exactly like publishSeoPostToLiveSite
+// does for blog posts. The offer page carries the full pitch PLUS a
+// Turnstile-gated lead-capture form (rides the existing public submitLead
+// path) and, when the product has a checkout URL, an outbound "Buy now" button.
+// `offer` = { kicker, name, promise, forWho, included[], whyItWorks, objection,
+// terms, ctaLabel, ctaUrl }. Best-effort; caller treats a failure as non-fatal.
+async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTitle }) {
+  const t = await hubSiteTarget({ env, hdr, dash, campaignId, sub: 'offers' });
+  if (t.error) return { published: false, error: t.error };
+  const { getFile, putFile, basePath, campName, s } = t;
+
+  const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
+  const name = String(offer.name || workingTitle || 'Offer');
+  const slug = slugify(name) || 'offer';
+  const included = (Array.isArray(offer.included) ? offer.included : []).map(x => String(x).trim()).filter(Boolean);
+  const ctaUrl = String(offer.ctaUrl || '').trim();
+  const ctaLabel = String(offer.ctaLabel || 'Get access').trim().slice(0, 40);
+
+  const { text: raw } = await getFile(`${basePath}/offers.json`);
+  let offers = []; try { offers = raw ? JSON.parse(raw) : []; } catch (e) {}
+  if (!Array.isArray(offers)) offers = [];
+  const today = new Date().toISOString().slice(0, 10);
+  offers = offers.filter(o => o && o.slug !== slug);
+  offers.unshift({ slug, name, kicker: String(offer.kicker || ''), promise: String(offer.promise || '').slice(0, 300), ctaUrl, date: today });
+
+  const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
+  const fontsImport = s.fontQuery
+    ? `@import url('https://fonts.googleapis.com/css2?family=${s.fontQuery}&display=swap');`
+    : `@import url('https://fonts.googleapis.com/css2?family=${fontParam(s.headlineFont)}:wght@600;700&family=${fontParam(s.bodyFont)}:wght@400;500&display=swap');`;
+  const headlineStack = s.headlineStack || `'${esc(s.headlineFont)}', Georgia, serif`;
+  const bodyStack     = s.bodyStack     || `'${esc(s.bodyFont)}', Georgia, serif`;
+  const WORKER = 'https://jolly-darkness-5dcc.trailnotes2026.workers.dev';
+  const TS_KEY = '0x4AAAAAADUjP18lSj4N0zt1';
+  const leadTag = `${campName} — offer: ${name}`.slice(0, 180);
+  const paras = txt => String(txt || '').split(/\n{2,}/).map(p => p.trim()).filter(Boolean).map(p => `<p>${esc(p)}</p>`).join('\n');
+
+  const shell = (ttl, inner, { siteHref, listHref }, withForm) => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${esc(ttl)} — ${esc(campName)}</title>
+${withForm ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
+<style>
+${fontsImport}
+:root { --bg:${s.bg}; --ink:${s.ink}; --accent:${s.accent}; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:${bodyStack}; line-height:1.7; }
+.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:.85rem; color:var(--accent); }
+.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
+h1,h2 { font-family:${headlineStack}; color:var(--ink); line-height:1.2; }
+h1 { font-size:2.2rem; margin:.3rem 0 14px; }
+h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.lede { font-size:1.2rem; }
+ul.inc { list-style:none; padding:0; margin:0 0 18px; }
+ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+ul.inc li::before { content:"\\2192"; position:absolute; left:0; color:var(--accent); }
+.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
+.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
+.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
+.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
+.cf-turnstile { margin:12px 0; }
+.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
+.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
+footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+.offerlist { list-style:none; margin:0; padding:0; }
+.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:${headlineStack}; font-size:1.3rem; }
+.offerlist a:hover { color:var(--accent); }
+.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="${siteHref}">${esc(campName)}</a>
+  ${listHref ? `<a class="back" href="${listHref}">&larr; All offers</a>` : ''}
+</header>
+${inner}
+<footer class="site">${esc(campName)}</footer>
+</div>
+${withForm ? `<script>
+(function(){
+  var f=document.getElementById('of'), b=document.getElementById('ob'), m=document.getElementById('om'), tok='';
+  window.ofTs=function(t){tok=t;};
+  if(!f) return;
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var email=(f.email.value||'').trim();
+    if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){m.textContent='Check that email address.';m.className='msg err';return;}
+    if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
+    b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
+    try{
+      var r=await fetch(${JSON.stringify(WORKER)},{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:${JSON.stringify(leadTag)},email:email,fraudType:'Other',note:${JSON.stringify('Offer interest - ' + name)},tsToken:tok})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
+      f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
+    }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
+    finally{ b.disabled=false;b.textContent=${JSON.stringify(ctaLabel)}; tok=''; if(window.turnstile)window.turnstile.reset(); }
+  });
+})();
+</script>` : ''}
+</body>
+</html>`;
+
+  const offerInner = `${offer.kicker ? `<div class="kicker">${esc(offer.kicker)}</div>` : ''}
+<h1>${esc(name)}</h1>
+${offer.promise ? `<p class="lede">${esc(offer.promise)}</p>` : ''}
+${offer.forWho ? `<p><strong>Who it's for:</strong> ${esc(offer.forWho)}</p>` : ''}
+${included.length ? `<h2>What's included</h2>\n<ul class="inc">${included.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
+${offer.whyItWorks ? `<h2>Why it works</h2>\n${paras(offer.whyItWorks)}` : ''}
+${offer.objection ? `<h2>The objection it answers</h2>\n${paras(offer.objection)}` : ''}
+${offer.terms ? `<h2>Terms</h2>\n<p>${esc(offer.terms)}</p>` : ''}
+<h2>${esc(ctaLabel)}</h2>
+<form class="offer-form" id="of" novalidate>
+  <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+  <div class="cf-turnstile" data-sitekey="${TS_KEY}" data-callback="ofTs"></div>
+  <button class="btn" type="submit" id="ob">${esc(ctaLabel)}</button>
+  ${ctaUrl ? `<a class="btn out" href="${esc(ctaUrl)}" target="_blank" rel="noopener">Buy now &rarr;</a>` : ''}
+  <p class="msg" id="om" role="status"></p>
+</form>`;
+
+  const listInner = `<h1>Offers</h1>
+<ul class="offerlist">
+${offers.map(o => `<li><a href="./${esc(o.slug)}/index.html">${esc(o.name)}</a>${o.promise ? `<div class="excerpt">${esc(o.promise)}</div>` : ''}</li>`).join('\n')}
+</ul>`;
+
+  await putFile(`${basePath}/${slug}/index.html`, shell(name, offerInner, { siteHref: '../../index.html', listHref: '../index.html' }, true), `Offer: ${name}`);
+  await putFile(`${basePath}/index.html`, shell('Offers', listInner, { siteHref: '../index.html', listHref: null }, false), `Offers index: add ${name}`);
+  await putFile(`${basePath}/offers.json`, JSON.stringify(offers, null, 2), `Offers offers.json: add ${name}`);
 
   return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${basePath}/${slug}/` };
 }
@@ -4651,8 +4797,37 @@ export default {
       const raw = String(body.campaignId || "").replace(/-/g, "");
       if (raw.length !== 32) return json({ products: [] });
       const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
-      const slug = String(body.slug || "").trim();
+      let slug = String(body.slug || "").trim();
+      if (!slug) slug = (HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === raw) || {}).slug || "";
       const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+      // 1) authoritative — the hub's own offers/offers.json (real published
+      // offer pages with a lead form), each card linking to ./offers/{slug}/.
+      if (slug) {
+        try {
+          const GT = (env.GITHUB_TOKEN || "").trim();
+          let text = null;
+          if (GT) {
+            const gr = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/web/hub/${slug}/offers/offers.json?ref=main`,
+              { headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" } });
+            if (gr.ok) text = await gr.text();
+          }
+          if (!text) {
+            const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/offers/offers.json`);
+            if (pr.ok) text = await pr.text();
+          }
+          const list = text ? JSON.parse(text) : null;
+          if (Array.isArray(list) && list.length) {
+            return json({ hasIndex: true, products: list.slice(0, 24).map(o => ({
+              kicker:  String(o.kicker || ""),
+              title:   String(o.name || "Untitled"),
+              excerpt: String(o.promise || ""),
+              url:     `./offers/${o.slug}/`,
+            })) });
+          }
+        } catch (e) { /* fall through to the Notion scan */ }
+      }
+
       try {
         const rows = await notionQuery(ASSETS_DB, {
           filter: { and: [
@@ -4685,14 +4860,17 @@ export default {
             const codeBlock = (kids.results || []).find(b => b.type === "code");
             if (codeBlock) card = JSON.parse((codeBlock.code?.rich_text || []).map(t => t.plain_text).join(""));
           } catch (e) { /* fall back to properties below */ }
+          const siteUrl = (p["Site URL"]?.url || "").trim();
           cards.push({
             kicker:  String(card?.kicker || "").trim(),
             title:   String(card?.name || platformTitle || assetTitle || "Untitled").trim(),
             excerpt: String(card?.promise || bodyProp || "").trim(),
-            url:     String(card?.ctaUrl || contentUrl || "").trim(),
+            // prefer the hosted offer page (with its lead form) over a bare
+            // external checkout link
+            url:     String(siteUrl || card?.ctaUrl || contentUrl || "").trim(),
           });
         }
-        return json({ products: cards });
+        return json({ products: cards, hasIndex: false });
       } catch (e) {
         return json({ products: [], error: e.message });
       }
@@ -4788,14 +4966,16 @@ export default {
     }
 
     try {
-      // ── backfillHubBlog ── Content Hubs tab "⟳ Rebuild blog" button.
-      // (Re)publishes every published SEO Post / Blog - SEO - News asset on a
-      // hub campaign as a real page under web/hub/{slug}/blog/, reading each
-      // article straight out of its own Notion page blocks (no regeneration) —
-      // the one-time fix for posts published before publishSeoPostToLiveSite
-      // learned to target the hub, and safe to re-run any time. Pass
-      // { campaignId } for one hub, omit to sweep every HUB_SITES campaign.
-      // `force` re-publishes even assets that already carry a Content URL.
+      // ── backfillHubBlog ── Content Hubs tab "⟳ Rebuild blog + offers" button.
+      // (Re)publishes a hub campaign's published content as real hub sub-pages:
+      // every SEO Post / Blog - SEO - News article → web/hub/{slug}/blog/{post}/
+      // (rebuilding from the source title's Pillar Content when the asset page
+      // is blank), and every Offer → web/hub/{slug}/offers/{offer}/ (a
+      // hub-styled page with a Turnstile lead form). Reads each from its own
+      // Notion blocks; the one-time fix for content published before the hub
+      // targets existed, and safe to re-run. Pass { campaignId } for one hub,
+      // omit to sweep every HUB_SITES campaign. `force` re-publishes even
+      // assets that already carry a Content URL / Site URL.
       if (body.action === "backfillHubBlog") {
         const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -4925,6 +5105,51 @@ Return ONLY this JSON, no other text, no fences:
               }).catch(() => {});
             }
             results.push({ hub: h.slug, asset: aid, title: seoTitle, published: !!site.published, liveUrl: site.liveUrl || null, error: site.error || null });
+          }
+
+          // ── Offers ── same idea: publish each published Offer asset as a
+          // real hub offer page (pitch + lead form). Rebuilds the offer from
+          // the asset's OFFER CARD json block + pitch sections; degrades to
+          // the Body/Platform Title/Content URL properties if the page is
+          // blank.
+          const offerAssets = rows.filter(r => /\boffer\b/i.test(r.properties?.["Asset Type"]?.select?.name || ""));
+          for (const a of offerAssets) {
+            const aid = a.id.replace(/-/g, "");
+            const p = a.properties || {};
+            if ((p["Site URL"]?.url || "").trim() && !force) { results.push({ hub: h.slug, asset: aid, skipped: "offer already published" }); continue; }
+            const oname = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim()
+              || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Offer";
+            const oPromise = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+            const oCta = (p["Content URL"]?.url || "").trim();
+            const okids = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+            const ob = okids.results || [];
+            const otxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
+            let card = {};
+            const cb = ob.find(b => b.type === "code");
+            if (cb) { try { card = JSON.parse(otxt(cb)); } catch (e) {} }
+            const offerObj = { kicker: card.kicker || "", name: card.name || oname, promise: card.promise || oPromise, ctaLabel: card.ctaLabel || "", ctaUrl: card.ctaUrl || oCta, included: [], forWho: "", whyItWorks: "", objection: "", terms: "" };
+            let head = "";
+            for (const b of ob) {
+              if (b.type === "heading_2") { head = otxt(b).toLowerCase(); continue; }
+              if (b.type === "bulleted_list_item" && head.includes("included")) { const t = otxt(b); if (t) offerObj.included.push(t); continue; }
+              if (b.type === "paragraph") {
+                const t = otxt(b); if (!t) continue;
+                if (head.includes("why it works")) offerObj.whyItWorks = offerObj.whyItWorks ? offerObj.whyItWorks + "\n\n" + t : t;
+                else if (head.includes("objection")) offerObj.objection = offerObj.objection ? offerObj.objection + "\n\n" + t : t;
+                else if (head.includes("terms")) offerObj.terms = offerObj.terms || t;
+                else if (!head && /^for\s+/i.test(t)) offerObj.forWho = t.replace(/^for\s+/i, "").replace(/\.$/, "");
+              }
+            }
+            const osite = await publishOfferToHub({
+              env, hdr, dash: dashId, campaignId: h.campaignId, workingTitle: oname, offer: offerObj,
+            }).catch(e => ({ published: false, error: e.message }));
+            if (osite.published && osite.liveUrl) {
+              await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Site URL": { url: osite.liveUrl }, "Content Hub": { select: { name: h.slug } } } }),
+              }).catch(() => {});
+            }
+            results.push({ hub: h.slug, asset: aid, title: offerObj.name, kind: "offer", published: !!osite.published, liveUrl: osite.liveUrl || null, error: osite.error || null });
           }
         }
         return json({ success: true, count: results.length, results });
@@ -14787,38 +15012,69 @@ Return ONLY this JSON object:
           if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create Offer asset" }, 502);
           const assetId = assetResult.id.replace(/-/g, "");
 
-          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text).slice(0, 1990), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
           const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
           const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => { const x = p.trim(); if (!x) return []; const out = []; for (let i = 0; i < x.length; i += 1900) out.push(para(x.slice(i, i + 1900))); return out; });
           const bullet = text => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtBlock(text) } });
           const card = JSON.stringify({ kicker: offer.kicker || "", name: offer.offerName || title, promise: offer.promise || "", ctaLabel: offer.ctaLabel || "", ctaUrl }, null, 0);
           const children = [
             { object: "block", type: "code", code: { language: "json", rich_text: rtBlock(card) } },
             offer.forWho ? para(`For ${offer.forWho}.`) : null,
-            offer.promise ? para(offer.promise) : null,
+            ...paras(offer.promise),
             included.length ? heading2("What's included") : null,
             ...included.map(bullet),
             offer.whyItWorks ? heading2("Why it works") : null,
-            offer.whyItWorks ? para(offer.whyItWorks) : null,
+            ...paras(offer.whyItWorks),
             offer.objection ? heading2("The objection it answers") : null,
-            offer.objection ? para(offer.objection) : null,
+            ...paras(offer.objection),
             offer.terms ? heading2("Terms") : null,
-            offer.terms ? para(offer.terms) : null,
+            ...paras(offer.terms),
             heading2("Call to action"),
             para(`${offer.ctaLabel || "Get started"}${ctaUrl ? ` — ${ctaUrl}` : " — (no checkout URL on the product yet)"}`),
           ].filter(Boolean);
-          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
-            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ children }),
-          });
-          if (!blocksResp.ok) { const r = await blocksResp.json(); return json({ error: r.message || "Offer asset created but failed to write its body" }, 502); }
+          for (let i = 0; i < children.length; i += 100) {
+            const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dsDash(assetId)}/children`, {
+              method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: children.slice(i, i + 100) }),
+            });
+            if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Offer asset created but failed to write its body" }, 502); }
+          }
 
           await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
             method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
           }).catch(() => {});
 
-          return json({ success: true, created: 1, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl } });
+          // Publish the offer as a real hub sub-page (pitch + Turnstile lead
+          // form) — same pattern as SEO Post → the hub blog. Best-effort:
+          // Site URL gets the hub offer page; Content URL keeps the external
+          // checkout link (used as the "Buy now" button on that page).
+          let offerSite = { published: false };
+          try {
+            offerSite = await publishOfferToHub({
+              env, hdr: dsHdr, dash: dsDash, campaignId,
+              workingTitle: title,
+              offer: {
+                kicker: offer.kicker, name: offer.offerName || title, promise: offer.promise,
+                forWho: offer.forWho, included, whyItWorks: offer.whyItWorks,
+                objection: offer.objection, terms: offer.terms,
+                ctaLabel: offer.ctaLabel, ctaUrl,
+              },
+            });
+            if (offerSite.published && offerSite.liveUrl) {
+              const hubSlug = (HUB_SITES.find(x => x.campaignId.replace(/-/g, "") === String(campaignId).replace(/-/g, "")) || {}).slug;
+              await fetch(`https://api.notion.com/v1/pages/${dsDash(assetId)}`, {
+                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: {
+                  "Site URL": { url: offerSite.liveUrl },
+                  ...(hubSlug ? { "Content Hub": { select: { name: hubSlug } } } : {}),
+                } }),
+              }).catch(() => {});
+            }
+          } catch (e) { offerSite = { published: false, error: e.message }; }
+
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl }, sitePublished: !!offerSite.published, liveUrl: offerSite.liveUrl || null, siteError: offerSite.error || null });
         }
 
         // ── LinkedIn Post asset type: reshapes the title's own pillar
