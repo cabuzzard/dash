@@ -380,8 +380,21 @@ hub template are hand-synced across the 8 hub files (`build-hubs.mjs` only owns
   directly, not a hand-made `public_html/hub-*` dir (the SSH user can't create
   dirs under `public_html` anyway; home-dir folders it can). rsync, no `--delete`.
 
-Only `creative-flow-guitar` is in the tsv today. Add a hub's line when its domain
-comes online.
+**2026-09-02 — hub domains now routed via PARKED domains + `.htaccess`, not
+addon domains.** The hosting plan hit its 50-website cap, so `addaddondomain`
+(and the Bluehost "Add Website" flow) fail with "An unknown error occurred".
+Workaround: `cpapi2 Park park domain=<domain>` (aliases don't count against the
+cap), all sharing `evraymond.com`'s docroot, then a `HTTP_HOST` RewriteRule per
+hub at the top of `~/public_html/.htaccess` routes each domain to
+`public_html/hub-<slug>/`. `.github/bluehost-sites.tsv` deploys `web/hub/<slug>/`
+→ `public_html/hub-<slug>/`. Full runbook + slug↔domain↔folder table:
+`web/hub/BLUEHOST-ROUTING.md`. Bluehost DNS / hosting / email all unchanged.
+`outsidesessions.com` + `accessiblefarms.com` parked 2026-09-02; the other three
+(`stablehomefoundation.com`, `homestructionconsulting.com`,
+`generalservices2020.com`) + `aisystemimplementation.com` (currently an addon,
+empty docroot) still to finish. Also 2026-09-02: ~29 dead cPanel
+domains/subdomains removed for hygiene (didn't free the portal "website" counter
+— that's a separate Bluehost-portal registry).
 
 The hub pages are self-contained (relative/anchor links, Google Fonts, one
 absolute `WORKER_URL` fetch) so they serve correctly from a domain root — no

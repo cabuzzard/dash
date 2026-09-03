@@ -15,12 +15,19 @@
 # Per hub, also: worker.js HUB_ORIGINS (apex + www) + index.html HUB_SITES[].domain.
 # See CLAUDE.md "Content Hubs".
 #
-# Status 2026-09-01: creativeflowguitar.com is connected and serving. The other
-# six hub domains are stuck behind Bluehost's auto-"WordPress service" park
-# (root A record → 204.11.56.246, not the hosting IP 162.241.218.154) — they
-# stay GitHub-Pages-only until that placeholder service is disconnected
-# (Bluehost account → Domains → <domain> → Overview → Connected Services → Manage)
-# or Bluehost support repoints the domain at the cPanel account. Add each one's
-# line below when it's live.
+# Status 2026-09-02: the hub domains that couldn't be added as Bluehost
+# "websites" (50/50 cap) are instead PARKED (aliased on evraymond.com) via
+# `cpapi2 Park park domain=<domain>` — aliases don't count against the cap.
+# Each parked hub domain then routes to its own folder below via a HTTP_HOST
+# RewriteRule block in ~/public_html/.htaccess (see web/hub/BLUEHOST-ROUTING.md).
+# So remote_path here is the hub's own public_html/hub-<slug> folder, NOT a
+# per-domain docroot. Per hub, also: worker.js HUB_ORIGINS (apex + www) +
+# index.html HUB_SITES[].domain. See CLAUDE.md "Content Hubs".
 web/sm-business-software-tools	public_html/webguyleadgeneration
 web/hub/creative-flow-guitar	creativeflowguitar.com
+web/hub/surf-vacations	public_html/hub-surf-vacations
+web/hub/sunflower-acres	public_html/hub-sunflower-acres
+web/hub/care-gap	public_html/hub-care-gap
+web/hub/owners-rep	public_html/hub-owners-rep
+web/hub/home-services	public_html/hub-home-services
+web/hub/ai-implementation	public_html/hub-ai-implementation
