@@ -5272,6 +5272,108 @@ Return ONLY this JSON, no other text, no fences:
         return json({ success: true, count: results.length, results });
       }
 
+      // ── getHubLogoPrompt ── Content Hubs tab "📋 Logo prompt" button.
+      // Assembles a ready-to-paste image prompt for a rectangular header logo,
+      // prefilled with this hub's campaign Research + its own hubs.design.json
+      // tokens / fonts / brief. The client copies the returned string.
+      if (body.action === "getHubLogoPrompt") {
+        const slug = String(body.slug || "").trim();
+        const hub = HUB_SITES.find(h => h.slug === slug)
+          || (body.campaignId ? HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === String(body.campaignId).replace(/-/g, "")) : null);
+        if (!hub) return json({ error: "unknown hub" }, 400);
+        const dashId = raw => { const s = String(raw).replace(/-/g, ""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtq = (rows, key) => { for (const r of (rows || [])) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("").trim(); if (v) return v; } return ""; };
+
+        let campName = hub.name;
+        try {
+          const cp = await fetch(`https://api.notion.com/v1/pages/${dashId(hub.campaignId)}`, { headers: hdr }).then(r => r.json());
+          campName = (cp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || campName;
+        } catch (e) {}
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashId(hub.campaignId) } } }).catch(() => []);
+        const research = [
+          rtq(rows, "Statement")          && `What the site is about: ${rtq(rows, "Statement")}`,
+          rtq(rows, "Key Message")        && `Key message: ${rtq(rows, "Key Message")}`,
+          rtq(rows, "Unique Opportunity") && `Unique opportunity: ${rtq(rows, "Unique Opportunity")}`,
+          rtq(rows, "Pain Points")        && `Audience pain points: ${rtq(rows, "Pain Points")}`,
+          rtq(rows, "Statement Detail")   && `Detail: ${rtq(rows, "Statement Detail")}`,
+          rtq(rows, "Keywords")           && `Keywords: ${rtq(rows, "Keywords")}`,
+        ].filter(Boolean).join("\n");
+
+        let ds = {};
+        try {
+          const GT = (env.GITHUB_TOKEN || "").trim();
+          let text = null;
+          if (GT) { const gr = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/web/hub/hubs.design.json?ref=main`, { headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" } }); if (gr.ok) text = await gr.text(); }
+          if (!text) { const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/hubs.design.json`); if (pr.ok) text = await pr.text(); }
+          ds = (text ? JSON.parse(text) : {}).hubs?.[slug] || {};
+        } catch (e) {}
+        const tk = ds.tokens || {}, fonts = ds.fonts || {}, brief = ds.design || {}, notes = ds.tokenNotes || {};
+        const brand = ds.logoText || campName;
+        const line = k => tk[k] ? `${k}: ${tk[k]}${notes[k] ? `  — ${notes[k]}` : ""}` : "";
+        const palette = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"].map(line).filter(Boolean).join("\n  ");
+        const briefLines = Object.entries(brief).filter(([k, v]) => v && typeof v === "string").map(([k, v]) => `${k}: ${v}`).join("\n");
+
+        const prompt = `Design a horizontal, RECTANGULAR LOGO LOCKUP for the brand "${brand}". It goes in the upper-left corner of the site header, so it has to read at roughly 200×48 px and hold up on a transparent background.
+
+DELIVERABLE
+- One transparent-background PNG, landscape, about 1200×300 px (≈4:1), the mark hugging the left edge with a little padding.
+- A wordmark ("${brand}") set in — or clearly drawn from — the typeface "${fonts.display || "the site's display font"}". Do NOT substitute a generic font; this face is already used across the site${fonts.body ? ` (body copy is "${fonts.body}")` : ""}.
+- An optional small symbol / monogram to the LEFT of the wordmark is welcome, but the wordmark must stand on its own.
+- Flat. No drop shadows, gradients, bevels, or 3-D. It should look native to a clean editorial website — not a mascot, not an app icon.
+
+BRAND (from our campaign research)
+${research || "(sparse — infer a fitting tone from the visual system below)"}
+
+VISUAL SYSTEM — the site already uses these EXACT values, match them
+  ${palette || "(no palette on file — use a restrained, high-contrast neutral scheme)"}
+  fonts — display: "${fonts.display || "—"}", body: "${fonts.body || "—"}"${briefLines ? `\n\nDESIGN BRIEF\n${briefLines}` : ""}
+
+COLOR USE
+- Use the primary ("sea") for any colored element in the mark.
+- Wordmark in "ink" / "ink-head" on light.
+- Must stay legible on BOTH the site background ("bg") and plain white.
+
+Return: the logo on a transparent background, plus one preview placed on the site's "bg" color.`;
+
+        return json({ prompt, brand, font: fonts.display || "" });
+      }
+
+      // ── uploadHubLogo ── Content Hubs tab logo upload. Commits the image to
+      // web/hub/{slug}/logo.<ext> and points that hub's HUB.logoImg at it, so
+      // renderChrome() renders it in the header on the next Pages deploy.
+      if (body.action === "uploadHubLogo") {
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const slug = String(body.slug || "").trim();
+        if (!HUB_SITES.find(h => h.slug === slug)) return json({ error: "unknown hub" }, 400);
+        const dataB64 = String(body.fileData || "").replace(/^data:[^,]+,/, "").replace(/\s/g, "");
+        if (!dataB64) return json({ error: "fileData (base64) required" }, 400);
+        const src = `${body.contentType || ""} ${body.fileName || ""}`;
+        const ext = /svg/i.test(src) ? "svg" : /webp/i.test(src) ? "webp" : /jpe?g/i.test(src) ? "jpg" : "png";
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const getF = async p => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}?ref=${BRANCH}`, { headers: gh }); if (!r.ok) return {}; const j = await r.json().catch(() => ({})); return { sha: j.sha, content: j.content }; };
+        const putF = async (p, contentB64, message, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message, content: contentB64, branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${p}`); } };
+        const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+        const toB64Text = str => { const bytes = new TextEncoder().encode(str); let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+        try {
+          const imgPath = `web/hub/${slug}/logo.${ext}`;
+          const cur = await getF(imgPath);
+          await putF(imgPath, dataB64, `hub ${slug}: header logo`, cur.sha);
+          const htmlPath = `web/hub/${slug}/index.html`;
+          const hf = await getF(htmlPath);
+          if (!hf.content) return json({ error: `could not read ${htmlPath}` }, 502);
+          let html = fromB64(hf.content);
+          const rel = `./logo.${ext}`;
+          if (/logoImg:\s*[^\n,]+,/.test(html)) html = html.replace(/logoImg:\s*[^\n,]+,/, `logoImg: "${rel}",`);
+          else if (/logoImg:\s*[^\n]+/.test(html)) html = html.replace(/logoImg:\s*[^\n]+/, `logoImg: "${rel}"`);
+          else return json({ error: "couldn't find logoImg in the hub config" }, 502);
+          await putF(htmlPath, toB64Text(html), `hub ${slug}: use uploaded header logo`, hf.sha);
+          return json({ ok: true, url: `https://cabuzzard.github.io/dash/web/hub/${slug}/logo.${ext}`, note: "committed — live in ~1 min" });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
       // ── Hub palette (Content Hubs tab: Regenerate / Save to palettes / Push to hub) ──
       // The palette IS the hub's whole look: 10 CSS tokens (bg / surface / ink /
       // ink-head / ink-soft / line / sea / deep / deep-ink / accent) that drive

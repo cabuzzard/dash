@@ -10029,6 +10029,34 @@ async function hubRebuildBlog(slug, ev) {
   btn.disabled = false; btn.textContent = '⟳ Rebuild blog + offers';
 }
 
+// Logo: copy a ready-to-paste image prompt (campaign research + this hub's
+// design tokens/fonts/brief), then upload the resulting file back — it's
+// committed to web/hub/{slug}/logo.<ext> and wired to HUB.logoImg so the
+// published hub header shows it.
+async function hubLogoPrompt(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const msg = document.getElementById('hpMsg');
+  msg.style.color = 'var(--text3)'; msg.textContent = 'Assembling the logo prompt…';
+  try {
+    const r = await call('getHubLogoPrompt', { slug, campaignId: h.campaignId });
+    await navigator.clipboard.writeText(r.prompt);
+    msg.style.color = '#4cff4c';
+    msg.textContent = `Logo prompt copied — paste into ChatGPT/DALL·E (font: ${r.font || 'site display'}). Then use ⬆ Logo to upload the file.`;
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+}
+async function hubLogoUpload(slug, input) {
+  const f = input.files && input.files[0]; input.value = '';
+  if (!f) return;
+  const msg = document.getElementById('hpMsg');
+  if (f.size > 3000000) { msg.style.color = '#ff6b6b'; msg.textContent = 'Keep the logo under 3 MB.'; return; }
+  msg.style.color = 'var(--text3)'; msg.textContent = 'Uploading logo + wiring it to the hub…';
+  try {
+    const dataUrl = await new Promise((res, rej) => { const rd = new FileReader(); rd.onload = () => res(rd.result); rd.onerror = () => rej(new Error('could not read that file')); rd.readAsDataURL(f); });
+    const r = await call('uploadHubLogo', { slug, fileName: f.name, contentType: f.type, fileData: String(dataUrl).split(',')[1] });
+    msg.style.color = '#4cff4c'; msg.textContent = 'Logo committed — live on the hub header in ~1 min.';
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+}
+
 function hubRoutingInfo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug);
   alert((h.name) + ' — routing\n\n' + (h.routingNote || 'No domain set / not routed yet.'));
@@ -10195,6 +10223,8 @@ function renderHubsTab() {
         <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
         ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
         <button onclick="openHubBriefModal('${slug}')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
+        <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with this campaign's research + this hub's tokens/fonts" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
+        <label style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
       </div>
       ${briefRow('subject', 'Subject')}
       ${briefRow('audience', 'Audience')}
