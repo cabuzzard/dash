@@ -67,23 +67,23 @@
         "ogDescription": "Where small-business AI projects stall — failed pilots, hallucinations, no adoption, broken integrations — and how to get them shipped."
       },
       "fonts": {
-        "display": "Space Grotesk",
-        "body": "Inter",
+        "display": "Bricolage Grotesque",
+        "body": "Hanken Grotesk",
         "mono": "JetBrains Mono"
       },
       "logoText": "AI Implementation",
       "tokens": {
-        "bg": "#f7f9f8",
-        "surface": "#ffffff",
-        "ink": "#182a24",
-        "ink-head": "#182a24",
-        "ink-soft": "#566a62",
-        "line": "#e2e9e5",
-        "sea": "#0f7d64",
-        "deep": "#0d2a22",
-        "deep-ink": "#d6e7df",
-        "accent": "#cc4e1e",
-        "paper": "#ffffff"
+        "bg": "#ffffff",
+        "surface": "#f2f7f2",
+        "ink": "#1a2a1a",
+        "ink-head": "#0f1f2e",
+        "ink-soft": "#5f715f",
+        "line": "#d4e4d4",
+        "sea": "#2b832b",
+        "deep": "#0f2910",
+        "deep-ink": "#f0faf0",
+        "accent": "#1b881b",
+        "paper": "#f2f7f2"
       },
       "tokenNotes": {
         "bg": "clean daylight — not a dev console",
