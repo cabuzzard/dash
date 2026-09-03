@@ -262,17 +262,6 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     </div>
   </section>
 
-  <section class="sec" id="news">
-    <div class="wrap">
-      <div class="sec-head">
-        <span class="eyebrow" id="newsLabel"></span>
-        <h2 id="newsTitle"></h2>
-        <p class="sec-note" id="newsNote"></p>
-      </div>
-      <div id="newsBody"></div>
-    </div>
-  </section>
-
   <section class="sec elsewhere" id="elsewhere">
     <div class="wrap">
       <span class="eyebrow" id="elsewhereLabel"></span>
@@ -443,36 +432,39 @@ function renderCards(sec, bodyId, labelId, titleId, noteId) {
   }).join("") + `</div>`;
 }
 
-async function renderNews() {
-  const s = HUB.news;
-  $("newsLabel").textContent = s.label;
-  $("newsTitle").textContent = s.title;
-  $("newsNote").textContent = s.note || "";
-  const body = $("newsBody");
+async function renderHubJournal() {
+  // Blog section: static HUB.journal.items as the instant fallback, then live —
+  // published "Blog - SEO - News" assets for this campaign (getHubBlog), each a
+  // { kicker, title, excerpt, url } card. Replaces the old unfiltered News Feed
+  // section (removed). Mirrors renderHubProducts / getHubProducts exactly.
+  const s = HUB.journal;
+  $("journalLabel").textContent = s.label;
+  $("journalTitle").textContent = s.title;
+  $("journalNote").textContent = s.note || "";
+  const body = $("journalBody");
   const paint = (items) => {
     if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
-    body.innerHTML = `<ul class="dispatch">` + items.map((it) => {
-      const tag = it.url ? "a" : "span";
-      const href = it.url ? ` href="${esc(it.url)}"` : "";
-      return `<li><${tag}${href}>
-        <span class="d-date">${esc(it.date || "")}</span>
-        <span class="d-title">${esc(it.title)}</span>
-        <span class="d-src">${esc(it.source || "")}</span>
-      </${tag}></li>`;
-    }).join("") + `</ul>`;
+    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => {
+      const tag = it.url && it.url !== "#" ? "a" : "div";
+      const href = tag === "a" ? ` href="${esc(it.url)}"` : "";
+      return `<${tag} class="card"${href}>
+        ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
+        <h3>${esc(it.title)}</h3>
+        ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
+        ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
+      </${tag}>`;
+    }).join("") + `</div>`;
   };
   paint(s.items);                                     // static fallback, instant
   if (!HUB.campaignId) return;
   try {
-    // Live news: the campaign Research record "News Feed" field, parsed by the
-    // worker (getHubNews). Refreshes whenever research is re-run in Notion.
     const res = await fetch(WORKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "getHubNews", campaignId: HUB.campaignId }),
+      body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug }),
     });
     const data = await res.json();
-    if (res.ok && Array.isArray(data.news) && data.news.length) paint(data.news);
+    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts);
   } catch (e) { /* keep the static fallback */ }
 }
 
@@ -582,7 +574,7 @@ async function renderHubProducts() {
   // Products section: same card grid as renderCards, but live — published
   // "Offer – Content Hub" assets for this hub (getHubProducts) replace the
   // static HUB.trips.items, which stay as the instant fallback. Mirrors
-  // renderNews / getHubNews exactly.
+  // renderHubJournal / getHubBlog exactly.
   const s = HUB.trips;
   $("tripsLabel").textContent = s.label;
   $("tripsTitle").textContent = s.title;
@@ -616,8 +608,7 @@ async function renderHubProducts() {
 
 renderChrome();
 renderHero();
-renderCards(HUB.journal, "journalBody", "journalLabel", "journalTitle", "journalNote");
-renderNews();
+renderHubJournal();
 renderReport();
 renderHubProducts();
 renderSocial();

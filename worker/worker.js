@@ -802,7 +802,7 @@ async function resolveDeployPath(campaignId, hdr, dash) {
 // skin. Best-effort by contract: callers should catch this and treat a
 // failure as non-fatal — the Notion asset itself is always the source of
 // truth, this is just publishing a copy of it.
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion }) {
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources }) {
   const GT = (env.GITHUB_TOKEN || '').trim();
   if (!GT) return { published: false, error: "GITHUB_TOKEN not set — asset saved, but not pushed to the live site" };
 
@@ -898,7 +898,8 @@ ${bodyHtml}
 <div class="meta">${esc(today)}</div>
 ${intro ? `<p>${esc(intro)}</p>` : ''}
 ${(sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}`).join('\n')}
-${conclusion ? `<p>${esc(conclusion)}</p>` : ''}`;
+${conclusion ? `<p>${esc(conclusion)}</p>` : ''}
+${(Array.isArray(sources) && sources.filter(s => s && s.url).length) ? `<h2>Sources</h2>\n<ul>\n${sources.filter(s => s && s.url).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label || s.url)}</a></li>`).join('\n')}\n</ul>` : ''}`;
 
   const indexBody = `<h1>Blog</h1>
 <ul class="postlist">
@@ -4664,6 +4665,56 @@ export default {
       }
     }
 
+    // ── getHubBlog ── public, no token. A content hub calls this on load with
+    // { campaignId, slug }. Returns the campaign's published blog-post assets —
+    // any "SEO Post" or blog+SEO/news asset type, so a news→blog pillar routed
+    // through "Blog - SEO - News" OR plain "SEO Post" both land here — as
+    // { kicker, title, excerpt, url } cards for the hub's blog/journal section
+    // (replacing the old unfiltered News Feed section, which was removed).
+    // Best-effort and silent-safe — an empty result leaves the hub's static
+    // HUB.journal.items fallback in place, exactly like getHubProducts.
+    if (body.action === "getHubBlog") {
+      const raw = String(body.campaignId || "").replace(/-/g, "");
+      if (raw.length !== 32) return json({ posts: [] });
+      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+      const slug = String(body.slug || "").trim();
+      const lim = Math.max(1, Math.min(24, Number(body.limit) || 9));
+      try {
+        const rows = await notionQuery(ASSETS_DB, {
+          filter: { and: [
+            { property: "Campaign", relation: { contains: dash(raw) } },
+            { or: [
+              { property: "Asset Status", select: { equals: "Publish" } },
+              { property: "Asset Status", select: { equals: "Published" } },
+            ] },
+          ] },
+        });
+        const wanted = rows.filter(r => {
+          const at = r.properties?.["Asset Type"]?.select?.name || "";
+          if (!(/seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)))) return false;
+          const h = r.properties?.["Content Hub"]?.select?.name || "";
+          return !slug || !h || h === slug;
+        }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0)).slice(0, lim);
+        const posts = wanted.map(r => {
+          const p = r.properties || {};
+          const at            = p["Asset Type"]?.select?.name || "";
+          const assetTitle    = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+          const platformTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const bodyProp      = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const contentUrl    = (p["Content URL"]?.url || "").trim();
+          return {
+            kicker:  /news/i.test(at) ? "News analysis" : "Article",
+            title:   platformTitle || assetTitle || "Untitled",
+            excerpt: bodyProp.slice(0, 220),
+            url:     contentUrl,
+          };
+        });
+        return json({ posts });
+      } catch (e) {
+        return json({ posts: [], error: e.message });
+      }
+    }
+
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
@@ -5367,6 +5418,196 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
         // Write Pillar button, both -> writeTitlePillar. (skipPillar is kept
         // as an accepted no-op param so older callers don't break.)
         return json({ success: true, id: newTitleId });
+      }
+
+      // ── createNewsBlogTitle ──
+      // Step 1 of the "Blog - SEO - News" flow. Turns one campaign News Feed
+      // item into a Content Strategy title (headline written fresh FROM the
+      // news, never a rewrite of it) at Development stage, with the
+      // "Blog - SEO - News" method set on the title as the default and a full
+      // original-article Pillar Content draft written. Step 2 is the normal
+      // Generate Assets modal — no dedicated routing: "Blog - SEO - News" (like
+      // any blog+SEO/news method name) satisfies the broadened isSeoPost test
+      // in generateTitleAssets, so the news-shaped pillar just rides the
+      // existing SEO Post path (one finished article, publish immediately, push
+      // live to the campaign /blog/ site). The operator can pick any other
+      // method there too. The source news item is treated STRICTLY as a
+      // research lead.
+      if (body.action === "createNewsBlogTitle") {
+        const { campaignId } = body;
+        const productId = (body.productId && body.productId !== "__none__" && body.productId !== campaignId) ? String(body.productId).replace(/-/g, "") : undefined;
+        const newsTitle  = String(body.newsTitle || "").trim();
+        const newsBody   = String(body.newsBody || body.newsTitle || "").trim();
+        const newsSource = String(body.newsSource || "").trim();
+        const newsDate   = String(body.newsDate || "").trim();
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!newsBody) return json({ error: "newsTitle or newsBody required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        // Resolve the "Blog - SEO - News" method (self-healing create if an
+        // operator ever deletes it — property shape matches the Methods DB).
+        const NEWS_METHOD_NAME = "Blog - SEO - News";
+        let newsMethodId = null;
+        try {
+          const mq = await fetch(`https://api.notion.com/v1/databases/${METHODS_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Name", title: { equals: NEWS_METHOD_NAME } }, page_size: 1 }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          newsMethodId = (mq.results || [])[0]?.id?.replace(/-/g, "") || null;
+        } catch (e) { /* create below */ }
+        if (!newsMethodId) {
+          const mh = t => ({ object:"block", type:"heading_2", heading_2:{ rich_text:[{ type:"text", text:{ content:t } }] } });
+          const mp = t => ({ object:"block", type:"paragraph", paragraph:{ rich_text:[{ type:"text", text:{ content:t } }] } });
+          const mb = t => ({ object:"block", type:"bulleted_list_item", bulleted_list_item:{ rich_text:[{ type:"text", text:{ content:t } }] } });
+          const mkResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              parent: { database_id: METHODS_DB },
+              properties: {
+                "Name": { title: [{ text: { content: NEWS_METHOD_NAME } }] },
+                "Status": { select: { name: "Live" } },
+                "Category": { multi_select: [{ name: "Content" }, { name: "SEO" }] },
+                "Type": { select: { name: "SEO" } },
+              },
+              children: [
+                mh("Guardrails"),
+                mp("Do not rewrite, paraphrase, spin, or reproduce the source article. Treat every source only as a research lead. Never fabricate facts, quotes, statistics, or sources. The finished article must stand on its own and must NOT follow the source article's structure, paragraph order, wording, headline, or framing."),
+                mh("Phase 1 — Extract"),
+                mp("Identify: the underlying event; the important facts; dates; the people and organizations involved; statistics; claims that would require verification; and the questions the coverage leaves unanswered. Separate confirmed facts from interpretation."),
+                mh("Phase 2 — Find the Original Angle"),
+                mb("Why does this development matter to our audience specifically?"),
+                mb("What practical question does it create for them?"),
+                mb("What is missing from typical news coverage of it?"),
+                mb("What expertise, explanation, comparison, calculation, historical context, or analysis can we add?"),
+                mh("Phase 3 — Write the Original Article"),
+                mp("Order the piece our own way, not the source's: a useful descriptive headline; a concise introduction (what happened and why it matters); necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what remains unknown; a short conclusion. Cite and link to the original reporting and primary sources where appropriate."),
+                mh("Phase 4 — SEO"),
+                mp("Identify the ONE primary search intent that naturally arises from this story and optimize the article around satisfying it, not around repeating keywords."),
+              ],
+            }),
+          }).then(r => r.json()).catch(e => ({ error: e.message }));
+          newsMethodId = mkResp?.id ? mkResp.id.replace(/-/g, "") : null;
+          if (!newsMethodId) return json({ error: "Could not resolve or create the 'Blog - SEO - News' method: " + (mkResp?.message || mkResp?.error || "unknown") }, 502);
+        }
+
+        // Campaign + product context for the headline/angle call.
+        const rtq = (results, key) => { for (const r of (results || [])) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dashId(campaignId) } } }),
+        }).then(r => r.json()).catch(() => ({ results: [] }));
+        const rr = researchRows.results || [];
+        const campContext = [
+          rtq(rr, "Statement")   && `What the site is about: ${rtq(rr, "Statement")}`,
+          rtq(rr, "Key Message") && `Key message: ${rtq(rr, "Key Message")}`,
+          rtq(rr, "Pain Points") && `Audience pain points: ${rtq(rr, "Pain Points")}`,
+          rtq(rr, "Keywords")    && `Keywords: ${rtq(rr, "Keywords")}`,
+        ].filter(Boolean).join("\n");
+        let prodContext = "";
+        if (productId) {
+          const prodPage = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+          const pp = prodPage?.properties || {};
+          const ptxt = k => (pp[k]?.rich_text || []).map(t => t.plain_text).join("");
+          prodContext = [
+            ptxt("Avatar")       && `Product audience: ${ptxt("Avatar")}`,
+            ptxt("Unique Angle") && `Product angle: ${ptxt("Unique Angle")}`,
+          ].filter(Boolean).join("\n");
+        }
+
+        // ── Headline + angle + primary search intent (one Claude call) ──
+        const planPrompt = `You are an editor and research writer for a niche content site.
+
+Below is a NEWS ITEM about a development relevant to our audience. Treat it ONLY as a research lead — you are NOT rewriting, paraphrasing, spinning, or reproducing it. We are going to publish an ORIGINAL analysis article that stands on its own.
+
+OUR AUDIENCE / SITE FOCUS:
+${campContext || "(general — infer from the news item)"}
+${prodContext ? prodContext + "\n" : ""}
+NEWS ITEM:
+${newsBody.slice(0, 6000)}
+
+Decide:
+- "headline": a useful, descriptive, search-friendly blog headline for OUR original article — must NOT copy the source's headline or framing.
+- "searchIntent": the ONE primary search intent that naturally arises from this story for our audience (one sentence).
+- "angle": 2-3 sentences — why this matters to OUR audience specifically, and the practical question it creates that typical coverage doesn't answer.
+- "keywords": 3-6 comma-separated search phrases a reader with that intent would actually type.
+
+Return ONLY this JSON, no other text, no markdown fences:
+{ "headline": "...", "searchIntent": "...", "angle": "...", "keywords": "..." }`;
+
+        const planResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: planPrompt }] }),
+        });
+        const planData = await planResp.json();
+        if (!planResp.ok) return json({ error: planData.error?.message || "Claude API error" }, 502);
+        let plan;
+        try {
+          const raw = planData.content?.[0]?.text || "";
+          const a = raw.indexOf('{'), b = raw.lastIndexOf('}');
+          if (a === -1 || b === -1 || b < a) throw new Error("no JSON object");
+          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(a, b + 1)));
+        } catch (e) {
+          return json({ error: "Failed to parse headline JSON: " + e.message }, 502);
+        }
+        const headline = String(plan.headline || newsTitle || "Untitled").trim().slice(0, 200);
+        const searchIntent = String(plan.searchIntent || "").trim();
+        const angle = String(plan.angle || "").trim();
+        const keywords = String(plan.keywords || "").trim();
+
+        // ── Create the Content Strategy title (shape mirrors createDevTitle) ──
+        const rtProp = v => ({ rich_text: [{ type: "text", text: { content: String(v).slice(0, 1990) } }] });
+        const notesText = [
+          searchIntent && `Primary search intent: ${searchIntent}`,
+          (newsSource || newsDate) && `Source: ${[newsSource, newsDate].filter(Boolean).join(" · ")}`,
+          "",
+          "SOURCE NEWS ITEM (research lead only — not for reproduction):",
+          newsBody,
+        ].filter(x => x !== undefined && x !== false).join("\n");
+        const titleProps = {
+          Title:  { title: [{ type: "text", text: { content: headline } }] },
+          Status: { select: { name: "Development" } },
+          "Grouping": rtProp("News"),
+          method: { relation: [{ id: dashId(newsMethodId) }] },
+          "Notes": rtProp(notesText),
+        };
+        if (angle) titleProps["Core Idea"] = rtProp(angle);
+        if (keywords) titleProps["seed idea"] = rtProp(keywords);
+        if (campaignId) titleProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
+        if (productId) titleProps["product"] = { relation: [{ id: dashId(productId) }] };
+
+        const titleResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+        });
+        const titleResult = await titleResp.json();
+        if (!titleResp.ok || !titleResult.id) return json({ error: titleResult.message || "Failed to create title" }, titleResp.status || 502);
+        const newNewsTitleId = titleResult.id.replace(/-/g, "");
+
+        // ── Write the original-article pillar draft ──
+        const pillarStyle = "Write this as an ORIGINAL news-analysis article that stands on its own — do NOT mirror the source item's structure, order, wording, headline, or framing, and do NOT reproduce or paraphrase it. Follow this logical flow as continuous prose: what happened and why it matters to our audience; necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what still remains unknown; a short close. Never fabricate facts, quotes, statistics, or sources — if a claim from the source item can't be stated with confidence, frame it as reported/unverified.";
+        const newsPillarResult = await writePillarContent(hdr, env, {
+          titleId: newNewsTitleId, titleText: headline, campaignId,
+          productId: productId || undefined, methodId: newsMethodId,
+          guidance: [angle && `Original angle: ${angle}`, searchIntent && `Primary search intent to satisfy: ${searchIntent}`].filter(Boolean).join(" "),
+          styleGuidance: pillarStyle,
+          extraContext: `SOURCE NEWS ITEM (treat as a research lead only — do not reproduce, paraphrase, or spin it):\n${newsBody}`,
+          useGrounding: true,
+        }).catch(e => ({ error: e.message }));
+
+        return json({
+          success: true,
+          titleId: newNewsTitleId,
+          headline,
+          methodId: newsMethodId,
+          methodName: NEWS_METHOD_NAME,
+          searchIntent,
+          pillarWritten: !!(newsPillarResult && newsPillarResult.success),
+          pillarWords: newsPillarResult?.wordCount || null,
+          pillarError: newsPillarResult?.error || null,
+        });
       }
 
       // ── createDevTitles (bulk) ──
@@ -13963,7 +14204,13 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         // instruction) — checked once here so both the pillar-write
         // guarantee below and the asset-generation branch further down can
         // use it without re-testing assetType twice.
-        const isSeoPost = /seo post/i.test(assetType);
+        // Also true for the "Blog - SEO - News" method (news-feed item →
+        // original SEO blog post — see createNewsBlogTitle): its pillar is
+        // already written news/blog-shaped, so it just rides the SEO Post
+        // path (single finished article, publish immediately, push live to
+        // the campaign /blog/ site, flip the title) with no dedicated branch.
+        // Any assetType that reads as a blog+SEO/news post routes here.
+        const isSeoPost = /seo post/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
 
         // ── Guarantee: every asset reshapes REAL source material, always.
         // This replaces the old manual "📝 Write Pillar" button entirely —

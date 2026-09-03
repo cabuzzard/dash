@@ -1382,6 +1382,31 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
+<!-- NEWS → BLOG MODAL — "make into article" on a News Feed item. Creates a
+     Content Strategy title (headline written FROM the news, never a rewrite),
+     attaches the "Blog - SEO - News" method, and writes a full original-article
+     Pillar Content draft at Development. Step 2 (the SEO blog post asset) is the
+     normal 🧩 Generate Assets modal on that title. -->
+<div class="modal-overlay" id="newsBlogModal">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <div class="modal-title">Make into article</div>
+      <button class="modal-close" onclick="closeNewsBlogModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Writes an original, standalone SEO blog post <em>from</em> this news item — not a rewrite of it. Creates a title + full pillar draft at Development; run 🧩 Generate Assets on it next to publish the post.</div>
+      <label class="lm-label" style="margin-top:14px;">News item <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— the research lead</span></label>
+      <textarea class="modal-ta" id="newsBlogItem" rows="4" style="resize:vertical;min-height:90px!important;"></textarea>
+      <label class="lm-label" for="newsBlogProduct" style="margin-top:14px;">Product <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional, ties the angle to a product</span></label>
+      <select class="modal-ta" id="newsBlogProduct" style="min-height:0!important;height:34px;"><option value="">— campaign-level —</option></select>
+      <div id="newsBlogStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeNewsBlogModal()">Close</button>
+      <button class="modal-btn save" id="newsBlogRunBtn" onclick="runCreateNewsBlog()">Create Blog Title</button>
+    </div>
+  </div>
+</div>
 <!-- GENERATE TITLE MODAL — the ONE title-creation flow: Product (or none) ->
      Slot (or none, filtered to that product's Growth Strategy) -> Generate.
      Replaces the old batch "Generate Titles" modal and "Add Idea" modal
@@ -2131,6 +2156,125 @@ async function runJobBoardListings() {
   }
 }
 
+// ── NEWS FEED → BLOG ────────────────────────────────────────────────────
+// The Research record's "News Feed" field (LLM-generated) rendered as a real
+// list, each item with a "make into article" link that turns it into an
+// original SEO blog post via the Title → Asset flow (createNewsBlogTitle,
+// then the isNewsBlog branch of Generate Assets). parseNewsFeed is ported
+// verbatim from worker.js so the list here matches the hub's getHubNews.
+let NEWS_ITEMS = [];
+function parseNewsFeed(text) {
+  if (!text) return [];
+  const hasHeadline = /^\s*HEADLINE\s*:/im.test(text);
+  const hasNumbered = /(^|\n)\s*\d+[.)]\s/.test(text);
+  let chunks;
+  if (hasHeadline) {
+    chunks = text.split(/(?:\r?\n){2,}/).map(s => s.replace(/^\s*HEADLINE\s*:\s*/i, '').trim());
+  } else if (hasNumbered) {
+    chunks = text.split(/\r?\n(?=\s*\d+[.)]\s)/).map(s => s.replace(/^\s*\d+[.)]\s*/, '').trim());
+  } else {
+    chunks = text.replace(/\s+/g, ' ').split(/(?<=[.)])\s+(?=[A-Z0-9])/);
+  }
+  if (chunks.filter(c => c.trim().length > 20).length < 2) {
+    chunks = text.replace(/\s+/g, ' ').split(/(?<=[.)])\s+(?=[A-Z0-9])/);
+  }
+  const MONTH = '(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\\.?';
+  const out = [];
+  for (let c of chunks) {
+    c = c.replace(/\s+/g, ' ').trim();
+    if (c.length < 10) continue;
+    let source = '', date = '';
+    const paren = c.match(/\s*\(([^()]{2,60})\)\s*$/);
+    if (paren) {
+      const v = paren[1].trim();
+      if (/^\S+\.[a-z]{2,}$/i.test(v)) source = v;
+      else if (/^\s*(?:19|20)\d{2}\s*$/.test(v)) date = v;
+      else source = v;
+      c = c.slice(0, paren.index).trim();
+    }
+    if (!date) {
+      const tail = c.match(new RegExp('\\s+[\\u2014\\u2013-]\\s+([^,]{2,40},?\\s*(?:' + MONTH + '\\s*)?(?:19|20)\\d{2})\\s*$'));
+      if (tail) { date = tail[1].trim(); c = c.slice(0, tail.index).trim(); }
+    }
+    c = c.replace(/[—–-]\s*$/, '').replace(/[.\s]+$/, '').trim();
+    if (c.length < 10) continue;
+    out.push({ title: c, source, date });
+  }
+  return out;
+}
+function renderNewsFeed(text) {
+  const el = document.getElementById('r-news');
+  if (!el) return;
+  NEWS_ITEMS = parseNewsFeed(text || '');
+  if (!NEWS_ITEMS.length) {
+    el.innerHTML = '<span class="empty">No news yet — press ▶ to generate a News Feed from the campaign keywords.</span>';
+    return;
+  }
+  el.innerHTML = NEWS_ITEMS.map((it, i) => {
+    const meta = [it.source, it.date].filter(Boolean).join(' · ');
+    return `<div class="sm-trend-row" style="align-items:flex-start;gap:8px">
+      <div style="flex:1;min-width:0">
+        <span class="sm-trend-body">${esc(it.title)}</span>
+        ${meta ? `<span class="sm-trend-niche" style="display:block;opacity:.7;font-size:10px;margin-top:2px">${esc(meta)}</span>` : ''}
+      </div>
+      <button class="td-add-btn-inline" style="white-space:nowrap;flex:none" onclick="openNewsBlogModal(${i})" title="Turn this into an original SEO blog post">📝 make into article</button>
+    </div>`;
+  }).join('');
+}
+function openNewsBlogModal(idx) {
+  const it = NEWS_ITEMS[idx];
+  if (!it) return;
+  document.getElementById('newsBlogItem').value = [it.title, [it.source, it.date].filter(Boolean).join(' · ')].filter(Boolean).join('\n');
+  document.getElementById('newsBlogItem').dataset.src = it.source || '';
+  document.getElementById('newsBlogItem').dataset.date = it.date || '';
+  const status = document.getElementById('newsBlogStatus');
+  status.textContent = ''; status.style.color = '#fff';
+  const btn = document.getElementById('newsBlogRunBtn');
+  btn.disabled = false; btn.textContent = 'Create Blog Title';
+  const sel = document.getElementById('newsBlogProduct');
+  sel.innerHTML = '<option value="">— campaign-level —</option>';
+  document.getElementById('newsBlogModal').classList.add('open');
+  atEnsureLists().then(() => {
+    (AT_PRODUCTS || []).forEach(p => {
+      const o = document.createElement('option');
+      o.value = p.id; o.textContent = p.name;
+      sel.appendChild(o);
+    });
+  });
+}
+function closeNewsBlogModal() { document.getElementById('newsBlogModal').classList.remove('open'); }
+document.getElementById('newsBlogModal').addEventListener('click', function(e) { if (e.target === this) closeNewsBlogModal(); });
+async function runCreateNewsBlog() {
+  const ta = document.getElementById('newsBlogItem');
+  const body = ta.value.trim();
+  if (!body) return;
+  const btn = document.getElementById('newsBlogRunBtn');
+  const status = document.getElementById('newsBlogStatus');
+  btn.disabled = true; btn.textContent = 'Working…';
+  status.textContent = 'Writing the headline + original-article pillar (this takes ~30–60s)…';
+  status.style.color = '#888';
+  try {
+    const r = await w('createNewsBlogTitle', {
+      campaignId: CAMPAIGN_ID,
+      productId: document.getElementById('newsBlogProduct').value || undefined,
+      newsTitle: (body.split('\n')[0] || body).slice(0, 300),
+      newsBody: body,
+      newsSource: ta.dataset.src || undefined,
+      newsDate: ta.dataset.date || undefined,
+    });
+    if (r.error) throw new Error(r.error);
+    status.innerHTML = `✓ "<strong>${esc(r.headline || 'Title')}</strong>" created in Development${r.pillarWritten ? ` — pillar written (${r.pillarWords || '?'} words)` : (r.pillarError ? ` — pillar failed: ${esc(r.pillarError)}` : '')}.<br>Open the Titles tab and run 🧩 Generate Assets → <strong>Blog - SEO - News</strong> to publish the post.`;
+    status.style.color = '#5ec95e';
+    btn.textContent = 'Done';
+    if (typeof loadTitles === 'function') loadTitles().catch(() => {});
+    setTimeout(closeNewsBlogModal, 4500);
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#ff6b6b';
+    btn.disabled = false; btn.textContent = 'Create Blog Title';
+  }
+}
+
 // Seed channels for the Video Copy method — built off the campaign keywords.
 function renderSeedChannels(text) {
   const el = document.getElementById('r-seed');
@@ -2389,11 +2533,8 @@ async function loadResearch() {
     renderTopChannels(r.influencerIntelligence || '');
     renderTopicsDigest(r.trendRoundUp || '');
 
-    // News Feed — condense via Claude
-    const newsEl = document.getElementById('r-news');
-    if (newsEl) newsEl.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>';
-    const news = await condense('News Feed', r.newsFeed);
-    if (newsEl) newsEl.innerHTML = news;
+    // News Feed — parsed list, each item with a "make into article" link
+    renderNewsFeed(r.newsFeed || '');
 
   } catch(e) {
     document.getElementById('r-name').textContent = 'Error: ' + e.message;
@@ -5769,7 +5910,7 @@ const FIELD_META = {
     promptFn: kws => `You are a content researcher. Based on these campaign keywords: ${kws}\n\nGenerate a "News Feed" of 5–8 current news items, trends, or insights relevant to this campaign. Format each entry as:\nHEADLINE: brief context (max 25 words)\n\nKeep each entry tight and actionable. Output only the entries, no preamble.`,
     notionField: 'newsFeed',
     renderId: 'r-news',
-    renderFn: async text => { const el = document.getElementById('r-news'); if (el) { el.innerHTML = '<div class="loading"><div class="spinner"></div>Condensing…</div>'; el.innerHTML = await condense('News Feed', text); } },
+    renderFn: text => { renderNewsFeed(text || ''); },
   },
 };
 

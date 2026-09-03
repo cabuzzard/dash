@@ -341,9 +341,25 @@ Live URL pattern: `https://cabuzzard.github.io/dash/web/{deploy-path}/`
 
 ## Content Hubs
 
-Content-marketing home pages (blog / news / newsletter / social / product links)
+Content-marketing home pages (blog / newsletter / social / product links)
 at `web/hub/{slug}/index.html` — one per campaign or product, all sharing the
 `web/hub/hub-template.html` layout. See `web/hub/README.md` for how to build one.
+
+**News Feed section removed (2026-09-02).** The old unfiltered bottom-of-page
+News Feed section (`renderNews` / `getHubNews`) is gone from the template and all
+8 hubs. The **journal** (blog) section above it is now live-fed by a new
+`getHubBlog` worker action — the campaign's published `SEO Post` / blog+SEO/news
+assets as `{kicker,title,excerpt,url}` cards (static `HUB.journal.items`
+fallback), mirroring `getHubProducts`. Operators turn individual News Feed items
+into original blog posts from the campaign microsite: the **📝 make into
+article** link on each News Feed row → `createNewsBlogTitle` (writes a fresh
+headline + an original-news-analysis pillar, title at Development, `Blog - SEO -
+News` method set as the default) → 🧩 Generate Assets, where `Blog - SEO - News`
+(or any blog+SEO name) now satisfies the broadened `isSeoPost` test and rides the
+existing SEO Post branch — no dedicated routing. Full flow:
+`docs/methods-titles-assets.md` § "Blog - SEO - News". Structural JS edits to the
+hub template are hand-synced across the 8 hub files (`build-hubs.mjs` only owns
+`<head>` meta + fonts + tokens).
 
 **Publishing policy (as of 2026-09-01):**
 - **GitHub Pages** — `https://cabuzzard.github.io/dash/web/hub/{slug}/`, live on

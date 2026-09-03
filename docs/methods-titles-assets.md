@@ -359,6 +359,45 @@ grading (it's a single finished article, not concept options):
   Avatar/Transformation/Offer/Proof Points/Unique Angle as grounding.
   **Never includes the Product Strategy doc** — deliberately excluded.
 
+### `Blog - SEO - News` — campaign News Feed item → original SEO blog post
+
+A two-step pipeline that turns one item from a campaign's Research **News Feed**
+field into a standalone, original analysis article (never a rewrite/spin of the
+source). The `Blog - SEO - News` Method (`METHODS_DB`, Status Live, Category
+Content+SEO) carries the editor/research-writer framework in its page body
+(Guardrails → Extract → Original Angle → Write the Original Article → SEO).
+
+- **Step 1 — `createNewsBlogTitle` (worker action).** Triggered by the
+  **📝 make into article** link on each parsed News Feed row in the microsite's
+  News Feed panel (`renderNewsFeed`, `parseNewsFeed` ported from `worker.js`).
+  One Claude call writes a fresh search-friendly **headline** (not the source's),
+  a one-line **primary search intent**, an **angle**, and **keywords**, grounded
+  in campaign Research (Statement/Key Message/Pain Points/Keywords) + optional
+  Product (Avatar/Unique Angle). Creates a Content Strategy title at
+  **Development**, `Grouping = News`, `method` = Blog - SEO - News, with the
+  search intent + raw source item stored on `Notes`, then calls the shared
+  `writePillarContent` with an original-news-analysis `styleGuidance` +
+  `extraContext` = the source item (flagged "research lead only"). The
+  `Blog - SEO - News` method is set on the title as the default; no campaign
+  method-attach here — that happens at Step 2 via `gaAutoAttachMethod`.
+- **Step 2 — the normal 🧩 Generate Assets modal, no dedicated routing.**
+  `Blog - SEO - News` is just a Live method in the picker. Its `assetType`
+  string satisfies the **broadened `isSeoPost` test** (`/seo post/i` OR
+  blog + seo/news) in `generateTitleAssets`, so the news-shaped pillar rides the
+  existing **SEO Post branch** unchanged — one finished article, created at
+  **Publish**, source title flipped to Publish, pushed live to
+  `web/{deployPath}/blog/` via `publishSeoPostToLiveSite` (now takes an optional
+  `sources` array → a linked Sources list). The method's own framework body
+  (Guardrails / original-angle / don't-reproduce-the-source) reaches the
+  article-writing prompt through the branch's existing `METHOD FRAMEWORK`
+  grounding. The operator can route the pillar to any other method instead.
+- **Content hubs read these back.** The hub template's old bottom-of-page
+  unfiltered News Feed section (`renderNews`/`getHubNews`) was **removed**; the
+  blog/**journal** section above it is now live-fed by `getHubBlog` (published
+  `SEO Post` **or** blog+SEO/news assets for the campaign →
+  `{kicker,title,excerpt,url}` cards), falling back to the static
+  `HUB.journal.items`. Same pattern as `getHubProducts`.
+
 **Platform** (always visible, per the pillar-content stripdown above): a
 Platform picker (from the real Platforms DB via `getPlatforms`) feeds the
 asset-writing prompt and, for the generic `generateTitleAssets` path, sets
