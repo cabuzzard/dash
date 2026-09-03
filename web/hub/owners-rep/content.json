@@ -27,5 +27,8 @@
       "label": "Field notes",
       "href": "#journal"
     }
-  ]
+  ],
+  "journal": {
+    "title": "Notes from Experience with Hundreds of Construction Projects"
+  }
 }
