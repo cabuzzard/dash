@@ -4730,7 +4730,7 @@ export default {
           }
           const list = text ? JSON.parse(text) : null;
           if (Array.isArray(list) && list.length) {
-            return json({ posts: list.slice(0, lim).map(p => ({
+            return json({ hasIndex: true, posts: list.slice(0, lim).map(p => ({
               kicker:  "Article",
               title:   String(p.title || "Untitled"),
               excerpt: String(p.intro || ""),
@@ -4771,8 +4771,10 @@ export default {
             excerpt: bodyProp.slice(0, 220),
             url:     contentUrl,
           };
-        });
-        return json({ posts });
+        }).filter(c => c.url);   // no page yet → not a real card (run "Rebuild blog")
+        // hasIndex:false — this scan can't guarantee a blog/index.html exists,
+        // so the hub suppresses its "All posts →" link on this path.
+        return json({ posts, hasIndex: false });
       } catch (e) {
         return json({ posts: [], error: e.message });
       }
@@ -4784,6 +4786,83 @@ export default {
     }
 
     try {
+      // ── backfillHubBlog ── Content Hubs tab "⟳ Rebuild blog" button.
+      // (Re)publishes every published SEO Post / Blog - SEO - News asset on a
+      // hub campaign as a real page under web/hub/{slug}/blog/, reading each
+      // article straight out of its own Notion page blocks (no regeneration) —
+      // the one-time fix for posts published before publishSeoPostToLiveSite
+      // learned to target the hub, and safe to re-run any time. Pass
+      // { campaignId } for one hub, omit to sweep every HUB_SITES campaign.
+      // `force` re-publishes even assets that already carry a Content URL.
+      if (body.action === "backfillHubBlog") {
+        const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const only = body.campaignId ? String(body.campaignId).replace(/-/g,"") : null;
+        const force = !!body.force;
+        const targets = only ? HUB_SITES.filter(h => h.campaignId.replace(/-/g,"") === only) : HUB_SITES.slice();
+        if (only && !targets.length) return json({ error: "That campaign has no content hub (not in HUB_SITES)." }, 400);
+        const results = [];
+        for (const h of targets) {
+          const rows = await notionQuery(ASSETS_DB, {
+            filter: { and: [
+              { property: "Campaign", relation: { contains: dashId(h.campaignId) } },
+              { or: [
+                { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Published" } },
+              ] },
+            ] },
+          }).catch(() => []);
+          const blogAssets = rows.filter(r => {
+            const at = r.properties?.["Asset Type"]?.select?.name || "";
+            return /seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at));
+          });
+          for (const a of blogAssets) {
+            const aid = a.id.replace(/-/g,"");
+            const p = a.properties || {};
+            const existingUrl = (p["Content URL"]?.url || "").trim();
+            if (existingUrl && !force) { results.push({ hub: h.slug, asset: aid, skipped: "already published" }); continue; }
+            const workingTitle = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
+            const seoTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || workingTitle;
+            const kids = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+            const blocks = kids.results || [];
+            const btxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
+            let intro = "";
+            const sections = [];
+            const sources = [];
+            let inSources = false;
+            for (const b of blocks) {
+              if (b.type === "heading_2") {
+                if (/^\s*sources\s*$/i.test(btxt(b))) { inSources = true; continue; }
+                inSources = false;
+                sections.push({ heading: btxt(b), body: "" });
+              } else if (b.type === "bulleted_list_item" && inSources) {
+                const rt0 = (b.bulleted_list_item?.rich_text || [])[0];
+                const u = rt0?.href || rt0?.text?.link?.url || (btxt(b).match(/https?:\/\/\S+/) || [])[0];
+                if (u) sources.push({ label: btxt(b) || u, url: u });
+              } else if (b.type === "paragraph") {
+                const t = btxt(b);
+                if (!t) continue;
+                if (!sections.length) intro = intro ? intro + "\n\n" + t : t;
+                else { const s = sections[sections.length - 1]; s.body = s.body ? s.body + "\n\n" + t : t; }
+              }
+            }
+            if (!sections.length) { results.push({ hub: h.slug, asset: aid, error: "no article blocks on this asset page" }); continue; }
+            const site = await publishSeoPostToLiveSite({
+              env, hdr, dash: dashId, campaignId: h.campaignId, spec: null,
+              seoTitle, workingTitle, intro, sections, conclusion: "", sources,
+            }).catch(e => ({ published: false, error: e.message }));
+            if (site.published && site.liveUrl) {
+              await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Content URL": { url: site.liveUrl }, "Content Hub": { select: { name: h.slug } } } }),
+              }).catch(() => {});
+            }
+            results.push({ hub: h.slug, asset: aid, title: seoTitle, published: !!site.published, liveUrl: site.liveUrl || null, error: site.error || null });
+          }
+        }
+        return json({ success: true, count: results.length, results });
+      }
+
       // ── Hub palette (Content Hubs tab: Regenerate / Save to palettes / Push to hub) ──
       // The palette IS the hub's whole look: 10 CSS tokens (bg / surface / ink /
       // ink-head / ink-soft / line / sea / deep / deep-ink / accent) that drive

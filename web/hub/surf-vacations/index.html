@@ -465,7 +465,7 @@ async function renderHubJournal() {
       body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug }),
     });
     const data = await res.json();
-    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts, true);
+    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts, !!data.hasIndex);
   } catch (e) { /* keep the static fallback */ }
 }
 
