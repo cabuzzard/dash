@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Independent Living Multi-Session Package — Sunflower Acres</title>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#fdfaf0; --ink:#29230f; --accent:#3c6b30; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
+.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:.85rem; color:var(--accent); }
+.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
+h1,h2 { font-family:"Fraunces", Georgia, serif; color:var(--ink); line-height:1.2; }
+h1 { font-size:2.2rem; margin:.3rem 0 14px; }
+h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.lede { font-size:1.2rem; }
+ul.inc { list-style:none; padding:0; margin:0 0 18px; }
+ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
+.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
+.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
+.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
+.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
+.cf-turnstile { margin:12px 0; }
+.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
+.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
+footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+.offerlist { list-style:none; margin:0; padding:0; }
+.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:"Fraunces", Georgia, serif; font-size:1.3rem; }
+.offerlist a:hover { color:var(--accent); }
+.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="../../index.html">Sunflower Acres</a>
+  <a class="back" href="../index.html">&larr; All offers</a>
+</header>
+<div class="kicker">Consulting package · pricing set at intake</div>
+<h1>Independent Living Multi-Session Package</h1>
+<p class="lede">A complete, working plan for your specific situation — housing, attendant care, benefits, and next steps — built across multiple sessions with a case manager who already knows how these systems actually work.</p>
+<p><strong>Who it's for:</strong> Adults with disabilities and their families navigating situations too layered and interconnected to resolve in one conversation</p>
+<h2>What's included</h2>
+<ul class="inc"><li>A structured intake session that maps your full picture — programs you're enrolled in, what you've been denied, what you've been told and whether it was accurate, housing, attendant care, employment, and real goals</li><li>Multiple consulting sessions delivered by phone, video, or in-person home/site visit depending on location and need</li><li>A personalized action plan identifying the right resources in the right sequence — not a generic checklist, but a step-by-step path built around your disability type, living situation, and goals</li><li>Ongoing plan adjustment as information comes back from agencies, landlords, and providers — so the plan stays accurate as things move</li><li>Direct access to a consultant who can look across public programs, private options, legal rights, and practical workarounds with no program rules limiting what they can recommend</li></ul>
+<h2>Why it works</h2>
+<p>The consultant has worked inside disability services systems — attendant care programs, Medicaid waiver structures, Fair Housing and ADA processes — and knows exactly where they break down and how to route around them. Clients who had been stuck for months routinely find that a focused, sustained engagement breaks the logjam because the problem was never eligibility; it was navigation.</p>
+<h2>The objection it answers</h2>
+<p>You may have already tried the system and hit walls that felt permanent — but those walls are almost always navigation failures, not disqualifications. This consultant has been on the inside of those systems and knows what the workarounds are, how to reframe requests so they succeed, and which options no caseworker ever mentioned because they weren't bound to.</p>
+<h2>Terms</h2>
+<p>Multi-session package; specific pricing determined during intake based on scope and complexity. No long-term contract required. Package scope can be paused or adjusted as your situation evolves. Sessions delivered by phone, video, or in-person depending on location.</p>
+<h2>Start with an Intake Conversation</h2>
+<form class="offer-form" id="of" novalidate>
+  <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="ofTs"></div>
+  <button class="btn" type="submit" id="ob">Start with an Intake Conversation</button>
+  
+  <p class="msg" id="om" role="status"></p>
+</form>
+<footer class="site">Sunflower Acres</footer>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('of'), b=document.getElementById('ob'), m=document.getElementById('om'), tok='';
+  window.ofTs=function(t){tok=t;};
+  if(!f) return;
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var email=(f.email.value||'').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){m.textContent='Check that email address.';m.className='msg err';return;}
+    if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
+    b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
+    try{
+      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Sunflower Acres — offer: Independent Living Multi-Session Package",email:email,fraudType:'Other',note:"Offer interest - Independent Living Multi-Session Package",tsToken:tok})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
+      f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
+    }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
+    finally{ b.disabled=false;b.textContent="Start with an Intake Conversation"; tok=''; if(window.turnstile)window.turnstile.reset(); }
+  });
+})();
+</script>
+</body>
+</html>
