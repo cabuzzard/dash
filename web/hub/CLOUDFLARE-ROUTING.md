@@ -23,7 +23,7 @@ subdirectory by `Host` header.
 | generalservices2020.com | home-services |
 | aisystemimplementation.com | ai-implementation |
 | creativeflowguitar.com | creative-flow-guitar (still on Bluehost — optional to migrate) |
-| mountainwize | — no domain yet, `dash-hubs.pages.dev/mountainwize/` only |
+| mountainwize.com | mountainwize (old WordPress "Mountain Wize Coaching" site left on Bluehost, domain pointed away) |
 
 Map lives in `web/hub/_worker.js` `HUBS`.
 

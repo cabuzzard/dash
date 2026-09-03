@@ -16,6 +16,7 @@ const HUBS = {
   "generalservices2020.com":    "home-services",
   "aisystemimplementation.com": "ai-implementation",
   "creativeflowguitar.com":     "creative-flow-guitar",
+  "mountainwize.com":           "mountainwize",
 };
 
 export default {
