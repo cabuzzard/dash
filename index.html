@@ -1459,6 +1459,20 @@
   </div>
 </div>
 
+<!-- Hub section-text modal — fixed headings / subheads / blurbs / ribbon / nav -->
+<div class="modal-bg" id="hubTextModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:660px;display:flex;flex-direction:column;max-height:86vh;">
+    <div class="modal-title" id="htxTitle">Section text</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5;">Overrides the hub's fixed copy — headings, subheads, blurbs, the ribbon strip, nav labels. Leave a field showing its grey placeholder to keep the current text. The dynamic blog / offer cards aren't edited here. Saves to <code>content.json</code>; live in ~1 min.</div>
+    <div id="htxBody" style="flex:1;overflow-y:auto;padding-right:4px;"></div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="modal-btn" id="htxSaveBtn" onclick="hubTextSave()">Save &amp; publish</button>
+      <button class="modal-btn" onclick="document.getElementById('hubTextModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Cancel</button>
+    </div>
+    <div id="htxMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Hub launch-checklist modal -->
 <div class="modal-bg" id="hubChecklistModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:520px;">
@@ -10057,6 +10071,80 @@ async function hubLogoUpload(slug, input) {
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
 }
 
+// ── Hub section-text modal — overrides in web/hub/<slug>/content.json ──
+const HTX_FIELDS = [
+  ['brand','Brand name',0],
+  ['hero.eyebrow','Hero · eyebrow',0], ['hero.headline','Hero · headline',1], ['hero.sub','Hero · subhead',2],
+  ['hero.ctaPrimary.label','Hero · primary button',0], ['hero.ctaSecondary.label','Hero · secondary button',0],
+  ['ribbon','Ribbon strip — one phrase per line',3],
+  ['nav','Nav — "label | #anchor" per line',3],
+  ['trips.label','Products/Routes · eyebrow',0], ['trips.title','Products/Routes · heading',1], ['trips.note','Products/Routes · note',1],
+  ['trips.empty.heading','Products/Routes · empty heading',1], ['trips.empty.body','Products/Routes · empty body',2],
+  ['report.label','Signup · eyebrow',0], ['report.title','Signup · heading',1], ['report.blurb','Signup · blurb',2],
+  ['report.note','Signup · fine print',1], ['report.buttonLabel','Signup · button',0], ['report.link.label','Signup · secondary link',0],
+  ['journal.label','Blog · eyebrow',0], ['journal.title','Blog · heading',1], ['journal.note','Blog · note',1],
+  ['journal.empty.heading','Blog · empty heading',1], ['journal.empty.body','Blog · empty body',2],
+  ['social.label','Social row · label',0],
+  ['footer.tagline','Footer · tagline',2], ['footer.legal','Footer · legal',0],
+];
+let HTX = { slug:'', defaults:{}, overrides:{} };
+const htxGet = (o,p) => p.split('.').reduce((x,k)=> x==null?undefined:x[k], o);
+const htxSet = (o,p,v) => { const ks=p.split('.'); let x=o; for(let i=0;i<ks.length-1;i++){ x[ks[i]]=x[ks[i]]||{}; x=x[ks[i]]; } x[ks[ks.length-1]]=v; };
+async function openHubTextModal(slug){
+  const h = HUB_SITES.find(x=>x.slug===slug); if(!h) return;
+  document.getElementById('htxTitle').textContent = 'Section text — ' + h.name;
+  document.getElementById('htxBody').innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading current text…</div>';
+  document.getElementById('htxMsg').textContent = '';
+  document.getElementById('hubTextModal').classList.add('open');
+  try {
+    const r = await call('getHubContent', { slug });
+    HTX = { slug, defaults: r.defaults||{}, overrides: JSON.parse(JSON.stringify(r.overrides||{})) };
+    htxRender();
+  } catch(e){ document.getElementById('htxBody').innerHTML = '<div style="color:#ff6b6b;font-size:12px;">'+esc(e.message)+'</div>'; }
+}
+function htxRender(){
+  document.getElementById('htxBody').innerHTML = HTX_FIELDS.map(([p,label,t])=>{
+    const isArr = t===3;
+    const ov = htxGet(HTX.overrides,p), df = htxGet(HTX.defaults,p);
+    const cur = ov!==undefined ? ov : df;
+    let v = '';
+    if(isArr) v = Array.isArray(cur) ? (p==='nav' ? cur.map(n=>`${n.label} | ${n.href}`).join('\n') : cur.join('\n')) : '';
+    else v = cur==null ? '' : String(cur);
+    const ph = isArr ? '' : (df==null?'':String(df)).slice(0,140);
+    const attrs = `data-p="${p}" data-arr="${isArr?1:0}" style="width:100%;font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);box-sizing:border-box;"`;
+    const field = t>=2
+      ? `<textarea rows="${isArr?4:2}" ${attrs} placeholder="${esc(ph)}">${esc(v)}</textarea>`
+      : `<input type="text" ${attrs} placeholder="${esc(ph)}" value="${esc(v)}">`;
+    return `<label style="display:block;margin-bottom:9px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);display:block;margin-bottom:3px;">${esc(label)}</span>${field}</label>`;
+  }).join('');
+}
+async function hubTextSave(){
+  const btn = document.getElementById('htxSaveBtn'), msg = document.getElementById('htxMsg');
+  const next = {};
+  document.querySelectorAll('#htxBody [data-p]').forEach(el=>{
+    const p = el.dataset.p, isArr = el.dataset.arr==='1';
+    if(isArr){
+      const lines = el.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      if(!lines.length) return;
+      if(p==='nav') htxSet(next, p, lines.map(l=>{ const parts=l.split('|').map(s=>s.trim()); return { label: parts[0]||l, href: parts[1]||'#' }; }));
+      else htxSet(next, p, lines);
+      return;
+    }
+    const val = el.value.trim();
+    const df = htxGet(HTX.defaults, p); const dfs = df==null ? '' : String(df);
+    if(val && val !== dfs) htxSet(next, p, val);
+  });
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.style.color = 'var(--text3)'; msg.textContent = 'Committing content.json…';
+  try {
+    await call('saveHubContent', { slug: HTX.slug, overrides: next });
+    HTX.overrides = next;
+    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min (reload the preview).';
+    setTimeout(()=>document.getElementById('hubTextModal').classList.remove('open'), 1500);
+  } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Save & publish';
+}
+
 function hubRoutingInfo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug);
   alert((h.name) + ' — routing\n\n' + (h.routingNote || 'No domain set / not routed yet.'));
@@ -10223,6 +10311,7 @@ function renderHubsTab() {
         <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
         ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
         <button onclick="openHubBriefModal('${slug}')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
+        <button onclick="openHubTextModal('${slug}')" title="Edit every fixed heading / subhead / blurb / ribbon / nav label on this hub" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
         <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with this campaign's research + this hub's tokens/fonts" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
         <label style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
       </div>

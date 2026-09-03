@@ -5064,6 +5064,53 @@ export default {
       }
     }
 
+    // ── getHubContent / saveHubContent ── Content Hubs tab "✎ Section text"
+    // modal. Fixed copy only — headings / subheads / blurbs / ribbon / nav
+    // labels, NOT the dynamic blog/offers/news card loads. Overrides live in
+    // web/hub/{slug}/content.json and the hub deep-merges them over its baked
+    // HUB defaults before first paint (getHubContent public). getHubContent
+    // also best-effort-scrapes the baked defaults so the modal can show
+    // current text.
+    if (body.action === "getHubContent") {
+      const slug = String(body.slug || "").trim();
+      if (!HUB_SITES.find(h => h.slug === slug)) return json({ error: "unknown hub" }, 400);
+      const GT = (env.GITHUB_TOKEN || "").trim();
+      const ghRaw = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github.raw", "User-Agent": "dash-worker" };
+      const readRepo = async p => {
+        let t = null;
+        if (GT) { const r = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/${p}?ref=main`, { headers: ghRaw }); if (r.ok) t = await r.text(); }
+        if (!t) { const r = await fetch(`https://cabuzzard.github.io/dash/${p}`); if (r.ok) t = await r.text(); }
+        return t;
+      };
+      let overrides = {};
+      try { const t = await readRepo(`web/hub/${slug}/content.json`); overrides = t ? JSON.parse(t) : {}; } catch (e) {}
+      let defaults = {};
+      try {
+        const html = await readRepo(`web/hub/${slug}/index.html`);
+        if (html) {
+          const hs = html.indexOf("const HUB = {");
+          let block = "";
+          if (hs >= 0) { let d = 0, st = html.indexOf("{", hs); for (let j = st; j < html.length; j++) { const c = html[j]; if (c === '"') { j++; while (j < html.length && html[j] !== '"') { if (html[j] === "\\") j++; j++; } continue; } if (c === "/" && html[j+1] === "/") { j = html.indexOf("\n", j); continue; } if (c === "{") d++; else if (c === "}") { d--; if (!d) { block = html.slice(st, j + 1); break; } } } }
+          const unesc = s => String(s).replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+          const strOf = (scope, key) => { const m = String(scope).match(new RegExp(`(?:^|[\\s{,])${key}\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`)); return m ? unesc(m[1]) : ""; };
+          const sub = (scope, name) => { const i = String(scope).search(new RegExp(`(?:^|[\\s{,])${name}\\s*:\\s*\\{`)); if (i < 0) return ""; let d = 0, st = scope.indexOf("{", i); for (let j = st; j < scope.length; j++) { const c = scope[j]; if (c === '"') { j++; while (j < scope.length && scope[j] !== '"') { if (scope[j] === "\\") j++; j++; } continue; } if (c === "{") d++; else if (c === "}") { d--; if (!d) return scope.slice(st, j + 1); } } return ""; };
+          defaults.brand = strOf(block.slice(0, block.indexOf("\n  nav:") + 1 || 400), "brand");
+          for (const s of ["hero", "trips", "report", "journal", "social", "footer"]) {
+            const sc = sub(block, s); if (!sc) continue;
+            defaults[s] = {};
+            for (const k of ["eyebrow", "headline", "sub", "label", "title", "note", "blurb", "buttonLabel", "tagline", "legal"]) { const v = strOf(sc, k); if (v) defaults[s][k] = v; }
+            const es = sub(sc, "empty"); if (es) defaults[s].empty = { heading: strOf(es, "heading"), body: strOf(es, "body") };
+            const ls = sub(sc, "link"); if (ls) defaults[s].link = { label: strOf(ls, "label"), url: strOf(ls, "url") };
+            const c1 = sub(sc, "ctaPrimary"); if (c1) defaults[s].ctaPrimary = { label: strOf(c1, "label"), href: strOf(c1, "href") };
+            const c2 = sub(sc, "ctaSecondary"); if (c2) defaults[s].ctaSecondary = { label: strOf(c2, "label"), href: strOf(c2, "href") };
+          }
+          const rib = block.match(/ribbon:\s*\[([\s\S]*?)\]/); if (rib) defaults.ribbon = (rib[1].match(/"((?:[^"\\]|\\.)*)"/g) || []).map(q => unesc(q.slice(1, -1)));
+          const nav = block.match(/nav:\s*\[([\s\S]*?)\]/); if (nav) defaults.nav = [...nav[1].matchAll(/label:\s*"((?:[^"\\]|\\.)*)"\s*,\s*href:\s*"((?:[^"\\]|\\.)*)"/g)].map(x => ({ label: unesc(x[1]), href: unesc(x[2]) }));
+        }
+      } catch (e) {}
+      return json({ defaults, overrides });
+    }
+
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
@@ -5371,6 +5418,28 @@ Return: the logo on a transparent background, plus one preview placed on the sit
           else return json({ error: "couldn't find logoImg in the hub config" }, 502);
           await putF(htmlPath, toB64Text(html), `hub ${slug}: use uploaded header logo`, hf.sha);
           return json({ ok: true, url: `https://cabuzzard.github.io/dash/web/hub/${slug}/logo.${ext}`, note: "committed — live in ~1 min" });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
+      if (body.action === "saveHubContent") {
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const slug = String(body.slug || "").trim();
+        if (!HUB_SITES.find(h => h.slug === slug)) return json({ error: "unknown hub" }, 400);
+        const overrides = (body.overrides && typeof body.overrides === "object" && !Array.isArray(body.overrides)) ? body.overrides : {};
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const toB64Text = str => { const b = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
+        try {
+          const path = `web/hub/${slug}/content.json`;
+          const cr = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+          const sha = cr.ok ? (await cr.json().catch(() => ({}))).sha : null;
+          const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+            method: "PUT", headers: { ...gh, "Content-Type": "application/json" },
+            body: JSON.stringify({ message: `hub ${slug}: section text`, content: toB64Text(JSON.stringify(overrides, null, 2) + "\n"), branch: BRANCH, ...(sha ? { sha } : {}) }),
+          });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || "commit failed"); }
+          return json({ ok: true, note: "committed — live on the hub in ~1 min" });
         } catch (e) { return json({ error: e.message }, 502); }
       }
 

@@ -615,13 +615,30 @@ async function renderHubProducts() {
   } catch (e) { /* keep the static fallback */ }
 }
 
-renderChrome();
-renderHero();
-renderHubJournal();
-renderReport();
-renderHubProducts();
-renderSocial();
-if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
+(async () => {
+  // Fixed-copy + image overrides — web/hub/<slug>/content.json, edited from
+  // the dashboard's Content Hubs tab. Deep-merged over the baked-in HUB
+  // defaults BEFORE first paint. Best-effort, 2.5s cap so a slow/down worker
+  // never blocks the page.
+  try {
+    const cr = await Promise.race([
+      fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "getHubContent", slug: HUB.slug }) }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 2500)),
+    ]);
+    const cd = await cr.json();
+    if (cr.ok && cd && cd.overrides && typeof cd.overrides === "object") {
+      const merge = (t, s) => { for (const k in s) { const v = s[k]; if (v && typeof v === "object" && !Array.isArray(v)) { t[k] = (t[k] && typeof t[k] === "object") ? t[k] : {}; merge(t[k], v); } else if (v !== undefined && v !== null && v !== "") t[k] = v; } };
+      merge(HUB, cd.overrides);
+    }
+  } catch (e) { /* baked defaults stand */ }
+  renderChrome();
+  renderHero();
+  renderHubJournal();
+  renderReport();
+  renderHubProducts();
+  renderSocial();
+  if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
+})();
 </script>
 </body>
 </html>
