@@ -173,6 +173,8 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 .site-foot .f-brand{font-family:var(--font-display);font-weight:700}
 .site-foot small{color:var(--ink-soft);font-size:.85rem;display:block;margin-top:.3rem;max-width:40ch}
 .site-foot .f-legal{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);letter-spacing:.05em}
+.site-foot .f-email{display:inline-block;margin-top:.5rem;font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);letter-spacing:.05em;text-decoration:none}
+.site-foot .f-email:hover{text-decoration:underline}
 
 @media (prefers-reduced-motion:no-preference){
   .reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
@@ -291,6 +293,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     <div>
       <div class="f-brand" id="footBrand"></div>
       <small id="footTagline"></small>
+      <a class="f-email" id="footEmail" href=""></a>
     </div>
     <div class="f-legal" id="footLegal"></div>
   </div>
@@ -317,6 +320,7 @@ const HUB = {
   slug: "home-services",
   campaignTag: "hub-home-services",
   campaignId: "3951f7d3a4bb81659af8dc82fb56f92a",              // campaign whose Logins feed the social links
+  contactEmail: "info@generalservices2020.com",
 
   brand: "Home Services",
   logoImg: "./logo.png",                       // pick a real service name + logo
@@ -414,6 +418,10 @@ function renderChrome() {
   $("footBrand").textContent = HUB.brand;
   $("footTagline").textContent = HUB.footer.tagline;
   $("footLegal").textContent = HUB.footer.legal;
+  if (HUB.contactEmail) {
+    $("footEmail").textContent = HUB.contactEmail;
+    $("footEmail").href = "mailto:" + HUB.contactEmail;
+  }
 }
 
 function renderHero() {

@@ -5785,9 +5785,10 @@ function renderPlatformMatrix() {
 
   function buildCampRow(c, isSub) {
     const tr = document.createElement('tr');
-    tr.style.cssText = 'border-bottom:1px solid #444;' + (isSub ? 'background:var(--surface);' : '');
-    tr.onmouseover = () => tr.style.background = 'var(--surface)';
-    tr.onmouseout  = () => tr.style.background = isSub ? 'var(--surface)' : '';
+    const baseBg = isSub ? 'var(--surface)' : '';
+    tr.style.cssText = 'border-bottom:1px solid #444;transition:background .1s;' + (isSub ? 'background:var(--surface);' : '');
+    tr.onmouseover = () => tr.style.background = 'var(--surface2)';
+    tr.onmouseout  = () => tr.style.background = baseBg;
 
     tr.addEventListener('dragover', e => {
       e.preventDefault();
@@ -9796,7 +9797,7 @@ const HUB_SITES = [
   { name: "Sunflower Acres", slug: "sunflower-acres", campaignId: "3871f7d3a4bb814997e5f3400fc3ff57", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/sunflower-acres/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect accessiblefarms.com's placeholder WordPress service (Domains → accessiblefarms.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
-  { name: "Build Watcher",   slug: "owners-rep", campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: null, products: 0, blogPosts: 0,
+  { name: "Build Watcher",   slug: "owners-rep", campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: "info@modernactivehome.com", products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/owners-rep/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect homestructionconsulting.com's placeholder WordPress service (Domains → homestructionconsulting.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
   { name: "Home Services",   slug: "home-services", campaignId: "3951f7d3a4bb81659af8dc82fb56f92a",   campaign: "Home Services",     microsite: "home-services",                           domain: "generalservices2020.com", contact: null, products: 0, blogPosts: 0,
@@ -9805,7 +9806,7 @@ const HUB_SITES = [
   { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
     routing: "ok", routingNote: "Connected & serving the hub over https (verified 2026-09-01). Doc root moved to /home3/evraymon/creativeflowguitar.com/ (the deploy target); the old WordPress install stays at public_html/creativeflowguitar untouched. Works because this domain was connected the old way, before Bluehost's auto-WordPress-service parking.",
     domainOptions: ["creativeflowguitar.com", "bayareaoriginalmusic.com", "outsidesessions.com", "rockrgear.com", "petrichorpodcast.com"] },
-  { name: "AI Implementation", slug: "ai-implementation", campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: null, products: 0, blogPosts: 0,
+  { name: "AI Implementation", slug: "ai-implementation", campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: "info@webguyleadgeneration.com", products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/ai-implementation/). A cPanel addon domain + doc root (~/aisystemimplementation.com) are set and it served the hub briefly, but the auto-WordPress-service park (root A → 204.11.56.246) took back over. Same fix: disconnect the placeholder WordPress service, or Bluehost support; then add its line to bluehost-sites.tsv.",
     domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
   { name: "Mountainwize", slug: "mountainwize", campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1", campaign: "🏔️ Mountainwize Coaching — Purpose", microsite: "mountainwize-coaching-purpose", domain: null, contact: null, products: 0, blogPosts: 0,
