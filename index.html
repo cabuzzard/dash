@@ -887,6 +887,24 @@
       </div>
     </div>
 
+    <!-- 🤖 AUTOMATIONS — a plain wishlist, "things I intend to automate."
+         Not a workflow or a tracker for what's already built — just a place
+         to drop an idea before it's forgotten. Backed by MAIN_TD_DB (same td
+         list as everywhere else), filtered to priority=automation. -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('automations')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🤖 Automations <span id="glAutoCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— things I intend to automate</span></span>
+        <span id="glAutoIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glAutoBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="glAutoInput" type="text" placeholder="Something to automate someday…" onkeydown="if(event.key==='Enter')glAutoAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+          <button onclick="glAutoAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
+        </div>
+        <div id="glAutoList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('tools')">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧰 Tools</span>
@@ -11482,6 +11500,7 @@ const GL_SECTIONS = {
   method:   { icon: 'glMethodIcon',   body: 'glMethodBody',   load: () => loadGlMethod() },
   trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
+  automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
   tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
   stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
 };
@@ -11864,6 +11883,52 @@ async function affDelete(id) {
     AFF_DATA = AFF_DATA.filter(x => x.id !== id);
     document.getElementById('glAffCount').textContent = '· ' + AFF_DATA.length;
     renderAffList();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── Automations wishlist ──
+let GL_AUTO_DATA = [];
+async function loadGlAutomations() {
+  const el = document.getElementById('glAutoList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getAutomationTds', {});
+    if (data.error) throw new Error(data.error);
+    GL_AUTO_DATA = data.items || [];
+    document.getElementById('glAutoCount').textContent = '· ' + GL_AUTO_DATA.length;
+    renderGlAutomations();
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+function renderGlAutomations() {
+  const el = document.getElementById('glAutoList');
+  if (!GL_AUTO_DATA.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Nothing queued yet. Add one above whenever an idea comes up.</div>'; return; }
+  el.innerHTML = GL_AUTO_DATA.map(t =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+    + '<span style="font-size:12px;color:var(--text);' + (t.stage === 'Published' ? 'text-decoration:line-through;color:var(--text3);' : '') + '">' + esc(t.title) + '</span>'
+    + '<button onclick="glAutoDelete(\'' + t.id + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;flex-shrink:0;">✕</button>'
+    + '</div>'
+  ).join('');
+}
+async function glAutoAdd() {
+  const inp = document.getElementById('glAutoInput');
+  const title = inp.value.trim();
+  if (!title) return;
+  inp.disabled = true;
+  try {
+    const r = await call('createAutomationTd', { title });
+    if (r.error) throw new Error(r.error);
+    inp.value = '';
+    await loadGlAutomations();
+  } catch (e) { alert('Error: ' + e.message); }
+  finally { inp.disabled = false; inp.focus(); }
+}
+async function glAutoDelete(id) {
+  try {
+    const r = await call('deleteAutomationTd', { id });
+    if (r.error) throw new Error(r.error);
+    GL_AUTO_DATA = GL_AUTO_DATA.filter(x => x.id !== id);
+    document.getElementById('glAutoCount').textContent = '· ' + GL_AUTO_DATA.length;
+    renderGlAutomations();
   } catch (e) { alert('Error: ' + e.message); }
 }
 

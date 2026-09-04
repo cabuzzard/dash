@@ -28006,6 +28006,52 @@ ${assemblyManifest}`;
         return json({ success: true });
       }
 
+      // ── Automations wishlist (Globals tab) ── "things I intend to automate" —
+      // a plain list, not a workflow. Deliberately reuses MAIN_TD_DB (the same
+      // "td" the operator already tracks everything else in) rather than a new
+      // DB, tagged via the existing `priority` multi_select (which already
+      // doubles as a general tag field — "trading"/"podcast"/"listing repost"
+      // are the same pattern) with the value "automation", so it's just a
+      // filtered slice of the same TD list, not a parallel system.
+      if (body.action === "getAutomationTds") {
+        const rows = await notionQuery(MAIN_TD_DB, {
+          filter: { property: "priority", multi_select: { contains: "automation" } },
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
+        }).catch(e => { console.error("getAutomationTds:", e.message); return []; });
+        const items = rows.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          title: (p.properties?.Title?.title || []).map(t => t.plain_text).join(""),
+          stage: p.properties?.Stage?.select?.name || "",
+          dueDate: p.properties?.["Due Date"]?.date?.start || "",
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "createAutomationTd") {
+        const title = String(body.title || "").trim();
+        if (!title) return json({ error: "title required" }, 400);
+        const r = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: {
+            "Title": { title: [{ text: { content: title.slice(0, 200) } }] },
+            "priority": { multi_select: [{ name: "automation" }] },
+          } }),
+        });
+        if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "create failed" }, r.status);
+        const p = await r.json();
+        return json({ success: true, id: p.id.replace(/-/g, "") });
+      }
+
+      if (body.action === "deleteAutomationTd") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) });
+        if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "delete failed" }, r.status);
+        return json({ success: true });
+      }
+
       // Clear a post's Mined flag so it re-runs on the next integrate — for
       // the "re-mine" affordance and for recovering from a bad batch.
       if (body.action === "resetPostMining") {
