@@ -1,7 +1,8 @@
 {
   "hero": {
     "headline": "AI Tool Implementation for your business",
-    "sub": "Between the AI demo that looked like magic and the tools your team actually uses every day, there’s a big implementation gap. This is a practical guide to putting AI to work in a real small business — where it saves time, which workflows are worth automating, how to connect it to the tools you already use, and how to get it running without hiring developers or building an AI department."
+    "sub": "Between the AI demo that looked like magic and the tools your team actually uses every day, there’s a big implementation gap. This is a practical guide to putting AI to work in a real small business — where it saves time, which workflows are worth automating, how to connect it to the tools you already use, and how to get it running without hiring developers or building an AI department.",
+    "image": "./hero.png?v=1788544607174"
   },
   "ribbon": [
     "Traffic → Attention",
