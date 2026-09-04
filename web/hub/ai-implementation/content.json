@@ -11,5 +11,8 @@
     "Customer → Fulfillment",
     "Fulfillment → Feedback",
     "Feedback → Optimization"
-  ]
+  ],
+  "report": {
+    "image": "./signup.png?v=1788544617827"
+  }
 }
