@@ -3,7 +3,8 @@
     "image": "./signup.png"
   },
   "hero": {
-    "image": "./hero.png"
+    "image": "./hero.png",
+    "headline": "AI Tool Implementation for your business"
   },
   "ribbon": [
     "Traffic → Attention",
