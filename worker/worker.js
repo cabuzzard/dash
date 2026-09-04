@@ -4203,29 +4203,29 @@ async function runLinkMiningBatch(env, { limit = 8 } = {}) {
 
 // ── runListingRepostReminders ──
 // Weekly repost nudge for the "Listing" method, per operator instruction:
-// once a listing Asset's Asset Status is "Published", a fresh TD reminder
-// should appear every 7 days, ongoing, until the item sells (the operator
-// archives it or changes its status away from Published — nothing here
-// auto-detects a sale). "Last Repost Reminder" (a new date property this
-// function creates on the Assets DB the first time it runs) is the
-// recurrence clock: no value yet, or 7+ days old, means due again. Runs
-// daily via the cron in scheduled() — the daily cadence is coarser than the
-// 7-day reminder interval on purpose, so this never fires more than once a
-// week even though it's checked every day.
+// once a listing Asset's Asset Status is "Published", it should recur on
+// the Weekly Planner (the TD tab's "This Week" board — the weekly
+// schedule) every week, on a fixed weekday, until the item sells (the
+// operator marks the Weekly Planner row Done — nothing here auto-detects a
+// sale). This used to write one-off Main TD items on a manually-tracked
+// 7-day clock ("Last Repost Reminder" on the Asset); moved onto the Weekly
+// Planner instead (2026-09-04) so the recurrence and its weekday both come
+// from the Planner's own existing machinery (wpFetchProjectedItems: an
+// Open row's Date anchors its weekday and it re-projects onto every future
+// week automatically) rather than a second, parallel reminder clock.
+// Idempotent via the new "Source Asset" relation (Weekly Planner → Assets)
+// — this function's only job each run is to make sure exactly one Weekly
+// Planner row exists per Published listing; it never touches a row once
+// created; the day-of-week is whatever weekday the row happened to be
+// created on (today, the first time a given listing is seen Published) and
+// stays fixed after that, same convention as every other Weekly Planner
+// anchor in this codebase. Runs daily via the cron in scheduled() — safe to
+// run more than once a day, it just no-ops for listings already tracked.
 async function runListingRepostReminders(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   if (!NOTION_TOKEN) return;
   const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-
-  try {
-    const dbResp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: hdr }).then(r => r.json());
-    if (!dbResp.properties?.["Last Repost Reminder"]) {
-      await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, {
-        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-        body: JSON.stringify({ properties: { "Last Repost Reminder": { date: {} } } }),
-      });
-    }
-  } catch (e) { return; }
+  const dash = raw => { const s = String(raw).replace(/-/g, ""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
   const rows = await notionQuery(ASSETS_DB, {
     filter: { and: [
@@ -4235,30 +4235,38 @@ async function runListingRepostReminders(env) {
   }).catch(() => []);
   if (!rows.length) return;
 
-  const now = new Date();
-  const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-  const todayStr = now.toISOString().slice(0, 10);
+  // Every Weekly Planner row already tracking a listing repost, keyed by
+  // the Asset it points at (Source Asset), so a listing never gets a
+  // second row on a later run.
+  const existing = await notionQuery(WEEKLY_PLANNER_DB, {
+    filter: { property: "Source", select: { equals: "Listing Repost" } },
+  }).catch(() => []);
+  const alreadyTracked = new Set();
+  existing.forEach(r => {
+    (r.properties?.["Source Asset"]?.relation || []).forEach(rel => alreadyTracked.add(rel.id));
+  });
+
+  const todayStr = new Date().toISOString().slice(0, 10);
 
   for (const page of rows) {
     try {
       if (page.archived || page.in_trash) continue;
-      const lastReminder = page.properties["Last Repost Reminder"]?.date?.start;
-      const dueAgain = !lastReminder || (now - new Date(lastReminder)) >= SEVEN_DAYS_MS;
-      if (!dueAgain) continue;
+      if (alreadyTracked.has(page.id)) continue; // already on the weekly schedule
       const assetTitle = page.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "Listing";
+      const campaignRelId = (page.properties["Campaign"]?.relation || [])[0]?.id;
       await fetch("https://api.notion.com/v1/pages", {
         method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
         body: JSON.stringify({
-          parent: { database_id: MAIN_TD_DB },
+          parent: { database_id: WEEKLY_PLANNER_DB },
           properties: {
-            Title: { title: [{ type: "text", text: { content: `🔁 Repost listing: ${assetTitle} (Etsy / Craigslist / FB Marketplace)`.slice(0, 200) } }] },
-            priority: { multi_select: [{ name: "listing repost" }] },
+            Name: { title: [{ type: "text", text: { content: `🔁 Repost listing: ${assetTitle} (Etsy / Craigslist / FB Marketplace)`.slice(0, 200) } }] },
+            Status: { select: { name: "Open" } },
+            Source: { select: { name: "Listing Repost" } },
+            "Source Asset": { relation: [{ id: page.id }] },
+            Date: { date: { start: todayStr } },
+            ...(campaignRelId ? { Campaign: { relation: [{ id: dash(campaignRelId) }] } } : {}),
           },
         }),
-      }).catch(() => {});
-      await fetch(`https://api.notion.com/v1/pages/${page.id}`, {
-        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-        body: JSON.stringify({ properties: { "Last Repost Reminder": { date: { start: todayStr } } } }),
       }).catch(() => {});
     } catch (e) { /* one bad row never blocks the rest */ }
   }
