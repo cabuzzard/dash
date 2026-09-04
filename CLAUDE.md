@@ -442,13 +442,15 @@ Deploy target for every hub is now `/home3/evraymon/<domain>/`.
 | Hub slug | Campaign | Domain | Routing |
 |---|---|---|---|
 | `creative-flow-guitar` | Creative Flow Guitar — Weekly Sessions | `creativeflowguitar.com` | ✅ serving over https (doc root `~/creativeflowguitar.com`; old WP install stays at `public_html/creativeflowguitar`) |
-| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ⚠️ cPanel addon + doc root set, but hit the WP-service park — parked page |
-| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ⚠️ WP-service park — see below |
-| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ⚠️ WP-service park — see below |
-| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ⚠️ WP-service park — see below |
-| `home-services` | Home Services | `generalservices2020.com` | ⚠️ WP-service park — see below |
-| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ⚠️ WP-service park — see below |
+| `ai-implementation` | Sm business software tools | `aisystemimplementation.com` | ✅ serving over https — re-verified 2026-09-04, WP-service park resolved (fixed outside this session) |
+| `sunflower-acres` | Sunflower Acres | `accessiblefarms.com` | ✅ serving over https — re-verified 2026-09-04, WP-service park resolved |
+| `care-gap` | Fundraising Caregivers - Stable Home | `stablehomefoundation.com` | ✅ serving over https — re-verified 2026-09-04, WP-service park resolved |
+| `owners-rep` (Build Watcher) | Build Watcher | `homestructionconsulting.com` | ❌ not even a cPanel addon domain yet — genuinely still broken, needs to be added first, then likely the WP-service-park fix on top |
+| `home-services` | Home Services | `generalservices2020.com` | ✅ serving over https — re-verified 2026-09-04, WP-service park resolved |
+| `surf-vacations` | Surfing Vacations | `outsidesessions.com` | ✅ serving over https — re-verified 2026-09-04, WP-service park resolved |
 | `mountainwize` | 🏔️ Mountainwize Coaching — Purpose | — (shortlist: `mountainwize.com`) | — |
+
+**2026-09-04 correction:** the ⚠️ WP-service-park entries above were stale. Re-checked all five live in-browser (not just cPanel's addon-domain list) — `aisystemimplementation.com`, `accessiblefarms.com`, `stablehomefoundation.com`, `generalservices2020.com`, and `outsidesessions.com` all now load their real hub content correctly over https. Whatever fixed the parking issue happened outside a Claude session (no code/DNS change made here caused it) — don't trust the "parked" diagnosis below without re-verifying live first. Only `homestructionconsulting.com` remains actually broken, and for a different reason (never added as a cPanel addon domain at all — confirmed via both the Email Accounts domain picker and the Forwarders domain list, neither shows it).
 
 The domains were chosen via the Content Hubs tab's Domain dropdown (which only
 saves to browser localStorage) and are now persisted in `HUB_SITES`. The dash

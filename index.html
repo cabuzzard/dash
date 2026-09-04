@@ -817,9 +817,9 @@
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('mining')">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">⛏️ Link Mining <span id="glMiningCount" style="color:var(--text3);font-weight:400;"></span></span>
-        <span id="glMiningIcon" style="font-size:11px;color:var(--text3);">▾</span>
+        <span id="glMiningIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
-      <div id="glMiningBody" style="padding:0 13px 13px;">
+      <div id="glMiningBody" style="display:none;padding:0 13px 13px;">
         <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
           <span id="glMiningFilters" style="display:flex;gap:5px;flex-wrap:wrap;"></span>
           <button onclick="loadLinkMining(true)" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
@@ -922,6 +922,23 @@
           <button onclick="glPostTypesAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
         </div>
         <div id="glPostTypesList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
+    <!-- 🏢 COMPANIES — a plain wishlist, "companies I want to work for."
+         Same pattern as Automations/Post Types above. Backed by MAIN_TD_DB,
+         filtered to priority="company". -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('companies')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🏢 Companies <span id="glCompaniesCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— companies I want to work for</span></span>
+        <span id="glCompaniesIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glCompaniesBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="glCompaniesInput" type="text" placeholder="A company you want to work for…" onkeydown="if(event.key==='Enter')glCompaniesAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+          <button onclick="glCompaniesAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
+        </div>
+        <div id="glCompaniesList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
       </div>
     </div>
 
@@ -9792,27 +9809,27 @@ function toggleTodaySection() {
 // overridden. creativeflowguitar.com works — connected the old way, pre-auto-WP.
 const HUB_SITES = [
   { name: "Surf Vacations",  slug: "surf-vacations", campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770",  campaign: "Surfing Vacations", microsite: "diving-vacations",                        domain: "outsidesessions.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/surf-vacations/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect outsidesessions.com's placeholder WordPress service (Domains → outsidesessions.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
+    routing: "ok", routingNote: "Verified live 2026-09-04 — serving the real hub correctly over https at outsidesessions.com. Earlier WordPress-service-park block (documented above HUB_SITES) is resolved; whatever fixed it happened outside this session. Confirm it has a line in bluehost-sites.tsv.",
     domainOptions: ["outsidesessions.com", "liketotallydude.com", "rad80schild.com", "barefoothike.com", "bestoutdoorsandals.com", "accessyourpassion.com"] },
   { name: "Sunflower Acres", slug: "sunflower-acres", campaignId: "3871f7d3a4bb814997e5f3400fc3ff57", campaign: "Sunflower Acres",   microsite: "kitchen-and-garden-stuff",                domain: "accessiblefarms.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/sunflower-acres/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect accessiblefarms.com's placeholder WordPress service (Domains → accessiblefarms.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
+    routing: "ok", routingNote: "Verified live 2026-09-04 — serving the real hub correctly over https at accessiblefarms.com. Earlier WordPress-service-park block (documented above HUB_SITES) is resolved; whatever fixed it happened outside this session. Confirm it has a line in bluehost-sites.tsv.",
     domainOptions: ["accessiblefarms.com", "modernactivehome.com", "sustainableaquarium.com", "homepondaquarium.com", "naturebasedcoach.com", "naturewellnesscoach.com"] },
   { name: "Build Watcher",   slug: "owners-rep", campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961",      campaign: "Build Watcher",     microsite: "construction-project-management-consulting", domain: "homestructionconsulting.com", contact: "info@modernactivehome.com", products: 0, blogPosts: 0,
     routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/owners-rep/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect homestructionconsulting.com's placeholder WordPress service (Domains → homestructionconsulting.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
     domainOptions: ["homestructionconsulting.com", "buildtosuitinvestment.com", "stablehomefoundation.com", "foundationfuturesllc.com", "generalservices2020.com", "roi-systems.com", "bestrealestateliquidation.com"] },
   { name: "Home Services",   slug: "home-services", campaignId: "3951f7d3a4bb81659af8dc82fb56f92a",   campaign: "Home Services",     microsite: "home-services",                           domain: "generalservices2020.com", contact: null, products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/home-services/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect generalservices2020.com's placeholder WordPress service, or Bluehost support. Then add its line to bluehost-sites.tsv. NOTE: generalservice2020.com (singular) is a DIFFERENT domain, used by the Dream Home Build campaign — this hub uses the plural.",
+    routing: "ok", routingNote: "Verified live 2026-09-04 — serving the real hub correctly over https at generalservices2020.com. Earlier WordPress-service-park block (documented above HUB_SITES) is resolved; whatever fixed it happened outside this session. Confirm it has a line in bluehost-sites.tsv. NOTE: generalservice2020.com (singular) is a DIFFERENT domain, used by the Dream Home Build campaign — this hub uses the plural.",
     domainOptions: ["generalservices2020.com", "generalservice2020.com", "modernactivehome.com", "homestructionconsulting.com", "stablehomefoundation.com", "webguyleadgeneration.com"] },
   { name: "Creative Flow Guitar", slug: "creative-flow-guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a", campaign: "Creative Flow Guitar — Weekly Sessions", microsite: "creative-flow-guitar", domain: "creativeflowguitar.com", contact: null, products: 0, blogPosts: 0,
     routing: "ok", routingNote: "Connected & serving the hub over https (verified 2026-09-01). Doc root moved to /home3/evraymon/creativeflowguitar.com/ (the deploy target); the old WordPress install stays at public_html/creativeflowguitar untouched. Works because this domain was connected the old way, before Bluehost's auto-WordPress-service parking.",
     domainOptions: ["creativeflowguitar.com", "bayareaoriginalmusic.com", "outsidesessions.com", "rockrgear.com", "petrichorpodcast.com"] },
   { name: "AI Implementation", slug: "ai-implementation", campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597", campaign: "Sm business software tools", microsite: "sm-business-software-tools", domain: "aisystemimplementation.com", contact: "info@webguyleadgeneration.com", products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/ai-implementation/). A cPanel addon domain + doc root (~/aisystemimplementation.com) are set and it served the hub briefly, but the auto-WordPress-service park (root A → 204.11.56.246) took back over. Same fix: disconnect the placeholder WordPress service, or Bluehost support; then add its line to bluehost-sites.tsv.",
+    routing: "ok", routingNote: "Verified live 2026-09-04 — serving the real hub correctly over https at aisystemimplementation.com. Earlier WordPress-service-park block (documented above HUB_SITES) is resolved; whatever fixed it happened outside this session. Confirm it has a line in bluehost-sites.tsv.",
     domainOptions: ["aisystemimplementation.com", "aisystemimplementation.online", "roi-systems.com", "facttracking.com", "webguyleadgeneration.com"] },
   { name: "Mountainwize", slug: "mountainwize", campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1", campaign: "🏔️ Mountainwize Coaching — Purpose", microsite: "mountainwize-coaching-purpose", domain: null, contact: null, products: 0, blogPosts: 0,
     domainOptions: ["mountainwize.com", "intentionwarrior.com", "thirdpathcoaching.com", "growthcoachmindset.com", "naturebasedcoach.com"] },
   { name: "The Care Gap", slug: "care-gap", campaignId: "34b1f7d3a4bb81b6a8a8fee04df94807", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
-    routing: "error", routingNote: "Pre-domain — served from GitHub Pages (cabuzzard.github.io/dash/web/hub/care-gap/). Blocked from Bluehost by the common WordPress-service park (see the comment above HUB_SITES): disconnect stablehomefoundation.com's placeholder WordPress service (Domains → stablehomefoundation.com → Overview → Connected Services → Manage), or have Bluehost support point it at the cPanel account. Then add its line to bluehost-sites.tsv.",
+    routing: "ok", routingNote: "Verified live 2026-09-04 — serving the real hub correctly over https at stablehomefoundation.com. Earlier WordPress-service-park block (documented above HUB_SITES) is resolved; whatever fixed it happened outside this session. Confirm it has a line in bluehost-sites.tsv.",
     domainOptions: ["stablehomefoundation.com", "stablehomefoundation.online", "foundationfuturesllc.com"] },
 ];
 
@@ -11523,10 +11540,11 @@ const GL_SECTIONS = {
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
   automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
   postTypes: { icon: 'glPostTypesIcon', body: 'glPostTypesBody', load: () => loadGlPostTypes() },
+  companies: { icon: 'glCompaniesIcon', body: 'glCompaniesBody', load: () => loadGlCompanies() },
   tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
   stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
 };
-const glOpen = { mining: true };
+const glOpen = {};
 
 function glToggle(key) {
   const s = GL_SECTIONS[key]; if (!s) return;
@@ -11536,9 +11554,7 @@ function glToggle(key) {
   if (glOpen[key] && !s._loaded) { s._loaded = true; s.load(); }
 }
 function loadGlobalsTab() {
-  // Link Mining opens by default.
-  GL_SECTIONS.mining._loaded = true;
-  loadLinkMining();
+  // All sections start collapsed and lazy-load on first open (glToggle).
 }
 
 // ── Link Mining review queue ──
@@ -11997,6 +12013,52 @@ async function glPostTypesDelete(id) {
     GL_POST_TYPES_DATA = GL_POST_TYPES_DATA.filter(x => x.id !== id);
     document.getElementById('glPostTypesCount').textContent = '· ' + GL_POST_TYPES_DATA.length;
     renderGlPostTypes();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── Companies wishlist (same pattern as Automations/Post Types above) ──
+let GL_COMPANIES_DATA = [];
+async function loadGlCompanies() {
+  const el = document.getElementById('glCompaniesList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getCompanyTds', {});
+    if (data.error) throw new Error(data.error);
+    GL_COMPANIES_DATA = data.items || [];
+    document.getElementById('glCompaniesCount').textContent = '· ' + GL_COMPANIES_DATA.length;
+    renderGlCompanies();
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+function renderGlCompanies() {
+  const el = document.getElementById('glCompaniesList');
+  if (!GL_COMPANIES_DATA.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Nothing queued yet. Add one above whenever a company comes to mind.</div>'; return; }
+  el.innerHTML = GL_COMPANIES_DATA.map(t =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+    + '<span style="font-size:12px;color:var(--text);' + (t.stage === 'Published' ? 'text-decoration:line-through;color:var(--text3);' : '') + '">' + esc(t.title) + '</span>'
+    + '<button onclick="glCompaniesDelete(\'' + t.id + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;flex-shrink:0;">✕</button>'
+    + '</div>'
+  ).join('');
+}
+async function glCompaniesAdd() {
+  const inp = document.getElementById('glCompaniesInput');
+  const title = inp.value.trim();
+  if (!title) return;
+  inp.disabled = true;
+  try {
+    const r = await call('createCompanyTd', { title });
+    if (r.error) throw new Error(r.error);
+    inp.value = '';
+    await loadGlCompanies();
+  } catch (e) { alert('Error: ' + e.message); }
+  finally { inp.disabled = false; inp.focus(); }
+}
+async function glCompaniesDelete(id) {
+  try {
+    const r = await call('deleteCompanyTd', { id });
+    if (r.error) throw new Error(r.error);
+    GL_COMPANIES_DATA = GL_COMPANIES_DATA.filter(x => x.id !== id);
+    document.getElementById('glCompaniesCount').textContent = '· ' + GL_COMPANIES_DATA.length;
+    renderGlCompanies();
   } catch (e) { alert('Error: ' + e.message); }
 }
 
