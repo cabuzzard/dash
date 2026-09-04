@@ -28060,6 +28060,52 @@ ${assemblyManifest}`;
         return json({ success: true });
       }
 
+      // ── Post Types wishlist (Globals tab) ── "post type ideas to consider" —
+      // same pattern as the Automations wishlist directly above: reuses
+      // MAIN_TD_DB, tagged via the `priority` multi_select with the value
+      // "post type idea". Deliberately NOT the real 🏷️ POST_TYPES_DB catalog
+      // (the operational taxonomy Growth Strategy generation and Link
+      // Mining's "Post Type" promotion both write into) — this is just a
+      // quick-capture queue for ideas before they're formally added there.
+      if (body.action === "getPostTypeTds") {
+        const rows = await notionQuery(MAIN_TD_DB, {
+          filter: { property: "priority", multi_select: { contains: "post type idea" } },
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
+        }).catch(e => { console.error("getPostTypeTds:", e.message); return []; });
+        const items = rows.map(p => ({
+          id: p.id.replace(/-/g, ""),
+          title: (p.properties?.Title?.title || []).map(t => t.plain_text).join(""),
+          stage: p.properties?.Stage?.select?.name || "",
+          dueDate: p.properties?.["Due Date"]?.date?.start || "",
+        }));
+        return json({ items });
+      }
+
+      if (body.action === "createPostTypeTd") {
+        const title = String(body.title || "").trim();
+        if (!title) return json({ error: "title required" }, 400);
+        const r = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: MAIN_TD_DB }, properties: {
+            "Title": { title: [{ text: { content: title.slice(0, 200) } }] },
+            "priority": { multi_select: [{ name: "post type idea" }] },
+          } }),
+        });
+        if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "create failed" }, r.status);
+        const p = await r.json();
+        return json({ success: true, id: p.id.replace(/-/g, "") });
+      }
+
+      if (body.action === "deletePostTypeTd") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) });
+        if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "delete failed" }, r.status);
+        return json({ success: true });
+      }
+
       // Clear a post's Mined flag so it re-runs on the next integrate — for
       // the "re-mine" affordance and for recovering from a bad batch.
       if (body.action === "resetPostMining") {

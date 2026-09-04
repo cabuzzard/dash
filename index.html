@@ -905,6 +905,26 @@
       </div>
     </div>
 
+    <!-- 🏷️ POST TYPES — a plain wishlist, "post type ideas to consider."
+         Same pattern as Automations above: NOT the real 🏷️ Post Types
+         catalog (POST_TYPES_DB, used live by Growth Strategy generation
+         and by Link Mining's "Post Type" promotion) — just a place to drop
+         an idea for a possible new post type before it's forgotten.
+         Backed by MAIN_TD_DB, filtered to priority="post type idea". -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('postTypes')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🏷️ Post Types <span id="glPostTypesCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— post type ideas to consider</span></span>
+        <span id="glPostTypesIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glPostTypesBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="glPostTypesInput" type="text" placeholder="A post type idea…" onkeydown="if(event.key==='Enter')glPostTypesAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+          <button onclick="glPostTypesAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
+        </div>
+        <div id="glPostTypesList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('tools')">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧰 Tools</span>
@@ -11501,6 +11521,7 @@ const GL_SECTIONS = {
   trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
   automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
+  postTypes: { icon: 'glPostTypesIcon', body: 'glPostTypesBody', load: () => loadGlPostTypes() },
   tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
   stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
 };
@@ -11929,6 +11950,52 @@ async function glAutoDelete(id) {
     GL_AUTO_DATA = GL_AUTO_DATA.filter(x => x.id !== id);
     document.getElementById('glAutoCount').textContent = '· ' + GL_AUTO_DATA.length;
     renderGlAutomations();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── Post Types wishlist (same pattern as Automations above) ──
+let GL_POST_TYPES_DATA = [];
+async function loadGlPostTypes() {
+  const el = document.getElementById('glPostTypesList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getPostTypeTds', {});
+    if (data.error) throw new Error(data.error);
+    GL_POST_TYPES_DATA = data.items || [];
+    document.getElementById('glPostTypesCount').textContent = '· ' + GL_POST_TYPES_DATA.length;
+    renderGlPostTypes();
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+function renderGlPostTypes() {
+  const el = document.getElementById('glPostTypesList');
+  if (!GL_POST_TYPES_DATA.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Nothing queued yet. Add one above whenever an idea comes up.</div>'; return; }
+  el.innerHTML = GL_POST_TYPES_DATA.map(t =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+    + '<span style="font-size:12px;color:var(--text);' + (t.stage === 'Published' ? 'text-decoration:line-through;color:var(--text3);' : '') + '">' + esc(t.title) + '</span>'
+    + '<button onclick="glPostTypesDelete(\'' + t.id + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;flex-shrink:0;">✕</button>'
+    + '</div>'
+  ).join('');
+}
+async function glPostTypesAdd() {
+  const inp = document.getElementById('glPostTypesInput');
+  const title = inp.value.trim();
+  if (!title) return;
+  inp.disabled = true;
+  try {
+    const r = await call('createPostTypeTd', { title });
+    if (r.error) throw new Error(r.error);
+    inp.value = '';
+    await loadGlPostTypes();
+  } catch (e) { alert('Error: ' + e.message); }
+  finally { inp.disabled = false; inp.focus(); }
+}
+async function glPostTypesDelete(id) {
+  try {
+    const r = await call('deletePostTypeTd', { id });
+    if (r.error) throw new Error(r.error);
+    GL_POST_TYPES_DATA = GL_POST_TYPES_DATA.filter(x => x.id !== id);
+    document.getElementById('glPostTypesCount').textContent = '· ' + GL_POST_TYPES_DATA.length;
+    renderGlPostTypes();
   } catch (e) { alert('Error: ' + e.message); }
 }
 
