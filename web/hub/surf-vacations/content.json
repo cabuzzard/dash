@@ -1,12 +1,12 @@
 {
   "hero": {
-    "image": "./hero.png",
+    "image": "./hero.png?v=1788541614415",
     "eyebrow": "Surf travel, Dream it and it will be done.",
     "headline": "You Dared to Dream it.  And it came to be True.",
     "sub": "It's never been a better time.  The Ultimate form of travel is ready for you to find it."
   },
   "report": {
-    "image": "./signup.png"
+    "image": "./signup.png?v=1788541614415"
   },
   "ribbon": [
     "Maldives",

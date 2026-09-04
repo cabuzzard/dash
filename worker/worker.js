@@ -5753,7 +5753,11 @@ Return: the logo on a transparent background, plus one preview placed on the sit
               const name = body.kind === "signup" ? "signup" : "hero";
               const cur = await getF(`web/hub/${slug}/${name}.${ext}`);
               await putF(`web/hub/${slug}/${name}.${ext}`, dataB64, `hub ${slug}: ${name} image`, cur.sha);
-              patch = { [kind]: { image: `./${name}.${ext}` } };
+              // Cache-bust: the filename never changes on replace, so without a
+              // version query param browsers/CDN keep serving the old bytes
+              // forever at the same URL — this is what "hero images cached as
+              // old versions" traced back to (2026-09-04).
+              patch = { [kind]: { image: `./${name}.${ext}?v=${Date.now()}` } };
               commitMsg = `hub ${slug}: ${name} image (upload)`;
             } else if (op === "generate") {
               const OPENAI = (env.OPENAI_API_KEY || "").trim();
@@ -5779,7 +5783,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
               const name = body.kind === "signup" ? "signup" : "hero";
               const cur = await getF(`web/hub/${slug}/${name}.png`);
               await putF(`web/hub/${slug}/${name}.png`, b64img, `hub ${slug}: ${name} image (generated)`, cur.sha);
-              patch = { [kind]: { image: `./${name}.png` } };
+              patch = { [kind]: { image: `./${name}.png?v=${Date.now()}` } };   // cache-bust — see comment on the upload branch above
               commitMsg = `hub ${slug}: ${name} image (generated)`;
             } else return json({ error: "unknown op" }, 400);
           }

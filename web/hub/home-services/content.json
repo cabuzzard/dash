@@ -1,7 +1,7 @@
 {
   "hero": {
     "headline": "All the Little Things that make up a Home",
-    "image": "./hero.png",
+    "image": "./hero.png?v=1788541614415",
     "eyebrow": "I LOOOOOOVE Taking care of Houses !!"
   },
   "ribbon": [
@@ -13,6 +13,6 @@
     "Furniture and Interior Assembly"
   ],
   "report": {
-    "image": "./signup.png"
+    "image": "./signup.png?v=1788541614415"
   }
 }

@@ -2,7 +2,7 @@
   "hero": {
     "eyebrow": "A philanthropic briefing from the Stable Home Foundation",
     "headline": "The Caregiving Crisis.",
-    "image": "./hero.png"
+    "image": "./hero.png?v=1788541614415"
   },
   "ribbon": [
     "9.7M direct-care openings by 2034",
@@ -30,7 +30,7 @@
   },
   "report": {
     "blurb": "Foundation officers, ESG investors, and major-gift donors keep asking for the same thing: the direct-care workforce crisis laid out cleanly enough to take to a committee. This is that document. 9.7 million openings by 2034. A median wage under $26,000. 59% of the workforce on public assistance. The bipartisan policy shift already forming around it. And the specific framework the Foundation uses to show which of those figures its four programs actually move. About twelve pages, every claim sourced — the thing most partners read the week before the call.",
-    "image": "./signup.png"
+    "image": "./signup.png?v=1788541614415"
   },
   "footer": {
     "tagline": "The Care Gap is an initiative of the Stable Home Foundation — private philanthropic infrastructure for the direct-care workforce.",

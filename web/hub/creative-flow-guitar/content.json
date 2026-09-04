@@ -1,7 +1,7 @@
 {
   "hero": {
     "headline": "Acoustic Instrumental, Classic, and Relevant",
-    "image": "./hero.png"
+    "image": "./hero.png?v=1788541614415"
   },
   "ribbon": [
     "Acoustic Rock",
@@ -16,6 +16,6 @@
     "title": "Get on my Wavelength"
   },
   "report": {
-    "image": "./signup.png"
+    "image": "./signup.png?v=1788541614415"
   }
 }
