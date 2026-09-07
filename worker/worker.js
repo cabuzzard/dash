@@ -77,6 +77,7 @@ const METHOD_IDEAS_DB    = "9b094862f32a40c994093610f8696a8c"; // Name/Descripti
 const TRADING_STRATEGIES_DB = "49940bac8cdc4310a8f54e10833673f9"; // Name/Thesis/Entry/Exit / Risk/Instruments/Timeframe/Status/Notes/Source Post/Creator — reference library, not wired into runAutoTradeScan yet
 const AFFILIATE_DB       = "1dee16c0bc2743ed9155d7649f0d9e51"; // Name/Hub/Keyword/Network/Commission/Cookie Window/Signup URL/Fit/Notes/Status/Found — found by searching hub keywords + "affiliate" (Globals tab)
 const HUB_FRONTS_DB      = "74642017fd1b48a88ad99443d173aeb2"; // 🎯 Hub Fronts — one row per hub × work-class (the standing output mandate). Hub/Class/Type(Cadence|Setup|Campaign)/Cadence/Weekday/Intensity/State/Next/Progress/Notes/Campaign/Active. Cadence rows with Active + State Running/Maintaining are emitted onto the Weekly Planner nightly by runHubFrontReminders (Source "Hub Front", idempotent via WEEKLY_PLANNER_DB's "Source Hub Front" relation). NOTE: database id, not the collection id.
+const WORK_TYPES_DB      = "037cc0f51c63430d810f3e1525675461"; // 🧰 Work Types — operator-grown catalog of the TYPES of work the hubs generate (Name/Class/Rationale), grouped under the same 14 classes as HUB_FRONTS_DB. Feeds the "Hub Front" section on the TD tab (get/create/update/deleteWorkType). Not per-hub, not a to-do list — a vocabulary. NOTE: database id, not the collection id.
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -158,6 +159,7 @@ const HUB_ORIGINS = new Set([
   "https://generalservices2020.com",       "https://www.generalservices2020.com",
   "https://mountainwize.com",               "https://www.mountainwize.com",
   "https://outsidesessions.com",           "https://www.outsidesessions.com",
+  "https://sustainableaquarium.com",       "https://www.sustainableaquarium.com",
 ]);
 function resolveOrigin(request) {
   const o = request.headers.get("Origin") || "";
@@ -181,6 +183,7 @@ const HUB_SITES = [
   { slug: "ai-implementation",    name: "AI Implementation",    campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597" },
   { slug: "creative-flow-guitar", name: "Creative Flow Guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a" },
   { slug: "mountainwize",         name: "Mountainwize",         campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1" },
+  { slug: "sustainable-aquarium", name: "Sustainable Aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e" },
 ];
 
 // Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
@@ -3647,6 +3650,7 @@ const ECOSYSTEM_DBS = [
   { id: GROWTH_STRATEGY_DB,         name: "Growth Strategy",           emoji: "🚀", domain: "strategy" },
   { id: STRATEGY_SLOTS_DB,          name: "Strategy Slots",            emoji: "🎰", domain: "strategy" },
   { id: POST_TYPES_DB,              name: "Post Types",                emoji: "🏷️", domain: "strategy" },
+  { id: WORK_TYPES_DB,             name: "Work Types",                emoji: "🧰", domain: "ops" },
   { id: MAIN_TD_DB,                 name: "Main TD",                   emoji: "✅", domain: "ops" },
   { id: WEEKLY_PLANNER_DB,          name: "Weekly Planner",            emoji: "🗓️", domain: "ops" },
   { id: LOGINS_DB,                  name: "Logins",                    emoji: "🔑", domain: "ops" },
@@ -7646,6 +7650,70 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         if (!frontId) return json({ error: "frontId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         await fetch(`https://api.notion.com/v1/pages/${dash(frontId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        }).catch(() => {});
+        return json({ success: true });
+      }
+
+      // ── Work Types ── the operator-grown catalog of the TYPES of work the
+      // hubs generate (🧰 Work Types DB). Not per-hub, not a to-do list — a
+      // vocabulary, grouped under the same 14 classes as Hub Fronts. Powers
+      // the "Hub Front" section on the TD tab (which now shows work types,
+      // not individual hub rows). Mirrors the Post Types actions.
+      if (body.action === "getWorkTypes") {
+        const rows = await notionQuery(WORK_TYPES_DB, {}).catch(e => { console.error('notionQuery(WORK_TYPES_DB) failed:', e.message); return []; });
+        const workTypes = rows.map(r => {
+          const p = r.properties || {};
+          return {
+            id: r.id.replace(/-/g,""),
+            name: (p.Name?.title || []).map(t => t.plain_text).join(""),
+            klass: p.Class?.select?.name || "",
+            rationale: (p.Rationale?.rich_text || []).map(t => t.plain_text).join(""),
+          };
+        });
+        return json({ success: true, workTypes });
+      }
+
+      if (body.action === "createWorkType") {
+        const { name, klass, rationale } = body;
+        if (!(name || "").trim() || !(klass || "").trim()) return json({ error: "name and klass required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const props = {
+          "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
+          "Class": { select: { name: klass } },
+        };
+        if ((rationale || "").trim()) props["Rationale"] = { rich_text: [{ type: "text", text: { content: String(rationale).slice(0, 1990) } }] };
+        const created = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ parent: { database_id: WORK_TYPES_DB }, properties: props }),
+        }).then(r => r.json());
+        if (!created.id) return json({ error: created.message || "Failed to create Work Type" }, 500);
+        return json({ success: true, id: created.id.replace(/-/g,"") });
+      }
+
+      if (body.action === "updateWorkType") {
+        const { typeId } = body;
+        if (!typeId) return json({ error: "typeId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const props = {};
+        if (body.name !== undefined) props["Name"] = { title: [{ type: "text", text: { content: String(body.name).slice(0, 200) } }] };
+        if (body.klass !== undefined) props["Class"] = body.klass ? { select: { name: body.klass } } : { select: null };
+        if (body.rationale !== undefined) props["Rationale"] = { rich_text: [{ type: "text", text: { content: String(body.rationale).slice(0, 1990) } }] };
+        if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to update" }, resp.status || 500); }
+        return json({ success: true });
+      }
+
+      if (body.action === "deleteWorkType") {
+        const { typeId } = body;
+        if (!typeId) return json({ error: "typeId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
           method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ archived: true }),
         }).catch(() => {});
