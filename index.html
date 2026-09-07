@@ -9902,6 +9902,9 @@ const HUB_SITES = [
   { name: "The Care Gap", slug: "care-gap", campaignId: "34b1f7d3a4bb81b6a8a8fee04df94807", campaign: "Fundraising Caregivers - Stable Home", microsite: "mobility-mentor-fundraising", domain: "stablehomefoundation.com", contact: "flipoclock@gmail.com", products: 0, blogPosts: 0,
     routing: "ok", routingNote: "Verified live 2026-09-04 — serving the real hub correctly over https at stablehomefoundation.com. Earlier WordPress-service-park block (documented above HUB_SITES) is resolved; whatever fixed it happened outside this session. Confirm it has a line in bluehost-sites.tsv.",
     domainOptions: ["stablehomefoundation.com", "stablehomefoundation.online", "foundationfuturesllc.com"] },
+  { name: "Sustainable Aquarium", slug: "sustainable-aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e", campaign: "Sustainable Aquarium", microsite: null, domain: "sustainableaquarium.com", contact: "info@sustainableaquarium.com", products: 0, blogPosts: 0,
+    routing: "pending", routingNote: "2026-09-07: domain registered on Bluehost, not yet migrated to Cloudflare. Needs the 5-step process in web/hub/CLOUDFLARE-ROUTING.md — Cloudflare Add-a-Site (verify MX records import), nameserver switch at Bluehost, wait for Active, add custom domain to the dash-hubs Pages project. Affiliate/Amazon-monetized hub dedicated to the Walstad Method (highest-converged term in the natural-planted-tank niche per keyword research) — not general aquarium services, which stay on Home Services.",
+    domainOptions: ["sustainableaquarium.com", "homepondaquarium.com"] },
 ];
 
 // Yes/no checklist columns. `crit:true` = blocks the LIVE badge; the rest
@@ -13170,6 +13173,16 @@ const HF_STATE_CYCLE = ['Not started','Building','Running','Maintaining','Blocke
 let HF_FRONTS = [];
 let hubFrontCollapsed = true;
 try { hubFrontCollapsed = localStorage.getItem('hubFrontCollapsed') !== 'false'; } catch(e) {}
+// Per-class collapse state — a set of collapsed class names + collapsed
+// layer names, persisted so the operator's chosen view sticks.
+let HF_HIDDEN = new Set();
+try { HF_HIDDEN = new Set(JSON.parse(localStorage.getItem('hubFrontHidden') || '[]')); } catch(e) {}
+function hfSaveHidden() { try { localStorage.setItem('hubFrontHidden', JSON.stringify([...HF_HIDDEN])); } catch(e) {} }
+function toggleHubFrontGroup(key) {
+  if (HF_HIDDEN.has(key)) HF_HIDDEN.delete(key); else HF_HIDDEN.add(key);
+  hfSaveHidden();
+  renderHubFront();
+}
 
 function toggleHubFront() {
   hubFrontCollapsed = !hubFrontCollapsed;
@@ -13229,13 +13242,22 @@ function renderHubFront() {
     const items = byClass[c.name];
     if (!items || !items.length) return;
     if (c.layer !== lastLayer) {
-      html += `<div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:10px 0 3px;">${c.layer}</div>`;
+      const lk = 'layer:' + c.layer;
+      const lh = HF_HIDDEN.has(lk);
+      html += `<div onclick="toggleHubFrontGroup('${lk}')" style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:10px 0 3px;cursor:pointer;display:flex;align-items:center;gap:5px;">`
+        + `<span style="font-size:8px;">${lh?'▸':'▾'}</span>${esc(c.layer)}</div>`;
       lastLayer = c.layer;
     }
+    if (HF_HIDDEN.has('layer:' + c.layer)) return;
     items.sort((a,b) => (a.intensity==='Primary'?0:1) - (b.intensity==='Primary'?0:1) || a.hub.localeCompare(b.hub));
+    const ck = 'class:' + c.name;
+    const ch = HF_HIDDEN.has(ck);
+    const running = items.filter(f => f.state === 'Running' || f.state === 'Maintaining').length;
     html += `<div style="margin:5px 0;">`
-      + `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:1px;">${c.emoji} ${esc(c.name)} <span style="color:var(--text3);font-weight:400;">${items.length}</span></div>`
-      + items.map(rowHtml).join('')
+      + `<div onclick="toggleHubFrontGroup('${esc(ck)}')" style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:1px;cursor:pointer;display:flex;align-items:center;gap:5px;">`
+        + `<span style="font-size:8px;color:var(--text3);">${ch?'▸':'▾'}</span>${c.emoji} ${esc(c.name)} `
+        + `<span style="color:var(--text3);font-weight:400;">${running}/${items.length}</span></div>`
+      + (ch ? '' : items.map(rowHtml).join(''))
       + `</div>`;
   });
   body.innerHTML = html || '<div style="font-size:11px;color:var(--text3);">No hub fronts yet — use + Add.</div>';
