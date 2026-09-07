@@ -300,6 +300,43 @@ function sanitizeJsonControlChars(str) {
   return out;
 }
 
+// Best-effort repair for a JSON object truncated mid-stream (the LLM hit
+// max_tokens): drop the trailing partial token / dangling key, then close
+// every still-open string, array and object. Returns the parsed object, or
+// null if it still won't parse. Feed it the already control-char-sanitized
+// slice from the first "{" onward.
+function repairTruncatedJson(s) {
+  try {
+    let inStr = false, esc = false;
+    for (let i = 0; i < s.length; i++) {
+      const ch = s[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+    }
+    let head = s;
+    if (inStr) {
+      const q = head.lastIndexOf('"');            // truncated inside a string — cut it out
+      if (q === -1) return null;
+      head = head.slice(0, q);
+    }
+    head = head.replace(/[\s,]*$/, '');
+    head = head.replace(/,?\s*"(?:[^"\\]|\\.)*"\s*:\s*$/, ''); // drop a dangling  "key":
+    head = head.replace(/[\s,]*$/, '');
+    const stack = [];
+    inStr = false; esc = false;
+    for (let i = 0; i < head.length; i++) {
+      const ch = head[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; continue; }
+      if (ch === '"') inStr = true;
+      else if (ch === '{' || ch === '[') stack.push(ch === '{' ? '}' : ']');
+      else if (ch === '}' || ch === ']') stack.pop();
+    }
+    if (esc) head = head.slice(0, -1);           // dangling backslash
+    const closer = (inStr ? '"' : '') + stack.reverse().join('');
+    return JSON.parse(head + closer);
+  } catch (e) { return null; }
+}
+
 async function notionQuery(dbId, body) {
   const results = [];
   let cursor = undefined;
@@ -14136,7 +14173,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
@@ -14144,10 +14181,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
         try {
           const raw = aiData.content?.[0]?.text || "";
           const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-          if (start === -1 || end === -1) throw new Error("No JSON object found");
-          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+          if (start === -1) throw new Error("No JSON object found");
+          try {
+            plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end > start ? end + 1 : raw.length)));
+          } catch (e1) {
+            // LLM likely hit the token limit mid-array — salvage what parsed.
+            plan = repairTruncatedJson(sanitizeJsonControlChars(raw.slice(start)));
+            if (!plan || !Array.isArray(plan.groupings) || !plan.groupings.length) throw e1;
+          }
         } catch (e) {
-          return json({ error: "Failed to parse growth strategy JSON: " + e.message }, 500);
+          const hint = aiData.stop_reason === "max_tokens" ? " — the response hit the token limit; try again" : "";
+          return json({ error: "Failed to parse growth strategy JSON: " + e.message + hint }, 500);
         }
         const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
         const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
