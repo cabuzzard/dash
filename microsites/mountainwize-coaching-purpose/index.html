@@ -8592,10 +8592,10 @@ function renderStrategyBlock(s, indentPx) {
   // the grouping row below.
   const stratNameTitle = s.groupings.length === 1 ? (s.groupings[0].rationale || '') : '';
   return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;padding-left:${indentPx || 0}px;">`
-    + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
+    + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;">`
     + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
-    + `<span title="${esc(stratNameTitle)}" style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
-    + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
+    + `<span title="${esc(stratNameTitle)}" style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
+    + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(s.status)}</span>`
     + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
     + launchRunBtn
     + regenBtn
@@ -8622,12 +8622,12 @@ function renderStrategyItem(s) {
     const parentBodyId = `strat-parent-body-${s.id}`;
     const childrenHtml = s.children.map(c => renderStrategyBlock(c, 16)).join('');
     return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333;">`
-      + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">`
+      + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;">`
       + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${parentBodyId}', this)">▶</span>`
-      + `<span style="font-size:13px;font-weight:700;color:#e8ff47;cursor:pointer;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
-      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
-      + `<span style="font-size:10px;color:#fff;">${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}</span>`
-      + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
+      + `<span style="font-size:13px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
+      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(s.status)}</span>`
+      + `<span style="font-size:10px;color:#fff;flex-shrink:0;">${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}</span>`
+      + (s.productName ? `<span style="font-size:10px;color:#fff;flex-shrink:0;">${esc(s.productName)}</span>` : '')
       + `<button onclick="openAddGroupingModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Add a whole new grouping (arc + platform) to this strategy from a plain-text guidance prompt — becomes its own new child, same as the existing ${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">➕ Add Grouping</button>`
       + `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy AND all ${s.children.length} sub-strategies — archives everything and every Strategy Slot under them. Any real title stays, just drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`
       + `</div>`

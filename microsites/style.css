@@ -51,10 +51,15 @@ h2 {
 }
 .three-col .col {
   border-right: 1px solid #161616;
+  min-width: 0; /* grid items default to min-width:auto — without this a column
+                   with wide non-wrapping content (e.g. the Strategies header's
+                   button row) overflows and the next column paints over it,
+                   making buttons near the edge unclickable */
 }
 .three-col .col:last-child {
   border-right: none;
 }
+.two-col .col, .four-col .col { min-width: 0; }
 
 /* FOUR COL SECTION */
 .four-col {
