@@ -743,6 +743,22 @@
          worker.js). Manual adds here ask which campaign to attach to,
          since this view has no single implicit campaign the way a
          microsite tab does. -->
+    <!-- HUB FRONT — the standing output mandate (🎯 Hub Fronts DB), grouped
+         by work-class. Collapsed by default. Cadence rows that are Active +
+         Running/Maintaining are emitted onto the This Week board below by
+         runHubFrontReminders (worker.js). This section is the source; This
+         Week is the queue. -->
+    <div id="hubFrontSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubFront()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Front <span id="hubFrontSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button onclick="event.stopPropagation();openHubFrontModal()" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ Add</button>
+          <span id="hubFrontToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+        </span>
+      </div>
+      <div id="hubFrontBody" style="display:none;margin-top:10px;"></div>
+    </div>
+
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
@@ -1582,6 +1598,61 @@
     <div class="modal-title" id="hclTitle">Launch checklist</div>
     <div id="hclBody" style="max-height:60vh;overflow-y:auto;"></div>
     <button class="modal-btn" onclick="document.getElementById('hubChecklistModal').classList.remove('open')" style="margin-top:12px;background:transparent;border-color:var(--border2);color:var(--text3);">Close</button>
+  </div>
+</div>
+
+<!-- Hub Front → add / edit a hub × work-class row (🎯 Hub Fronts DB) -->
+<div class="modal-bg" id="hubFrontModal" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-title" id="hubFrontModalTitle">Add Hub Front</div>
+    <div style="display:flex;gap:8px;">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Hub</label>
+        <select class="modal-input" id="hfHub"></select>
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Class</label>
+        <select class="modal-input" id="hfClass"></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Type</label>
+        <select class="modal-input" id="hfType" onchange="hfTypeChanged()"><option>Cadence</option><option>Setup</option><option>Campaign</option></select>
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Intensity</label>
+        <select class="modal-input" id="hfIntensity"><option value="">—</option><option>Primary</option><option>Secondary</option></select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;" id="hfCadenceRow">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Cadence</label>
+        <select class="modal-input" id="hfCadence"><option>Weekly</option><option>2x per week</option><option>3x per week</option><option>Daily</option><option>Biweekly</option><option>Monthly</option></select>
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Anchor weekday</label>
+        <select class="modal-input" id="hfWeekday"><option>Mon</option><option>Tue</option><option>Wed</option><option>Thu</option><option>Fri</option><option>Sat</option><option>Sun</option></select>
+      </div>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">State</label>
+      <select class="modal-input" id="hfState"><option>Not started</option><option>Building</option><option>Running</option><option>Maintaining</option><option>Blocked</option><option>Done</option></select>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Next action</label>
+      <input class="modal-input" id="hfNext" type="text" placeholder="one concrete thing">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">Notes <span style="color:var(--text3);font-weight:400;">— optional</span></label>
+      <input class="modal-input" id="hfNotes" type="text">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:12px;">
+      <button class="modal-btn" id="hfSaveBtn" onclick="hubFrontSave()">Save</button>
+      <button class="modal-btn" id="hfDeleteBtn" onclick="hubFrontDelete()" style="background:transparent;border-color:#e05252;color:#e05252;display:none;">Delete</button>
+      <button class="modal-btn" onclick="document.getElementById('hubFrontModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Cancel</button>
+    </div>
+    <div id="hfMsg" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
   </div>
 </div>
 
@@ -13070,7 +13141,191 @@ async function loadTdTab() {
   }
   renderHubSites();
   loadTodayCampaigns();
+  loadHubFront();
   loadWpBoard();
+}
+
+// ── HUB FRONT — the standing output mandate (🎯 Hub Fronts DB) ──────────
+// Collapsed section above This Week. Grouped by work-class (not hub), in
+// Engine → Monetization → Trust → Substrate order. The source that
+// runHubFrontReminders turns into This Week rows.
+const HF_CLASSES = [
+  { name: 'Content Production', emoji: '✍️', layer: 'Engine' },
+  { name: 'Content Distribution', emoji: '📣', layer: 'Engine' },
+  { name: 'SEO & Discoverability', emoji: '🔎', layer: 'Engine' },
+  { name: 'Audience Capture & Nurture', emoji: '📧', layer: 'Engine' },
+  { name: 'Research & Intelligence', emoji: '🔍', layer: 'Engine' },
+  { name: 'Maintenance & Ops', emoji: '🔧', layer: 'Engine' },
+  { name: 'Affiliate & Partner Revenue', emoji: '🤝', layer: 'Monetization' },
+  { name: 'Direct Offer Sales', emoji: '🏷️', layer: 'Monetization' },
+  { name: 'Paid Acquisition', emoji: '📈', layer: 'Monetization' },
+  { name: 'Operator Labor Sales', emoji: '💼', layer: 'Monetization' },
+  { name: 'Local Presence', emoji: '📍', layer: 'Trust' },
+  { name: 'Relationship Outreach', emoji: '📨', layer: 'Trust' },
+  { name: 'Authority & Proof', emoji: '🎙️', layer: 'Trust' },
+  { name: 'Design & Templates', emoji: '🎨', layer: 'Substrate' },
+];
+const HF_STATE_COLOR = { 'Not started':'#6b6b6b', 'Building':'#d0a02c', 'Running':'#4b9e63', 'Maintaining':'#3b82c4', 'Blocked':'#e05252', 'Done':'#8a63c4' };
+const HF_STATE_CYCLE = ['Not started','Building','Running','Maintaining','Blocked','Done'];
+let HF_FRONTS = [];
+let hubFrontCollapsed = true;
+try { hubFrontCollapsed = localStorage.getItem('hubFrontCollapsed') !== 'false'; } catch(e) {}
+
+function toggleHubFront() {
+  hubFrontCollapsed = !hubFrontCollapsed;
+  try { localStorage.setItem('hubFrontCollapsed', String(hubFrontCollapsed)); } catch(e) {}
+  applyHubFrontCollapse();
+}
+function applyHubFrontCollapse() {
+  const body = document.getElementById('hubFrontBody');
+  const icon = document.getElementById('hubFrontToggleIcon');
+  if (body) body.style.display = hubFrontCollapsed ? 'none' : '';
+  if (icon) icon.textContent = hubFrontCollapsed ? '▸' : '▾';
+}
+async function loadHubFront() {
+  applyHubFrontCollapse();
+  try {
+    const r = await call('getHubFronts');
+    HF_FRONTS = r.fronts || [];
+    renderHubFront();
+  } catch(e) {
+    const b = document.getElementById('hubFrontBody');
+    if (b) b.innerHTML = '<div style="font-size:11px;color:#e05252;">' + esc(e.message) + '</div>';
+  }
+}
+function renderHubFront() {
+  const body = document.getElementById('hubFrontBody');
+  const summary = document.getElementById('hubFrontSummary');
+  if (!body) return;
+  const cadences = HF_FRONTS.filter(f => f.type === 'Cadence' && f.active && (f.state === 'Running' || f.state === 'Maintaining')).length;
+  const setups = HF_FRONTS.filter(f => f.type === 'Setup' && f.state !== 'Done').length;
+  const blocked = HF_FRONTS.filter(f => f.state === 'Blocked').length;
+  if (summary) summary.textContent = `— ${cadences} cadence${cadences===1?'':'s'} emitting · ${setups} setup${setups===1?'':'s'} open` + (blocked ? ` · ${blocked} blocked` : '');
+
+  const byClass = {};
+  HF_FRONTS.forEach(f => { (byClass[f.klass] ||= []).push(f); });
+  const rowHtml = f => {
+    const dot = `<span title="${esc(f.state)}" style="width:7px;height:7px;border-radius:50%;background:${HF_STATE_COLOR[f.state]||'#6b6b6b'};flex-shrink:0;display:inline-block;"></span>`;
+    const meta = f.type === 'Cadence'
+      ? `<span style="color:var(--text3);flex-shrink:0;">${esc(f.cadence||'')}${f.weekday?' · '+esc(f.weekday):''}</span>`
+      : `<span style="color:var(--text3);flex-shrink:0;">${esc(f.type)}${f.progress?' · '+esc(f.progress):''}</span>`;
+    const intensity = f.intensity === 'Primary' ? '<span style="color:#e0708a;flex-shrink:0;font-weight:700;">P</span>' : (f.intensity === 'Secondary' ? '<span style="color:var(--text3);flex-shrink:0;">S</span>' : '');
+    const push = (f.type !== 'Cadence' && f.campaignId)
+      ? `<button onclick="pushHubFrontToWeek('${f.id}', this)" title="Add this to This Week" style="font-size:10px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">→ wk</button>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border);">`
+      + `<button onclick="cycleHubFrontState('${f.id}')" title="Cycle state" style="border:none;background:transparent;cursor:pointer;padding:0;display:flex;">${dot}</button>`
+      + intensity
+      + `<span style="flex-shrink:0;color:var(--text2);width:104px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.hub)}</span>`
+      + meta
+      + `<span style="flex:1;min-width:0;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(f.next||'')}</span>`
+      + push
+      + `<button onclick="openHubFrontModal('${f.id}')" title="Edit" style="font-size:10px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;flex-shrink:0;">✎</button>`
+      + `</div>`;
+  };
+  let html = '';
+  let lastLayer = null;
+  HF_CLASSES.forEach(c => {
+    const items = byClass[c.name];
+    if (!items || !items.length) return;
+    if (c.layer !== lastLayer) {
+      html += `<div style="font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);margin:10px 0 3px;">${c.layer}</div>`;
+      lastLayer = c.layer;
+    }
+    items.sort((a,b) => (a.intensity==='Primary'?0:1) - (b.intensity==='Primary'?0:1) || a.hub.localeCompare(b.hub));
+    html += `<div style="margin:5px 0;">`
+      + `<div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:1px;">${c.emoji} ${esc(c.name)} <span style="color:var(--text3);font-weight:400;">${items.length}</span></div>`
+      + items.map(rowHtml).join('')
+      + `</div>`;
+  });
+  body.innerHTML = html || '<div style="font-size:11px;color:var(--text3);">No hub fronts yet — use + Add.</div>';
+}
+async function cycleHubFrontState(frontId) {
+  const f = HF_FRONTS.find(x => x.id === frontId);
+  if (!f) return;
+  const next = HF_STATE_CYCLE[(HF_STATE_CYCLE.indexOf(f.state) + 1) % HF_STATE_CYCLE.length];
+  f.state = next; renderHubFront();
+  try { await call('updateHubFront', { frontId, state: next }); } catch(e) { alert('Error: ' + e.message); loadHubFront(); }
+}
+async function pushHubFrontToWeek(frontId, btn) {
+  const f = HF_FRONTS.find(x => x.id === frontId);
+  if (!f) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await call('addWeeklyPlannerItem', { name: `${(HF_CLASSES.find(c=>c.name===f.klass)||{}).emoji||'🎯'} ${f.hub}: ${f.next||f.klass}`, campaignId: f.campaignId || undefined });
+    if (r.error) throw new Error(r.error);
+    if (btn) btn.textContent = '✓';
+    if (typeof loadWpBoard === 'function') loadWpBoard();
+  } catch(e) { alert('Error: ' + e.message); if (btn) { btn.disabled = false; btn.textContent = '→ wk'; } }
+}
+let hfEditingId = null;
+function hfTypeChanged() {
+  document.getElementById('hfCadenceRow').style.display = document.getElementById('hfType').value === 'Cadence' ? 'flex' : 'none';
+}
+function openHubFrontModal(frontId) {
+  hfEditingId = frontId || null;
+  const hubSel = document.getElementById('hfHub');
+  const clsSel = document.getElementById('hfClass');
+  hubSel.innerHTML = HUB_SITES.map(h => `<option value="${h.slug}">${h.slug}</option>`).join('');
+  clsSel.innerHTML = HF_CLASSES.map(c => `<option value="${esc(c.name)}">${c.emoji} ${esc(c.name)}</option>`).join('');
+  const f = frontId ? HF_FRONTS.find(x => x.id === frontId) : null;
+  document.getElementById('hubFrontModalTitle').textContent = f ? 'Edit Hub Front' : 'Add Hub Front';
+  document.getElementById('hfDeleteBtn').style.display = f ? '' : 'none';
+  hubSel.value = f ? f.hub : HUB_SITES[0].slug;
+  clsSel.value = f ? f.klass : HF_CLASSES[0].name;
+  document.getElementById('hfType').value = f ? (f.type || 'Cadence') : 'Cadence';
+  document.getElementById('hfIntensity').value = f ? (f.intensity || '') : '';
+  document.getElementById('hfCadence').value = f && f.cadence ? f.cadence : 'Weekly';
+  document.getElementById('hfWeekday').value = f && f.weekday ? f.weekday : 'Mon';
+  document.getElementById('hfState').value = f ? (f.state || 'Not started') : 'Not started';
+  document.getElementById('hfNext').value = f ? (f.next || '') : '';
+  document.getElementById('hfNotes').value = f ? (f.notes || '') : '';
+  document.getElementById('hfMsg').textContent = '';
+  hfTypeChanged();
+  document.getElementById('hubFrontModal').classList.add('open');
+}
+async function hubFrontSave() {
+  const btn = document.getElementById('hfSaveBtn');
+  const msg = document.getElementById('hfMsg');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  const type = document.getElementById('hfType').value;
+  const payload = {
+    state: document.getElementById('hfState').value,
+    next: document.getElementById('hfNext').value.trim(),
+    intensity: document.getElementById('hfIntensity').value,
+    cadence: type === 'Cadence' ? document.getElementById('hfCadence').value : '',
+    weekday: type === 'Cadence' ? document.getElementById('hfWeekday').value : '',
+    type,
+  };
+  try {
+    if (hfEditingId) {
+      const r = await call('updateHubFront', { frontId: hfEditingId, ...payload });
+      if (r.error) throw new Error(r.error);
+    } else {
+      const hub = document.getElementById('hfHub').value;
+      const campaignId = (HUB_SITES.find(h => h.slug === hub) || {}).campaignId;
+      const r = await call('createHubFront', {
+        hub, klass: document.getElementById('hfClass').value, type,
+        cadence: payload.cadence, weekday: payload.weekday, intensity: payload.intensity,
+        state: payload.state, next: payload.next, notes: document.getElementById('hfNotes').value.trim(),
+        campaignId,
+      });
+      if (r.error) throw new Error(r.error);
+    }
+    document.getElementById('hubFrontModal').classList.remove('open');
+    await loadHubFront();
+  } catch(e) {
+    msg.textContent = 'Error: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = 'Save';
+}
+async function hubFrontDelete() {
+  if (!hfEditingId || !confirm('Delete this Hub Front row? (archives it)')) return;
+  try {
+    await call('deleteHubFront', { frontId: hfEditingId });
+    document.getElementById('hubFrontModal').classList.remove('open');
+    await loadHubFront();
+  } catch(e) { document.getElementById('hfMsg').textContent = 'Error: ' + e.message; }
 }
 
 // ── THIS WEEK (global Weekly Planner) ───────────────────────────────────

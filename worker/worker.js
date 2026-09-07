@@ -76,6 +76,7 @@ const PODCAST_IDEAS_DB   = "f61c012e75b742cf949c93228bc0328e"; // Name/Angle/Sub
 const METHOD_IDEAS_DB    = "9b094862f32a40c994093610f8696a8c"; // Name/Description/Closest Method/Platform/Subject Matter/Status/Source Post/Creator — holding area, never writes to real METHODS_DB
 const TRADING_STRATEGIES_DB = "49940bac8cdc4310a8f54e10833673f9"; // Name/Thesis/Entry/Exit / Risk/Instruments/Timeframe/Status/Notes/Source Post/Creator — reference library, not wired into runAutoTradeScan yet
 const AFFILIATE_DB       = "1dee16c0bc2743ed9155d7649f0d9e51"; // Name/Hub/Keyword/Network/Commission/Cookie Window/Signup URL/Fit/Notes/Status/Found — found by searching hub keywords + "affiliate" (Globals tab)
+const HUB_FRONTS_DB      = "74642017fd1b48a88ad99443d173aeb2"; // 🎯 Hub Fronts — one row per hub × work-class (the standing output mandate). Hub/Class/Type(Cadence|Setup|Campaign)/Cadence/Weekday/Intensity/State/Next/Progress/Notes/Campaign/Active. Cadence rows with Active + State Running/Maintaining are emitted onto the Weekly Planner nightly by runHubFrontReminders (Source "Hub Front", idempotent via WEEKLY_PLANNER_DB's "Source Hub Front" relation). NOTE: database id, not the collection id.
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
 // .docx files (generateJobAsset's docx build).
@@ -4419,6 +4420,111 @@ async function runListingRepostReminders(env) {
   }
 }
 
+// ── runHubFrontReminders ──
+// Turns the 🎯 Hub Fronts standing mandate into Weekly Planner rows. Each
+// run: for every Hub Front that is Type "Cadence", Active, and State
+// Running or Maintaining, make sure the right number of Weekly Planner
+// rows exist this week (Weekly = 1, 2x/3x per week = 2/3 on spread
+// weekdays, Daily = Mon–Fri). Idempotent via WEEKLY_PLANNER_DB's
+// "Source Hub Front" relation + the anchor weekday — a front never gets a
+// second row for a weekday it already has. Once a row exists, the
+// Planner's own wpFetchProjectedItems re-projects it onto every future
+// week forever; this function never touches an existing row. Biweekly /
+// Monthly cadences are intentionally not auto-emitted (the Planner only
+// does weekly re-projection) — they show in the Hub Front section for the
+// operator to pull manually. Runs daily via scheduled(); safe to re-run.
+async function runHubFrontReminders(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN) return;
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const dash = raw => { const s = String(raw).replace(/-/g, ""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+
+  const CLASS_EMOJI = {
+    "Research & Intelligence": "🔍", "Content Production": "✍️", "Content Distribution": "📣",
+    "SEO & Discoverability": "🔎", "Audience Capture & Nurture": "📧", "Maintenance & Ops": "🔧",
+    "Affiliate & Partner Revenue": "🤝", "Direct Offer Sales": "🏷️", "Paid Acquisition": "📈",
+    "Operator Labor Sales": "💼", "Local Presence": "📍", "Relationship Outreach": "📨",
+    "Authority & Proof": "🎙️", "Design & Templates": "🎨",
+  };
+  const DOW = { Mon: 0, Tue: 1, Wed: 2, Thu: 3, Fri: 4, Sat: 5, Sun: 6 };
+  const weekdaysFor = (cadence, weekday) => {
+    const base = DOW[weekday] ?? 0;
+    if (cadence === "Daily") return [0, 1, 2, 3, 4];
+    if (cadence === "3x per week") return [base, (base + 2) % 7, (base + 4) % 7];
+    if (cadence === "2x per week") return [base, (base + 3) % 7];
+    if (cadence === "Weekly") return [base];
+    return []; // Biweekly / Monthly / unset → not auto-emitted
+  };
+
+  const rows = await notionQuery(HUB_FRONTS_DB, {
+    filter: { and: [
+      { property: "Type", select: { equals: "Cadence" } },
+      { property: "Active", checkbox: { equals: true } },
+      { or: [
+        { property: "State", select: { equals: "Running" } },
+        { property: "State", select: { equals: "Maintaining" } },
+      ] },
+    ] },
+  }).catch(() => []);
+  if (!rows.length) return;
+
+  // Existing Hub-Front Weekly Planner rows, keyed by the front they point
+  // at → the set of anchor weekday indices already covered.
+  const existing = await notionQuery(WEEKLY_PLANNER_DB, {
+    filter: { property: "Source", select: { equals: "Hub Front" } },
+  }).catch(() => []);
+  const coveredByFront = {};
+  existing.forEach(r => {
+    const frontId = (r.properties?.["Source Hub Front"]?.relation || [])[0]?.id?.replace(/-/g,"");
+    if (!frontId) return;
+    const d = r.properties?.Date?.date?.start?.slice(0, 10);
+    if (!d) return;
+    const dow = (new Date(d + "T00:00:00Z").getUTCDay() + 6) % 7;
+    (coveredByFront[frontId] ||= new Set()).add(dow);
+  });
+
+  // Monday of the current week (UTC), the anchor week for any new row.
+  const monday = (() => { const d = new Date(); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow); return d; })();
+
+  for (const r of rows) {
+    try {
+      if (r.archived || r.in_trash) continue;
+      const p = r.properties || {};
+      const frontId = r.id.replace(/-/g,"");
+      const klass = p.Class?.select?.name || "";
+      const hub = p.Hub?.select?.name || "";
+      const cadence = p.Cadence?.select?.name || "";
+      const weekday = p.Weekday?.select?.name || "Mon";
+      const next = (p.Next?.rich_text || []).map(t => t.plain_text).join("").trim();
+      const campaignRelId = (p.Campaign?.relation || [])[0]?.id;
+      const wanted = weekdaysFor(cadence, weekday);
+      if (!wanted.length) continue;
+      const covered = coveredByFront[frontId] || new Set();
+      const label = `${CLASS_EMOJI[klass] || "🎯"} ${hub}: ${next || klass}`.slice(0, 200);
+      for (const dow of wanted) {
+        if (covered.has(dow)) continue;
+        const date = new Date(monday); date.setUTCDate(monday.getUTCDate() + dow);
+        await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent: { database_id: WEEKLY_PLANNER_DB },
+            properties: {
+              Name: { title: [{ type: "text", text: { content: label } }] },
+              Status: { select: { name: "Open" } },
+              Source: { select: { name: "Hub Front" } },
+              "Source Hub Front": { relation: [{ id: dash(frontId) }] },
+              Date: { date: { start: date.toISOString().slice(0, 10) } },
+              ...(campaignRelId ? { Campaign: { relation: [{ id: dash(campaignRelId) }] } } : {}),
+            },
+          }),
+        }).catch(() => {});
+        covered.add(dow);
+      }
+      coveredByFront[frontId] = covered;
+    } catch (e) { /* one bad row never blocks the rest */ }
+  }
+}
+
 // ── Affiliate-program finder ──
 // Given a hub (HUB_SITES entry), read its campaign's Research Keywords, run
 // one web_search Claude call for real, currently-open affiliate/partner
@@ -7453,6 +7559,97 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         }).then(r => r.json());
         if (!created.id) return json({ error: created.message || "Failed to add item" }, 500);
         return json({ success: true, id: created.id.replace(/-/g,""), date: targetDay });
+      }
+
+      // ── Hub Fronts ── the standing output mandate (🎯 Hub Fronts DB). One
+      // row per hub × work-class. Powers the collapsed "Hub Front" section
+      // above the This Week board on the TD tab. Cadence rows that are
+      // Active + State Running/Maintaining are emitted onto the Weekly
+      // Planner nightly by runHubFrontReminders (below).
+      if (body.action === "getHubFronts") {
+        const rows = await notionQuery(HUB_FRONTS_DB, {}).catch(e => { console.error('notionQuery(HUB_FRONTS_DB) failed:', e.message); return []; });
+        const rt = (p, k) => (p[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const fronts = rows.map(r => {
+          const p = r.properties || {};
+          return {
+            id: r.id.replace(/-/g,""),
+            name: (p.Name?.title || []).map(t => t.plain_text).join(""),
+            hub: p.Hub?.select?.name || "",
+            klass: p.Class?.select?.name || "",
+            type: p.Type?.select?.name || "",
+            cadence: p.Cadence?.select?.name || "",
+            weekday: p.Weekday?.select?.name || "",
+            intensity: p.Intensity?.select?.name || "",
+            state: p.State?.select?.name || "Not started",
+            next: rt(p, "Next"),
+            progress: rt(p, "Progress"),
+            notes: rt(p, "Notes"),
+            active: p.Active?.checkbox === true,
+            campaignId: (p.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+          };
+        });
+        return json({ success: true, fronts });
+      }
+
+      if (body.action === "createHubFront") {
+        const { hub, klass, type, cadence, weekday, intensity, state, next, notes, campaignId } = body;
+        if (!hub || !klass || !type) return json({ error: "hub, klass and type required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {
+          "Name": { title: [{ type: "text", text: { content: `${hub} · ${klass}`.slice(0, 200) } }] },
+          "Hub": { select: { name: hub } },
+          "Class": { select: { name: klass } },
+          "Type": { select: { name: type } },
+          "State": { select: { name: state || "Not started" } },
+        };
+        if (cadence) props["Cadence"] = { select: { name: cadence } };
+        if (weekday) props["Weekday"] = { select: { name: weekday } };
+        if (intensity) props["Intensity"] = { select: { name: intensity } };
+        if ((next || "").trim()) props["Next"] = { rich_text: [{ type: "text", text: { content: String(next).slice(0, 1990) } }] };
+        if ((notes || "").trim()) props["Notes"] = { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] };
+        if (type === "Cadence") props["Active"] = { checkbox: true };
+        if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+        const created = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: HUB_FRONTS_DB }, properties: props }),
+        }).then(r => r.json());
+        if (!created.id) return json({ error: created.message || "Failed to create Hub Front" }, 500);
+        return json({ success: true, id: created.id.replace(/-/g,"") });
+      }
+
+      if (body.action === "updateHubFront") {
+        const { frontId } = body;
+        if (!frontId) return json({ error: "frontId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const props = {};
+        if (body.state !== undefined) props["State"] = { select: { name: body.state } };
+        if (body.next !== undefined) props["Next"] = { rich_text: [{ type: "text", text: { content: String(body.next).slice(0, 1990) } }] };
+        if (body.progress !== undefined) props["Progress"] = { rich_text: [{ type: "text", text: { content: String(body.progress).slice(0, 1990) } }] };
+        if (body.cadence !== undefined) props["Cadence"] = body.cadence ? { select: { name: body.cadence } } : { select: null };
+        if (body.weekday !== undefined) props["Weekday"] = body.weekday ? { select: { name: body.weekday } } : { select: null };
+        if (body.intensity !== undefined) props["Intensity"] = body.intensity ? { select: { name: body.intensity } } : { select: null };
+        if (body.type !== undefined) props["Type"] = { select: { name: body.type } };
+        if (body.active !== undefined) props["Active"] = { checkbox: !!body.active };
+        if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(frontId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to update" }, resp.status || 500); }
+        return json({ success: true });
+      }
+
+      if (body.action === "deleteHubFront") {
+        const { frontId } = body;
+        if (!frontId) return json({ error: "frontId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        await fetch(`https://api.notion.com/v1/pages/${dash(frontId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        }).catch(() => {});
+        return json({ success: true });
       }
 
       if (body.action === "moveWeeklyPlannerItem") {
@@ -31015,6 +31212,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
         .catch(e => console.error('buildEcosystemGraph failed:', e.message))
     );
     ctx.waitUntil(runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
+    ctx.waitUntil(runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
     ctx.waitUntil(runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
     ctx.waitUntil(runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
   },
