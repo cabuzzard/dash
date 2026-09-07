@@ -8198,6 +8198,7 @@ function closeAssetBodyModal() {
 // reuse it without a second round-trip.
 let CAMPAIGN_STRATEGIES_CACHE = [];
 let CAMPAIGN_UNASSIGNED_PLANNING_CACHE = [];
+let CAMPAIGN_ORPHAN_SLOTS_CACHE = [];
 // Retroactively assigns Post Type to every slot on this strategy that
 // doesn't have one — for strategies generated before Post Type existed, or
 // where generateGrowthStrategy's best-effort match missed. Same
@@ -8355,7 +8356,8 @@ async function loadCampaignStrategies() {
     const r = await w('getCampaignGrowthStrategies', { campaignId: CAMPAIGN_ID });
     CAMPAIGN_STRATEGIES_CACHE = r.strategies || [];
     CAMPAIGN_UNASSIGNED_PLANNING_CACHE = r.unassignedPlanningTitles || [];
-    renderStrategiesPanel(CAMPAIGN_STRATEGIES_CACHE, CAMPAIGN_UNASSIGNED_PLANNING_CACHE);
+    CAMPAIGN_ORPHAN_SLOTS_CACHE = r.orphanSlots || [];
+    renderStrategiesPanel(CAMPAIGN_STRATEGIES_CACHE, CAMPAIGN_UNASSIGNED_PLANNING_CACHE, CAMPAIGN_ORPHAN_SLOTS_CACHE);
   } catch (e) {
     el.innerHTML = '<div class="empty">Error loading strategies.</div>';
   }
@@ -8636,9 +8638,25 @@ function renderStrategyItem(s) {
   }
   return renderStrategyBlock(s, 0);
 }
-function renderStrategiesPanel(strategies, unassignedPlanningTitles) {
+function renderStrategiesPanel(strategies, unassignedPlanningTitles, orphanSlots) {
   const el = document.getElementById('strategies-panel');
   if (!el) return;
+  // Orphan Strategy Slots — no Growth Strategy parent (a strategy deleted
+  // without cascading, a half-failed generation). Invisible everywhere else,
+  // so list them here with a slot-level ✕ so they can be cleaned up.
+  const orphanHtml = (orphanSlots || []).length
+    ? `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333;">`
+      + `<div style="font-size:12px;font-weight:700;color:#ff8888;margin-bottom:6px;">Orphan Slots <span style="font-weight:400;color:#888;">— no strategy parent</span></div>`
+      + orphanSlots.map(o => {
+          const label = o.angle || o.name || 'slot';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+            + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(label)}${o.grouping ? ' · ' + esc(o.grouping) : ''}">${esc(o.name)}${o.angle && o.angle !== o.name ? ' — ' + esc(o.angle) : ''}${o.productName ? ` · ${esc(o.productName)}` : ''}</span>`
+            + (o.titleCount ? `<span title="${o.titleCount} title(s) attached — they stay, only the slot is removed" style="font-size:9px;color:#888;flex-shrink:0;">${o.titleCount}📄</span>` : '')
+            + `<button onclick="deleteOrphanSlot('${o.id}','${esc(label).replace(/'/g,"\\'")}', this)" title="Delete this orphan slot" style="font-size:11px;padding:0 7px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">✕</button>`
+            + `</div>`;
+        }).join('')
+      + `</div>`
+    : '';
   // Unassigned Planning titles (no Growth Strategy relation at all — Quick
   // Add with nothing picked, generateTitlesFromStrategy's positioning-doc
   // batch, or any other creation path) render first — otherwise Planning
@@ -8657,8 +8675,21 @@ function renderStrategiesPanel(strategies, unassignedPlanningTitles) {
         + `</div>`).join('')
       + `</div>`
     : '';
-  if (!strategies.length) { el.innerHTML = unassignedHtml || '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
-  el.innerHTML = unassignedHtml + strategies.map(renderStrategyItem).join('');
+  const head = unassignedHtml + orphanHtml;
+  if (!strategies.length) { el.innerHTML = head || '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
+  el.innerHTML = head + strategies.map(renderStrategyItem).join('');
+}
+async function deleteOrphanSlot(slotId, label, btn) {
+  if (!confirm(`Delete orphan slot "${label}"? It has no strategy parent — this archives the slot. Any title attached to it stays.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const r = await w('removeStrategySlot', { slotId });
+    if (r.error) throw new Error(r.error);
+    await loadCampaignStrategies();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '✕'; }
+  }
 }
 
 // ── Generate Title modal (the ONE title-creation flow) ──────────────────

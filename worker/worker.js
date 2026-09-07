@@ -14538,6 +14538,28 @@ Return ONLY this JSON object, no other text, no markdown fences:
           } catch (e) { titleInfoById[id].hasPillar = false; }
         }));
 
+        // Slots with NO Growth Strategy relation are orphans — a strategy was
+        // deleted without cascading, a generation half-failed, etc. They never
+        // render in the panel (the loop below drops them) so they can't be
+        // cleaned up. Collect them into their own list with just enough to
+        // display + delete (removeStrategySlot already no-ops the renumber
+        // step when there's no parent).
+        const orphanSlots = [];
+        slotQ.forEach(s => {
+          if ((s.properties?.["Growth Strategy"]?.relation || [])[0]?.id) return;
+          orphanSlots.push({
+            id: s.id.replace(/-/g,""),
+            name: (s.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Slot",
+            angle: (s.properties?.Angle?.rich_text || []).map(t => t.plain_text).join(""),
+            grouping: (s.properties?.Grouping?.rich_text || []).map(t => t.plain_text).join(""),
+            sequence: s.properties?.Sequence?.number ?? null,
+            status: s.properties?.Status?.select?.name || "Open",
+            productId: (s.properties?.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+            productName: null, // resolved just before the return
+            titleCount: (s.properties?.Title?.relation || []).length,
+          });
+        });
+
         const slotsByStrategy = {};
         slotQ.forEach(s => {
           const stratId = (s.properties?.["Growth Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"");
@@ -14652,7 +14674,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
         allStrategies.forEach(s => { if (s.parentId) (byParentId[s.parentId] ||= []).push(s); else topLevel.push(s); });
         topLevel.forEach(s => { s.children = byParentId[s.id] || []; });
 
-        return json({ success: true, strategies: topLevel, unassignedPlanningTitles });
+        // Resolve product names for any orphan slots that still carry a Product
+        // relation (that map was seeded from strategy→product only).
+        const orphanProductIds = Array.from(new Set(orphanSlots.map(o => o.productId).filter(id => id && !productNameById[id])));
+        if (orphanProductIds.length) {
+          const pgs = await Promise.all(orphanProductIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+          pgs.filter(Boolean).forEach(p => { productNameById[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product"; });
+        }
+        orphanSlots.forEach(o => { if (o.productId) o.productName = productNameById[o.productId] || null; });
+
+        return json({ success: true, strategies: topLevel, unassignedPlanningTitles, orphanSlots });
       }
 
       // ── getNextSlots ──
