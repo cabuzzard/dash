@@ -13416,7 +13416,7 @@ function renderHubMatrix() {
     if (last && last.klass === t.klass) last.n++;
     else bands.push({ klass: t.klass, emoji: t.emoji, n: 1 });
   });
-  const colgroup = `<colgroup><col style="width:74px;">${wts.map(() => '<col>').join('')}</colgroup>`;
+  const colgroup = `<colgroup><col style="width:90px;">${wts.map(() => '<col>').join('')}</colgroup>`;
   const corner = `<th rowspan="2" style="background:var(--bg);padding:3px 4px 3px 2px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);vertical-align:bottom;">hub</th>`;
   const bandRow = bands.map(b => `<th colspan="${b.n}" title="${esc(b.klass)}" style="padding:3px 1px;font-size:11px;border-left:1px solid var(--border2);">${b.emoji}</th>`).join('');
   const headRow = wts.map(t => `<th title="${esc(t.name)} — ${esc(t.klass)}" style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;">`
@@ -13426,7 +13426,13 @@ function renderHubMatrix() {
     + `</div></th>`).join('');
   let rows = '';
   HUB_SITES.forEach(h => {
-    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(h.slug)}">${esc(HM_LABELS[h.slug] || h.slug)}</td>`;
+    const msUrl = h.microsite ? `https://cabuzzard.github.io/dash/microsites/${h.microsite}/` : '';
+    const hubUrl = h.domain ? `https://${h.domain}/` : `https://cabuzzard.github.io/dash/web/hub/${h.slug}/`;
+    const lnk = (url, label) => url ? `<a href="${esc(url)}" target="_blank" rel="noopener" title="${label} ↗" style="color:var(--text3);text-decoration:none;white-space:nowrap;">${label}↗</a>` : '';
+    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;vertical-align:middle;" title="${esc(h.slug)}">`
+      + `<div style="display:flex;gap:5px;font-size:8px;line-height:1;margin-bottom:2px;">${lnk(msUrl,'site')}${lnk(hubUrl,'hub')}</div>`
+      + `<div style="font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(HM_LABELS[h.slug] || h.slug)}</div>`
+      + `</td>`;
     wts.forEach(t => {
       const s = cellOf(t.id, h.slug);
       if (s === 'Weekly') weekly++; else if (s === 'Done') done++; else if (s === 'TD') td++;
