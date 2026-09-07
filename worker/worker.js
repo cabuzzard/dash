@@ -8947,12 +8947,17 @@ Return ONLY this JSON object, no other text, no markdown fences:
         allPlatformRows.forEach(p => { const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); if (nm && !platformIdByName.has(nm.toLowerCase())) platformIdByName.set(nm.toLowerCase(), p.id.replace(/-/g,"")); });
         const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
 
-        const overrideLine = platformOverride
-          ? `PLATFORM OVERRIDE (operator-forced): put EVERY slot on "${platformOverride}" and set every "recommendedPlatform" to it. Ignore the cross-platform spread instruction for this run.`
-          : `Spread each arc's slots across the platforms that fit each piece.`;
+        // Regenerate deliberately CLEARS any stored Platform Override — it
+        // is legacy cruft from the single-platform-per-grouping era and
+        // directly contradicts the cross-platform-arc convention the
+        // operator now wants. (New strategies from the 🚀 modal still honor
+        // an override the operator picks there for that run.)
+        const priorOverrideNote = platformOverride
+          ? `\nNOTE: this strategy previously had a "${platformOverride}" platform override — it is being dropped. Do spread these arcs across platforms.\n`
+          : '';
         const prompt = `You are re-planning the content growth strategy "${stratName}" as 3-6 DISTRIBUTION ARCS.
-
-${overrideLine}
+${priorOverrideNote}
+Spread each arc's slots across the platforms that fit each piece.
 
 WHAT AN ARC IS: ONE theme/beat taken across the platforms it needs — NOT a single-format series. A long-form ANCHOR (Blog / YouTube / Email), THEN 2-4 derivative pieces repackaging it for other platforms (Instagram carousel, TikTok/Reels cut, LinkedIn post, Threads/X thread, Reddit post), THEN usually a conversion piece (CTA / Direct Sales). Each arc's slots MUST span 2-3+ platforms unless the product only lives on one channel (pure Etsy listing → "etsy" everywhere). Order slots anchor → cuts → conversion.
 NAME each arc in 2-4 words describing the THEME (e.g. "Revenue Leak", "Client Outcome") — never a format label, never a catchy title; explanation goes in "rationale".
@@ -8963,9 +8968,9 @@ ${positioning ? `POSITIONING:\n${positioning}` : ''}
 CAMPAIGN: ${campaignName}
 ${researchBlock ? `CAMPAIGN RESEARCH:\n${researchBlock}` : ''}
 
-POST TYPE CATALOG (assign one per slot by exact name; anchor usually "Pillar", cuts are Teach/Story/Feature Benefit/Social Proof/Behind-the-Scenes/Q&A, conversion is "CTA"/"Direct Sales"):
+POST TYPE CATALOG (assign one per slot by exact name):
 ${postTypesCatalogBlock}
-At least one slot must be Post Type "Pillar". "newPostType": true only when nothing fits.
+EXACTLY ONE slot in the WHOLE strategy is Post Type "Pillar" — the single anchor everything points back to, normally slot 1 of arc 1 on a long-form platform. Every OTHER arc's first (anchor) slot is still a long-form piece but typed Teach / Story / Feature Benefit (NOT Pillar). Mid-arc cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A; the closing slot is "CTA" or "Direct Sales". "newPostType": true only when nothing fits.
 
 PLATFORM CATALOG (assign one per slot by exact name; long-form anchors → Blog/YouTube/Email/Substack, short cuts → Instagram/TikTok/Threads/X/Twitter/Reddit/LinkedIn, marketplace → etsy):
 ${platformCatalog.map(n => `- ${n}`).join('\n')}
@@ -9031,7 +9036,7 @@ Return ONLY this JSON, no other text, no fences:
             const t = titles[i];
             const seq = i + 1;
             const { id: postTypeId, name: ptName } = await resolvePostTypeId(t);
-            const platName = platformOverride || String(t.platform || g.recommendedPlatform || '').trim();
+            const platName = String(t.platform || g.recommendedPlatform || '').trim();
             const platId = platformIdByName.get(platName.toLowerCase()) || null;
             const disp = ptName ? ptName.replace(/\b\w/g, c => c.toUpperCase()) : '';
             const name = disp ? `${seq} – ${disp}` : `${gName} #${seq}`;
@@ -9090,6 +9095,7 @@ Return ONLY this JSON, no other text, no fences:
             "Summary": { rich_text: rtBlock(String(plan.summary || '').slice(0, 1990)) },
             "Recommended Platforms": { multi_select: (Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : []).slice(0, 10).map(p => ({ name: String(p).slice(0, 90) })) },
             "Grouping Count": { number: groupings.length },
+            "Platform Override": { rich_text: [] },
           } }),
         }).catch(() => {});
 
@@ -12927,9 +12933,9 @@ For each arc, also give a "recurrence" — how often this arc's content should a
 
 EXISTING POST TYPE CATALOG (the content descriptor for EACH slot — what kind of piece it is, e.g. Pillar / Intro / Feature Benefit / CTA — NOT platform, method, or cadence). Assign one to every slot, by exact name from this catalog when it genuinely fits:
 ${postTypesCatalogBlock}
-Vary the Post Type across an arc's slots to match the flow: the anchor is usually "Pillar", the derivative cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A as fits, the conversion slot is "CTA" or "Direct Sales". You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — rare, prefer reuse.
+Vary the Post Type across an arc's slots to match the flow: the derivative cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A as fits, the conversion slot is "CTA" or "Direct Sales". You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — rare, prefer reuse.
 
-EVERY strategy must include at least one slot with Post Type "Pillar" — the anchor the rest of the plan points back to (if this product had ONE piece of content, this is it — often the real SEO/conversion asset). It is normally the first slot of arc 1, on a long-form platform. Every other slot's rationale should read as feeding traffic toward a Pillar.
+EXACTLY ONE slot in the whole strategy is Post Type "Pillar" — the single anchor everything points back to (if this product had ONE piece of content, this is it — often the real SEO/conversion asset), normally slot 1 of arc 1 on a long-form platform. Every OTHER arc's first (anchor) slot is still a long-form piece but typed Teach / Story / Feature Benefit, NOT Pillar. Every non-Pillar slot's rationale should read as feeding traffic toward the Pillar.
 
 EXISTING PLATFORM CATALOG — assign one best-fit "platform" to EACH slot, by exact name from this list:
 ${platformsCatalogBlock}
