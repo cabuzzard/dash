@@ -24,6 +24,7 @@ subdirectory by `Host` header.
 | aisystemimplementation.com | ai-implementation |
 | creativeflowguitar.com | creative-flow-guitar (migrated 2026-09-03; old ~/creativeflowguitar.com files left on Bluehost) |
 | mountainwize.com | mountainwize (old WordPress "Mountain Wize Coaching" site left on Bluehost, domain pointed away) |
+| sustainableaquarium.com | sustainable-aquarium (added 2026-09-07; domain registered on Bluehost but nameservers not yet switched — still needs the "Bringing a hub domain live" steps below) |
 
 Map lives in `web/hub/_worker.js` `HUBS`.
 

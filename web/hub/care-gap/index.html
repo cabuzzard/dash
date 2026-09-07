@@ -175,6 +175,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
 .site-foot .f-legal{font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);letter-spacing:.05em}
 .site-foot .f-email{display:inline-block;margin-top:.5rem;font-family:var(--font-mono);font-size:.72rem;color:var(--ink-soft);letter-spacing:.05em;text-decoration:none}
 .site-foot .f-email:hover{text-decoration:underline}
+.site-foot .f-disclosure{font-family:var(--font-mono);font-size:.68rem;color:var(--ink-soft);letter-spacing:.03em;opacity:.75;margin-top:.75rem;max-width:70ch}
 
 @media (prefers-reduced-motion:no-preference){
   .reveal{opacity:0;transform:translateY(14px);transition:opacity .5s ease,transform .5s ease}
@@ -297,6 +298,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     </div>
     <div class="f-legal" id="footLegal"></div>
   </div>
+  <div class="f-disclosure" id="footDisclosure"></div>
 </footer>
 
 <script>
@@ -399,6 +401,7 @@ const HUB = {
   footer: {
     tagline: "The Care Gap is an initiative of the Mobility Mentor Foundation — private philanthropic infrastructure for the direct-care workforce.",
     legal: "© 2026 Mobility Mentor Foundation",
+    disclosure: "As an Amazon Associate, we earn from qualifying purchases. This site may also contain other affiliate links, and we may earn a commission at no additional cost to you.",
   },
 };
 
@@ -419,6 +422,7 @@ function renderChrome() {
   $("footBrand").textContent = HUB.brand;
   $("footTagline").textContent = HUB.footer.tagline;
   $("footLegal").textContent = HUB.footer.legal;
+  $("footDisclosure").textContent = HUB.footer.disclosure || "";
   if (HUB.contactEmail) {
     $("footEmail").textContent = HUB.contactEmail;
     $("footEmail").href = "mailto:" + HUB.contactEmail;

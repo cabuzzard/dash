@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Small Business Tools — the stack you actually need, no coding</title>
-<meta name="description" content="The small-business software that actually earns its place: what to install, what to cut, and how to get an all-in-one setup running in an afternoon — no coding, no IT.">
-<meta property="og:title" content="Small Business Tools">
-<meta property="og:description" content="The small-business tool stack, mapped — which tools you need, which ones overlap, and how to get an all-in-one setup running fast with no coding.">
+<title>The Walstad Method — natural planted tank guides &amp; gear</title>
+<meta name="description" content="Everything about the Walstad method: how it works, the gear that actually matters, and how to set up a natural planted tank that goes months without a water change.">
+<meta property="og:title" content="The Walstad Method">
+<meta property="og:description" content="The Walstad method, explained and gear-tested — natural planted tanks that take care of themselves.">
 <meta property="og:type" content="website">
 <meta name="robots" content="index,follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 /* ============================================================
@@ -21,23 +21,23 @@
    Also swap the Google Fonts <link> above to match --font-*.
    ============================================================ */
 :root{
-  --bg:        #ffffff;   /* clean daylight — not a dev console */
-  --surface:   #f2f7f2;   /* raised card */
-  --ink:       #1a2a1a;   /* deep pine, near-black */
-  --ink-head:  #0f1f2e;   /* headings (h1-h3) — defaults to --ink */
-  --ink-soft:  #5f715f;   /* calm grey-green */
-  --line:      #d4e4d4;   /* soft hairline */
-  --sea:       #2b832b;   /* primary — "it's working" green */
-  --deep:      #0f2910;   /* deep pine band */
-  --deep-ink:  #f0faf0;   /* text on --deep */
-  --accent:    #1b881b;   /* deep persimmon — the one CTA (white text reads) */
-  --paper:     #f2f7f2;
+  --bg:        #f4f9f7;   /* soft aqua-white — clean tank water */
+  --surface:   #ffffff;   /* raised card */
+  --ink:       #12211d;   /* deep blackish-teal */
+  --ink-head:  #12211d;   /* headings (h1-h3) — defaults to --ink */
+  --ink-soft:  #4f6b63;   /* muted teal-grey */
+  --line:      #d7e8e2;   /* soft hairline */
+  --sea:       #1c7a5e;   /* primary — planted-tank teal-green */
+  --deep:      #0a2420;   /* aquarium-glass-at-night band */
+  --deep-ink:  #dcf0e8;   /* text on --deep */
+  --accent:    #996419;   /* darker driftwood amber — the one CTA (white text reads, 5:1 contrast) */
+  --paper:     #ffffff;
 
-  --font-display: "Bricolage Grotesque", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
   --font-body:    "Hanken Grotesk", system-ui, sans-serif;
-  --font-mono:    "JetBrains Mono", ui-monospace, monospace;
+  --font-mono:    "Space Mono", ui-monospace, monospace;
 
-  --logo-text: "Small Business Tools";
+  --logo-text: "Sustainable Aquarium";
   --logo-img:  none;
 }
 
@@ -216,7 +216,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     <a class="brand" href="#top" id="brand"></a>
     <button class="nav-toggle" aria-label="Menu" aria-expanded="false" id="navToggle">☰</button>
     <nav class="nav" id="nav"></nav>
-    <a class="nav-cta" href="#report">The audit</a>
+    <a class="nav-cta" href="#report">Get updates</a>
   </div>
 </header>
 
@@ -319,88 +319,84 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
       https://cabuzzard.github.io/dash/web/hub/{slug}/
    ============================================================ */
 const HUB = {
-  slug: "ai-implementation",
-  campaignTag: "hub-ai-implementation",
-  campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597",              // Sm business software tools — campaign whose Logins feed the social links
-  contactEmail: "info@webguyleadgeneration.com",
+  slug: "sustainable-aquarium",
+  campaignTag: "hub-sustainable-aquarium",
+  campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e",              // campaign whose Logins feed the social links
+  contactEmail: "info@sustainableaquarium.com",
 
-  brand: "Small Business Tools",
-  logoImg: null,   // ./logo.png still reads "AI Implementation" — swap it for a "Small Business Tools" mark, then restore this to "./logo.png"
+  brand: "Sustainable Aquarium",
+  logoImg: null,
 
   nav: [
-    { label: "The stack",   href: "#trips" },
-    { label: "Free audit",   href: "#report" },
-    { label: "Field notes",  href: "#journal" },
+    { label: "Gear Guides",  href: "#trips" },
+    { label: "Guides",       href: "#journal" },
+    { label: "Get updates",  href: "#report" },
   ],
 
-  // Signature strip: a tool-stack readout — the vitals of a small-business software stack that's actually under control.
+  // Signature strip: practitioner credibility markers, not generic taglines.
   ribbon: [
-    "Tools the average small business runs — 12+", "That quietly overlap — about a third",
-    "Setup target — under 10 minutes, no code", "All-in-one before à la carte",
-    "Every tool — one owner, one login", "Monthly stack cost — reviewed, not autopiloted",
+    "Walstad Method Practitioner", "No Water Change Setups", "Low-Tech, No CO2",
+    "Natural Planted Tanks", "Real Gear, Not Sponsored Fluff", "Beginner-Friendly Guides",
   ],
 
   hero: {
-    eyebrow: "For small business owners running too many apps and paying for every one of them",
-    headline: "Twelve tools. Half of them overlap. None of them talk.",
-    sub: "Between the free trial that looked great and the stack you're actually billed for every month, a small business collects software the way a garage collects boxes. This is a map of the tools a small business actually needs — the six categories that matter, what each one is for, where an all-in-one beats buying à la carte, and how to get the whole thing running with no coding and no IT department.",
-    ctaPrimary:   { label: "Get the free stack audit", href: "#report" },
-    ctaSecondary: { label: "See the six categories",   href: "#trips" },
+    eyebrow: "The Walstad Method",
+    headline: "The Walstad method: build a tank that runs itself.",
+    sub: "Everything about the Walstad method — how it works, the gear that actually matters, and how to set up a natural planted tank that goes months without a water change.",
+    ctaPrimary:   { label: "See the gear guides", href: "#trips" },
+    ctaSecondary: { label: "Read the guides",     href: "#journal" },
   },
 
   trips: {
-    label: "The stack",
-    title: "The six categories a small business actually runs on",
-    note: "Every small-business tool falls into one of six. Pick the one that's a mess right now.",
+    label: "Gear Guides",
+    title: "Best gear for a Walstad method tank",
+    note: "Real picks for substrate, lighting, filtration, and stocking — not sponsored, just what actually works for a low-tech, self-sustaining Walstad setup.",
     items: [],
     empty: {
-      heading: "The stack map is being drawn.",
-      body: "Six categories — money in, customers, scheduling, the website, the back office, and the glue between them — each with the two or three tools that cover it and the ones you can drop.",
+      heading: "Gear guides are being written.",
+      body: "Substrate, lighting, filtration, plants, and a full starter kit for a Walstad-method tank.",
     },
   },
 
   report: {
-    label: "Start here — the free stack audit",
-    title: "What's in your stack, what it costs, and what to cut.",
-    blurb: "A short worksheet you run on your own setup. List what you're paying for and it sorts each tool into the six categories, flags the overlaps, and shows where one all-in-one tool would replace three subscriptions. Free. It's also where the deeper reviews start — the ones that actually set the replacement up for you, no coding, in an afternoon.",
-    note: "You'll get the occasional field note on tools worth switching to. Unsubscribe in one click.",
-    buttonLabel: "Send me the audit",
-    link: { label: "See a sample audit", url: "#" },
+    label: "Get Updates",
+    title: "New gear guides and setup tips.",
+    blurb: "New buying guides and Walstad method tips, sent occasionally. No spam, no sponsored picks.",
+    note: "Your email, nothing else.",
+    buttonLabel: "Subscribe",
+    link: { label: "", url: "#" },
   },
 
   journal: {
-    label: "Field notes",
-    title: "Notes from cleaning up small-business stacks",
-    note: "Plain write-ups on the tools themselves — what a category actually needs, which all-in-one is worth it, and what to migrate off first.",
+    label: "Guides",
+    title: "Walstad method guides & natural tank care",
+    note: "Practical, no-fluff guides from someone who actually runs these tanks.",
     items: [],
     empty: {
-      heading: "First notes are in progress.",
-      body: "They cover what tools you actually need to start a small business, moving off four subscriptions onto one all-in-one, the 10-minute setups that don't need a developer, and getting your tools to share data instead of re-typing it.",
+      heading: "First guides coming soon.",
+      body: "The complete Walstad method guide, algae troubleshooting, and gear breakdowns.",
     },
   },
 
   news: {
-    label: "Signal",
-    title: "What's changing in small-business software",
-    note: "Short dated notes on price hikes, plan changes, shutdowns, and new tools worth a look before you commit.",
+    label: "Updates",
+    title: "Latest",
+    note: "",
     items: [],
     empty: {
-      heading: "Signal starts soon.",
-      body: "Get the audit and these land in your inbox first — the price hikes, plan nerfs and shutdowns that hit small-business tools.",
+      heading: "Updates post here.",
+      body: "New gear guides and tank-care notes as they're published.",
     },
   },
 
   social: {
-    label: "Follow",
-    items: [
-      { label: "LinkedIn", url: "#" },
-      { label: "YouTube",  url: "#" },
-    ],
+    label: "Find us",
+    items: [],
   },
 
   footer: {
-    tagline: "A field guide to the small-business tool stack — what to install, what to cut, and how to run it with no coding and no IT department. Part of the Small Business Software & Tools project.",
-    legal: "© 2026 Small Business Tools",
+    tagline: "Real gear and guides for natural, low-tech planted aquariums — the Walstad method, done right.",
+    legal: "© 2026 Sustainable Aquarium",
     disclosure: "As an Amazon Associate, we earn from qualifying purchases. This site may also contain other affiliate links, and we may earn a commission at no additional cost to you.",
   },
 };
@@ -472,8 +468,7 @@ async function renderHubJournal() {
   // Blog section: static HUB.journal.items as the instant fallback, then live —
   // the campaign's published blog posts (getHubBlog → the hub's own
   // web/hub/<slug>/blog/ dir), each a { kicker, title, excerpt, url } card
-  // linking to its sub-page. Replaces the old unfiltered News Feed section
-  // (removed). Mirrors renderHubProducts / getHubProducts.
+  // linking to its sub-page. Mirrors renderHubProducts / getHubProducts.
   const s = HUB.journal;
   $("journalLabel").textContent = s.label;
   $("journalTitle").textContent = s.title;

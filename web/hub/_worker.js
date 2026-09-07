@@ -17,6 +17,7 @@ const HUBS = {
   "aisystemimplementation.com": "ai-implementation",
   "creativeflowguitar.com":     "creative-flow-guitar",
   "mountainwize.com":           "mountainwize",
+  "sustainableaquarium.com":    "sustainable-aquarium",
 };
 
 export default {

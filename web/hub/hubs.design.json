@@ -489,6 +489,59 @@
         ],
         "superseded": "Was warm sand #f3efe4 + ocean-teal #0e6e7d + sunset-orange #e4572e (Bricolage kept)."
       }
+    },
+    "sustainable-aquarium": {
+      "email": "info@sustainableaquarium.com",
+      "meta": {
+        "title": "The Walstad Method — natural planted tank guides & gear",
+        "description": "Everything about the Walstad method: how it works, the gear that actually matters, and how to set up a natural planted tank that goes months without a water change.",
+        "ogTitle": "The Walstad Method",
+        "ogDescription": "The Walstad method, explained and gear-tested — natural planted tanks that take care of themselves."
+      },
+      "fonts": {
+        "display": "Fraunces",
+        "body": "Hanken Grotesk",
+        "mono": "Space Mono"
+      },
+      "logoText": "Sustainable Aquarium",
+      "tokens": {
+        "bg": "#f4f9f7",
+        "surface": "#ffffff",
+        "ink": "#12211d",
+        "ink-head": "#12211d",
+        "ink-soft": "#4f6b63",
+        "line": "#d7e8e2",
+        "sea": "#1c7a5e",
+        "deep": "#0a2420",
+        "deep-ink": "#dcf0e8",
+        "accent": "#996419",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "soft aqua-white — clean tank water",
+        "surface": "raised card",
+        "ink": "deep blackish-teal",
+        "ink-soft": "muted teal-grey",
+        "line": "soft hairline",
+        "sea": "primary — planted-tank teal-green",
+        "deep": "aquarium-glass-at-night band",
+        "deep-ink": "text on --deep",
+        "accent": "darker driftwood amber — the one CTA (white text reads, 5:1 contrast)",
+        "ink-head": "headings (h1-h3) — defaults to --ink"
+      },
+      "design": {
+        "subject": "A practitioner-run guide dedicated to the Walstad method specifically (the single term every competing source in this niche converges on) — how it works, and the real gear picks (substrate, lighting, filtration, plants, cleanup crew) for setting one up, from someone who actually runs these tanks.",
+        "audience": "Aquarium hobbyists frustrated with algae, constant water changes, and CO2 injection who searched \"Walstad method\" / \"natural planted tank\" / \"dirted tank\" — solution-aware, ready to buy specific gear, not just browsing.",
+        "job": "Click a gear-guide card through to the Amazon/affiliate product picks for that exact decision point (which substrate, which light, which filter).",
+        "type": "Fraunces (600) display for an organic, botanical feel without going twee. Hanken Grotesk body for clean readability. Space Mono for labels/ribbon so gear-spec details read with technical credibility.",
+        "signature": "The ribbon reads like practitioner credibility markers (\"Walstad Method Practitioner\", \"No Water Change Setups\") rather than generic taglines.",
+        "risk": "Teal-and-green aquatic palettes are the default for anything water/nature-related — risk of blending into every other eco or fish site. The amber accent (driftwood/root-tab color) and the mono practitioner-spec ribbon are what should keep it distinct from a generic pet-store green.",
+        "avoided": [
+          "Cartoon fish/bubbles clip-art aesthetic",
+          "Sterile blue aquarium-store-catalog look",
+          "Overly clinical science-journal green"
+        ]
+      }
     }
   }
 }
