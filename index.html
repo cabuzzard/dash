@@ -768,7 +768,10 @@
     <div id="hubMatrixSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubMatrix()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Work Matrix <span id="hubMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
-        <span id="hubMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button onclick="event.stopPropagation();openHubFrontModal()" title="Add a work type (new column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ type</button>
+          <span id="hubMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+        </span>
       </div>
       <div id="hubMatrixBody" style="display:none;margin-top:10px;overflow-x:auto;"></div>
     </div>
@@ -13325,6 +13328,7 @@ async function hubFrontSave() {
     }
     document.getElementById('hubFrontModal').classList.remove('open');
     await loadHubFront();
+    if (HUB_MATRIX && !hubMatrixCollapsed) renderHubMatrix();
   } catch(e) {
     msg.textContent = 'Error: ' + e.message;
   }
@@ -13336,6 +13340,7 @@ async function hubFrontDelete() {
     await call('deleteWorkType', { typeId: hfEditingId });
     document.getElementById('hubFrontModal').classList.remove('open');
     await loadHubFront();
+    if (HUB_MATRIX && !hubMatrixCollapsed) renderHubMatrix();
   } catch(e) { document.getElementById('hfMsg').textContent = 'Error: ' + e.message; }
 }
 
