@@ -761,6 +761,18 @@
       <div id="hubFrontBody" style="display:none;margin-top:10px;"></div>
     </div>
 
+    <!-- HUB WORK MATRIX — per-hub status for each work type (🎯 Hub Fronts'
+         Work Type + Matrix Status fields). Rows = work types (by class),
+         columns = hubs, cell = Done / TD / Weekly / blank. Click a cell to
+         cycle. Collapsed by default. -->
+    <div id="hubMatrixSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubMatrix()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Work Matrix <span id="hubMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span id="hubMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="hubMatrixBody" style="display:none;margin-top:10px;overflow-x:auto;"></div>
+    </div>
+
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
@@ -13118,6 +13130,7 @@ async function loadTdTab() {
   renderHubSites();
   loadTodayCampaigns();
   loadHubFront();
+  loadHubMatrix();
   loadWpBoard();
 }
 
@@ -13316,6 +13329,107 @@ async function hubFrontDelete() {
     document.getElementById('hubFrontModal').classList.remove('open');
     await loadHubFront();
   } catch(e) { document.getElementById('hfMsg').textContent = 'Error: ' + e.message; }
+}
+
+// ── HUB WORK MATRIX — per-hub status for each work type ─────────────────
+// Rows = Work Types (grouped by class/layer), columns = hubs, each cell =
+// Done / TD / Weekly / blank, stored on a 🎯 Hub Fronts row (its Work Type
+// relation + Matrix Status field). Click a cell to cycle. Lazy-loaded when
+// the section is expanded. Only the Matrix Status field is written — the
+// per-hub row's State/Type/Cadence (the Weekly Planner emitter fields) are
+// left untouched.
+let HUB_MATRIX = null;
+let hubMatrixCollapsed = true;
+try { hubMatrixCollapsed = localStorage.getItem('hubMatrixCollapsed') !== 'false'; } catch(e) {}
+const HM_LABELS = { 'creative-flow-guitar':'guitar', 'owners-rep':'o-rep', 'ai-implementation':'ai', 'sunflower-acres':'sun', 'surf-vacations':'surf', 'sustainable-aquarium':'aqua', 'home-services':'home', 'mountainwize':'mtn', 'care-gap':'care' };
+const HM_CYCLE = ['', 'TD', 'Weekly', 'Done'];
+const HM_CELL = {
+  '':       { g: '·',  bg: 'transparent',           fg: 'var(--text3)' },
+  'TD':     { g: 'TD', bg: 'rgba(208,160,44,.18)',  fg: '#d0a02c' },
+  'Weekly': { g: '↻',  bg: 'rgba(59,130,196,.20)',  fg: '#5aa6db' },
+  'Done':   { g: '✓',  bg: 'rgba(75,158,99,.20)',   fg: '#5fbf7c' },
+};
+function hmCols() { return HUB_SITES.map(h => [h.slug, HM_LABELS[h.slug] || h.slug.split('-')[0]]); }
+function toggleHubMatrix() {
+  hubMatrixCollapsed = !hubMatrixCollapsed;
+  try { localStorage.setItem('hubMatrixCollapsed', String(hubMatrixCollapsed)); } catch(e) {}
+  applyHubMatrixCollapse();
+  if (!hubMatrixCollapsed) loadHubMatrix();
+}
+function applyHubMatrixCollapse() {
+  const b = document.getElementById('hubMatrixBody');
+  const i = document.getElementById('hubMatrixToggleIcon');
+  if (b) b.style.display = hubMatrixCollapsed ? 'none' : '';
+  if (i) i.textContent = hubMatrixCollapsed ? '▸' : '▾';
+}
+async function loadHubMatrix() {
+  applyHubMatrixCollapse();
+  if (hubMatrixCollapsed) return;
+  const body = document.getElementById('hubMatrixBody');
+  try {
+    const [hf, wt] = await Promise.all([
+      call('getHubFronts'),
+      WORK_TYPES.length ? Promise.resolve(null) : call('getWorkTypes'),
+    ]);
+    HUB_MATRIX = hf.fronts || [];
+    if (wt) WORK_TYPES = wt.workTypes || [];
+    renderHubMatrix();
+  } catch(e) {
+    if (body) body.innerHTML = '<div style="font-size:11px;color:#e05252;">' + esc(e.message) + '</div>';
+  }
+}
+function renderHubMatrix() {
+  const body = document.getElementById('hubMatrixBody');
+  const summary = document.getElementById('hubMatrixSummary');
+  if (!body || !HUB_MATRIX) return;
+  const cols = hmCols();
+  const cellOf = (wtId, hub) => (HUB_MATRIX.find(f => f.workTypeId === wtId && f.hub === hub) || {}).matrixStatus || '';
+  const byClass = {};
+  WORK_TYPES.forEach(t => { (byClass[t.klass] ||= []).push(t); });
+  let weekly = 0, td = 0, done = 0;
+  const th = `<th style="text-align:left;padding:3px 6px;position:sticky;left:0;background:var(--bg);z-index:1;"></th>`
+    + cols.map(([slug,lbl]) => `<th title="${esc(slug)}" style="padding:3px 4px;font-weight:600;color:var(--text3);font-size:10px;white-space:nowrap;">${esc(lbl)}</th>`).join('');
+  let rows = '';
+  let lastLayer = null;
+  HF_CLASSES.forEach(c => {
+    const items = (byClass[c.name] || []).slice().sort((a,b) => a.name.localeCompare(b.name));
+    if (!items.length) return;
+    if (c.layer !== lastLayer) {
+      rows += `<tr><td colspan="${cols.length+1}" style="padding:9px 6px 2px;font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text3);">${esc(c.layer)}</td></tr>`;
+      lastLayer = c.layer;
+    }
+    rows += `<tr><td colspan="${cols.length+1}" style="padding:4px 6px 1px;font-size:10px;font-weight:700;color:var(--text2);">${c.emoji} ${esc(c.name)}</td></tr>`;
+    items.forEach(t => {
+      let tds = `<td style="padding:2px 8px 2px 6px;font-size:11px;color:var(--text);position:sticky;left:0;background:var(--bg);max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.rationale||'')}">${esc(t.name)}</td>`;
+      cols.forEach(([slug]) => {
+        const s = cellOf(t.id, slug);
+        if (s === 'Weekly') weekly++; else if (s === 'Done') done++; else if (s === 'TD') td++;
+        const st = HM_CELL[s] || HM_CELL[''];
+        tds += `<td style="padding:1px 3px;text-align:center;">`
+          + `<button onclick="cycleHubMatrixCell(${esc(JSON.stringify(t.id))}, ${esc(JSON.stringify(slug))}, ${esc(JSON.stringify(c.name))})" title="${esc(slug)} · ${esc(t.name)} — ${s || '—'}" `
+          + `style="width:26px;height:20px;border:1px solid var(--border);border-radius:4px;background:${st.bg};color:${st.fg};font-size:${s==='TD'?'9px':'11px'};font-weight:700;cursor:pointer;line-height:1;padding:0;">${st.g}</button>`
+          + `</td>`;
+      });
+      rows += `<tr>${tds}</tr>`;
+    });
+  });
+  if (summary) summary.textContent = `— ${weekly} weekly · ${td} td · ${done} done`;
+  body.innerHTML = WORK_TYPES.length
+    ? `<table style="border-collapse:separate;border-spacing:0;">${`<thead><tr>${th}</tr></thead>`}<tbody>${rows}</tbody></table>`
+      + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">click a cell: blank → TD → weekly → done · writes to 🎯 Hub Fronts</div>`
+    : '<div style="font-size:11px;color:var(--text3);">No work types yet.</div>';
+}
+async function cycleHubMatrixCell(wtId, hub, klass) {
+  const row = HUB_MATRIX.find(f => f.workTypeId === wtId && f.hub === hub);
+  const cur = (row || {}).matrixStatus || '';
+  const next = HM_CYCLE[(HM_CYCLE.indexOf(cur) + 1) % HM_CYCLE.length];
+  if (row) row.matrixStatus = next;
+  else HUB_MATRIX.push({ hub, workTypeId: wtId, klass, matrixStatus: next });
+  renderHubMatrix();
+  try {
+    const r = await call('setHubMatrixCell', { hub, workTypeId: wtId, klass, status: next });
+    if (r.error) throw new Error(r.error);
+  } catch(e) { alert('Error: ' + e.message); loadHubMatrix(); }
 }
 
 // ── THIS WEEK (global Weekly Planner) ───────────────────────────────────

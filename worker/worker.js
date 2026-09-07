@@ -7590,6 +7590,8 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
             notes: rt(p, "Notes"),
             active: p.Active?.checkbox === true,
             campaignId: (p.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+            workTypeId: (p["Work Type"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
+            matrixStatus: p["Matrix Status"]?.select?.name || "",
           };
         });
         return json({ success: true, fronts });
@@ -7718,6 +7720,55 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           body: JSON.stringify({ archived: true }),
         }).catch(() => {});
         return json({ success: true });
+      }
+
+      // ── setHubMatrixCell ── the per-hub Work-Type status matrix on the TD
+      // tab. One 🎯 Hub Fronts row per hub × work type carries the `Matrix
+      // Status` (TD | Weekly | Done | blank). Clicking a cell cycles it —
+      // this finds that hub's row for the work type and sets the status, or
+      // creates a minimal row (Hub/Class/Work Type, Type=Setup) the first
+      // time a blank cell is filled. Only touches `Matrix Status` on rows
+      // that already exist — State/Type/Cadence/Active (the emitter fields)
+      // are left alone.
+      if (body.action === "setHubMatrixCell") {
+        const { hub, workTypeId, klass } = body;
+        const status = body.status || "";
+        if (!hub || !workTypeId) return json({ error: "hub and workTypeId required" }, 400);
+        if (!["", "TD", "Weekly", "Done"].includes(status)) return json({ error: "bad status" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const rows = await notionQuery(HUB_FRONTS_DB, {
+          filter: { and: [
+            { property: "Hub", select: { equals: hub } },
+            { property: "Work Type", relation: { contains: dash(workTypeId) } },
+          ] },
+        }).catch(e => { console.error('setHubMatrixCell query:', e.message); return []; });
+        if (rows[0]) {
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(rows[0].id)}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "Matrix Status": status ? { select: { name: status } } : { select: null } } }),
+          });
+          if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to update" }, resp.status || 500); }
+          return json({ success: true, id: rows[0].id.replace(/-/g,""), created: false });
+        }
+        if (!status) return json({ success: true, created: false });
+        const campaignId = (HUB_SITES.find(h => h.slug === hub) || {}).campaignId;
+        const props = {
+          "Name": { title: [{ type: "text", text: { content: `${hub} · ${klass || 'matrix'}`.slice(0, 200) } }] },
+          "Hub": { select: { name: hub } },
+          "Type": { select: { name: "Setup" } },
+          "State": { select: { name: "Not started" } },
+          "Work Type": { relation: [{ id: dash(workTypeId) }] },
+          "Matrix Status": { select: { name: status } },
+        };
+        if (klass) props["Class"] = { select: { name: klass } };
+        if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+        const created = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ parent: { database_id: HUB_FRONTS_DB }, properties: props }),
+        }).then(r => r.json());
+        if (!created.id) return json({ error: created.message || "Failed to create cell" }, 500);
+        return json({ success: true, id: created.id.replace(/-/g,""), created: true });
       }
 
       if (body.action === "moveWeeklyPlannerItem") {
