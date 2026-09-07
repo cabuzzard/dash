@@ -8076,6 +8076,24 @@ async function backfillStrategyPostTypes(strategyId, btn) {
   }
 }
 
+// Assigns a single preferred platform (the Platforms relation — the layer
+// the panel groups slots by, between Grouping and Post Type) to every slot
+// that lacks one. Mirrors backfillStrategyPostTypes: older slots often hold
+// a multi-platform sentence in the free-text Platform field that never
+// resolved to a relation; this picks the one best-fit per slot, allowed to
+// differ across a grouping.
+async function backfillStrategyPlatforms(strategyId, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  try {
+    const r = await w('backfillStrategyPlatforms', { growthStrategyId: strategyId });
+    if (r.error) throw new Error(r.error);
+    await loadCampaignStrategies();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '🛰️ Assign Platforms'; }
+  }
+}
+
 // Deletes a Growth Strategy (real archive, cascades to sub-strategies and
 // their Strategy Slots — see deleteGrowthStrategy server-side for exactly
 // what does/doesn't get touched). Real titles are never deleted, only
@@ -8266,7 +8284,11 @@ function renderStrategyBlock(s, indentPx) {
     const insertRow = (atSequence) => `<div style="padding:1px 0;">`
       + `<button onclick="openInsertSlotModal('${s.id}','${esc(g.name).replace(/'/g,"\\'")}',${atSequence})" title="Insert a new slot here — renumbers everything after it" style="font-size:9px;padding:0;border:none;background:transparent;color:#4a5568;cursor:pointer;width:100%;text-align:left;">+ insert</button>`
       + `</div>`;
-    const slotsHtml = g.slots.map((slot, si) => {
+    // One slot row (the "+ insert" hairline above it, then the row). The
+    // trailing hairline is emitted once at the end of the whole grouping
+    // below — inserts key off the Sequence number, not the DOM position,
+    // so it still lands correctly regardless of how slots are bucketed.
+    const slotRowHtml = (slot) => {
       const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
       // A slot can be filled more than once — once per Method — so this
       // shows every title made from it (each links out to its Notion
@@ -8280,12 +8302,11 @@ function renderStrategyBlock(s, indentPx) {
       const viralBtn = `<button onclick="openViralGenModal({slotId:'${slot.id}'})" title="Viral Generator — build a short-form story-arc pillar (hook · obstacle · turn · payoff) from this slot" style="font-size:9px;padding:0 5px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">⚡</button>`;
       const editBtn = `<button onclick="openEditSlotModal('${slot.id}')" title="Edit this slot's Proposed Title, Post Type, or Best Platform(s)" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">✏️</button>`;
       const removeBtn = `<button onclick="removeStrategySlot('${slot.id}')" title="Remove this slot — renumbers everything after it down by one" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️</button>`;
-      // Post Type is the primary label now — a run of slot rows down a
-      // grouping is meant to read as the strategy's "arc" (e.g. Pillar ->
-      // Intro -> Character Development -> Feature Benefit -> CTA) at a
-      // glance. Rationale shows as a native tooltip. Falls back to "no
-      // type" when unset (older slots, or ones the AI's best-effort match
-      // at creation missed).
+      // Post Type badge stays on every row even though slots are now also
+      // grouped by it — it's the at-a-glance "arc" marker, and it's still
+      // the only label shown when the Post Type sub-level is skipped (a
+      // grouping that's a pure 1-slot-per-type sequence). Falls back to
+      // "no type" when unset.
       const postTypeLabel = slot.postType
         ? `<span title="${esc(slot.postType.rationale || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border:1px solid #9f7aea;border-radius:8px;color:#9f7aea;flex-shrink:0;white-space:nowrap;">${esc(slot.postType.name)}</span>`
         : `<span title="No Post Type set — click ✏️ to assign one" style="font-size:9px;padding:1px 6px;border:1px dashed #444;border-radius:8px;color:#666;flex-shrink:0;white-space:nowrap;">no type</span>`;
@@ -8306,10 +8327,65 @@ function renderStrategyBlock(s, indentPx) {
       // slot with no Sequence (a plain Recurring/one-off row) isn't part
       // of an ordered run to insert into.
       const atSeq = Number.isFinite(slot.sequence) ? slot.sequence : null;
-      const before = atSeq !== null ? insertRow(atSeq) : '';
-      const after = (atSeq !== null && si === g.slots.length - 1) ? insertRow(atSeq + 1) : '';
-      return before + row + after;
-    }).join('');
+      return (atSeq !== null ? insertRow(atSeq) : '') + row;
+    };
+
+    // ── The Grouping → Preferred Platform → Post Type → slot nesting. ──
+    // "Preferred platform" = the slot's first Best Platform(s) entry (set
+    // per-slot by the strategy-making script), falling back to the older
+    // free-text Platform field. A grouping with only one distinct platform
+    // skips the platform header; a platform bucket with ≤1 post type — or
+    // one that's a pure 1-slot-per-type sequence — skips the post-type
+    // headers (the per-row badge already shows that arc). "No platform" /
+    // "No type" buckets sort last.
+    const bucketBy = (slots, keyOf, noneLabel) => {
+      const out = [], idx = {};
+      slots.forEach(sl => {
+        const nm = keyOf(sl) || '';
+        const k = nm || 'none';
+        if (!(k in idx)) { idx[k] = out.length; out.push({ label: nm || noneLabel, slots: [] }); }
+        out[idx[k]].slots.push(sl);
+      });
+      out.sort((a, b) => (a.label === noneLabel ? 1 : 0) - (b.label === noneLabel ? 1 : 0));
+      return out;
+    };
+    const platOf = sl => (sl.platforms && sl.platforms[0] && sl.platforms[0].name) || sl.platform || '';
+    const ptOf = sl => (sl.postType && sl.postType.name) || '';
+
+    const renderPtLevel = (slots, keyPrefix) => {
+      const pts = bucketBy(slots, ptOf, 'No type');
+      const skip = pts.length <= 1 || pts.every(b => b.slots.length === 1);
+      if (skip) return slots.map(slotRowHtml).join('');
+      return pts.map((b, bi) => {
+        const bodyId = `${keyPrefix}-pt-${bi}`;
+        return `<div style="margin:3px 0 3px 10px;">`
+          + `<div style="font-size:9px;font-weight:600;color:#9f7aea;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${bodyId}', this.querySelector('.gs-arrow'))">`
+          + `<span class="gs-arrow" style="font-size:7px;">▾</span><span>${esc(b.label)}</span>`
+          + `<span style="color:#555;font-weight:400;">${b.slots.length}</span></div>`
+          + `<div id="${bodyId}" style="margin-top:2px;">${b.slots.map(slotRowHtml).join('')}</div>`
+          + `</div>`;
+      }).join('');
+    };
+
+    const plats = bucketBy(g.slots, platOf, 'No platform');
+    let slotsHtml;
+    if (plats.length <= 1) {
+      slotsHtml = renderPtLevel(g.slots, `${gBodyId}-p0`);
+    } else {
+      slotsHtml = plats.map((pb, pi) => {
+        const bodyId = `${gBodyId}-plat-${pi}`;
+        return `<div style="margin:5px 0;">`
+          + `<div style="font-size:10px;font-weight:700;color:#68d391;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${bodyId}', this.querySelector('.gs-arrow'))">`
+          + `<span class="gs-arrow" style="font-size:7px;">▾</span><span>${esc(pb.label)}</span>`
+          + `<span style="color:#555;font-weight:400;">${pb.slots.length} slot${pb.slots.length === 1 ? '' : 's'}</span></div>`
+          + `<div id="${bodyId}" style="margin-top:2px;">${renderPtLevel(pb.slots, bodyId)}</div>`
+          + `</div>`;
+      }).join('');
+    }
+    // One trailing "+ insert" for the whole grouping, after the last
+    // sequenced slot — keyed by max Sequence + 1.
+    const maxSeq = g.slots.reduce((m, sl) => Number.isFinite(sl.sequence) ? Math.max(m, sl.sequence) : m, -Infinity);
+    if (Number.isFinite(maxSeq)) slotsHtml += insertRow(maxSeq + 1);
     return `<div style="margin:8px 0;">`
       + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
       + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span title="${esc(g.rationale || '')}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
@@ -8334,6 +8410,10 @@ function renderStrategyBlock(s, indentPx) {
   const backfillBtn = hasUnassignedType
     ? `<button onclick="backfillStrategyPostTypes('${s.id}', this)" title="Assign Post Type to every slot in this strategy that doesn't have one — grounded in this strategy's own Product/Research context, same reasoning as when it was first generated" style="font-size:9px;padding:0 6px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;flex-shrink:0;line-height:1.6;">🏷️ Assign Types</button>`
     : '';
+  const hasUnassignedPlatform = s.groupings.some(g => g.slots.some(sl => !(sl.platforms && sl.platforms.length)));
+  const backfillPlatBtn = hasUnassignedPlatform
+    ? `<button onclick="backfillStrategyPlatforms('${s.id}', this)" title="Assign a single preferred platform to every slot that doesn't have one — the panel groups slots by this. Older slots often hold a multi-platform sentence that never resolved; this picks the best-fit one per slot." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🛰️ Assign Platforms</button>`
+    : '';
   const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
   const launchRunBtn = `<button onclick="openLaunchRunModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Launch a Run — reuse this strategy as a Guide: pick a Product and create a child strategy with its own fresh Slots, reusing this Guide's groupings/angles as a template." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 Launch Run</button>`;
   // Top-level only (indentPx unset/0) — a rendered CHILD of a divergent
@@ -8357,6 +8437,7 @@ function renderStrategyBlock(s, indentPx) {
     + launchRunBtn
     + addGroupingBtn
     + backfillBtn
+    + backfillPlatBtn
     + deleteBtn
     + `</div>`
     + `<div id="${stratBodyId}" style="display:none;">`

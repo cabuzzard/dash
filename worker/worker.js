@@ -3958,9 +3958,9 @@ Respond ONLY with JSON: {"matches": [{"type": "method"|"platform"|"toolStack"|"p
 
 // ═══ Link mining ═══════════════════════════════════════════════════════
 // Supersedes runKnowledgeGraphAnalysis. Two stages:
-//   1. runDraftTagPass — cheap Haiku pass over each transcribed post → an
-//      editable "Draft Tags" multi_select on the row (cron + eager on the
-//      Links tab). Never creates anything downstream.
+//   1. runLinkTagging ("link tagging") — cheap Haiku pass over each
+//      transcribed post → an editable "Draft Tags" multi_select on the row
+//      (cron + eager on the Links tab). Never creates anything downstream.
 //   2. integrateOneSavedPost — operator-triggered per post (or bulk). One
 //      Sonnet call classifies the transcript (weighted by the operator's
 //      edited Draft Tags) into typed LINK_MINING_DB rows the operator then
@@ -4000,10 +4000,10 @@ async function buildMiningCandidates(hdr) {
   };
 }
 
-async function generateDraftTagsForPost(env, hdr, page) {
+async function generateLinkTagsForPost(env, hdr, page) {
   const pageId = page.id;
   const transcript = await extractBlocksTextRecursive(hdr, pageId).catch(() => "");
-  if (!transcript.trim()) return;
+  if (!transcript.trim()) return false;
   const prompt = `TRANSCRIPT:\n"""\n${transcript.slice(0, 8000)}\n"""\n\nList 4-10 short lowercase filing tags for the ABOVE transcript only — the specific tools/software named in it, the concrete topics it covers, its content format, the creator's subject area. If the transcript is too thin to tag meaningfully, output exactly: NONE. No generic filler (video, content, tips, growth, engagement). Output only the tags, comma-separated — nothing else, no preamble.`;
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -4011,21 +4011,24 @@ async function generateDraftTagsForPost(env, hdr, page) {
     body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 200, messages: [{ role: "user", content: prompt }] }),
   });
   const aiData = await aiResp.json().catch(() => ({}));
-  if (!aiResp.ok) { console.error("draftTags AI:", aiData.error?.message); return; }
+  if (!aiResp.ok) { console.error("link tagging AI:", aiData.error?.message); return false; }
   const rawTxt = (aiData.content?.[0]?.text || "").trim();
-  if (/^none\b/i.test(rawTxt)) return;
+  if (/^none\b/i.test(rawTxt)) return false;
   const BAD = /post content|named tools|concrete topic|content format|subject area|transcript|comma-separated|creator's|& guides|filing tag/i;
   const tags = rawTxt
     .split(/[,\n]/).map(s => s.trim().toLowerCase().replace(/^[#•\-\s"']+/, "").replace(/["'.]+$/, ""))
     .filter(t => t && t.length >= 2 && t.length <= 40 && !BAD.test(t) && !t.includes('"'))
     .slice(0, 12);
-  if (!tags.length) return;
-  await patchSavedPostPage(pageId, { "Draft Tags": { multi_select: [...new Set(tags)].map(name => ({ name })) } }).catch(e => console.error("draftTags save:", e.message));
+  if (!tags.length) return false;
+  await patchSavedPostPage(pageId, { "Draft Tags": { multi_select: [...new Set(tags)].map(name => ({ name })) } }).catch(e => console.error("link tagging save:", e.message));
+  return true;
 }
 
-async function runDraftTagPass(env, { limit = 12 } = {}) {
+// "link tagging" — the nightly (and eager) pass that puts editable Draft Tags
+// on transcribed Saved Posts. Returns the number of posts it tagged this run.
+async function runLinkTagging(env, { limit = 12 } = {}) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
-  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return;
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return 0;
   const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
   const rows = await notionQuery(SAVED_POSTS_DB, {
     filter: { and: [
@@ -4034,10 +4037,12 @@ async function runDraftTagPass(env, { limit = 12 } = {}) {
       { property: "Draft Tags", multi_select: { is_empty: true } },
     ] },
     page_size: limit,
-  }).catch(e => { console.error("runDraftTagPass query:", e.message); return []; });
+  }).catch(e => { console.error("link tagging query:", e.message); return []; });
+  let tagged = 0;
   for (const page of rows.slice(0, limit)) {
-    try { await generateDraftTagsForPost(env, hdr, page); } catch (e) { console.error("draftTags", page.id, e.message); }
+    try { if (await generateLinkTagsForPost(env, hdr, page)) tagged++; } catch (e) { console.error("link tagging", page.id, e.message); }
   }
+  return tagged;
 }
 
 // Upsert the post's creator into CREATORS_DB (match on handle substring or
@@ -8416,6 +8421,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
             }).join('\n')
           : '(none exist yet — every title will need "newPostType": true)';
         const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const platformsCatalogBlock = allPlatformRows.length
+          ? allPlatformRows.map(p => `- ${(p.properties?.Name?.title || []).map(t => t.plain_text).join("")}`).filter(s => s.trim() !== '-').join('\n')
+          : '(no platform catalog exists yet — use a plain platform name)';
 
         const addGroupingPrompt = `You are extending an EXISTING content growth strategy with exactly ONE new grouping (a new thematic title series/cluster) — the rest of the strategy already exists and is not being touched. Ground the new grouping in the product/positioning/research below, and make sure it's genuinely complementary to (not a duplicate of) the groupings that already exist.
 
@@ -8434,6 +8442,10 @@ POST TYPE CATALOG (assign one to every title, by exact name when it genuinely fi
 ${postTypesCatalogBlock}
 Vary the Post Type across the titles to match a real narrative arc if this grouping has one (early = Intro/Story, middle = Teach/Character Development, late = Feature Benefit/Social Proof/CTA); for a Recurring or one-off grouping with no arc, it's fine to share one Post Type or cycle 2-3 that fit. You may set "newPostType": true only when nothing in the catalog genuinely fits.
 
+PLATFORM CATALOG — assign the single best-fit platform to EACH title (its "platform"), by exact name where one fits:
+${platformsCatalogBlock}
+The titles do NOT all have to share one platform — a themed series often spans formats (long-form on YouTube/blog, short cuts on Instagram/TikTok, a nurture send by Email). Still give the grouping one "recommendedPlatform" as its primary/default.
+
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "grouping": {
@@ -8441,7 +8453,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
     "rationale": "...",
     "recommendedPlatform": "...",
     "recurrence": "...",
-    "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false } ]
+    "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above, else the grouping's recommendedPlatform" } ]
   }
 }`;
 
@@ -8484,7 +8496,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           } catch (e) { /* best-effort */ }
           return null;
         }
-        const matchedPlatformId = platformIdByName.get(String(g.recommendedPlatform || '').trim().toLowerCase());
+        const groupingPlatformName = String(g.recommendedPlatform || '').trim();
+        const groupingPlatformId = platformIdByName.get(groupingPlatformName.toLowerCase());
 
         async function createGroupingSlots(strategyIdForSlots, groupingName) {
           return Promise.all(gTitles.map(async (t, i) => {
@@ -8492,6 +8505,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
             const postTypeId = await resolvePostTypeId(t);
             const typeName = postTypeId ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || '' : '';
             const name = typeName ? `${seq} – ${typeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${groupingName} #${seq}`;
+            // Per-slot preferred platform (the layer the Strategies panel
+            // groups by), falling back to the grouping's recommendedPlatform.
+            const slotPlatformName = String(t.platform || '').trim() || groupingPlatformName;
+            const slotPlatformId = platformIdByName.get(slotPlatformName.toLowerCase()) || groupingPlatformId;
             const props = {
               "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
               "Growth Strategy": { relation: [{ id: dash(strategyIdForSlots) }] },
@@ -8499,7 +8516,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Grouping Rationale": { rich_text: [{ type: "text", text: { content: String(g.rationale || '').slice(0, 1990) } }] },
               "Sequence": { number: seq },
               "Angle": { rich_text: [{ type: "text", text: { content: String(t.angle || '').slice(0, 1990) } }] },
-              "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || '').slice(0, 1990) } }] },
+              "Platform": { rich_text: [{ type: "text", text: { content: slotPlatformName.slice(0, 1990) } }] },
               "Type": { rich_text: [{ type: "text", text: { content: typeName.slice(0, 1990) } }] },
               "Recurrence": { rich_text: [{ type: "text", text: { content: String(g.recurrence || '').slice(0, 1990) } }] },
               "Status": { select: { name: "Open" } },
@@ -8507,7 +8524,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             if (productId) props["Product"] = { relation: [{ id: dash(productId) }] };
             if (resolvedCampaignId) props["Campaign"] = { relation: [{ id: dash(resolvedCampaignId) }] };
             if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
-            if (matchedPlatformId) props["Platforms"] = { relation: [{ id: dash(matchedPlatformId) }] };
+            if (slotPlatformId) props["Platforms"] = { relation: [{ id: dash(slotPlatformId) }] };
             return fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
               body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
@@ -8744,6 +8761,112 @@ Return ONLY this JSON object, no other text, no markdown fences:
           updated++;
         }
         return json({ success: true, updated, total: needing.length });
+      }
+
+      // ── backfillStrategyPlatforms ──
+      // Retroactively assigns a single PREFERRED platform (the `Platforms`
+      // relation) to every slot in an existing Growth Strategy that doesn't
+      // have one yet — the mirror of backfillStrategyPostTypes for the
+      // Grouping → Preferred Platform → Post Type panel nesting. Many older
+      // slots carry a whole multi-platform sentence in the free-text
+      // `Platform` field (the old createSlotsFor put the AI's freeform
+      // `recommendedPlatform` there verbatim, so the exact-name match to
+      // PLATFORMS_DB found nothing) — this resolves each to one best-fit
+      // platform, allowed to differ across slots in the same grouping.
+      // Angles/Post Types/titles are never touched. Matches the existing
+      // PLATFORMS_DB catalog only — never creates a new platform row (that
+      // DB already has near-duplicates); an unmatchable slot is left for
+      // the ✏️ Edit Slot modal.
+      if (body.action === "backfillStrategyPlatforms") {
+        const { growthStrategyId } = body;
+        if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, { headers: hdr }).then(r => r.json());
+        if (!stratPage.properties) return json({ error: stratPage.message || "Growth Strategy not found" }, 404);
+        const stratName = (stratPage.properties["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
+
+        const [allSlots, allPlatformRows] = await Promise.all([
+          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }),
+          notionQuery(PLATFORMS_DB, {}).catch(e => { console.error('notionQuery(PLATFORMS_DB) failed:', e.message); return []; }),
+        ]);
+        const needing = allSlots.filter(s => !(s.properties["Platforms"]?.relation || []).length);
+        if (!needing.length) return json({ success: true, updated: 0, total: 0 });
+        if (!allPlatformRows.length) return json({ error: "No platforms in catalog to match against" }, 500);
+
+        const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
+
+        const byGrouping = {};
+        needing.forEach(s => {
+          const g = (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") || "Ungrouped";
+          (byGrouping[g] ||= []).push(s);
+        });
+        Object.values(byGrouping).forEach(arr => arr.sort((a, b) => (a.properties.Sequence?.number ?? 0) - (b.properties.Sequence?.number ?? 0)));
+        const groupingsBlock = Object.entries(byGrouping).map(([gname, slots]) => {
+          const lines = slots.map(s => {
+            const pt = ""; // Post Type name isn't needed for a platform call; angle + current text is enough
+            const cur = (s.properties.Platform?.rich_text || []).map(t => t.plain_text).join("");
+            const angle = (s.properties.Angle?.rich_text || []).map(t => t.plain_text).join("") || (s.properties.Name?.title || []).map(t => t.plain_text).join("");
+            return `  [${s.id.replace(/-/g,"")}] Seq ${s.properties.Sequence?.number ?? '?'}: ${angle}${cur ? `\n     (current platform note: ${cur.slice(0, 300)})` : ''}`;
+          }).join('\n');
+          return `Grouping "${gname}":\n${lines}`;
+        }).join('\n\n');
+
+        const prompt = `You are assigning ONE preferred publishing platform to each planned content slot in the existing growth strategy "${stratName}". You are only filling a gap — never rewrite the angles.
+
+PLATFORM CATALOG (pick the single best-fit by EXACT name from this list for each slot):
+${platformCatalog.map(n => `- ${n}`).join('\n')}
+
+Rules:
+- Exactly one platform per slot — its primary home, even if the content also gets cross-posted.
+- Slots in the same grouping MAY get different platforms (a long-form pillar on YouTube/Blog, short cuts on Instagram/TikTok, a nurture note by Email). Match each slot to where that specific piece actually lives.
+- Some slots have a "current platform note" that names several platforms in prose — pick the ONE that reads as primary.
+- A slot that is clearly an Etsy/marketplace listing → "etsy". An email/newsletter send → "Email".
+- If nothing in the catalog genuinely fits a slot, omit it from your response (do not force a match).
+
+SLOTS:
+${groupingsBlock}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "assignments": [ { "slotId": "the bracketed ID", "platform": "exact name from the catalog" } ] }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let assignments;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+          assignments = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))).assignments || [];
+        } catch (e) {
+          return json({ error: "Failed to parse assignments JSON: " + e.message }, 500);
+        }
+
+        const slotById = new Map(allSlots.map(s => [s.id.replace(/-/g,""), s]));
+        let updated = 0, unmatched = 0;
+        for (const a of assignments) {
+          const slot = slotById.get(String(a.slotId || '').replace(/-/g,""));
+          if (!slot) continue;
+          const wantName = String(a.platform || '').trim();
+          const platformId = wantName ? platformIdByName.get(wantName.toLowerCase()) : null;
+          if (!platformId) { unmatched++; continue; }
+          await fetch(`https://api.notion.com/v1/pages/${dash(slot.id.replace(/-/g,""))}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: {
+              "Platforms": { relation: [{ id: dash(platformId) }] },
+              "Platform": { rich_text: [{ type: "text", text: { content: wantName.slice(0, 1990) } }] },
+            } }),
+          }).catch(() => {});
+          updated++;
+        }
+        return json({ success: true, updated, unmatched, total: needing.length });
       }
 
       if (body.action === "updateCampaignPlatforms") {
@@ -12536,6 +12659,14 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
               return `- ${nm}${rt ? ` — ${rt}` : ''}`;
             }).join('\n')
           : '(none exist yet — every title will need "newPostType": true)';
+        // Platform catalog — fed to the prompt so the per-title "platform"
+        // the AI assigns is an exact name we can resolve to a Platforms
+        // relation id. This per-slot platform is the layer the microsite
+        // Strategies panel groups slots by (Grouping → Preferred Platform →
+        // Post Type), so getting a real catalog name matters.
+        const platformsCatalogBlock = allPlatformRows.length
+          ? allPlatformRows.map(p => `- ${(p.properties?.Name?.title || []).map(t => t.plain_text).join("")}`).filter(s => s.trim() !== '-').join('\n')
+          : '(no platform catalog exists yet — use a plain platform name)';
 
         const platformInstruction = (platformOverride || '').trim()
           ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
@@ -12566,12 +12697,16 @@ If a grouping has a real narrative arc (its titles build on each other — a Seq
 
 EVERY strategy this call produces must include at least one title with Post Type "Pillar" — the anchor piece the rest of the strategy points back to (if this product had just one piece of content, this would be it — often the real SEO/conversion asset). Every other title's rationale should read as promoting or driving traffic toward that Pillar, not as unrelated standalone content. Put the Pillar early in whichever grouping makes the most sense (usually grouping 1, title/slot 1) rather than burying it.
 
+EXISTING PLATFORM CATALOG — assign the single best-fit platform to EACH individual title (its "platform"), by exact name from this list where one fits:
+${platformsCatalogBlock}
+A grouping's titles do NOT all have to share one platform. The same themed series often spans formats — a long-form Pillar on YouTube or a blog, short cuts of it on Instagram/TikTok, a nurture send by Email. Pick the platform that genuinely fits each piece; when one platform clearly dominates a grouping, it's fine for every title in it to share that one. Still give each grouping a single "recommendedPlatform" too — its primary/default platform (the one most of its titles use, or the home of its Pillar).
+
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
   "recommendedPlatforms": ["...", "..."],
   "groupings": [
-    { "name": "...", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false } ], "recommendedPlatform": "...", "recurrence": "..." }
+    { "name": "...", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above, else the grouping's recommendedPlatform" } ], "recommendedPlatform": "...", "recurrence": "..." }
   ]
 }`;
 
@@ -12642,17 +12777,32 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         function groupingBlocks(g) {
           const out = [];
+          const gTitles = Array.isArray(g.titles) ? g.titles : [];
+          const gPlatforms = Array.from(new Set(gTitles
+            .map(t => (typeof t === 'string' ? '' : String(t.platform || '').trim()))
+            .filter(Boolean)));
+          const multiPlatform = gPlatforms.length > 1;
           out.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
           out.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
-          (Array.isArray(g.titles) ? g.titles : []).forEach(t => {
+          gTitles.forEach(t => {
             const angle = typeof t === 'string' ? t : (t.angle || '');
             const postType = typeof t === 'string' ? '' : (t.postType || '');
-            out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: postType
-              ? [{ type: "text", text: { content: `[${postType}] ` }, annotations: { bold: true } }, { type: "text", text: { content: angle } }]
+            const plat = typeof t === 'string' ? '' : String(t.platform || '').trim();
+            // When a grouping spans platforms, prefix each bullet with
+            // "[Platform · PostType]" so the prose still reads correctly and
+            // launchStrategyRun's body parser (which only reads the grouping
+            // "Platform:" line) still degrades sanely. Single-platform
+            // groupings keep the plain "[PostType]" prefix they always had.
+            const tag = multiPlatform
+              ? `[${[plat || g.recommendedPlatform || '?', postType].filter(Boolean).join(' · ')}] `
+              : (postType ? `[${postType}] ` : '');
+            out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: tag
+              ? [{ type: "text", text: { content: tag }, annotations: { bold: true } }, { type: "text", text: { content: angle } }]
               : rtBlock(angle) } });
           });
           out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
-            { type: "text", text: { content: "Platform: " }, annotations: { bold: true } }, { type: "text", text: { content: esc3(g.recommendedPlatform) || 'Not specified' } },
+            { type: "text", text: { content: "Platform: " }, annotations: { bold: true } },
+            { type: "text", text: { content: multiPlatform ? gPlatforms.join(', ') : (esc3(g.recommendedPlatform) || 'Not specified') } },
           ] } });
           out.push({ object: "block", type: "divider", divider: {} });
           return out;
@@ -12697,13 +12847,21 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // the strategy itself, which already saved successfully.
         function createSlotsFor(strategyIdForSlots, g) {
           const titles = Array.isArray(g.titles) ? g.titles : [];
-          const matchedPlatformId = platformIdByName.get(String(g.recommendedPlatform || platformOverride || '').trim().toLowerCase());
+          const groupingPlatformName = String(g.recommendedPlatform || platformOverride || '').trim();
+          const groupingPlatformId = platformIdByName.get(groupingPlatformName.toLowerCase());
           return Promise.all(titles.map(async (t, i) => {
             // Back-compat: an older/malformed response might still hand us a
-            // plain string instead of {angle, postType, newPostType}.
+            // plain string instead of {angle, postType, newPostType, platform}.
             const angle = typeof t === 'string' ? t : (t.angle || '');
             const titleObj = typeof t === 'string' ? { postType: '' } : t;
             const seq = i + 1;
+            // Per-slot preferred platform — the strategy-making script's
+            // call, and the layer the microsite Strategies panel groups
+            // slots by. Falls back to the grouping's own recommendedPlatform
+            // when the AI didn't name one for this title (or named something
+            // off-catalog).
+            const slotPlatformName = (typeof t === 'string' ? '' : String(t.platform || '').trim()) || groupingPlatformName;
+            const slotPlatformId = platformIdByName.get(slotPlatformName.toLowerCase()) || groupingPlatformId;
             const postTypeId = await resolvePostTypeId(titleObj);
             const typeName = postTypeId
               ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || ''
@@ -12722,7 +12880,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Grouping Rationale": { rich_text: [{ type: "text", text: { content: String(g.rationale || '').slice(0, 1990) } }] },
               "Sequence": { number: seq },
               "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
-              "Platform": { rich_text: [{ type: "text", text: { content: String(g.recommendedPlatform || platformOverride || '').slice(0, 1990) } }] },
+              "Platform": { rich_text: [{ type: "text", text: { content: slotPlatformName.slice(0, 1990) } }] },
               // "Type" (rich_text) kept in sync with Post Type's name — legacy
               // field some older readouts (runStrategySequenceReminders,
               // buildStrategyFromAsset) still reference by text.
@@ -12731,10 +12889,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
               "Status": { select: { name: "Open" } },
             };
             if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
-            // Best-effort exact-name Platform match against the catalog
-            // fetched above. Unmatched is fine; fixable from the Strategies
-            // panel's ✏️ Edit Slot modal either way.
-            if (matchedPlatformId) props["Platforms"] = { relation: [{ id: dash(matchedPlatformId) }] };
+            // Best-effort exact-name Platform match — the per-slot platform
+            // the AI assigned, falling back to the grouping's. Unmatched is
+            // fine; fixable from the Strategies panel's ✏️ Edit Slot modal.
+            if (slotPlatformId) props["Platforms"] = { relation: [{ id: dash(slotPlatformId) }] };
             return fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
               body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
@@ -21931,7 +22089,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         // Eager backstop for the Draft Tags pre-list (cron is the other
         // half). Small limit — this invocation already spent subrequests on
         // enrichUnprocessedSavedPosts + the query.
-        ctx.waitUntil(runDraftTagPass(env, { limit: 3 }).catch(() => {}));
+        ctx.waitUntil(runLinkTagging(env, { limit: 3 }).catch(() => {}));
         const rows = await notionQuery(SAVED_POSTS_DB, {
           // Sort by Notion's own created_time, not the "Date Saved" property
           // — that property is only as reliable as whatever wrote it (the
@@ -30435,10 +30593,14 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
-    // Link mining replaced runKnowledgeGraphAnalysis: the daily cron only
+    // "link tagging" replaced runKnowledgeGraphAnalysis: the daily cron only
     // keeps Draft Tags fresh — the full mining pass is operator-triggered
     // per post so tags can be edited first (integrateLinkKnowledge).
-    ctx.waitUntil(runDraftTagPass(env, { limit: 20 }).catch(e => console.error('runDraftTagPass failed:', e.message)));
+    ctx.waitUntil(
+      runLinkTagging(env, { limit: 20 })
+        .then(n => console.log(`link tagging ran: ${n} post(s) tagged`))
+        .catch(e => console.error('link tagging failed:', e.message))
+    );
     ctx.waitUntil(
       buildEcosystemGraph(env)
         .then(g => env.TRADES.put(ECOSYSTEM_GRAPH_KV_KEY, JSON.stringify(g), { expirationTtl: 172800 }))
