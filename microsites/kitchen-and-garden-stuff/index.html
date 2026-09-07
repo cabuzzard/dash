@@ -8083,14 +8083,14 @@ async function backfillStrategyPostTypes(strategyId, btn) {
 // resolved to a relation; this picks the one best-fit per slot, allowed to
 // differ across a grouping.
 async function backfillStrategyPlatforms(strategyId, btn) {
-  if (btn) { btn.disabled = true; btn.textContent = 'Assigning…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Re-checking…'; }
   try {
     const r = await w('backfillStrategyPlatforms', { growthStrategyId: strategyId });
     if (r.error) throw new Error(r.error);
     await loadCampaignStrategies();
   } catch (e) {
     alert('Error: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '🛰️ Assign Platforms'; }
+    if (btn) { btn.disabled = false; btn.textContent = '🛰️ Re-check Platforms'; }
   }
 }
 
@@ -8410,9 +8410,12 @@ function renderStrategyBlock(s, indentPx) {
   const backfillBtn = hasUnassignedType
     ? `<button onclick="backfillStrategyPostTypes('${s.id}', this)" title="Assign Post Type to every slot in this strategy that doesn't have one — grounded in this strategy's own Product/Research context, same reasoning as when it was first generated" style="font-size:9px;padding:0 6px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;flex-shrink:0;line-height:1.6;">🏷️ Assign Types</button>`
     : '';
-  const hasUnassignedPlatform = s.groupings.some(g => g.slots.some(sl => !(sl.platforms && sl.platforms.length)));
-  const backfillPlatBtn = hasUnassignedPlatform
-    ? `<button onclick="backfillStrategyPlatforms('${s.id}', this)" title="Assign a single preferred platform to every slot that doesn't have one — the panel groups slots by this. Older slots often hold a multi-platform sentence that never resolved; this picks the best-fit one per slot." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🛰️ Assign Platforms</button>`
+  // Always available (not gated on a gap): re-evaluates the preferred
+  // platform for EVERY slot so a grouping can pick up a platform split
+  // where one is warranted, not just fill blanks. Only writes slots whose
+  // platform actually changes.
+  const backfillPlatBtn = (s.groupings || []).some(g => g.slots && g.slots.length)
+    ? `<button onclick="backfillStrategyPlatforms('${s.id}', this)" title="Re-evaluate the preferred platform for every slot in this strategy — the panel groups slots by this. Lets a grouping split across platforms (pillar on YouTube, cuts on Instagram, nurture by Email) where the content genuinely differs. Only changes slots that need it." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🛰️ Re-check Platforms</button>`
     : '';
   const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
   const launchRunBtn = `<button onclick="openLaunchRunModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Launch a Run — reuse this strategy as a Guide: pick a Product and create a child strategy with its own fresh Slots, reusing this Guide's groupings/angles as a template." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 Launch Run</button>`;

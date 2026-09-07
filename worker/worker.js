@@ -8764,19 +8764,18 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
 
       // ── backfillStrategyPlatforms ──
-      // Retroactively assigns a single PREFERRED platform (the `Platforms`
-      // relation) to every slot in an existing Growth Strategy that doesn't
-      // have one yet — the mirror of backfillStrategyPostTypes for the
-      // Grouping → Preferred Platform → Post Type panel nesting. Many older
-      // slots carry a whole multi-platform sentence in the free-text
-      // `Platform` field (the old createSlotsFor put the AI's freeform
-      // `recommendedPlatform` there verbatim, so the exact-name match to
-      // PLATFORMS_DB found nothing) — this resolves each to one best-fit
-      // platform, allowed to differ across slots in the same grouping.
-      // Angles/Post Types/titles are never touched. Matches the existing
-      // PLATFORMS_DB catalog only — never creates a new platform row (that
-      // DB already has near-duplicates); an unmatchable slot is left for
-      // the ✏️ Edit Slot modal.
+      // Re-evaluates the single PREFERRED platform (the `Platforms`
+      // relation — the layer the Strategies panel groups slots by, between
+      // Grouping and Post Type) for EVERY slot in a Growth Strategy, not
+      // just ones missing one. The 🛰️ Assign Platforms button. Older slots
+      // were created with one grouping-uniform platform (or a whole
+      // multi-platform sentence stuffed in the free-text `Platform` field);
+      // this asks the AI to reconsider each slot on its own merits so a
+      // grouping can legitimately span platforms (long-form pillar on
+      // YouTube, short cuts on Instagram, a nurture note by Email) where
+      // the content genuinely differs. Angles / Post Types / titles are
+      // never touched. PLATFORMS_DB catalog match only — never creates a
+      // platform row; only writes a slot whose platform actually changed.
       if (body.action === "backfillStrategyPlatforms") {
         const { growthStrategyId } = body;
         if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
@@ -8788,44 +8787,58 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (!stratPage.properties) return json({ error: stratPage.message || "Growth Strategy not found" }, 404);
         const stratName = (stratPage.properties["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
 
-        const [allSlots, allPlatformRows] = await Promise.all([
+        const [allSlots, allPlatformRows, allPostTypeRows] = await Promise.all([
           notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }),
           notionQuery(PLATFORMS_DB, {}).catch(e => { console.error('notionQuery(PLATFORMS_DB) failed:', e.message); return []; }),
+          notionQuery(POST_TYPES_DB, {}).catch(() => []),
         ]);
-        const needing = allSlots.filter(s => !(s.properties["Platforms"]?.relation || []).length);
-        if (!needing.length) return json({ success: true, updated: 0, total: 0 });
+        if (!allSlots.length) return json({ success: true, updated: 0, total: 0 });
         if (!allPlatformRows.length) return json({ error: "No platforms in catalog to match against" }, 500);
 
-        const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+        // id -> canonical catalog name, and name(lower) -> id. When the DB
+        // holds near-duplicate rows (e.g. "LinkedIn"/"Linkedin"), the first
+        // wins for name->id so the AI's pick resolves consistently.
+        const platformIdByName = new Map();
+        const platformNameById = new Map();
+        allPlatformRows.forEach(p => {
+          const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          const id = p.id.replace(/-/g,"");
+          platformNameById.set(id, nm);
+          if (nm && !platformIdByName.has(nm.toLowerCase())) platformIdByName.set(nm.toLowerCase(), id);
+        });
         const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
+        const postTypeNameById = new Map(allPostTypeRows.map(p => [p.id.replace(/-/g,""), (p.properties?.Name?.title || []).map(t => t.plain_text).join("")]));
+
+        const curPlatformId = s => (s.properties["Platforms"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
 
         const byGrouping = {};
-        needing.forEach(s => {
+        allSlots.forEach(s => {
           const g = (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") || "Ungrouped";
           (byGrouping[g] ||= []).push(s);
         });
         Object.values(byGrouping).forEach(arr => arr.sort((a, b) => (a.properties.Sequence?.number ?? 0) - (b.properties.Sequence?.number ?? 0)));
         const groupingsBlock = Object.entries(byGrouping).map(([gname, slots]) => {
           const lines = slots.map(s => {
-            const pt = ""; // Post Type name isn't needed for a platform call; angle + current text is enough
-            const cur = (s.properties.Platform?.rich_text || []).map(t => t.plain_text).join("");
+            const cur = platformNameById.get(curPlatformId(s)) || (s.properties.Platform?.rich_text || []).map(t => t.plain_text).join("");
+            const pt = postTypeNameById.get((s.properties["Post Type"]?.relation || [])[0]?.id?.replace(/-/g,"")) || (s.properties.Type?.rich_text || []).map(t => t.plain_text).join("");
             const angle = (s.properties.Angle?.rich_text || []).map(t => t.plain_text).join("") || (s.properties.Name?.title || []).map(t => t.plain_text).join("");
-            return `  [${s.id.replace(/-/g,"")}] Seq ${s.properties.Sequence?.number ?? '?'}: ${angle}${cur ? `\n     (current platform note: ${cur.slice(0, 300)})` : ''}`;
+            return `  [${s.id.replace(/-/g,"")}] Seq ${s.properties.Sequence?.number ?? '?'}${pt ? ` · ${pt}` : ''}: ${angle}${cur ? `\n     (currently: ${cur.slice(0, 300)})` : ''}`;
           }).join('\n');
           return `Grouping "${gname}":\n${lines}`;
         }).join('\n\n');
 
-        const prompt = `You are assigning ONE preferred publishing platform to each planned content slot in the existing growth strategy "${stratName}". You are only filling a gap — never rewrite the angles.
+        const prompt = `You are re-evaluating the single best PUBLISHING PLATFORM for every planned content slot in the existing growth strategy "${stratName}". Do NOT rewrite angles or post types — only decide, per slot, which one platform it primarily lives on.
 
 PLATFORM CATALOG (pick the single best-fit by EXACT name from this list for each slot):
 ${platformCatalog.map(n => `- ${n}`).join('\n')}
 
 Rules:
 - Exactly one platform per slot — its primary home, even if the content also gets cross-posted.
-- Slots in the same grouping MAY get different platforms (a long-form pillar on YouTube/Blog, short cuts on Instagram/TikTok, a nurture note by Email). Match each slot to where that specific piece actually lives.
-- Some slots have a "current platform note" that names several platforms in prose — pick the ONE that reads as primary.
-- A slot that is clearly an Etsy/marketplace listing → "etsy". An email/newsletter send → "Email".
-- If nothing in the catalog genuinely fits a slot, omit it from your response (do not force a match).
+- Reconsider each slot on its own merits. A grouping SHOULD span platforms when its slots are genuinely different formats — e.g. a long-form Pillar on YouTube or Blog, short derivative cuts on Instagram / TikTok / Threads, a nurture send by Email, a discussion post on Reddit or X. Keep a grouping on ONE platform only when every slot in it really is the same format.
+- Use the Post Type as a signal: a Pillar is usually the long-form anchor (YouTube / Blog / Email newsletter); Intro / Teaser / CTA / Social Proof pieces are usually short-form social; Q&A / Behind-the-Scenes often short-form video.
+- "currently: ..." shows the slot's existing platform (sometimes a multi-platform sentence) — treat it as a hint, not a constraint. Change it when a better fit exists.
+- A slot that is clearly an Etsy/marketplace listing → "etsy". A newsletter/nurture send → "Email".
+- If nothing in the catalog genuinely fits a slot, omit it (do not force a match).
 
 SLOTS:
 ${groupingsBlock}
@@ -8850,13 +8863,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
 
         const slotById = new Map(allSlots.map(s => [s.id.replace(/-/g,""), s]));
-        let updated = 0, unmatched = 0;
+        let updated = 0, unchanged = 0, unmatched = 0;
         for (const a of assignments) {
           const slot = slotById.get(String(a.slotId || '').replace(/-/g,""));
           if (!slot) continue;
           const wantName = String(a.platform || '').trim();
           const platformId = wantName ? platformIdByName.get(wantName.toLowerCase()) : null;
           if (!platformId) { unmatched++; continue; }
+          if (curPlatformId(slot) === platformId) { unchanged++; continue; }
           await fetch(`https://api.notion.com/v1/pages/${dash(slot.id.replace(/-/g,""))}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: {
@@ -8866,7 +8880,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }).catch(() => {});
           updated++;
         }
-        return json({ success: true, updated, unmatched, total: needing.length });
+        return json({ success: true, updated, unchanged, unmatched, total: allSlots.length });
       }
 
       if (body.action === "updateCampaignPlatforms") {
