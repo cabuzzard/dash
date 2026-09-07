@@ -9089,13 +9089,22 @@ Return ONLY this JSON, no other text, no fences:
             body: JSON.stringify({ children: bodyChildren.slice(i, i + 90) }),
           }).catch(() => {});
         }
+        // Two PATCHes, not one: a bad `Recommended Platforms` multi_select
+        // value (Notion rejects option names containing a comma) must not
+        // block clearing the stale Platform Override / Summary. Names are
+        // comma-stripped for the same reason.
         await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: {
             "Summary": { rich_text: rtBlock(String(plan.summary || '').slice(0, 1990)) },
-            "Recommended Platforms": { multi_select: (Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : []).slice(0, 10).map(p => ({ name: String(p).slice(0, 90) })) },
             "Grouping Count": { number: groupings.length },
             "Platform Override": { rich_text: [] },
+          } }),
+        }).catch(() => {});
+        await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: {
+            "Recommended Platforms": { multi_select: (Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : []).slice(0, 10).map(p => ({ name: String(p).replace(/,/g, ' ').slice(0, 90) })).filter(o => o.name.trim()) },
           } }),
         }).catch(() => {});
 
