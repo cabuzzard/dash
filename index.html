@@ -1667,7 +1667,7 @@
 
 <!-- Hub Method / Asset Matrix → add / edit a column (🧱 Method & Asset Types) -->
 <div class="modal-bg" id="matTypeModal" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal" style="max-width:440px;">
+  <div class="modal" style="max-width:640px;">
     <div class="modal-title" id="matTypeModalTitle">Add method / asset type</div>
     <div style="display:flex;gap:8px;">
       <div class="modal-field" style="flex:1;">
@@ -1680,8 +1680,11 @@
       </div>
     </div>
     <div class="modal-field">
-      <label class="modal-label">Notes <span style="color:var(--text3);font-weight:400;">— optional</span></label>
-      <input class="modal-input" id="mtNotes" type="text">
+      <label class="modal-label" style="display:flex;align-items:center;gap:8px;">
+        Write-up / notes <span style="color:var(--text3);font-weight:400;">— your own notes on what this method does &amp; how it's achieved; paste into code chats</span>
+        <button type="button" onclick="mtCopyNotes(this)" style="margin-left:auto;font-size:10px;font-weight:600;background:none;border:1px solid var(--border2);border-radius:5px;color:var(--text3);padding:2px 8px;cursor:pointer;white-space:nowrap;">⧉ Copy</button>
+      </label>
+      <textarea class="modal-input" id="mtNotes" rows="16" style="resize:vertical;font-size:13px;line-height:1.6;font-family:inherit;" placeholder="What this method produces, the step-by-step of how it's done, gotchas, examples…"></textarea>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="modal-btn" id="mtSaveBtn" onclick="matTypeSave()">Save</button>
@@ -13484,7 +13487,9 @@ function renderHubAssetMatrix() {
     + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">count of published assets per hub · ⚙ method · ▢ asset type · drag column headers to reorder</div>`;
 }
 let matEditingId = null;
-function openMatTypeModal(typeId) {
+let mtNotesOk = true;   // false if getMatType failed — then don't let a blank save wipe the stored write-up
+const MT_NOTES_PLACEHOLDER = "What this method produces, the step-by-step of how it's done, gotchas, examples…";
+async function openMatTypeModal(typeId) {
   matEditingId = typeId || null;
   const c = typeId && HAM_DATA ? (HAM_DATA.columns || []).find(x => x.id === typeId) : null;
   document.getElementById('matTypeModalTitle').textContent = c ? 'Edit column' : 'Add method / asset type';
@@ -13492,22 +13497,46 @@ function openMatTypeModal(typeId) {
   document.getElementById('mtName').value = c ? c.name : '';
   document.getElementById('mtName').disabled = false;
   document.getElementById('mtKind').value = c && c.kind ? c.kind : 'Asset Type';
-  document.getElementById('mtNotes').value = c && c.notes ? c.notes : '';
-  document.getElementById('mtMsg').textContent = c ? 'Name is the match key — it maps to an Asset Type / Method by name.' : '';
+  const ta = document.getElementById('mtNotes');
+  ta.value = '';
+  ta.disabled = false;
+  ta.placeholder = MT_NOTES_PLACEHOLDER;
+  document.getElementById('mtMsg').textContent = c ? 'Name is the match key — it maps to an Asset Type / Method by name. The write-up is your own notes, saved on the record; no code reads it.' : '';
   document.getElementById('matTypeModal').classList.add('open');
+  mtNotesOk = true;
+  if (typeId) {
+    ta.disabled = true; ta.placeholder = 'Loading…';
+    try {
+      const r = await call('getMatType', { typeId });
+      if (matEditingId === typeId && document.getElementById('matTypeModal').classList.contains('open')) {
+        ta.value = r.notes || '';
+        if (r.name) document.getElementById('mtName').value = r.name;
+        if (r.kind) document.getElementById('mtKind').value = r.kind;
+      }
+    } catch(e) {
+      mtNotesOk = false;
+      if (matEditingId === typeId) document.getElementById('mtMsg').textContent = 'Could not load the write-up (name/kind still editable): ' + e.message;
+    }
+    ta.disabled = false; ta.placeholder = MT_NOTES_PLACEHOLDER;
+  }
 }
 async function matTypeSave() {
   const btn = document.getElementById('mtSaveBtn');
   const msg = document.getElementById('mtMsg');
   const name = document.getElementById('mtName').value.trim();
   const kind = document.getElementById('mtKind').value;
-  const notes = document.getElementById('mtNotes').value.trim();
+  const notes = document.getElementById('mtNotes').value.replace(/\s+$/, '');
   if (!name) { msg.textContent = 'Name required'; return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const r = matEditingId
-      ? await call('updateMatType', { typeId: matEditingId, name, kind, notes })
-      : await call('createMatType', { name, kind, notes });
+    let r;
+    if (matEditingId) {
+      const payload = { typeId: matEditingId, name, kind };
+      if (mtNotesOk) payload.notes = notes;   // skip if the write-up never loaded — don't overwrite it blank
+      r = await call('updateMatType', payload);
+    } else {
+      r = await call('createMatType', { name, kind, notes });
+    }
     if (r.error) throw new Error(r.error);
     document.getElementById('matTypeModal').classList.remove('open');
     HAM_DATA = null;
@@ -13523,6 +13552,18 @@ async function matTypeDelete() {
     HAM_DATA = null;
     await loadHubAssetMatrix();
   } catch(e) { document.getElementById('mtMsg').textContent = 'Error: ' + e.message; }
+}
+async function mtCopyNotes(btn) {
+  const txt = document.getElementById('mtNotes').value;
+  if (!txt.trim()) { const o = btn.textContent; btn.textContent = 'empty'; setTimeout(() => btn.textContent = o, 1000); return; }
+  try {
+    await navigator.clipboard.writeText(txt);
+    const o = btn.textContent; btn.textContent = '✓ copied'; setTimeout(() => btn.textContent = o, 1200);
+  } catch(e) {
+    const ta = document.getElementById('mtNotes'); ta.focus(); ta.select();
+    document.execCommand('copy');
+    const o = btn.textContent; btn.textContent = '✓ copied'; setTimeout(() => btn.textContent = o, 1200);
+  }
 }
 
 // ── HUB WORK MATRIX — per-hub status for each work type ─────────────────

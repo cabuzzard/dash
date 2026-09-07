@@ -729,6 +729,21 @@ async function extractBlocksTextRecursive(hdr, blockId, depth = 0) {
   return parts.filter(Boolean).join("\n");
 }
 
+// 🧱 Method & Asset Types "write-up": the operator's own free-text notes on a
+// method (what it produces / how it's done), stored as the row's PAGE BODY so
+// it isn't capped by Notion's 2000-char rich_text *property* limit. Chunked at
+// the per-rich-text max with NO delimiter, so getMatType reconstructs the
+// original exactly by concatenating the paragraph blocks back together.
+function matNotesToBlocks(notes) {
+  const s = String(notes || "").replace(/\r\n/g, "\n").replace(/\s+$/, "");
+  if (!s.trim()) return [];
+  const out = [];
+  for (let i = 0; i < s.length && out.length < 100; i += 1900) {
+    out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: s.slice(i, i + 1900) } }] } });
+  }
+  return out;
+}
+
 // Weekly Planner: an Open item recurs on its assigned weekday EVERY week
 // (not just the literal week it was created in) until marked Done — per
 // operator direction: "I dont think a 'this week' placement should be one
@@ -8331,11 +8346,12 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
             method: methodName[norm((p.method?.relation || [])[0]?.id)] || "",
           };
         });
+        // write-up (per-method notes) lives in each row's page body — fetched
+        // on demand by getMatType when the edit modal opens, not here.
         const columns = colRows.map(r => ({
           id: norm(r.id),
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           kind: r.properties?.Kind?.select?.name || "",
-          notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         const colByLc = {};
         columns.forEach(c => { colByLc[c.name.toLowerCase()] = c.name; });
@@ -8364,10 +8380,12 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const props = { "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] } };
         if (["Method", "Asset Type", "Both"].includes(kind)) props["Kind"] = { select: { name: kind } };
-        if ((notes || "").trim()) props["Notes"] = { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] };
+        // The write-up goes in the row's PAGE BODY (matNotesToBlocks), not a
+        // rich_text property — properties are capped at 2000 chars, the body
+        // isn't. getMatType reads it back.
         const created = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: hdr,
-          body: JSON.stringify({ parent: { database_id: MAT_TYPES_DB }, properties: props }),
+          body: JSON.stringify({ parent: { database_id: MAT_TYPES_DB }, properties: props, children: matNotesToBlocks(notes) }),
         }).then(r => r.json());
         if (!created.id) return json({ error: created.message || "Failed to create" }, 500);
         return json({ success: true, id: created.id.replace(/-/g, "") });
@@ -8381,14 +8399,55 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const props = {};
         if (name !== undefined && String(name).trim()) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] };
         if (kind !== undefined) props["Kind"] = ["Method", "Asset Type", "Both"].includes(kind) ? { select: { name: kind } } : { select: null };
-        if (notes !== undefined) props["Notes"] = String(notes).trim() ? { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] } : { rich_text: [] };
-        if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
-        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
-          method: "PATCH", headers: hdr,
-          body: JSON.stringify({ properties: props }),
-        });
-        if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to update" }, resp.status || 500); }
+        if (!Object.keys(props).length && notes === undefined) return json({ error: "nothing to update" }, 400);
+        if (Object.keys(props).length) {
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: props }),
+          });
+          if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to update" }, resp.status || 500); }
+        }
+        if (notes !== undefined) {
+          // Replace the page body: delete existing top-level blocks, write fresh.
+          try {
+            const existing = await fetch(`https://api.notion.com/v1/blocks/${dash(typeId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+            for (const b of (existing.results || [])) {
+              await fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr }).catch(() => {});
+            }
+          } catch (e) { /* best-effort */ }
+          const blocks = matNotesToBlocks(notes);
+          for (let i = 0; i < blocks.length; i += 90) {
+            await fetch(`https://api.notion.com/v1/blocks/${dash(typeId)}/children`, {
+              method: "PATCH", headers: hdr,
+              body: JSON.stringify({ children: blocks.slice(i, i + 90) }),
+            });
+          }
+        }
         return json({ success: true });
+      }
+
+      if (body.action === "getMatType") {
+        const { typeId } = body;
+        if (!typeId) return json({ error: "typeId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const [page, kids] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/blocks/${dash(typeId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()),
+        ]);
+        if (!page.properties) return json({ error: page.message || "Not found" }, 404);
+        // matNotesToBlocks splits with no delimiter, so concatenate with none.
+        const notes = (kids.results || [])
+          .filter(b => b.type === "paragraph")
+          .map(b => (b.paragraph?.rich_text || []).map(t => t.plain_text).join(""))
+          .join("");
+        return json({
+          success: true,
+          id: typeId,
+          name: (page.properties.Name?.title || []).map(t => t.plain_text).join(""),
+          kind: page.properties.Kind?.select?.name || "",
+          notes,
+        });
       }
 
       if (body.action === "deleteMatType") {
