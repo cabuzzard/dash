@@ -2795,8 +2795,11 @@ async function loadTitles() {
     // Sub-stack (Product Tier) level — nested between Stack and Product.
     // A product's "Product Tier" free-text value (e.g. "Productized One-Offs",
     // "Retainers") groups the products within one stack into funnel tiers.
-    // "No Tier" sorts last, same convention as "No Stack"/"No Product". Same
-    // collapse/expand + single-bucket-skip pattern as every other level.
+    // "No Tier" sorts last, same convention as "No Stack"/"No Product".
+    // Single-bucket-skip only applies when that one bucket is "No Tier" —
+    // a single REAL tier still gets its header, same fix as renderStrategyLevel
+    // below (skipping a real single bucket hid which tier a whole stack's
+    // titles belonged to, same bug class as the Product-level one).
     const NO_TIER_KEY = '__no_tier__';
     function renderSubStackLevel(arr, el, section) {
       const hasTier = arr.some(t => t.productTier);
@@ -2811,7 +2814,7 @@ async function loadTitles() {
       tierOrder.forEach(tk => {
         const tTitles = byTier[tk];
         const tierName = tk === NO_TIER_KEY ? 'No Tier' : tk;
-        if (tierOrder.length === 1) { renderProductLevel(tTitles, el, section); return; }
+        if (tierOrder.length === 1 && tk === NO_TIER_KEY) { renderProductLevel(tTitles, el, section); return; }
         const stateKey = section + '|tier|' + tk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const tHdr = document.createElement('div');
@@ -2828,8 +2831,12 @@ async function loadTitles() {
         el.appendChild(tHdr); el.appendChild(tBody);
       });
     }
-    // Product level — nested inside the Sub-stack (Tier) level above it. Same
-    // collapse/expand + single-bucket-skip pattern as the levels around it.
+    // Product level — nested inside the Sub-stack (Tier) level above it.
+    // Single-bucket-skip only applies when that one bucket is "No Product" —
+    // a single REAL product still gets its header. Skipping it for any lone
+    // bucket (the previous behavior) made a whole stack's titles look
+    // product-less whenever the stack happened to contain only one product —
+    // exactly the bug renderStrategyLevel below was already fixed for.
     function renderProductLevel(arr, el, section) {
       const hasProd = arr.some(t => t.productId && t.productId !== '__none__');
       if (!hasProd) { renderParentStrategyLevel(arr, el, section); return; }
@@ -2843,7 +2850,7 @@ async function loadTitles() {
       prodOrder.forEach(pk => {
         const pTitles = byProd[pk];
         const prodName = pk.split('||')[1];
-        if (prodOrder.length === 1) { renderParentStrategyLevel(pTitles, el, section); return; }
+        if (prodOrder.length === 1 && pk.startsWith('__none__')) { renderParentStrategyLevel(pTitles, el, section); return; }
         const stateKey = section + '|prod|' + pk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const pHdr = document.createElement('div');
@@ -2921,7 +2928,10 @@ async function loadTitles() {
       stackOrder.forEach(sk => {
         const sTitles = byStack[sk];
         const stackName = sk === NO_STACK_KEY ? 'No Stack' : sk;
-        if (stackOrder.length === 1) { renderSubStackLevel(sTitles, el, section); return; }
+        // Single-bucket-skip only applies when that one bucket is "No Stack"
+        // — a single REAL stack still gets its header, same fix as the
+        // Product and Tier levels below.
+        if (stackOrder.length === 1 && sk === NO_STACK_KEY) { renderSubStackLevel(sTitles, el, section); return; }
         const stateKey = section + '|stack|' + sk;
         const isOpen = !!titleGroupsOpen[stateKey];
         const sHdr = document.createElement('div');
@@ -8111,6 +8121,25 @@ async function deleteGrowthStrategy(strategyId, strategyName, btn) {
   }
 }
 
+// Re-plans a strategy's slots to the current cross-platform-arc convention
+// (each grouping = one theme spread across the platforms it needs, each
+// slot its own platform + Post Type) and rewrites the page body. Slots
+// with a Title or Asset attached are preserved untouched; every other slot
+// is archived and replaced with fresh arc slots.
+async function regenerateStrategySlots(strategyId, strategyName, btn) {
+  if (!confirm(`Regenerate "${strategyName}" to the cross-platform arc convention?\n\nEvery slot WITHOUT an attached title/asset is archived and replaced. Slots with published content attached are kept untouched. The strategy's page body is rewritten. This can't be undone.`)) return;
+  if (btn) { btn.disabled = true; btn.textContent = 'Regenerating…'; }
+  try {
+    const r = await w('regenerateStrategySlots', { growthStrategyId: strategyId });
+    if (r.error) throw new Error(r.error);
+    alert(`Done: ${r.created} new slot${r.created === 1 ? '' : 's'} across ${r.groupingCount} arc${r.groupingCount === 1 ? '' : 's'}, ${r.archived} archived, ${r.kept} preserved.`);
+    await loadCampaignStrategies();
+  } catch (e) {
+    alert('Error: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '♻️ Regenerate'; }
+  }
+}
+
 // ── LAUNCH RUN ────────────────────────────────────────────────────────
 // Reuses an existing strategy (any of them — flat or Guide) as a
 // template: pick a Product, and launchStrategyRun creates a child
@@ -8419,6 +8448,9 @@ function renderStrategyBlock(s, indentPx) {
     : '';
   const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
   const launchRunBtn = `<button onclick="openLaunchRunModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Launch a Run — reuse this strategy as a Guide: pick a Product and create a child strategy with its own fresh Slots, reusing this Guide's groupings/angles as a template." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 Launch Run</button>`;
+  const regenBtn = !indentPx
+    ? `<button onclick="regenerateStrategySlots('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Regenerate this strategy's slots to the cross-platform arc convention — each grouping becomes one theme spread across the platforms it needs. Slots with published content attached are kept; the rest are archived and replaced. Rewrites the page body." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">♻️ Regenerate</button>`
+    : '';
   // Top-level only (indentPx unset/0) — a rendered CHILD of a divergent
   // parent is itself a single grouping, so "add a grouping to it" doesn't
   // apply there; the parent's own header (renderStrategyItem) gets this
@@ -8438,6 +8470,7 @@ function renderStrategyBlock(s, indentPx) {
     + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;">${esc(s.status)}</span>`
     + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
     + launchRunBtn
+    + regenBtn
     + addGroupingBtn
     + backfillBtn
     + backfillPlatBtn

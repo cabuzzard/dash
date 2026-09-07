@@ -8425,35 +8425,37 @@ Return ONLY this JSON object, no other text, no markdown fences:
           ? allPlatformRows.map(p => `- ${(p.properties?.Name?.title || []).map(t => t.plain_text).join("")}`).filter(s => s.trim() !== '-').join('\n')
           : '(no platform catalog exists yet — use a plain platform name)';
 
-        const addGroupingPrompt = `You are extending an EXISTING content growth strategy with exactly ONE new grouping (a new thematic title series/cluster) — the rest of the strategy already exists and is not being touched. Ground the new grouping in the product/positioning/research below, and make sure it's genuinely complementary to (not a duplicate of) the groupings that already exist.
+        const addGroupingPrompt = `You are extending an EXISTING content growth strategy with exactly ONE new DISTRIBUTION ARC — the rest of the strategy already exists and is not being touched. Ground it in the product/positioning/research below, and make it genuinely complementary to (not a duplicate of) the arcs that already exist.
 
 ${productSection}
 ${researchBlock ? `\nCAMPAIGN RESEARCH:\n${researchBlock}\n` : ''}
 STRATEGY: ${strategyName}
-EXISTING GROUPINGS (do not duplicate these — the new one should cover different ground):
+EXISTING ARCS (do not duplicate these — the new one should cover different ground):
 ${existingGroupingsBlock}
 
-OPERATOR GUIDANCE (the arc and/or platform requested for this new grouping — this is the primary driver):
+OPERATOR GUIDANCE (the theme and/or platform focus requested for this new arc — the primary driver):
 ${guidance.trim()}
 
-GROUPING NAMING CONVENTION (required): "name" is procedural backend metadata, not public-facing copy — describe WHAT the grouping is (format + subject), the way you'd label an internal folder or category. Do not write it like a catchy content-series title. 2-4 words, no subtitle, no colon/em-dash explanation tacked on. Bad (reads like marketing copy): "Revenue Leak Reels", "Tool Stack Teardowns". Good (plainly descriptive): "Pain Point Reels", "Tool Comparison Posts". The full explanation goes ONLY in "rationale" — that's what the operator sees on hover; the name is a plain label they scan at a glance.
+WHAT AN ARC IS: ONE theme/beat taken across the platforms it actually needs — NOT a single-format series. A long-form ANCHOR piece on its natural home (Blog / YouTube / Email), THEN 2-4 derivative pieces that repackage it for other platforms (Instagram carousel, TikTok/Reels cut, LinkedIn post, Threads/X thread, Reddit post), THEN usually a conversion piece (CTA / Direct Sales). The arc's slots MUST span at least 2-3 platforms unless the product genuinely only lives on one channel (a pure Etsy-listing product → "etsy" everywhere). Order the slots anchor → cuts → conversion. Unless the operator guidance forces one platform.
 
-POST TYPE CATALOG (assign one to every title, by exact name when it genuinely fits):
+NAMING CONVENTION (required): "name" is 2-4 words describing the THEME/beat (e.g. "Revenue Leak", "Client Outcome", "Tool Stack Teardown"), never a catchy series title, never a format label ("Reels", "Blog Posts"), no subtitle or colon/em-dash explanation. Full explanation goes ONLY in "rationale".
+
+POST TYPE CATALOG (assign one to every slot, by exact name when it genuinely fits):
 ${postTypesCatalogBlock}
-Vary the Post Type across the titles to match a real narrative arc if this grouping has one (early = Intro/Story, middle = Teach/Character Development, late = Feature Benefit/Social Proof/CTA); for a Recurring or one-off grouping with no arc, it's fine to share one Post Type or cycle 2-3 that fit. You may set "newPostType": true only when nothing in the catalog genuinely fits.
+The anchor is usually "Pillar"; the cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A; the conversion slot is "CTA" or "Direct Sales". "newPostType": true only when nothing fits.
 
-PLATFORM CATALOG — assign the single best-fit platform to EACH title (its "platform"), by exact name where one fits:
+PLATFORM CATALOG — assign one best-fit "platform" to EACH slot, by exact name:
 ${platformsCatalogBlock}
-The titles do NOT all have to share one platform — a themed series often spans formats (long-form on YouTube/blog, short cuts on Instagram/TikTok, a nurture send by Email). Still give the grouping one "recommendedPlatform" as its primary/default.
+Long-form anchors → Blog / YouTube / Email / Substack. Short cuts → Instagram / TikTok / Threads / X / Twitter / Reddit / LinkedIn. Marketplace → etsy. "recommendedPlatform" = the anchor slot's platform.
 
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "grouping": {
-    "name": "...",
+    "name": "2-4 word theme",
     "rationale": "...",
-    "recommendedPlatform": "...",
+    "recommendedPlatform": "the anchor slot's platform",
     "recurrence": "...",
-    "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above, else the grouping's recommendedPlatform" } ]
+    "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above" } ]
   }
 }`;
 
@@ -8881,6 +8883,217 @@ Return ONLY this JSON object, no other text, no markdown fences:
           updated++;
         }
         return json({ success: true, updated, unchanged, unmatched, total: allSlots.length });
+      }
+
+      // ── regenerateStrategySlots ──
+      // The ♻️ Regenerate button on a strategy header. Re-plans an existing
+      // Growth Strategy's slots to the current cross-platform-ARC
+      // convention (Grouping = one theme across several platforms; each
+      // slot its own best platform + Post Type), rewrites the page body,
+      // and RECONCILES against what's there:
+      //   - any slot with a Title or Asset relation is PRESERVED untouched
+      //     (its ID stays valid so bound published content keeps working);
+      //   - every other slot is archived;
+      //   - fresh arc slots are created from the new plan.
+      // Destructive to unattached slots only — confirmed client-side.
+      if (body.action === "regenerateStrategySlots") {
+        const { growthStrategyId, guidance } = body;
+        if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtBlock = text => [{ type: "text", text: { content: String(text || '') } }];
+
+        const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, { headers: hdr }).then(r => r.json());
+        if (!stratPage.properties) return json({ error: stratPage.message || "Growth Strategy not found" }, 404);
+        const sp0 = stratPage.properties;
+        const stratName = (sp0["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
+        const productId = (sp0.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const campaignId = (sp0.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const platformOverride = (sp0["Platform Override"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        if ((sp0["Parent Strategy"]?.relation || []).length) return json({ error: "This is a divergent child strategy — regenerate its parent instead (divergent split is retired)." }, 400);
+
+        const [productPage, prodResearch, campResearchRaw, campPage, allPostTypeRows, allPlatformRows, existingSlots] = await Promise.all([
+          productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          productId ? findBestProductResearchRecord(hdr, dash(productId)).catch(() => null) : Promise.resolve(null),
+          campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+          campaignId ? fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
+          notionQuery(PLATFORMS_DB, {}).catch(() => []),
+          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }).catch(() => []),
+        ]);
+        if (!allPlatformRows.length) return json({ error: "No platforms in catalog" }, 500);
+
+        const pp = productPage?.properties || {};
+        const ptxt = k => (pp[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || (productId ? "Product" : "(campaign-level)");
+        const positioning = prodResearch
+          ? STRATEGY_FIELDS.map(f => { const v = (prodResearch.properties?.[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n')
+          : STRATEGY_FIELDS.map(f => { const v = ptxt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+        const rt = key => { for (const r of (campResearchRaw.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
+          .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+        const campaignName = (campPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Campaign";
+
+        const postTypeIdByName = new Map();
+        allPostTypeRows.forEach(p => { const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); if (nm && !postTypeIdByName.has(nm.toLowerCase())) postTypeIdByName.set(nm.toLowerCase(), p.id.replace(/-/g,"")); });
+        const postTypesCatalogBlock = allPostTypeRows.length
+          ? allPostTypeRows.map(p => { const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); const r = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join(""); return `- ${nm}${r ? ` — ${r}` : ''}`; }).join('\n')
+          : '(none yet)';
+        const platformIdByName = new Map();
+        allPlatformRows.forEach(p => { const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); if (nm && !platformIdByName.has(nm.toLowerCase())) platformIdByName.set(nm.toLowerCase(), p.id.replace(/-/g,"")); });
+        const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
+
+        const overrideLine = platformOverride
+          ? `PLATFORM OVERRIDE (operator-forced): put EVERY slot on "${platformOverride}" and set every "recommendedPlatform" to it. Ignore the cross-platform spread instruction for this run.`
+          : `Spread each arc's slots across the platforms that fit each piece.`;
+        const prompt = `You are re-planning the content growth strategy "${stratName}" as 3-6 DISTRIBUTION ARCS.
+
+${overrideLine}
+
+WHAT AN ARC IS: ONE theme/beat taken across the platforms it needs — NOT a single-format series. A long-form ANCHOR (Blog / YouTube / Email), THEN 2-4 derivative pieces repackaging it for other platforms (Instagram carousel, TikTok/Reels cut, LinkedIn post, Threads/X thread, Reddit post), THEN usually a conversion piece (CTA / Direct Sales). Each arc's slots MUST span 2-3+ platforms unless the product only lives on one channel (pure Etsy listing → "etsy" everywhere). Order slots anchor → cuts → conversion.
+NAME each arc in 2-4 words describing the THEME (e.g. "Revenue Leak", "Client Outcome") — never a format label, never a catchy title; explanation goes in "rationale".
+${guidance && guidance.trim() ? `\nOPERATOR GUIDANCE (primary driver): ${guidance.trim()}\n` : ''}
+PRODUCT: ${productName}
+${ptxt('Description') ? `Description: ${ptxt('Description')}` : ''}
+${positioning ? `POSITIONING:\n${positioning}` : ''}
+CAMPAIGN: ${campaignName}
+${researchBlock ? `CAMPAIGN RESEARCH:\n${researchBlock}` : ''}
+
+POST TYPE CATALOG (assign one per slot by exact name; anchor usually "Pillar", cuts are Teach/Story/Feature Benefit/Social Proof/Behind-the-Scenes/Q&A, conversion is "CTA"/"Direct Sales"):
+${postTypesCatalogBlock}
+At least one slot must be Post Type "Pillar". "newPostType": true only when nothing fits.
+
+PLATFORM CATALOG (assign one per slot by exact name; long-form anchors → Blog/YouTube/Email/Substack, short cuts → Instagram/TikTok/Threads/X/Twitter/Reddit/LinkedIn, marketplace → etsy):
+${platformCatalog.map(n => `- ${n}`).join('\n')}
+
+Return ONLY this JSON, no other text, no fences:
+{ "summary": "2-4 sentences", "recommendedPlatforms": ["..."], "groupings": [ { "name": "2-4 word theme", "rationale": "...", "recurrence": "Weekly|2x/week|One-time|...", "recommendedPlatform": "anchor's platform", "titles": [ { "angle": "...", "postType": "exact catalog name or new", "newPostType": false, "platform": "exact catalog name" } ] } ] }`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        let plan;
+        try {
+          const raw = aiData.content?.[0]?.text || "";
+          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)));
+        } catch (e) { return json({ error: "Failed to parse plan JSON: " + e.message }, 500); }
+        const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
+        if (!groupings.length) return json({ error: "AI returned no arcs" }, 500);
+
+        // Reconcile: preserve slots with attached Title/Asset, archive the rest.
+        const isAttached = s => (s.properties?.Title?.relation || []).length || (s.properties?.Asset?.relation || []).length;
+        const kept = existingSlots.filter(isAttached);
+        const disposable = existingSlots.filter(s => !isAttached(s));
+        for (const s of disposable) {
+          await fetch(`https://api.notion.com/v1/pages/${dash(s.id.replace(/-/g,""))}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ archived: true }),
+          }).catch(() => {});
+        }
+
+        async function resolvePostTypeId(t) {
+          const want = String(t.postType || t.type || '').trim();
+          if (!want) return { id: null, name: '' };
+          const hit = postTypeIdByName.get(want.toLowerCase());
+          if (hit) return { id: hit, name: want };
+          if (!t.newPostType) return { id: null, name: '' };
+          try {
+            const c = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: POST_TYPES_DB }, properties: { Name: { title: [{ type: "text", text: { content: want.slice(0, 200) } }] } } }),
+            }).then(r => r.json());
+            if (c.id) { const id = c.id.replace(/-/g,""); postTypeIdByName.set(want.toLowerCase(), id); return { id, name: want }; }
+          } catch (e) { /* */ }
+          return { id: null, name: '' };
+        }
+
+        let created = 0;
+        const bodyChildren = [
+          { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
+          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || '') } },
+          { object: "block", type: "divider", divider: {} },
+        ];
+        for (const g of groupings) {
+          const titles = Array.isArray(g.titles) ? g.titles : [];
+          const gName = String(g.name || 'Untitled Arc').slice(0, 120);
+          const gPlatforms = Array.from(new Set(titles.map(t => String(t.platform || '').trim()).filter(Boolean)));
+          bodyChildren.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(gName) } });
+          bodyChildren.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
+          for (let i = 0; i < titles.length; i++) {
+            const t = titles[i];
+            const seq = i + 1;
+            const { id: postTypeId, name: ptName } = await resolvePostTypeId(t);
+            const platName = platformOverride || String(t.platform || g.recommendedPlatform || '').trim();
+            const platId = platformIdByName.get(platName.toLowerCase()) || null;
+            const disp = ptName ? ptName.replace(/\b\w/g, c => c.toUpperCase()) : '';
+            const name = disp ? `${seq} – ${disp}` : `${gName} #${seq}`;
+            const props = {
+              "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+              "Growth Strategy": { relation: [{ id: dash(growthStrategyId) }] },
+              "Grouping": { rich_text: rtBlock(gName) },
+              "Grouping Rationale": { rich_text: rtBlock(String(g.rationale || '').slice(0, 1990)) },
+              "Sequence": { number: seq },
+              "Angle": { rich_text: rtBlock(String(t.angle || '').slice(0, 1990)) },
+              "Platform": { rich_text: rtBlock(platName.slice(0, 1990)) },
+              "Type": { rich_text: rtBlock(disp.slice(0, 1990)) },
+              "Recurrence": { rich_text: rtBlock(String(g.recurrence || '').slice(0, 1990)) },
+              "Status": { select: { name: "Open" } },
+            };
+            if (productId) props["Product"] = { relation: [{ id: dash(productId) }] };
+            if (campaignId) props["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+            if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
+            if (platId) props["Platforms"] = { relation: [{ id: dash(platId) }] };
+            const r = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
+            }).then(r => r.json()).catch(() => null);
+            if (r && r.id) created++;
+            bodyChildren.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: [
+              { type: "text", text: { content: `[${[platName, ptName].filter(Boolean).join(' · ')}] ` }, annotations: { bold: true } },
+              { type: "text", text: { content: String(t.angle || '') } },
+            ] } });
+          }
+          bodyChildren.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
+            { type: "text", text: { content: gPlatforms.length > 1 ? "Platforms: " : "Platform: " }, annotations: { bold: true } },
+            { type: "text", text: { content: (gPlatforms.join(', ') || String(g.recommendedPlatform || 'Not specified')) } },
+          ] } });
+          bodyChildren.push({ object: "block", type: "divider", divider: {} });
+        }
+        if (kept.length) {
+          bodyChildren.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(
+            `Preserved slots (kept unchanged because published content is attached to them): ${kept.map(s => (s.properties?.Name?.title || []).map(t => t.plain_text).join("")).join(', ')}`
+          ) } });
+        }
+
+        // Rewrite the page body: clear existing children, then append.
+        const existingBody = await fetch(`https://api.notion.com/v1/blocks/${dash(growthStrategyId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+        for (const b of (existingBody.results || [])) {
+          await fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr }).catch(() => {});
+        }
+        for (let i = 0; i < bodyChildren.length; i += 90) {
+          await fetch(`https://api.notion.com/v1/blocks/${dash(growthStrategyId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: bodyChildren.slice(i, i + 90) }),
+          }).catch(() => {});
+        }
+        await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: {
+            "Summary": { rich_text: rtBlock(String(plan.summary || '').slice(0, 1990)) },
+            "Recommended Platforms": { multi_select: (Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : []).slice(0, 10).map(p => ({ name: String(p).slice(0, 90) })) },
+            "Grouping Count": { number: groupings.length },
+          } }),
+        }).catch(() => {});
+
+        return json({ success: true, archived: disposable.length, created, kept: kept.length, groupingCount: groupings.length });
       }
 
       if (body.action === "updateCampaignPlatforms") {
@@ -12683,14 +12896,21 @@ ${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? 
           : '(no platform catalog exists yet — use a plain platform name)';
 
         const platformInstruction = (platformOverride || '').trim()
-          ? `PLATFORM FOCUS (required): every grouping must target "${platformOverride.trim()}" specifically — do not recommend any other platform.`
-          : `No platform override was given — recommend the platform(s) that genuinely fit best per grouping based on the content and audience; they can differ across groupings.`;
+          ? `PLATFORM OVERRIDE (operator-specified): the operator has forced every slot in this strategy onto "${platformOverride.trim()}". Set every slot's "platform" to "${platformOverride.trim()}" and every grouping's "recommendedPlatform" to it too. (This overrides the cross-platform-arc convention below — the operator wants a single-platform plan this time.)`
+          : `No platform override — follow the cross-platform-arc convention below: each arc's slots are spread across the platforms that genuinely fit each piece.`;
 
-        const prompt = `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy: a small number (3-6) of thematic title groupings (series/clusters an operator would actually produce together), each with specific title angles and the best platform. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
+        const prompt = `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy as 3-6 DISTRIBUTION ARCS. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
 
 ${platformInstruction}
 
-GROUPING NAMING CONVENTION (required): each grouping's "name" is procedural backend metadata, not public-facing copy — describe WHAT the grouping is (format + subject), the way you'd label an internal folder or category, never coin a catchy content-series title for it. 2-4 words, no subtitle, no colon/em-dash explanation tacked on (e.g. "Pain Point Reels", not "Revenue Leak Reels — What Small Businesses Are Actually Running (And What It's Costing Them)" — "Revenue Leak" is copy, "Pain Point" is a plain description of the content). The full explanation of what the grouping is and why it exists goes ONLY in "rationale" — that's what the operator sees on hover, the name is what they see at a glance.
+WHAT AN ARC IS (this is the core convention — read carefully):
+An arc (a "grouping") is ONE theme or campaign beat taken across the platforms and formats that theme actually needs — NOT a single-format series. The wrong shape is "8 LinkedIn teach posts" or "5 blog articles". The right shape is a beat like "Revenue Leak" delivered as: a long-form ANCHOR piece on its natural home (a Blog article, a YouTube video, or an Email essay — whatever the Pillar's real format is), THEN 2-4 derivative pieces that repackage or extend that anchor for other platforms (an Instagram carousel, a TikTok/Reels cut, a LinkedIn post, a Threads/X thread, a Reddit post), THEN usually a conversion piece (a CTA / Direct Sales slot) on whichever platform closes best.
+- Each arc's slots MUST span at least 2-3 different platforms unless the product genuinely only lives on one channel (e.g. a pure Etsy-listing product — then "etsy" for every slot is correct).
+- Order the slots within an arc by that flow: anchor first, then the derivative cuts, then conversion.
+- "recommendedPlatform" for the arc = the ANCHOR slot's platform (its primary home), not a platform shared by all its slots.
+- Every slot still gets exactly ONE "platform" (its primary home), chosen for that specific piece.
+
+GROUPING NAMING CONVENTION (required): each arc's "name" is procedural backend metadata, not public-facing copy — 2-4 words describing the THEME/beat (e.g. "Revenue Leak", "Founder Pain Story", "Tool Stack Teardown", "Client Outcome"), never a catchy content-series title, never a format label like "Blog Posts" or "Reels", no subtitle or colon/em-dash explanation. The full explanation goes ONLY in "rationale" (shown on hover).
 
 PRODUCT: ${productName}
 Description: ${ptxt('Description')}
@@ -12703,24 +12923,24 @@ CAMPAIGN: ${campaignName}
 CAMPAIGN RESEARCH:
 ${researchBlock || 'Not provided.'}
 
-For each grouping, also recommend a "recurrence" — how often this grouping's content should actually happen on an ongoing basis (e.g. "Daily", "Weekly", "2x/week", "One-time") — a realistic cadence, not a one-off guess. This is purely about TIMING/frequency, nothing else.
+For each arc, also give a "recurrence" — how often this arc's content should actually go out on an ongoing basis (e.g. "Weekly", "2x/week", "One-time") — a realistic cadence. TIMING only.
 
-EXISTING POST TYPE CATALOG (the content descriptor for EACH individual title below — what kind of content it is, e.g. an Intro vs. a Feature Benefit vs. a CTA — NOT platform, method, or cadence). Assign one to every title, by exact name from this catalog when it genuinely fits:
+EXISTING POST TYPE CATALOG (the content descriptor for EACH slot — what kind of piece it is, e.g. Pillar / Intro / Feature Benefit / CTA — NOT platform, method, or cadence). Assign one to every slot, by exact name from this catalog when it genuinely fits:
 ${postTypesCatalogBlock}
-If a grouping has a real narrative arc (its titles build on each other — a Sequential grouping), vary the Post Type across the titles to match where each one sits in that arc (e.g. an early title is naturally an Intro, a middle one Character Development or Teach, a late one Feature Benefit, Social Proof, or CTA) — ground this in the actual research/positioning above, not a generic template. If a grouping has no real arc (a Recurring or one-off grouping — the same kind of post repeating, or a single standalone piece), it's fine for every title to share the same Post Type, or for a Recurring grouping to cycle through 2-3 that fit the format. You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — that's rare, prefer reusing an existing one.
+Vary the Post Type across an arc's slots to match the flow: the anchor is usually "Pillar", the derivative cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A as fits, the conversion slot is "CTA" or "Direct Sales". You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — rare, prefer reuse.
 
-EVERY strategy this call produces must include at least one title with Post Type "Pillar" — the anchor piece the rest of the strategy points back to (if this product had just one piece of content, this would be it — often the real SEO/conversion asset). Every other title's rationale should read as promoting or driving traffic toward that Pillar, not as unrelated standalone content. Put the Pillar early in whichever grouping makes the most sense (usually grouping 1, title/slot 1) rather than burying it.
+EVERY strategy must include at least one slot with Post Type "Pillar" — the anchor the rest of the plan points back to (if this product had ONE piece of content, this is it — often the real SEO/conversion asset). It is normally the first slot of arc 1, on a long-form platform. Every other slot's rationale should read as feeding traffic toward a Pillar.
 
-EXISTING PLATFORM CATALOG — assign the single best-fit platform to EACH individual title (its "platform"), by exact name from this list where one fits:
+EXISTING PLATFORM CATALOG — assign one best-fit "platform" to EACH slot, by exact name from this list:
 ${platformsCatalogBlock}
-A grouping's titles do NOT all have to share one platform. The same themed series often spans formats — a long-form Pillar on YouTube or a blog, short cuts of it on Instagram/TikTok, a nurture send by Email. Pick the platform that genuinely fits each piece; when one platform clearly dominates a grouping, it's fine for every title in it to share that one. Still give each grouping a single "recommendedPlatform" too — its primary/default platform (the one most of its titles use, or the home of its Pillar).
+Long-form anchors → Blog / YouTube / Email (a newsletter) / Substack. Short derivative cuts → Instagram / TikTok / Threads / X / Twitter / Reddit / LinkedIn. Marketplace listings → etsy. Match each slot to where THAT piece actually lives.
 
 Return ONLY this JSON object, no other text, no markdown fences:
 {
   "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
   "recommendedPlatforms": ["...", "..."],
   "groupings": [
-    { "name": "...", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above, else the grouping's recommendedPlatform" } ], "recommendedPlatform": "...", "recurrence": "..." }
+    { "name": "2-4 word theme", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above" } ], "recommendedPlatform": "the anchor slot's platform", "recurrence": "..." }
   ]
 }`;
 
@@ -12755,21 +12975,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const esc3 = s => String(s || '');
         const rtBlock = text => [{ type: "text", text: { content: esc3(text) } }];
 
-        // Divergence check — per operator direction, platform divergence is
-        // meant to happen AFTER title generation (one flat strategy, several
-        // groupings, same as always) UNLESS the groupings are so
-        // format-incompatible that flattening them together clutters the
-        // Strategies/Development readouts (e.g. a LinkedIn text-post series
-        // next to a YouTube video series). Distinct recommendedPlatform
-        // values across groupings is the concrete signal: groupings sharing
-        // a platform are the same production format and stay flat together;
-        // 2+ distinct platforms means a parent Growth Strategy (summary
-        // only, no Slots of its own) gets created, plus one child Growth
-        // Strategy per grouping — each with its own Slots — linked back via
-        // "Parent Strategy". The UI collapses parent/children by default
-        // everywhere strategies show.
+        // Divergence (parent + one child strategy per grouping) is retired.
+        // It existed to separate format-incompatible single-platform series
+        // — but under the cross-platform-arc convention EVERY arc spans
+        // platforms on purpose, so that signal (distinct recommendedPlatform
+        // across groupings) now fires on every run. One flat strategy whose
+        // arcs each nest Grouping → Platform → Post Type in the panel is
+        // exactly the intended shape. Kept as a const so the branch below
+        // still compiles; never true now.
         const distinctPlatforms = new Set(groupings.map(g => String(g.recommendedPlatform || '').trim()).filter(Boolean));
-        const divergent = groupings.length > 1 && distinctPlatforms.size > 1;
+        const divergent = false;
 
         async function createStrategyPage({ name, parentId, summary, recPlatforms, platformOverrideVal, groupingCount, bodyChildren }) {
           const props = {
