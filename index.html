@@ -647,11 +647,11 @@
 <div id="viewMain" style="padding:16px;">
 
   <div class="tabs">
-    <div class="tab active" onclick="switchTab('overview')">Overview</div>
+    <div class="tab active" onclick="switchTab('td')">TD</div>
+    <div class="tab"        onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
     <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
-    <div class="tab"        onclick="switchTab('td')">TD</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
@@ -663,7 +663,7 @@
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
 
-  <div class="tab-panel active" id="tabOverview">
+  <div class="tab-panel" id="tabOverview">
     <a class="add-link" onclick="openNewCampaignModal()">+ New campaign</a>
     <div id="ovContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
@@ -733,7 +733,7 @@
     <div id="publishingContent"><div class="empty" style="margin-top:32px;text-align:center;">Tap 'Assets →' on a publish title in Development view.</div></div>
   </div>
 
-  <div class="tab-panel" id="tabTd">
+  <div class="tab-panel active" id="tabTd">
     <button onclick="openDailyStatusModal()" style="width:100%;margin-bottom:14px;padding:10px 14px;font-size:13px;font-weight:600;border:1px solid #63b3ed;border-radius:6px;background:rgba(99,179,237,.08);color:#63b3ed;cursor:pointer;text-align:left;">📝 Enter Daily Status — run it through Character Arcs into real titles</button>
 
     <!-- THIS WEEK — global Weekly Planner, same standalone system as the
@@ -3480,9 +3480,7 @@ async function checkPin() {
       // cleared its *Loaded flag when the 401 hit, so this actually
       // refetches instead of silently no-opping and leaving the old
       // "Session expired" error banner sitting there.
-      const activePanel = document.querySelector('.tab-panel.active');
-      const activeName = activePanel ? activePanel.id.replace(/^tab/, '') : '';
-      if (activeName && activeName !== 'Overview') loadTabContent(activeName.charAt(0).toLowerCase() + activeName.slice(1));
+      loadActiveTab();
       call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
     } else {
       document.querySelectorAll('.pin-dot').forEach(d => { d.classList.remove('filled'); d.classList.add('error'); });
@@ -4363,6 +4361,14 @@ function switchTab(name) {
   event.currentTarget.classList.add('active');
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
   loadTabContent(name);
+}
+// Load whatever tab-panel is marked active in the DOM — used on session
+// restore so the default tab (TD, leftmost) fetches its data on load.
+function loadActiveTab() {
+  const p = document.querySelector('.tab-panel.active');
+  if (!p) return;
+  const name = p.id.replace(/^tab/, '');
+  if (name) loadTabContent(name.charAt(0).toLowerCase() + name.slice(1));
 }
 
 let _tradesRefreshTimer = null;
@@ -13940,6 +13946,7 @@ if (SESSION_TOKEN) {
   session.authed = true;
   document.getElementById('pinScreen').classList.add('hidden');
   if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+  loadActiveTab();
   call('getProductStatuses').then(d => { prodStatuses = d.statuses || []; }).catch(() => {});
 }
 
