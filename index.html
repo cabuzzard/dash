@@ -13721,14 +13721,22 @@ async function loadWpBoard() {
   const rangeEl = document.getElementById('wpRange');
   if (rangeEl) rangeEl.textContent = '— ' + monday.toLocaleDateString('en-US',{month:'short',day:'numeric'}) + ' to ' + sunday.toLocaleDateString('en-US',{month:'short',day:'numeric'});
   try {
-    const r = await call('getWeeklyPlannerItems', { weekStart });
+    // The per-day campaign picker is populated from ovData, which only gets
+    // loaded when the Overview tab is first opened — so if the operator lands
+    // straight on This Week the dropdowns come up empty. Pull campaigns here
+    // too (once) so the picker always fills.
+    const [cg, r] = await Promise.all([
+      ovData.length ? Promise.resolve(null) : call('getCampaigns').catch(() => null),
+      call('getWeeklyPlannerItems', { weekStart }),
+    ]);
+    if (cg && cg.campaigns) ovData = cg.campaigns;
     renderWpBoard(monday, r.items || []);
   } catch(e) {
     board.innerHTML = '<div class="error-msg" style="grid-column:1/-1;">' + esc(e.message) + '</div>';
   }
 }
 function wpCampaignOptions() {
-  const camps = ovData || [];
+  const camps = [...(ovData || [])].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
   return '<option value="">— campaign —</option>' + camps.map(c => '<option value="'+c.id+'">'+esc(c.name)+'</option>').join('');
 }
 function renderWpBoard(monday, items) {
