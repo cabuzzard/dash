@@ -99,6 +99,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
     <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
   </div>
+  <label class="pin-remember"><input type="checkbox" id="pinRemember"> Remember this device for 30 days</label>
   <div class="pin-error" id="pinError"></div>
 </div>
 
@@ -543,16 +544,37 @@ const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // mobility-mentor-fundraising
 const RESEARCH_ID = "3661f7d3a4bb81adaaadc2ce80784112"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/mobility-mentor-fundraising/";
-let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+const REMEMBER_KEY = 'hermes_remember';
+function getRememberedToken() {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const { token, expires } = JSON.parse(raw);
+    if (!token || !expires || Date.now() > expires) { localStorage.removeItem(REMEMBER_KEY); return null; }
+    return token;
+  } catch (e) { return null; }
+}
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || getRememberedToken() || null;
 let pin = '';
 
-// Auto-restore session if a valid token exists from this browser session
+// Auto-restore session if a valid token exists from this browser session or a remembered device
 if (SESSION_TOKEN) {
+  sessionStorage.setItem('hermes_token', SESSION_TOKEN);
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pinScreen').classList.add('hidden');
     init();
   });
 }
+
+// Keyboard entry — works for both the top-row number keys and the numpad
+// (KeyboardEvent.key reports plain digit characters for numpad keys too,
+// as long as Num Lock is on — that's the OS's own concern, not ours).
+document.addEventListener('keydown', (e) => {
+  const screen = document.getElementById('pinScreen');
+  if (!screen || screen.classList.contains('hidden')) return;
+  if (e.key >= '0' && e.key <= '9') { pp(e.key); }
+  else if (e.key === 'Backspace') { pd(); }
+});
 
 function pinReset(msg, isErr) {
   pin = '';
@@ -583,6 +605,10 @@ async function pp(d) {
       if (data.token) {
         SESSION_TOKEN = data.token;
         sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        const remember = document.getElementById('pinRemember');
+        if (remember && remember.checked) {
+          localStorage.setItem(REMEMBER_KEY, JSON.stringify({ token: SESSION_TOKEN, expires: Date.now() + 30*24*60*60*1000 }));
+        }
         document.getElementById('pinScreen').classList.add('hidden');
         init();
       } else {
@@ -601,6 +627,7 @@ function pd() {
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
+  localStorage.removeItem(REMEMBER_KEY);
   pin = '';
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
   document.getElementById('pinError').textContent = '';

@@ -153,6 +153,8 @@ h2 {
 .pin-btn:active { transform: scale(.96); }
 .pin-btn.del { font-size: 11px; color: #fff; }
 .pin-btn.empty { background: transparent; border: none; pointer-events: none; }
+.pin-remember { display: flex; align-items: center; gap: 8px; margin-top: 24px; font-size: 10px; letter-spacing: .05em; color: #888; user-select: none; cursor: pointer; }
+.pin-remember input[type=checkbox] { width: 13px; height: 13px; accent-color: #e8ff47; cursor: pointer; }
 .pin-error { font-size: 10px; color: #ff4444; margin-top: 20px; min-height: 14px; letter-spacing: .1em; }
 
 /* TD LIST */

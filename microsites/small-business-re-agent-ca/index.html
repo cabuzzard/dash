@@ -208,6 +208,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
     <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
   </div>
+  <label class="pin-remember"><input type="checkbox" id="pinRemember"> Remember this device for 30 days</label>
   <div class="pin-error" id="pinError"></div>
 </div>
 
@@ -1844,17 +1845,38 @@ const WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const CAMPAIGN_ID = "3731f7d3a4bb816f9d9cd5bffda0549d"; // small-business-re-agent-ca
 const RESEARCH_ID = "3731f7d3a4bb8117b12ddfb70d5a5ced"; // research
 const SITE_URL    = "https://cabuzzard.github.io/dash/microsites/small-business-re-agent-ca/";
-let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || null;
+const REMEMBER_KEY = 'hermes_remember';
+function getRememberedToken() {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const { token, expires } = JSON.parse(raw);
+    if (!token || !expires || Date.now() > expires) { localStorage.removeItem(REMEMBER_KEY); return null; }
+    return token;
+  } catch (e) { return null; }
+}
+let SESSION_TOKEN = sessionStorage.getItem('hermes_token') || getRememberedToken() || null;
 let pin = '';
 const PIN_LENGTH = 6;
 
-// Auto-restore session if a valid token exists from this browser session
+// Auto-restore session if a valid token exists from this browser session or a remembered device
 if (SESSION_TOKEN) {
+  sessionStorage.setItem('hermes_token', SESSION_TOKEN);
   document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('pinScreen').classList.add('hidden');
     init();
   });
 }
+
+// Keyboard entry — works for both the top-row number keys and the numpad
+// (KeyboardEvent.key reports plain digit characters for numpad keys too,
+// as long as Num Lock is on — that's the OS's own concern, not ours).
+document.addEventListener('keydown', (e) => {
+  const screen = document.getElementById('pinScreen');
+  if (!screen || screen.classList.contains('hidden')) return;
+  if (e.key >= '0' && e.key <= '9') { pp(e.key); }
+  else if (e.key === 'Backspace') { pd(); }
+});
 
 function pinReset(msg, isErr) {
   pin = '';
@@ -1885,6 +1907,10 @@ async function pp(d) {
       if (data.token) {
         SESSION_TOKEN = data.token;
         sessionStorage.setItem('hermes_token', SESSION_TOKEN);
+        const remember = document.getElementById('pinRemember');
+        if (remember && remember.checked) {
+          localStorage.setItem(REMEMBER_KEY, JSON.stringify({ token: SESSION_TOKEN, expires: Date.now() + 30*24*60*60*1000 }));
+        }
         document.getElementById('pinScreen').classList.add('hidden');
         init();
       } else {
@@ -1903,6 +1929,7 @@ function pd() {
 function lockApp() {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('hermes_token');
+  localStorage.removeItem(REMEMBER_KEY);
   pin = '';
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
   document.getElementById('pinError').textContent = '';
@@ -2602,13 +2629,18 @@ async function loadTitles() {
     const data = await w('getTitles', { stages: ['Planning','Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
     if (myToken !== LOAD_TITLES_TOKEN) return; // a newer loadTitles() call has since started — this response is stale, discard it
     const titles = data.titles || [];
-    // The Development section is stage-agnostic now (per operator direction):
-    // it shows every title that has NO assets yet — regardless of Status,
-    // Planning included — sorted newest-first. The moment a title has any
-    // asset it drops out of here and is tracked in the Assets section below
-    // instead (nested under its own title). One title, one place.
+    // The Development section is driven by the title's own STAGE, not by
+    // whether it has assets yet (per operator direction 2026-09-07:
+    // "just because an asset has been created doesn't mean you should
+    // remove the title from development — the title doesn't get set to
+    // publish, it stays Development even if the asset is set to publish").
+    // A Development-stage title with assets shows in BOTH places: here as a
+    // normal title row, and in the Assets section as a header over its
+    // assets. Planning stays in the Strategies tab; Published/Done/Explode
+    // drop off here (they're finished).
+    const DEV_STAGES = ['Development', 'Writing', 'Review', 'Approved', 'Publish'];
     const dev = titles
-      .filter(t => !(t.assets && t.assets.length))
+      .filter(t => DEV_STAGES.includes(t.stage))
       .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0));
     // The Assets section shows every asset that exists (any status), grouped
     // Stack -> Product -> Strategy -> Title -> Asset Type. Titles are the
