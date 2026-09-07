@@ -13401,6 +13401,29 @@ let HAM_DATA = null;   // { columns:[{id,name,kind}], counts:{slug:{name:n}}, hu
 let hubAssetMatrixCollapsed = true;
 try { hubAssetMatrixCollapsed = localStorage.getItem('hubAssetMatrixCollapsed') !== 'false'; } catch(e) {}
 const HAM_KIND_MARK = { 'Method': '⚙', 'Asset Type': '▢', 'Both': '⚙▢' };
+// Manual drag-to-reorder for the column list, persisted in localStorage
+// (same approach as platColumnOrder / tradeColOrder). Unknown ids sort last.
+let hamColOrder = [];
+try { hamColOrder = JSON.parse(localStorage.getItem('hamColOrder') || '[]'); } catch(e) {}
+function hamSaveColOrder() { try { localStorage.setItem('hamColOrder', JSON.stringify(hamColOrder)); } catch(e) {} }
+function hamSortCols(cols) {
+  const pos = id => { const i = hamColOrder.indexOf(id); return i < 0 ? 1e6 : i; };
+  return cols.slice().sort((a, b) => pos(a.id) - pos(b.id) || a.name.localeCompare(b.name));
+}
+let _hamDragCol = null;
+function hamColDragStart(id) { _hamDragCol = id; }
+function hamColDrop(targetId) {
+  const src = _hamDragCol; _hamDragCol = null;
+  if (!src || src === targetId || !HAM_DATA) return;
+  const order = hamSortCols(HAM_DATA.columns || []).map(c => c.id);
+  const si = order.indexOf(src), ti = order.indexOf(targetId);
+  if (si < 0 || ti < 0) return;
+  order.splice(si, 1);
+  order.splice(ti, 0, src);
+  hamColOrder = order;
+  hamSaveColOrder();
+  renderHubAssetMatrix();
+}
 function toggleHubAssetMatrix() {
   hubAssetMatrixCollapsed = !hubAssetMatrixCollapsed;
   try { localStorage.setItem('hubAssetMatrixCollapsed', String(hubAssetMatrixCollapsed)); } catch(e) {}
@@ -13430,11 +13453,15 @@ function renderHubAssetMatrix() {
   const body = document.getElementById('hubAssetMatrixBody');
   const summary = document.getElementById('hubAssetMatrixSummary');
   if (!body || !HAM_DATA) return;
-  const cols = HAM_DATA.columns || [];
+  const cols = hamSortCols(HAM_DATA.columns || []);
   const counts = HAM_DATA.counts || {};
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No columns yet — use + type.</div>'; if (summary) summary.textContent = ''; return; }
   const colgroup = `<colgroup><col style="width:90px;">${cols.map(() => '<col>').join('')}</colgroup>`;
-  const headRow = cols.map(c => `<th title="${esc(c.name)}${c.kind ? ' — ' + esc(c.kind) : ''}" style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;">`
+  const headRow = cols.map(c => `<th title="${esc(c.name)}${c.kind ? ' — ' + esc(c.kind) : ''} · drag to reorder" draggable="true"`
+    + ` ondragstart="hamColDragStart(${esc(JSON.stringify(c.id))})" ondragover="event.preventDefault()"`
+    + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
+    + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hamColDrop(${esc(JSON.stringify(c.id))})"`
+    + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;">`
     + `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">`
     + `<span style="font-size:7px;color:var(--text3);line-height:1;">${HAM_KIND_MARK[c.kind] || ''}</span>`
     + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;">${esc(c.name)}</span>`
@@ -13454,7 +13481,7 @@ function renderHubAssetMatrix() {
   });
   if (summary) summary.textContent = `— ${total} published · ${cols.length} column${cols.length === 1 ? '' : 's'}`;
   body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">count of published assets per hub · ⚙ method · ▢ asset type</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">count of published assets per hub · ⚙ method · ▢ asset type · drag column headers to reorder</div>`;
 }
 let matEditingId = null;
 function openMatTypeModal(typeId) {
@@ -13463,10 +13490,10 @@ function openMatTypeModal(typeId) {
   document.getElementById('matTypeModalTitle').textContent = c ? 'Edit column' : 'Add method / asset type';
   document.getElementById('mtDeleteBtn').style.display = c ? '' : 'none';
   document.getElementById('mtName').value = c ? c.name : '';
-  document.getElementById('mtName').disabled = !!c;
+  document.getElementById('mtName').disabled = false;
   document.getElementById('mtKind').value = c && c.kind ? c.kind : 'Asset Type';
-  document.getElementById('mtNotes').value = '';
-  document.getElementById('mtMsg').textContent = c ? 'Name is the match key — delete and re-add to rename.' : '';
+  document.getElementById('mtNotes').value = c && c.notes ? c.notes : '';
+  document.getElementById('mtMsg').textContent = c ? 'Name is the match key — it maps to an Asset Type / Method by name.' : '';
   document.getElementById('matTypeModal').classList.add('open');
 }
 async function matTypeSave() {
@@ -13476,10 +13503,11 @@ async function matTypeSave() {
   const kind = document.getElementById('mtKind').value;
   const notes = document.getElementById('mtNotes').value.trim();
   if (!name) { msg.textContent = 'Name required'; return; }
-  if (matEditingId) { document.getElementById('matTypeModal').classList.remove('open'); return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const r = await call('createMatType', { name, kind, notes });
+    const r = matEditingId
+      ? await call('updateMatType', { typeId: matEditingId, name, kind, notes })
+      : await call('createMatType', { name, kind, notes });
     if (r.error) throw new Error(r.error);
     document.getElementById('matTypeModal').classList.remove('open');
     HAM_DATA = null;
@@ -13515,16 +13543,40 @@ const HM_CELL = {
   'Weekly': { g: '↻',  bg: 'rgba(59,130,196,.20)',  fg: '#5aa6db' },
   'Done':   { g: '✓',  bg: 'rgba(75,158,99,.20)',   fg: '#5fbf7c' },
 };
-// Work types in column order: HF_CLASSES layer/class order, then name.
+// Work types in column order: HF_CLASSES layer/class order, then name —
+// unless the operator has manually dragged columns (hmColOrder, persisted
+// in localStorage like platColumnOrder). Unknown ids keep their natural
+// position and sort after any explicitly-ordered columns.
+let hmColOrder = [];
+try { hmColOrder = JSON.parse(localStorage.getItem('hmColOrder') || '[]'); } catch(e) {}
+function hmSaveColOrder() { try { localStorage.setItem('hmColOrder', JSON.stringify(hmColOrder)); } catch(e) {} }
 function hmWorkTypes() {
   const byClass = {};
   WORK_TYPES.forEach(t => { (byClass[t.klass] ||= []).push(t); });
-  const out = [];
+  let out = [];
   HF_CLASSES.forEach(c => {
     (byClass[c.name] || []).slice().sort((a,b) => a.name.localeCompare(b.name))
       .forEach(t => out.push({ id: t.id, name: t.name, icon: t.icon || '', klass: c.name, emoji: c.emoji }));
   });
+  if (hmColOrder.length) {
+    const pos = id => { const i = hmColOrder.indexOf(id); return i < 0 ? 1e6 : i; };
+    out = out.map((t, i) => [t, i]).sort((a, b) => (pos(a[0].id) - pos(b[0].id)) || (a[1] - b[1])).map(x => x[0]);
+  }
   return out;
+}
+let _hmDragCol = null;
+function hmColDragStart(id) { _hmDragCol = id; }
+function hmColDrop(targetId) {
+  const src = _hmDragCol; _hmDragCol = null;
+  if (!src || src === targetId) return;
+  const order = hmWorkTypes().map(t => t.id);
+  const si = order.indexOf(src), ti = order.indexOf(targetId);
+  if (si < 0 || ti < 0) return;
+  order.splice(si, 1);
+  order.splice(ti, 0, src);
+  hmColOrder = order;
+  hmSaveColOrder();
+  renderHubMatrix();
 }
 function toggleHubMatrix() {
   hubMatrixCollapsed = !hubMatrixCollapsed;
@@ -13574,7 +13626,11 @@ function renderHubMatrix() {
     + `<th rowspan="2" title="Admin microsite" style="font-size:8px;color:var(--text3);vertical-align:bottom;padding:3px 0;">ms</th>`
     + `<th rowspan="2" title="Live content hub" style="font-size:8px;color:var(--text3);vertical-align:bottom;padding:3px 0;">hub</th>`;
   const bandRow = bands.map(b => `<th colspan="${b.n}" title="${esc(b.klass)}" style="padding:3px 1px;font-size:11px;border-left:1px solid var(--border2);">${b.emoji}</th>`).join('');
-  const headRow = wts.map(t => `<th title="${esc(t.name)} — ${esc(t.klass)}" style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;">`
+  const headRow = wts.map(t => `<th title="${esc(t.name)} — ${esc(t.klass)} · drag to reorder" draggable="true"`
+    + ` ondragstart="hmColDragStart(${esc(JSON.stringify(t.id))})" ondragover="event.preventDefault()"`
+    + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
+    + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hmColDrop(${esc(JSON.stringify(t.id))})"`
+    + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;">`
     + `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">`
     + (t.icon ? `<span style="font-size:12px;line-height:1;">${esc(t.icon)}</span>` : '')
     + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;hyphens:auto;">${esc(t.name)}</span>`
@@ -13602,7 +13658,7 @@ function renderHubMatrix() {
   });
   if (summary) summary.textContent = `— ${weekly} weekly · ${td} td · ${done} done`;
   body.innerHTML = `<table style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${bandRow}</tr><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">click a cell: blank → TD → weekly → done · writes to 🎯 Hub Fronts</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">click a cell: blank → TD → weekly → done · writes to 🎯 Hub Fronts · drag column headers to reorder</div>`;
 }
 async function cycleHubMatrixCell(wtId, hub, klass) {
   const row = HUB_MATRIX.find(f => f.workTypeId === wtId && f.hub === hub);

@@ -7810,6 +7810,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           id: norm(r.id),
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           kind: r.properties?.Kind?.select?.name || "",
+          notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         const colByLc = {};
         columns.forEach(c => { colByLc[c.name.toLowerCase()] = c.name; });
@@ -7845,6 +7846,24 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         }).then(r => r.json());
         if (!created.id) return json({ error: created.message || "Failed to create" }, 500);
         return json({ success: true, id: created.id.replace(/-/g, "") });
+      }
+
+      if (body.action === "updateMatType") {
+        const { typeId, name, kind, notes } = body;
+        if (!typeId) return json({ error: "typeId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const props = {};
+        if (name !== undefined && String(name).trim()) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] };
+        if (kind !== undefined) props["Kind"] = ["Method", "Asset Type", "Both"].includes(kind) ? { select: { name: kind } } : { select: null };
+        if (notes !== undefined) props["Notes"] = String(notes).trim() ? { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] } : { rich_text: [] };
+        if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
+          method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: props }),
+        });
+        if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Failed to update" }, resp.status || 500); }
+        return json({ success: true });
       }
 
       if (body.action === "deleteMatType") {
