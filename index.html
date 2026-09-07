@@ -13416,25 +13416,30 @@ function renderHubMatrix() {
     if (last && last.klass === t.klass) last.n++;
     else bands.push({ klass: t.klass, emoji: t.emoji, n: 1 });
   });
-  const corner = `<th rowspan="2" style="position:sticky;left:0;background:var(--bg);z-index:2;padding:3px 8px 3px 6px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);">hub</th>`;
-  const bandRow = bands.map(b => `<th colspan="${b.n}" title="${esc(b.klass)}" style="padding:3px 2px;font-size:11px;border-left:1px solid var(--border2);">${b.emoji}</th>`).join('');
-  const headRow = wts.map(t => `<th title="${esc(t.name)} — ${esc(t.klass)}" style="padding:4px 2px;border-left:1px solid var(--border);font-size:15px;line-height:1;cursor:help;">${esc(t.icon || '•')}</th>`).join('');
+  const colgroup = `<colgroup><col style="width:74px;">${wts.map(() => '<col>').join('')}</colgroup>`;
+  const corner = `<th rowspan="2" style="background:var(--bg);padding:3px 4px 3px 2px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);vertical-align:bottom;">hub</th>`;
+  const bandRow = bands.map(b => `<th colspan="${b.n}" title="${esc(b.klass)}" style="padding:3px 1px;font-size:11px;border-left:1px solid var(--border2);">${b.emoji}</th>`).join('');
+  const headRow = wts.map(t => `<th title="${esc(t.name)} — ${esc(t.klass)}" style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;">`
+    + `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">`
+    + (t.icon ? `<span style="font-size:12px;line-height:1;">${esc(t.icon)}</span>` : '')
+    + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;hyphens:auto;">${esc(t.name)}</span>`
+    + `</div></th>`).join('');
   let rows = '';
   HUB_SITES.forEach(h => {
-    let tds = `<td style="position:sticky;left:0;background:var(--bg);z-index:1;padding:2px 8px 2px 6px;font-size:11px;color:var(--text);white-space:nowrap;">${esc(HM_LABELS[h.slug] || h.slug)}</td>`;
+    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(h.slug)}">${esc(HM_LABELS[h.slug] || h.slug)}</td>`;
     wts.forEach(t => {
       const s = cellOf(t.id, h.slug);
       if (s === 'Weekly') weekly++; else if (s === 'Done') done++; else if (s === 'TD') td++;
       const st = HM_CELL[s] || HM_CELL[''];
-      tds += `<td style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);">`
+      tds += `<td style="padding:1px;text-align:center;border-left:1px solid var(--border);">`
         + `<button onclick="cycleHubMatrixCell(${esc(JSON.stringify(t.id))}, ${esc(JSON.stringify(h.slug))}, ${esc(JSON.stringify(t.klass))})" title="${esc(h.slug)} · ${esc(t.name)} — ${s || '—'}" `
-        + `style="width:24px;height:22px;border:1px solid var(--border);border-radius:4px;background:${st.bg};color:${st.fg};font-size:${s==='TD'?'9px':'11px'};font-weight:700;cursor:pointer;line-height:1;padding:0;">${st.g}</button>`
+        + `style="width:100%;height:20px;border:1px solid var(--border);border-radius:3px;background:${st.bg};color:${st.fg};font-size:${s==='TD'?'8px':'10px'};font-weight:700;cursor:pointer;line-height:1;padding:0;">${st.g}</button>`
         + `</td>`;
     });
     rows += `<tr>${tds}</tr>`;
   });
   if (summary) summary.textContent = `— ${weekly} weekly · ${td} td · ${done} done`;
-  body.innerHTML = `<table style="border-collapse:separate;border-spacing:0;"><thead><tr>${corner}${bandRow}</tr><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`
+  body.innerHTML = `<table style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${bandRow}</tr><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`
     + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">click a cell: blank → TD → weekly → done · writes to 🎯 Hub Fronts</div>`;
 }
 async function cycleHubMatrixCell(wtId, hub, klass) {
