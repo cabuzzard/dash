@@ -1620,9 +1620,15 @@
 <div class="modal-bg" id="hubFrontModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:460px;">
     <div class="modal-title" id="hubFrontModalTitle">Add Work Type</div>
-    <div class="modal-field">
-      <label class="modal-label">Class</label>
-      <select class="modal-input" id="hfClass"></select>
+    <div style="display:flex;gap:8px;">
+      <div class="modal-field" style="width:64px;flex-shrink:0;">
+        <label class="modal-label">Icon</label>
+        <input class="modal-input" id="hfIcon" type="text" maxlength="4" placeholder="🎯" style="text-align:center;">
+      </div>
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label">Class</label>
+        <select class="modal-input" id="hfClass"></select>
+      </div>
     </div>
     <div class="modal-field">
       <label class="modal-label">Name</label>
@@ -13206,7 +13212,7 @@ function renderHubFront() {
   WORK_TYPES.forEach(t => { (byClass[t.klass] ||= []).push(t); });
   const rowHtml = t => {
     return `<div style="display:flex;align-items:flex-start;gap:7px;padding:3px 0;font-size:11px;border-bottom:1px solid var(--border);">`
-      + `<span style="color:var(--text3);flex-shrink:0;line-height:1.55;">•</span>`
+      + `<span style="flex-shrink:0;line-height:1.5;width:14px;text-align:center;">${t.icon ? esc(t.icon) : '<span style="color:var(--text3);">•</span>'}</span>`
       + `<span style="flex:1;min-width:0;line-height:1.45;">`
         + `<span style="color:var(--text);">${esc(t.name)}</span>`
         + (t.rationale ? `<span style="color:var(--text3);"> — ${esc(t.rationale)}</span>` : '')
@@ -13294,6 +13300,7 @@ function openHubFrontModal(typeId) {
   document.getElementById('hubFrontModalTitle').textContent = t ? 'Edit Work Type' : 'Add Work Type';
   document.getElementById('hfDeleteBtn').style.display = t ? '' : 'none';
   clsSel.value = t ? t.klass : HF_CLASSES[0].name;
+  document.getElementById('hfIcon').value = t ? (t.icon || '') : '';
   document.getElementById('hfName').value = t ? t.name : '';
   document.getElementById('hfRationale').value = t ? (t.rationale || '') : '';
   document.getElementById('hfMsg').textContent = '';
@@ -13305,14 +13312,15 @@ async function hubFrontSave() {
   const name = document.getElementById('hfName').value.trim();
   const klass = document.getElementById('hfClass').value;
   const rationale = document.getElementById('hfRationale').value.trim();
+  const icon = document.getElementById('hfIcon').value.trim();
   if (!name) { msg.textContent = 'Name required'; return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
     if (hfEditingId) {
-      const r = await call('updateWorkType', { typeId: hfEditingId, name, klass, rationale });
+      const r = await call('updateWorkType', { typeId: hfEditingId, name, klass, rationale, icon });
       if (r.error) throw new Error(r.error);
     } else {
-      const r = await call('createWorkType', { name, klass, rationale });
+      const r = await call('createWorkType', { name, klass, rationale, icon });
       if (r.error) throw new Error(r.error);
     }
     document.getElementById('hubFrontModal').classList.remove('open');
@@ -13356,7 +13364,7 @@ function hmWorkTypes() {
   const out = [];
   HF_CLASSES.forEach(c => {
     (byClass[c.name] || []).slice().sort((a,b) => a.name.localeCompare(b.name))
-      .forEach(t => out.push({ id: t.id, name: t.name, klass: c.name, emoji: c.emoji }));
+      .forEach(t => out.push({ id: t.id, name: t.name, icon: t.icon || '', klass: c.name, emoji: c.emoji }));
   });
   return out;
 }
@@ -13405,8 +13413,7 @@ function renderHubMatrix() {
   });
   const corner = `<th rowspan="2" style="position:sticky;left:0;background:var(--bg);z-index:2;padding:3px 8px 3px 6px;text-align:left;font-size:10px;font-weight:600;color:var(--text3);">hub</th>`;
   const bandRow = bands.map(b => `<th colspan="${b.n}" title="${esc(b.klass)}" style="padding:3px 2px;font-size:11px;border-left:1px solid var(--border2);">${b.emoji}</th>`).join('');
-  const headRow = wts.map(t => `<th style="height:132px;padding:0;vertical-align:bottom;border-left:1px solid var(--border);">`
-    + `<div title="${esc(t.name)} — ${esc(t.klass)}" style="writing-mode:vertical-rl;transform:rotate(180deg);white-space:nowrap;font-size:10px;font-weight:600;color:var(--text2);padding:5px 4px;max-height:126px;overflow:hidden;text-overflow:ellipsis;">${esc(t.name)}</div></th>`).join('');
+  const headRow = wts.map(t => `<th title="${esc(t.name)} — ${esc(t.klass)}" style="padding:4px 2px;border-left:1px solid var(--border);font-size:15px;line-height:1;cursor:help;">${esc(t.icon || '•')}</th>`).join('');
   let rows = '';
   HUB_SITES.forEach(h => {
     let tds = `<td style="position:sticky;left:0;background:var(--bg);z-index:1;padding:2px 8px 2px 6px;font-size:11px;color:var(--text);white-space:nowrap;">${esc(HM_LABELS[h.slug] || h.slug)}</td>`;

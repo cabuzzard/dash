@@ -7672,13 +7672,14 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
             name: (p.Name?.title || []).map(t => t.plain_text).join(""),
             klass: p.Class?.select?.name || "",
             rationale: (p.Rationale?.rich_text || []).map(t => t.plain_text).join(""),
+            icon: (p.Icon?.rich_text || []).map(t => t.plain_text).join(""),
           };
         });
         return json({ success: true, workTypes });
       }
 
       if (body.action === "createWorkType") {
-        const { name, klass, rationale } = body;
+        const { name, klass, rationale, icon } = body;
         if (!(name || "").trim() || !(klass || "").trim()) return json({ error: "name and klass required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const props = {
@@ -7686,6 +7687,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           "Class": { select: { name: klass } },
         };
         if ((rationale || "").trim()) props["Rationale"] = { rich_text: [{ type: "text", text: { content: String(rationale).slice(0, 1990) } }] };
+        if ((icon || "").trim()) props["Icon"] = { rich_text: [{ type: "text", text: { content: String(icon).slice(0, 8) } }] };
         const created = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: hdr,
           body: JSON.stringify({ parent: { database_id: WORK_TYPES_DB }, properties: props }),
@@ -7702,6 +7704,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         if (body.name !== undefined) props["Name"] = { title: [{ type: "text", text: { content: String(body.name).slice(0, 200) } }] };
         if (body.klass !== undefined) props["Class"] = body.klass ? { select: { name: body.klass } } : { select: null };
         if (body.rationale !== undefined) props["Rationale"] = { rich_text: [{ type: "text", text: { content: String(body.rationale).slice(0, 1990) } }] };
+        if (body.icon !== undefined) props["Icon"] = { rich_text: [{ type: "text", text: { content: String(body.icon).slice(0, 8) } }] };
         if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
           method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
