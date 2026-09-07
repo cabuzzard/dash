@@ -4097,7 +4097,8 @@ async function upsertCreatorFromMining(hdr, creator, postId, candidates) {
 
 const MINE_TYPE_LABEL = { "tool": "Tool", "method": "Method", "post-type": "Post Type", "strategy-note": "Strategy Note", "growth-strategy-note": "Growth Strategy Note", "podcast-idea": "Podcast Idea", "trading-strategy": "Trading Strategy", "knowledge": "Knowledge" };
 
-async function integrateOneSavedPost(env, hdr, page, candidates, instructions) {
+async function integrateOneSavedPost(env, hdr, page, candidates, instructions, opts = {}) {
+  const { infoFlow = "", caps = {} } = opts;
   const pageId = page.id;
   const account = (page.properties?.Account?.rich_text || []).map(t => t.plain_text).join("").trim();
   const platform = page.properties?.Platform?.select?.name || "";
@@ -4140,10 +4141,10 @@ ${transcript.slice(0, 12000)}
 
 # Existing entities — match names EXACTLY as written, never invent one
 ${candBlock || "(none on file yet)"}
-
+${infoFlow ? `\n# Information Flow — this app's pipeline contract (use it to score USEFULNESS)\n${infoFlow}\n\nFor every item also decide, grounded in the contract above:\n- "usefulness": "high" | "medium" | "low" — how directly it can improve the app's real pipeline output. High = it can become or materially sharpen a real stage artifact (a Method, a Strategy angle, a Product Research point, an Asset). Medium = useful reference that supports a stage indirectly. Low = mildly interesting, no clear path into the flow.\n- "feedsStage": the stage it most directly feeds — one of "Idea", "Campaign Research", "Product Research", "Strategy", "Title", "Method", "Asset", "Publish", or "None".\n` : ""}
 Respond ONLY with JSON:
 {"creator":{"name":"","handle":"${account}","platforms":["${platform}"],"subjectMatter":["","",""]},
- "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low"}]}`;
+ "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low"${infoFlow ? `,"usefulness":"high|medium|low","feedsStage":"Idea|Campaign Research|Product Research|Strategy|Title|Method|Asset|Publish|None"` : ""}}]}`;
 
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -4163,6 +4164,8 @@ Respond ONLY with JSON:
 
   const KIND = { exact: "Exact", similar: "Similar", alternative: "Alternative", new: "New" };
   const CONF = { high: "High", medium: "Medium", low: "Low" };
+  const USEFUL = { high: "High", medium: "Medium", low: "Low" };
+  const STAGES = ["Idea", "Campaign Research", "Product Research", "Strategy", "Title", "Method", "Asset", "Publish"];
   let written = 0;
   for (const it of items) {
     const typeLabel = MINE_TYPE_LABEL[String(it.type || "").toLowerCase()];
@@ -4179,6 +4182,11 @@ Respond ONLY with JSON:
     const kl = KIND[String(it.matchKind || "").toLowerCase()]; if (kl) props["Match Kind"] = { select: { name: kl } };
     if (it.category) props["Proposed Category"] = mineRT(it.category);
     const cl = CONF[String(it.confidence || "").toLowerCase()]; if (cl) props["Confidence"] = { select: { name: cl } };
+    // Usefulness scoring against the Information Flow contract — only written
+    // when the property actually exists on LINK_MINING_DB (caps probe), so a
+    // pre-schema deploy still mines cleanly instead of erroring every row.
+    if (caps.usefulness) { const u = USEFUL[String(it.usefulness || "").toLowerCase()]; if (u) props["Usefulness"] = { select: { name: u } }; }
+    if (caps.feedsStage) { const s = STAGES.find(x => x.toLowerCase() === String(it.feedsStage || "").toLowerCase()); if (s) props["Feeds Stage"] = { select: { name: s } }; }
     if (creatorId) props["Creator"] = { relation: [{ id: dash32(creatorId) }] };
     const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: LINK_MINING_DB }, properties: props }) });
     if (r.ok) written++;
@@ -4197,13 +4205,147 @@ async function runLinkMiningBatch(env, { limit = 8 } = {}) {
     page_size: limit,
   }).catch(e => { console.error("runLinkMiningBatch query:", e.message); return []; });
   if (!rows.length) return { done: 0 };
-  const candidates = await buildMiningCandidates(hdr);
+  const [candidates, infoFlow, caps] = await Promise.all([
+    buildMiningCandidates(hdr),
+    getInformationFlowContext(env),
+    getLinkMiningCaps(hdr),
+  ]);
   let done = 0;
   for (const page of rows.slice(0, limit)) {
-    try { await integrateOneSavedPost(env, hdr, page, candidates); done++; }
+    try { await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps }); done++; }
     catch (e) { console.error("integrate", page.id, e.message); await patchSavedPostPage(page.id, { Mined: { checkbox: true } }).catch(() => {}); }
   }
   return { done };
+}
+
+// Probe LINK_MINING_DB's live schema so the miner only writes the newer
+// "Usefulness" / "Feeds Stage" selects when they actually exist — lets the
+// code ship ahead of the Notion schema change without erroring every row.
+async function getLinkMiningCaps(hdr) {
+  try {
+    const db = await fetch(`https://api.notion.com/v1/databases/${LINK_MINING_DB}`, { headers: hdr }).then(r => r.json());
+    const props = db.properties || {};
+    return { usefulness: !!props["Usefulness"], feedsStage: !!props["Feeds Stage"] };
+  } catch { return { usefulness: false, feedsStage: false }; }
+}
+
+// ═══ Information Flow contract (shared pipeline context) ════════════════
+// "🗺️ Pipeline — Information Flow Contract" (Notion page under 🏠 Home) is
+// the single source of truth for how anything moves through this app: the
+// Stage cascade Idea → Campaign Research → Product Research → Strategy →
+// Title → Method → Asset → Publish, and the precedence rule (each stage
+// inherits everything upstream, then stays concurrent or diverges on
+// purpose to fit a tighter niche). Any cron/script that has to reason
+// about "where does this fit, how useful is it" grounds itself here via
+// getInformationFlowContext(env). The page is large and rarely changes, so
+// a distilled copy is cached in KV (env.TRADES) for ~7 days; a hand-written
+// fallback covers a cold cache with no API key / Notion reachability.
+const INFO_FLOW_PAGE_ID = "3c21f7d3a4bb81119dffef23153e97d7";
+const INFO_FLOW_KV_KEY  = "infoflow:context:v1";
+const INFO_FLOW_TTL_MS  = 7 * 24 * 60 * 60 * 1000;
+const INFO_FLOW_FALLBACK = `PIPELINE STAGE CASCADE — each stage inherits everything upstream, then either stays concurrent with it or diverges ON PURPOSE to fit a tighter niche (divergence is deliberate, never an accident of not knowing what came before):
+0. Idea — a raw campaign / product / content seed, not yet researched.
+1. Campaign Research — the campaign's Statement / Unique Opportunity / Key Message / Target Audience / Pain Points / Keywords. Governs everything downstream.
+2. Product Research — one positioning record per product: Customer / Niche / Pain Points / Emotions / Solution / Benefits / Unique Opportunity / Transformation / Offer Structure / Proof Points / Objections.
+3. Strategy — packages Campaign + Product research into a sequenced grouping of Titles aimed at ONE product (Growth Strategy + Strategy Slots; each slot carries a Platform and a Post Type).
+4. Title — one publishable piece, with a Pillar Content body composed from Research + Strategy.
+5. Method — the repeatable platform / format mechanics a Title is produced through (chosen at title / asset time, never baked into a slot).
+6. Asset — the finished, method-shaped deliverable (carousel, text video, SEO post, offer, listing…), produced through the ONE information flow and cleared against the ONE quality bar: it must still speak in the customer's own voice.
+7. Publish — the asset goes live on a platform via a Login; tracking / outreach / onboarding follow.
+Reference libraries that feed the cascade without being a stage: Tools (software stack), Post Types (content descriptors), Method Ideas, Podcast Ideas, Trading Strategies, Creators.`;
+
+async function getInformationFlowContext(env) {
+  try {
+    const cached = await env.TRADES.get(INFO_FLOW_KV_KEY, "json");
+    if (cached?.text && (Date.now() - (cached.fetchedAt || 0)) < INFO_FLOW_TTL_MS) return cached.text;
+  } catch { /* fall through and rebuild */ }
+
+  let text = "";
+  try {
+    NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+    const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+    const raw = await extractBlocksTextRecursive(hdr, INFO_FLOW_PAGE_ID).catch(() => "");
+    if (raw && raw.trim().length > 500) {
+      if (env.ANTHROPIC_API_KEY) {
+        const prompt = `Distill the following "Information Flow Contract" for a content-ops app into a tight reference (max ~600 words) that another script will use to judge where a piece of information fits in the pipeline and how useful it is. KEEP: the ordered Stage cascade (0-7) and what each stage owns / sets / inherits, the precedence-and-divergence rule, and the named reference libraries that feed the cascade. DROP: process notes, meeting / dialogue callouts, modal inventories, open questions, anything about rebuild-vs-refactor. Output only the distilled reference, no preamble.\n\n"""\n${raw.slice(0, 60000)}\n"""`;
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1400, messages: [{ role: "user", content: prompt }] }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (r.ok) text = (d.content?.[0]?.text || "").trim();
+        else console.error("infoflow distill:", d.error?.message);
+      }
+      if (!text) text = raw.slice(0, 6000); // undistilled slice if no API key / distill failed
+    }
+  } catch (e) { console.error("infoflow fetch:", e.message); }
+
+  if (!text) text = INFO_FLOW_FALLBACK;
+  try { await env.TRADES.put(INFO_FLOW_KV_KEY, JSON.stringify({ text, fetchedAt: Date.now() }), { expirationTtl: 60 * 60 * 24 * 14 }); } catch { /* cache write best-effort */ }
+  return text;
+}
+
+// ═══ Nightly link-mining pipeline ═════════════════════════════════════
+// Full chain for links the operator ticked "Mine" on the 🔗 Saved Posts
+// (Link Inbox) row: transcribe (Apify / ElevenLabs) if not already Done →
+// mine the transcript into typed LINK_MINING_DB rows, each scored for
+// usefulness against this app's Information Flow contract + every linked
+// reference DB (buildMiningCandidates). Standalone — writes only
+// LINK_MINING_DB + CREATORS_DB, never a production Campaign / Product /
+// Method / Strategy record; promotion stays a manual operator step
+// ([[feedback_dash_standalone_systems_isolation]]).
+//
+// GATED: if no row is ticked "Mine" (and not already "Mined") it does
+// nothing — one filtered query, then return. No AI, no Apify. A missing
+// "Mine" property (schema not deployed yet) reads as "nothing tagged".
+// Capped per run to bound Apify / ElevenLabs spend and Worker subrequests.
+// Runs on the 0 0 * * * cron; also callable via the runMiningPipeline action.
+async function runLinkMiningPipeline(env, { limit = 5 } = {}) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return { ran: false, reason: "missing NOTION_TOKEN / ANTHROPIC_API_KEY" };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+  let rows;
+  try {
+    rows = await notionQuery(SAVED_POSTS_DB, {
+      filter: { and: [
+        { property: "Mine",  checkbox: { equals: true } },
+        { property: "Mined", checkbox: { equals: false } },
+      ] },
+      page_size: limit,
+    });
+  } catch (e) {
+    console.error("mining pipeline gate:", e.message);
+    return { ran: false, reason: "no \"Mine\" property yet / query failed" };
+  }
+  if (!rows.length) return { ran: false, reason: "no links tagged" };
+
+  const [candidates, infoFlow, caps] = await Promise.all([
+    buildMiningCandidates(hdr),
+    getInformationFlowContext(env),
+    getLinkMiningCaps(hdr),
+  ]);
+
+  let transcribed = 0, mined = 0, bits = 0;
+  for (const page of rows.slice(0, limit)) {
+    try {
+      let cur = page;
+      if ((cur.properties?.Status?.status?.name || "") !== "Done") {
+        const res = await processSavedPost(env, cur);
+        if (!res.ok) { console.error("mining pipeline transcribe:", page.id, res.error); continue; }
+        transcribed++;
+        cur = await fetch(`https://api.notion.com/v1/pages/${page.id}`, { headers: hdr }).then(r => r.json()).catch(() => page);
+      }
+      const r = await integrateOneSavedPost(env, hdr, cur, candidates, "", { infoFlow, caps });
+      mined++;
+      bits += (r?.items || 0);
+    } catch (e) {
+      console.error("mining pipeline", page.id, e.message);
+      await patchSavedPostPage(page.id, { Mined: { checkbox: true } }).catch(() => {}); // never wedge on one bad row
+    }
+  }
+  return { ran: true, transcribed, mined, bits };
 }
 
 // ── runListingRepostReminders ──
@@ -28590,9 +28732,13 @@ ${assemblyManifest}`;
         }
         const page = await fetch(`https://api.notion.com/v1/pages/${dash32(postId)}`, { headers: hdr }).then(r => r.json());
         if (!page.id) return json({ error: "post not found" }, 404);
-        const candidates = await buildMiningCandidates(hdr);
+        const [candidates, infoFlow, caps] = await Promise.all([
+          buildMiningCandidates(hdr),
+          getInformationFlowContext(env),
+          getLinkMiningCaps(hdr),
+        ]);
         try {
-          const res = await integrateOneSavedPost(env, hdr, page, candidates, instructions);
+          const res = await integrateOneSavedPost(env, hdr, page, candidates, instructions, { infoFlow, caps });
           return json({ success: true, ...res });
         } catch (e) {
           console.error("integrateLinkKnowledge:", e.message);
@@ -28602,6 +28748,14 @@ ${assemblyManifest}`;
 
       if (body.action === "integrateAllTranscribed") {
         const res = await runLinkMiningBatch(env, { limit: Math.min(25, Math.max(1, body.limit || 12)) });
+        return json({ success: true, ...res });
+      }
+
+      // On-demand run of the full nightly chain (transcribe + mine) for
+      // links ticked "Mine". Same gate as the cron — no-ops when nothing
+      // is tagged.
+      if (body.action === "runMiningPipeline") {
+        const res = await runLinkMiningPipeline(env, { limit: Math.min(10, Math.max(1, body.limit || 5)) });
         return json({ success: true, ...res });
       }
 
@@ -30844,6 +30998,16 @@ Produce all of this by calling the submit_listing tool — do not include any of
       runLinkTagging(env, { limit: 20 })
         .then(n => console.log(`link tagging ran: ${n} post(s) tagged`))
         .catch(e => console.error('link tagging failed:', e.message))
+    );
+    // Full mining chain for links ticked "Mine" — transcribe → mine into
+    // usefulness-scored Link Mining rows. Does nothing (no AI, no Apify)
+    // when no link is tagged.
+    ctx.waitUntil(
+      runLinkMiningPipeline(env, { limit: 5 })
+        .then(r => r.ran
+          ? console.log(`link mining ran: ${r.transcribed} transcribed, ${r.mined} mined, ${r.bits} bit(s)`)
+          : console.log(`link mining skipped: ${r.reason}`))
+        .catch(e => console.error('link mining failed:', e.message))
     );
     ctx.waitUntil(
       buildEcosystemGraph(env)
