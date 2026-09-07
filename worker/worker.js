@@ -77,6 +77,7 @@ const METHOD_IDEAS_DB    = "9b094862f32a40c994093610f8696a8c"; // Name/Descripti
 const TRADING_STRATEGIES_DB = "49940bac8cdc4310a8f54e10833673f9"; // Name/Thesis/Entry/Exit / Risk/Instruments/Timeframe/Status/Notes/Source Post/Creator — reference library, not wired into runAutoTradeScan yet
 const AFFILIATE_DB       = "1dee16c0bc2743ed9155d7649f0d9e51"; // Name/Hub/Keyword/Network/Commission/Cookie Window/Signup URL/Fit/Notes/Status/Found — found by searching hub keywords + "affiliate" (Globals tab)
 const HUB_FRONTS_DB      = "74642017fd1b48a88ad99443d173aeb2"; // 🎯 Hub Fronts — one row per hub × work-class (the standing output mandate). Hub/Class/Type(Cadence|Setup|Campaign)/Cadence/Weekday/Intensity/State/Next/Progress/Notes/Campaign/Active. Cadence rows with Active + State Running/Maintaining are emitted onto the Weekly Planner nightly by runHubFrontReminders (Source "Hub Front", idempotent via WEEKLY_PLANNER_DB's "Source Hub Front" relation). NOTE: database id, not the collection id.
+const MAT_TYPES_DB       = "12428bec53b447b694d57df6d7fe02b5"; // 🧱 Method & Asset Types — operator-grown column list for the Hub Method/Asset-Type Matrix (Name/Kind[Method|Asset Type|Both]/Notes). get/create/deleteMatType + getHubMethodMatrix. NOTE: database id, not the collection id.
 const WORK_TYPES_DB      = "037cc0f51c63430d810f3e1525675461"; // 🧰 Work Types — operator-grown catalog of the TYPES of work the hubs generate (Name/Class/Rationale), grouped under the same 14 classes as HUB_FRONTS_DB. Feeds the "Hub Front" section on the TD tab (get/create/update/deleteWorkType). Not per-hub, not a to-do list — a vocabulary. NOTE: database id, not the collection id.
 // Resume header — kept in sync by hand with the 📇 Contact Info Notion page
 // (under 🏠 Home); used to print a real contact header on generated resume
@@ -3651,6 +3652,7 @@ const ECOSYSTEM_DBS = [
   { id: STRATEGY_SLOTS_DB,          name: "Strategy Slots",            emoji: "🎰", domain: "strategy" },
   { id: POST_TYPES_DB,              name: "Post Types",                emoji: "🏷️", domain: "strategy" },
   { id: WORK_TYPES_DB,             name: "Work Types",                emoji: "🧰", domain: "ops" },
+  { id: MAT_TYPES_DB,             name: "Method & Asset Types",      emoji: "🧱", domain: "ops" },
   { id: MAIN_TD_DB,                 name: "Main TD",                   emoji: "✅", domain: "ops" },
   { id: WEEKLY_PLANNER_DB,          name: "Weekly Planner",            emoji: "🗓️", domain: "ops" },
   { id: LOGINS_DB,                  name: "Logins",                    emoji: "🔑", domain: "ops" },
@@ -7772,6 +7774,88 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         }).then(r => r.json());
         if (!created.id) return json({ error: created.message || "Failed to create cell" }, 500);
         return json({ success: true, id: created.id.replace(/-/g,""), created: true });
+      }
+
+      // ── Hub Method / Asset-Type Matrix (🧱 Method & Asset Types DB) ───────
+      // Second TD-tab matrix: rows = hubs, columns = the operator-grown list
+      // of methods / asset types, cell = count of PUBLISHED assets for that
+      // hub attributed to that method or asset type. Hub attribution per
+      // asset: Content Hub select → else Campaign relation → else the source
+      // title's Campaign. Method attribution: the source title's `method`.
+      if (body.action === "getHubMethodMatrix") {
+        const norm = s => (s || "").replace(/-/g, "");
+        const hubByCamp = {};
+        HUB_SITES.forEach(h => { hubByCamp[norm(h.campaignId)] = h.slug; });
+        const hubSet = new Set(HUB_SITES.map(h => h.slug));
+        const [assetRows, titleRows, methodRows, colRows] = await Promise.all([
+          notionQuery(ASSETS_DB, { filter: { or: [
+            { property: "Asset Status", select: { equals: "Published" } },
+            { property: "Asset Status", select: { equals: "Publish" } },
+          ] } }).catch(e => { console.error('getHubMethodMatrix assets:', e.message); return []; }),
+          notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
+          notionQuery(METHODS_DB, {}).catch(() => []),
+          notionQuery(MAT_TYPES_DB, {}).catch(e => { console.error('getHubMethodMatrix cols:', e.message); return []; }),
+        ]);
+        const methodName = {};
+        methodRows.forEach(m => { methodName[norm(m.id)] = (m.properties?.Name?.title || []).map(t => t.plain_text).join(""); });
+        const titleInfo = {};
+        titleRows.forEach(t => {
+          const p = t.properties || {};
+          titleInfo[norm(t.id)] = {
+            camp: norm((p.Campaign?.relation || [])[0]?.id),
+            method: methodName[norm((p.method?.relation || [])[0]?.id)] || "",
+          };
+        });
+        const columns = colRows.map(r => ({
+          id: norm(r.id),
+          name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
+          kind: r.properties?.Kind?.select?.name || "",
+        })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
+        const colByLc = {};
+        columns.forEach(c => { colByLc[c.name.toLowerCase()] = c.name; });
+        const counts = {};
+        assetRows.forEach(a => {
+          const p = a.properties || {};
+          const at = p["Asset Type"]?.select?.name || "";
+          const hub0 = p["Content Hub"]?.select?.name || "";
+          const campId = norm((p.Campaign?.relation || [])[0]?.id);
+          const ti = titleInfo[norm((p["Content Strategy"]?.relation || [])[0]?.id)] || {};
+          const slug = hubSet.has(hub0) ? hub0 : (hubByCamp[campId] || hubByCamp[ti.camp] || "");
+          if (!slug) return;
+          const hits = new Set();
+          if (at && colByLc[at.toLowerCase()]) hits.add(colByLc[at.toLowerCase()]);
+          if (ti.method && colByLc[ti.method.toLowerCase()]) hits.add(colByLc[ti.method.toLowerCase()]);
+          if (!hits.size) return;
+          counts[slug] = counts[slug] || {};
+          hits.forEach(name => { counts[slug][name] = (counts[slug][name] || 0) + 1; });
+        });
+        return json({ success: true, columns, counts, hubs: HUB_SITES.map(h => ({ slug: h.slug })) });
+      }
+
+      if (body.action === "createMatType") {
+        const { name, kind, notes } = body;
+        if (!(name || "").trim()) return json({ error: "name required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const props = { "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] } };
+        if (["Method", "Asset Type", "Both"].includes(kind)) props["Kind"] = { select: { name: kind } };
+        if ((notes || "").trim()) props["Notes"] = { rich_text: [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] };
+        const created = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ parent: { database_id: MAT_TYPES_DB }, properties: props }),
+        }).then(r => r.json());
+        if (!created.id) return json({ error: created.message || "Failed to create" }, 500);
+        return json({ success: true, id: created.id.replace(/-/g, "") });
+      }
+
+      if (body.action === "deleteMatType") {
+        const { typeId } = body;
+        if (!typeId) return json({ error: "typeId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        await fetch(`https://api.notion.com/v1/pages/${dash(typeId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: true }),
+        }).catch(() => {});
+        return json({ success: true });
       }
 
       if (body.action === "moveWeeklyPlannerItem") {
