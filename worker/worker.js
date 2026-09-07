@@ -7810,6 +7810,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           id: norm(r.id),
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           kind: r.properties?.Kind?.select?.name || "",
+          notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         const colByLc = {};
         columns.forEach(c => { colByLc[c.name.toLowerCase()] = c.name; });
