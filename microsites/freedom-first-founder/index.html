@@ -111,10 +111,19 @@
 .product-row:last-child { border-bottom: none; }
 .product-name { flex: 1; font-size: 13px; color: #fff; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .product-row.is-active .product-name { color: #68d391; }
+.product-row.is-planning .product-name { color: #f6ad55; }
+.product-row.is-idea .product-name,
 .product-row.is-development .product-name { color: #718096; }
 .product-status-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; margin-right: 2px; }
 .is-active .product-status-dot { background: #68d391; }
+.is-planning .product-status-dot { background: #f6ad55; }
+.is-idea .product-status-dot,
 .is-development .product-status-dot { background: #4a5568; }
+/* PRODUCT STATUS BADGE — replaces the old stack-echo badge; click opens the status picker */
+.product-status-badge { font-size: 9px; border: 1px solid; border-radius: 3px; padding: 1px 6px; flex-shrink: 0; white-space: nowrap; cursor: pointer; line-height: 1.6; font-family: inherit; text-transform: uppercase; letter-spacing: .04em; }
+.product-status-badge.st-active   { color: #68d391; border-color: #68d39166; background: #68d3911a; }
+.product-status-badge.st-planning { color: #f6ad55; border-color: #f6ad5566; background: #f6ad551a; }
+.product-status-badge.st-idea     { color: #a0aec0; border-color: #a0aec066; background: #a0aec01a; }
 .login-meta { flex: 1; min-width: 0; }
 .login-name { font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .login-sub  { font-size: 11px; color: #fff; margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -739,6 +748,31 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeStackEditModal()">Cancel</button>
       <button class="modal-btn save" id="stackEditSave" onclick="saveStackEdit()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- PRODUCT STATUS MODAL — set an existing product's lifecycle status
+     (Idea → Planning → Active). Writes Products DB "Status" via
+     updateProductStatus. Opened by the color-coded status badge on the row. -->
+<div class="modal-overlay" id="productStatusModal">
+  <div class="modal" style="max-width:360px;">
+    <div class="modal-head">
+      <div class="modal-title" id="productStatusTitle">Status</div>
+      <button class="modal-close" onclick="closeProductStatusModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label" for="product-status-select">Product status</label>
+      <select class="modal-ta" id="product-status-select" style="height:34px;padding:0 8px;margin-top:4px;background:#1e1e1e;color:#fff;border:1px solid #333;">
+        <option value="Idea">Idea</option>
+        <option value="Planning">Planning</option>
+        <option value="Active">Active</option>
+      </select>
+      <div class="modal-status" id="productStatusStatus"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeProductStatusModal()">Cancel</button>
+      <button class="modal-btn save" id="productStatusSave" onclick="saveProductStatus()">Save</button>
     </div>
   </div>
 </div>
@@ -4018,8 +4052,11 @@ function rankMarketingPhase(phase) {
 
 function makeProductRow(p) {
   const row = document.createElement('div');
-  const isActive = p.status === 'Active';
-  row.className = 'product-row ' + (isActive ? 'is-active' : 'is-development');
+  // Lifecycle status: Idea → Planning → Active. Anything unrecognized (legacy
+  // "Development" etc.) falls back to the Idea bucket for styling.
+  const st = p.status === 'Active' ? 'active' : p.status === 'Planning' ? 'planning' : 'idea';
+  const statusLabel = st.charAt(0).toUpperCase() + st.slice(1);
+  row.className = 'product-row is-' + st;
   row.dataset.productId = p.id;
   const psStyle = 'font-size:10px;color:#fff;text-decoration:none;flex-shrink:0;padding:1px 4px;border:1px solid #5f5f5f;border-radius:3px;line-height:1.6;';
   // Type badge = the product's FORMAT (PDF/Email/Quiz/Coaching/Membership/
@@ -4029,12 +4066,11 @@ function makeProductRow(p) {
   const typeBadge = p.type
     ? `<span title="Type" style="font-size:9px;color:#fff;border:1px solid #5f5f5f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.type}</span>`
     : '';
-  // Product Stack badge — a manually-assigned grouping label (e.g. "Coaching
-  // Suite"), purely organizational. Styled distinctly from Type (accent
-  // color) since it's a different axis, not a variant of it.
-  const stackBadge = p.stack
-    ? `<span title="Product Stack" style="font-size:9px;color:#a78bfa;border:1px solid #5f4a8f;border-radius:3px;padding:1px 5px;flex-shrink:0;white-space:nowrap;">${p.stack}</span>`
-    : '';
+  // Status badge — color-coded lifecycle (Idea → Planning → Active, Active is
+  // green). Click opens a simple dropdown modal to change it. Replaces the old
+  // badge that just echoed the product's Stack (redundant with the collapsible
+  // Stack group headers this list is already grouped by).
+  const statusBadge = `<button class="product-status-badge st-${st}" onclick="openProductStatusModal('${p.id}','${p.name.replace(/'/g,"\\'")}','${statusLabel}')" title="Status — click to change">${statusLabel}</button>`;
   // Product Research link — opens the Product Research modal (all of a
   // product's Strategy fields: Pain Points/Benefits/Proof Points/etc., with
   // per-field or run-all research generation and an operator guidance box).
@@ -4062,7 +4098,7 @@ function makeProductRow(p) {
   // this re-wires it here, replacing the old backfillLegacyStrategy
   // button (a different, no-longer-used reconstruct-from-history flow).
   const backfillBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate a new Growth Strategy for this product — same flow as the Strategies tab's + button, just with this product already chosen" style="${psStyle};background:none;cursor:pointer;color:#f6ad55;">🚀 strategy</button>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'In Development'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${typeBadge}${stackBadge}${stackEditBtn}${researchLink}${backfillBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'Idea'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${statusBadge}${typeBadge}${stackEditBtn}${researchLink}${backfillBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -4345,6 +4381,49 @@ async function saveStackEdit() {
   }
 }
 
+// ── PRODUCT STATUS MODAL ──────────────────────────────────────────────────
+// Simple dropdown to set a product's lifecycle status (Idea → Planning →
+// Active). Writes Products DB "Status" via updateProductStatus.
+let productStatusId = null;
+function openProductStatusModal(productId, productName, currentStatus) {
+  productStatusId = productId;
+  document.getElementById('productStatusTitle').textContent = productName + ' — Status';
+  const known = ['Idea', 'Planning', 'Active'].includes(currentStatus) ? currentStatus : 'Idea';
+  document.getElementById('product-status-select').value = known;
+  const st = document.getElementById('productStatusStatus');
+  st.textContent = ''; st.className = 'modal-status';
+  const btn = document.getElementById('productStatusSave');
+  btn.disabled = false; btn.textContent = 'Save';
+  document.getElementById('productStatusModal').classList.add('open');
+}
+function closeProductStatusModal() {
+  document.getElementById('productStatusModal').classList.remove('open');
+  productStatusId = null;
+}
+document.getElementById('productStatusModal').addEventListener('click', function(e) {
+  if (e.target === this) closeProductStatusModal();
+});
+async function saveProductStatus() {
+  if (!productStatusId) return;
+  const val = document.getElementById('product-status-select').value;
+  const btn = document.getElementById('productStatusSave');
+  const status = document.getElementById('productStatusStatus');
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await w('updateProductStatus', { productId: productStatusId, status: val });
+    const p = PRODUCT_ITEMS.find(x => x.id === productStatusId);
+    if (p) p.status = val;
+    status.textContent = 'Saved ✓';
+    status.className = 'modal-status ok';
+    renderProducts();
+    setTimeout(closeProductStatusModal, 400);
+  } catch(e) {
+    status.textContent = 'Error: ' + e.message;
+    status.className = 'modal-status err';
+    btn.disabled = false; btn.textContent = 'Save';
+  }
+}
+
 // ── TREND SCAN MODAL ──────────────────────────────────────────────────────
 // 📈 on a Development title row. Calls the worker's scanTitleTrends action
 // (live Etsy search data, judged against this title's own keywords/
@@ -4564,7 +4643,7 @@ async function addProductFromModal() {
   btn.textContent = 'Adding…';
   status.textContent = '';
   try {
-    const res = await w('createProduct', { title: name, stack: stackVal || undefined, description: descVal || undefined });
+    const res = await w('createProduct', { title: name, stack: stackVal || undefined, description: descVal || undefined, status: 'Idea' });
     const productId = res.id;
     ALL_PRODUCTS.push({ id: productId, name });
     if (stackVal) {
