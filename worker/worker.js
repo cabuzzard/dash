@@ -3267,6 +3267,531 @@ async function runAutoTradeScan(env) {
   return { scanned: universe.length, buys: buys.length, created };
 }
 
+// ── ORB_MOMENTUM_001 — Opening-Range Breakout momentum strategy (V1) ──────
+// A plug-in signal generator for the existing paper-trade tracker (env.TRADES
+// KV, `trades:` prefix) — NOT a new tracker. Two stages:
+//
+//   1. runOrbScreen  — mornings ~08:00-09:30 ET. Builds a ranked candidate
+//      watchlist from Yahoo's most-actives ∪ the saved screener watchlist,
+//      keeping liquid US common stock (price ≥ $10, 20d avg $-volume ≥ $50M)
+//      and tagging why each was picked (gap / premarket volume / 20d momentum /
+//      near a 20d high or low / move vs SPY / ATR). Stored at
+//      orb:watchlist:{date}. Target ~10-28 names, not the whole tape.
+//
+//   2. runOrbMonitor — every 5 min 10:00-11:30 ET. Computes each candidate's
+//      09:30-10:00 opening range (ORH/ORL), then on every CLOSED 5-minute
+//      candle checks for a breakout that clears ALL confirmation filters:
+//        LONG : close > ORH, close > VWAP, VWAP rising, breakout-candle
+//               volume ≥ 1.5× trailing 5m avg, candle_position ≥ 0.50,
+//               10:00-11:30 ET, opening range not abnormally large, no active
+//               ORB signal already open for this ticker/direction/session.
+//        SHORT: mirror (close < ORL, below/declining VWAP, position ≤ 0.50).
+//      On a qualified signal it picks a swing option off the live Yahoo chain
+//      (LONG→call, SHORT→put, ~42 DTE, ~0.67 delta — a "hold and measure the
+//      max favourable/adverse excursion" contract, per operator direction) and
+//      writes ONE `trades:{id}` record in the SAME shape runAutoTradeScan uses,
+//      so the existing poller / Trades UI / Notion archive all work unchanged.
+//      Full signal context (ORH/ORL, VWAP, RVOL, gap, ATR, SPY/QQQ, reasons,
+//      breakout candle OHLCV, structural stop = ORH/ORL, risk R) is stored on
+//      the trade's `meta` blob for later expectancy analysis.
+//
+// This only writes to this app's own KV — it never places a real order. The V1
+// parameters below are frozen: do NOT tune them from results, the point is an
+// unbiased forward sample. Breakouts that fail a filter are logged to
+// orb:rejects:{date} (cheap) so per-filter expectancy can be studied later.
+
+const ORB_V1 = {
+  strategyId:            'ORB_MOMENTUM_001_V1',
+  minPrice:              10,
+  minAvgDollarVol:       50e6,
+  signalStartMin:        10 * 60,          // 10:00 ET (minutes past ET midnight)
+  signalEndMin:          11 * 60 + 30,     // 11:30 ET
+  breakoutVolMult:       1.5,
+  comparableCandles:     12,               // trailing 5m candles for the RVOL baseline
+  candlePosLong:         0.50,
+  candlePosShort:        0.50,
+  vwapSlopeLookback:     3,                // candles back for the VWAP-slope check
+  abnormalOrAtrMult:     2.5,              // reject if OR% > this × est. normal OR%
+  minRiskPctOfEntry:     0.001,            // reject near-zero risk geometry (0.1% of entry)
+  swingDteTarget:        42,
+  swingDeltaTarget:      0.675,
+  maxCandidates:         28,
+  screenUniverseCap:     90,
+  screenRebuildAfterMin: 20,
+};
+
+const ORB_ETF_EXCLUDE = new Set([
+  'SPY','QQQ','IWM','DIA','VOO','VTI','XLK','XLF','XLE','XLV','XLY','XLP','XLI',
+  'XLB','XLU','XLRE','XLC','SMH','SOXL','SOXS','TQQQ','SQQQ','TLT','HYG','GLD',
+  'SLV','USO','UVXY','VXX','ARKK','FXI','EEM','KWEB','TNA','TZA','SPXL','SPXS',
+]);
+
+// DST-correct wall-clock in US Eastern via the Intl tz database.
+function orbNowET(d = new Date()) {
+  const p = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', weekday: 'short',
+  }).formatToParts(d).reduce((a, x) => (a[x.type] = x.value, a), {});
+  let hour = parseInt(p.hour, 10); if (hour === 24) hour = 0;
+  return {
+    dateStr:   `${p.year}-${p.month}-${p.day}`,
+    minutes:   hour * 60 + parseInt(p.minute, 10),
+    weekday:   p.weekday,
+    isWeekend: p.weekday === 'Sat' || p.weekday === 'Sun',
+  };
+}
+
+async function orbFetchJson(url) {
+  const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// Daily context from a 3-month daily chart: ATR(14), 20d return, distance from
+// the 20d high / low, 20d average dollar volume, last close.
+function orbDailyContext(chartJson) {
+  const res = chartJson?.chart?.result?.[0];
+  const q = res?.indicators?.quote?.[0];
+  const closes = q?.close, highs = q?.high, lows = q?.low, vols = q?.volume;
+  if (!closes || closes.length < 21) return null;
+  const rows = closes.map((c, i) => ({ c, h: highs[i], l: lows[i], v: vols[i] }))
+    .filter(r => r.c != null && r.h != null && r.l != null && r.v != null);
+  if (rows.length < 21) return null;
+  const n = rows.length;
+  const price = rows[n - 1].c;
+
+  let trSum = 0;
+  for (let i = n - 14; i < n; i++) {
+    trSum += Math.max(
+      rows[i].h - rows[i].l,
+      Math.abs(rows[i].h - rows[i - 1].c),
+      Math.abs(rows[i].l - rows[i - 1].c),
+    );
+  }
+  const atr = trSum / 14;
+
+  const win20 = rows.slice(n - 20);
+  const hi20 = Math.max(...win20.map(r => r.h));
+  const lo20 = Math.min(...win20.map(r => r.l));
+  const avgDollarVol = win20.reduce((s, r) => s + r.c * r.v, 0) / win20.length;
+  const prev20 = rows[n - 21] ? rows[n - 21].c : null;
+
+  return {
+    price:        +price.toFixed(2),
+    atr:          +atr.toFixed(3),
+    atrPct:       +(atr / price * 100).toFixed(2),
+    ret20dPct:    prev20 ? +(((price - prev20) / prev20) * 100).toFixed(2) : null,
+    dist20dHigh:  +(((price - hi20) / hi20) * 100).toFixed(2),
+    dist20dLow:   +(((price - lo20) / lo20) * 100).toFixed(2),
+    avgDollarVol: Math.round(avgDollarVol),
+  };
+}
+
+// Premarket context from a 1-minute prepost chart: gap % vs prior close and
+// total premarket (04:00-09:30 ET) volume.
+function orbPremarketContext(chartJson) {
+  const res = chartJson?.chart?.result?.[0];
+  const ts = res?.timestamp;
+  const q = res?.indicators?.quote?.[0];
+  const meta = res?.meta || {};
+  const gmt = meta.gmtoffset || 0;
+  const prevClose = meta.chartPreviousClose ?? meta.previousClose ?? null;
+  const etMin = s => { const x = (((s + gmt) % 86400) + 86400) % 86400; return Math.floor(x / 60); };
+  if (!ts || !q?.close) return { gapPct: null, pmVolume: 0, prevClose };
+  let pmVol = 0, pmLast = null;
+  for (let i = 0; i < ts.length; i++) {
+    const m = etMin(ts[i]);
+    if (m >= 570) break;              // reached the 09:30 regular open
+    if (m < 240) continue;            // ignore < 04:00 ET
+    if (q.volume?.[i] != null) pmVol += q.volume[i];
+    if (q.close?.[i] != null) pmLast = q.close[i];
+  }
+  const gapPct = (prevClose && pmLast) ? ((pmLast - prevClose) / prevClose) * 100 : null;
+  return { gapPct: gapPct != null ? +gapPct.toFixed(2) : null, pmVolume: pmVol, prevClose };
+}
+
+// SPY / QQQ day % and the VIX level.
+async function orbMarketContext() {
+  const dayPct = async sym => {
+    try {
+      const j = await orbFetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=5d`);
+      const res = j?.chart?.result?.[0];
+      const c = res?.indicators?.quote?.[0]?.close?.filter(x => x != null);
+      if (!c?.length) return null;
+      const base = c.length >= 2 ? c[c.length - 2] : res?.meta?.chartPreviousClose;
+      return base ? +((((c[c.length - 1] - base) / base)) * 100).toFixed(2) : null;
+    } catch { return null; }
+  };
+  const vixLevel = async () => {
+    try {
+      const j = await orbFetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=5d`);
+      const c = j?.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter(x => x != null);
+      return c?.length ? +c[c.length - 1].toFixed(2) : null;
+    } catch { return null; }
+  };
+  const [spy, qqq, vix] = await Promise.all([dayPct('SPY'), dayPct('QQQ'), vixLevel()]);
+  return { spyDayPct: spy, qqqDayPct: qqq, vix };
+}
+
+async function orbYahooMostActives(count = 100) {
+  try {
+    const j = await orbFetchJson(`https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=${count}&formatted=false&lang=en-US&region=US`);
+    return (j?.finance?.result?.[0]?.quotes || []).map(q => q.symbol).filter(Boolean);
+  } catch { return []; }
+}
+
+// STAGE 1 — build/refresh the morning candidate watchlist.
+async function runOrbScreen(env, { force = false } = {}) {
+  const et = orbNowET();
+  const key = `orb:watchlist:${et.dateStr}`;
+  if (!force) {
+    const existing = await env.TRADES.get(key, 'json');
+    if (existing?.builtAt && (Date.now() - new Date(existing.builtAt).getTime()) / 60000 < ORB_V1.screenRebuildAfterMin) {
+      return existing;
+    }
+  }
+
+  const [mostActive, rawWatch] = await Promise.all([
+    orbYahooMostActives(100),
+    env.TRADES.get('screener:watchlist'),
+  ]);
+  const watch = rawWatch ? JSON.parse(rawWatch) : [];
+  const universe = [...new Set([...mostActive, ...watch])]
+    .filter(s => /^[A-Z]{1,5}$/.test(s) && !ORB_ETF_EXCLUDE.has(s))
+    .slice(0, ORB_V1.screenUniverseCap);
+
+  const market = await orbMarketContext();
+
+  const scored = await Promise.allSettled(universe.map(async sym => {
+    const [dailyJ, intraJ] = await Promise.all([
+      orbFetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=3mo`),
+      orbFetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1m&range=1d&includePrePost=true`),
+    ]);
+    const daily = orbDailyContext(dailyJ);
+    if (!daily || daily.price < ORB_V1.minPrice || daily.avgDollarVol < ORB_V1.minAvgDollarVol) return null;
+
+    const pm = orbPremarketContext(intraJ);
+    const advShares = daily.avgDollarVol / daily.price;
+    const pmVolVsAdvPct = advShares ? +((pm.pmVolume / advShares) * 100).toFixed(2) : null;
+
+    const reasons = [];
+    let rank = 0;
+    if (pm.gapPct != null && Math.abs(pm.gapPct) >= 1) {
+      reasons.push(`GAP ${pm.gapPct > 0 ? '+' : ''}${pm.gapPct}%`); rank += Math.min(Math.abs(pm.gapPct), 6);
+    }
+    if (pmVolVsAdvPct != null && pmVolVsAdvPct >= 1) {
+      reasons.push(`PREMARKET_VOLUME ${pmVolVsAdvPct}%·ADV`); rank += Math.min(pmVolVsAdvPct, 5);
+    }
+    if (daily.ret20dPct != null && Math.abs(daily.ret20dPct) >= 5) {
+      reasons.push(`MOMENTUM_20D ${daily.ret20dPct > 0 ? '+' : ''}${daily.ret20dPct}%`); rank += Math.min(Math.abs(daily.ret20dPct) / 3, 5);
+    }
+    if (daily.dist20dHigh >= -2) { reasons.push('NEAR_20D_HIGH'); rank += 3; }
+    if (daily.dist20dLow  <=  2) { reasons.push('NEAR_20D_LOW');  rank += 3; }
+    if (pm.gapPct != null && market.spyDayPct != null) {
+      const rel = pm.gapPct - market.spyDayPct;
+      if (Math.abs(rel) >= 1) { reasons.push(`VS_SPY ${rel > 0 ? '+' : ''}${rel.toFixed(2)}%`); rank += Math.min(Math.abs(rel), 4); }
+    }
+    if (daily.atrPct >= 2) { reasons.push(`ATR ${daily.atrPct}%`); rank += Math.min(daily.atrPct / 2, 3); }
+    if (!reasons.length) return null;
+
+    return {
+      ticker: sym, rank: +rank.toFixed(2), reasons,
+      gapPct: pm.gapPct, pmVolume: pm.pmVolume, pmVolVsAdvPct, prevClose: pm.prevClose,
+      ...daily,
+    };
+  }));
+
+  const candidates = scored
+    .map(r => r.status === 'fulfilled' ? r.value : null)
+    .filter(Boolean)
+    .sort((a, b) => b.rank - a.rank)
+    .slice(0, ORB_V1.maxCandidates);
+
+  const blob = { date: et.dateStr, builtAt: new Date().toISOString(), market, count: candidates.length, candidates };
+  await env.TRADES.put(key, JSON.stringify(blob), { expirationTtl: 60 * 60 * 48 });
+  await env.TRADES.put('orb:last_screen', JSON.stringify({ date: et.dateStr, at: blob.builtAt, count: candidates.length, universe: universe.length }));
+  return blob;
+}
+
+// Parse a 5-minute regular-session chart into candles with a running VWAP, plus
+// the 09:30-10:00 opening range.
+function orbIntradaySeries(chartJson) {
+  const res = chartJson?.chart?.result?.[0];
+  const ts = res?.timestamp;
+  const q = res?.indicators?.quote?.[0];
+  const gmt = res?.meta?.gmtoffset || 0;
+  if (!ts || !q?.close) return null;
+  const etMin = s => { const x = (((s + gmt) % 86400) + 86400) % 86400; return Math.floor(x / 60); };
+  const candles = [];
+  let cumTPV = 0, cumV = 0;
+  for (let i = 0; i < ts.length; i++) {
+    const o = q.open?.[i], h = q.high?.[i], l = q.low?.[i], c = q.close?.[i], v = q.volume?.[i];
+    if (o == null || h == null || l == null || c == null || v == null) continue;
+    const m = etMin(ts[i]);
+    if (m < 570 || m >= 960) continue;         // regular session only
+    const tp = (h + l + c) / 3;
+    cumTPV += tp * v; cumV += v;
+    candles.push({ startMin: m, endMin: m + 5, ts: ts[i], o, h, l, c, v, vwap: cumV ? cumTPV / cumV : c });
+  }
+  if (!candles.length) return null;
+  const orC = candles.filter(k => k.startMin >= 570 && k.startMin < 600);
+  return {
+    candles,
+    orh: orC.length ? Math.max(...orC.map(k => k.h)) : null,
+    orl: orC.length ? Math.min(...orC.map(k => k.l)) : null,
+    orComplete: orC.length >= 5,
+  };
+}
+
+// LONG→call near +0.675 delta, SHORT→put near -0.675 delta, expiry ~42 DTE.
+async function orbPickSwingContract(ticker, optType) {
+  const first = await fetchYahooOptionsChain(ticker);
+  if (!first.underlying || !first.expirationDates.length) return null;
+  const now = Date.now() / 1000;
+  const targetSecs = ORB_V1.swingDteTarget * 86400;
+  let bestExpiry = first.expirationDates[0], bestDiff = Infinity;
+  for (const tsq of first.expirationDates) {
+    const diff = Math.abs((tsq - now) - targetSecs);
+    if (diff < bestDiff) { bestDiff = diff; bestExpiry = tsq; }
+  }
+  const chain = bestExpiry === first.fetchedDate ? first : await fetchYahooOptionsChain(ticker, bestExpiry);
+  const contracts = optType === 'P' ? chain.puts : chain.calls;
+  if (!contracts?.length) return null;
+  const T = Math.max((bestExpiry - now) / (365 * 86400), 1 / 365);
+  let best = null, bestDiff2 = Infinity;
+  for (const c of contracts) {
+    const iv = c.impliedVolatility;
+    if (!(iv > 0) || !(c.strike > 0)) continue;
+    let delta = callDelta(chain.underlying, c.strike, T, iv);
+    if (delta == null) continue;
+    if (optType === 'P') delta = delta - 1;
+    const diff = Math.abs(Math.abs(delta) - ORB_V1.swingDeltaTarget);
+    if (diff < bestDiff2) { bestDiff2 = diff; best = { c, delta }; }
+  }
+  if (!best) return null;
+  const c = best.c;
+  const price = c.lastPrice > 0 ? c.lastPrice : (c.bid > 0 && c.ask > 0 ? (c.bid + c.ask) / 2 : null);
+  const d = new Date(bestExpiry * 1000);
+  const expiry = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
+  return {
+    ticker, strike: c.strike, expiry,
+    price: price != null ? +price.toFixed(2) : null,
+    delta: +best.delta.toFixed(3),
+    dte: Math.round((bestExpiry - now) / 86400),
+  };
+}
+
+const orbHhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
+// STAGE 2 — watch candidates for a qualified opening-range breakout.
+async function runOrbMonitor(env, { force = false } = {}) {
+  const et = orbNowET();
+  const nowMin = et.minutes;
+  const wl = await env.TRADES.get(`orb:watchlist:${et.dateStr}`, 'json');
+  if (!wl?.candidates?.length) return { ran: false, reason: 'no watchlist for today' };
+  if (!force && (nowMin < ORB_V1.signalStartMin || nowMin > ORB_V1.signalEndMin)) {
+    return { ran: false, reason: `outside 10:00-11:30 ET signal window (now ${orbHhmm(nowMin)} ET)` };
+  }
+
+  const orKey = `orb:or:${et.dateStr}`;
+  const firedKey = `orb:fired:${et.dateStr}`;
+  const rejSeenKey = `orb:rejseen:${et.dateStr}`;
+  const [orCacheRaw, firedRaw, rejSeenRaw, tk] = await Promise.all([
+    env.TRADES.get(orKey, 'json'),
+    env.TRADES.get(firedKey, 'json'),
+    env.TRADES.get(rejSeenKey, 'json'),
+    env.TRADES.list({ prefix: 'trades:' }),
+  ]);
+  const orCache = orCacheRaw || {};
+  const fired = new Set(firedRaw || []);
+  const rejSeen = new Set(rejSeenRaw || []);
+
+  const openOrbTickers = new Set(
+    (await Promise.all(tk.keys.map(k => env.TRADES.get(k.name, 'json'))))
+      .filter(t => t && !t.expired && t.strategy === ORB_V1.strategyId)
+      .map(t => t.ticker),
+  );
+
+  const market = wl.market || await orbMarketContext();
+  const rejects = [];
+  const created = [];
+
+  for (const cand of wl.candidates) {
+    const sym = cand.ticker;
+    if (openOrbTickers.has(sym)) continue;
+    if (fired.has(`${sym}:LONG`) && fired.has(`${sym}:SHORT`)) continue;
+
+    let series;
+    try {
+      series = orbIntradaySeries(await orbFetchJson(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=5m&range=1d&includePrePost=false`));
+    } catch { continue; }
+    if (!series || series.orh == null) continue;
+
+    if (!orCache[sym] && series.orComplete) {
+      orCache[sym] = { orh: series.orh, orl: series.orl, at: new Date().toISOString() };
+    }
+    const orh = orCache[sym]?.orh ?? series.orh;
+    const orl = orCache[sym]?.orl ?? series.orl;
+    const orRange = orh - orl;
+    const orRangePct = orl ? (orRange / orl) * 100 : null;
+    const estNormalOrPct = cand.atrPct != null ? cand.atrPct * 0.35 : null;
+    const orAbnormal = estNormalOrPct != null && orRangePct != null
+      && orRangePct > ORB_V1.abnormalOrAtrMult * estNormalOrPct;
+
+    const closed = series.candles.filter(k => k.endMin <= nowMin && k.startMin >= ORB_V1.signalStartMin);
+    if (!closed.length) continue;
+    const bk = closed[closed.length - 1];
+
+    const trailing = series.candles.filter(k => k.endMin <= bk.startMin).slice(-ORB_V1.comparableCandles);
+    const avgVol = trailing.length ? trailing.reduce((s, k) => s + k.v, 0) / trailing.length : null;
+    const rvol = avgVol ? bk.v / avgVol : null;
+
+    const vwapPast = series.candles.filter(k => k.ts < bk.ts).slice(-1 - ORB_V1.vwapSlopeLookback);
+    const vwapSlope = bk.vwap - (vwapPast.length ? vwapPast[0].vwap : bk.vwap);
+
+    const crange = bk.h - bk.l;
+    const candlePos = crange > 0 ? (bk.c - bk.l) / crange : null;
+
+    for (const dir of ['LONG', 'SHORT']) {
+      if (fired.has(`${sym}:${dir}`)) continue;
+      const isLong = dir === 'LONG';
+      if (isLong ? !(bk.c > orh) : !(bk.c < orl)) continue;   // no breakout this candle
+
+      const checks = {
+        vwap_side:        isLong ? bk.c > bk.vwap : bk.c < bk.vwap,
+        vwap_slope:       isLong ? vwapSlope > 0 : vwapSlope < 0,
+        breakout_rvol:    rvol != null && rvol >= ORB_V1.breakoutVolMult,
+        candle_position:  candlePos != null && (isLong ? candlePos >= ORB_V1.candlePosLong : candlePos <= ORB_V1.candlePosShort),
+        signal_window:    bk.startMin >= ORB_V1.signalStartMin && bk.startMin <= ORB_V1.signalEndMin,
+        opening_range_ok: !orAbnormal,
+      };
+      const entry = bk.c;
+      const stop = isLong ? orh : orl;                        // structural stop = ORH / ORL (V1 spec)
+      const riskPerShare = Math.abs(entry - stop);
+      const riskPct = entry ? (riskPerShare / entry) * 100 : null;
+      const nearZeroRisk = !(riskPct != null && riskPct >= ORB_V1.minRiskPctOfEntry * 100);
+      const failed = Object.entries(checks).filter(([, ok]) => !ok).map(([k]) => k);
+      if (nearZeroRisk) failed.push('near_zero_risk');
+
+      if (failed.length) {
+        const seenKey = `${sym}:${dir}:${bk.startMin}:${failed.join('+')}`;
+        if (!rejSeen.has(seenKey)) {
+          rejSeen.add(seenKey);
+          rejects.push({
+            ts: new Date().toISOString(), ticker: sym, direction: dir,
+            breakout_candle_et: `${orbHhmm(bk.startMin)} ET`,
+            orh: +orh.toFixed(2), orl: +orl.toFixed(2), close: +bk.c.toFixed(2),
+            vwap: +bk.vwap.toFixed(2), vwap_slope: +vwapSlope.toFixed(4),
+            rvol: rvol != null ? +rvol.toFixed(2) : null,
+            candle_position: candlePos != null ? +candlePos.toFixed(2) : null,
+            or_range_pct: orRangePct != null ? +orRangePct.toFixed(2) : null,
+            risk_pct: riskPct != null ? +riskPct.toFixed(3) : null,
+            passed: Object.entries(checks).filter(([, ok]) => ok).map(([k]) => k),
+            failed, result: 'NO_TRADE',
+          });
+        }
+        continue;
+      }
+
+      const optType = isLong ? 'C' : 'P';
+      let pick;
+      try { pick = await orbPickSwingContract(sym, optType); } catch { pick = null; }
+      if (!pick || pick.price == null) {
+        const seenKey = `${sym}:${dir}:nocontract`;
+        if (!rejSeen.has(seenKey)) {
+          rejSeen.add(seenKey);
+          rejects.push({ ts: new Date().toISOString(), ticker: sym, direction: dir, failed: ['no_tradeable_contract'], result: 'NO_TRADE' });
+        }
+        continue;
+      }
+
+      const nowIso = new Date().toISOString();
+      const id = `${sym}_${nowIso.replace(/[-:T.Z]/g, '').slice(0, 14)}`;
+      const meta = {
+        strategy_id:        ORB_V1.strategyId,
+        ticker:             sym,
+        orb_direction:      dir,
+        signal_ts:          nowIso,
+        breakout_candle_et: `${orbHhmm(bk.startMin)} ET`,
+        underlying_entry:   +entry.toFixed(2),
+        stop_structural:    +stop.toFixed(2),
+        risk_per_share:     +riskPerShare.toFixed(3),
+        risk_pct:           riskPct != null ? +riskPct.toFixed(3) : null,
+        orh:                +orh.toFixed(2),
+        orl:                +orl.toFixed(2),
+        or_range:           +orRange.toFixed(3),
+        or_range_pct:       orRangePct != null ? +orRangePct.toFixed(2) : null,
+        vwap:               +bk.vwap.toFixed(3),
+        vwap_slope:         +vwapSlope.toFixed(4),
+        breakout_rvol:      rvol != null ? +rvol.toFixed(2) : null,
+        breakout_candle:    { o: +bk.o.toFixed(2), h: +bk.h.toFixed(2), l: +bk.l.toFixed(2), c: +bk.c.toFixed(2), v: bk.v },
+        candle_position:    candlePos != null ? +candlePos.toFixed(3) : null,
+        premarket:          { gap_pct: cand.gapPct, pm_volume: cand.pmVolume, pm_vol_vs_adv_pct: cand.pmVolVsAdvPct },
+        daily:              { atr: cand.atr, atr_pct: cand.atrPct, ret_20d_pct: cand.ret20dPct, dist_20d_high_pct: cand.dist20dHigh, dist_20d_low_pct: cand.dist20dLow, avg_dollar_vol: cand.avgDollarVol },
+        market:             { spy_day_pct: market.spyDayPct, qqq_day_pct: market.qqqDayPct, vix: market.vix },
+        screening_reasons:  cand.reasons,
+        contract:           { type: optType, strike: pick.strike, expiry: pick.expiry, delta: pick.delta, dte: pick.dte, entry_price: pick.price },
+        params_version:     'V1',
+      };
+      const notes = `ORB ${dir} · ${orbHhmm(bk.startMin)} ET close $${entry.toFixed(2)} `
+        + `${isLong ? '>' : '<'} OR${isLong ? 'H' : 'L'} $${(isLong ? orh : orl).toFixed(2)} · `
+        + `VWAP $${bk.vwap.toFixed(2)} ${isLong ? 'rising' : 'falling'} · RVOL ${rvol.toFixed(2)}× · pos ${candlePos.toFixed(2)} · `
+        + `stop $${stop.toFixed(2)} R $${riskPerShare.toFixed(2)} (${riskPct.toFixed(2)}%) · `
+        + `gap ${cand.gapPct ?? '—'}% · SPY ${market.spyDayPct ?? '—'}% QQQ ${market.qqqDayPct ?? '—'}% · `
+        + `${cand.reasons.join(', ')} · swing ${optType} $${pick.strike} exp ${pick.expiry} ~${pick.dte}d ~${(pick.delta ?? 0).toFixed(2)}Δ`;
+
+      const trade = {
+        id, ticker: sym, strike: pick.strike, expiry: pick.expiry, direction: optType,
+        strategy: ORB_V1.strategyId, notes,
+        entry_time: nowIso,
+        entry_price: +entry.toFixed(2), price_captured: true,
+        current_price: null, current_pct: null,
+        max_high: null, max_high_time: null, max_low: null, max_low_time: null,
+        strike_reached: false, strike_reached_time: null,
+        last_updated: null, expired: false,
+        entry_contract: pick.price, contract_captured: pick.price != null,
+        current_contract: null, contract_pct: null,
+        contract_max_high: null, contract_max_high_time: null,
+        contract_max_low: null, contract_max_low_time: null,
+        auto_created: true, orb_direction: dir, meta,
+      };
+      await env.TRADES.put(`trades:${id}`, JSON.stringify(trade));
+      fired.add(`${sym}:${dir}`);
+      openOrbTickers.add(sym);
+      created.push({ id, ticker: sym, direction: dir, contract: `${optType} ${pick.strike} ${pick.expiry}`, entry, stop, riskPct: riskPct != null ? +riskPct.toFixed(2) : null });
+    }
+  }
+
+  await Promise.all([
+    env.TRADES.put(orKey, JSON.stringify(orCache), { expirationTtl: 60 * 60 * 48 }),
+    env.TRADES.put(firedKey, JSON.stringify([...fired]), { expirationTtl: 60 * 60 * 48 }),
+    env.TRADES.put(rejSeenKey, JSON.stringify([...rejSeen].slice(-500)), { expirationTtl: 60 * 60 * 48 }),
+    env.TRADES.put('orb:last_monitor', JSON.stringify({ date: et.dateStr, at: new Date().toISOString(), created: created.length, rejects: rejects.length })),
+  ]);
+  if (rejects.length) {
+    const prev = (await env.TRADES.get(`orb:rejects:${et.dateStr}`, 'json')) || [];
+    await env.TRADES.put(`orb:rejects:${et.dateStr}`, JSON.stringify([...prev, ...rejects].slice(-300)), { expirationTtl: 60 * 60 * 72 });
+  }
+  return { ran: true, created, rejects: rejects.length };
+}
+
+// Cron entry point — one function, time-of-day routes it (see the */5 12-16 cron).
+async function runOrbStrategy(env) {
+  const et = orbNowET();
+  if (et.isWeekend) return { skipped: 'weekend' };
+  const m = et.minutes;
+  if (m >= 480 && m < 570) return { stage: 'screen', ...(await runOrbScreen(env)) };
+  if (m >= ORB_V1.signalStartMin && m <= ORB_V1.signalEndMin) return { stage: 'monitor', ...(await runOrbMonitor(env)) };
+  if (m >= 570 && m < ORB_V1.signalStartMin) {
+    if (!(await env.TRADES.get(`orb:watchlist:${et.dateStr}`, 'json'))) {
+      return { stage: 'screen-catchup', ...(await runOrbScreen(env, { force: true })) };
+    }
+  }
+  return { skipped: `nothing to do at ${orbHhmm(m)} ET` };
+}
+
 // ── SAVED POSTS PIPELINE (Notion "Saved Posts (Swipe File)" → Apify scrape → ─
 // transcribe if video → Claude summary). Content TYPE (text vs video/speech)
 // is detected from what the scraper actually returns for that URL, not
@@ -22252,7 +22777,11 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
                   "Contract Max High Time": rt(updated.contract_max_high_time || ""),
                   "Contract Max Low":       { number: updated.contract_max_low ?? null },
                   "Contract Max Low Time":  rt(updated.contract_max_low_time || ""),
-                }
+                },
+                ...(updated.meta ? { children: [
+                  { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: `${updated.strategy || "Strategy"} signal metadata` } }] } },
+                  { object: "block", type: "code", code: { language: "json", rich_text: [{ type: "text", text: { content: JSON.stringify(updated.meta, null, 2).slice(0, 1900) } }] } },
+                ] } : {}),
               }),
             });
             if (notionResp.ok) {
@@ -22323,7 +22852,11 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
               "Contract Max High Time": rt(trade.contract_max_high_time || ""),
               "Contract Max Low":       { number: trade.contract_max_low ?? null },
               "Contract Max Low Time":  rt(trade.contract_max_low_time || ""),
-            }
+            },
+            ...(trade.meta ? { children: [
+              { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: `${trade.strategy || "Strategy"} signal metadata` } }] } },
+              { object: "block", type: "code", code: { language: "json", rich_text: [{ type: "text", text: { content: JSON.stringify(trade.meta, null, 2).slice(0, 1900) } }] } },
+            ] } : {}),
           }),
         });
         if (!notionResp.ok) {
@@ -22357,6 +22890,30 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         const active = all.filter(t => t && !t.expired);
         return json({ trades: active });
       }
+
+      // ── ORB_MOMENTUM_001 ──────────────────────────────────────────────────
+      if (body.action === 'getOrbStatus') {
+        const et = orbNowET();
+        const date = body.date || et.dateStr;
+        const [screen, or_, fired, rejects, lastScreen, lastMon] = await Promise.all([
+          env.TRADES.get(`orb:watchlist:${date}`, 'json'),
+          env.TRADES.get(`orb:or:${date}`, 'json'),
+          env.TRADES.get(`orb:fired:${date}`, 'json'),
+          env.TRADES.get(`orb:rejects:${date}`, 'json'),
+          env.TRADES.get('orb:last_screen', 'json'),
+          env.TRADES.get('orb:last_monitor', 'json'),
+        ]);
+        return json({
+          date, nowEtMinutes: et.minutes, params: ORB_V1,
+          screen: screen || null, openingRange: or_ || null,
+          fired: fired || [], rejects: rejects || [],
+          lastScreen: lastScreen || null, lastMonitor: lastMon || null,
+        });
+      }
+
+      // Manual triggers — bypass the market-hours gate for testing / catch-up.
+      if (body.action === 'runOrbScreenNow')  return json(await runOrbScreen(env, { force: true }));
+      if (body.action === 'runOrbMonitorNow') return json(await runOrbMonitor(env, { force: true }));
 
       if (body.action === "duplicateAsset") {
         const { sourceAssetId, title, status, type, platformName, loginId } = body;
@@ -31407,6 +31964,13 @@ Produce all of this by calling the submit_listing tool — do not include any of
   },
 
   async scheduled(event, env, ctx) {
+    if (event.cron === "*/5 12-16 * * 1-5") {
+      // ORB_MOMENTUM_001 — morning screen (08:00-09:30 ET) + opening-range
+      // breakout monitor (10:00-11:30 ET). runOrbStrategy no-ops outside those
+      // windows, so the 5-min cadence is cheap the rest of the time.
+      ctx.waitUntil(runOrbStrategy(env).catch(e => console.error('runOrbStrategy failed:', e.message)));
+      return;
+    }
     if (event.cron === "*/30 * * * *") {
       ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       return;
