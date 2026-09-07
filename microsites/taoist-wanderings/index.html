@@ -10456,13 +10456,44 @@ function gaBatchFillMethods() {
     _gabatchMethodsFilled = true;
   });
 }
+function gaBatchFillProducts() {
+  const sel = document.getElementById('gabatchProduct'); if (!sel) return;
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">— pick a product —</option>'
+    + (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')
+    + '<option value="__clear__">— clear product —</option>';
+  if (keep) sel.value = keep;
+}
 function gaBatchSync() {
   const bar = document.getElementById('gabatchBar'); if (!bar) return;
   const n = gaBatchSelected().length;
   const cnt = document.getElementById('gabatchCount'); if (cnt) cnt.textContent = n;
   const show = (n > 0 || GABATCH_RUNNING);
   bar.style.display = show ? 'flex' : 'none';
-  if (show) gaBatchFillMethods();
+  if (show) { gaBatchFillMethods(); gaBatchFillProducts(); }
+}
+// Bulk-edit: set (or clear) the Product on every checked title. Same
+// updateTitleStrategy write the per-title 🔗 modal uses, one call each.
+async function gaBatchSetProduct() {
+  const sel = document.getElementById('gabatchProduct');
+  const btn = document.getElementById('gabatchProductBtn');
+  const items = gaBatchSelected();
+  if (!items.length) return;
+  const val = sel.value;
+  if (!val) { alert('Pick a product first (or "— clear product —").'); return; }
+  const productId = val === '__clear__' ? '__none__' : val;
+  if (!confirm(`Set product on ${items.length} selected title${items.length === 1 ? '' : 's'}?`)) return;
+  const orig = btn.textContent;
+  btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (const it of items) {
+    try { const r = await w('updateTitleStrategy', { titleId: it.id, productId }); if (r && r.error) throw new Error(r.error); ok++; }
+    catch(e) { fail++; }
+    btn.textContent = `${ok + fail}/${items.length}…`;
+  }
+  btn.textContent = fail ? `✓ ${ok} · ${fail} failed` : `✓ ${ok} updated`;
+  if (typeof loadTitles === 'function') await loadTitles();
+  setTimeout(() => { btn.disabled = false; btn.textContent = orig; }, 1800);
 }
 function gaBatchSelectAll() { document.querySelectorAll('#devTitles .gabatch-cb').forEach(c => c.checked = true); gaBatchSync(); }
 function gaBatchClear() { document.querySelectorAll('.gabatch-cb').forEach(c => c.checked = false); gaBatchSync(); }
@@ -10567,6 +10598,9 @@ window.addEventListener('beforeunload', e => { if (GABATCH_RUNNING) { e.preventD
   <strong style="font-size:12px;color:#e2e8f0;"><span id="gabatchCount">0</span> selected</strong>
   <button onclick="gaBatchSelectAll()" style="font-size:11px;padding:4px 9px;border:1px solid #3a4557;border-radius:5px;background:#232a38;color:#cbd5e0;cursor:pointer;">select all Dev</button>
   <button onclick="gaBatchClear()" style="font-size:11px;padding:4px 9px;border:1px solid #3a4557;border-radius:5px;background:#232a38;color:#cbd5e0;cursor:pointer;">clear</button>
+  <label style="font-size:11px;color:#8a97a8;">product <select id="gabatchProduct" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;max-width:200px;"><option value="">— pick a product —</option></select></label>
+  <button id="gabatchProductBtn" onclick="gaBatchSetProduct()" style="font-size:11px;padding:5px 11px;border:1px solid #63b3ed;border-radius:5px;background:transparent;color:#63b3ed;font-weight:600;cursor:pointer;">set product on selected</button>
+  <span style="flex-basis:100%;height:0;"></span>
   <label style="font-size:11px;color:#8a97a8;">method <select id="gabatchMethod" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;max-width:200px;"><option value="">— each title's own —</option></select></label>
   <label style="font-size:11px;color:#8a97a8;">run <select id="gabatchConc" style="font-size:11px;padding:2px 4px;background:#232a38;color:#cbd5e0;border:1px solid #3a4557;border-radius:4px;"><option>1</option><option>2</option><option selected>3</option><option>4</option><option>5</option></select> at once</label>
   <button id="gabatchBtn" onclick="gaBatchRun()" style="font-size:12px;padding:6px 14px;border:0;border-radius:6px;background:#68d391;color:#0b1220;font-weight:700;cursor:pointer;">⚡ Generate selected</button>
