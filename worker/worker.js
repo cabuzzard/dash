@@ -9762,7 +9762,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Strategy Name": { title: [{ text: { content: gName } }] },
             "Status": { select: { name: "Draft" } },
             "Summary": { rich_text: rtBlock4(g.rationale || '') },
-            "Recommended Platforms": { multi_select: g.recommendedPlatform ? [{ name: String(g.recommendedPlatform).slice(0, 100) }] : [] },
+            "Recommended Platforms": { multi_select: String(g.recommendedPlatform || '').split(',').map(p => ({ name: p.replace(/,/g, ' ').trim().slice(0, 90) })).filter(o => o.name) },
             "Grouping Count": { number: 1 },
             "Parent Strategy": { relation: [{ id: dash(strategyId) }] },
           };
@@ -14229,7 +14229,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Product": { relation: [{ id: dash(productId) }] },
             "Campaign": { relation: [{ id: dash(campaignId) }] },
             "Platform Override": { rich_text: rtBlock(platformOverrideVal || '') },
-            "Recommended Platforms": { multi_select: recPlatforms.map(p => ({ name: p })) },
+            // Notion multi_select options can't contain commas — the model
+            // sometimes returns a comma-joined phrase for one entry; split it,
+            // strip stray commas, cap length, drop blanks.
+            "Recommended Platforms": { multi_select: (Array.isArray(recPlatforms) ? recPlatforms : [])
+              .flatMap(p => String(p == null ? '' : p).split(','))
+              .map(p => ({ name: p.replace(/,/g, ' ').trim().slice(0, 90) }))
+              .filter(o => o.name).slice(0, 10) },
             "Status": { select: { name: "Draft" } },
             "Summary": { rich_text: rtBlock(summary || '') },
             "Grouping Count": { number: groupingCount },
