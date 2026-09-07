@@ -1421,6 +1421,29 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
 }
 
 
+// Product lifecycle Status (Products DB select, shown as the color-coded
+// badge on the microsite product rows): Idea → Planning → Active. This only
+// ever promotes FORWARD — an operator generating research on an already-Active
+// product must not knock it back to Planning. Legacy/blank status counts as
+// below "Idea" so it always gets promoted. Best-effort: never throws.
+const PRODUCT_STATUS_RANK = { "Idea": 0, "Planning": 1, "Active": 2 };
+async function promoteProductStatus(hdr, productId, target) {
+  try {
+    const tRank = PRODUCT_STATUS_RANK[target];
+    if (tRank == null || !productId) return;
+    const dash = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+    const page = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+    const cur = page?.properties?.Status?.select?.name || "";
+    const cRank = cur in PRODUCT_STATUS_RANK ? PRODUCT_STATUS_RANK[cur] : -1;
+    if (cRank >= tRank) return;
+    await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
+      method: "PATCH",
+      headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { Status: { select: { name: target } } } }),
+    });
+  } catch (e) { /* status promotion is best-effort */ }
+}
+
 // Auto-generates a product's Strategy record (all STRATEGY_FIELDS in one
 // Claude call) the first time a title needs one and none exists yet — per
 // operator instruction, clear customer psychology/pain points/objections
@@ -12181,6 +12204,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         await ensureProductStrategy(hdr, env, productId, campaignId || undefined);
+        await promoteProductStatus(hdr, productId, "Planning");   // research generated ⇒ at least Planning
         return json({ success: true });
       }
 
@@ -12354,6 +12378,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
           strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
         }
 
+        await promoteProductStatus(hdr, productId, "Planning");   // research generated ⇒ at least Planning
         return json({ success: true, strategyId, url: strategyUrl, text });
       }
 
@@ -12451,6 +12476,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           strategyId = created.id.replace(/-/g,""); strategyUrl = created.url;
         }
 
+        await promoteProductStatus(hdr, productId, "Planning");   // research generated ⇒ at least Planning
         return json({ success: true, strategyId, url: strategyUrl, fields });
       }
 
@@ -14125,6 +14151,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
         const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
         const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
+
+        // A Growth Strategy was successfully generated for this product ⇒ it's
+        // Active (promotes forward only — see promoteProductStatus).
+        await promoteProductStatus(hdr, productId, "Active");
 
         // Per operator direction: Method is chosen (existing or new) at
         // title-creation time, never here — a strategy/slot only carries a

@@ -4123,6 +4123,18 @@ function toggleStackGroup(stack) {
   renderProducts();
 }
 
+// Optimistic local mirror of the worker's promoteProductStatus (forward-only:
+// Idea → Planning → Active) so the status badge updates the moment the action
+// that triggered the promotion finishes, without a reload.
+const PRODUCT_STATUS_RANK = { 'Idea': 0, 'Planning': 1, 'Active': 2 };
+function bumpLocalProductStatus(productId, target) {
+  const idx = PRODUCT_ITEMS.findIndex(p => p.id === productId);
+  if (idx === -1 || PRODUCT_STATUS_RANK[target] == null) return;
+  const cur = PRODUCT_ITEMS[idx].status;
+  const cRank = cur in PRODUCT_STATUS_RANK ? PRODUCT_STATUS_RANK[cur] : -1;
+  if (cRank < PRODUCT_STATUS_RANK[target]) { PRODUCT_ITEMS[idx].status = target; renderProducts(); }
+}
+
 function renderProducts() {
   const el = document.getElementById('product-list');
   el.innerHTML = '';
@@ -4666,6 +4678,7 @@ async function addProductFromModal() {
     try {
       await w('researchProductStrategy', { productId, campaignId: CAMPAIGN_ID });
       status.textContent = 'Added ✓ — product strategy researched';
+      bumpLocalProductStatus(productId, 'Planning');
     } catch(e) {
       status.textContent = 'Added ✓ — strategy research failed: ' + e.message;
     }
@@ -5691,6 +5704,7 @@ async function saveSmKeywords() {
     if (status) { status.textContent = '✓ Keywords saved and research re-run.'; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
     if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    bumpLocalProductStatus(SM_PRODUCT_ID, 'Planning');   // worker promotes the product on research generation
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
   }
@@ -5805,6 +5819,7 @@ async function genSmField(field) {
     if (status) { status.textContent = `✓ "${field}" generated.`; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
     if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    bumpLocalProductStatus(SM_PRODUCT_ID, 'Planning');   // worker promotes the product on research generation
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
     if (btn) { btn.disabled = false; btn.textContent = '↻'; }
@@ -5825,6 +5840,7 @@ async function regenerateAllSmFields() {
     if (status) { status.textContent = '✓ All fields regenerated.'; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
     if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    bumpLocalProductStatus(SM_PRODUCT_ID, 'Planning');   // worker promotes the product on research generation
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
   } finally {
@@ -8068,6 +8084,7 @@ async function submitGrowthStrategy() {
       ? ` — ${am.length} method${am.length === 1 ? '' : 's'} attached${newCount ? ` (${newCount} newly created)` : ''}`
       : '';
     statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'}${methodsNote} ✓`;
+    bumpLocalProductStatus(productId, 'Active');   // worker promotes the product to Active on strategy generation
     delete GS_STRATEGY_CACHE[productId]; // force the dropdown to refetch next open
     loadCampaignStrategies();
     setTimeout(closeGrowthStrategyModal, 1000);
