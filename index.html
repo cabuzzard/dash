@@ -1805,6 +1805,20 @@
   </div>
 </div>
 
+<!-- Weekly Planner item — notes (links + steps), editable over any TD card -->
+<div class="modal-bg" id="wpNotesModal" onclick="if(event.target===this)wpCloseNotes()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title" style="display:flex;align-items:center;gap:8px;">📝 Notes <span id="wpNotesItemName" style="font-size:12px;font-weight:400;color:var(--text3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span></div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:6px;">Links, checklist, context for this item — carries on every week it recurs.</div>
+    <textarea id="wpNotesText" class="modal-input" style="min-height:200px;resize:vertical;font-family:inherit;line-height:1.5;" placeholder="- step one&#10;- step two&#10;https://link-to-reference"></textarea>
+    <div style="display:flex;gap:8px;margin-top:12px;align-items:center;">
+      <button class="modal-btn" id="wpNotesSaveBtn" onclick="wpSaveNotes()">Save</button>
+      <span id="wpNotesMsg" style="font-size:12px;color:var(--text3);"></span>
+      <button class="modal-btn" onclick="wpCloseNotes()" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Google Account / Channel Modal -->
 <div class="modal-bg" id="gaccModal" onclick="if(event.target===this)closeGaccModal()">
   <div class="modal" style="max-width:420px;">
@@ -14033,15 +14047,21 @@ function renderWpBoard(monday, items) {
   const todayIso = wpIso(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
 
   const NO_CAMP = '—';
-  const itemCard = it => `
+  const itemCard = it => {
+    const hasNotes = !!(it.notes && it.notes.trim());
+    const notePreview = hasNotes ? esc(it.notes.trim().split('\n').filter(Boolean).slice(0, 3).join(' · ')).slice(0, 160) : '';
+    return `
       <div draggable="true" ondragstart="wpDragStart(event,'${it.id}')" style="background:${it.status==='Done'?'rgba(0,200,100,.08)':'var(--surface)'};border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
           <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--text3)':'var(--text)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
+          <button onclick="wpOpenNotes('${it.id}')" title="${hasNotes ? 'Edit notes' : 'Add notes'}" style="background:none;border:none;color:${hasNotes ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">📝</button>
           <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
         </div>
         ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
+        ${hasNotes ? `<div onclick="wpOpenNotes('${it.id}')" title="Edit notes" style="font-size:9px;color:var(--text3);margin-top:3px;margin-left:20px;line-height:1.4;cursor:pointer;border-left:2px solid var(--border2);padding-left:5px;">${notePreview}</div>` : ''}
       </div>`;
+  };
 
   board.innerHTML = Object.entries(byDay).map(([dateIso, dayItems], i) => {
     const d = new Date(dateIso + 'T00:00:00Z');
@@ -14112,6 +14132,37 @@ async function wpToggleDone(itemId, checked) {
 async function wpDeleteItem(itemId) {
   try { const r = await call('deleteWeeklyPlannerItem', { itemId }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
   catch(e) { alert('Error: ' + e.message); }
+}
+
+// ── Weekly Planner item notes (links + steps) ──
+let wpNotesId = null;
+function wpFindItem(id) { return (wpLastRender && wpLastRender.items || []).find(x => x.id === id) || null; }
+function wpOpenNotes(itemId) {
+  const it = wpFindItem(itemId);
+  wpNotesId = itemId;
+  document.getElementById('wpNotesItemName').textContent = it ? it.name : '';
+  document.getElementById('wpNotesText').value = (it && it.notes) || '';
+  document.getElementById('wpNotesMsg').textContent = '';
+  const btn = document.getElementById('wpNotesSaveBtn'); btn.disabled = false; btn.textContent = 'Save';
+  document.getElementById('wpNotesModal').classList.add('open');
+  setTimeout(() => document.getElementById('wpNotesText').focus(), 30);
+}
+function wpCloseNotes() { document.getElementById('wpNotesModal').classList.remove('open'); wpNotesId = null; }
+async function wpSaveNotes() {
+  if (!wpNotesId) return;
+  const btn = document.getElementById('wpNotesSaveBtn');
+  const msg = document.getElementById('wpNotesMsg');
+  const notes = document.getElementById('wpNotesText').value;
+  btn.disabled = true; btn.textContent = 'Saving…'; msg.textContent = '';
+  try {
+    const r = await call('setWeeklyPlannerItemNotes', { itemId: wpNotesId, notes });
+    if (r.error) throw new Error(r.error);
+    const it = wpFindItem(wpNotesId); if (it) it.notes = r.notes != null ? r.notes : notes;
+    if (wpLastRender) renderWpBoard(wpLastRender.monday, wpLastRender.items);
+    wpCloseNotes();
+  } catch (e) {
+    msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 function wpDragStart(e, itemId) { wpDragId = itemId; e.dataTransfer.effectAllowed = 'move'; }
 async function wpDrop(e, dateIso) {

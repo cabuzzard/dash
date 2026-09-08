@@ -812,6 +812,7 @@ async function wpFetchProjectedItems(campaignId, weekStart, hdr) {
     order: r.properties?.Order?.number ?? 0,
     status: r.properties?.Status?.select?.name || "Open",
     source: r.properties?.Source?.select?.name || "Manual",
+    notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
     sourceTitleId: (r.properties?.["Source Title"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
     campaignId: (r.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null,
   });
@@ -9193,6 +9194,23 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         });
         if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Delete failed" }, resp.status); }
         return json({ success: true });
+      }
+
+      // Free-text notes on one Weekly Planner row (links + steps for that TD
+      // item). Persists on the real row, so a recurring/projected item carries
+      // the same notes on every week it appears.
+      if (body.action === "setWeeklyPlannerItemNotes") {
+        const { itemId, notes } = body;
+        if (!itemId) return json({ error: "itemId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const txt = String(notes ?? "").slice(0, 1990);
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Notes: { rich_text: txt ? [{ type: "text", text: { content: txt } }] : [] } } }),
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok) return json({ error: result.message || "Notes update failed" }, resp.status);
+        return json({ success: true, notes: txt });
       }
 
       if (body.action === "createPlatform") {
