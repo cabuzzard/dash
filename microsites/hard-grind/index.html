@@ -2929,6 +2929,25 @@ async function loadTitles() {
         const pLabel = document.createElement('span'); pLabel.style.cssText = 'flex:1;font-size:12px;color:#c4b5fd;font-weight:600;'; pLabel.textContent = prodName;
         const pCount = document.createElement('span'); pCount.style.cssText = 'font-size:10px;color:#fff;'; pCount.textContent = pTitles.length;
         pHdr.appendChild(pArrow); pHdr.appendChild(pLabel); pHdr.appendChild(pCount);
+        // 🚀 Generate a fresh Growth Strategy for this product right here —
+        // same flow as the Products-list 🚀 button; the new run shows up in
+        // the Strategies column to the left.
+        if (!pk.startsWith('__none__')) {
+          const _pid = pk.split('||')[0];
+          const mkBtn = (txt, color, tip, fn) => {
+            const b = document.createElement('button');
+            b.textContent = txt; b.title = tip;
+            b.style.cssText = `font-size:9px;padding:1px 6px;border:1px solid ${color};border-radius:8px;background:transparent;color:${color};cursor:pointer;flex-shrink:0;line-height:1.6;margin-left:4px;`;
+            b.onclick = (e) => { e.stopPropagation(); fn(); };
+            return b;
+          };
+          pHdr.appendChild(mkBtn('🔬 research', '#9f7aea',
+            'Open Product Research for this product (same modal as the Products-list 🔬 research).',
+            () => openStrategyModal(_pid, prodName)));
+          pHdr.appendChild(mkBtn('🚀 strategy', '#f6ad55',
+            'Generate a whole new Growth Strategy for this product (same modal as the Products-list 🚀). It appears in the Strategies column on the left.',
+            () => openGrowthStrategyModal(_pid, prodName)));
+        }
         const pBody = document.createElement('div'); pBody.style.display = isOpen ? 'block' : 'none';
         renderParentStrategyLevel(pTitles, pBody, section);
         pHdr.onclick = () => { const o = pBody.style.display !== 'none'; pBody.style.display = o ? 'none' : 'block'; pArrow.textContent = o ? '▶' : '▾'; titleGroupsOpen[stateKey] = !o; saveTitleGroupsOpen(); };
