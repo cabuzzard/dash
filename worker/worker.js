@@ -5598,6 +5598,14 @@ async function runBulkHubStrategy(env, opts = {}) {
   const pending = state.targets.filter(t => !doneSet.has(t.productId));
   if (!pending.length) return { complete: true, total: state.targets.length, done: state.done.length, remaining: 0, errors: state.errors };
 
+  // Cheap lock so two overlapping cron ticks don't process the same product
+  // (which is how duplicate strategies got created). Stale after 8 min.
+  if (!opts.force && state.lock && Date.now() - state.lock < 8 * 60 * 1000) {
+    return { locked: true, total: state.targets.length, done: state.done.length, remaining: pending.length };
+  }
+  state.lock = Date.now();
+  await env.TRADES.put(BULK_HUB_KV, JSON.stringify(state));
+
   const token = await signToken((env.HMAC_SECRET || "").trim());
   const call = (action, extra) => (env.SELF || { fetch }).fetch(BULK_HUB_SELF, {
     method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
@@ -5625,6 +5633,8 @@ async function runBulkHubStrategy(env, opts = {}) {
     }
     await env.TRADES.put(BULK_HUB_KV, JSON.stringify(state));
   }
+  state.lock = 0;
+  await env.TRADES.put(BULK_HUB_KV, JSON.stringify(state));
   const remaining = state.targets.filter(t => !state.done.includes(t.productId)).length;
   return { processed, total: state.targets.length, done: state.done.length, remaining, errors: state.errors, complete: remaining === 0 };
 }
@@ -6454,22 +6464,6 @@ export default {
     }
 
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
-    // TEMP debug — read the bulk-hub queue state without auth (remove after).
-    if (body.action === "bulkHubStrategyDebug") {
-      const st = await env.TRADES.get(BULK_HUB_KV, "json").catch(() => null);
-      if (!st) return json({ seeded: false });
-      const done = st.done || [];
-      let selfTest = null;
-      try {
-        const tok = await signToken((env.HMAC_SECRET || "").trim());
-        const rr = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" }, body: JSON.stringify({ action: "getPostTypes", token: tok }) }).then(r => r.json());
-        selfTest = rr.error ? ("ERR: " + rr.error) : "ok";
-      } catch (e) { selfTest = "throw: " + e.message; }
-      return json({ seeded: true, started: st.started, total: (st.targets || []).length, done: done.length,
-        remaining: (st.targets || []).filter(t => !done.includes(t.productId)).length,
-        errors: st.errors || {}, selfTest });
-    }
-
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
     }
@@ -32343,14 +32337,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
       ctx.waitUntil((async () => {
         try {
           const st = await env.TRADES.get(BULK_HUB_KV, "json");
-          if (!st || !Array.isArray(st.targets)) {
-            const s = await runBulkHubStrategy(env, { seed: true });
-            console.log(`bulkHubStrategy auto-seeded: ${s.total} products`);
-            return;
-          }
+          if (!st || !Array.isArray(st.targets)) return; // no queue → nothing to do (seed via bulkHubStrategyStart)
           const pending = st.targets.filter(t => !(st.done || []).includes(t.productId));
           if (!pending.length) return;
-          const r = await runBulkHubStrategy(env, { limit: 2 });
+          const r = await runBulkHubStrategy(env, { limit: 1 });
           console.log(`bulkHubStrategy tick: ${r.done}/${r.total} done, ${r.remaining} left`);
         } catch (e) { console.error('bulkHubStrategy cron failed:', e.message); }
       })());

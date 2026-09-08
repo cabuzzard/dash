@@ -803,7 +803,7 @@
           <button onclick="bulkHubStratReset()" title="Clear the queue (stops the cron; done work is kept)" style="font-size:11px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">reset</button>
         </span>
       </div>
-      <div id="bulkHubStratBody" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">Auto-seeds on the next 4-minute cron tick, then processes ~2 hub-campaign products (research + strategy) per tick. ⟳ to check status.</div>
+      <div id="bulkHubStratBody" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">Click Start to research + strategize every hub-campaign product with titles (excludes Sm business software tools). The cron then does 1 product per 4-min tick.</div>
     </div>
 
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
@@ -13220,7 +13220,7 @@ function bulkHubStratRender(r) {
   if (!body) return;
   if (!r || !r.seeded) {
     if (sum) sum.textContent = '';
-    body.innerHTML = 'Auto-seeds on the next 4-minute cron tick, then processes ~2 hub-campaign products (research + strategy) per tick. ⟳ to check status.';
+    body.innerHTML = 'Click Start to research + strategize every hub-campaign product with titles (excludes Sm business software tools). The cron then does 1 product per 4-min tick.';
     if (startBtn) { startBtn.textContent = 'Start'; startBtn.disabled = false; }
     if (_bulkHubPoll) { clearInterval(_bulkHubPoll); _bulkHubPoll = null; }
     return;
