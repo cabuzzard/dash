@@ -32310,12 +32310,18 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "*/4 * * * *") {
-      // Drain the bulk hub research+strategy queue, but ONLY while one is
-      // seeded and has pending products — otherwise a cheap no-op (1 KV read).
+      // Bulk hub research+strategy: auto-seed the queue the first time (no KV
+      // state), then drain ~2 products/tick until done. Once complete the KV
+      // state persists with a full done-list, so this stays a cheap no-op
+      // (1 KV read) forever after — a `reset` deliberately re-seeds it.
       ctx.waitUntil((async () => {
         try {
           const st = await env.TRADES.get(BULK_HUB_KV, "json");
-          if (!st || !Array.isArray(st.targets)) return;
+          if (!st || !Array.isArray(st.targets)) {
+            const s = await runBulkHubStrategy(env, { seed: true });
+            console.log(`bulkHubStrategy auto-seeded: ${s.total} products`);
+            return;
+          }
           const pending = st.targets.filter(t => !(st.done || []).includes(t.productId));
           if (!pending.length) return;
           const r = await runBulkHubStrategy(env, { limit: 2 });
