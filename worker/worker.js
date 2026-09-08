@@ -14582,7 +14582,12 @@ Return ONLY this JSON object, no other text, no markdown fences:
           ? await Promise.all(productIds.map(id => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)))
           : [];
         const productNameById = {};
-        productPages.filter(Boolean).forEach(p => { productNameById[p.id.replace(/-/g,"")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product"; });
+        const productStackById = {};
+        productPages.filter(Boolean).forEach(p => {
+          const pid = p.id.replace(/-/g,"");
+          productNameById[pid] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
+          productStackById[pid] = (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("") || "";
+        });
 
         // A slot's Title relation can hold several titles now (one per
         // Method, via generateTitleFromSlot) — batch-resolve their names so
@@ -14735,6 +14740,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
             status: s.properties?.Status?.select?.name || "Draft",
             productId,
             productName: productId ? (productNameById[productId] || "Untitled Product") : null,
+            productStack: productId ? (productStackById[productId] || "") : "",
+            createdTime: s.created_time || "",
             groupings: groupingOrder.map(g => ({
               name: g,
               // First slot's value stands in for the whole grouping — every

@@ -1044,6 +1044,8 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <textarea class="modal-ta" id="vsSummaryInput" rows="3" style="resize:vertical;min-height:60px!important;margin-top:4px;line-height:1.5;"></textarea>
       <label class="lm-label" for="vsBodyInput" style="margin-top:10px;">Full Strategy <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(groupings, rationale, titles — rewrite freely, saved as plain paragraphs)</span></label>
       <textarea class="modal-ta" id="vsBodyInput" rows="16" style="resize:vertical;min-height:260px!important;margin-top:4px;line-height:1.5;"></textarea>
+      <label class="lm-label" style="margin-top:12px;">Strategy actions</label>
+      <div id="vsActions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;"></div>
       <div class="modal-status" id="vsStatus"></div>
     </div>
     <div class="modal-foot">
@@ -8136,6 +8138,14 @@ async function openViewStrategyModal(strategyId) {
     summaryEl.value = r.summary || '';
     bodyEl.value = r.body || '';
     document.getElementById('vsNotionLink').href = `https://www.notion.so/${strategyId}`;
+    const nm = (r.name || 'strategy').replace(/'/g, "\\'");
+    document.getElementById('vsActions').innerHTML =
+        `<button onclick="backfillStrategyPlatforms('${strategyId}', this)" title="Re-evaluate each slot's platform (the level the panel groups by)" style="font-size:10px;padding:2px 8px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;">🛰️ Re-check Platforms</button>`
+      + `<button onclick="backfillStrategyPostTypes('${strategyId}', this)" title="Assign a Post Type to any slot missing one" style="font-size:10px;padding:2px 8px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;">🏷️ Assign Types</button>`
+      + `<button onclick="openAddGroupingModal('${strategyId}','${nm}')" title="Add a new arc/grouping to this strategy" style="font-size:10px;padding:2px 8px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;">➕ Add Grouping</button>`
+      + `<button onclick="regenerateStrategySlots('${strategyId}','${nm}', this)" title="Regenerate this strategy's slots — kept: any with published content" style="font-size:10px;padding:2px 8px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;">♻️ Regenerate</button>`
+      + `<button onclick="openLaunchRunModal('${strategyId}','${nm}')" title="Reuse this strategy as a Guide against another product" style="font-size:10px;padding:2px 8px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;">🚀 Launch Run</button>`
+      + `<button onclick="deleteGrowthStrategy('${strategyId}','${nm}', this)" title="Delete this strategy + its slots (attached titles are kept)" style="font-size:10px;padding:2px 8px;border:1px solid #ff4444;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;">🗑️ Delete Strategy</button>`;
   } catch(e) {
     nameEl.value = '';
     status.textContent = 'Error loading: ' + e.message;
@@ -8428,216 +8438,114 @@ function renderStrategyTitleChip(t) {
     : '';
   return `<div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">${stageBadge}${pillarBtn}<a href="https://www.notion.so/${t.id}" target="_blank" title="${esc(t.name)}" style="font-size:9px;color:#68d391;text-decoration:none;">↗</a></div>`;
 }
-// A single strategy's groupings/slots/general-titles body — shared by a
-// flat (non-divergent) strategy and by each child of a divergent parent
-// (see generateGrowthStrategy's "Parent Strategy" split). indentPx nests a
-// child visually under its parent header.
-function renderStrategyBlock(s, indentPx) {
-  const stratBodyId = `strat-body-${s.id}`;
-  const groupingsHtml = s.groupings.map((g, gi) => {
-    const gBodyId = `${stratBodyId}-grp-${gi}`;
-    // "+ insert" hairline — sits above a slot (or, once, below the last
-    // one) so a new slot can land at ANY position in the sequence, not
-    // just appended. atSequence is that slot's own current Sequence
-    // number (or lastSeq+1 for the trailing one); insertStrategySlot
-    // shifts everything at/after it down before creating the new row.
-    const insertRow = (atSequence) => `<div style="padding:1px 0;">`
-      + `<button onclick="openInsertSlotModal('${s.id}','${esc(g.name).replace(/'/g,"\\'")}',${atSequence})" title="Insert a new slot here — renumbers everything after it" style="font-size:9px;padding:0;border:none;background:transparent;color:#4a5568;cursor:pointer;width:100%;text-align:left;">+ insert</button>`
-      + `</div>`;
-    // One slot row (the "+ insert" hairline above it, then the row). The
-    // trailing hairline is emitted once at the end of the whole grouping
-    // below — inserts key off the Sequence number, not the DOM position,
-    // so it still lands correctly regardless of how slots are bucketed.
-    const slotRowHtml = (slot) => {
-      const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
-      // A slot can be filled more than once — once per Method — so this
-      // shows every title made from it (each links out to its Notion
-      // page, plus a stage badge and a ✍️ Write Pillar action while it's
-      // still Planning), not just whether it's "done". "+ title" stays
-      // clickable regardless of fill state for exactly that reason.
-      const badge = titles.length
-        ? `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">${titles.map(renderStrategyTitleChip).join('')}</div>`
-        : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
-      const createBtn = `<button onclick="openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${s.id}'})" title="Create a title from this slot" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">+ title</button>`;
-      const viralBtn = `<button onclick="openViralGenModal({slotId:'${slot.id}'})" title="Viral Generator — build a short-form story-arc pillar (hook · obstacle · turn · payoff) from this slot" style="font-size:9px;padding:0 5px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">⚡</button>`;
-      const editBtn = `<button onclick="openEditSlotModal('${slot.id}')" title="Edit this slot's Proposed Title, Post Type, or Best Platform(s)" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#a0aec0;cursor:pointer;flex-shrink:0;line-height:1.6;">✏️</button>`;
-      const removeBtn = `<button onclick="removeStrategySlot('${slot.id}')" title="Remove this slot — renumbers everything after it down by one" style="font-size:9px;padding:0 5px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️</button>`;
-      // Post Type badge stays on every row even though slots are now also
-      // grouped by it — it's the at-a-glance "arc" marker, and it's still
-      // the only label shown when the Post Type sub-level is skipped (a
-      // grouping that's a pure 1-slot-per-type sequence). Falls back to
-      // "no type" when unset.
-      const postTypeLabel = slot.postType
-        ? `<span title="${esc(slot.postType.rationale || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border:1px solid #9f7aea;border-radius:8px;color:#9f7aea;flex-shrink:0;white-space:nowrap;">${esc(slot.postType.name)}</span>`
-        : `<span title="No Post Type set — click ✏️ to assign one" style="font-size:9px;padding:1px 6px;border:1px dashed #444;border-radius:8px;color:#666;flex-shrink:0;white-space:nowrap;">no type</span>`;
-      const platformsLabel = (slot.platforms && slot.platforms.length)
-        ? `<span style="font-size:9px;color:#68d391;flex-shrink:0;">${esc(slot.platforms.map(p => p.name).join(', '))}</span>`
-        : '';
-      const row = `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
-        + postTypeLabel
-        + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc((slot.angle || '').slice(0, 80)) || esc(slot.name)}</span>`
-        + platformsLabel
-        + badge
-        + editBtn
-        + removeBtn
-        + viralBtn
-        + createBtn
-        + `</div>`;
-      // Only offer "+ insert" where Sequence is actually meaningful — a
-      // slot with no Sequence (a plain Recurring/one-off row) isn't part
-      // of an ordered run to insert into.
-      const atSeq = Number.isFinite(slot.sequence) ? slot.sequence : null;
-      return (atSeq !== null ? insertRow(atSeq) : '') + row;
-    };
-
-    // ── The Grouping → Preferred Platform → Post Type → slot nesting. ──
-    // "Preferred platform" = the slot's first Best Platform(s) entry (set
-    // per-slot by the strategy-making script), falling back to the older
-    // free-text Platform field. A grouping with only one distinct platform
-    // skips the platform header; a platform bucket with ≤1 post type — or
-    // one that's a pure 1-slot-per-type sequence — skips the post-type
-    // headers (the per-row badge already shows that arc). "No platform" /
-    // "No type" buckets sort last.
-    const bucketBy = (slots, keyOf, noneLabel) => {
-      const out = [], idx = {};
-      slots.forEach(sl => {
-        const nm = keyOf(sl) || '';
-        const k = nm || 'none';
-        if (!(k in idx)) { idx[k] = out.length; out.push({ label: nm || noneLabel, slots: [] }); }
-        out[idx[k]].slots.push(sl);
-      });
-      out.sort((a, b) => (a.label === noneLabel ? 1 : 0) - (b.label === noneLabel ? 1 : 0));
-      return out;
-    };
-    const platOf = sl => (sl.platforms && sl.platforms[0] && sl.platforms[0].name) || sl.platform || '';
-    const ptOf = sl => (sl.postType && sl.postType.name) || '';
-
-    const renderPtLevel = (slots, keyPrefix) => {
-      const pts = bucketBy(slots, ptOf, 'No type');
-      const skip = pts.length <= 1 || pts.every(b => b.slots.length === 1);
-      if (skip) return slots.map(slotRowHtml).join('');
-      return pts.map((b, bi) => {
-        const bodyId = `${keyPrefix}-pt-${bi}`;
-        return `<div style="margin:3px 0 3px 10px;">`
-          + `<div style="font-size:9px;font-weight:600;color:#9f7aea;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${bodyId}', this.querySelector('.gs-arrow'))">`
-          + `<span class="gs-arrow" style="font-size:7px;">▾</span><span>${esc(b.label)}</span>`
-          + `<span style="color:#555;font-weight:400;">${b.slots.length}</span></div>`
-          + `<div id="${bodyId}" style="margin-top:2px;">${b.slots.map(slotRowHtml).join('')}</div>`
-          + `</div>`;
-      }).join('');
-    };
-
-    const plats = bucketBy(g.slots, platOf, 'No platform');
-    let slotsHtml;
-    if (plats.length <= 1) {
-      slotsHtml = renderPtLevel(g.slots, `${gBodyId}-p0`);
-    } else {
-      slotsHtml = plats.map((pb, pi) => {
-        const bodyId = `${gBodyId}-plat-${pi}`;
-        return `<div style="margin:5px 0;">`
-          + `<div style="font-size:10px;font-weight:700;color:#68d391;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${bodyId}', this.querySelector('.gs-arrow'))">`
-          + `<span class="gs-arrow" style="font-size:7px;">▾</span><span>${esc(pb.label)}</span>`
-          + `<span style="color:#555;font-weight:400;">${pb.slots.length} slot${pb.slots.length === 1 ? '' : 's'}</span></div>`
-          + `<div id="${bodyId}" style="margin-top:2px;">${renderPtLevel(pb.slots, bodyId)}</div>`
-          + `</div>`;
-      }).join('');
-    }
-    // One trailing "+ insert" for the whole grouping, after the last
-    // sequenced slot — keyed by max Sequence + 1.
-    const maxSeq = g.slots.reduce((m, sl) => Number.isFinite(sl.sequence) ? Math.max(m, sl.sequence) : m, -Infinity);
-    if (Number.isFinite(maxSeq)) slotsHtml += insertRow(maxSeq + 1);
-    return `<div style="margin:8px 0;">`
-      + `<div style="font-size:11px;font-weight:700;color:#fff;display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleStrategyCollapse('${gBodyId}', this.querySelector('.gs-arrow'))">`
-      + `<span style="display:flex;align-items:center;gap:6px;min-width:0;"><span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;">▶</span><span title="${esc(g.rationale || '')}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span></span>`
-      + `<span style="color:#fff;flex-shrink:0;">${g.filledCount}/${g.totalCount} filled</span>`
-      + `</div>`
-      + `<div id="${gBodyId}" style="display:none;margin-top:4px;">${slotsHtml}</div>`
-      + `</div>`;
-  }).join('');
-  // General (no slot) — titles attributed straight to this Strategy
-  // (generateTitleFromSlot's slot-less branch, or a manual 🔗 attach) with
-  // no specific planned angle to sit under.
-  const generalHtml = (s.generalTitles && s.generalTitles.length)
-    ? `<div style="margin:8px 0;">`
-      + `<div style="font-size:11px;font-weight:700;color:#fff;">General (no slot)</div>`
-      + s.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
-        + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.productName ? ` — ${esc(t.productName)}` : ''}</span>`
-        + renderStrategyTitleChip(t)
-        + `</div>`).join('')
-      + `</div>`
+// ── Strategies panel — fixed hierarchy ────────────────────────────────
+// Product Stack → Product → Arc/Group → Platform → (slots, ordered by their
+// Sequence number). "Arc/Group" is the AI-generated theme ("grouping"); it
+// carries a ↗ tag for which parallel Growth Strategy generation it came from
+// — click that for the full write-up + strategy-level actions (re-check
+// platforms / delete / add grouping / …). Within an arc, slots bucket by
+// platform; within a platform they're ordered by Sequence and the number
+// leads each row so the same beat-step lines up across platform buckets.
+function stratSlotRow(slot, stratId, groupingName) {
+  const titles = slot.titles || (slot.titleId ? [{ id: slot.titleId, name: 'title', stage: '' }] : []);
+  const badge = titles.length
+    ? `<div style="display:flex;flex-wrap:wrap;gap:4px;justify-content:flex-end;">${titles.map(renderStrategyTitleChip).join('')}</div>`
+    : `<span style="font-size:9px;color:#e8ff47;flex-shrink:0;">○ open</span>`;
+  const seq = Number.isFinite(slot.sequence)
+    ? `<span title="Sequence ${slot.sequence} in this arc" style="font-size:9px;font-weight:700;color:#68d391;flex-shrink:0;min-width:13px;text-align:center;">${slot.sequence}</span>`
+    : `<span style="width:13px;flex-shrink:0;"></span>`;
+  const ptLabel = slot.postType
+    ? `<span title="${esc(slot.postType.rationale || '')}" style="font-size:9px;font-weight:700;padding:1px 6px;border:1px solid #9f7aea;border-radius:8px;color:#9f7aea;flex-shrink:0;white-space:nowrap;">${esc(slot.postType.name)}</span>`
+    : `<span title="No Post Type — ✏️ to assign" style="font-size:9px;padding:1px 6px;border:1px dashed #444;border-radius:8px;color:#666;flex-shrink:0;white-space:nowrap;">no type</span>`;
+  const btn = (fn, label, color, tip) => `<button onclick="${fn}" title="${tip}" style="font-size:9px;padding:0 5px;border:1px solid ${color === '#a0aec0' ? '#4a5568' : color};border-radius:8px;background:transparent;color:${color};cursor:pointer;flex-shrink:0;line-height:1.6;">${label}</button>`;
+  const insert = Number.isFinite(slot.sequence)
+    ? `<div style="padding:1px 0;"><button onclick="openInsertSlotModal('${stratId}','${esc(groupingName).replace(/'/g,"\\'")}',${slot.sequence})" title="Insert a slot here — renumbers the rest of the arc" style="font-size:9px;padding:0;border:none;background:transparent;color:#4a5568;cursor:pointer;">+ insert</button></div>`
     : '';
-  const hasUnassignedType = s.groupings.some(g => g.slots.some(sl => !sl.postType));
-  const backfillBtn = hasUnassignedType
-    ? `<button onclick="backfillStrategyPostTypes('${s.id}', this)" title="Assign Post Type to every slot in this strategy that doesn't have one — grounded in this strategy's own Product/Research context, same reasoning as when it was first generated" style="font-size:9px;padding:0 6px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;flex-shrink:0;line-height:1.6;">🏷️ Assign Types</button>`
-    : '';
-  // Always available (not gated on a gap): re-evaluates the preferred
-  // platform for EVERY slot so a grouping can pick up a platform split
-  // where one is warranted, not just fill blanks. Only writes slots whose
-  // platform actually changes.
-  const backfillPlatBtn = (s.groupings || []).some(g => g.slots && g.slots.length)
-    ? `<button onclick="backfillStrategyPlatforms('${s.id}', this)" title="Re-evaluate the preferred platform for every slot in this strategy — the panel groups slots by this. Lets a grouping split across platforms (pillar on YouTube, cuts on Instagram, nurture by Email) where the content genuinely differs. Only changes slots that need it." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🛰️ Re-check Platforms</button>`
-    : '';
-  const deleteBtn = `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy — archives it and every one of its Strategy Slots. Any real title attached to it is kept, not deleted, and drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`;
-  const launchRunBtn = `<button onclick="openLaunchRunModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Launch a Run — reuse this strategy as a Guide: pick a Product and create a child strategy with its own fresh Slots, reusing this Guide's groupings/angles as a template." style="font-size:9px;padding:0 6px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;flex-shrink:0;line-height:1.6;">🚀 Launch Run</button>`;
-  const regenBtn = !indentPx
-    ? `<button onclick="regenerateStrategySlots('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Regenerate this strategy's slots to the cross-platform arc convention — each grouping becomes one theme spread across the platforms it needs. Slots with published content attached are kept; the rest are archived and replaced. Rewrites the page body." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">♻️ Regenerate</button>`
-    : '';
-  // Top-level only (indentPx unset/0) — a rendered CHILD of a divergent
-  // parent is itself a single grouping, so "add a grouping to it" doesn't
-  // apply there; the parent's own header (renderStrategyItem) gets this
-  // button separately.
-  const addGroupingBtn = !indentPx
-    ? `<button onclick="openAddGroupingModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Add a whole new grouping (arc + platform) to this strategy from a plain-text guidance prompt, grounded in its product/research context." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">➕ Add Grouping</button>`
-    : '';
-  // A divergent-path child always has exactly one grouping matching its own
-  // short name — reuse that grouping's rationale as the header tooltip too,
-  // so the full explanation is one hover away here as well, not just on
-  // the grouping row below.
-  const stratNameTitle = s.groupings.length === 1 ? (s.groupings[0].rationale || '') : '';
-  return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #222;padding-left:${indentPx || 0}px;">`
-    + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;">`
-    + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stratBodyId}', this)">▶</span>`
-    + `<span title="${esc(stratNameTitle)}" style="font-size:13px;font-weight:700;color:#fff;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
-    + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(s.status)}</span>`
-    + (s.productName ? `<span style="font-size:10px;color:#fff;">${esc(s.productName)}</span>` : '')
-    + launchRunBtn
-    + regenBtn
-    + addGroupingBtn
-    + backfillBtn
-    + backfillPlatBtn
-    + deleteBtn
-    + `</div>`
-    + `<div id="${stratBodyId}" style="display:none;">`
-    + (groupingsHtml || '<div class="empty" style="font-size:11px;">No slots recorded for this strategy.</div>')
-    + generalHtml
-    + `</div>`
+  return insert
+    + `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;">`
+    + seq + ptLabel
+    + `<span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc((slot.angle || '').slice(0, 90)) || esc(slot.name)}</span>`
+    + badge
+    + btn(`openEditSlotModal('${slot.id}')`, '✏️', '#a0aec0', 'Edit angle / post type / platform')
+    + btn(`removeStrategySlot('${slot.id}')`, '🗑️', '#ff4444', 'Remove this slot')
+    + btn(`openViralGenModal({slotId:'${slot.id}'})`, '⚡', '#f6ad55', 'Viral Generator')
+    + btn(`openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${stratId}'})`, '+ title', '#a0aec0', 'Create a title from this slot')
     + `</div>`;
 }
-// One top-level Strategies-tab entry. A divergent-path parent (see
-// generateGrowthStrategy) has no groupings/Slots of its own — just links to
-// children, one per incompatible format (e.g. a LinkedIn post series next
-// to a YouTube video series) — so it renders as one more collapse level
-// (default collapsed, same ▶/▾ convention) wrapping each child's own
-// indented block instead of "No slots recorded". A flat (non-divergent)
-// strategy has no children and renders exactly as it always has.
-function renderStrategyItem(s) {
-  if (s.children && s.children.length) {
-    const parentBodyId = `strat-parent-body-${s.id}`;
-    const childrenHtml = s.children.map(c => renderStrategyBlock(c, 16)).join('');
-    return `<div style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #333;">`
-      + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:4px;">`
-      + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${parentBodyId}', this)">▶</span>`
-      + `<span style="font-size:13px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="openViewStrategyModal('${s.id}')">${esc(s.name)}</span>`
-      + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(s.status)}</span>`
-      + `<span style="font-size:10px;color:#fff;flex-shrink:0;">${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}</span>`
-      + (s.productName ? `<span style="font-size:10px;color:#fff;flex-shrink:0;">${esc(s.productName)}</span>` : '')
-      + `<button onclick="openAddGroupingModal('${s.id}','${esc(s.name).replace(/'/g,"\\'")}')" title="Add a whole new grouping (arc + platform) to this strategy from a plain-text guidance prompt — becomes its own new child, same as the existing ${s.children.length} sub-strateg${s.children.length === 1 ? 'y' : 'ies'}." style="font-size:9px;padding:0 6px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;flex-shrink:0;line-height:1.6;">➕ Add Grouping</button>`
-      + `<button onclick="deleteGrowthStrategy('${s.id}','${esc(s.name).replace(/'/g,"\\'")}', this)" title="Delete this strategy AND all ${s.children.length} sub-strategies — archives everything and every Strategy Slot under them. Any real title stays, just drops back to Unassigned Planning Titles." style="font-size:9px;padding:0 6px;border:1px solid #4a5568;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;flex-shrink:0;line-height:1.6;">🗑️ Delete Strategy</button>`
-      + `</div>`
-      + `<div id="${parentBodyId}" style="display:none;">${childrenHtml}</div>`
+function arcPlatformBuckets(slots) {
+  const out = [], idx = {};
+  (slots || []).forEach(sl => {
+    const nm = (sl.platforms && sl.platforms[0] && sl.platforms[0].name) || sl.platform || '';
+    const k = nm.toLowerCase() || ' ';
+    if (!(k in idx)) { idx[k] = out.length; out.push({ label: nm || 'No platform', slots: [] }); }
+    out[idx[k]].slots.push(sl);
+  });
+  out.sort((a, b) => (a.label === 'No platform' ? 1 : 0) - (b.label === 'No platform' ? 1 : 0) || a.label.localeCompare(b.label));
+  out.forEach(b => b.slots.sort((x, y) => (Number.isFinite(x.sequence) ? x.sequence : 1e9) - (Number.isFinite(y.sequence) ? y.sequence : 1e9)));
+  return out;
+}
+function renderArc(strat, g, key) {
+  const arcId = `arc-${key}`;
+  const body = arcPlatformBuckets(g.slots).map((pb, pi) => {
+    const pid = `${arcId}-p${pi}`;
+    return `<div style="margin:3px 0 3px 10px;">`
+      + `<div style="font-size:10px;font-weight:700;color:#68d391;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pid}', this.querySelector('.gs-arrow'))">`
+      + `<span class="gs-arrow" style="font-size:7px;">▾</span><span>${esc(pb.label)}</span>`
+      + `<span style="color:#555;font-weight:400;">${pb.slots.length}</span></div>`
+      + `<div id="${pid}">${pb.slots.map(sl => stratSlotRow(sl, strat.id, g.name)).join('')}</div>`
       + `</div>`;
-  }
-  return renderStrategyBlock(s, 0);
+  }).join('') || `<div class="empty" style="font-size:11px;margin-left:10px;">No slots.</div>`;
+  const nmShort = strat.name && strat.name.length > 24 ? strat.name.slice(0, 23) + '…' : (strat.name || 'strategy');
+  return `<div style="margin:5px 0;">`
+    + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">`
+    + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${arcId}', this)">▶</span>`
+    + `<span title="${esc(g.rationale || '')}" style="font-size:12px;font-weight:700;color:#fff;cursor:pointer;flex:1 1 90px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="toggleStrategyCollapse('${arcId}', this.previousElementSibling)">${esc(g.name)}</span>`
+    + `<span onclick="openViewStrategyModal('${strat.id}')" title="Growth Strategy: ${esc(strat.name)} · ${esc(strat.status)} — full write-up &amp; actions" style="font-size:9px;padding:1px 6px;border:1px solid #4a5568;border-radius:8px;color:#a0aec0;flex-shrink:0;cursor:pointer;white-space:nowrap;">↗ ${esc(nmShort)}</span>`
+    + `<span style="font-size:9px;color:#555;flex-shrink:0;">${g.filledCount}/${g.totalCount}</span>`
+    + `</div>`
+    + `<div id="${arcId}" style="display:none;margin-top:2px;">${body}</div>`
+    + `</div>`;
+}
+function renderStrategyTree(strategies) {
+  const NO_STACK = 'No Stack', NO_PROD = 'No Product';
+  const tree = {};
+  strategies.forEach(s => {
+    const flat = (s.children && s.children.length) ? s.children : [s];
+    flat.forEach(st => {
+      const stackK = st.productStack || s.productStack || NO_STACK;
+      const prodK = st.productName || s.productName || NO_PROD;
+      ((tree[stackK] ||= {})[prodK] ||= []).push(st);
+    });
+  });
+  const nameSort = none => (a, b) => (a === none ? 1 : 0) - (b === none ? 1 : 0) || a.localeCompare(b);
+  return Object.keys(tree).sort(nameSort(NO_STACK)).map((stackK, si) => {
+    const sBody = `stk-${si}`, prods = tree[stackK];
+    const prodHtml = Object.keys(prods).sort(nameSort(NO_PROD)).map((prodK, pi) => {
+      const pBody = `${sBody}-p${pi}`;
+      const strats = prods[prodK].slice().sort((a, b) => String(a.createdTime || '').localeCompare(String(b.createdTime || '')));
+      let arcs = '';
+      strats.forEach((st, sti) => {
+        (st.groupings || []).forEach((g, gi) => { arcs += renderArc(st, g, `${pBody}-s${sti}-g${gi}`); });
+        if (st.generalTitles && st.generalTitles.length) {
+          arcs += `<div style="margin:5px 0 5px 4px;">`
+            + `<div style="font-size:11px;font-weight:700;color:#fff;">General (no slot) <span style="font-weight:400;color:#666;">— ${esc(st.name)}</span></div>`
+            + st.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;"><span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</span>${renderStrategyTitleChip(t)}</div>`).join('')
+            + `</div>`;
+        }
+      });
+      return `<div style="margin:4px 0 4px 8px;">`
+        + `<div style="font-size:11px;font-weight:700;color:#c4b5fd;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pBody}', this.querySelector('.gs-arrow'))">`
+        + `<span class="gs-arrow" style="font-size:7px;">▶</span><span>${esc(prodK)}</span>`
+        + `<span style="color:#666;font-weight:400;">${strats.length} strateg${strats.length === 1 ? 'y' : 'ies'}</span></div>`
+        + `<div id="${pBody}" style="display:none;margin-top:2px;">${arcs || '<div class="empty" style="font-size:11px;">No arcs.</div>'}</div>`
+        + `</div>`;
+    }).join('');
+    return `<div style="margin:6px 0;padding-bottom:8px;border-bottom:1px solid #222;">`
+      + `<div style="font-size:12px;font-weight:800;color:#a78bfa;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="toggleStrategyCollapse('${sBody}', this.querySelector('.gs-arrow'))">`
+      + `<span class="gs-arrow" style="font-size:8px;">▶</span><span>${esc(stackK)}</span></div>`
+      + `<div id="${sBody}" style="display:none;margin-top:3px;">${prodHtml}</div>`
+      + `</div>`;
+  }).join('');
 }
 function renderStrategiesPanel(strategies, unassignedPlanningTitles, orphanSlots) {
   const el = document.getElementById('strategies-panel');
@@ -8676,9 +8584,10 @@ function renderStrategiesPanel(strategies, unassignedPlanningTitles, orphanSlots
         + `</div>`).join('')
       + `</div>`
     : '';
-  const head = unassignedHtml + orphanHtml;
-  if (!strategies.length) { el.innerHTML = head || '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
-  el.innerHTML = head + strategies.map(renderStrategyItem).join('');
+  const tail = orphanHtml + unassignedHtml;   // pinned at the bottom
+  const treeHtml = renderStrategyTree(strategies || []);
+  if (!treeHtml && !tail) { el.innerHTML = '<div class="empty">No Growth Strategies yet — generate one from the 🚀 button on a product row above.</div>'; return; }
+  el.innerHTML = treeHtml + tail;
 }
 async function deleteOrphanSlot(slotId, label, btn) {
   if (!confirm(`Delete orphan slot "${label}"? It has no strategy parent — this archives the slot. Any title attached to it stays.`)) return;
