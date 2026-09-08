@@ -5089,7 +5089,14 @@ async function buildMiningCandidates(hdr) {
   return {
     tools: toolRows.map(p => ({ name: nm(p), category: p.properties?.Category?.select?.name || "" })).filter(t => t.name),
     toolCategories: [...new Set(toolRows.map(p => p.properties?.Category?.select?.name).filter(Boolean))],
-    methods: [...new Set(methodRows.map(nm).filter(Boolean))],
+    // Live Methods with enough context that the miner can judge which one a
+    // find could improve, and toward which goal (traffic / leads / sales / …).
+    methods: methodRows.map(p => ({
+      name: nm(p),
+      type: p.properties?.Type?.select?.name || "",
+      platform: p.properties?.Platform?.select?.name || "",
+      notes: (p.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("").trim(),
+    })).filter(m => m.name),
     postTypes: [...new Set(postTypeRows.map(nm).filter(Boolean))],
     methodIdeas: [...new Set(methodIdeaRows.map(nm).filter(Boolean))],
     tradingStrategies: [...new Set(tradeStratRows.map(nm).filter(Boolean))],
@@ -5210,7 +5217,7 @@ async function integrateOneSavedPost(env, hdr, page, candidates, instructions, o
   const candBlock = [
     candidates.tools.length && `Existing Tools (name — category): ${candidates.tools.map(t => t.name + (t.category ? ` — ${t.category}` : "")).join("; ")}`,
     candidates.toolCategories.length && `Tool-stack categories: ${candidates.toolCategories.join(", ")}`,
-    candidates.methods.length && `Live Methods: ${candidates.methods.join(", ")}`,
+    candidates.methods.length && `Live Methods (name — type — platform — what it's for):\n${candidates.methods.map(m => `- ${m.name}${m.type ? ` — ${m.type}` : ""}${m.platform ? ` — ${m.platform}` : ""}${m.notes ? ` — ${m.notes.slice(0, 160)}` : ""}`).join("\n")}`,
     candidates.postTypes.length && `Post Types: ${candidates.postTypes.join(", ")}`,
     candidates.methodIdeas.length && `Existing Method Ideas: ${candidates.methodIdeas.join(", ")}`,
     candidates.tradingStrategies.length && `Existing Trading Strategies: ${candidates.tradingStrategies.join(", ")}`,
@@ -5243,9 +5250,14 @@ ${transcript.slice(0, 12000)}
 # Existing entities — match names EXACTLY as written, never invent one
 ${candBlock || "(none on file yet)"}
 ${infoFlow ? `\n# Information Flow — this app's pipeline contract (use it to score USEFULNESS)\n${infoFlow}\n\nFor every item also decide, grounded in the contract above:\n- "usefulness": "high" | "medium" | "low" — how directly it can improve the app's real pipeline output. High = it can become or materially sharpen a real stage artifact (a Method, a Strategy angle, a Product Research point, an Asset). Medium = useful reference that supports a stage indirectly. Low = mildly interesting, no clear path into the flow.\n- "feedsStage": the stage it most directly feeds — one of "Idea", "Campaign Research", "Product Research", "Strategy", "Title", "Method", "Asset", "Publish", or "None".\n` : ""}
+For every item ALSO decide:
+- "intendedUse": ONE concrete sentence — how this operator would actually put this to work in their pipeline (be specific: "swap X into the <method> for auto-captions, ~15min saved per asset"; "add as a hook pattern to the <method> intro"). Not a restatement of the extract.
+- "targetMethod": if this item could concretely improve ONE of the Live Methods listed above, its EXACT name; otherwise "". Only a real name from that list.
+- "expectedEffect": with a targetMethod, the goal it would move — one of "traffic" | "leads" | "sales" | "authority" | "efficiency". Empty if no targetMethod.
+
 Respond ONLY with JSON:
 {"creator":{"name":"","handle":"${account}","platforms":["${platform}"],"subjectMatter":["","",""]},
- "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low"${infoFlow ? `,"usefulness":"high|medium|low","feedsStage":"Idea|Campaign Research|Product Research|Strategy|Title|Method|Asset|Publish|None"` : ""}}]}`;
+ "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low","intendedUse":"one concrete sentence","targetMethod":"exact Live Method name or empty","expectedEffect":"traffic|leads|sales|authority|efficiency or empty"${infoFlow ? `,"usefulness":"high|medium|low","feedsStage":"Idea|Campaign Research|Product Research|Strategy|Title|Method|Asset|Publish|None"` : ""}}]}`;
 
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -5267,7 +5279,10 @@ Respond ONLY with JSON:
   const CONF = { high: "High", medium: "Medium", low: "Low" };
   const USEFUL = { high: "High", medium: "Medium", low: "Low" };
   const STAGES = ["Idea", "Campaign Research", "Product Research", "Strategy", "Title", "Method", "Asset", "Publish"];
+  const EFFECTS = ["traffic", "leads", "sales", "authority", "efficiency"];
+  const methodByLc = new Map((candidates.methods || []).map(m => [m.name.toLowerCase(), m.name]));
   let written = 0;
+  const results = [];
   for (const it of items) {
     const typeLabel = MINE_TYPE_LABEL[String(it.type || "").toLowerCase()];
     if (!typeLabel || !it.name) continue;
@@ -5288,13 +5303,29 @@ Respond ONLY with JSON:
     // pre-schema deploy still mines cleanly instead of erroring every row.
     if (caps.usefulness) { const u = USEFUL[String(it.usefulness || "").toLowerCase()]; if (u) props["Usefulness"] = { select: { name: u } }; }
     if (caps.feedsStage) { const s = STAGES.find(x => x.toLowerCase() === String(it.feedsStage || "").toLowerCase()); if (s) props["Feeds Stage"] = { select: { name: s } }; }
+    // Intended Use + a candidate Target Method (must be a real Live Method
+    // name) + the goal it would move. Same caps-probe guard.
+    const tgtMethod = methodByLc.get(String(it.targetMethod || "").toLowerCase().trim()) || "";
+    const effect = EFFECTS.find(e => e === String(it.expectedEffect || "").toLowerCase().trim()) || "";
+    if (caps.intendedUse && it.intendedUse) props["Intended Use"] = mineRT(it.intendedUse);
+    if (caps.targetMethod && tgtMethod) props["Target Method"] = mineRT(tgtMethod);
+    if (caps.expectedEffect && tgtMethod && effect) props["Expected Effect"] = { select: { name: effect } };
     if (creatorId) props["Creator"] = { relation: [{ id: dash32(creatorId) }] };
     const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: LINK_MINING_DB }, properties: props }) });
-    if (r.ok) written++;
-    else console.error("link mining row:", (await r.json().catch(() => ({}))).message);
+    if (r.ok) {
+      written++;
+      results.push({
+        name: String(it.name).slice(0, 200), type: typeLabel,
+        extract: it.extract || "", snippet: it.snippet || "",
+        match: it.match || "", matchKind: kl || "", confidence: cl || "",
+        usefulness: USEFUL[String(it.usefulness || "").toLowerCase()] || "",
+        feedsStage: STAGES.find(x => x.toLowerCase() === String(it.feedsStage || "").toLowerCase()) || "",
+        intendedUse: it.intendedUse || "", targetMethod: tgtMethod, expectedEffect: tgtMethod ? effect : "",
+      });
+    } else console.error("link mining row:", (await r.json().catch(() => ({}))).message);
   }
   await patchSavedPostPage(pageId, { Mined: { checkbox: true } }).catch(() => {});
-  return { items: written, creatorId };
+  return { items: written, results, creatorId };
 }
 
 async function runLinkMiningBatch(env, { limit = 8 } = {}) {
@@ -5326,8 +5357,11 @@ async function getLinkMiningCaps(hdr) {
   try {
     const db = await fetch(`https://api.notion.com/v1/databases/${LINK_MINING_DB}`, { headers: hdr }).then(r => r.json());
     const props = db.properties || {};
-    return { usefulness: !!props["Usefulness"], feedsStage: !!props["Feeds Stage"] };
-  } catch { return { usefulness: false, feedsStage: false }; }
+    return {
+      usefulness: !!props["Usefulness"], feedsStage: !!props["Feeds Stage"],
+      intendedUse: !!props["Intended Use"], targetMethod: !!props["Target Method"], expectedEffect: !!props["Expected Effect"],
+    };
+  } catch { return { usefulness: false, feedsStage: false, intendedUse: false, targetMethod: false, expectedEffect: false }; }
 }
 
 // ═══ Information Flow contract (shared pipeline context) ════════════════
@@ -30162,8 +30196,14 @@ ${assemblyManifest}`;
             matchKind: pr["Match Kind"]?.select?.name || "",
             category: rt(pr["Proposed Category"]),
             confidence: pr.Confidence?.select?.name || "",
+            usefulness: pr.Usefulness?.select?.name || "",
+            feedsStage: pr["Feeds Stage"]?.select?.name || "",
+            intendedUse: rt(pr["Intended Use"]),
+            targetMethod: rt(pr["Target Method"]),
+            expectedEffect: pr["Expected Effect"]?.select?.name || "",
             status: pr.Status?.select?.name || "New",
             promotedTo: rt(pr["Promoted To"]),
+            createdTime: p.created_time || "",
             sourcePost: postById[spId]?.name || "", sourcePostId: spId, sourceUrl: postById[spId]?.url || "",
             creator: creatorById[crId] || "", creatorId: crId,
           };

@@ -879,14 +879,15 @@
 
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('mining')">
-        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">⛏️ Link Mining <span id="glMiningCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">⛏️ Mining Results <span id="glMiningCount" style="color:var(--text3);font-weight:400;"></span></span>
         <span id="glMiningIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
       <div id="glMiningBody" style="display:none;padding:0 13px 13px;">
-        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
           <span id="glMiningFilters" style="display:flex;gap:5px;flex-wrap:wrap;"></span>
           <button onclick="loadLinkMining(true)" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
         </div>
+        <div id="glMiningFilters2" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;"></div>
         <div id="glMiningList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
       </div>
     </div>
@@ -4589,10 +4590,11 @@ function renderLinks() {
     let knowledgeBlock = '';
     if (p.status === 'Done' && !p.mined) {
       knowledgeBlock = linkDraftTagsHtml(p)
-        + '<div style="margin-top:8px;"><button onclick="ltIntegrate(\'' + p.id + '\')" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">✓ Integrate into knowledge</button>' + remineBtn + '</div>';
+        + '<div style="margin-top:8px;"><button onclick="ltIntegrate(\'' + p.id + '\')" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">⛏ Mine this link</button>' + remineBtn + '</div>';
     } else if (p.mined) {
-      knowledgeBlock = '<div style="margin-top:8px;font-size:11px;color:#4cff4c;">✓ Mined <span onclick="switchTab(\'globals\')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">— see Link Mining queue</span>' + remineBtn + '</div>';
+      knowledgeBlock = '<div style="margin-top:8px;font-size:11px;color:#4cff4c;">✓ Mined <span onclick="switchTab(\'globals\')" style="color:var(--accent);cursor:pointer;text-decoration:underline;">— see Mining Results</span>' + remineBtn + '</div>';
     }
+    knowledgeBlock += '<div id="mineResults_' + p.id + '">' + mineResultsHtml(p.mineResults) + '</div>';
 
     return '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
@@ -4633,19 +4635,45 @@ function ltRemoveTag(id, tag) {
   renderLinks();
   ltSaveTags(id);
 }
+// Renders the mined items for a link inline on its row (session state, set
+// right after a Mine / Re-mine run). MINE_EFFECT_COLOR keys the goal chip.
+const MINE_EFFECT_COLOR = { traffic: '#43d1a0', leads: '#63b3ed', sales: '#f687b3', authority: '#b794f4', efficiency: '#f6e05e' };
+const MINE_USE_COLOR = { High: '#fc8181', Medium: '#f6ad55', Low: 'var(--text3)' };
+function mineResultsHtml(results) {
+  if (!Array.isArray(results)) return '';
+  if (!results.length) return '<div style="margin-top:8px;font-size:11px;color:var(--text3);">Mined — nothing reusable extracted from this one.</div>';
+  return '<div style="margin-top:8px;border:1px solid var(--border2);border-radius:6px;overflow:hidden;">'
+    + '<div style="font-size:9px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);padding:5px 9px;background:var(--surface2);">Mined ' + results.length + ' item' + (results.length === 1 ? '' : 's') + ' → Mining Results</div>'
+    + results.map(it =>
+      '<div style="padding:7px 9px;border-top:1px solid var(--border);font-size:11px;">'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">'
+      +   '<span style="font-weight:700;">' + esc(it.name) + '</span>'
+      +   '<span style="font-size:9px;padding:1px 6px;border-radius:999px;background:var(--surface2);border:1px solid var(--border2);color:var(--text2);">' + esc(it.type) + '</span>'
+      +   (it.usefulness ? '<span style="font-size:9px;color:' + (MINE_USE_COLOR[it.usefulness] || 'var(--text3)') + ';font-weight:700;">' + esc(it.usefulness) + ' use</span>' : '')
+      +   (it.feedsStage ? '<span style="font-size:9px;color:var(--text3);">→ ' + esc(it.feedsStage) + '</span>' : '')
+      +   (it.targetMethod ? '<span style="font-size:9px;padding:1px 6px;border-radius:999px;background:' + (MINE_EFFECT_COLOR[it.expectedEffect] || 'var(--text3)') + '22;color:' + (MINE_EFFECT_COLOR[it.expectedEffect] || 'var(--text2)') + ';border:1px solid ' + (MINE_EFFECT_COLOR[it.expectedEffect] || 'var(--border2)') + '55;">⚙ ' + esc(it.targetMethod) + (it.expectedEffect ? ' · +' + esc(it.expectedEffect) : '') + '</span>' : '')
+      + '</div>'
+      + (it.extract ? '<div style="color:var(--text2);margin-top:2px;line-height:1.4;">' + esc(it.extract) + '</div>' : '')
+      + (it.intendedUse ? '<div style="color:var(--text);margin-top:2px;line-height:1.4;">↪ ' + esc(it.intendedUse) + '</div>' : '')
+      + '</div>'
+    ).join('')
+    + '</div>';
+}
+
 async function ltIntegrate(id) {
   const row = document.getElementById('linkRow_' + id);
   const btn = row && row.querySelector('button[onclick*="ltIntegrate"]');
-  if (btn) { btn.disabled = true; btn.textContent = 'Integrating…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Mining…'; }
   try {
     await ltSaveTags(id);
     const r = await call('integrateLinkKnowledge', { postId: id });
     if (r.error) throw new Error(r.error);
-    const p = LINKS_POSTS.find(x => x.id === id); if (p) p.mined = true;
+    const p = LINKS_POSTS.find(x => x.id === id); if (p) { p.mined = true; p.mineResults = r.results || []; }
     renderLinks();
+    if (typeof LM_DATA !== 'undefined') LM_DATA = []; // force the Globals table to refetch next open
   } catch (e) {
-    if (btn) { btn.disabled = false; btn.textContent = '✓ Integrate into knowledge'; }
-    alert('Integrate failed: ' + e.message);
+    if (btn) { btn.disabled = false; btn.textContent = '⛏ Mine this link'; }
+    alert('Mining failed: ' + e.message);
   }
 }
 // Re-mine one link with extra instructions (clears its still-New queue
@@ -4665,8 +4693,11 @@ async function runRemine() {
   try {
     const r = await call('integrateLinkKnowledge', { postId: REMINE_POST, instructions: document.getElementById('remineInstr').value, remine: true });
     if (r.error) throw new Error(r.error);
+    const rid = REMINE_POST;
     closeRemineModal();
     await loadLinks();
+    const p = LINKS_POSTS.find(x => x.id === rid); if (p) { p.mineResults = r.results || []; renderLinks(); }
+    if (typeof LM_DATA !== 'undefined') LM_DATA = [];
   } catch (e) { document.getElementById('remineErr').textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = 'Re-run mining'; }
 }
@@ -11765,11 +11796,14 @@ function loadGlobalsTab() {
   // All sections start collapsed and lazy-load on first open (glToggle).
 }
 
-// ── Link Mining review queue ──
+// ── Mining Results table (every mined item, filterable) ──
 let LM_DATA = [];
-let LM_FILTER = 'New';
+let LM_FILTER = 'New';       // Status
+let LM_F_TYPE = 'All', LM_F_STAGE = 'All', LM_F_USE = 'All';
 const LM_TYPE_DEST = { 'Tool': 'tool', 'Method': 'method', 'Post Type': 'post-type', 'Podcast Idea': 'podcast-idea', 'Trading Strategy': 'trading-strategy' };
 const LM_TYPE_COLOR = { 'Tool': '#63b3ed', 'Method': '#68d391', 'Post Type': '#b794f4', 'Strategy Note': '#f6ad55', 'Growth Strategy Note': '#f6e05e', 'Podcast Idea': '#f687b3', 'Trading Strategy': '#38b2ac', 'Knowledge': '#a0aec0' };
+const LM_USE_COLOR = { High: '#fc8181', Medium: '#f6ad55', Low: 'var(--text3)' };
+const LM_STAGES = ['Idea', 'Campaign Research', 'Product Research', 'Strategy', 'Title', 'Method', 'Asset', 'Publish'];
 
 async function loadLinkMining(force) {
   const el = document.getElementById('glMiningList');
@@ -11778,60 +11812,87 @@ async function loadLinkMining(force) {
     const data = await call('getLinkMining', {});
     if (data.error) throw new Error(data.error);
     LM_DATA = data.items || [];
-    document.getElementById('glMiningCount').textContent = '· ' + LM_DATA.filter(i => i.status === 'New').length + ' new';
+    document.getElementById('glMiningCount').textContent = '· ' + LM_DATA.filter(i => i.status === 'New').length + ' new · ' + LM_DATA.length + ' total';
     renderLmFilters();
     renderLinkMining();
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
 }
+function lmChip(val, cur, setter, label) {
+  const on = cur === val;
+  return '<button onclick="' + setter + '=\'' + val + '\';renderLmFilters();renderLinkMining()" style="font-size:10px;padding:2px 8px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:999px;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? 'var(--bg)' : 'var(--text3)') + ';cursor:pointer;">' + esc(label) + '</button>';
+}
 function renderLmFilters() {
   const counts = {};
   LM_DATA.forEach(i => { counts[i.status] = (counts[i.status] || 0) + 1; });
-  const opts = ['New', 'Promoted', 'Merged', 'Dismissed', 'All'];
-  document.getElementById('glMiningFilters').innerHTML = opts.map(o => {
-    const n = o === 'All' ? LM_DATA.length : (counts[o] || 0);
-    const on = LM_FILTER === o;
-    return '<button onclick="LM_FILTER=\'' + o + '\';renderLmFilters();renderLinkMining()" style="font-size:11px;padding:3px 9px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:999px;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? 'var(--bg)' : 'var(--text2)') + ';cursor:pointer;">' + o + ' ' + n + '</button>';
-  }).join('');
+  document.getElementById('glMiningFilters').innerHTML = ['New', 'Promoted', 'Merged', 'Dismissed', 'All']
+    .map(o => lmChip(o, LM_FILTER, 'LM_FILTER', o + ' ' + (o === 'All' ? LM_DATA.length : (counts[o] || 0)))).join('');
+  // secondary: Type · Feeds Stage · Usefulness — scoped to the current Status filter
+  const scope = LM_DATA.filter(i => LM_FILTER === 'All' || i.status === LM_FILTER);
+  const types = [...new Set(scope.map(i => i.type).filter(Boolean))].sort();
+  const stages = LM_STAGES.filter(s => scope.some(i => i.feedsStage === s));
+  const f2 = document.getElementById('glMiningFilters2');
+  f2.innerHTML =
+    '<span style="font-size:9px;color:var(--text3);align-self:center;">type</span>'
+    + lmChip('All', LM_F_TYPE, 'LM_F_TYPE', 'all')
+    + types.map(t => lmChip(t, LM_F_TYPE, 'LM_F_TYPE', t)).join('')
+    + (stages.length ? '<span style="width:8px;"></span><span style="font-size:9px;color:var(--text3);align-self:center;">stage</span>'
+        + lmChip('All', LM_F_STAGE, 'LM_F_STAGE', 'all')
+        + stages.map(s => lmChip(s, LM_F_STAGE, 'LM_F_STAGE', s)).join('') : '')
+    + '<span style="width:8px;"></span><span style="font-size:9px;color:var(--text3);align-self:center;">use</span>'
+    + ['All', 'High', 'Medium', 'Low'].map(u => lmChip(u, LM_F_USE, 'LM_F_USE', u === 'All' ? 'all' : u)).join('');
 }
 const LM_BTN_A = 'font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;';
 const LM_BTN_B = 'font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;';
+const LM_USE_RANK = { High: 3, Medium: 2, Low: 1, '': 0 };
 function renderLinkMining() {
   const el = document.getElementById('glMiningList');
-  const rows = LM_DATA.filter(i => LM_FILTER === 'All' || i.status === LM_FILTER)
-    .sort((a, b) => (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || ''));
-  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">Nothing here. Integrate a transcribed link from the Links tab.</div>'; return; }
+  const rows = LM_DATA
+    .filter(i => LM_FILTER === 'All' || i.status === LM_FILTER)
+    .filter(i => LM_F_TYPE === 'All' || i.type === LM_F_TYPE)
+    .filter(i => LM_F_STAGE === 'All' || i.feedsStage === LM_F_STAGE)
+    .filter(i => LM_F_USE === 'All' || i.usefulness === LM_F_USE)
+    .sort((a, b) => (LM_USE_RANK[b.usefulness] || 0) - (LM_USE_RANK[a.usefulness] || 0)
+      || (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || ''));
+  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">Nothing matches. Mine a transcribed link from the Links tab.</div>'; return; }
   el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
     + '<thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;">'
-    + '<th style="padding:5px 8px;">Type</th><th style="padding:5px 8px;">Item</th><th style="padding:5px 8px;">Match</th><th style="padding:5px 8px;">Source</th><th style="padding:5px 8px;">Creator</th><th style="padding:5px 8px;"></th>'
+    + '<th style="padding:5px 8px;">Type</th><th style="padding:5px 8px;">Item</th><th style="padding:5px 8px;">Use</th><th style="padding:5px 8px;">Stage</th><th style="padding:5px 8px;">Method</th><th style="padding:5px 8px;">Source</th><th style="padding:5px 8px;"></th>'
     + '</tr></thead><tbody>' + rows.map(lmTableRow).join('') + '</tbody></table></div>';
 }
 function lmTableRow(i) {
   const color = LM_TYPE_COLOR[i.type] || 'var(--text3)';
   const dest = LM_TYPE_DEST[i.type];
-  const kind = i.matchKind ? '<span style="font-size:9px;color:var(--text3);">' + esc(i.matchKind) + (i.match ? ' · ' + esc(i.match) : '') + '</span>' : '';
   const actions = i.status === 'New'
     ? (dest
         ? '<button onclick="event.stopPropagation();lmPromoteModalOpen(\'' + i.id + '\')" style="' + LM_BTN_A + '">Promote</button>'
         : '<button onclick="event.stopPropagation();lmKeep(\'' + i.id + '\')" style="' + LM_BTN_B + '">Keep</button>')
       + '<button onclick="event.stopPropagation();lmDismiss(\'' + i.id + '\')" style="' + LM_BTN_B + 'margin-left:4px;">✕</button>'
     : '<span style="font-size:10px;color:var(--text3);">' + esc(i.status) + '</span>';
+  const useChip = i.usefulness ? '<span style="font-size:9px;font-weight:700;color:' + (LM_USE_COLOR[i.usefulness] || 'var(--text3)') + ';">' + esc(i.usefulness) + '</span>' : '<span style="color:var(--text3);">—</span>';
+  const methodChip = i.targetMethod
+    ? '<span style="font-size:9px;padding:1px 6px;border-radius:999px;background:var(--surface);border:1px solid var(--border2);color:var(--text2);">⚙ ' + esc(i.targetMethod) + (i.expectedEffect ? ' · +' + esc(i.expectedEffect) : '') + '</span>'
+    : '<span style="color:var(--text3);">—</span>';
   return '<tr onclick="lmToggleDetail(\'' + i.id + '\')" style="border-top:1px solid var(--border);cursor:pointer;">'
     + '<td style="padding:6px 8px;white-space:nowrap;"><span style="color:' + color + ';">●</span> ' + esc(i.type) + '</td>'
     + '<td style="padding:6px 8px;font-weight:600;">' + esc(i.name) + '</td>'
-    + '<td style="padding:6px 8px;">' + kind + '</td>'
-    + '<td style="padding:6px 8px;color:var(--text3);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(i.sourcePost || '') + '</td>'
-    + '<td style="padding:6px 8px;color:var(--text3);">' + esc(i.creator || '') + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;">' + useChip + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);white-space:nowrap;font-size:10px;">' + esc(i.feedsStage || '—') + '</td>'
+    + '<td style="padding:6px 8px;">' + methodChip + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + esc(i.sourcePost || '') + '</td>'
     + '<td style="padding:6px 8px;white-space:nowrap;text-align:right;">' + actions + '</td>'
     + '</tr>'
-    + '<tr id="lmDet_' + i.id + '" style="display:none;"><td colspan="6" style="padding:2px 12px 10px;background:var(--surface2);">'
+    + '<tr id="lmDet_' + i.id + '" style="display:none;"><td colspan="7" style="padding:2px 12px 10px;background:var(--surface2);">'
     + (i.extract ? '<div style="font-size:11px;color:var(--text2);line-height:1.5;">' + esc(i.extract) + '</div>' : '')
+    + (i.intendedUse ? '<div style="font-size:11px;color:var(--text);line-height:1.5;margin-top:3px;">↪ ' + esc(i.intendedUse) + '</div>' : '')
     + (i.snippet ? '<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px;">“' + esc(i.snippet) + '”</div>' : '')
     + '<div style="font-size:10px;color:var(--text3);margin-top:4px;">'
     +   (i.sourceUrl ? '<a href="' + esc(i.sourceUrl) + '" target="_blank" style="color:var(--accent);">open source ↗</a> · ' : '')
+    +   (i.matchKind ? esc(i.matchKind) + (i.match ? ' → ' + esc(i.match) : '') + ' · ' : '')
     +   (i.confidence ? esc(i.confidence) + ' confidence' : '')
-    +   (i.category ? ' · suggested category: ' + esc(i.category) : '')
+    +   (i.creator ? ' · ' + esc(i.creator) : '')
+    +   (i.category ? ' · category: ' + esc(i.category) : '')
     +   (i.promotedTo ? ' · → ' + esc(i.promotedTo) : '')
     + '</div></td></tr>';
 }
