@@ -1005,6 +1005,22 @@
       </div>
     </div>
 
+    <!-- 🤝 FRIENDS — a plain list. Same pattern as Companies/Post Types above.
+         Backed by MAIN_TD_DB, filtered to priority="friend". -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('friends')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🤝 Friends <span id="glFriendsCount" style="color:var(--text3);font-weight:400;"></span></span>
+        <span id="glFriendsIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glFriendsBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="glFriendsInput" type="text" placeholder="A friend…" onkeydown="if(event.key==='Enter')glFriendsAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+          <button onclick="glFriendsAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
+        </div>
+        <div id="glFriendsList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('tools')">
         <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧰 Tools</span>
@@ -11675,6 +11691,7 @@ const GL_SECTIONS = {
   automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
   postTypes: { icon: 'glPostTypesIcon', body: 'glPostTypesBody', load: () => loadGlPostTypes() },
   companies: { icon: 'glCompaniesIcon', body: 'glCompaniesBody', load: () => loadGlCompanies() },
+  friends:  { icon: 'glFriendsIcon',  body: 'glFriendsBody',  load: () => loadGlFriends() },
   tools:    { icon: 'glToolsIcon',    body: 'glToolsBody',    load: () => { if (!toolsLoaded) { toolsLoaded = true; loadToolsList(); } } },
   stack:    { icon: 'glStackIcon',    body: 'glStackBody',    load: () => { if (!stackLoaded) { stackLoaded = true; renderStackTable(); } } },
 };
@@ -12193,6 +12210,52 @@ async function glCompaniesDelete(id) {
     GL_COMPANIES_DATA = GL_COMPANIES_DATA.filter(x => x.id !== id);
     document.getElementById('glCompaniesCount').textContent = '· ' + GL_COMPANIES_DATA.length;
     renderGlCompanies();
+  } catch (e) { alert('Error: ' + e.message); }
+}
+
+// ── Friends list (same pattern as Companies/Post Types above) ──
+let GL_FRIENDS_DATA = [];
+async function loadGlFriends() {
+  const el = document.getElementById('glFriendsList');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getFriendTds', {});
+    if (data.error) throw new Error(data.error);
+    GL_FRIENDS_DATA = data.items || [];
+    document.getElementById('glFriendsCount').textContent = '· ' + GL_FRIENDS_DATA.length;
+    renderGlFriends();
+  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+function renderGlFriends() {
+  const el = document.getElementById('glFriendsList');
+  if (!GL_FRIENDS_DATA.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No one here yet. Add a name above.</div>'; return; }
+  el.innerHTML = GL_FRIENDS_DATA.map(t =>
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
+    + '<span style="font-size:12px;color:var(--text);' + (t.stage === 'Published' ? 'text-decoration:line-through;color:var(--text3);' : '') + '">' + esc(t.title) + '</span>'
+    + '<button onclick="glFriendsDelete(\'' + t.id + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;flex-shrink:0;">✕</button>'
+    + '</div>'
+  ).join('');
+}
+async function glFriendsAdd() {
+  const inp = document.getElementById('glFriendsInput');
+  const title = inp.value.trim();
+  if (!title) return;
+  inp.disabled = true;
+  try {
+    const r = await call('createFriendTd', { title });
+    if (r.error) throw new Error(r.error);
+    inp.value = '';
+    await loadGlFriends();
+  } catch (e) { alert('Error: ' + e.message); }
+  finally { inp.disabled = false; inp.focus(); }
+}
+async function glFriendsDelete(id) {
+  try {
+    const r = await call('deleteFriendTd', { id });
+    if (r.error) throw new Error(r.error);
+    GL_FRIENDS_DATA = GL_FRIENDS_DATA.filter(x => x.id !== id);
+    document.getElementById('glFriendsCount').textContent = '· ' + GL_FRIENDS_DATA.length;
+    renderGlFriends();
   } catch (e) { alert('Error: ' + e.message); }
 }
 
