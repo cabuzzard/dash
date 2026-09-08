@@ -791,6 +791,21 @@
       <div id="hubMatrixBody" style="display:none;margin-top:10px;overflow-x:auto;"></div>
     </div>
 
+    <!-- BULK: full research + a Growth Strategy for every hub-campaign product
+         shown in Development. Excludes "Sm business software tools". Seeds a
+         queue drained by the */4 cron; never touches an existing strategy. -->
+    <div id="bulkHubStratSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Bulk: hub research + strategy <span id="bulkHubStratSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="display:flex;align-items:center;gap:6px;">
+          <button id="bulkHubStratStartBtn" onclick="bulkHubStratStart()" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Start</button>
+          <button onclick="bulkHubStratRefresh()" title="Refresh status" style="font-size:11px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+          <button onclick="bulkHubStratReset()" title="Clear the queue (stops the cron; done work is kept)" style="font-size:11px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">reset</button>
+        </span>
+      </div>
+      <div id="bulkHubStratBody" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">Not started. Click Start to research + strategize every hub-campaign product that has titles (a few per 4-minute tick).</div>
+    </div>
+
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
@@ -13193,6 +13208,54 @@ async function loadTdTab() {
   loadHubAssetMatrix();
   loadHubMatrix();
   loadWpBoard();
+  bulkHubStratRefresh();
+}
+
+// ── BULK: hub research + strategy ──────────────────────────────────────
+let _bulkHubPoll = null;
+function bulkHubStratRender(r) {
+  const body = document.getElementById('bulkHubStratBody');
+  const sum = document.getElementById('bulkHubStratSummary');
+  const startBtn = document.getElementById('bulkHubStratStartBtn');
+  if (!body) return;
+  if (!r || !r.seeded) {
+    if (sum) sum.textContent = '';
+    body.innerHTML = 'Not started. Click Start to research + strategize every hub-campaign product that has titles (a few per 4-minute tick).';
+    if (startBtn) { startBtn.textContent = 'Start'; startBtn.disabled = false; }
+    if (_bulkHubPoll) { clearInterval(_bulkHubPoll); _bulkHubPoll = null; }
+    return;
+  }
+  const errs = Object.keys(r.errors || {}).length;
+  if (sum) sum.textContent = `— ${r.done}/${r.total} done` + (r.remaining ? ` · ${r.remaining} left` : ' · complete') + (errs ? ` · ${errs} error${errs === 1 ? '' : 's'}` : '');
+  if (startBtn) { startBtn.textContent = r.remaining ? 'Running…' : 'Re-seed'; startBtn.disabled = !!r.remaining; }
+  let html = `<div>${r.done}/${r.total} products processed · ${r.remaining} remaining. The cron works ~2 every 4 min.</div>`;
+  if (r.pending && r.pending.length) html += `<div style="color:var(--text3);margin-top:3px;">Next: ${esc(r.pending.slice(0, 6).join(', '))}${r.pending.length > 6 ? '…' : ''}</div>`;
+  if (errs) html += `<div style="color:#e05252;margin-top:4px;">Errors: ` + Object.entries(r.errors).map(([id, m]) => esc(m)).slice(0, 5).join(' · ') + `</div>`;
+  body.innerHTML = html;
+  // Poll while there's pending work.
+  if (r.remaining && !_bulkHubPoll) _bulkHubPoll = setInterval(bulkHubStratRefresh, 30000);
+  if (!r.remaining && _bulkHubPoll) { clearInterval(_bulkHubPoll); _bulkHubPoll = null; }
+}
+async function bulkHubStratRefresh() {
+  try { bulkHubStratRender(await call('bulkHubStrategyStatus')); } catch(e) {}
+}
+async function bulkHubStratStart() {
+  const btn = document.getElementById('bulkHubStratStartBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Seeding…'; }
+  try {
+    const r = await call('bulkHubStrategyStart');
+    document.getElementById('bulkHubStratBody').innerHTML = `Seeded ${r.total} products. The cron will start processing within ~4 minutes.`;
+    bulkHubStratRefresh();
+    // one immediate step so it doesn't feel dead until the first cron tick
+    call('bulkHubStrategyStep', { limit: 1 }).then(bulkHubStratRender).catch(() => {});
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Start'; }
+    alert('Error: ' + e.message);
+  }
+}
+async function bulkHubStratReset() {
+  if (!confirm('Clear the bulk queue? The cron stops; products already done stay done. Re-Start rebuilds the list.')) return;
+  try { await call('bulkHubStrategyReset'); bulkHubStratRefresh(); } catch(e) { alert('Error: ' + e.message); }
 }
 
 // ── HUB FRONT — the work-type catalog (🧰 Work Types DB) ────────────────

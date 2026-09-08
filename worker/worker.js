@@ -5540,6 +5540,92 @@ async function runAffiliateScan(env) {
 // Legacy published content that predates Strategy Slots has no "Strategy
 // Slot" relation at all and is invisible to this scan until it's
 // retroactively backfilled with one -- not yet done.
+// ── Bulk hub research + strategy ──────────────────────────────────────
+// One-time backfill (operator-triggered, drained by cron): for every product
+// that shows in Development (has ≥1 Content Strategy title) across the hub
+// campaigns — EXCLUDING "Sm business software tools" (ai-implementation) — run
+// a full Product Research regenerate, then generate ONE Growth Strategy if the
+// product has none. Never touches an existing strategy. Reuses the real
+// regenerateAllStrategyFields / generateGrowthStrategy actions via an
+// authenticated self-fetch (each is its own worker invocation with a fresh
+// CPU budget), so the cron only orchestrates. State + progress in KV.
+const BULK_HUB_KV = "bulkhubstrat:v2";
+const BULK_HUB_CAMPAIGNS = [
+  "3b51f7d3a4bb81ae94b3c9fe6dc63770", // surf-vacations
+  "3871f7d3a4bb814997e5f3400fc3ff57", // sunflower-acres
+  "3cb1f7d3a4bb819cb6d1eac7cf629961", // Build Watcher (owners-rep)
+  "3951f7d3a4bb81659af8dc82fb56f92a", // home-services
+  "34b1f7d3a4bb81b6a8a8fee04df94807", // care-gap
+  "34b1f7d3a4bb8154b0c5e0abcaae272a", // creative-flow-guitar
+  "3921f7d3a4bb81d7a061e31ebc2ddef1", // mountainwize
+  "3d41f7d3a4bb8168b7f5cbec84e5758e", // sustainable-aquarium
+  // ai-implementation (3b51f7d3a4bb811e8086fa1f5f7d3597) deliberately excluded
+];
+const BULK_HUB_SELF = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+async function runBulkHubStrategy(env, opts = {}) {
+  const limit = Math.max(1, Math.min(opts.limit || 2, 6));
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const undash = s => String(s || "").replace(/-/g, "");
+
+  let state = await env.TRADES.get(BULK_HUB_KV, "json").catch(() => null);
+
+  if (opts.seed || !state || !Array.isArray(state.targets)) {
+    const titleRows = await notionQuery(CONTENT_STRATEGY_DB, {
+      filter: { or: BULK_HUB_CAMPAIGNS.map(c => ({ property: "Campaign", relation: { contains: dash(c) } })) },
+    }).catch(e => { console.error('bulkHubStrategy titles:', e.message); return []; });
+    const byProd = new Map();
+    titleRows.forEach(t => {
+      const pid = undash((t.properties?.product?.relation || [])[0]?.id || "");
+      const cid = undash((t.properties?.Campaign?.relation || [])[0]?.id || "");
+      if (pid && BULK_HUB_CAMPAIGNS.includes(cid) && !byProd.has(pid)) byProd.set(pid, cid);
+    });
+    const targets = [];
+    for (const [pid, cid] of byProd) {
+      const p = await fetch(`https://api.notion.com/v1/pages/${dash(pid)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+      targets.push({ productId: pid, campaignId: cid, productName: (p?.properties?.Name?.title || []).map(t => t.plain_text).join("") || pid });
+    }
+    state = { started: new Date().toISOString(), done: state?.done || [], errors: state?.errors || {}, targets };
+    await env.TRADES.put(BULK_HUB_KV, JSON.stringify(state));
+    if (opts.seed) return { seeded: true, total: targets.length, remaining: targets.filter(t => !state.done.includes(t.productId)).length, done: state.done.length };
+  }
+
+  const doneSet = new Set(state.done);
+  const pending = state.targets.filter(t => !doneSet.has(t.productId));
+  if (!pending.length) return { complete: true, total: state.targets.length, done: state.done.length, remaining: 0, errors: state.errors };
+
+  const token = await signToken((env.HMAC_SECRET || "").trim());
+  const call = (action, extra) => fetch(BULK_HUB_SELF, {
+    method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
+    body: JSON.stringify({ action, token, ...extra }),
+  }).then(r => r.json()).catch(e => ({ error: String(e.message || e) }));
+
+  const processed = [];
+  for (const t of pending.slice(0, limit)) {
+    try {
+      const r1 = await call("regenerateAllStrategyFields", { productId: t.productId, campaignId: t.campaignId });
+      if (r1.error) throw new Error("research — " + r1.error);
+      const gs = await notionQuery(GROWTH_STRATEGY_DB, { filter: { property: "Product", relation: { contains: dash(t.productId) } } }).catch(() => []);
+      let strategyMade = false;
+      if (!gs.length) {
+        const r2 = await call("generateGrowthStrategy", { campaignId: t.campaignId, productId: t.productId });
+        if (r2.error) throw new Error("strategy — " + r2.error);
+        strategyMade = true;
+      }
+      state.done.push(t.productId);
+      delete state.errors[t.productId];
+      processed.push({ product: t.productName, strategyMade, hadStrategy: gs.length > 0 });
+    } catch (e) {
+      state.errors[t.productId] = String(e.message || e);
+      processed.push({ product: t.productName, error: String(e.message || e) });
+    }
+    await env.TRADES.put(BULK_HUB_KV, JSON.stringify(state));
+  }
+  const remaining = state.targets.filter(t => !state.done.includes(t.productId)).length;
+  return { processed, total: state.targets.length, done: state.done.length, remaining, errors: state.errors, complete: remaining === 0 };
+}
+
 async function runStrategySequenceReminders(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   if (!NOTION_TOKEN) return;
@@ -10094,6 +10180,32 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const r = await assignSlotPlatformsForStrategy(hdr, env, growthStrategyId);
         if (r.error) return json({ error: r.error }, 500);
         return json({ success: true, ...r });
+      }
+
+      // ── Bulk hub research + strategy (see runBulkHubStrategy) ──
+      if (body.action === "bulkHubStrategyStart") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const r = await runBulkHubStrategy(env, { seed: true });
+        return json({ success: true, ...r });
+      }
+      if (body.action === "bulkHubStrategyStep") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const r = await runBulkHubStrategy(env, { limit: body.limit });
+        return json({ success: true, ...r });
+      }
+      if (body.action === "bulkHubStrategyStatus") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const st = await env.TRADES.get(BULK_HUB_KV, "json").catch(() => null);
+        if (!st || !Array.isArray(st.targets)) return json({ success: true, seeded: false, total: 0, done: 0, remaining: 0, errors: {} });
+        const done = st.done || [];
+        return json({ success: true, seeded: true, started: st.started, total: st.targets.length, done: done.length,
+          remaining: st.targets.filter(t => !done.includes(t.productId)).length, errors: st.errors || {},
+          pending: st.targets.filter(t => !done.includes(t.productId)).map(t => t.productName) });
+      }
+      if (body.action === "bulkHubStrategyReset") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        await env.TRADES.delete(BULK_HUB_KV).catch(() => {});
+        return json({ success: true });
       }
 
       // ── regenerateStrategySlots ──
@@ -32195,6 +32307,21 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if (event.cron === "*/30 * * * *") {
       ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
+      return;
+    }
+    if (event.cron === "*/4 * * * *") {
+      // Drain the bulk hub research+strategy queue, but ONLY while one is
+      // seeded and has pending products — otherwise a cheap no-op (1 KV read).
+      ctx.waitUntil((async () => {
+        try {
+          const st = await env.TRADES.get(BULK_HUB_KV, "json");
+          if (!st || !Array.isArray(st.targets)) return;
+          const pending = st.targets.filter(t => !(st.done || []).includes(t.productId));
+          if (!pending.length) return;
+          const r = await runBulkHubStrategy(env, { limit: 2 });
+          console.log(`bulkHubStrategy tick: ${r.done}/${r.total} done, ${r.remaining} left`);
+        } catch (e) { console.error('bulkHubStrategy cron failed:', e.message); }
+      })());
       return;
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
