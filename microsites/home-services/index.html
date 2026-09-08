@@ -8083,7 +8083,8 @@ async function submitGrowthStrategy() {
     const methodsNote = am.length
       ? ` — ${am.length} method${am.length === 1 ? '' : 's'} attached${newCount ? ` (${newCount} newly created)` : ''}`
       : '';
-    statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'}${methodsNote} ✓`;
+    const pp = r.platformPass && r.platformPass.total ? ` · platforms set on ${(r.platformPass.updated || 0) + (r.platformPass.unchanged || 0)}/${r.platformPass.total} slots` : '';
+    statusEl.textContent = `Created — ${r.groupingCount} grouping${r.groupingCount === 1 ? '' : 's'}${methodsNote}${pp} ✓`;
     bumpLocalProductStatus(productId, 'Active');   // worker promotes the product to Active on strategy generation
     delete GS_STRATEGY_CACHE[productId]; // force the dropdown to refetch next open
     loadCampaignStrategies();

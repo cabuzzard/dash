@@ -2298,6 +2298,107 @@ Return ONLY this JSON, no other text: { "assetTitle": "short distinct option nam
 //   arc, a nurture-email sequence, a trend-jack reel) — reusable
 //   knowledge about the platform itself, independent of any product's
 //   subject matter or keywords. Every phase here is tagged [Arc].
+// Second-pass platform assignment for a Growth Strategy's slots — a focused
+// Claude call that ONLY decides "which one catalog platform does each slot
+// live on", matched by exact name against PLATFORMS_DB. Powers both the manual
+// "Re-check Platforms" button (backfillStrategyPlatforms) and the automatic
+// pass at the end of generateGrowthStrategy: the initial generation's inline
+// per-slot platform picks are unreliable (the model is busy writing angles /
+// rationale / post-types, and when the operator's standing research guidelines
+// mention "platforms"/"listings" it echoes that prose into recommendedPlatform
+// for every arc). Best-effort — any failure just leaves the inline platforms
+// as-is. Returns { updated, unchanged, unmatched, total } or { error }.
+async function assignSlotPlatformsForStrategy(hdr, env, growthStrategyId) {
+  if (!env.ANTHROPIC_API_KEY) return { error: "ANTHROPIC_API_KEY not configured" };
+  const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+  if (!stratPage?.properties) return { error: "Growth Strategy not found" };
+  const stratName = (stratPage.properties["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
+  const [allSlots, allPlatformRows, allPostTypeRows] = await Promise.all([
+    notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }).catch(() => []),
+    notionQuery(PLATFORMS_DB, {}).catch(() => []),
+    notionQuery(POST_TYPES_DB, {}).catch(() => []),
+  ]);
+  if (!allSlots.length) return { updated: 0, total: 0 };
+  if (!allPlatformRows.length) return { error: "No platforms in catalog to match against" };
+  const platformIdByName = new Map();
+  const platformNameById = new Map();
+  allPlatformRows.forEach(p => {
+    const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+    const id = p.id.replace(/-/g,"");
+    platformNameById.set(id, nm);
+    if (nm && !platformIdByName.has(nm.toLowerCase())) platformIdByName.set(nm.toLowerCase(), id);
+  });
+  const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
+  const postTypeNameById = new Map(allPostTypeRows.map(p => [p.id.replace(/-/g,""), (p.properties?.Name?.title || []).map(t => t.plain_text).join("")]));
+  const curPlatformId = s => (s.properties["Platforms"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+  const byGrouping = {};
+  allSlots.forEach(s => {
+    const g = (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") || "Ungrouped";
+    (byGrouping[g] ||= []).push(s);
+  });
+  Object.values(byGrouping).forEach(arr => arr.sort((a, b) => (a.properties.Sequence?.number ?? 0) - (b.properties.Sequence?.number ?? 0)));
+  const groupingsBlock = Object.entries(byGrouping).map(([gname, slots]) => {
+    const lines = slots.map(s => {
+      const cur = platformNameById.get(curPlatformId(s)) || (s.properties.Platform?.rich_text || []).map(t => t.plain_text).join("");
+      const pt = postTypeNameById.get((s.properties["Post Type"]?.relation || [])[0]?.id?.replace(/-/g,"")) || (s.properties.Type?.rich_text || []).map(t => t.plain_text).join("");
+      const angle = (s.properties.Angle?.rich_text || []).map(t => t.plain_text).join("") || (s.properties.Name?.title || []).map(t => t.plain_text).join("");
+      return `  [${s.id.replace(/-/g,"")}] Seq ${s.properties.Sequence?.number ?? '?'}${pt ? ` · ${pt}` : ''}: ${angle}${cur ? `\n     (currently: ${cur.slice(0, 300)})` : ''}`;
+    }).join('\n');
+    return `Grouping "${gname}":\n${lines}`;
+  }).join('\n\n');
+  const prompt = `You are re-evaluating the single best PUBLISHING PLATFORM for every planned content slot in the existing growth strategy "${stratName}". Do NOT rewrite angles or post types — only decide, per slot, which one platform it primarily lives on.
+
+PLATFORM CATALOG (pick the single best-fit by EXACT name from this list for each slot):
+${platformCatalog.map(n => `- ${n}`).join('\n')}
+
+Rules:
+- Exactly one platform per slot — its primary home, even if the content also gets cross-posted.
+- Reconsider each slot on its own merits. A grouping SHOULD span platforms when its slots are genuinely different formats — e.g. a long-form Pillar on YouTube or Blog, short derivative cuts on Instagram / TikTok / Threads, a nurture send by Email, a discussion post on Reddit or X. Keep a grouping on ONE platform only when every slot in it really is the same format.
+- Use the Post Type as a signal: a Pillar is usually the long-form anchor (YouTube / Blog / Email newsletter); Intro / Teaser / CTA / Social Proof pieces are usually short-form social; Q&A / Behind-the-Scenes often short-form video.
+- "currently: ..." shows the slot's existing platform (sometimes a multi-platform sentence) — treat it as a hint, not a constraint. Change it when a better fit exists.
+- A slot that is clearly an Etsy/marketplace listing → "etsy". A newsletter/nurture send → "Email".
+- If nothing in the catalog genuinely fits a slot, omit it (do not force a match).
+
+SLOTS:
+${groupingsBlock}
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "assignments": [ { "slotId": "the bracketed ID", "platform": "exact name from the catalog" } ] }`;
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) return { error: aiData.error?.message || "Claude API error" };
+  let assignments;
+  try {
+    const raw = aiData.content?.[0]?.text || "";
+    const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+    assignments = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))).assignments || [];
+  } catch (e) { return { error: "Failed to parse assignments JSON: " + e.message }; }
+  const slotById = new Map(allSlots.map(s => [s.id.replace(/-/g,""), s]));
+  let updated = 0, unchanged = 0, unmatched = 0;
+  for (const a of assignments) {
+    const slot = slotById.get(String(a.slotId || '').replace(/-/g,""));
+    if (!slot) continue;
+    const wantName = String(a.platform || '').trim();
+    const platformId = wantName ? platformIdByName.get(wantName.toLowerCase()) : null;
+    if (!platformId) { unmatched++; continue; }
+    if (curPlatformId(slot) === platformId) { unchanged++; continue; }
+    await fetch(`https://api.notion.com/v1/pages/${dash(slot.id.replace(/-/g,""))}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: {
+        "Platforms": { relation: [{ id: dash(platformId) }] },
+        "Platform": { rich_text: [{ type: "text", text: { content: wantName.slice(0, 1990) } }] },
+      } }),
+    }).catch(() => {});
+    updated++;
+  }
+  return { updated, unchanged, unmatched, total: allSlots.length };
+}
+
 async function researchAndWriteMethodology(hdr, env, methodId, methodName, platform, productContext, force, isDestination, guidelines) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no API key" };
   if (!force) {
@@ -9989,108 +10090,10 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === "backfillStrategyPlatforms") {
         const { growthStrategyId } = body;
         if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-
-        const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, { headers: hdr }).then(r => r.json());
-        if (!stratPage.properties) return json({ error: stratPage.message || "Growth Strategy not found" }, 404);
-        const stratName = (stratPage.properties["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
-
-        const [allSlots, allPlatformRows, allPostTypeRows] = await Promise.all([
-          notionQuery(STRATEGY_SLOTS_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(growthStrategyId) } } }),
-          notionQuery(PLATFORMS_DB, {}).catch(e => { console.error('notionQuery(PLATFORMS_DB) failed:', e.message); return []; }),
-          notionQuery(POST_TYPES_DB, {}).catch(() => []),
-        ]);
-        if (!allSlots.length) return json({ success: true, updated: 0, total: 0 });
-        if (!allPlatformRows.length) return json({ error: "No platforms in catalog to match against" }, 500);
-
-        // id -> canonical catalog name, and name(lower) -> id. When the DB
-        // holds near-duplicate rows (e.g. "LinkedIn"/"Linkedin"), the first
-        // wins for name->id so the AI's pick resolves consistently.
-        const platformIdByName = new Map();
-        const platformNameById = new Map();
-        allPlatformRows.forEach(p => {
-          const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
-          const id = p.id.replace(/-/g,"");
-          platformNameById.set(id, nm);
-          if (nm && !platformIdByName.has(nm.toLowerCase())) platformIdByName.set(nm.toLowerCase(), id);
-        });
-        const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
-        const postTypeNameById = new Map(allPostTypeRows.map(p => [p.id.replace(/-/g,""), (p.properties?.Name?.title || []).map(t => t.plain_text).join("")]));
-
-        const curPlatformId = s => (s.properties["Platforms"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
-
-        const byGrouping = {};
-        allSlots.forEach(s => {
-          const g = (s.properties.Grouping?.rich_text || []).map(t => t.plain_text).join("") || "Ungrouped";
-          (byGrouping[g] ||= []).push(s);
-        });
-        Object.values(byGrouping).forEach(arr => arr.sort((a, b) => (a.properties.Sequence?.number ?? 0) - (b.properties.Sequence?.number ?? 0)));
-        const groupingsBlock = Object.entries(byGrouping).map(([gname, slots]) => {
-          const lines = slots.map(s => {
-            const cur = platformNameById.get(curPlatformId(s)) || (s.properties.Platform?.rich_text || []).map(t => t.plain_text).join("");
-            const pt = postTypeNameById.get((s.properties["Post Type"]?.relation || [])[0]?.id?.replace(/-/g,"")) || (s.properties.Type?.rich_text || []).map(t => t.plain_text).join("");
-            const angle = (s.properties.Angle?.rich_text || []).map(t => t.plain_text).join("") || (s.properties.Name?.title || []).map(t => t.plain_text).join("");
-            return `  [${s.id.replace(/-/g,"")}] Seq ${s.properties.Sequence?.number ?? '?'}${pt ? ` · ${pt}` : ''}: ${angle}${cur ? `\n     (currently: ${cur.slice(0, 300)})` : ''}`;
-          }).join('\n');
-          return `Grouping "${gname}":\n${lines}`;
-        }).join('\n\n');
-
-        const prompt = `You are re-evaluating the single best PUBLISHING PLATFORM for every planned content slot in the existing growth strategy "${stratName}". Do NOT rewrite angles or post types — only decide, per slot, which one platform it primarily lives on.
-
-PLATFORM CATALOG (pick the single best-fit by EXACT name from this list for each slot):
-${platformCatalog.map(n => `- ${n}`).join('\n')}
-
-Rules:
-- Exactly one platform per slot — its primary home, even if the content also gets cross-posted.
-- Reconsider each slot on its own merits. A grouping SHOULD span platforms when its slots are genuinely different formats — e.g. a long-form Pillar on YouTube or Blog, short derivative cuts on Instagram / TikTok / Threads, a nurture send by Email, a discussion post on Reddit or X. Keep a grouping on ONE platform only when every slot in it really is the same format.
-- Use the Post Type as a signal: a Pillar is usually the long-form anchor (YouTube / Blog / Email newsletter); Intro / Teaser / CTA / Social Proof pieces are usually short-form social; Q&A / Behind-the-Scenes often short-form video.
-- "currently: ..." shows the slot's existing platform (sometimes a multi-platform sentence) — treat it as a hint, not a constraint. Change it when a better fit exists.
-- A slot that is clearly an Etsy/marketplace listing → "etsy". A newsletter/nurture send → "Email".
-- If nothing in the catalog genuinely fits a slot, omit it (do not force a match).
-
-SLOTS:
-${groupingsBlock}
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "assignments": [ { "slotId": "the bracketed ID", "platform": "exact name from the catalog" } ] }`;
-
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
-        let assignments;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-          assignments = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))).assignments || [];
-        } catch (e) {
-          return json({ error: "Failed to parse assignments JSON: " + e.message }, 500);
-        }
-
-        const slotById = new Map(allSlots.map(s => [s.id.replace(/-/g,""), s]));
-        let updated = 0, unchanged = 0, unmatched = 0;
-        for (const a of assignments) {
-          const slot = slotById.get(String(a.slotId || '').replace(/-/g,""));
-          if (!slot) continue;
-          const wantName = String(a.platform || '').trim();
-          const platformId = wantName ? platformIdByName.get(wantName.toLowerCase()) : null;
-          if (!platformId) { unmatched++; continue; }
-          if (curPlatformId(slot) === platformId) { unchanged++; continue; }
-          await fetch(`https://api.notion.com/v1/pages/${dash(slot.id.replace(/-/g,""))}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: {
-              "Platforms": { relation: [{ id: dash(platformId) }] },
-              "Platform": { rich_text: [{ type: "text", text: { content: wantName.slice(0, 1990) } }] },
-            } }),
-          }).catch(() => {});
-          updated++;
-        }
-        return json({ success: true, updated, unchanged, unmatched, total: allSlots.length });
+        const r = await assignSlotPlatformsForStrategy(hdr, env, growthStrategyId);
+        if (r.error) return json({ error: r.error }, 500);
+        return json({ success: true, ...r });
       }
 
       // ── regenerateStrategySlots ──
@@ -14420,7 +14423,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const strategyId = createResp.id.replace(/-/g, "");
           const slotResults = (await Promise.all(groupings.map(g => createSlotsFor(strategyId, g)))).flat();
           const slotsCreated = slotResults.filter(r => r && r.id).length;
-          return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods, divergent: false });
+          // The inline per-slot platform picks above are unreliable — run the
+          // same focused second pass "Re-check Platforms" uses, so a fresh
+          // strategy already groups by real catalog platforms in the panel
+          // instead of needing the operator to click the button. Brief wait
+          // first so the just-created slots are visible to a Notion query.
+          await new Promise(r => setTimeout(r, 2000));
+          const platformPass = await assignSlotPlatformsForStrategy(hdr, env, strategyId).catch(() => null);
+          return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods, divergent: false, platformPass });
         }
 
         // ── divergent path — one parent (summary + links only, no Slots of
