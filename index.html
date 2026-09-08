@@ -1404,6 +1404,63 @@
       </div>
     </div>
 
+    <!-- ORB Momentum Section — ORB_MOMENTUM_001 opening-range-breakout signal
+         generator + miss tracking. "Misses" = candidates that broke the opening
+         range but got filtered out; the nightly cron measures what price did
+         afterwards (MFE/MAE in R, per horizon) and rolls it up by which filter
+         rejected it. Full rows live in the 📉 ORB Misses Notion DB. -->
+    <div id="orbSection" style="margin-bottom:16px;">
+      <div id="orbHdr" onclick="toggleOrb()" style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;user-select:none;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#43d1a0;">ORB Momentum</span>
+        <span style="display:flex;align-items:center;gap:10px;">
+          <span id="orbHdrStatus" style="font-size:10px;color:var(--text3);"></span>
+          <button onclick="event.stopPropagation();loadOrbPanel(true)" id="orbRefreshBtn" style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid #43d1a0;border-radius:4px;background:transparent;color:#43d1a0;cursor:pointer;letter-spacing:.04em;">⟳</button>
+          <span id="orbChev" style="font-size:10px;color:var(--text3);transition:transform .2s;">▶</span>
+        </span>
+      </div>
+      <div id="orbBody" style="display:none;padding:12px 14px;border:1px solid var(--border);border-top:none;border-radius:0 0 var(--radius-sm) var(--radius-sm);">
+
+        <!-- Today -->
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:12px;font-size:12px;">
+          <span id="orbTodayLine" style="color:var(--text2);">Loading…</span>
+          <span style="flex:1;"></span>
+          <button onclick="orbRun('runOrbScreenNow', this)"  style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">run screen</button>
+          <button onclick="orbRun('runOrbMonitorNow', this)" style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">run monitor</button>
+          <button onclick="orbRun('runOrbMissScoringNow', this)" style="font-size:10px;font-weight:700;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">score misses</button>
+        </div>
+
+        <!-- Miss-rate table -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Miss rates by filter</span>
+          <span id="orbHzToggle" style="display:flex;gap:4px;"></span>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-bottom:8px;line-height:1.5;">
+          Of the rejected breakouts where each filter failed: how many went on to reach +1R / +2R (favourable), how many hit the OR-edge stop first, and the average excursion — R measured against the full opening range (ORH−ORL) as the stop. <b>“reached +1R”</b> = a trade you’d have wanted.
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tr-table" style="min-width:640px;">
+            <thead><tr id="orbStatsHead"></tr></thead>
+            <tbody id="orbStatsBody"><tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:16px 8px;">No scored misses yet — the nightly cron scores after each close.</td></tr></tbody>
+          </table>
+        </div>
+
+        <!-- History -->
+        <div style="display:flex;align-items:center;gap:10px;margin:16px 0 6px;">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Day</span>
+          <select id="orbDaySelect" onchange="orbViewDay(this.value)" style="font-size:11px;padding:3px 6px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;color:var(--text);"></select>
+          <span style="flex:1;"></span>
+          <a id="orbNotionLink" href="https://www.notion.so/3f9b8d8f6ab242ec92fe25572bb16c9f" target="_blank" rel="noopener" style="font-size:10px;font-weight:600;color:#43d1a0;text-decoration:none;border:1px solid #43d1a044;padding:2px 8px;border-radius:4px;">📉 ORB Misses ↗</a>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tr-table" style="min-width:680px;">
+            <thead><tr id="orbDayHead"></tr></thead>
+            <tbody id="orbDayBody"><tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:16px 8px;">Pick a day.</td></tr></tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
     <!-- List View -->
     <div id="tradesListView">
       <div class="trades-hdr">
@@ -4425,7 +4482,7 @@ function loadTabContent(name) {
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
-    if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); }
+    if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); loadOrbPanel(); }
     startTradesAutoRefresh();
   } else {
     stopTradesAutoRefresh();
@@ -15589,6 +15646,145 @@ function toggleScreener() {
   scrOpen = !scrOpen;
   document.getElementById('scrBody').classList.toggle('open', scrOpen);
   document.getElementById('scrChev').style.transform = scrOpen ? 'rotate(90deg)' : '';
+}
+
+// ── ORB Momentum panel (signal status + miss tracking) ───────────────────────
+const orbState = { open: false, hz: 'eod', stats: null };
+const ORB_HZ = [['eod', 'EOD'], ['d1', '+1d'], ['d3', '+3d'], ['d5', '+5d']];
+
+function toggleOrb() {
+  orbState.open = !orbState.open;
+  document.getElementById('orbBody').style.display = orbState.open ? 'block' : 'none';
+  document.getElementById('orbChev').style.transform = orbState.open ? 'rotate(90deg)' : '';
+  if (orbState.open && !orbState.stats) loadOrbPanel();
+}
+
+async function loadOrbPanel(force) {
+  if (orbState._loading) return;
+  orbState._loading = true;
+  try {
+    const [status, stats, index] = await Promise.all([
+      call('getOrbStatus').catch(() => null),
+      call('getOrbMissStats').catch(() => null),
+      call('getOrbArchiveIndex').catch(() => null),
+    ]);
+    orbState.stats = stats;
+
+    // header + today line
+    if (status) {
+      const s = status.screen, lm = status.lastMonitor, ls = status.lastScreen;
+      const fired = (status.fired || []).length, rej = (status.rejects || []).length;
+      const scr = s ? s.count : (ls ? ls.count : 0);
+      document.getElementById('orbHdrStatus').textContent =
+        `${scr} screened · ${fired} fired · ${rej} rejected today`;
+      document.getElementById('orbTodayLine').innerHTML =
+        `<b>${status.date}</b> — screened <b>${scr}</b>` +
+        (ls ? ` <span style="color:var(--text3)">(${new Date(ls.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})})</span>` : '') +
+        ` · fired <b>${fired}</b> · rejected <b>${rej}</b>` +
+        (lm ? ` · monitor ran <span style="color:var(--text3)">${new Date(lm.at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span>` : '');
+    }
+    if (index && index.lastScoring) {
+      const l = index.lastScoring;
+      document.getElementById('orbTodayLine').innerHTML +=
+        `<br><span style="color:var(--text3);font-size:11px;">last scoring ${new Date(l.at).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})} — ${l.synced} synced, ${l.errors} errors</span>`;
+    }
+
+    // day dropdown
+    const sel = document.getElementById('orbDaySelect');
+    const days = (index && index.days) || [];
+    sel.innerHTML = '<option value="">—</option>' + days.map(d =>
+      `<option value="${d.date}">${d.date} · ${d.misses} misses${d.pending ? ` (${d.pending} pending)` : ''}</option>`).join('');
+
+    renderOrbHzToggle();
+    renderOrbStats();
+  } finally {
+    orbState._loading = false;
+  }
+}
+
+function renderOrbHzToggle() {
+  document.getElementById('orbHzToggle').innerHTML = ORB_HZ.map(([k, lbl]) =>
+    `<button onclick="orbState.hz='${k}';renderOrbHzToggle();renderOrbStats();if(document.getElementById('orbDaySelect').value)orbViewDay(document.getElementById('orbDaySelect').value)"
+      style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:4px;cursor:pointer;border:1px solid ${orbState.hz === k ? '#43d1a0' : 'var(--border2)'};background:${orbState.hz === k ? '#43d1a022' : 'transparent'};color:${orbState.hz === k ? '#43d1a0' : 'var(--text3)'};">${lbl}</button>`).join('');
+}
+
+function orbPct(v) { return v == null ? '—' : v.toFixed(0) + '%'; }
+function orbR(v)   { return v == null ? '—' : (v >= 0 ? '+' : '') + v.toFixed(2) + 'R'; }
+
+function renderOrbStats() {
+  const head = document.getElementById('orbStatsHead');
+  const body = document.getElementById('orbStatsBody');
+  const st = orbState.stats;
+  head.innerHTML = ['Filter', 'n', 'reached +1R', 'reached +2R', 'stopped first', 'avg MFE', 'avg MAE', 'avg MFE %']
+    .map((h, i) => `<th${i ? ' class="r"' : ''}>${h}</th>`).join('');
+  if (!st || !st.byFilter || !st.byFilter.ALL) {
+    body.innerHTML = '<tr><td colspan="8" style="color:var(--text3);font-style:italic;padding:16px 8px;">No scored misses yet — the nightly cron scores after each close.</td></tr>';
+    return;
+  }
+  const hz = orbState.hz;
+  const rows = Object.entries(st.byFilter)
+    .map(([f, hzMap]) => ({ f, d: hzMap[hz] || {} }))
+    .filter(r => r.d.n)
+    .sort((a, b) => (a.f === 'ALL' ? -1 : b.f === 'ALL' ? 1 : b.d.n - a.d.n));
+  body.innerHTML = rows.map(({ f, d }) => {
+    const hi = f === 'ALL';
+    return `<tr style="${hi ? 'font-weight:700;background:var(--surface);' : ''}">
+      <td>${f}</td>
+      <td class="r">${d.n}${d.scored < d.n ? ` <span style="color:var(--text3)">/${d.scored}</span>` : ''}</td>
+      <td class="r" style="color:${d.reached1R_pct >= 50 ? '#43d1a0' : 'inherit'}">${orbPct(d.reached1R_pct)}</td>
+      <td class="r">${orbPct(d.reached2R_pct)}</td>
+      <td class="r" style="color:${d.stopped_pct >= 50 ? '#fc8181' : 'inherit'}">${orbPct(d.stopped_pct)}</td>
+      <td class="r">${orbR(d.avgMfeR)}</td>
+      <td class="r" style="color:var(--text3)">${orbR(d.avgMaeR == null ? null : -d.avgMaeR)}</td>
+      <td class="r">${d.avgMfePct == null ? '—' : '+' + d.avgMfePct.toFixed(1) + '%'}</td>
+    </tr>`;
+  }).join('') + (st.window ? `<tr><td colspan="8" style="color:var(--text3);font-size:10px;padding:6px 8px;">window: ${st.window.days} trading day(s)${st.window.from ? `, ${st.window.from} → ${st.window.to}` : ''} · ${st.totalMisses} misses (${st.pending} pending) · MFE/MAE R vs. full-OR stop</td></tr>` : '');
+}
+
+async function orbViewDay(date) {
+  const head = document.getElementById('orbDayHead');
+  const body = document.getElementById('orbDayBody');
+  if (!date) { body.innerHTML = '<tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:16px 8px;">Pick a day.</td></tr>'; head.innerHTML = ''; return; }
+  body.innerHTML = '<tr><td colspan="9" style="padding:12px 8px;color:var(--text3);">Loading…</td></tr>';
+  let arch;
+  try { arch = await call('getOrbArchive', { date }); } catch (e) { body.innerHTML = `<tr><td colspan="9" style="color:#fc8181;padding:12px 8px;">${e.message}</td></tr>`; return; }
+  const hz = orbState.hz;
+  head.innerHTML = ['Ticker', 'Dir', 'Time', 'Failed filters', 'Entry', 'RVOL', 'Cand pos', `MFE ${hz}`, 'Outcome']
+    .map((h, i) => `<th${[4,5,6,7].includes(i) ? ' class="r"' : ''}>${h}</th>`).join('');
+  const misses = (arch.misses || []).slice().sort((a, b) => (a.signalTs || '').localeCompare(b.signalTs || ''));
+  if (!misses.length) { body.innerHTML = '<tr><td colspan="9" style="color:var(--text3);font-style:italic;padding:16px 8px;">No rejected breakouts that day.</td></tr>'; return; }
+  const oc = { WIN_MISSED: '#43d1a0', BIG_WIN_MISSED: '#2ea3ff', AVOIDED_LOSS: 'var(--text3)', NEUTRAL: 'var(--text2)', PENDING: 'var(--text3)' };
+  body.innerHTML = misses.map(m => {
+    const sc = (m.scores || {})[hz] || {};
+    const mfe = sc.mfeRor;
+    return `<tr>
+      <td><b>${m.ticker}</b></td>
+      <td style="color:${m.direction === 'LONG' ? '#43d1a0' : '#fc8181'}">${m.direction}</td>
+      <td style="color:var(--text3)">${m.breakoutEt || '—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${m.noPriceData ? '<i>no contract</i>' : (m.failedFilters || []).join(', ')}</td>
+      <td class="r">${m.entry == null ? '—' : '$' + m.entry.toFixed(2)}</td>
+      <td class="r">${m.rvol == null ? '—' : m.rvol.toFixed(2) + '×'}</td>
+      <td class="r">${m.candlePosition == null ? '—' : m.candlePosition.toFixed(2)}</td>
+      <td class="r">${mfe == null ? '<span style="color:var(--text3)">pending</span>' : orbR(mfe)}</td>
+      <td style="color:${oc[m.outcome] || 'var(--text3)'};font-size:11px;font-weight:600">${(m.outcome || 'PENDING').replace('_', ' ')}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function orbRun(action, btn) {
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await call(action, action === 'runOrbMissScoringNow' ? { limit: 200 } : {});
+    showToast(action === 'runOrbMissScoringNow'
+      ? `Scored ${r.scored || 0}, synced ${r.synced || 0}${r.errors ? `, ${r.errors} errors` : ''}`
+      : (r.created ? `${r.created.length} signal(s) created` : (r.reason || r.skipped || 'done')));
+    await loadOrbPanel(true);
+  } catch (e) {
+    showToast(e.message, 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
+  }
 }
 
 async function loadWatchlist() {

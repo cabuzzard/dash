@@ -3685,7 +3685,7 @@ async function runOrbScreen(env, { force = false } = {}) {
     .slice(0, ORB_V1.maxCandidates);
 
   const blob = { date: et.dateStr, builtAt: new Date().toISOString(), market, count: candidates.length, candidates };
-  await env.TRADES.put(key, JSON.stringify(blob), { expirationTtl: 60 * 60 * 48 });
+  await env.TRADES.put(key, JSON.stringify(blob), { expirationTtl: 60 * 60 * 24 * 8 }); // 8d — the nightly miss archiver reads this
   await env.TRADES.put('orb:last_screen', JSON.stringify({ date: et.dateStr, at: blob.builtAt, count: candidates.length, universe: universe.length }));
   return blob;
 }
@@ -3948,7 +3948,7 @@ async function runOrbMonitor(env, { force = false } = {}) {
   ]);
   if (rejects.length) {
     const prev = (await env.TRADES.get(`orb:rejects:${et.dateStr}`, 'json')) || [];
-    await env.TRADES.put(`orb:rejects:${et.dateStr}`, JSON.stringify([...prev, ...rejects].slice(-300)), { expirationTtl: 60 * 60 * 72 });
+    await env.TRADES.put(`orb:rejects:${et.dateStr}`, JSON.stringify([...prev, ...rejects].slice(-600)), { expirationTtl: 60 * 60 * 24 * 8 }); // 8d — read by the nightly miss archiver
   }
   return { ran: true, created, rejects: rejects.length };
 }
@@ -3966,6 +3966,399 @@ async function runOrbStrategy(env) {
     }
   }
   return { skipped: `nothing to do at ${orbHhmm(m)} ET` };
+}
+
+// ── ORB_MOMENTUM_001 — MISS TRACKING ─────────────────────────────────────────
+// Every candidate that broke the opening range but got rejected by a filter is
+// recorded as a hypothetical trade (entry = breakout candle close, stop = the
+// OR edge V1 would have used). On the nightly cron we measure what price
+// actually did afterwards — MFE / MAE in % and in R — over four horizons (EOD,
+// +1d, +3d, +5d). Rolled up by failed-filter this answers "is this filter
+// protecting us or costing us trades" WITHOUT touching the frozen V1 params.
+//
+// Because V1's stop IS the OR edge, a breakout that closes right on the line
+// has ~zero structural risk and a meaningless R. So every excursion is also
+// expressed against the FULL opening range (ORH−ORL) as an alternate stop —
+// that "OR-stop R" basis is consistent across all rows and is literally the
+// V2-stop hypothesis. It's the headline metric; structural R is secondary.
+//
+// Storage (all in env.TRADES):
+//   orb:archive:{date}   — permanent, no TTL. { market, candidates, rejectsRaw, misses[] }
+//   orb:archive_index    — sorted [dateStr]
+//   orb:miss_scoring_last — last run summary
+// One Notion row per miss in ORB_MISSES_DB, created on first score, PATCHed as
+// later horizons land. Dedup key: one miss per (date,ticker,direction) — the
+// earliest breakout candle that carries price data.
+
+const ORB_MISSES_DB = "3f9b8d8f6ab242ec92fe25572bb16c9f"; // 📉 ORB Misses — DATABASE id (not the collection:// data-source id)
+const ORB_MISS_SCORE_LIMIT   = 150;  // Notion writes per nightly run; drains over successive nights if exceeded
+const ORB_NEAR_ZERO_RISK_PCT = ORB_V1.minRiskPctOfEntry * 100; // 0.1% — below this the structural R basis is dropped
+
+function orbEtStrToMin(s) {
+  const m = /(\d{1,2}):(\d{2})/.exec(s || '');
+  return m ? (+m[1]) * 60 + (+m[2]) : null;
+}
+
+// Weekday count (Mon–Fri) strictly after `fromDateStr`, up to and including
+// `toDateStr` — a cheap "trading days elapsed" proxy. Ignores market holidays;
+// a holiday just slips a horizon by a day, harmless for this analysis.
+function orbTradingDaysBetween(fromDateStr, toDateStr) {
+  const b = new Date(`${toDateStr}T00:00:00Z`);
+  let n = 0;
+  for (let d = new Date(Date.parse(`${fromDateStr}T00:00:00Z`) + 86400000); d <= b; d = new Date(d.getTime() + 86400000)) {
+    const wd = d.getUTCDay();
+    if (wd !== 0 && wd !== 6) n++;
+  }
+  return n;
+}
+
+// Yahoo chart bars for an explicit unix-second window. Returns [{ts,h,l,c}].
+async function orbFetchChartRange(sym, interval, period1, period2) {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${sym}`
+    + `?interval=${interval}&period1=${Math.floor(period1)}&period2=${Math.floor(period2)}&includePrePost=false`;
+  const j = await orbFetchJson(url);
+  const res = j?.chart?.result?.[0];
+  const ts = res?.timestamp, q = res?.indicators?.quote?.[0];
+  if (!ts || !q?.high) return [];
+  const out = [];
+  for (let i = 0; i < ts.length; i++) {
+    if (q.high[i] == null || q.low[i] == null || q.close[i] == null) continue;
+    out.push({ ts: ts[i], h: q.high[i], l: q.low[i], c: q.close[i] });
+  }
+  return out;
+}
+
+// Walk bars chronologically from a hypothetical entry. Favourable excursion is
+// tracked only up to (not through) the bar that first hits the structural stop
+// — intra-bar ordering is unknowable, so this is the conservative read. Adverse
+// excursion is tracked across the stop bar too. Returns raw price distances.
+function orbExcursion(bars, entry, stop, isLong) {
+  let mfe = 0, mae = 0, stopped = false, stopTs = Infinity;
+  for (const bar of bars) {
+    const hitStop = isLong ? bar.l <= stop : bar.h >= stop;
+    if (hitStop && !stopped) { stopped = true; stopTs = bar.ts; }
+    const adv = isLong ? entry - bar.l : bar.h - entry;
+    if (adv > mae) mae = adv;
+    if (bar.ts < stopTs) {
+      const fav = isLong ? bar.h - entry : entry - bar.l;
+      if (fav > mfe) mfe = fav;
+    }
+  }
+  return { mfe: Math.max(mfe, 0), mae: Math.max(mae, 0), stopped };
+}
+
+// Build (or refresh) the miss list for one day and persist it to the permanent
+// archive. Idempotent — existing scores / Notion page ids are carried forward.
+async function orbBuildMissesForDay(env, date) {
+  const [rejRaw, wlRaw, archRaw] = await Promise.all([
+    env.TRADES.get(`orb:rejects:${date}`, 'json'),
+    env.TRADES.get(`orb:watchlist:${date}`, 'json'),
+    env.TRADES.get(`orb:archive:${date}`, 'json'),
+  ]);
+  const rejects = (rejRaw && rejRaw.length) ? rejRaw : (archRaw?.rejectsRaw || []);
+  if (!rejects.length && !archRaw) return null;
+  const wl = wlRaw || archRaw || null;
+
+  const candByTicker = {};
+  for (const c of (wl?.candidates || [])) candByTicker[c.ticker] = c;
+
+  const prevMisses = {};
+  for (const m of (archRaw?.misses || [])) prevMisses[m.signalId] = m;
+
+  const groups = {};
+  for (const r of rejects) {
+    const k = `${r.ticker}:${r.direction}`;
+    (groups[k] = groups[k] || []).push(r);
+  }
+
+  const misses = [];
+  for (const [k, rs] of Object.entries(groups)) {
+    const [ticker, direction] = k.split(':');
+    const isLong = direction === 'LONG';
+    rs.sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    const priced = rs.find(r => typeof r.close === 'number' && r.orh != null && r.orl != null);
+    const base   = priced || rs[0];
+    const signalId = `${date}:${ticker}:${direction}`;
+    const prev = prevMisses[signalId] || {};
+    const cand = candByTicker[ticker] || {};
+
+    let entry = null, stop = null, riskPerShare = null, riskPct = null, orStopRisk = null;
+    if (priced) {
+      entry = priced.close;
+      stop  = isLong ? priced.orh : priced.orl;
+      riskPerShare = Math.abs(entry - stop);
+      riskPct = entry ? +(riskPerShare / entry * 100).toFixed(3) : null;
+      orStopRisk = Math.abs(priced.orh - priced.orl);
+    }
+
+    misses.push({
+      signalId, date, ticker, direction,
+      signalTs:   base.ts,
+      breakoutEt: base.breakout_candle_et || null,
+      noPriceData: !priced,
+      entry, stop, riskPerShare, riskPct, orStopRisk,
+      orh: priced?.orh ?? null, orl: priced?.orl ?? null,
+      vwap: priced?.vwap ?? null, vwapSlope: priced?.vwap_slope ?? null,
+      rvol: priced?.rvol ?? null,
+      candlePosition: priced?.candle_position ?? null,
+      orRangePct: priced?.or_range_pct ?? null,
+      failedFilters: base.failed || [],
+      allFailedFilters: [...new Set(rs.flatMap(r => r.failed || []))],
+      passedFilters: base.passed || [],
+      screenReasons: [...new Set((cand.reasons || []).map(x => String(x).split(' ')[0]))],
+      gapPct: cand.gapPct ?? null,
+      atrPct: cand.atrPct ?? null,
+      spyDayPct: wl?.market?.spyDayPct ?? null,
+      rejectCandles: rs.length,
+      scores:        prev.scores || {},
+      scoredThrough: prev.scoredThrough || 'pending',
+      outcome:       prev.outcome || 'PENDING',
+      notionPageId:  prev.notionPageId || null,
+      lastScoredAt:  prev.lastScoredAt || null,
+    });
+  }
+
+  const archive = {
+    date, archivedAt: new Date().toISOString(),
+    market:     wl?.market || archRaw?.market || null,
+    candidates: wl?.candidates || archRaw?.candidates || [],
+    rejectsRaw: (rejRaw && rejRaw.length) ? rejRaw : (archRaw?.rejectsRaw || []),
+    misses,
+  };
+  await env.TRADES.put(`orb:archive:${date}`, JSON.stringify(archive));
+
+  const idx = (await env.TRADES.get('orb:archive_index', 'json')) || [];
+  if (!idx.includes(date)) { idx.push(date); idx.sort(); await env.TRADES.put('orb:archive_index', JSON.stringify(idx)); }
+  return archive;
+}
+
+// Score whatever horizons are now available for one miss (mutates + returns it).
+async function orbScoreMiss(env, miss, todayEt) {
+  if (miss.noPriceData) return miss;
+  const isLong   = miss.direction === 'LONG';
+  const risk     = miss.riskPerShare;
+  const orRisk   = miss.orStopRisk;
+  const nearZero = miss.riskPct == null || miss.riskPct < ORB_NEAR_ZERO_RISK_PCT || !(risk > 0);
+  const signalTs = Date.parse(miss.signalTs) / 1000;
+  const tdElapsed = orbTradingDaysBetween(miss.date, todayEt.dateStr);
+  const scores = miss.scores || {};
+
+  const rStruct = d => nearZero ? null : +(d / risk).toFixed(3);
+  const rOr     = d => orRisk > 0 ? +(d / orRisk).toFixed(3) : null;
+  const pct     = d => miss.entry ? +(d / miss.entry * 100).toFixed(3) : null;
+  const pack    = ex => ({
+    mfePct: pct(ex.mfe), maePct: pct(ex.mae),
+    mfeR:  rStruct(ex.mfe), maeR:  rStruct(ex.mae),
+    mfeRor: rOr(ex.mfe),    maeRor: rOr(ex.mae),
+    stopped: ex.stopped,
+  });
+
+  // EOD — same-day 5m bars from signal → close. Locked once the session is over.
+  // 21:05Z ≥ 16:05 in both EST and EDT; includePrePost=false keeps it RTH-only.
+  const eodTs = Date.parse(`${miss.date}T21:05:00Z`) / 1000;
+  const dayClosed = (Date.now() / 1000) >= eodTs || miss.date < todayEt.dateStr;
+  if (!scores.eod && dayClosed) {
+    let bars = [];
+    try { bars = await orbFetchChartRange(miss.ticker, '5m', signalTs - 300, eodTs); } catch {}
+    bars = bars.filter(b => b.ts >= signalTs - 1 && b.ts <= eodTs);
+    if (bars.length) scores.eod = { ...pack(orbExcursion(bars, miss.entry, miss.stop, isLong)), bars: bars.length };
+  }
+
+  // Multi-day — daily bars for the days AFTER the entry day. Each horizon is
+  // "from entry through the close of day N", so it folds in the EOD intraday
+  // excursion. Recomputed each eligible night until +5d locks it 'complete'.
+  if (scores.eod && tdElapsed >= 1 && !scores.d5) {
+    const p1 = Date.parse(`${miss.date}T00:00:00Z`) / 1000;
+    let daily = [];
+    try { daily = await orbFetchChartRange(miss.ticker, '1d', p1, p1 + 86400 * 16); } catch {}
+    const after = daily.filter(b => new Date(b.ts * 1000).toISOString().slice(0, 10) > miss.date);
+    const eodMfeDist = (scores.eod.mfePct ?? 0) / 100 * miss.entry;
+    const eodMaeDist = (scores.eod.maePct ?? 0) / 100 * miss.entry;
+    const horizon = (nd, key) => {
+      if (tdElapsed < nd) return;
+      const slice = after.slice(0, nd);
+      if (!slice.length) return;
+      const ex = orbExcursion(slice, miss.entry, miss.stop, isLong);
+      const mfe = Math.max(ex.mfe, eodMfeDist);
+      const mae = Math.max(ex.mae, eodMaeDist);
+      scores[key] = { ...pack({ mfe, mae, stopped: ex.stopped || scores.eod.stopped }) };
+    };
+    horizon(1, 'd1'); horizon(3, 'd3'); horizon(5, 'd5');
+  }
+
+  miss.scores = scores;
+  miss.scoredThrough = scores.d5 ? 'complete' : scores.d3 ? 'plus3d' : scores.d1 ? 'plus1d' : scores.eod ? 'EOD' : 'pending';
+
+  if (scores.eod) {
+    const mfeRor = scores.eod.mfeRor;
+    if      (mfeRor != null && mfeRor >= 2) miss.outcome = 'BIG_WIN_MISSED';
+    else if (mfeRor != null && mfeRor >= 1) miss.outcome = 'WIN_MISSED';
+    else if (scores.eod.stopped)            miss.outcome = 'AVOIDED_LOSS';
+    else                                    miss.outcome = 'NEUTRAL';
+  } else {
+    miss.outcome = 'PENDING';
+  }
+  miss.lastScoredAt = new Date().toISOString();
+  return miss;
+}
+
+// Create-or-update one Notion row for a miss. Throws on a Notion error so the
+// caller can log it; the KV archive stays the source of truth either way.
+async function orbSyncMissToNotion(env, miss) {
+  const num = v => ({ number: (v == null || Number.isNaN(v)) ? null : +v });
+  const rt  = v => ({ rich_text: [{ type: 'text', text: { content: String(v ?? '') } }] });
+  const ms  = a => ({ multi_select: [...new Set(a || [])].filter(Boolean).map(n => ({ name: String(n).replace(/,/g, '').slice(0, 100) })) });
+  const eod = miss.scores?.eod || {}, d1 = miss.scores?.d1 || {}, d3 = miss.scores?.d3 || {}, d5 = miss.scores?.d5 || {};
+  const mfeRorEod = eod.mfeRor;
+
+  const properties = {
+    Name:              { title: [{ type: 'text', text: { content: `${miss.ticker} ${miss.direction} ${miss.breakoutEt || ''} ${miss.date}`.replace(/\s+/g, ' ').trim() } }] },
+    Date:              { date: { start: miss.date } },
+    Ticker:            rt(miss.ticker),
+    Direction:         { select: { name: miss.direction } },
+    "Signal Time":     rt(miss.breakoutEt || ''),
+    "Failed Filters":  ms(miss.failedFilters),
+    "Screen Reasons":  ms(miss.screenReasons),
+    "Hypo Entry":      num(miss.entry),
+    "Stop OR Edge":    num(miss.stop),
+    "Risk Pct":        num(miss.riskPct),
+    "RVOL":            num(miss.rvol),
+    "Candle Position": num(miss.candlePosition),
+    "OR Range Pct":    num(miss.orRangePct),
+    "Gap Pct":         num(miss.gapPct),
+    "ATR Pct":         num(miss.atrPct),
+    "MFE Pct EOD":     num(eod.mfePct),
+    "MAE Pct EOD":     num(eod.maePct),
+    "MFE R EOD":       num(eod.mfeR),
+    "MAE R EOD":       num(eod.maeR),
+    "MFE R ORstop EOD":num(mfeRorEod),
+    "MFE R plus1d":    num(d1.mfeRor),
+    "MFE R plus3d":    num(d3.mfeRor),
+    "MFE R plus5d":    num(d5.mfeRor),
+    "MAE R plus5d":    num(d5.maeRor),
+    "Hit plus1R":      { checkbox: mfeRorEod != null && mfeRorEod >= 1 },
+    "Hit plus2R":      { checkbox: mfeRorEod != null && mfeRorEod >= 2 },
+    "Stopped EOD":     { checkbox: !!eod.stopped },
+    "Outcome":         { select: { name: miss.outcome || 'PENDING' } },
+    "Scored Through":  { select: { name: miss.scoredThrough || 'pending' } },
+    "Signal ID":       rt(miss.signalId),
+  };
+  const headers = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+
+  if (miss.notionPageId) {
+    const r = await fetch(`https://api.notion.com/v1/pages/${miss.notionPageId}`, { method: 'PATCH', headers, body: JSON.stringify({ properties }) });
+    if (!r.ok) throw new Error(`Notion PATCH ${r.status}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
+    return;
+  }
+  const r = await fetch('https://api.notion.com/v1/pages', {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      parent: { database_id: ORB_MISSES_DB },
+      properties,
+      children: [
+        { object: 'block', type: 'paragraph', paragraph: { rich_text: [{ type: 'text', text: { content: 'ORB miss — full signal + scoring context' } }] } },
+        { object: 'block', type: 'code', code: { language: 'json', rich_text: [{ type: 'text', text: { content: JSON.stringify(miss, null, 2).slice(0, 1900) } }] } },
+      ],
+    }),
+  });
+  if (!r.ok) throw new Error(`Notion POST ${r.status}: ${(await r.text().catch(() => '')).slice(0, 160)}`);
+  miss.notionPageId = (await r.json()).id;
+}
+
+// Nightly: archive recent days, then score every not-yet-'complete' miss and
+// push it to Notion. Capped at ORB_MISS_SCORE_LIMIT Notion writes per run —
+// the index is walked oldest-first so a backlog drains deterministically.
+async function runOrbMissScoring(env, { limit = ORB_MISS_SCORE_LIMIT, force = false } = {}) {
+  const todayEt = orbNowET();
+
+  for (let i = 0; i <= 6; i++) {
+    const d = new Date(Date.parse(`${todayEt.dateStr}T12:00:00Z`) - i * 86400000).toISOString().slice(0, 10);
+    try { await orbBuildMissesForDay(env, d); } catch (e) { console.error(`orbBuildMissesForDay ${d}:`, e.message); }
+  }
+
+  const idx = (await env.TRADES.get('orb:archive_index', 'json')) || [];
+  let scored = 0, synced = 0, errors = 0;
+  const summary = [];
+  for (const date of idx) {
+    if (synced >= limit) break;
+    const arch = await env.TRADES.get(`orb:archive:${date}`, 'json');
+    if (!arch?.misses?.length) continue;
+    let dirty = false;
+    for (const miss of arch.misses) {
+      if (synced >= limit) break;
+      if (miss.scoredThrough === 'complete' && miss.notionPageId && !force) continue;
+      if (!miss.noPriceData) { await orbScoreMiss(env, miss, todayEt); scored++; }
+      try { await orbSyncMissToNotion(env, miss); synced++; dirty = true; }
+      catch (e) { errors++; console.error('orbSyncMissToNotion', miss.signalId, e.message); }
+    }
+    if (dirty) await env.TRADES.put(`orb:archive:${date}`, JSON.stringify(arch));
+    summary.push({ date, misses: arch.misses.length, complete: arch.misses.filter(m => m.scoredThrough === 'complete').length });
+  }
+
+  const result = { at: new Date().toISOString(), scored, synced, errors, summary };
+  await env.TRADES.put('orb:miss_scoring_last', JSON.stringify(result));
+  return result;
+}
+
+// Aggregate misses across a rolling window into per-filter / per-direction miss
+// rates, at each horizon. Headline R basis is the full-opening-range stop
+// (consistent across every row); structural R is reported alongside.
+async function orbMissStats(env, { sinceDays = 120 } = {}) {
+  const todayEt = orbNowET();
+  const idx = (await env.TRADES.get('orb:archive_index', 'json')) || [];
+  const cutoff = Date.parse(`${todayEt.dateStr}T00:00:00Z`) - sinceDays * 86400000;
+  const dates = idx.filter(d => Date.parse(`${d}T00:00:00Z`) >= cutoff);
+  const archives = await Promise.all(dates.map(d => env.TRADES.get(`orb:archive:${d}`, 'json')));
+  const misses = archives.filter(Boolean).flatMap(a => a.misses || []).filter(m => !m.noPriceData);
+
+  const HZ = ['eod', 'd1', 'd3', 'd5'];
+  const blank = () => ({ n: 0, scored: 0, reached1R: 0, reached2R: 0, stopped: 0, neutral: 0, sumMfeR: 0, sumMaeR: 0, sumMfePct: 0, sumMaePct: 0, nStructR: 0, sumMfeRstruct: 0 });
+  const finalize = b => ({
+    n: b.n, scored: b.scored,
+    reached1R_pct: b.scored ? +(b.reached1R / b.scored * 100).toFixed(1) : null,
+    reached2R_pct: b.scored ? +(b.reached2R / b.scored * 100).toFixed(1) : null,
+    stopped_pct:   b.scored ? +(b.stopped   / b.scored * 100).toFixed(1) : null,
+    neutral_pct:   b.scored ? +(b.neutral   / b.scored * 100).toFixed(1) : null,
+    avgMfeR:    b.scored ? +(b.sumMfeR   / b.scored).toFixed(2) : null,   // OR-stop basis
+    avgMaeR:    b.scored ? +(b.sumMaeR   / b.scored).toFixed(2) : null,
+    avgMfePct:  b.scored ? +(b.sumMfePct / b.scored).toFixed(2) : null,
+    avgMaePct:  b.scored ? +(b.sumMaePct / b.scored).toFixed(2) : null,
+    avgMfeR_struct: b.nStructR ? +(b.sumMfeRstruct / b.nStructR).toFixed(2) : null,
+  });
+
+  const byFilter = {}, byDirection = {}, byOutcome = {};
+  const add = (map, key, m, hz) => {
+    const b = ((map[key] = map[key] || {})[hz] = map[key][hz] || blank());
+    b.n++;
+    const sc = (m.scores || {})[hz];
+    if (!sc || sc.mfeRor == null) return;
+    b.scored++;
+    b.sumMfeR += sc.mfeRor; b.sumMaeR += (sc.maeRor ?? 0);
+    b.sumMfePct += (sc.mfePct ?? 0); b.sumMaePct += (sc.maePct ?? 0);
+    if (sc.mfeR != null) { b.nStructR++; b.sumMfeRstruct += sc.mfeR; }
+    if (sc.mfeRor >= 2) b.reached2R++;
+    if (sc.mfeRor >= 1) b.reached1R++;
+    else if (sc.stopped) b.stopped++;
+    else b.neutral++;
+  };
+
+  for (const m of misses) {
+    byOutcome[m.outcome || 'PENDING'] = (byOutcome[m.outcome || 'PENDING'] || 0) + 1;
+    for (const hz of HZ) {
+      add(byDirection, m.direction, m, hz);
+      add(byFilter, 'ALL', m, hz);
+      for (const f of (m.failedFilters.length ? m.failedFilters : ['(none)'])) add(byFilter, f, m, hz);
+    }
+  }
+  const roll = map => Object.fromEntries(Object.entries(map).map(([k, hzMap]) =>
+    [k, Object.fromEntries(HZ.map(hz => [hz, finalize(hzMap[hz] || blank())]))]));
+
+  return {
+    window: { sinceDays, days: dates.length, from: dates[0] || null, to: dates[dates.length - 1] || null },
+    totalMisses: misses.length,
+    pending: misses.filter(m => !m.scores?.eod).length,
+    byOutcome, byFilter: roll(byFilter), byDirection: roll(byDirection),
+  };
 }
 
 // ── SAVED POSTS PIPELINE (Notion "Saved Posts (Swipe File)" → Apify scrape → ─
@@ -23269,6 +23662,38 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       if (body.action === 'runOrbScreenNow')  return json(await runOrbScreen(env, { force: true }));
       if (body.action === 'runOrbMonitorNow') return json(await runOrbMonitor(env, { force: true }));
 
+      // ── ORB miss tracking ──────────────────────────────────────────────────
+      if (body.action === 'getOrbMissStats') {
+        return json(await orbMissStats(env, { sinceDays: body.sinceDays || 120 }));
+      }
+      if (body.action === 'getOrbArchiveIndex') {
+        const [idx, last] = await Promise.all([
+          env.TRADES.get('orb:archive_index', 'json'),
+          env.TRADES.get('orb:miss_scoring_last', 'json'),
+        ]);
+        const dates = (idx || []).slice().reverse();
+        const archives = await Promise.all(dates.map(d => env.TRADES.get(`orb:archive:${d}`, 'json')));
+        return json({
+          lastScoring: last || null,
+          days: archives.filter(Boolean).map(a => ({
+            date: a.date,
+            candidates: (a.candidates || []).length,
+            misses: (a.misses || []).length,
+            complete: (a.misses || []).filter(m => m.scoredThrough === 'complete').length,
+            pending: (a.misses || []).filter(m => !m.scores?.eod).length,
+            outcomes: (a.misses || []).reduce((o, m) => (o[m.outcome || 'PENDING'] = (o[m.outcome || 'PENDING'] || 0) + 1, o), {}),
+          })),
+        });
+      }
+      if (body.action === 'getOrbArchive') {
+        const date = body.date || orbNowET().dateStr;
+        const arch = await env.TRADES.get(`orb:archive:${date}`, 'json');
+        return json(arch || { date, misses: [], candidates: [], note: 'no archive for this date' });
+      }
+      if (body.action === 'runOrbMissScoringNow') {
+        return json(await runOrbMissScoring(env, { limit: body.limit || 200, force: !!body.force }));
+      }
+
       if (body.action === "duplicateAsset") {
         const { sourceAssetId, title, status, type, platformName, loginId } = body;
         if (!sourceAssetId) return json({ error: "sourceAssetId required" }, 400);
@@ -32389,6 +32814,14 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
     ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
+    // ORB_MOMENTUM_001 miss tracking — archive the day's rejected breakouts and
+    // score MFE/MAE for every horizon that has come due, syncing each to the
+    // 📉 ORB Misses Notion DB. Runs at ~20:00 ET, after the cash session closes.
+    ctx.waitUntil(
+      runOrbMissScoring(env)
+        .then(r => console.log(`orb miss scoring: scored ${r.scored}, synced ${r.synced}, errors ${r.errors}`))
+        .catch(e => console.error('runOrbMissScoring failed:', e.message))
+    );
     // "link tagging" replaced runKnowledgeGraphAnalysis: the daily cron only
     // keeps Draft Tags fresh — the full mining pass is operator-triggered
     // per post so tags can be edited first (integrateLinkKnowledge).
