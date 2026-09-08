@@ -4955,7 +4955,7 @@ const INFO_FLOW_FALLBACK = `PIPELINE STAGE CASCADE — each stage inherits every
 0. Idea — a raw campaign / product / content seed, not yet researched.
 1. Campaign Research — the campaign's Statement / Unique Opportunity / Key Message / Target Audience / Pain Points / Keywords. Governs everything downstream.
 2. Product Research — one positioning record per product: Customer / Niche / Pain Points / Emotions / Solution / Benefits / Unique Opportunity / Transformation / Offer Structure / Proof Points / Objections.
-3. Strategy — packages Campaign + Product research into a sequenced grouping of Titles aimed at ONE product (Growth Strategy + Strategy Slots; each slot carries a Platform and a Post Type).
+3. Strategy — packages Campaign + Product research into a sequenced grouping of Titles aimed at ONE product (Growth Strategy + Strategy Slots; each slot carries a Platform and a Post Type). A product can hold several parallel Growth Strategies. The fixed viewing/organizing hierarchy is: Product Stack → Product → Strategy (name) → Platform → Arc/Group → Slot. Platform comes BEFORE Arc: an arc (a theme / "grouping") whose slots span platforms appears under each of those platform headers with its slice of slots — the arc is the cross-platform relator, sequence orders the slots within it.
 4. Title — one publishable piece, with a Pillar Content body composed from Research + Strategy.
 5. Method — the repeatable platform / format mechanics a Title is produced through (chosen at title / asset time, never baked into a slot).
 6. Asset — the finished, method-shaped deliverable (carousel, text video, SEO post, offer, listing…), produced through the ONE information flow and cleared against the ONE quality bar: it must still speak in the customer's own voice.

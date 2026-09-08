@@ -8465,38 +8465,60 @@ function stratSlotRow(slot, stratId, groupingName) {
     + btn(`openCreateTitleFromSlotModal({slotId:'${slot.id}',strategyId:'${stratId}'})`, '+ title', '#a0aec0', 'Create a title from this slot')
     + `</div>`;
 }
-function arcPlatformBuckets(slots) {
-  const out = [], idx = {};
-  (slots || []).forEach(sl => {
-    const nm = (sl.platforms && sl.platforms[0] && sl.platforms[0].name) || sl.platform || '';
-    const k = nm.toLowerCase() || ' ';
-    if (!(k in idx)) { idx[k] = out.length; out.push({ label: nm || 'No platform', slots: [] }); }
-    out[idx[k]].slots.push(sl);
+// Under one strategy: bucket ALL its slots by PLATFORM first, then by ARC
+// within each platform, then slots ordered by Sequence. An arc whose slots
+// span platforms appears under each of those platform headers with its slice
+// of slots — intentional; the arc is the cross-platform relator.
+function strategyPlatformArcs(strat) {
+  const groupings = strat.groupings || [];
+  const arcMeta = {};
+  groupings.forEach((g, gi) => { const nm = g.name || `Arc ${gi + 1}`; arcMeta[nm] = { rationale: g.rationale || '', order: gi }; });
+  const platMap = {};
+  groupings.forEach((g, gi) => {
+    const arcName = g.name || `Arc ${gi + 1}`;
+    (g.slots || []).forEach(sl => {
+      const nm = (sl.platforms && sl.platforms[0] && sl.platforms[0].name) || sl.platform || '';
+      const label = nm || 'No platform';
+      const P = (platMap[label.toLowerCase()] ||= { label, arcs: {}, order: [] });
+      if (!(arcName in P.arcs)) { P.arcs[arcName] = []; P.order.push(arcName); }
+      P.arcs[arcName].push(sl);
+    });
   });
-  out.sort((a, b) => (a.label === 'No platform' ? 1 : 0) - (b.label === 'No platform' ? 1 : 0) || a.label.localeCompare(b.label));
-  out.forEach(b => b.slots.sort((x, y) => (Number.isFinite(x.sequence) ? x.sequence : 1e9) - (Number.isFinite(y.sequence) ? y.sequence : 1e9)));
-  return out;
+  return Object.values(platMap)
+    .sort((a, b) => (a.label === 'No platform' ? 1 : 0) - (b.label === 'No platform' ? 1 : 0) || a.label.localeCompare(b.label))
+    .map(P => ({
+      label: P.label,
+      count: P.order.reduce((n, a) => n + P.arcs[a].length, 0),
+      arcs: P.order.slice().sort((a, b) => (arcMeta[a] ? arcMeta[a].order : 0) - (arcMeta[b] ? arcMeta[b].order : 0)).map(name => ({
+        name, rationale: arcMeta[name] ? arcMeta[name].rationale : '',
+        slots: P.arcs[name].slice().sort((x, y) => (Number.isFinite(x.sequence) ? x.sequence : 1e9) - (Number.isFinite(y.sequence) ? y.sequence : 1e9)),
+      })),
+    }));
 }
-function renderArc(strat, g, key) {
-  const arcId = `arc-${key}`;
-  const body = arcPlatformBuckets(g.slots).map((pb, pi) => {
-    const pid = `${arcId}-p${pi}`;
-    return `<div style="margin:3px 0 3px 10px;">`
-      + `<div style="font-size:10px;font-weight:700;color:#68d391;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pid}', this.querySelector('.gs-arrow'))">`
-      + `<span class="gs-arrow" style="font-size:7px;">▾</span><span>${esc(pb.label)}</span>`
-      + `<span style="color:#555;font-weight:400;">${pb.slots.length}</span></div>`
-      + `<div id="${pid}">${pb.slots.map(sl => stratSlotRow(sl, strat.id, g.name)).join('')}</div>`
+function renderStrategyPlatforms(strat, stBody) {
+  const plats = strategyPlatformArcs(strat);
+  if (!plats.length) return '';
+  return plats.map((P, pi) => {
+    const pid = `${stBody}-pl${pi}`;
+    const arcsHtml = P.arcs.map((arc, ai) => {
+      const aid = `${pid}-a${ai}`;
+      const filled = arc.slots.filter(s => s.status === 'Filled').length;
+      const noType = arc.slots.some(s => !s.postType);
+      return `<div style="margin:3px 0 3px 10px;">`
+        + `<div title="${esc(arc.rationale)}" style="font-size:10px;font-weight:700;color:#fff;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${aid}', this.querySelector('.gs-arrow'))">`
+        + `<span class="gs-arrow" style="font-size:7px;">▶</span><span>${esc(arc.name)}</span>`
+        + `<span style="font-weight:400;color:#555;">${filled}/${arc.slots.length}</span>`
+        + (noType ? `<span style="font-size:8px;color:#9f7aea;">no-type ⚠</span>` : '') + `</div>`
+        + `<div id="${aid}" style="display:none;">${arc.slots.map(sl => stratSlotRow(sl, strat.id, arc.name)).join('')}</div>`
+        + `</div>`;
+    }).join('');
+    return `<div style="margin:4px 0;">`
+      + `<div style="font-size:11px;font-weight:700;color:#68d391;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pid}', this.querySelector('.gs-arrow'))">`
+      + `<span class="gs-arrow" style="font-size:7px;">▶</span><span>${esc(P.label)}</span>`
+      + `<span style="color:#555;font-weight:400;">${P.count} slot${P.count === 1 ? '' : 's'}</span></div>`
+      + `<div id="${pid}" style="display:none;">${arcsHtml}</div>`
       + `</div>`;
-  }).join('') || `<div class="empty" style="font-size:11px;margin-left:10px;">No slots.</div>`;
-  return `<div style="margin:5px 0;">`
-    + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">`
-    + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${arcId}', this)">▶</span>`
-    + `<span title="${esc(g.rationale || '')}" style="font-size:12px;font-weight:700;color:#fff;cursor:pointer;flex:1 1 90px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="toggleStrategyCollapse('${arcId}', this.previousElementSibling)">${esc(g.name)}</span>`
-    + (g.slots && g.slots.some(sl => !sl.postType) ? `<span title="Some slots have no Post Type — use 🏷️ assign types on the strategy above" style="font-size:8px;color:#9f7aea;flex-shrink:0;">no-type ⚠</span>` : '')
-    + `<span style="font-size:9px;color:#555;flex-shrink:0;">${g.filledCount}/${g.totalCount}</span>`
-    + `</div>`
-    + `<div id="${arcId}" style="display:none;margin-top:2px;">${body}</div>`
-    + `</div>`;
+  }).join('');
 }
 function stratActionBtns(id, name, inModal) {
   const nm = String(name || 'strategy').replace(/'/g, "\\'");
@@ -8529,26 +8551,26 @@ function renderStrategyTree(strategies) {
       let arcs = '';
       strats.forEach((st, sti) => {
         const stBody = `${pBody}-s${sti}`;
-        let inner = (st.groupings || []).map((g, gi) => renderArc(st, g, `${stBody}-g${gi}`)).join('');
+        let inner = renderStrategyPlatforms(st, stBody);
         if (st.generalTitles && st.generalTitles.length) {
           inner += `<div style="margin:5px 0;">`
             + `<div style="font-size:10px;font-weight:700;color:#fff;">General (no slot)</div>`
             + st.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;"><span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</span>${renderStrategyTitleChip(t)}</div>`).join('')
             + `</div>`;
         }
-        if (!inner) inner = '<div class="empty" style="font-size:11px;">No arcs yet.</div>';
+        if (!inner) inner = '<div class="empty" style="font-size:11px;">No slots yet.</div>';
         const totalSlots = (st.groupings || []).reduce((n, g) => n + (g.totalCount || 0), 0);
         // Strategy strip — the home for every strategy-level action. One per
-        // parallel generation; default expanded so its arcs stay visible.
+        // parallel generation. Collapsed by default like every other level.
         arcs += `<div style="margin:5px 0 7px;">`
           + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:2px;">`
-          + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stBody}', this)">▾</span>`
-          + `<span style="font-size:11px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="openViewStrategyModal('${st.id}')">${esc(st.name)}</span>`
+          + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stBody}', this)">▶</span>`
+          + `<span style="font-size:11px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="toggleStrategyCollapse('${stBody}', this.previousElementSibling)">${esc(st.name)}</span>`
           + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(st.status)}</span>`
           + `<span style="font-size:9px;color:#555;flex-shrink:0;">${totalSlots} slot${totalSlots === 1 ? '' : 's'}</span>`
           + stratActionBtns(st.id, st.name)
           + `</div>`
-          + `<div id="${stBody}" style="margin-top:2px;">${inner}</div>`
+          + `<div id="${stBody}" style="display:none;margin-top:2px;">${inner}</div>`
           + `</div>`;
       });
       return `<div style="margin:4px 0 4px 8px;">`
