@@ -8595,6 +8595,61 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true, id: result.id.replace(/-/g,""), name: title });
       }
 
+      // ── moveProductToCampaign ──────────────────────────────────────────────
+      // Re-home a Product AND everything scoped to it. Product Stack is plain
+      // text on the Product row, so it travels for free; the child entities
+      // each carry their OWN campaign relation set at creation time, so those
+      // have to be re-pointed one by one or they stay on the old campaign
+      // (invisible in the new campaign's microsite, still cluttering the old).
+      // "Move" = replace: the product leaves the old campaign entirely.
+      // Capped per run so a huge product can't blow the subrequest budget —
+      // returns capped:true and the operator re-runs to finish.
+      if (body.action === "moveProductToCampaign") {
+        const { productId, campaignId } = body;
+        if (!productId || !campaignId) return json({ error: "productId and campaignId required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const pDash = dash(productId), cDash = dash(campaignId), cId = cDash.replace(/-/g,"");
+
+        const pResp = await fetch(`https://api.notion.com/v1/pages/${pDash}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Campaigns: { relation: [{ id: cDash }] } } }),
+        });
+        if (!pResp.ok) { const e = await pResp.json().catch(() => ({})); return json({ error: e.message || "Failed to move the product" }, pResp.status); }
+
+        const TARGETS = [
+          { db: CONTENT_STRATEGY_DB, label: "titles",     prod: "product", camp: "Campaign"  },
+          { db: ASSETS_DB,           label: "assets",     prod: "Product", camp: "Campaign"  },
+          { db: GROWTH_STRATEGY_DB,  label: "strategies", prod: "Product", camp: "Campaign"  },
+          { db: STRATEGY_SLOTS_DB,   label: "slots",      prod: "Product", camp: "Campaign"  },
+          { db: STRATEGY_DB,         label: "briefs",     prod: "Product", camp: "Campaigns" },
+        ];
+        const MAX_WRITES = 220;
+        const moved = {}, skipped = {}, failed = {};
+        let writes = 0, capped = false;
+        for (const t of TARGETS) {
+          moved[t.label] = 0; skipped[t.label] = 0; failed[t.label] = 0;
+          let rows = [];
+          try { rows = await notionQuery(t.db, { filter: { property: t.prod, relation: { contains: pDash } } }); }
+          catch (e) { console.error(`moveProductToCampaign query ${t.label}:`, e.message); failed[t.label] = -1; continue; }
+          for (const r of rows) {
+            if (writes >= MAX_WRITES) { capped = true; break; }
+            const cur = (r.properties?.[t.camp]?.relation || []).map(x => x.id.replace(/-/g,""));
+            if (cur.length === 1 && cur[0] === cId) { skipped[t.label]++; continue; }
+            const patch = await fetch(`https://api.notion.com/v1/pages/${r.id}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { [t.camp]: { relation: [{ id: cDash }] } } }),
+            });
+            writes++;
+            if (patch.ok) moved[t.label]++;
+            else { failed[t.label]++; console.error(`moveProductToCampaign patch ${t.label} ${r.id}:`, (await patch.json().catch(() => ({}))).message); }
+          }
+          if (capped) break;
+        }
+        return json({ success: true, moved, skipped, failed, capped,
+          note: capped ? `Stopped at ${MAX_WRITES} writes — run the move again to finish the rest.` : null });
+      }
+
       if (body.action === "createMethod") {
         const { title } = body;
         if (!title) return json({ error: "title required" }, 400);
