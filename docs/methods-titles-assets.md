@@ -96,6 +96,7 @@ workflow — this is just the map):
 | `Video Copy — Growth` | `make-video-copy` | Outlier-modeled original long-form YouTube script |
 | `kdp package` | `make-kdp-package` | Print-ready Amazon KDP paperback: interior PDF + spine-computed cover PDF + metadata sheet (7 keywords, 2 BISAC, description HTML, pricing/royalty). KDP has no publishing API — files only, manual upload. |
 | `lulu print` | `make-lulu-book` | Same book for Lulu; reuses `make-kdp-package`'s file assembly, re-specced to Lulu. Lulu HAS a Print API — can create the print project + storefront product + Global Distribution submission (needs `LULU_CLIENT_KEY`/`SECRET`). |
+| `Music Distribution` | `make-music-release` | One finished song → DistroKid release prep (metadata sheet + 3000×3000 cover + upload click-path; **DistroKid has no API, upload is manual**) → release post published to the hub blog via the existing `Blog - SEO - News` SEO-Post pipeline → handoff to `generateGrowthStrategy` (seeded by the release post) so the promo campaign is built around the post. Method is global (no campaign attach); full instructions also mirrored in the `Alternative Music Distribution Stack` Content Strategy record. Redundant stub `digital music recording` retired (`Status: Delete`). |
 | (any) design specs | `create-design-specs` | Real Canva-backed Design Spec records (not just colors/fonts text) |
 
 **The Generate Assets modal (Modal 3) is the router**, not a second
