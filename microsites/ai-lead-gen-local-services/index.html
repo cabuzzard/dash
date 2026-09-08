@@ -1021,6 +1021,29 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   </div>
 </div>
 
+<!-- REGENERATE STRATEGY MODAL (♻️ on a strategy strip) — re-plans every
+     unattached slot; the directions/keywords box steers the whole re-plan,
+     changing every regenerated slot angle downstream. -->
+<div class="modal-overlay" id="regenStrategyModal">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Regenerate Strategy</div>
+      <button class="modal-close" onclick="closeRegenStrategyModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="regenStratLabel" style="margin-bottom:8px;"></div>
+      <div class="modal-hint" style="color:#f6ad55;margin-bottom:10px;">Every slot WITHOUT an attached title/asset is archived and replaced with fresh arcs. Slots with published content are kept. The page body is rewritten. Can't be undone.</div>
+      <label class="lm-label">Directions / keywords <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— steers the whole re-plan; every regenerated slot angle follows this</span></label>
+      <textarea class="modal-ta" id="regenGuidance" rows="5" style="width:100%;margin-top:4px;resize:vertical;" placeholder="e.g. lean hard on the aquarium-care angle; target owners of vacation rentals specifically; keywords: coastal, low-maintenance, vetted, insured. Avoid discount hooks."></textarea>
+      <div class="modal-status" id="regenStratStatus" style="white-space:pre-wrap;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeRegenStrategyModal()">Cancel</button>
+      <button class="modal-btn save" id="regenStratBtn" onclick="submitRegenStrategy()">Regenerate</button>
+    </div>
+  </div>
+</div>
+
 <!-- VIEW/EDIT GROWTH STRATEGY MODAL (the "plans" dropdown on a product row) —
      Strategy Name, Status, Summary, and the full page body all editable in
      place, saved together via updateGrowthStrategy. -->
@@ -8297,17 +8320,38 @@ async function deleteGrowthStrategy(strategyId, strategyName, btn) {
 // slot its own platform + Post Type) and rewrites the page body. Slots
 // with a Title or Asset attached are preserved untouched; every other slot
 // is archived and replaced with fresh arc slots.
-async function regenerateStrategySlots(strategyId, strategyName, btn) {
-  if (!confirm(`Regenerate "${strategyName}" to the cross-platform arc convention?\n\nEvery slot WITHOUT an attached title/asset is archived and replaced. Slots with published content attached are kept untouched. The strategy's page body is rewritten. This can't be undone.`)) return;
-  if (btn) { btn.disabled = true; btn.textContent = 'Regenerating…'; }
+let REGEN_STRAT = null;
+function regenerateStrategySlots(strategyId, strategyName) {
+  REGEN_STRAT = { id: strategyId, name: strategyName };
+  document.getElementById('regenStratLabel').textContent = `Strategy: ${strategyName}`;
+  document.getElementById('regenGuidance').value = '';
+  const st = document.getElementById('regenStratStatus'); st.textContent = ''; st.className = 'modal-status';
+  const btn = document.getElementById('regenStratBtn'); btn.disabled = false; btn.textContent = 'Regenerate';
+  document.getElementById('regenStrategyModal').classList.add('open');
+}
+function closeRegenStrategyModal() {
+  document.getElementById('regenStrategyModal').classList.remove('open');
+  REGEN_STRAT = null;
+}
+document.getElementById('regenStrategyModal').addEventListener('click', function(e) { if (e.target === this) closeRegenStrategyModal(); });
+async function submitRegenStrategy() {
+  if (!REGEN_STRAT) return;
+  const btn = document.getElementById('regenStratBtn');
+  const st = document.getElementById('regenStratStatus');
+  const guidance = document.getElementById('regenGuidance').value.trim();
+  btn.disabled = true; btn.textContent = 'Regenerating…';
+  st.textContent = 'Re-planning the whole strategy…'; st.className = 'modal-status';
   try {
-    const r = await w('regenerateStrategySlots', { growthStrategyId: strategyId });
+    const r = await w('regenerateStrategySlots', { growthStrategyId: REGEN_STRAT.id, guidance: guidance || undefined });
     if (r.error) throw new Error(r.error);
-    alert(`Done: ${r.created} new slot${r.created === 1 ? '' : 's'} across ${r.groupingCount} arc${r.groupingCount === 1 ? '' : 's'}, ${r.archived} archived, ${r.kept} preserved.`);
+    const pp = r.platformPass && r.platformPass.total ? ` · platforms set on ${(r.platformPass.updated || 0) + (r.platformPass.unchanged || 0)}/${r.platformPass.total}` : '';
+    st.textContent = `Done: ${r.created} new slot${r.created === 1 ? '' : 's'} across ${r.groupingCount} arc${r.groupingCount === 1 ? '' : 's'}, ${r.archived} archived, ${r.kept} preserved${pp}.`;
+    st.className = 'modal-status ok';
     await loadCampaignStrategies();
+    setTimeout(closeRegenStrategyModal, 1200);
   } catch (e) {
-    alert('Error: ' + e.message);
-    if (btn) { btn.disabled = false; btn.textContent = '♻️ Regenerate'; }
+    st.textContent = 'Error: ' + e.message; st.className = 'modal-status err';
+    btn.disabled = false; btn.textContent = 'Regenerate';
   }
 }
 

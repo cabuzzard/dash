@@ -10199,8 +10199,14 @@ Return ONLY this JSON, no other text, no fences:
         let plan;
         try {
           const raw = aiData.content?.[0]?.text || "";
-          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1)));
-        } catch (e) { return json({ error: "Failed to parse plan JSON: " + e.message }, 500); }
+          const a = raw.indexOf('{'), z = raw.lastIndexOf('}');
+          if (a === -1) throw new Error("No JSON object found");
+          try { plan = JSON.parse(sanitizeJsonControlChars(raw.slice(a, z > a ? z + 1 : raw.length))); }
+          catch (e1) { plan = repairTruncatedJson(sanitizeJsonControlChars(raw.slice(a))); if (!plan || !Array.isArray(plan.groupings) || !plan.groupings.length) throw e1; }
+        } catch (e) {
+          const hint = aiData.stop_reason === "max_tokens" ? " — the response hit the token limit; try again" : "";
+          return json({ error: "Failed to parse plan JSON: " + e.message + hint }, 500);
+        }
         const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
         if (!groupings.length) return json({ error: "AI returned no arcs" }, 500);
 
@@ -10319,7 +10325,10 @@ Return ONLY this JSON, no other text, no fences:
           } }),
         }).catch(() => {});
 
-        return json({ success: true, archived: disposable.length, created, kept: kept.length, groupingCount: groupings.length });
+        // Same focused platform pass generateGrowthStrategy runs — the inline
+        // per-slot platform picks above are unreliable.
+        const platformPass = await assignSlotPlatformsForStrategy(hdr, env, growthStrategyId).catch(() => null);
+        return json({ success: true, archived: disposable.length, created, kept: kept.length, groupingCount: groupings.length, platformPass });
       }
 
       if (body.action === "updateCampaignPlatforms") {
