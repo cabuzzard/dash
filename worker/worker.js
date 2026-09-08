@@ -14563,14 +14563,21 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const strategyId = createResp.id.replace(/-/g, "");
           const slotResults = (await Promise.all(groupings.map(g => createSlotsFor(strategyId, g)))).flat();
           const slotsCreated = slotResults.filter(r => r && r.id).length;
-          // The inline per-slot platform picks above are unreliable — run the
-          // same focused second pass "Re-check Platforms" uses, so a fresh
-          // strategy already groups by real catalog platforms in the panel
-          // instead of needing the operator to click the button. Brief wait
-          // first so the just-created slots are visible to a Notion query.
-          await new Promise(r => setTimeout(r, 2000));
-          const platformPass = await assignSlotPlatformsForStrategy(hdr, env, strategyId).catch(() => null);
-          return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods, divergent: false, platformPass });
+          // The inline per-slot platform picks above are unreliable — the
+          // same focused second pass "Re-check Platforms" uses would clean
+          // them up, but it's a second Claude call plus a sequential round
+          // of Notion updates on top of the generation call already made
+          // above; awaiting it here risked the whole request running long
+          // enough to hit Cloudflare's gateway timeout and the browser
+          // dropping the connection ("Load failed") even though the
+          // strategy itself had already saved. Run it in the background
+          // instead — same brief wait first so the just-created slots are
+          // visible to a Notion query — and return the response now.
+          ctx.waitUntil((async () => {
+            await new Promise(r => setTimeout(r, 2000));
+            await assignSlotPlatformsForStrategy(hdr, env, strategyId).catch(() => null);
+          })());
+          return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods, divergent: false });
         }
 
         // ── divergent path — one parent (summary + links only, no Slots of
