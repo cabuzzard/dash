@@ -12255,43 +12255,69 @@ Return ONLY a JSON object, no other text, no markdown fences:
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const undash = raw => String(raw || "").replace(/-/g, "");
         const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
         const productRels = campPage.properties?.["Products"]?.relation || [];
         if (!productRels.length) return json({ products: [] });
+        const wantIds = new Set(productRels.map(r => undash(r.id)));
 
-        const productPages = await Promise.all(productRels.map(r =>
-          fetch(`https://api.notion.com/v1/pages/${r.id}`, { headers: hdr }).then(res => res.json())
-        ));
-        const results = await Promise.all(productPages.map(async p => {
-          const productId = p.id.replace(/-/g, "");
-          const productName = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
-          // Two separate databases now — positioning (PRODUCT_RESEARCH_DB,
-          // one per product, via the same dedupe helper every other
-          // Product Research site uses) and Method Briefs (STRATEGY_DB,
-          // every remaining record there has Method set by definition).
-          const [strategyRec, briefQ] = await Promise.all([
-            findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
-            fetch(`https://api.notion.com/v1/databases/${STRATEGY_DB}/query`, {
-              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ filter: { property: "Product", relation: { contains: dash(productId) } } }),
-            }).then(r => r.json()).catch(() => ({ results: [] })),
-          ]);
-          const briefRecs = briefQ.results || [];
-          const briefs = await Promise.all(briefRecs.map(async r => {
-            const methodRelId = r.properties.Method.relation[0]?.id;
-            let methodName = "Method";
-            if (methodRelId) {
-              const mp = await fetch(`https://api.notion.com/v1/pages/${methodRelId}`, { headers: hdr }).then(res => res.json()).catch(() => null);
-              methodName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
-            }
-            return { id: r.id.replace(/-/g, ""), url: r.url, methodName, status: r.properties?.Status?.select?.name || "" };
+        // Two whole-DB queries (paginated) instead of 2 per product. The old
+        // per-product filtered fan-out ran productRels.length × 2 Notion
+        // queries concurrently and tripped Notion's secondary rate limit on
+        // campaigns with several products — the throttled calls returned an
+        // error body, findBestProductResearchRecord swallowed it as null, and
+        // those products showed a grey "research" tag despite having a
+        // Current PRODUCT_RESEARCH_DB record. Positioning = PRODUCT_RESEARCH_DB
+        // (one per product, deduped by most-fields-filled); Method Briefs =
+        // STRATEGY_DB (Method relation set).
+        const [researchRows, briefRows] = await Promise.all([
+          notionQuery(PRODUCT_RESEARCH_DB, {}).catch(e => { console.error('getCampaignStrategies research:', e.message); return []; }),
+          notionQuery(STRATEGY_DB, {}).catch(e => { console.error('getCampaignStrategies briefs:', e.message); return []; }),
+        ]);
+        const filledCount = r => STRATEGY_FIELDS.reduce((n, f) => n + ((r.properties?.[f]?.rich_text || []).length ? 1 : 0), 0);
+        const bestResearch = {};
+        researchRows.forEach(r => {
+          const pid = undash((r.properties?.Product?.relation || [])[0]?.id || "");
+          if (!pid || !wantIds.has(pid)) return;
+          if (!bestResearch[pid] || filledCount(r) > filledCount(bestResearch[pid])) bestResearch[pid] = r;
+        });
+        const briefsByProduct = {};
+        briefRows.forEach(r => {
+          const pid = undash((r.properties?.Product?.relation || [])[0]?.id || "");
+          if (!pid || !wantIds.has(pid)) return;
+          (briefsByProduct[pid] ||= []).push(r);
+        });
+
+        // One page fetch per unique linked Method, chunked 3-at-a-time.
+        const methodIds = Array.from(new Set(briefRows.flatMap(r => (r.properties?.Method?.relation || []).map(m => undash(m.id))).filter(Boolean)));
+        const methodNameById = {};
+        for (let i = 0; i < methodIds.length; i += 3) {
+          await Promise.all(methodIds.slice(i, i + 3).map(async id => {
+            const mp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            methodNameById[id] = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method";
           }));
+        }
+
+        const productPages = [];
+        for (let i = 0; i < productRels.length; i += 3) {
+          productPages.push(...await Promise.all(productRels.slice(i, i + 3).map(r =>
+            fetch(`https://api.notion.com/v1/pages/${r.id}`, { headers: hdr }).then(res => res.json()).catch(() => null))));
+        }
+
+        const results = productPages.filter(p => p && p.properties).map(p => {
+          const productId = undash(p.id);
+          const productName = (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
+          const sr = bestResearch[productId];
+          const briefs = (briefsByProduct[productId] || []).map(r => {
+            const mId = undash((r.properties?.Method?.relation || [])[0]?.id || "");
+            return { id: undash(r.id), url: r.url, methodName: methodNameById[mId] || "Method", status: r.properties?.Status?.select?.name || "" };
+          });
           return {
             productId, productName,
-            strategy: strategyRec ? { id: strategyRec.id.replace(/-/g, ""), url: strategyRec.url, status: strategyRec.properties?.Status?.select?.name || "" } : null,
+            strategy: sr ? { id: undash(sr.id), url: sr.url, status: sr.properties?.Status?.select?.name || "" } : null,
             briefs,
           };
-        }));
+        });
         return json({ products: results });
       }
 
