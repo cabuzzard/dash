@@ -24229,10 +24229,13 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
       // ── Saved Posts (Links tab) ──
       if (body.action === "getSavedPosts") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        await enrichUnprocessedSavedPosts(env, { limit: 10 });
-        // Eager backstop for the Draft Tags pre-list (cron is the other
-        // half). Small limit — this invocation already spent subrequests on
-        // enrichUnprocessedSavedPosts + the query.
+        // Enrichment (per-row URL fetches, up to 6s each) must NOT block the
+        // response — right after the iOS Shortcut adds a batch there are
+        // several unenriched rows, and that's exactly when the operator opens
+        // this tab. Awaiting it here made the tab hang 30-60s ("links didn't
+        // load"). Fire-and-forget instead; the */30 cron is the real backstop
+        // and freshly-saved rows just fill in their title on the next load.
+        ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 10 }).catch(() => {}));
         ctx.waitUntil(runLinkTagging(env, { limit: 3 }).catch(() => {}));
         const rows = await notionQuery(SAVED_POSTS_DB, {
           // Sort by Notion's own created_time, not the "Date Saved" property
