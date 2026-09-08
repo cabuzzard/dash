@@ -5561,7 +5561,10 @@ const BULK_HUB_CAMPAIGNS = [
   "3d41f7d3a4bb8168b7f5cbec84e5758e", // sustainable-aquarium
   // ai-implementation (3b51f7d3a4bb811e8086fa1f5f7d3597) deliberately excluded
 ];
-const BULK_HUB_SELF = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+// Fake host — a service-binding fetch dispatches to the bound worker directly
+// and ignores the hostname; an absolute self-URL here re-triggers CF's
+// self-subrequest block (error 1042).
+const BULK_HUB_SELF = "https://self.invalid/";
 async function runBulkHubStrategy(env, opts = {}) {
   const limit = Math.max(1, Math.min(opts.limit || 2, 6));
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -5596,7 +5599,7 @@ async function runBulkHubStrategy(env, opts = {}) {
   if (!pending.length) return { complete: true, total: state.targets.length, done: state.done.length, remaining: 0, errors: state.errors };
 
   const token = await signToken((env.HMAC_SECRET || "").trim());
-  const call = (action, extra) => fetch(BULK_HUB_SELF, {
+  const call = (action, extra) => (env.SELF || { fetch }).fetch(BULK_HUB_SELF, {
     method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
     body: JSON.stringify({ action, token, ...extra }),
   }).then(r => r.json()).catch(e => ({ error: String(e.message || e) }));
@@ -6451,6 +6454,22 @@ export default {
     }
 
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+    // TEMP debug — read the bulk-hub queue state without auth (remove after).
+    if (body.action === "bulkHubStrategyDebug") {
+      const st = await env.TRADES.get(BULK_HUB_KV, "json").catch(() => null);
+      if (!st) return json({ seeded: false });
+      const done = st.done || [];
+      let selfTest = null;
+      try {
+        const tok = await signToken((env.HMAC_SECRET || "").trim());
+        const rr = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" }, body: JSON.stringify({ action: "getPostTypes", token: tok }) }).then(r => r.json());
+        selfTest = rr.error ? ("ERR: " + rr.error) : "ok";
+      } catch (e) { selfTest = "throw: " + e.message; }
+      return json({ seeded: true, started: st.started, total: (st.targets || []).length, done: done.length,
+        remaining: (st.targets || []).filter(t => !done.includes(t.productId)).length,
+        errors: st.errors || {}, selfTest });
+    }
+
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
     }

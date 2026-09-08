@@ -10,6 +10,12 @@ no_bundle = true
 binding = "TRADES"
 id = "344c88fa8ca744fcbe25495b4701666d"
 
+# Self service-binding — lets the worker call its own actions in-process
+# (Worker-to-Worker), which a plain fetch() to its own URL cannot do (CF 1042).
+[[services]]
+binding = "SELF"
+service = "jolly-darkness-5dcc"
+
 [triggers]
 crons = ["0 0 * * *", "*/30 * * * *", "*/5 12-16 * * 1-5", "*/4 * * * *"]
 
