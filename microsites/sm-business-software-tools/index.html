@@ -8138,14 +8138,7 @@ async function openViewStrategyModal(strategyId) {
     summaryEl.value = r.summary || '';
     bodyEl.value = r.body || '';
     document.getElementById('vsNotionLink').href = `https://www.notion.so/${strategyId}`;
-    const nm = (r.name || 'strategy').replace(/'/g, "\\'");
-    document.getElementById('vsActions').innerHTML =
-        `<button onclick="backfillStrategyPlatforms('${strategyId}', this)" title="Re-evaluate each slot's platform (the level the panel groups by)" style="font-size:10px;padding:2px 8px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;">🛰️ Re-check Platforms</button>`
-      + `<button onclick="backfillStrategyPostTypes('${strategyId}', this)" title="Assign a Post Type to any slot missing one" style="font-size:10px;padding:2px 8px;border:1px solid #9f7aea;border-radius:8px;background:transparent;color:#9f7aea;cursor:pointer;">🏷️ Assign Types</button>`
-      + `<button onclick="openAddGroupingModal('${strategyId}','${nm}')" title="Add a new arc/grouping to this strategy" style="font-size:10px;padding:2px 8px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;">➕ Add Grouping</button>`
-      + `<button onclick="regenerateStrategySlots('${strategyId}','${nm}', this)" title="Regenerate this strategy's slots — kept: any with published content" style="font-size:10px;padding:2px 8px;border:1px solid #f6ad55;border-radius:8px;background:transparent;color:#f6ad55;cursor:pointer;">♻️ Regenerate</button>`
-      + `<button onclick="openLaunchRunModal('${strategyId}','${nm}')" title="Reuse this strategy as a Guide against another product" style="font-size:10px;padding:2px 8px;border:1px solid #68d391;border-radius:8px;background:transparent;color:#68d391;cursor:pointer;">🚀 Launch Run</button>`
-      + `<button onclick="deleteGrowthStrategy('${strategyId}','${nm}', this)" title="Delete this strategy + its slots (attached titles are kept)" style="font-size:10px;padding:2px 8px;border:1px solid #ff4444;border-radius:8px;background:transparent;color:#ff4444;cursor:pointer;">🗑️ Delete Strategy</button>`;
+    document.getElementById('vsActions').innerHTML = stratActionBtns(strategyId, r.name, true);
   } catch(e) {
     nameEl.value = '';
     status.textContent = 'Error loading: ' + e.message;
@@ -8495,16 +8488,26 @@ function renderArc(strat, g, key) {
       + `<div id="${pid}">${pb.slots.map(sl => stratSlotRow(sl, strat.id, g.name)).join('')}</div>`
       + `</div>`;
   }).join('') || `<div class="empty" style="font-size:11px;margin-left:10px;">No slots.</div>`;
-  const nmShort = strat.name && strat.name.length > 24 ? strat.name.slice(0, 23) + '…' : (strat.name || 'strategy');
   return `<div style="margin:5px 0;">`
     + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">`
     + `<span class="gs-arrow" style="font-size:8px;color:#fff;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${arcId}', this)">▶</span>`
     + `<span title="${esc(g.rationale || '')}" style="font-size:12px;font-weight:700;color:#fff;cursor:pointer;flex:1 1 90px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="toggleStrategyCollapse('${arcId}', this.previousElementSibling)">${esc(g.name)}</span>`
-    + `<span onclick="openViewStrategyModal('${strat.id}')" title="Growth Strategy: ${esc(strat.name)} · ${esc(strat.status)} — full write-up &amp; actions" style="font-size:9px;padding:1px 6px;border:1px solid #4a5568;border-radius:8px;color:#a0aec0;flex-shrink:0;cursor:pointer;white-space:nowrap;">↗ ${esc(nmShort)}</span>`
+    + (g.slots && g.slots.some(sl => !sl.postType) ? `<span title="Some slots have no Post Type — use 🏷️ assign types on the strategy above" style="font-size:8px;color:#9f7aea;flex-shrink:0;">no-type ⚠</span>` : '')
     + `<span style="font-size:9px;color:#555;flex-shrink:0;">${g.filledCount}/${g.totalCount}</span>`
     + `</div>`
     + `<div id="${arcId}" style="display:none;margin-top:2px;">${body}</div>`
     + `</div>`;
+}
+function stratActionBtns(id, name, inModal) {
+  const nm = String(name || 'strategy').replace(/'/g, "\\'");
+  const b = (fn, label, color, tip) => `<button onclick="${fn}" title="${tip}" style="font-size:9px;padding:1px 6px;border:1px solid ${color};border-radius:8px;background:transparent;color:${color};cursor:pointer;flex-shrink:0;line-height:1.6;">${label}</button>`;
+  return (inModal ? '' : b(`openViewStrategyModal('${id}')`, 'ℹ view', '#a0aec0', 'Full write-up — summary, arcs, rationale (editable)'))
+    + b(`backfillStrategyPlatforms('${id}', this)`, '🛰️ re-check platforms', '#68d391', "Re-evaluate every slot's platform — the level this panel groups by")
+    + b(`backfillStrategyPostTypes('${id}', this)`, '🏷️ assign types', '#9f7aea', 'Assign a Post Type to every slot missing one')
+    + b(`openAddGroupingModal('${id}','${nm}')`, '➕ new grouping', '#f6ad55', 'Add a new arc/grouping from a guidance prompt')
+    + b(`regenerateStrategySlots('${id}','${nm}', this)`, '♻️ regenerate', '#f6ad55', "Regenerate this strategy's slots (published ones kept)")
+    + b(`openLaunchRunModal('${id}','${nm}')`, '🚀 launch run', '#68d391', 'Reuse this strategy as a Guide against another product')
+    + b(`deleteGrowthStrategy('${id}','${nm}', this)`, '🗑️ delete strategy', '#ff4444', 'Delete this strategy + its slots (attached titles are kept)');
 }
 function renderStrategyTree(strategies) {
   const NO_STACK = 'No Stack', NO_PROD = 'No Product';
@@ -8525,13 +8528,28 @@ function renderStrategyTree(strategies) {
       const strats = prods[prodK].slice().sort((a, b) => String(a.createdTime || '').localeCompare(String(b.createdTime || '')));
       let arcs = '';
       strats.forEach((st, sti) => {
-        (st.groupings || []).forEach((g, gi) => { arcs += renderArc(st, g, `${pBody}-s${sti}-g${gi}`); });
+        const stBody = `${pBody}-s${sti}`;
+        let inner = (st.groupings || []).map((g, gi) => renderArc(st, g, `${stBody}-g${gi}`)).join('');
         if (st.generalTitles && st.generalTitles.length) {
-          arcs += `<div style="margin:5px 0 5px 4px;">`
-            + `<div style="font-size:11px;font-weight:700;color:#fff;">General (no slot) <span style="font-weight:400;color:#666;">— ${esc(st.name)}</span></div>`
+          inner += `<div style="margin:5px 0;">`
+            + `<div style="font-size:10px;font-weight:700;color:#fff;">General (no slot)</div>`
             + st.generalTitles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:3px 0;border-bottom:1px solid #161616;font-size:11px;"><span style="flex:1;min-width:0;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}</span>${renderStrategyTitleChip(t)}</div>`).join('')
             + `</div>`;
         }
+        if (!inner) inner = '<div class="empty" style="font-size:11px;">No arcs yet.</div>';
+        const totalSlots = (st.groupings || []).reduce((n, g) => n + (g.totalCount || 0), 0);
+        // Strategy strip — the home for every strategy-level action. One per
+        // parallel generation; default expanded so its arcs stay visible.
+        arcs += `<div style="margin:5px 0 7px;">`
+          + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:2px;">`
+          + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stBody}', this)">▾</span>`
+          + `<span style="font-size:11px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="openViewStrategyModal('${st.id}')">${esc(st.name)}</span>`
+          + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(st.status)}</span>`
+          + `<span style="font-size:9px;color:#555;flex-shrink:0;">${totalSlots} slot${totalSlots === 1 ? '' : 's'}</span>`
+          + stratActionBtns(st.id, st.name)
+          + `</div>`
+          + `<div id="${stBody}" style="margin-top:2px;">${inner}</div>`
+          + `</div>`;
       });
       return `<div style="margin:4px 0 4px 8px;">`
         + `<div style="font-size:11px;font-weight:700;color:#c4b5fd;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pBody}', this.querySelector('.gs-arrow'))">`
