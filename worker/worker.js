@@ -7745,13 +7745,29 @@ Return ONLY this JSON, no other text, no fences:
           const urlCount = {};
           offerAssets.forEach(a => { const u = (a.properties?.["Site URL"]?.url || "").trim(); if (u) urlCount[u] = (urlCount[u] || 0) + 1; });
 
+          const slugifyName = str => String(str || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 70);
           let ojson = {};
           try {
             const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${h.slug}/offers/offers.json`);
             const list = pr.ok ? await pr.json() : [];
             if (Array.isArray(list)) for (const o of list) if (o && o.slug) ojson[o.slug] = o;
           } catch (e) {}
+          // An offers.json entry counts as "already has an asset" if ANY offer
+          // asset matches it by Site-URL slug, by its own `assetId` field
+          // (publishOfferToHub writes it), or by slugified name/Platform Title.
+          // Matching by Site URL alone created duplicates for assets whose
+          // Site URL was never saved.
+          const assetIds = new Set(offerAssets.map(a => a.id.replace(/-/g, "")));
+          const assetNameSlugs = new Set();
+          offerAssets.forEach(a => {
+            const pr = a.properties || {};
+            assetNameSlugs.add(slugifyName((pr["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("")));
+            assetNameSlugs.add(slugifyName((pr["Asset Title"]?.title || []).map(t => t.plain_text).join("")));
+          });
           const matchedOfferSlugs = new Set();
+          for (const [slug, o] of Object.entries(ojson)) {
+            if ((o.assetId && assetIds.has(String(o.assetId).replace(/-/g, ""))) || assetNameSlugs.has(slug) || assetNameSlugs.has(slugifyName(o.name))) matchedOfferSlugs.add(slug);
+          }
 
           for (const a of offerAssets) {
             const aid = a.id.replace(/-/g, "");
