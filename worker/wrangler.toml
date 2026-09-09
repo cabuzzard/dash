@@ -17,7 +17,7 @@ binding = "SELF"
 service = "jolly-darkness-5dcc"
 
 [triggers]
-crons = ["0 0 * * *", "*/30 * * * *", "*/5 12-16 * * 1-5", "*/4 * * * *"]
+crons = ["0 0 * * *", "15 0 * * *", "*/30 * * * *", "*/5 12-16 * * 1-5", "*/4 * * * *"]
 
 [env]
 routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]

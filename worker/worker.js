@@ -5487,116 +5487,110 @@ async function runLinkMiningPipeline(env, { limit = 5 } = {}) {
   return { ran: true, transcribed, mined, bits };
 }
 
-// ═══ Bulk link processing queue ══════════════════════════════════════
-// One KV-backed work queue for running transcription / mining across the
-// WHOLE 🔗 Saved Posts backlog in the background — drained ~2 links per
-// tick by the */4 cron, same pattern as runBulkHubStrategy. Modes:
-//   "transcribe" — every row with a URL and Status != Done → processSavedPost
-//   "mine"       — every Done row with Mined == false → mine the transcript
-//   "remine"     — every Done row → archive its still-New ⛏️ Link Mining
-//                  rows, then mine fresh (refreshes every field, incl.
-//                  Recommended Use, and picks up new items)
-// Seed with bulkLinksStart {mode}; poll bulkLinksStatus; bulkLinksReset
-// clears it. Standalone — writes only 🔗 Saved Posts / ⛏️ Link Mining /
-// 🧑‍🎨 Creators, never a production Campaign / Product / Method record.
-const BULK_LINKS_KV = "bulklinks:v1";
-const BULK_LINKS_MODES = { transcribe: 1, mine: 1, remine: 1 };
-async function runBulkLinks(env, opts = {}) {
+// ═══ Nightly bulk link sweep ════════════════════════════════════════
+// Runs UNCONDITIONALLY on its own dedicated cron ("15 0 * * *" — 15 min
+// after the main nightly batch, so it gets a fresh subrequest budget).
+// Works through the WHOLE 🔗 Saved Posts backlog a capped batch at a
+// time, three phases per run:
+//   1. transcribe  (Status != Done, has a URL)       → processSavedPost
+//   2. mine         (Status == Done, Mined == false)  → integrateOneSavedPost
+//   3. re-mine      (Status == Done, not yet re-mined this cycle) →
+//        archive its still-New ⛏️ Link Mining rows, then mine fresh
+//        (refreshes every field incl. Recommended Use, picks up new items)
+// Caps bound Apify / Claude spend; the backlog drains over a few nights.
+// Re-mine is a ONE-PASS cycle — `reminedIds` in KV tracks which Done links
+// have been refreshed, so once every link has had its one re-mine the
+// phase goes quiet. New links still get transcribed + mined automatically,
+// and a freshly-mined link gets its single re-mine on a later night.
+// bulkLinksNightlyReset clears reminedIds to force a fresh full re-mine.
+// Standalone — writes only 🔗 Saved Posts / ⛏️ Link Mining / 🧑‍🎨 Creators.
+const BULK_LINKS_KV = "bulklinks:nightly:v1";
+const BULK_LINKS_CAPS = { transcribe: 6, mine: 12, remine: 12 };
+async function runBulkLinksNightly(env, opts = {}) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
-  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return { error: "missing NOTION_TOKEN / ANTHROPIC_API_KEY" };
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return { ran: false, reason: "missing NOTION_TOKEN / ANTHROPIC_API_KEY" };
   const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const cap = { ...BULK_LINKS_CAPS, ...(opts.caps || {}) };
 
-  let state = await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null);
+  const st = (await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null)) || {};
+  st.reminedIds = Array.isArray(st.reminedIds) ? st.reminedIds : [];
+  st.errors = st.errors || {};
+  st.transcribed = st.transcribed || 0; st.mined = st.mined || 0; st.remined = st.remined || 0;
+  const save = () => env.TRADES.put(BULK_LINKS_KV, JSON.stringify(st));
 
-  if (opts.seed || !state || !Array.isArray(state.ids)) {
-    const mode = BULK_LINKS_MODES[opts.mode] ? opts.mode : (state && state.mode) || "transcribe";
-    let filter;
-    if (mode === "transcribe") {
-      filter = { and: [
-        { property: "Status", status: { does_not_equal: "Done" } },
-        { property: "URL", url: { is_not_empty: true } },
-      ] };
-    } else if (mode === "mine") {
-      filter = { and: [
-        { property: "Status", status: { equals: "Done" } },
-        { property: "Mined", checkbox: { equals: false } },
-      ] };
-    } else { // remine
-      filter = { property: "Status", status: { equals: "Done" } };
-    }
-    const rows = await notionQuery(SAVED_POSTS_DB, { filter }).catch(e => { console.error("bulkLinks seed:", e.message); return []; });
-    const ids = rows.map(r => r.id);
-    state = { mode, started: new Date().toISOString(), ids, done: [], errors: {}, transcribed: 0, mined: 0, lock: 0 };
-    await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
-    if (opts.seed) return { seeded: true, mode, total: ids.length, done: 0, remaining: ids.length };
-  }
-
-  const doneSet = new Set(state.done);
-  const pending = state.ids.filter(id => !doneSet.has(id));
-  if (!pending.length) {
-    return { complete: true, mode: state.mode, total: state.ids.length, done: state.done.length, remaining: 0,
-      errors: state.errors || {}, transcribed: state.transcribed || 0, mined: state.mined || 0 };
-  }
-
-  // Lock so two overlapping */4 ticks don't double-process a link (one Apify
-  // transcription legitimately runs several minutes). Stale after 15 min.
-  if (!opts.force && state.lock && Date.now() - state.lock < 15 * 60 * 1000) {
-    return { locked: true, mode: state.mode, total: state.ids.length, done: state.done.length, remaining: pending.length };
-  }
-  state.lock = Date.now();
-  await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
-
-  const limit = Math.max(1, Math.min(opts.limit || 2, 5));
-  const [candidates, infoFlow, caps] = state.mode === "transcribe"
-    ? [null, null, null]
-    : await Promise.all([buildMiningCandidates(hdr), getInformationFlowContext(env), getLinkMiningCaps(hdr)]);
-
-  const processed = [];
-  for (const id of pending.slice(0, limit)) {
+  // ── Phase 1: transcribe every non-Done link that has a URL ──
+  const txRows = await notionQuery(SAVED_POSTS_DB, { filter: { and: [
+    { property: "Status", status: { does_not_equal: "Done" } },
+    { property: "URL", url: { is_not_empty: true } },
+  ] } }).catch(e => { console.error("bulkLinksNightly tx query:", e.message); return []; });
+  let txDid = 0;
+  for (const page of txRows.slice(0, cap.transcribe)) {
     try {
-      let page = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
-      if (!page || !page.id) throw new Error("page not found");
-      let status = page.properties?.Status?.status?.name || "";
-      const mined = page.properties?.Mined?.checkbox === true;
-
-      if (state.mode === "transcribe") {
-        if (status !== "Done") {
-          const res = await processSavedPost(env, page);
-          if (!res.ok) throw new Error("transcribe — " + (res.error || "failed"));
-          state.transcribed++;
-        }
-      } else if (state.mode === "mine") {
-        if (status === "Done" && !mined) {
-          await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps });
-          state.mined++;
-        }
-      } else { // remine
-        if (status === "Done") {
-          const old = await notionQuery(LINK_MINING_DB, { filter: { and: [
-            { property: "Source Post", relation: { contains: dash32(id) } },
-            { property: "Status", select: { equals: "New" } },
-          ] } }).catch(() => []);
-          for (const r of old) await fetch(`https://api.notion.com/v1/pages/${r.id}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) }).catch(() => {});
-          await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps });
-          state.mined++;
-        }
-      }
-
-      state.done.push(id);
-      delete state.errors[id];
-      processed.push({ id, ok: true });
-    } catch (e) {
-      state.errors[id] = String(e.message || e);
-      state.done.push(id); // never wedge the whole queue on one bad link
-      processed.push({ id, error: String(e.message || e) });
-    }
-    await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
+      const r = await processSavedPost(env, page);
+      if (r.ok) { st.transcribed++; txDid++; delete st.errors[page.id]; }
+      else st.errors[page.id] = "transcribe: " + (r.error || "failed");
+    } catch (e) { st.errors[page.id] = "transcribe: " + String(e.message || e); }
+    await save();
   }
-  state.lock = 0;
-  await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
-  const remaining = state.ids.filter(id => !state.done.includes(id)).length;
-  return { processed, mode: state.mode, total: state.ids.length, done: state.done.length, remaining,
-    errors: state.errors, transcribed: state.transcribed, mined: state.mined, complete: remaining === 0 };
+
+  // Re-query Done state after transcription so freshly-Done rows get mined
+  // this same run.
+  const mineRows = await notionQuery(SAVED_POSTS_DB, { filter: { and: [
+    { property: "Status", status: { equals: "Done" } },
+    { property: "Mined", checkbox: { equals: false } },
+  ] } }).catch(e => { console.error("bulkLinksNightly mine query:", e.message); return []; });
+  const doneRows = await notionQuery(SAVED_POSTS_DB, { filter: { property: "Status", status: { equals: "Done" } } })
+    .catch(e => { console.error("bulkLinksNightly done query:", e.message); return []; });
+  const reminedSet = new Set(st.reminedIds.map(x => String(x).replace(/-/g, "")));
+  const mineNowSet = new Set(mineRows.map(p => p.id.replace(/-/g, "")));
+  // one-pass re-mine: every Done link not yet re-mined and not being freshly
+  // mined this run (a link mined this run gets its re-mine on a later night)
+  const rmRows = doneRows.filter(p => {
+    const k = p.id.replace(/-/g, "");
+    return !reminedSet.has(k) && !mineNowSet.has(k);
+  });
+
+  let candidates = null, infoFlow = null, lmCaps = null;
+  if (mineRows.length || rmRows.length) {
+    [candidates, infoFlow, lmCaps] = await Promise.all([
+      buildMiningCandidates(hdr), getInformationFlowContext(env), getLinkMiningCaps(hdr),
+    ]);
+  }
+
+  // ── Phase 2: mine transcribed-but-unmined links ──
+  let mnDid = 0;
+  for (const page of mineRows.slice(0, cap.mine)) {
+    try { await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps: lmCaps }); st.mined++; mnDid++; delete st.errors[page.id]; }
+    catch (e) { st.errors[page.id] = "mine: " + String(e.message || e); await patchSavedPostPage(page.id, { Mined: { checkbox: true } }).catch(() => {}); }
+    await save();
+  }
+
+  // ── Phase 3: one-pass re-mine ──
+  let rmDid = 0;
+  for (const page of rmRows.slice(0, cap.remine)) {
+    try {
+      const old = await notionQuery(LINK_MINING_DB, { filter: { and: [
+        { property: "Source Post", relation: { contains: dash32(page.id) } },
+        { property: "Status", select: { equals: "New" } },
+      ] } }).catch(() => []);
+      for (const r of old) await fetch(`https://api.notion.com/v1/pages/${r.id}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) }).catch(() => {});
+      await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps: lmCaps });
+      st.remined++; rmDid++; delete st.errors[page.id];
+    } catch (e) { st.errors[page.id] = "remine: " + String(e.message || e); }
+    st.reminedIds.push(page.id);
+    await save();
+  }
+
+  const txLeft = Math.max(0, txRows.length - txDid);
+  const mnLeft = Math.max(0, mineRows.length - mnDid);
+  const rmLeft = Math.max(0, rmRows.length - rmDid);
+  st.lastRun = new Date().toISOString();
+  st.lastNote = `+${txDid} transcribed · +${mnDid} mined · +${rmDid} re-mined — ${txLeft}/${mnLeft}/${rmLeft} left`;
+  st.complete = txLeft === 0 && mnLeft === 0 && rmLeft === 0;
+  const ek = Object.keys(st.errors); if (ek.length > 60) ek.slice(0, ek.length - 60).forEach(k => delete st.errors[k]);
+  await save();
+  return { ran: true, txDid, mnDid, rmDid, txLeft, mnLeft, rmLeft, complete: st.complete,
+    totals: { transcribed: st.transcribed, mined: st.mined, remined: st.remined }, errorCount: Object.keys(st.errors).length };
 }
 
 // ── runListingRepostReminders ──
@@ -11278,32 +11272,29 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true });
       }
 
-      // ── Bulk link transcription / mining (see runBulkLinks) ──
-      if (body.action === "bulkLinksStart") {
+      // ── Nightly bulk link sweep (see runBulkLinksNightly) ──
+      // Runs itself on the "15 0 * * *" cron; these are just the panel's
+      // status read + a manual "run a batch now" + a "force full re-mine".
+      if (body.action === "bulkLinksNightlyStatus") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        if (!BULK_LINKS_MODES[body.mode]) return json({ error: "mode must be transcribe | mine | remine" }, 400);
-        const r = await runBulkLinks(env, { seed: true, mode: body.mode });
-        // one immediate step so it doesn't feel dead until the first cron tick
-        ctx.waitUntil(runBulkLinks(env, { force: true, limit: 1 }).catch(() => {}));
+        const st = await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null) || {};
+        return json({ success: true, lastRun: st.lastRun || null, lastNote: st.lastNote || "",
+          complete: !!st.complete, remined: (st.reminedIds || []).length,
+          totals: { transcribed: st.transcribed || 0, mined: st.mined || 0, remined: st.remined || 0 },
+          errorCount: Object.keys(st.errors || {}).length });
+      }
+      if (body.action === "bulkLinksNightlyRun") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        // small manual batch so the request returns quickly; the real work
+        // is the "15 0 * * *" cron.
+        const r = await runBulkLinksNightly(env, { caps: { transcribe: 2, mine: 3, remine: 3 } });
         return json({ success: true, ...r });
       }
-      if (body.action === "bulkLinksStep") {
+      if (body.action === "bulkLinksNightlyReset") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const r = await runBulkLinks(env, { force: true, limit: body.limit });
-        return json({ success: true, ...r });
-      }
-      if (body.action === "bulkLinksStatus") {
-        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const st = await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null);
-        if (!st || !Array.isArray(st.ids)) return json({ success: true, seeded: false, total: 0, done: 0, remaining: 0, errors: {} });
-        const done = st.done || [];
-        return json({ success: true, seeded: true, mode: st.mode, started: st.started,
-          total: st.ids.length, done: done.length, remaining: st.ids.filter(id => !done.includes(id)).length,
-          transcribed: st.transcribed || 0, mined: st.mined || 0, errors: st.errors || {} });
-      }
-      if (body.action === "bulkLinksReset") {
-        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        await env.TRADES.delete(BULK_LINKS_KV).catch(() => {});
+        const st = await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null) || {};
+        st.reminedIds = []; st.complete = false;
+        await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(st)).catch(() => {});
         return json({ success: true });
       }
 
@@ -33612,17 +33603,20 @@ Produce all of this by calling the submit_listing tool — do not include any of
           console.log(`bulkHubStrategy tick: ${r.done}/${r.total} done, ${r.remaining} left`);
         } catch (e) { console.error('bulkHubStrategy cron failed:', e.message); }
       })());
-      // Bulk link transcription / mining queue — same idea: no KV state → no-op
-      // (1 read). Seeded from the Links tab (bulkLinksStart). ~2 links/tick.
-      ctx.waitUntil((async () => {
-        try {
-          const st = await env.TRADES.get(BULK_LINKS_KV, "json");
-          if (!st || !Array.isArray(st.ids)) return;
-          if (st.ids.filter(id => !(st.done || []).includes(id)).length === 0) return;
-          const r = await runBulkLinks(env, { limit: 2 });
-          console.log(`bulkLinks tick (${r.mode}): ${r.done}/${r.total}, ${r.remaining} left`);
-        } catch (e) { console.error('bulkLinks cron failed:', e.message); }
-      })());
+      return;
+    }
+    if (event.cron === "15 0 * * *") {
+      // Nightly bulk link sweep — its own cron (15 min after the main
+      // nightly batch) so it gets a fresh subrequest budget. Transcribes /
+      // mines / one-pass re-mines a capped batch of the 🔗 Saved Posts
+      // backlog; drains over a few nights. See runBulkLinksNightly.
+      ctx.waitUntil(
+        runBulkLinksNightly(env)
+          .then(r => console.log(r.ran
+            ? `bulkLinksNightly: +${r.txDid} transcribed, +${r.mnDid} mined, +${r.rmDid} re-mined · ${r.txLeft}/${r.mnLeft}/${r.rmLeft} left${r.complete ? ' · backlog clear' : ''}`
+            : `bulkLinksNightly skipped: ${r.reason}`))
+          .catch(e => console.error('bulkLinksNightly failed:', e.message))
+      );
       return;
     }
     ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));

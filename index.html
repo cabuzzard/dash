@@ -883,23 +883,22 @@
       <a class="add-link" onclick="loadLinks()">↺ Refresh</a>
     </div>
 
-    <!-- BULK BACKLOG — queue-and-cron (like the TD tab's bulk hub strategy):
-         seed a job, the */4 cron drains ~2 links/tick in the background.
-         transcribe = every non-Done link with a URL · mine = every Done link
-         not yet mined · re-mine = every Done link, fresh (replaces its New
-         ⛏️ Link Mining rows). Worker: runBulkLinks / bulkLinks* actions. -->
+    <!-- BULK BACKLOG — the "15 0 * * *" cron (runBulkLinksNightly) works the
+         whole 🔗 Saved Posts backlog a capped batch per night: transcribe
+         non-Done → mine Done-unmined → one-pass re-mine every Done link
+         (refreshes all fields incl. Recommended use, keeps Promoted/
+         Dismissed/Kept rows). Nothing to schedule — it just runs. This
+         panel is status + a manual nudge. bulkLinksNightly* actions. -->
     <div id="bulkLinksSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Bulk backlog <span id="bulkLinksSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Bulk backlog <span style="font-weight:400;text-transform:none;letter-spacing:0;">— nightly sweep · 00:15 UTC</span> <span id="bulkLinksSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-          <button onclick="bulkLinksStart('transcribe')" title="Transcribe every saved link that isn't transcribed yet" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⇊ Transcribe all</button>
-          <button onclick="bulkLinksStart('mine')" title="Mine every transcribed link that hasn't been mined" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⛏ Mine all</button>
-          <button onclick="bulkLinksStart('remine')" title="Re-mine every transcribed link from scratch — refreshes all fields (incl. Recommended use), keeps Promoted/Dismissed/Kept rows" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">♻ Re-mine all</button>
-          <button onclick="bulkLinksRefresh()" title="Refresh status" style="font-size:11px;padding:3px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
-          <button onclick="bulkLinksReset()" title="Clear the queue (stops the cron draining it; work already done stays done)" style="font-size:11px;padding:3px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">reset</button>
+          <button onclick="bulkLinksNightlyRun(this)" title="Run a small transcribe+mine+re-mine batch right now (2/3/3). The full backlog is the nightly cron's job." style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ Run a batch now</button>
+          <button onclick="bulkLinksNightlyRefresh()" title="Refresh status" style="font-size:11px;padding:3px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+          <button onclick="bulkLinksNightlyReset()" title="Clear the re-mine tracker so phase 3 runs across every link again" style="font-size:11px;padding:3px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">force full re-mine</button>
         </span>
       </div>
-      <div id="bulkLinksBody" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">Pick a job. The <code style="font-size:10px;">*/4</code> cron then processes ~2 links per tick in the background — leave the tab, come back later.</div>
+      <div id="bulkLinksBody" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">The <code style="font-size:10px;">15 0 * * *</code> cron transcribes, mines, then one-pass re-mines a capped batch of the backlog every night — it drains over a few nights on its own.</div>
     </div>
 
     <div id="linksContent">
@@ -4654,7 +4653,7 @@ async function loadLinks() {
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
-  if (typeof bulkLinksRefresh === 'function') bulkLinksRefresh();
+  if (typeof bulkLinksNightlyRefresh === 'function') bulkLinksNightlyRefresh();
 }
 
 // Links tab: transcribe → edit the draft-tag list → Integrate into
@@ -4833,58 +4832,49 @@ async function integrateAllLinks() {
   }
 }
 
-// ── Bulk backlog: transcribe / mine / re-mine every saved link ──────────
-// Queue-and-cron, mirrors bulkHubStrat* on the TD tab. Seed a job, the */4
-// cron drains it ~2 links/tick; this panel just polls bulkLinksStatus.
-let _bulkLinksPoll = null;
-const BULK_LINKS_LABEL = { transcribe: 'Transcribing', mine: 'Mining', remine: 'Re-mining' };
-function bulkLinksRender(r) {
+// ── Bulk backlog: nightly transcribe / mine / re-mine sweep ────────────
+// The "15 0 * * *" cron (runBulkLinksNightly) does the work; this panel is
+// just status + a manual nudge. No queue to seed.
+function bulkLinksNightlyRender(r) {
   const body = document.getElementById('bulkLinksBody');
   const sum = document.getElementById('bulkLinksSummary');
   if (!body) return;
-  if (!r || !r.seeded) {
-    if (sum) sum.textContent = '';
-    body.innerHTML = 'Pick a job. The <code style="font-size:10px;">*/4</code> cron then processes ~2 links per tick in the background — leave the tab, come back later.';
-    if (_bulkLinksPoll) { clearInterval(_bulkLinksPoll); _bulkLinksPoll = null; }
+  const t = r && r.totals || {};
+  if (sum) sum.textContent = r && r.lastRun
+    ? `— ${t.transcribed || 0} transcribed · ${t.mined || 0} mined · ${t.remined || 0} re-mined` + (r.errorCount ? ` · ${r.errorCount} err` : '')
+    : '';
+  if (!r || !r.lastRun) {
+    body.innerHTML = 'The <code style="font-size:10px;">15 0 * * *</code> cron transcribes, mines, then one-pass re-mines a capped batch of the backlog every night — it drains over a few nights on its own. Hasn\'t run yet.';
     return;
   }
-  const errs = Object.keys(r.errors || {}).length;
-  const label = BULK_LINKS_LABEL[r.mode] || r.mode;
-  if (sum) sum.textContent = `— ${label.toLowerCase()} ${r.done}/${r.total}` + (r.remaining ? ` · ${r.remaining} left` : ' · complete') + (errs ? ` · ${errs} err${errs === 1 ? '' : 's'}` : '');
-  let html = `<b>${esc(label)}</b> — ${r.done}/${r.total} links processed, ${r.remaining} to go`
-    + (r.transcribed ? ` · ${r.transcribed} transcribed` : '')
-    + (r.mined ? ` · ${r.mined} mined` : '')
-    + (r.remaining ? `. The */4 cron does ~2 per tick.` : '. Done.');
-  if (errs) html += `<div style="color:#e05252;margin-top:4px;">Errors on ${errs} link${errs === 1 ? '' : 's'}: ` + Object.values(r.errors).slice(0, 4).map(esc).join(' · ') + `</div>`;
+  let html = `Last run <b>${esc(new Date(r.lastRun).toLocaleString())}</b>: ${esc(r.lastNote || '')}.`;
+  html += r.complete
+    ? ' <span style="color:#3ba55d;">Backlog clear</span> — the nightly run stays a cheap no-op until new links arrive.'
+    : ' Runs again tonight at 00:15 UTC.';
+  if (r.errorCount) html += `<div style="color:#e05252;margin-top:3px;">${r.errorCount} link${r.errorCount === 1 ? '' : 's'} errored (see worker logs) — the sweep skips and moves on.</div>`;
   body.innerHTML = html;
-  const wasPolling = !!_bulkLinksPoll;
-  if (r.remaining && !_bulkLinksPoll) _bulkLinksPoll = setInterval(bulkLinksRefresh, 30000);
-  if (!r.remaining && _bulkLinksPoll) { clearInterval(_bulkLinksPoll); _bulkLinksPoll = null; }
-  if (!r.remaining && wasPolling) loadLinks();   // job just finished — pull fresh statuses into the list
 }
-async function bulkLinksRefresh() {
-  try { bulkLinksRender(await call('bulkLinksStatus', {})); } catch (e) {}
+async function bulkLinksNightlyRefresh() {
+  try { bulkLinksNightlyRender(await call('bulkLinksNightlyStatus', {})); } catch (e) {}
 }
-async function bulkLinksStart(mode) {
-  const st = await call('bulkLinksStatus', {}).catch(() => null);
-  if (st && st.seeded && st.remaining) {
-    if (!confirm(`A "${BULK_LINKS_LABEL[st.mode] || st.mode}" job is still running (${st.remaining} left). Replace it with "${BULK_LINKS_LABEL[mode]}"?`)) return;
-  }
+async function bulkLinksNightlyRun(btn) {
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
   const body = document.getElementById('bulkLinksBody');
-  if (body) body.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block;"></span> Seeding…';
+  if (body) body.innerHTML = '<span class="spinner" style="width:12px;height:12px;display:inline-block;"></span> Running a batch (transcribe 2 · mine 3 · re-mine 3)…';
   try {
-    const r = await call('bulkLinksStart', { mode });
+    const r = await call('bulkLinksNightlyRun', {});
     if (r.error) throw new Error(r.error);
-    if (!r.total) { if (body) body.innerHTML = `Nothing to ${mode === 'remine' ? 're-mine' : mode} — no matching links.`; return; }
-    bulkLinksRender({ seeded: true, mode, total: r.total, done: 0, remaining: r.remaining, errors: {} });
-    bulkLinksRefresh();
+    await bulkLinksNightlyRefresh();
+    await loadLinks();
   } catch (e) {
     if (body) body.innerHTML = '<span style="color:#e05252;">' + esc(e.message) + '</span>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '▶ Run a batch now'; }
   }
 }
-async function bulkLinksReset() {
-  if (!confirm('Clear the bulk backlog queue? The cron stops draining it. Links already processed stay processed.')) return;
-  try { await call('bulkLinksReset', {}); bulkLinksRefresh(); } catch (e) { alert('Error: ' + e.message); }
+async function bulkLinksNightlyReset() {
+  if (!confirm('Clear the re-mine tracker? Phase 3 will then re-mine every transcribed link once more over the coming nights (refreshes their ⛏️ Link Mining rows).')) return;
+  try { await call('bulkLinksNightlyReset', {}); bulkLinksNightlyRefresh(); } catch (e) { alert('Error: ' + e.message); }
 }
 
 async function retryLinkRow(id) {
@@ -12028,9 +12018,9 @@ const CRON_REGISTRY = [
   { fn: 'runBulkHubStrategy', cron: '*/4 * * * *', when: 'Every 4 min', group: 'Content strategy',
     what: 'Drains the bulk hub research+strategy queue ~1 product per tick (seeded by bulkHubStrategyStart). Once the queue is empty this is a 1-KV-read no-op forever until re-seeded.',
     io: 'KV: bulk_hub_strategy · writes 🔬 Product Research + 🚀 Growth Strategy' },
-  { fn: 'runBulkLinks', cron: '*/4 * * * *', when: 'Every 4 min', group: 'Links / content',
-    what: 'Drains the bulk link backlog queue ~2 links/tick (seeded from the Links tab "Bulk backlog": transcribe all / mine all / re-mine all). 1-KV-read no-op when no queue.',
-    io: 'KV: bulklinks:v1 · Notion: 🔗 Saved Posts, ⛏️ Link Mining, 🧑‍🎨 Creators' },
+  { fn: 'runBulkLinksNightly', cron: '15 0 * * *', when: 'Daily 00:15 UTC', group: 'Links / content',
+    what: 'Nightly bulk sweep of the 🔗 Saved Posts backlog, capped per run: transcribe non-Done (6) → mine Done-unmined (12) → one-pass re-mine every Done link (12, refreshes ⛏️ Link Mining incl. Recommended Use). Own cron for a fresh subrequest budget; drains over a few nights then no-ops. Manual nudge / force-full-re-mine from the Links tab "Bulk backlog" panel.',
+    io: 'KV: bulklinks:nightly:v1 · Notion: 🔗 Saved Posts, ⛏️ Link Mining, 🧑‍🎨 Creators' },
   { fn: 'deepScan', cron: '0 0 * * *', when: 'Daily 00:00 UTC (~20:00 ET)', group: 'Dashboard',
     what: 'Morning snapshot + diff of Campaigns and Products — schema changes, new/removed/changed records, recency buckets (active / cooling / orphaned). Powers the "what changed" view.',
     io: 'KV: morning:snapshot, morning:diff' },
