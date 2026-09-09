@@ -378,6 +378,20 @@ async function ensureDbCheckboxProperty(hdr, dbId, propName) {
   } catch (e) { /* best-effort */ }
 }
 
+// Sibling of ensureDbCheckboxProperty for a rich_text column — used by the
+// email-sequence asset branch to stamp "Capture Form" without a manual
+// schema step. Best-effort: a failure just means the write below no-ops.
+async function ensureDbRichTextProperty(hdr, dbId, propName) {
+  try {
+    const dbResp = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers: hdr }).then(r => r.json());
+    if (dbResp.properties && dbResp.properties[propName]) return;
+    await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { [propName]: { rich_text: {} } } }),
+    });
+  } catch (e) { /* best-effort */ }
+}
+
 // A KNOWLEDGE_BRAIN_DB entry used to only carry its saved post's URL as a
 // plain "Source URL" text/url property — that never showed up on the
 // Saved Post's own Notion page at all (nothing points back), which is
@@ -9327,6 +9341,58 @@ Return ONLY this JSON, no other text, no markdown fences:
           await sleep(180); // ~5 writes/sec, under Notion's ~3/sec sustained + burst
         }
         return json({ success: true, matched: targets.length, renamed, failed, capped });
+      }
+
+      // ── getHubForms / saveHubForms ──────────────────────────────────────
+      // A hand-maintained registry of each content hub's email-capture forms
+      // (the signup/report form, offer forms, any future forms), edited from
+      // the dashboard Globals tab and read by the microsite Generate Assets
+      // modal's "email hub main - <purpose>" conditional field. Each row
+      // carries the CONNECTOR (which integration the form feeds — e.g.
+      // ActiveCampaign) and the LIST that form's subscribers land on, so an
+      // email-sequence asset generated against a form can name its automation
+      // target. Storage is the shared TRADES KV under "hub:forms"; capture
+      // itself (submitLead + AC tag) is unchanged — this is a catalog only.
+      const HUB_FORMS_SEED = [
+        { id: "surf-vacations/main",       hub: "surf-vacations",       kind: "main", label: "The Report",                connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "sunflower-acres/main",      hub: "sunflower-acres",      kind: "main", label: "The Accessible Land Guide", connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "owners-rep/main",           hub: "owners-rep",           kind: "main", label: "The free checklist",        connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "home-services/main",        hub: "home-services",        kind: "main", label: "Get in touch",             connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "creative-flow-guitar/main", hub: "creative-flow-guitar", kind: "main", label: "The weekly",               connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "ai-implementation/main",    hub: "ai-implementation",    kind: "main", label: "The free stack audit",     connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "mountainwize/main",         hub: "mountainwize",         kind: "main", label: "The assessment",           connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "care-gap/main",             hub: "care-gap",             kind: "main", label: "The briefing",             connector: "ActiveCampaign", list: "", notes: "" },
+        { id: "sustainable-aquarium/main", hub: "sustainable-aquarium", kind: "main", label: "Get Updates",              connector: "ActiveCampaign", list: "", notes: "" },
+      ];
+      if (body.action === "getHubForms") {
+        let forms = null;
+        try { forms = await env.TRADES.get("hub:forms", "json"); } catch (e) {}
+        if (!Array.isArray(forms) || !forms.length) forms = HUB_FORMS_SEED;
+        let hubSlug = null;
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (cid && typeof HUB_SITES !== "undefined") {
+          const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid);
+          if (h) hubSlug = h.slug;
+        }
+        return json({ forms, hubSlug });
+      }
+      if (body.action === "saveHubForms") {
+        const forms = Array.isArray(body.forms) ? body.forms : null;
+        if (!forms) return json({ error: "forms array required" }, 400);
+        const clean = forms
+          .map(f => ({
+            id:        String(f.id || "").trim().slice(0, 120),
+            hub:       String(f.hub || "").trim().slice(0, 80),
+            kind:      String(f.kind || "main").trim().slice(0, 20) || "main",
+            label:     String(f.label || "").trim().slice(0, 160),
+            connector: String(f.connector || "").trim().slice(0, 80),
+            list:      String(f.list || "").trim().slice(0, 120),
+            notes:     String(f.notes || "").trim().slice(0, 600),
+          }))
+          .filter(f => f.id);
+        try { await env.TRADES.put("hub:forms", JSON.stringify(clean)); }
+        catch (e) { return json({ error: "Couldn't save (KV): " + e.message }, 502); }
+        return json({ success: true, count: clean.length, forms: clean });
       }
 
       // ── updateProductTitleDescription ──
@@ -19289,6 +19355,125 @@ Produce all of this by calling the submit_article tool — do not include any of
           // Design Notes into the template and writing the result back to
           // Design Link, exactly like every other templated method's asset.
           return json({ success: true, created: 1, assets: [{ id: assetId, title: headline }], sectionCount: sections.length });
+        }
+
+        // ── "email hub main - <purpose>" methods: ONE written, ordered
+        // multi-email sequence (not N pick-one concepts), built to drop into
+        // an email automation tool and fire at a hub capture form's list.
+        // Grounding chain, in priority order (from the method framework):
+        // campaign Keywords -> the main hub product's Keywords -> the
+        // method's per-purpose arc. The capture form picked in the Generate
+        // Assets modal (captureFormId) is resolved against the Globals
+        // "hub:forms" registry and its connector + list are stamped on the
+        // asset so the automation wiring knows the target. Skips the grading
+        // gate (a sequence isn't a viral concept to score).
+        if (/^email hub main\b/i.test(assetType)) {
+          const hasMethod = methodId && methodId !== "__none__";
+          const [pillarSeq, methodFramework, researchRawSeq, productPageSeq] = await Promise.all([
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            campaignId ? fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+              method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] })) : Promise.resolve({ results: [] }),
+            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          ]);
+          const rtFirstSeq = (res, key) => { for (const r of (res.results || [])) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+          const campaignKeywords = rtFirstSeq(researchRawSeq, "Keywords");
+          const seqProductName = productPageSeq ? (productPageSeq.properties?.Name?.title || []).map(t => t.plain_text).join("") : "";
+          const seqProductKeywords = productPageSeq ? (productPageSeq.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
+          const seqProductDesc = productPageSeq ? (productPageSeq.properties?.Description?.rich_text || []).map(t => t.plain_text).join("") : "";
+
+          const captureFormId = String(body.captureFormId || "").trim();
+          let captureLine = captureFormId || "(no form picked — set one in the Generate Assets modal)";
+          try {
+            if (captureFormId) {
+              const reg = await env.TRADES.get("hub:forms", "json");
+              const row = Array.isArray(reg) ? reg.find(f => f && f.id === captureFormId) : null;
+              if (row) captureLine = [row.id, row.connector || "ActiveCampaign", row.list ? ("list: " + row.list) : "list: (unset)"].join(" · ");
+            }
+          } catch (e) { /* KV best-effort — the bare id still lands on the asset */ }
+
+          const purpose = assetType.replace(/^email hub main\s*[-–]\s*/i, "").trim() || "nurture";
+          const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options to choose between — for the purpose "${purpose}".
+
+GROUNDING CHAIN (use in this priority order):
+1. CAMPAIGN KEYWORDS: ${campaignKeywords || "(none on file)"}
+2. MAIN HUB PRODUCT: ${seqProductName || "(none)"}${seqProductKeywords ? ` — keywords: ${seqProductKeywords}` : ""}${seqProductDesc ? `\n   ${seqProductDesc.slice(0, 400)}` : ""}
+3. PURPOSE: ${purpose}
+
+METHOD FRAMEWORK (sets the sequence length, the arc, and the per-email output format — follow it exactly):
+${(methodFramework || "").slice(0, 3500) || `(framework not found — use a standard ${purpose} arc)`}
+${pillarSeq ? `\nSOURCE MATERIAL (this title's own pillar content — reshape this, invent no facts beyond it and the keywords above):\n${pillarSeq.slice(0, 2500)}\n` : ""}
+TITLE / IDEA: ${title}
+${body.researchInstructions ? `OPERATOR DIRECTION: ${body.researchInstructions}\n` : ""}
+This sequence loads into an email automation tool and sends to the list from a hub signup form (${captureLine}). Write real, sendable copy — every email complete.
+
+Output as Markdown. For EACH email, in order:
+### Email N — <one-line purpose of this email>
+- **Send:** <trigger / delay, e.g. "immediately on signup", "day 3">
+- **Subject:** <states an outcome, not a teaser>
+- **Preview:** <the inbox preview line>
+
+<body — short paragraphs, one idea, exactly one CTA>
+
+Begin directly with "### Email 1". No preamble, no trailing notes.`;
+
+          const seqResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 5000, messages: [{ role: "user", content: seqPrompt }] }),
+          });
+          const seqData = await seqResp.json();
+          if (!seqResp.ok) return json({ error: seqData.error?.message || "Claude error" }, 502);
+          const sequenceMd = (seqData.content?.[0]?.text || "").trim();
+          if (!sequenceMd) return json({ error: "No sequence generated — try again" }, 502);
+          const emailCount = (sequenceMd.match(/^###\s+Email\s+\d+/gim) || []).length;
+
+          await ensureDbRichTextProperty(dsHdr, ASSETS_DB, "Capture Form");
+          const seqAssetTitle = (title + " — " + purpose + " sequence").slice(0, 200);
+          const seqProps = {
+            "Asset Title":      { title: [{ type: "text", text: { content: seqAssetTitle } }] },
+            "Asset Status":     { select: { name: "Publish" } },
+            "Asset Type":       { select: { name: assetType.slice(0, 100) } },
+            "Status":           { select: { name: "Ready" } },
+            "Body":             { rich_text: [{ type: "text", text: { content: sequenceMd.slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Capture Form":     { rich_text: [{ type: "text", text: { content: captureLine.slice(0, 300) } }] },
+            "Platform Name":    { select: { name: "Email" } },
+          };
+          if (campaignId) seqProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (hasProduct) seqProps["Product"] = { relation: [{ id: dsDash(productId) }] };
+
+          const seqCreateResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: seqProps }),
+          });
+          const seqCreateOut = await seqCreateResp.json();
+          if (!seqCreateResp.ok || !seqCreateOut.id) return json({ error: seqCreateOut.message || "Sequence asset create failed" }, 502);
+          const seqAssetId = seqCreateOut.id.replace(/-/g, "");
+
+          // Full sequence into the asset's page body (Body property above is a
+          // 2000-char preview). One paragraph/heading/bullet block per line.
+          try {
+            const seqRt = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1900) } }] : [];
+            const children = [];
+            String(sequenceMd).split("\n").forEach(ln => {
+              const line = ln.trim();
+              if (!line) return;
+              if (/^###\s+/.test(line)) children.push({ object: "block", type: "heading_3", heading_3: { rich_text: seqRt(line.replace(/^###\s+/, "")) } });
+              else if (/^[-*]\s+/.test(line)) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: seqRt(line.replace(/^[-*]\s+/, "")) } });
+              else children.push({ object: "block", type: "paragraph", paragraph: { rich_text: seqRt(line) } });
+            });
+            for (let i = 0; i < children.length; i += 90) {
+              await fetch(`https://api.notion.com/v1/blocks/${dsDash(seqAssetId)}/children`, {
+                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ children: children.slice(i, i + 90) }),
+              });
+            }
+          } catch (e) { /* Body property already carries the text; blocks are a bonus */ }
+
+          return json({ success: true, created: 1, assets: [{ id: seqAssetId, title: seqAssetTitle }], emailCount, captureForm: captureLine });
         }
 
         // ── "Template CSV Export"-style table asset: ONE finished Page |

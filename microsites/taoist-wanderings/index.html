@@ -1869,6 +1869,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         </select>
       </div>
 
+      <!-- "email hub main - <purpose>" methods only: which hub capture form's
+           list this generated email sequence is written for. Options come
+           from the Globals "Hub Email Forms" registry (getHubForms), filtered
+           to this campaign's hub. The pick is stamped on the asset's Capture
+           Form field with its connector + list. -->
+      <div id="gaCaptureFormWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
+        <label class="lm-label">Attach to form <span style="color:#fff;font-weight:normal;">— the hub capture form whose list this sequence gets automated to. Managed in the main dashboard → Globals → Hub Email Forms.</span></label>
+        <select class="modal-ta" id="gaCaptureFormInput">
+          <option value="">— pick a form —</option>
+        </select>
+      </div>
+
       <!-- Which shop/brand this pushes to — required for methods that
            publish to one specific store (T Shirt via Printify, Listing).
            A Login is the operator-set, explicit answer to "which shop" —
@@ -6769,6 +6781,11 @@ function gaUpdateSkillHint() {
   // toggle runs independent of the match/no-match logic below.
   const isHubMethod = /^hub$/i.test((GA_METHOD_NAME || '').trim());
   if (hubWrap) { hubWrap.style.display = isHubMethod ? 'block' : 'none'; if (isHubMethod) gaLoadHubProducts(); }
+  // "email hub main - <purpose>" — generic path, no GA_SKILL_METHODS entry;
+  // toggled here alongside the hub method, before the match/no-match branch.
+  const capWrap = document.getElementById('gaCaptureFormWrap');
+  const isEmailHubMain = /^email hub main\b/i.test((GA_METHOD_NAME || '').trim());
+  if (capWrap) { capWrap.style.display = isEmailHubMain ? 'block' : 'none'; if (isEmailHubMain) gaLoadCaptureForms(); }
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
@@ -6859,6 +6876,33 @@ function gaLoadHubProducts() {
   const current = sel.value;
   sel.innerHTML = '<option value="">— pick a product —</option>' + (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   sel.value = current || GA_PRODUCT_ID || '';
+}
+
+// "email hub main - <purpose>" methods — populates the "Attach to form"
+// picker from the Globals "Hub Email Forms" registry (worker getHubForms),
+// filtered to this campaign's hub when it maps to one. Cached per session.
+let GA_HUB_FORMS_CACHE = null;
+async function gaLoadCaptureForms() {
+  const sel = document.getElementById('gaCaptureFormInput');
+  if (!sel) return;
+  const current = sel.value;
+  const fill = (forms, hubSlug) => {
+    let list = forms || [];
+    if (hubSlug) { const scoped = list.filter(f => f.hub === hubSlug); if (scoped.length) list = scoped; }
+    sel.innerHTML = '<option value="">— pick a form —</option>' + list.map(f =>
+      `<option value="${esc(f.id)}">${esc(f.id)}${f.label ? ' — ' + esc(f.label) : ''}${f.list ? ' (' + esc(f.list) + ')' : ''}</option>`
+    ).join('');
+    // default to the hub's main form when nothing was chosen yet
+    sel.value = current || (list.find(f => f.kind === 'main') || {}).id || '';
+  };
+  if (GA_HUB_FORMS_CACHE) { fill(GA_HUB_FORMS_CACHE.forms, GA_HUB_FORMS_CACHE.hubSlug); return; }
+  try {
+    const r = await w('getHubForms', { campaignId: CAMPAIGN_ID });
+    GA_HUB_FORMS_CACHE = { forms: r.forms || [], hubSlug: r.hubSlug || null };
+    fill(GA_HUB_FORMS_CACHE.forms, GA_HUB_FORMS_CACHE.hubSlug);
+  } catch (e) {
+    sel.innerHTML = '<option value="">— couldn\'t load forms —</option>';
+  }
 }
 
 // Shows what's already saved to the campaign BEFORE generating anything —
@@ -7194,7 +7238,7 @@ async function openGenAssetsModal(titleId) {
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -10073,7 +10117,15 @@ async function submitGenAssets() {
     // asset branch), not a method name that's never a valid select option.
     const assetType = isHubMethod ? 'Content Hub' : (GA_METHOD_NAME || 'Post');
     const overrideText = document.getElementById('gaDesignRefNotesInput')?.value.trim() || undefined;
-    status.textContent = isHubMethod ? 'Creating the Content Hub asset…' : 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
+    const isEmailHubMain = /^email hub main\b/i.test((GA_METHOD_NAME || '').trim());
+    const captureFormId = isEmailHubMain ? (document.getElementById('gaCaptureFormInput')?.value || '') : '';
+    if (isEmailHubMain && !captureFormId) {
+      status.textContent = 'Pick which hub form this sequence attaches to above first.';
+      status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate'; return;
+    }
+    status.textContent = isHubMethod ? 'Creating the Content Hub asset…'
+      : isEmailHubMain ? 'Writing the email sequence (campaign keywords → hub product keywords → the method arc). Leave this tab open.'
+      : 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
     const r = await w('generateTitleAssets', {
       titleId: GA_TITLE_ID,
       campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
@@ -10083,6 +10135,7 @@ async function submitGenAssets() {
       title,
       description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
       count: 4,
+      captureFormId: captureFormId || undefined,
       contextMode: (document.querySelector('input[name="gaContext"]:checked') || {}).value || 'isolate',
       platformId: document.getElementById('gaPlatformInput')?.value || undefined,
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
@@ -10094,6 +10147,14 @@ async function submitGenAssets() {
       btn.textContent = 'Done';
       await loadTitles();
       setTimeout(closeGenAssetsModal, 3000);
+      return;
+    }
+    if (r.emailCount != null) {
+      status.innerHTML = `✓ Wrote a ${r.emailCount}-email sequence for <b>${esc(r.captureForm || captureFormId)}</b> — asset is on Publish. Full sequence is in the asset's Notion page; wire it to that list in your email platform.`;
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      await loadTitles();
+      setTimeout(closeGenAssetsModal, 4000);
       return;
     }
     if (r.rowCount != null) {

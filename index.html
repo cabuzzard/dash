@@ -965,6 +965,31 @@
       </div>
     </div>
 
+    <!-- ✉️ HUB EMAIL FORMS — a catalog (not a rebuild) of each content hub's
+         email-capture forms. Capture itself is unchanged (submitLead + the
+         ActiveCampaign lead-{campaign} tag). Each row's CONNECTOR + LIST are
+         attached to its form ID so the microsite Generate Assets modal's
+         "email hub main - <purpose>" field can bind a generated email
+         sequence to the right automation target. Stored in the worker's
+         TRADES KV under "hub:forms"; getHubForms / saveHubForms. -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('hubForms')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">✉️ Hub Email Forms <span id="glHubFormsCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— capture form IDs + their connector &amp; list</span></span>
+        <span id="glHubFormsIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glHubFormsBody" style="display:none;padding:0 13px 13px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
+          One row per existing capture form. <b>id</b> is what the Generate Assets modal references (e.g. <code style="font-size:10px;">owners-rep/main</code>). Fill in the real <b>list</b> each form feeds in your email platform. Capture flow is untouched — this is a catalog.
+        </div>
+        <div id="glHubFormsList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+          <button onclick="glHubFormsAddRow()" style="font-size:11px;padding:5px 11px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ Add form</button>
+          <button id="glHubFormsSaveBtn" onclick="glHubFormsSave()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Save</button>
+          <span id="glHubFormsStatus" style="font-size:11px;color:var(--text3);"></span>
+        </div>
+      </div>
+    </div>
+
     <!-- ⏰ CRON SCRIPTS — read-only registry of everything running on a schedule.
          The counterpart to the 🤖 Automations wishlist on the TD tab (that's
          the wishlist; this is what actually runs). Source of truth is worker/worker.js `scheduled()`
@@ -12065,6 +12090,7 @@ const GL_SECTIONS = {
   method:   { icon: 'glMethodIcon',   body: 'glMethodBody',   load: () => loadGlMethod() },
   trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
+  hubForms: { icon: 'glHubFormsIcon', body: 'glHubFormsBody', load: () => loadGlHubForms() },
   automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
   cronScripts: { icon: 'glCronIcon',  body: 'glCronBody',     load: () => renderCronScripts() },
   leadSourcing:{ icon: 'glLeadIcon',  body: 'glLeadBody',     load: () => loadGlLeadSourcing() },
@@ -12086,6 +12112,64 @@ function glToggle(key) {
 }
 function loadGlobalsTab() {
   // All sections start collapsed and lazy-load on first open (glToggle).
+}
+
+// ── ✉️ HUB EMAIL FORMS — editable catalog (worker getHubForms/saveHubForms,
+// TRADES KV "hub:forms"). Each row's connector + list bind to its form id so
+// the microsite Generate Assets modal can target an email sequence. Capture
+// itself (submitLead + AC tag) is not touched here.
+let GL_HUB_FORMS = [];
+async function loadGlHubForms(force) {
+  const el = document.getElementById('glHubFormsList');
+  if (GL_HUB_FORMS.length && !force) { glHubFormsRender(); return; }
+  el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try {
+    const r = await call('getHubForms');
+    GL_HUB_FORMS = Array.isArray(r.forms) ? r.forms.map(f => ({ ...f })) : [];
+    glHubFormsRender();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+function glHubFormsRender() {
+  const el = document.getElementById('glHubFormsList');
+  document.getElementById('glHubFormsCount').textContent = '· ' + GL_HUB_FORMS.length;
+  const cols = [
+    ['id', 'id', '13ch'], ['hub', 'hub', '11ch'], ['label', 'label', '1fr'],
+    ['connector', 'connector', '11ch'], ['list', 'list (email platform)', '1fr'], ['notes', 'notes', '1fr'],
+  ];
+  const head = '<div style="display:grid;grid-template-columns:' + cols.map(c => c[2]).join(' ') + ' 24px;gap:6px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);padding:0 0 5px;">'
+    + cols.map(c => '<span>' + esc(c[1]) + '</span>').join('') + '<span></span></div>';
+  const rows = GL_HUB_FORMS.map((f, i) =>
+    '<div style="display:grid;grid-template-columns:' + cols.map(c => c[2]).join(' ') + ' 24px;gap:6px;margin-bottom:5px;align-items:start;">'
+    + cols.map(c =>
+        '<input value="' + esc(f[c[0]] || '') + '" oninput="GL_HUB_FORMS[' + i + '].' + c[0] + '=this.value" '
+        + 'style="font-size:11px;padding:4px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--bg);color:var(--text);font-family:inherit;min-width:0;">'
+      ).join('')
+    + '<button onclick="GL_HUB_FORMS.splice(' + i + ',1);glHubFormsRender()" title="Remove row" style="font-size:11px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕</button>'
+    + '</div>'
+  ).join('');
+  el.innerHTML = head + (rows || '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No forms yet — add one.</div>');
+}
+function glHubFormsAddRow() {
+  GL_HUB_FORMS.push({ id: '', hub: '', kind: 'main', label: '', connector: 'ActiveCampaign', list: '', notes: '' });
+  glHubFormsRender();
+}
+async function glHubFormsSave() {
+  const btn = document.getElementById('glHubFormsSaveBtn'), st = document.getElementById('glHubFormsStatus');
+  btn.disabled = true; st.textContent = 'Saving…'; st.style.color = 'var(--text3)';
+  try {
+    const r = await call('saveHubForms', { forms: GL_HUB_FORMS });
+    GL_HUB_FORMS = Array.isArray(r.forms) ? r.forms.map(f => ({ ...f })) : GL_HUB_FORMS;
+    glHubFormsRender();
+    st.textContent = 'Saved ' + (r.count != null ? r.count : GL_HUB_FORMS.length) + ' forms.';
+    st.style.color = '#4ade80';
+  } catch (e) {
+    st.textContent = 'Save failed: ' + e.message; st.style.color = '#f87171';
+  } finally {
+    btn.disabled = false;
+    setTimeout(() => { st.textContent = ''; }, 4000);
+  }
 }
 
 // ── ⏰ CRON SCRIPTS — read-only registry ────────────────────────────────
