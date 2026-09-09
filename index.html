@@ -9133,7 +9133,8 @@ async function renameProductStack(fromName) {
   try {
     const r = await call('renameProductStack', { from: fromName, to });
     showToast('Renamed ' + r.renamed + ' product' + (r.renamed === 1 ? '' : 's') + ' → "' + to + '"'
-      + (r.failed ? ' · ' + r.failed + ' failed' : ''), r.failed ? 'error' : 'success');
+      + (r.failed ? ' · ' + r.failed + ' failed' : '')
+      + (r.capped ? ' · capped, run again to finish' : ''), (r.failed || r.capped) ? 'error' : 'success');
     await loadDev();
   } catch (e) {
     showToast('Rename failed: ' + e.message, 'error');

@@ -9301,16 +9301,32 @@ Return ONLY this JSON, no other text, no markdown fences:
           const s = (p.properties?.["Product Stack"]?.rich_text || []).map(x => x.plain_text).join("").trim();
           return s.toLowerCase() === from.toLowerCase();
         });
+        // Paced + 429-aware. An unthrottled burst of PATCHes here trips
+        // Notion's SECONDARY rate limit on the whole integration token, which
+        // then also 429s any getTitles/getDevTitles load happening in another
+        // tab — so this stays gentle even though the write count is small.
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
+        const MAX_WRITES = 300;
+        const capped = targets.length > MAX_WRITES;
         let renamed = 0, failed = 0;
-        for (const p of targets) {
-          const resp = await fetch(`https://api.notion.com/v1/pages/${p.id}`, {
-            method: "PATCH", headers: hdr,
-            body: JSON.stringify({ properties: { "Product Stack": { rich_text: [{ type: "text", text: { content: to } }] } } }),
-          });
-          if (resp.ok) renamed++;
-          else { failed++; console.error("renameProductStack patch", p.id, ":", (await resp.json().catch(() => ({}))).message); }
+        for (const p of targets.slice(0, MAX_WRITES)) {
+          let ok = false;
+          for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+            const resp = await fetch(`https://api.notion.com/v1/pages/${p.id}`, {
+              method: "PATCH", headers: hdr,
+              body: JSON.stringify({ properties: { "Product Stack": { rich_text: [{ type: "text", text: { content: to } }] } } }),
+            });
+            if (resp.ok) { ok = true; break; }
+            if (resp.status === 429 && attempt === 0) {
+              await sleep((parseInt(resp.headers.get("Retry-After") || "2", 10) + 1) * 1000);
+              continue;
+            }
+            console.error("renameProductStack patch", p.id, ":", (await resp.json().catch(() => ({}))).message);
+          }
+          if (ok) renamed++; else failed++;
+          await sleep(180); // ~5 writes/sec, under Notion's ~3/sec sustained + burst
         }
-        return json({ success: true, matched: targets.length, renamed, failed });
+        return json({ success: true, matched: targets.length, renamed, failed, capped });
       }
 
       // ── updateProductTitleDescription ──
