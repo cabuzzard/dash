@@ -9380,19 +9380,40 @@ Return ONLY this JSON, no other text, no markdown fences:
         const forms = Array.isArray(body.forms) ? body.forms : null;
         if (!forms) return json({ error: "forms array required" }, 400);
         const clean = forms
-          .map(f => ({
-            id:        String(f.id || "").trim().slice(0, 120),
-            hub:       String(f.hub || "").trim().slice(0, 80),
-            kind:      String(f.kind || "main").trim().slice(0, 20) || "main",
-            label:     String(f.label || "").trim().slice(0, 160),
-            connector: String(f.connector || "").trim().slice(0, 80),
-            list:      String(f.list || "").trim().slice(0, 120),
-            notes:     String(f.notes || "").trim().slice(0, 600),
-          }))
+          .map(f => {
+            const id = String(f.id || "").trim().slice(0, 120);
+            const parts = id.split("/");
+            return {
+              id,
+              // hub / kind are derived from the id ("<hub>/main", "<hub>/offer/<x>")
+              // when not sent — the Globals panel only edits id/label/connector/list/notes.
+              hub:       (String(f.hub || "").trim() || parts[0] || "").slice(0, 80),
+              kind:      (String(f.kind || "").trim() || (parts.length > 1 ? parts[1] : "main") || "main").slice(0, 20),
+              label:     String(f.label || "").trim().slice(0, 160),
+              connector: String(f.connector || "").trim().slice(0, 80),
+              list:      String(f.list || "").trim().slice(0, 120),
+              notes:     String(f.notes || "").trim().slice(0, 600),
+            };
+          })
           .filter(f => f.id);
         try { await env.TRADES.put("hub:forms", JSON.stringify(clean)); }
         catch (e) { return json({ error: "Couldn't save (KV): " + e.message }, 502); }
         return json({ success: true, count: clean.length, forms: clean });
+      }
+      // Live ActiveCampaign lists — so the Hub Email Forms panel can show the
+      // real list names each form's tag (lead-hub-<slug>) routes into, and
+      // the operator picks the right one instead of typing it blind.
+      if (body.action === "getActiveCampaignLists") {
+        const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, "");
+        const acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
+        if (!acUrl || !acKey) return json({ error: "ActiveCampaign not configured on the Worker (ACTIVECAMPAIGN_API_URL / ACTIVECAMPAIGN_API_KEY)" }, 400);
+        try {
+          const r = await fetch(`${acUrl}/api/3/lists?limit=100`, { headers: { "Api-Token": acKey } });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) return json({ error: d.message || `ActiveCampaign returned ${r.status}` }, 502);
+          const lists = (d.lists || []).map(l => ({ id: l.id, name: l.name, stringid: l.stringid }));
+          return json({ lists });
+        } catch (e) { return json({ error: "ActiveCampaign fetch failed: " + e.message }, 502); }
       }
 
       // ── updateProductTitleDescription ──
