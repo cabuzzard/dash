@@ -1757,15 +1757,26 @@
 </div>
 
 
-<!-- Hub Method Matrix → click a column header to edit that method's notes -->
+<!-- Hub Method Matrix → click a column header: edit name / status / notes, open the Notion record, or archive -->
 <div class="modal-bg" id="matTypeModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:640px;">
     <div class="modal-title" id="matTypeModalTitle">Method notes</div>
-    <div class="modal-field">
-      <label class="modal-label" style="display:flex;align-items:center;gap:8px;">Name
-        <a id="mtNotionLink" href="#" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--accent);text-decoration:none;">↗ Notion record</a>
-      </label>
-      <input class="modal-input" id="mtName" type="text" placeholder="method name">
+    <div style="display:flex;gap:8px;">
+      <div class="modal-field" style="flex:1;">
+        <label class="modal-label" style="display:flex;align-items:center;gap:8px;">Name
+          <a id="mtNotionLink" href="#" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--accent);text-decoration:none;">↗ Notion record</a>
+        </label>
+        <input class="modal-input" id="mtName" type="text" placeholder="method name">
+      </div>
+      <div class="modal-field" style="width:140px;flex-shrink:0;">
+        <label class="modal-label">Status</label>
+        <select class="modal-input" id="mtStatus">
+          <option value="Development">Development</option>
+          <option value="Live">Live</option>
+          <option value="Migrate">Migrate</option>
+          <option value="Delete">Delete</option>
+        </select>
+      </div>
     </div>
     <div class="modal-field">
       <label class="modal-label" style="display:flex;align-items:center;gap:8px;">
@@ -13979,7 +13990,10 @@ async function loadTdTab() {
 // refining the methods list — all other work-type / hub-front matrix UI was
 // removed 2026-09-09 in favour of this.
 let HAM_DATA = null;   // { columns:[{id,name,notes,status,url}], counts:{slug:{methodId:{dev,pub}}}, hubs:[{slug}] }
-const HAM_STATUS_DOT = { 'Live': '#4ade80', 'Development': 'var(--text3)', 'Migrate': '#facc15', 'Delete': '#f87171' };
+// Status tints the whole column header (no dot). Development is the neutral
+// majority so it gets no tint.
+const HAM_STATUS_BG = { 'Live': 'rgba(74,222,128,.15)', 'Development': 'transparent', 'Migrate': 'rgba(250,204,21,.15)', 'Delete': 'rgba(248,113,113,.18)' };
+const HAM_STATUS_FG = { 'Live': '#4ade80', 'Development': 'var(--text2)', 'Migrate': '#facc15', 'Delete': '#f87171' };
 const HM_LABELS = { 'creative-flow-guitar':'guitar', 'owners-rep':'o-rep', 'ai-implementation':'ai', 'sunflower-acres':'sun', 'surf-vacations':'surf', 'sustainable-aquarium':'aqua', 'home-services':'home', 'mountainwize':'mtn', 'care-gap':'care' };  // hub slug -> short column/row label (shared with the method matrix)
 let hubAssetMatrixCollapsed = true;
 try { hubAssetMatrixCollapsed = localStorage.getItem('hubAssetMatrixCollapsed') !== 'false'; } catch(e) {}
@@ -13992,8 +14006,10 @@ function hamSortCols(cols) {
   const pos = id => { const i = hamColOrder.indexOf(id); return i < 0 ? 1e6 : i; };
   return cols.slice().sort((a, b) => pos(a.id) - pos(b.id) || a.name.localeCompare(b.name));
 }
-let _hamDragCol = null;
-function hamColDragStart(id) { _hamDragCol = id; }
+let _hamDragCol = null, _hamDragging = false;
+function hamColDragStart(id, e) { _hamDragCol = id; _hamDragging = true; if (e && e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }
+function hamColDragEnd() { setTimeout(() => { _hamDragging = false; }, 80); }
+function hamColClick(id) { if (_hamDragging) return; openMatTypeModal(id); }
 function hamColDrop(targetId) {
   const src = _hamDragCol; _hamDragCol = null;
   if (!src || src === targetId || !HAM_DATA) return;
@@ -14039,16 +14055,17 @@ function renderHubAssetMatrix() {
   const counts = HAM_DATA.counts || {};
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No methods yet — use + method.</div>'; if (summary) summary.textContent = ''; return; }
   const colgroup = `<colgroup><col style="width:90px;">${cols.map(() => '<col>').join('')}</colgroup>`;
-  const headRow = cols.map(c => `<th title="${esc(c.name)}${c.status ? ' (' + esc(c.status) + ')' : ''} — click for notes / Notion link / archive · drag to reorder" draggable="true"`
-    + ` onclick="openMatTypeModal(${esc(JSON.stringify(c.id))})"`
-    + ` ondragstart="hamColDragStart(${esc(JSON.stringify(c.id))})" ondragover="event.preventDefault()"`
+  const headRow = cols.map(c => {
+    const id = esc(JSON.stringify(c.id));
+    return `<th title="${esc(c.name)}${c.status ? ' — ' + esc(c.status) : ''} · click for notes / status / Notion link / archive · drag to reorder" draggable="true"`
+    + ` onclick="hamColClick(${id})"`
+    + ` ondragstart="hamColDragStart(${id},event)" ondragover="event.preventDefault()"`
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
-    + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hamColDrop(${esc(JSON.stringify(c.id))})"`
-    + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:pointer;">`
-    + `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">`
-    + `<span style="width:5px;height:5px;border-radius:50%;background:${HAM_STATUS_DOT[c.status] || 'var(--text3)'};flex-shrink:0;" title="${esc(c.status || '')}"></span>`
-    + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
-    + `</div></th>`).join('');
+    + ` ondragend="this.style.outline='';hamColDragEnd()" ondrop="this.style.outline='';hamColDrop(${id})"`
+    + ` style="padding:4px 2px;border-left:1px solid var(--border);border-top:2px solid ${HAM_STATUS_FG[c.status] || 'transparent'};background:${HAM_STATUS_BG[c.status] || 'transparent'};vertical-align:bottom;cursor:pointer;">`
+    + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${HAM_STATUS_FG[c.status] || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
+    + `</th>`;
+  }).join('');
   let totDev = 0, totPub = 0;
   let rows = '';
   (HAM_DATA.hubs || []).forEach(h => {
@@ -14069,19 +14086,20 @@ function renderHubAssetMatrix() {
   });
   if (summary) summary.textContent = `— ${totDev} dev · ${totPub} publish · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
   body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · every method is a column (dot = <span style="color:#4ade80;">Live</span> · <span style="color:var(--text3);">Development</span> · <span style="color:#facc15;">Migrate</span> · <span style="color:#f87171;">Delete</span>) · click a header for notes / Notion link / archive · drag to reorder</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · every method is a column, header tinted by status (<span style="color:#4ade80;">Live</span> · Development · <span style="color:#facc15;">Migrate</span> · <span style="color:#f87171;">Delete</span>) · click a header for notes / status / Notion link / archive · drag to reorder</div>`;
 }
 let matEditingId = null;
 async function openMatTypeModal(methodId) {
   matEditingId = methodId || null;
   const c = methodId && HAM_DATA ? (HAM_DATA.columns || []).find(x => x.id === methodId) : null;
   if (!c) return;
-  document.getElementById('matTypeModalTitle').textContent = 'Method — ' + c.name + (c.status ? '  (' + c.status + ')' : '');
+  document.getElementById('matTypeModalTitle').textContent = 'Method — ' + c.name;
   document.getElementById('mtName').value = c.name;
+  document.getElementById('mtStatus').value = ['Development', 'Live', 'Migrate', 'Delete'].includes(c.status) ? c.status : 'Development';
   document.getElementById('mtNotes').value = c.notes || '';
   const link = document.getElementById('mtNotionLink');
   link.href = c.url || ('https://www.notion.so/' + c.id);
-  document.getElementById('mtMsg').textContent = 'Name + notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
+  document.getElementById('mtMsg').textContent = 'Name / status / notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
   document.getElementById('matTypeModal').classList.add('open');
   setTimeout(() => document.getElementById('mtNotes').focus(), 30);
 }
@@ -14090,14 +14108,15 @@ async function matTypeSave() {
   const btn = document.getElementById('mtSaveBtn');
   const msg = document.getElementById('mtMsg');
   const name = document.getElementById('mtName').value.trim();
+  const status = document.getElementById('mtStatus').value;
   const notes = document.getElementById('mtNotes').value.replace(/\s+$/, '');
   if (!name) { msg.textContent = 'Name required'; return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const r = await call('updateMethod', { methodId: matEditingId, name, notes });
+    const r = await call('updateMethod', { methodId: matEditingId, name, status, notes });
     if (r.error) throw new Error(r.error);
     const c = (HAM_DATA && HAM_DATA.columns || []).find(x => x.id === matEditingId);
-    if (c) { c.name = name; c.notes = notes; }
+    if (c) { c.name = name; c.notes = notes; c.status = status; }
     renderHubAssetMatrix();
     document.getElementById('matTypeModal').classList.remove('open');
   } catch(e) { msg.textContent = 'Error: ' + e.message; }
