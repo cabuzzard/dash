@@ -11307,6 +11307,25 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true });
       }
 
+      // ── Editable free-text scratchpad for a dashboard panel (KV-backed,
+      // persists across devices). key = a short slug; today only the
+      // "hub-method-matrix" notes panel above the Hub Method Matrix.
+      if (body.action === "getPanelNote") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const key = String(body.key || "").replace(/[^a-z0-9_-]/gi, "").slice(0, 60);
+        if (!key) return json({ error: "key required" }, 400);
+        const text = await env.TRADES.get("panelnote:" + key).catch(() => null);
+        return json({ success: true, text: text || "" });
+      }
+      if (body.action === "setPanelNote") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const key = String(body.key || "").replace(/[^a-z0-9_-]/gi, "").slice(0, 60);
+        if (!key) return json({ error: "key required" }, 400);
+        const text = String(body.text ?? "").slice(0, 20000);
+        await env.TRADES.put("panelnote:" + key, text);
+        return json({ success: true, text });
+      }
+
       // ── regenerateStrategySlots ──
       // The ♻️ Regenerate button on a strategy header. Re-plans an existing
       // Growth Strategy's slots to the current cross-platform-ARC

@@ -736,6 +736,19 @@
   <div class="tab-panel active" id="tabTd">
     <button onclick="openDailyStatusModal()" style="width:100%;margin-bottom:14px;padding:10px 14px;font-size:13px;font-weight:600;border:1px solid #63b3ed;border-radius:6px;background:rgba(99,179,237,.08);color:#63b3ed;cursor:pointer;text-align:left;">📝 Enter Daily Status — run it through Character Arcs into real titles</button>
 
+    <!-- Method Matrix notes — a free-text scratchpad, KV-backed (persists
+         across devices via get/setPanelNote key "hub-method-matrix").
+         Collapsed by default; lazy-loads on first expand; autosaves. -->
+    <div id="hamNotesSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHamNotes()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Method Matrix Notes <span id="hamNotesSaved" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span id="hamNotesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="hamNotesBody" style="display:none;margin-top:10px;">
+        <textarea id="hamNotesTa" rows="8" placeholder="Working notes for the method matrix…" oninput="hamNotesDirty()" onblur="hamNotesFlush()" style="width:100%;box-sizing:border-box;font-size:12px;line-height:1.5;font-family:inherit;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:8px 10px;resize:vertical;outline:none;"></textarea>
+      </div>
+    </div>
+
     <!-- HUB METHOD MATRIX — rows = hubs, columns = EVERY method (one column
          per METHODS_DB row, any status; archived methods drop out). Each
          cell = "# Development / # Publish" Content Strategy titles for that
@@ -13981,8 +13994,67 @@ async function loadTdTab() {
   }
   renderHubSites();
   loadTodayCampaigns();
+  applyHamNotesCollapse();
+  if (!hamNotesCollapsed && !_hamNotesLoaded) { hamNotesCollapsed = true; toggleHamNotes(); }
   loadHubAssetMatrix();
   loadWpBoard();
+}
+
+// ── METHOD MATRIX NOTES — a KV-backed free-text scratchpad above the
+// matrix. Collapsed by default (localStorage), lazy-loaded on first expand,
+// autosaved (debounced) to get/setPanelNote key "hub-method-matrix".
+const HAM_NOTE_KEY = 'hub-method-matrix';
+let hamNotesCollapsed = true;
+try { hamNotesCollapsed = localStorage.getItem('hamNotesCollapsed') !== 'false'; } catch(e) {}
+let _hamNotesLoaded = false, _hamNotesTimer = null, _hamNotesLast = '';
+function applyHamNotesCollapse() {
+  const b = document.getElementById('hamNotesBody');
+  const i = document.getElementById('hamNotesToggleIcon');
+  if (b) b.style.display = hamNotesCollapsed ? 'none' : '';
+  if (i) i.textContent = hamNotesCollapsed ? '▸' : '▾';
+}
+async function toggleHamNotes() {
+  hamNotesCollapsed = !hamNotesCollapsed;
+  try { localStorage.setItem('hamNotesCollapsed', String(hamNotesCollapsed)); } catch(e) {}
+  applyHamNotesCollapse();
+  if (!hamNotesCollapsed && !_hamNotesLoaded) {
+    _hamNotesLoaded = true;
+    const ta = document.getElementById('hamNotesTa');
+    const tag = document.getElementById('hamNotesSaved');
+    if (tag) tag.textContent = '— loading…';
+    try {
+      const r = await call('getPanelNote', { key: HAM_NOTE_KEY });
+      ta.value = r.text || '';
+      _hamNotesLast = ta.value;
+      if (tag) tag.textContent = '';
+    } catch(e) {
+      _hamNotesLoaded = false;
+      if (tag) tag.textContent = '— load failed';
+    }
+  }
+}
+function hamNotesDirty() {
+  const tag = document.getElementById('hamNotesSaved');
+  if (tag) tag.textContent = '— unsaved…';
+  if (_hamNotesTimer) clearTimeout(_hamNotesTimer);
+  _hamNotesTimer = setTimeout(hamNotesFlush, 900);
+}
+async function hamNotesFlush() {
+  if (_hamNotesTimer) { clearTimeout(_hamNotesTimer); _hamNotesTimer = null; }
+  const ta = document.getElementById('hamNotesTa');
+  if (!ta) return;
+  const text = ta.value;
+  if (text === _hamNotesLast) return;
+  const tag = document.getElementById('hamNotesSaved');
+  if (tag) tag.textContent = '— saving…';
+  try {
+    const r = await call('setPanelNote', { key: HAM_NOTE_KEY, text });
+    if (r.error) throw new Error(r.error);
+    _hamNotesLast = text;
+    if (tag) { tag.textContent = '— saved ✓'; setTimeout(() => { if (tag.textContent === '— saved ✓') tag.textContent = ''; }, 1500); }
+  } catch(e) {
+    if (tag) tag.textContent = '— save failed';
+  }
 }
 
 // ── HUB METHOD MATRIX — Development / Publish title counts per hub × method
