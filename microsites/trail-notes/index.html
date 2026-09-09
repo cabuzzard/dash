@@ -19,6 +19,19 @@
   flex-shrink: 0; transition: all .15s; line-height: 1.4;
 }
 .title-status-btn:hover { color: #e8ff47; border-color: rgba(232,255,71,.3); }
+/* METHOD FILTER (Development + Assets sections) — multi-select, default off */
+.method-filter-bar { margin: 0 0 8px; }
+.method-filter-bar details { border: 1px solid #5f5f5f; border-radius: 4px; background: rgba(255,255,255,.02); }
+.method-filter-bar details[open] { border-color: rgba(99,179,237,.4); }
+.method-filter-bar summary { list-style: none; cursor: pointer; padding: 4px 9px; font-size: 11px; color: #fff; font-family: 'Syne', sans-serif; display: flex; align-items: center; gap: 6px; user-select: none; }
+.method-filter-bar summary::-webkit-details-marker { display: none; }
+.method-filter-bar summary .mf-count { color: #63b3ed; font-weight: 700; }
+.method-filter-bar summary .mf-clear { margin-left: auto; color: #f6ad55; font-size: 10px; text-decoration: underline; }
+.method-filter-bar .mf-list { max-height: 220px; overflow-y: auto; border-top: 1px solid #333; padding: 4px 0; }
+.method-filter-bar .mf-opt { display: flex; align-items: center; gap: 7px; padding: 3px 9px; font-size: 11px; color: #fff; cursor: pointer; }
+.method-filter-bar .mf-opt:hover { background: rgba(99,179,237,.08); }
+.method-filter-bar .mf-opt input { flex-shrink: 0; margin: 0; }
+.method-filter-bar .mf-opt .mf-n { color: #888; margin-left: auto; }
 /* CREATE ASSET BUTTON + MODAL */
 .title-asset-btn {
   font-size: 12px; color: #fff; background: none; border: 1px solid #5f5f5f;
@@ -349,12 +362,14 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
   <div class="col">
     <h2>Development Titles <button class="td-add-btn-inline" onclick="openQuickAddModal()" title="Quickly add a title with your own notes — no AI generation yet">+</button></h2>
     <div class="content">
+      <div class="method-filter-bar" id="devMethodFilterBar" hidden></div>
       <div class="title-list" id="devTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
     <h2>Assets</h2>
     <div class="content">
+      <div class="method-filter-bar" id="pubMethodFilterBar" hidden></div>
       <div class="title-list" id="pubTitles"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
@@ -2677,6 +2692,89 @@ let titleGroupsOpen = {};
 try { titleGroupsOpen = JSON.parse(localStorage.getItem(TITLE_COLLAPSE_KEY) || '{}'); } catch(e) {}
 function saveTitleGroupsOpen() { try { localStorage.setItem(TITLE_COLLAPSE_KEY, JSON.stringify(titleGroupsOpen)); } catch(e) {} }
 
+// ── Method filter (Development + Assets sections) ──────────────────────
+// A multi-select of method ids ('__none__' = No Method). Empty Set = no
+// filter, which is the default. Both sections share this one filter and it
+// keeps the full hierarchical grouping — it only drops title rows (and, in
+// Assets, their asset rows) whose title's Method isn't selected. Persisted
+// per-campaign; toggling re-renders from the last fetch (LAST_TITLES_DATA),
+// no network round-trip.
+const METHOD_FILTER_KEY = 'titleMethodFilter_' + CAMPAIGN_ID;
+let methodFilter = new Set();
+try { const s = JSON.parse(localStorage.getItem(METHOD_FILTER_KEY) || '[]'); if (Array.isArray(s)) methodFilter = new Set(s); } catch(e) {}
+function saveMethodFilter() { try { localStorage.setItem(METHOD_FILTER_KEY, JSON.stringify([...methodFilter])); } catch(e) {} }
+let LAST_TITLES_DATA = null;
+
+// Builds the two identical filter dropdowns (Development + Assets). Options
+// are every Method actually present on the campaign's titles, plus "No
+// Method" when any title has none. Kept in sync because both are rebuilt
+// from `methodFilter` on every render.
+function buildMethodFilterUI(allTitles) {
+  const byId = new Map();
+  let hasNone = false;
+  (allTitles || []).forEach(t => {
+    if (!t.methodId || t.methodId === '__none__') { hasNone = true; return; }
+    if (!byId.has(t.methodId)) byId.set(t.methodId, t.methodName || '?');
+  });
+  const opts = [...byId.entries()].map(([id, name]) => ({ id, name }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (hasNone) opts.push({ id: '__none__', name: 'No Method' });
+
+  // Drop any persisted selection for a method that no longer appears on any
+  // title (renamed/removed/reassigned since last visit) so a stale id can't
+  // silently filter the whole list to nothing.
+  const validIds = new Set(opts.map(o => o.id));
+  let pruned = false;
+  methodFilter.forEach(id => { if (!validIds.has(id)) { methodFilter.delete(id); pruned = true; } });
+  if (pruned) saveMethodFilter();
+
+  // count of dev+pub titles per method, for the little grey number
+  const counts = {};
+  (allTitles || []).forEach(t => { const k = (!t.methodId ? '__none__' : t.methodId); counts[k] = (counts[k] || 0) + 1; });
+
+  // Nothing worth filtering by if there are no real methods in play (a lone
+  // "No Method" option filters nothing useful).
+  const showable = opts.some(o => o.id !== '__none__');
+
+  ['devMethodFilterBar', 'pubMethodFilterBar'].forEach(barId => {
+    const bar = document.getElementById(barId);
+    if (!bar) return;
+    if (!showable) { bar.hidden = true; bar.innerHTML = ''; return; }
+    bar.hidden = false;
+    const wasOpen = !!bar.querySelector('details')?.open;
+    const n = methodFilter.size;
+    const d = document.createElement('details');
+    if (wasOpen) d.open = true;
+    const sum = document.createElement('summary');
+    sum.innerHTML = 'Method' + (n ? ' <span class="mf-count">(' + n + ')</span>' : '')
+      + (n ? '<span class="mf-clear" role="button">clear</span>' : '');
+    d.appendChild(sum);
+    const clear = sum.querySelector('.mf-clear');
+    if (clear) clear.onclick = (e) => { e.preventDefault(); e.stopPropagation(); methodFilter.clear(); saveMethodFilter(); loadTitles({ fromCache: true }); };
+    const list = document.createElement('div');
+    list.className = 'mf-list';
+    opts.forEach(o => {
+      const lab = document.createElement('label');
+      lab.className = 'mf-opt';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = methodFilter.has(o.id);
+      cb.onchange = () => {
+        if (cb.checked) methodFilter.add(o.id); else methodFilter.delete(o.id);
+        saveMethodFilter();
+        loadTitles({ fromCache: true });
+      };
+      const nm = document.createElement('span'); nm.textContent = o.name; nm.style.cssText = 'flex:1;';
+      const ct = document.createElement('span'); ct.className = 'mf-n'; ct.textContent = counts[o.id] || 0;
+      lab.appendChild(cb); lab.appendChild(nm); lab.appendChild(ct);
+      list.appendChild(lab);
+    });
+    d.appendChild(list);
+    bar.innerHTML = '';
+    bar.appendChild(d);
+  });
+}
+
 // Bumped on every call — loadTitles() is called from well over a dozen
 // places (deletes, status changes, asset generation, publish field saves,
 // ...), any two of which can overlap. Notion round-trip time isn't
@@ -2687,14 +2785,25 @@ function saveTitleGroupsOpen() { try { localStorage.setItem(TITLE_COLLAPSE_KEY, 
 // asset whose status just changed away from Publish). Same fix shape as
 // PM_OPEN_TOKEN on the Methods modal above.
 let LOAD_TITLES_TOKEN = 0;
-async function loadTitles() {
+async function loadTitles(opts = {}) {
   const myToken = ++LOAD_TITLES_TOKEN;
   const devEl = document.getElementById('devTitles');
   const pubEl = document.getElementById('pubTitles');
   try {
-    const data = await w('getTitles', { stages: ['Planning','Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
-    if (myToken !== LOAD_TITLES_TOKEN) return; // a newer loadTitles() call has since started — this response is stale, discard it
+    let data;
+    if (opts.fromCache && LAST_TITLES_DATA) {
+      // A method-filter toggle — re-render from the last fetch, no round-trip.
+      data = LAST_TITLES_DATA;
+    } else {
+      data = await w('getTitles', { stages: ['Planning','Development','Writing','Review','Approved','Publish','Published','Explode','Done'], campaignId: CAMPAIGN_ID });
+      if (myToken !== LOAD_TITLES_TOKEN) return; // a newer loadTitles() call has since started — this response is stale, discard it
+      LAST_TITLES_DATA = data;
+    }
     const titles = data.titles || [];
+    // Method filter — multi-select, empty = off. Drops title rows whose
+    // Method isn't selected; grouping/counts below are all built from the
+    // already-filtered lists so the hierarchy stays intact, just lighter.
+    const methodPass = t => methodFilter.size === 0 || methodFilter.has(t.methodId || '__none__');
     // The Development section is driven by the title's own STAGE, not by
     // whether it has assets yet (per operator direction 2026-09-07:
     // "just because an asset has been created doesn't mean you should
@@ -2707,13 +2816,20 @@ async function loadTitles() {
     const DEV_STAGES = ['Development', 'Writing', 'Review', 'Approved', 'Publish'];
     const dev = titles
       .filter(t => DEV_STAGES.includes(t.stage))
+      .filter(methodPass)
       .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0));
     // The Assets section shows every asset that exists (any status), grouped
     // Stack -> Product -> Strategy -> Title -> Asset Type. Titles are the
     // last grouping level before the asset rows; newest title first.
     const pub = titles
       .filter(t => t.assets && t.assets.length)
+      .filter(methodPass)
       .sort((a, b) => new Date(b.created || 0) - new Date(a.created || 0));
+    // Filter dropdowns for both sections — options from the FULL title set
+    // (every stage that could show in either section), not the filtered one,
+    // so a selection never removes its own option.
+    const FILTER_STAGES = new Set([...DEV_STAGES]);
+    buildMethodFilterUI(titles.filter(t => FILTER_STAGES.has(t.stage) || (t.assets && t.assets.length)));
     // Hoisted out of makeTitleRow so the restructured Publish/Assets section
     // (renderPublishedAssets below — assets grouped by source title, not
     // title rows) can render the exact same asset row, not a duplicate.

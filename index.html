@@ -9039,6 +9039,14 @@ function renderDev() {
         const stackTitleCount = stack.products.reduce((n, p) => n + p.titles.length, 0);
         const sCount = document.createElement('span'); sCount.style.cssText = 'font-size:10px;color:var(--text3);'; sCount.textContent = stackTitleCount;
         sHdr.appendChild(sArrow); sHdr.appendChild(sLabel); sHdr.appendChild(sCount);
+        if (stack.key !== '__no_stack__') {
+          const sRename = document.createElement('button');
+          sRename.textContent = '✎';
+          sRename.title = 'Rename this Product Stack (updates every product carrying the label)';
+          sRename.style.cssText = 'background:none;border:none;color:var(--text3);cursor:pointer;font-size:12px;flex-shrink:0;padding:0 2px;';
+          sRename.onclick = e => { e.preventDefault(); e.stopPropagation(); renameProductStack(stack.name); };
+          sHdr.appendChild(sRename);
+        }
         const sBody = document.createElement('div'); sBody.style.display = 'none';
         sHdr.onclick = () => { const o = sBody.style.display !== 'none'; sBody.style.display = o ? 'none' : 'block'; sArrow.textContent = o ? '▶' : '▾'; };
         titlesEl.appendChild(sHdr); titlesEl.appendChild(sBody);
@@ -9110,6 +9118,25 @@ async function runMoveProduct() {
     await loadDev();
   } catch (e) {
     msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Move';
+  }
+}
+
+// ── Rename a Product Stack everywhere it's used ──────────────────────
+// Product Stack is free text on each Product row; this re-writes the label
+// on every product currently carrying it (titles/assets/slots derive their
+// stack from the product, so nothing else needs touching).
+async function renameProductStack(fromName) {
+  const input = prompt('Rename Product Stack "' + fromName + '" to:', fromName);
+  if (input === null) return;
+  const to = input.trim();
+  if (!to || to === fromName) return;
+  try {
+    const r = await call('renameProductStack', { from: fromName, to });
+    showToast('Renamed ' + r.renamed + ' product' + (r.renamed === 1 ? '' : 's') + ' → "' + to + '"'
+      + (r.failed ? ' · ' + r.failed + ' failed' : ''), r.failed ? 'error' : 'success');
+    await loadDev();
+  } catch (e) {
+    showToast('Rename failed: ' + e.message, 'error');
   }
 }
 

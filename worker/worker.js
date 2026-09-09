@@ -9281,6 +9281,38 @@ Return ONLY this JSON, no other text, no markdown fences:
         return json({ success: true });
       }
 
+      // ── renameProductStack ──
+      // Rename a Product Stack label everywhere it's used. "Product Stack" is
+      // free text on each Product row; titles/assets/slots/strategies all
+      // derive their stack from their product, so the rename only has to
+      // re-write that one text property on every product currently carrying
+      // the old label. Trimmed, case-insensitive match — the exact stored
+      // casing doesn't have to be passed in.
+      if (body.action === "renameProductStack") {
+        const from = String(body.from || "").trim();
+        const to   = String(body.to   || "").trim().slice(0, 100);
+        if (!from || !to) return json({ error: "from and to required" }, 400);
+        if (from.toLowerCase() === to.toLowerCase()) return json({ error: "new name is the same as the old one" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        let rows = [];
+        try { rows = await notionQuery(PRODUCTS_DB, {}); }
+        catch (e) { console.error("renameProductStack query:", e.message); return json({ error: "Couldn't read the Products DB" }, 502); }
+        const targets = rows.filter(p => {
+          const s = (p.properties?.["Product Stack"]?.rich_text || []).map(x => x.plain_text).join("").trim();
+          return s.toLowerCase() === from.toLowerCase();
+        });
+        let renamed = 0, failed = 0;
+        for (const p of targets) {
+          const resp = await fetch(`https://api.notion.com/v1/pages/${p.id}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "Product Stack": { rich_text: [{ type: "text", text: { content: to } }] } } }),
+          });
+          if (resp.ok) renamed++;
+          else { failed++; console.error("renameProductStack patch", p.id, ":", (await resp.json().catch(() => ({}))).message); }
+        }
+        return json({ success: true, matched: targets.length, renamed, failed });
+      }
+
       // ── updateProductTitleDescription ──
       // Lets the ⚙ Methods modal edit a product's Name/Description in place
       // (pre-filled from Notion when the modal opens) — since these are the
