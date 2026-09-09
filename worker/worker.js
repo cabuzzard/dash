@@ -9343,31 +9343,36 @@ Return ONLY this JSON, no other text, no markdown fences:
         return json({ success: true, matched: targets.length, renamed, failed, capped });
       }
 
-      // ── getHubForms / saveHubForms ──────────────────────────────────────
-      // A hand-maintained registry of each content hub's email-capture forms
-      // (the signup/report form, offer forms, any future forms), edited from
-      // the dashboard Globals tab and read by the microsite Generate Assets
-      // modal's "email hub main - <purpose>" conditional field. Each row
-      // carries the CONNECTOR (which integration the form feeds — e.g.
-      // ActiveCampaign) and the LIST that form's subscribers land on, so an
-      // email-sequence asset generated against a form can name its automation
-      // target. Storage is the shared TRADES KV under "hub:forms"; capture
-      // itself (submitLead + AC tag) is unchanged — this is a catalog only.
-      const HUB_FORMS_SEED = [
-        { id: "surf-vacations/main",       hub: "surf-vacations",       kind: "main", label: "The Report",                connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "sunflower-acres/main",      hub: "sunflower-acres",      kind: "main", label: "The Accessible Land Guide", connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "owners-rep/main",           hub: "owners-rep",           kind: "main", label: "The free checklist",        connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "home-services/main",        hub: "home-services",        kind: "main", label: "Get in touch",             connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "creative-flow-guitar/main", hub: "creative-flow-guitar", kind: "main", label: "The weekly",               connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "ai-implementation/main",    hub: "ai-implementation",    kind: "main", label: "The free stack audit",     connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "mountainwize/main",         hub: "mountainwize",         kind: "main", label: "The assessment",           connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "care-gap/main",             hub: "care-gap",             kind: "main", label: "The briefing",             connector: "ActiveCampaign", list: "", notes: "" },
-        { id: "sustainable-aquarium/main", hub: "sustainable-aquarium", kind: "main", label: "Get Updates",              connector: "ActiveCampaign", list: "", notes: "" },
-      ];
+      // ── getHubForms ─────────────────────────────────────────────────────
+      // NOT operator-edited. Hub creation bakes in exactly one capture form
+      // + one intro top-level list per site, so this is derived 1:1 from
+      // HUB_SITES: one "<slug>/main" form per hub. `routingTag` is the tag
+      // submitLead already sets on the ActiveCampaign contact
+      // (campaign "hub-<slug>" -> tag "lead-hub-<slug>") — the operator's AC
+      // automations key their list routing off that tag. Read by the
+      // microsite Generate Assets modal's "email hub main - <purpose>"
+      // field and the dashboard Globals read-only panel. Future landing-page
+      // spinoffs follow the same "<slug>/main" pattern.
       if (body.action === "getHubForms") {
-        let forms = null;
-        try { forms = await env.TRADES.get("hub:forms", "json"); } catch (e) {}
-        if (!Array.isArray(forms) || !forms.length) forms = HUB_FORMS_SEED;
+        const HUB_FORM_LABELS = {
+          "surf-vacations": "The Report",
+          "sunflower-acres": "The Accessible Land Guide",
+          "owners-rep": "The free checklist",
+          "home-services": "Get in touch",
+          "creative-flow-guitar": "The weekly",
+          "ai-implementation": "The free stack audit",
+          "mountainwize": "The assessment",
+          "care-gap": "The briefing",
+          "sustainable-aquarium": "Get Updates",
+        };
+        const forms = (typeof HUB_SITES !== "undefined" ? HUB_SITES : []).map(h => ({
+          id: h.slug + "/main",
+          hub: h.slug,
+          kind: "main",
+          label: HUB_FORM_LABELS[h.slug] || h.name,
+          connector: "ActiveCampaign",
+          routingTag: "lead-hub-" + h.slug,
+        }));
         let hubSlug = null;
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (cid && typeof HUB_SITES !== "undefined") {
@@ -9376,33 +9381,8 @@ Return ONLY this JSON, no other text, no markdown fences:
         }
         return json({ forms, hubSlug });
       }
-      if (body.action === "saveHubForms") {
-        const forms = Array.isArray(body.forms) ? body.forms : null;
-        if (!forms) return json({ error: "forms array required" }, 400);
-        const clean = forms
-          .map(f => {
-            const id = String(f.id || "").trim().slice(0, 120);
-            const parts = id.split("/");
-            return {
-              id,
-              // hub / kind are derived from the id ("<hub>/main", "<hub>/offer/<x>")
-              // when not sent — the Globals panel only edits id/label/connector/list/notes.
-              hub:       (String(f.hub || "").trim() || parts[0] || "").slice(0, 80),
-              kind:      (String(f.kind || "").trim() || (parts.length > 1 ? parts[1] : "main") || "main").slice(0, 20),
-              label:     String(f.label || "").trim().slice(0, 160),
-              connector: String(f.connector || "").trim().slice(0, 80),
-              list:      String(f.list || "").trim().slice(0, 120),
-              notes:     String(f.notes || "").trim().slice(0, 600),
-            };
-          })
-          .filter(f => f.id);
-        try { await env.TRADES.put("hub:forms", JSON.stringify(clean)); }
-        catch (e) { return json({ error: "Couldn't save (KV): " + e.message }, 502); }
-        return json({ success: true, count: clean.length, forms: clean });
-      }
-      // Live ActiveCampaign lists — so the Hub Email Forms panel can show the
-      // real list names each form's tag (lead-hub-<slug>) routes into, and
-      // the operator picks the right one instead of typing it blind.
+      // Live ActiveCampaign lists — read-only reference so the Globals panel
+      // can show what lists exist (one intro list per hub, made on creation).
       if (body.action === "getActiveCampaignLists") {
         const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, "");
         const acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
@@ -19384,10 +19364,10 @@ Produce all of this by calling the submit_article tool — do not include any of
         // Grounding chain, in priority order (from the method framework):
         // campaign Keywords -> the main hub product's Keywords -> the
         // method's per-purpose arc. The capture form picked in the Generate
-        // Assets modal (captureFormId) is resolved against the Globals
-        // "hub:forms" registry and its connector + list are stamped on the
-        // asset so the automation wiring knows the target. Skips the grading
-        // gate (a sequence isn't a viral concept to score).
+        // Assets modal (captureFormId, "<slug>/main") is stamped on the asset
+        // along with the tag submitLead routes its leads by
+        // ("lead-hub-<slug>"), so the automation wiring knows the target.
+        // Skips the grading gate (a sequence isn't a viral concept to score).
         if (/^email hub main\b/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
           const [pillarSeq, methodFramework, researchRawSeq, productPageSeq] = await Promise.all([
@@ -19405,15 +19385,16 @@ Produce all of this by calling the submit_article tool — do not include any of
           const seqProductKeywords = productPageSeq ? (productPageSeq.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
           const seqProductDesc = productPageSeq ? (productPageSeq.properties?.Description?.rich_text || []).map(t => t.plain_text).join("") : "";
 
+          // captureFormId is "<hubSlug>/main" (derived, baked in at hub
+          // creation). The routing signal is the tag submitLead sets:
+          // "lead-hub-<slug>". The intro list that tag routes to lives in
+          // ActiveCampaign (created on hub creation) — the operator's AC
+          // automation owns that mapping.
           const captureFormId = String(body.captureFormId || "").trim();
-          let captureLine = captureFormId || "(no form picked — set one in the Generate Assets modal)";
-          try {
-            if (captureFormId) {
-              const reg = await env.TRADES.get("hub:forms", "json");
-              const row = Array.isArray(reg) ? reg.find(f => f && f.id === captureFormId) : null;
-              if (row) captureLine = [row.id, row.connector || "ActiveCampaign", row.list ? ("list: " + row.list) : "list: (unset)"].join(" · ");
-            }
-          } catch (e) { /* KV best-effort — the bare id still lands on the asset */ }
+          const captureHub = captureFormId.split("/")[0] || "";
+          const captureLine = captureFormId
+            ? [captureFormId, "ActiveCampaign", "tag: lead-hub-" + captureHub].join(" · ")
+            : "(no form picked — set one in the Generate Assets modal)";
 
           const purpose = assetType.replace(/^email hub main\s*[-–]\s*/i, "").trim() || "nurture";
           const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options to choose between — for the purpose "${purpose}".

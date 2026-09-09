@@ -6890,7 +6890,7 @@ async function gaLoadCaptureForms() {
     let list = forms || [];
     if (hubSlug) { const scoped = list.filter(f => f.hub === hubSlug); if (scoped.length) list = scoped; }
     sel.innerHTML = '<option value="">— pick a form —</option>' + list.map(f =>
-      `<option value="${esc(f.id)}">${esc(f.id)}${f.label ? ' — ' + esc(f.label) : ''}${f.list ? ' (' + esc(f.list) + ')' : ''}</option>`
+      `<option value="${esc(f.id)}">${esc(f.id)}${f.label ? ' — ' + esc(f.label) : ''}${f.routingTag ? ' → ' + esc(f.routingTag) : ''}</option>`
     ).join('');
     // default to the hub's main form when nothing was chosen yet
     sel.value = current || (list.find(f => f.kind === 'main') || {}).id || '';

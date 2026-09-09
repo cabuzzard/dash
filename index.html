@@ -965,30 +965,28 @@
       </div>
     </div>
 
-    <!-- ✉️ HUB EMAIL FORMS — a catalog (not a rebuild) of each content hub's
-         email-capture forms. Capture itself is unchanged (submitLead + the
-         ActiveCampaign lead-{campaign} tag). Each row's CONNECTOR + LIST are
-         attached to its form ID so the microsite Generate Assets modal's
-         "email hub main - <purpose>" field can bind a generated email
-         sequence to the right automation target. Stored in the worker's
-         TRADES KV under "hub:forms"; getHubForms / saveHubForms. -->
+    <!-- ✉️ HUB EMAIL FORMS — read-only. Hub creation bakes in one capture
+         form + one intro top-level ActiveCampaign list per site, so this is
+         derived 1:1 from the hub list — not edited here. Each form's leads
+         are tagged "lead-hub-<slug>" by submitLead; the operator's AC
+         automations route that tag into the hub's intro list. Shown so the
+         Generate Assets modal's "email hub main - <purpose>" field (and this
+         panel) can indicate where a sequence's list lives. -->
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('hubForms')">
-        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">✉️ Hub Email Forms <span id="glHubFormsCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— capture form IDs + their connector &amp; list</span></span>
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">✉️ Hub Email Forms <span id="glHubFormsCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— one form + one intro list per hub, made on creation</span></span>
         <span id="glHubFormsIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
       <div id="glHubFormsBody" style="display:none;padding:0 13px 13px;">
         <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
-          One row per existing capture form. <b>id</b> is what the Generate Assets modal references (e.g. <code style="font-size:10px;">owners-rep/main</code>). Fill in the real <b>list</b> each form feeds in your email platform. Capture flow is untouched — this is a catalog.
+          Read-only. Forms and lists are created during hub creation, not here. <b>id</b> (e.g. <code style="font-size:10px;">owners-rep/main</code>) is what the Generate Assets modal references; <b>routes via</b> is the tag <code style="font-size:10px;">submitLead</code> sets on the ActiveCampaign contact — the operator's AC automation sends that tag to the hub's intro list.
         </div>
         <div id="glHubFormsList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
-        <datalist id="glAcListOptions"></datalist>
         <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
-          <button onclick="glHubFormsAddRow()" style="font-size:11px;padding:5px 11px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ Add form</button>
-          <button id="glHubFormsPullBtn" onclick="glHubFormsPullLists()" title="Fetch the live list names from ActiveCampaign so the list column autocompletes" style="font-size:11px;padding:5px 11px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↓ Pull ActiveCampaign lists</button>
-          <button id="glHubFormsSaveBtn" onclick="glHubFormsSave()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Save</button>
+          <button id="glHubFormsPullBtn" onclick="glHubFormsPullLists()" title="Fetch the live list names from ActiveCampaign for reference" style="font-size:11px;padding:5px 11px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↓ Show ActiveCampaign lists</button>
           <span id="glHubFormsStatus" style="font-size:11px;color:var(--text3);"></span>
         </div>
+        <div id="glHubFormsAcLists" style="margin-top:8px;"></div>
       </div>
     </div>
 
@@ -12116,10 +12114,11 @@ function loadGlobalsTab() {
   // All sections start collapsed and lazy-load on first open (glToggle).
 }
 
-// ── ✉️ HUB EMAIL FORMS — editable catalog (worker getHubForms/saveHubForms,
-// TRADES KV "hub:forms"). Each row's connector + list bind to its form id so
-// the microsite Generate Assets modal can target an email sequence. Capture
-// itself (submitLead + AC tag) is not touched here.
+// ── ✉️ HUB EMAIL FORMS — READ-ONLY. Derived 1:1 from the hubs (worker
+// getHubForms): one "<slug>/main" form per hub + the tag submitLead stamps
+// on the ActiveCampaign contact ("lead-hub-<slug>"). Forms + intro lists are
+// made during hub creation, not edited here. "Show ActiveCampaign lists"
+// pulls the live list names for reference only.
 let GL_HUB_FORMS = [];
 async function loadGlHubForms(force) {
   const el = document.getElementById('glHubFormsList');
@@ -12127,77 +12126,43 @@ async function loadGlHubForms(force) {
   el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
   try {
     const r = await call('getHubForms');
-    GL_HUB_FORMS = Array.isArray(r.forms) ? r.forms.map(f => ({ ...f })) : [];
+    GL_HUB_FORMS = Array.isArray(r.forms) ? r.forms : [];
     glHubFormsRender();
   } catch (e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
 }
-// The tag submitLead sends for a hub form: the hub POSTs campaign="hub-<slug>",
-// the worker tags the AC contact "lead-hub-<slug>". That tag is what the
-// operator's ActiveCampaign automations key off to route into a list — so
-// it's the concrete "where does this route" indication the dash has.
-function glHubRoutingTag(f) {
-  const hub = (f.hub || (f.id || '').split('/')[0] || '').trim();
-  return hub ? 'lead-hub-' + hub : '';
-}
 function glHubFormsRender() {
   const el = document.getElementById('glHubFormsList');
   document.getElementById('glHubFormsCount').textContent = '· ' + GL_HUB_FORMS.length;
-  const cols = [
-    ['id', 'id', '13ch'], ['label', 'label', '1fr'],
-    ['connector', 'connector', '10ch'], ['list', 'list (in ActiveCampaign)', '1fr'], ['notes', 'notes', '1fr'],
-  ];
-  const gt = 'grid-template-columns:' + cols.map(c => c[2]).join(' ') + ' 24px;';
-  const head = '<div style="display:grid;' + gt + 'gap:6px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);padding:0 0 5px;">'
-    + cols.map(c => '<span>' + esc(c[1]) + '</span>').join('') + '<span></span></div>';
-  const rows = GL_HUB_FORMS.map((f, i) => {
-    const inp = (key, extra) => '<input value="' + esc(f[key] || '') + '" oninput="GL_HUB_FORMS[' + i + '].' + key + '=this.value" '
-      + (extra || '') + ' style="font-size:11px;padding:4px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--bg);color:var(--text);font-family:inherit;min-width:0;">';
-    return '<div style="display:grid;' + gt + 'gap:6px;margin-bottom:2px;align-items:start;">'
-      + inp('id') + inp('label') + inp('connector')
-      + inp('list', 'list="glAcListOptions"')
-      + inp('notes')
-      + '<button onclick="GL_HUB_FORMS.splice(' + i + ',1);glHubFormsRender()" title="Remove row" style="font-size:11px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕</button>'
-      + '</div>'
-      + '<div style="font-size:9.5px;color:var(--text3);margin:0 0 7px 2px;">routes via tag <code style="font-size:9px;">' + esc(glHubRoutingTag(f) || '—') + '</code></div>';
-  }).join('');
-  el.innerHTML = head + (rows || '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No forms yet — add one.</div>');
+  const gt = 'grid-template-columns:15ch 1fr 21ch;';
+  const head = '<div style="display:grid;' + gt + 'gap:8px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);padding:0 0 6px;border-bottom:1px solid var(--border);">'
+    + '<span>form id</span><span>label</span><span>routes via</span></div>';
+  const rows = GL_HUB_FORMS.map(f =>
+    '<div style="display:grid;' + gt + 'gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:baseline;">'
+    + '<code style="font-size:10.5px;color:var(--text);">' + esc(f.id) + '</code>'
+    + '<span style="color:var(--text2);">' + esc(f.label || '') + '</span>'
+    + '<code style="font-size:10px;color:var(--text3);">' + esc(f.routingTag || '—') + '</code>'
+    + '</div>'
+  ).join('');
+  el.innerHTML = head + (rows || '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No hubs.</div>');
 }
 async function glHubFormsPullLists() {
   const btn = document.getElementById('glHubFormsPullBtn'), st = document.getElementById('glHubFormsStatus');
-  btn.disabled = true; st.textContent = 'Fetching lists from ActiveCampaign…'; st.style.color = 'var(--text3)';
+  const out = document.getElementById('glHubFormsAcLists');
+  btn.disabled = true; st.textContent = 'Fetching from ActiveCampaign…'; st.style.color = 'var(--text3)';
   try {
     const r = await call('getActiveCampaignLists');
-    const opts = (r.lists || []).map(l => '<option value="' + esc(l.name) + '">' + esc(l.name) + (l.stringid ? ' (' + esc(l.stringid) + ')' : '') + '</option>').join('');
-    document.getElementById('glAcListOptions').innerHTML = opts;
-    st.textContent = 'Loaded ' + (r.lists || []).length + ' ActiveCampaign lists — the list column now autocompletes.';
-    st.style.color = '#4ade80';
+    const lists = r.lists || [];
+    out.innerHTML = '<div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:6px 0 4px;">ActiveCampaign lists (' + lists.length + ')</div>'
+      + lists.map(l => '<div style="font-size:11px;color:var(--text2);padding:2px 0;">' + esc(l.name)
+          + (l.stringid ? ' <span style="color:var(--text3);">· ' + esc(l.stringid) + '</span>' : '') + '</div>').join('');
+    st.textContent = '';
   } catch (e) {
-    st.textContent = 'Couldn\'t reach ActiveCampaign: ' + e.message; st.style.color = '#f87171';
-  } finally {
-    btn.disabled = false;
+    st.textContent = "Couldn't reach ActiveCampaign: " + e.message; st.style.color = '#f87171';
     setTimeout(() => { st.textContent = ''; }, 6000);
-  }
-}
-function glHubFormsAddRow() {
-  GL_HUB_FORMS.push({ id: '', hub: '', kind: 'main', label: '', connector: 'ActiveCampaign', list: '', notes: '' });
-  glHubFormsRender();
-}
-async function glHubFormsSave() {
-  const btn = document.getElementById('glHubFormsSaveBtn'), st = document.getElementById('glHubFormsStatus');
-  btn.disabled = true; st.textContent = 'Saving…'; st.style.color = 'var(--text3)';
-  try {
-    const r = await call('saveHubForms', { forms: GL_HUB_FORMS });
-    GL_HUB_FORMS = Array.isArray(r.forms) ? r.forms.map(f => ({ ...f })) : GL_HUB_FORMS;
-    glHubFormsRender();
-    st.textContent = 'Saved ' + (r.count != null ? r.count : GL_HUB_FORMS.length) + ' forms.';
-    st.style.color = '#4ade80';
-  } catch (e) {
-    st.textContent = 'Save failed: ' + e.message; st.style.color = '#f87171';
   } finally {
     btn.disabled = false;
-    setTimeout(() => { st.textContent = ''; }, 4000);
   }
 }
 
