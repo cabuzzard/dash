@@ -9169,20 +9169,17 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       if (body.action === "createMethod") {
-        const { title, status } = body;
+        const { title } = body;
         if (!title) return json({ error: "title required" }, 400);
-        // New methods start in Development — Live is a deliberate, explicit
-        // promotion once a method is actually built out, not the default for
-        // "just typed a name in." The one exception: the Hub Method/Asset
-        // Matrix's "+ method" button, whose columns ARE the Live methods —
-        // adding one there is itself the promotion, so it passes status: "Live".
-        const startStatus = ["Development", "Live", "Migrate"].includes(status) ? status : "Development";
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
             parent: { database_id: METHODS_DB },
-            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: startStatus } } }
+            // New methods start in Development — Live is a deliberate,
+            // explicit promotion once a method is actually built out, not
+            // the default for "just typed a name in."
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: "Development" } } }
           }),
         });
         const result = await resp.json();
@@ -9581,13 +9578,16 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       // ── Hub Method Matrix ────────────────────────────────────────────────
-      // Second TD-tab matrix: rows = hubs, columns = the LIVE methods
-      // (METHODS_DB Status = "Live"), one column per method. Each cell shows
-      // two counts for that hub × method: how many Content Strategy titles
-      // are at Status "Development" and how many at "Status" "Publish" (NOT
-      // "Published"). A title counts for a hub when its Campaign relation is
-      // that hub's campaign (or its "Content Hub" select names the slug) and
-      // for a method when its `method` relation points at that method.
+      // Second TD-tab matrix: rows = hubs, columns = EVERY method in
+      // METHODS_DB (any Status; archived methods drop out automatically since
+      // Notion queries never return archived pages). One column per method —
+      // the operator uses this matrix to refine/prune the methods list, so
+      // it shows all of them. Each cell shows two counts for that hub ×
+      // method: how many Content Strategy titles are at Status "Development"
+      // and how many at "Publish" (NOT "Published"). A title counts for a hub
+      // when its Campaign relation is that hub's campaign (or its "Content
+      // Hub" select names the slug) and for a method when its `method`
+      // relation points at that method.
       // The old 🧱 Method & Asset Types column list (MAT_TYPES_DB) and the
       // get/create/update/deleteMatType actions below are superseded by this
       // — kept only so any stray reference degrades quietly.
@@ -9598,12 +9598,14 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const hubSet = new Set(HUB_SITES.map(h => h.slug));
         const [titleRows, methodRows] = await Promise.all([
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
-          notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }).catch(e => { console.error('getHubMethodMatrix methods:', e.message); return []; }),
+          notionQuery(METHODS_DB, {}).catch(e => { console.error('getHubMethodMatrix methods:', e.message); return []; }),
         ]);
         const columns = methodRows.map(r => ({
           id: norm(r.id),
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+          status: r.properties?.Status?.select?.name || "",
+          url: r.url || `https://www.notion.so/${norm(r.id)}`,
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         const colIds = new Set(columns.map(c => c.id));
         const counts = {};   // { slug: { methodId: { dev, pub } } }

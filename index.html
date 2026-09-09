@@ -761,16 +761,18 @@
       <div id="hubFrontBody" style="display:none;margin-top:10px;"></div>
     </div>
 
-    <!-- HUB METHOD MATRIX — rows = hubs, columns = the LIVE methods (one
-         column per method, 1:1). Each cell = "# Development / # Publish"
-         Content Strategy titles for that hub × method. "+ method" creates a
-         new Live method (= a new column). Click a column header to edit that
-         method's notes. Collapsed by default. -->
+    <!-- HUB METHOD MATRIX — rows = hubs, columns = EVERY method (one column
+         per METHODS_DB row, any status; archived methods drop out). Each
+         cell = "# Development / # Publish" Content Strategy titles for that
+         hub × method. "+ method" creates a new method (= a new column). Click
+         a column header for a modal: edit name/notes, open the Notion record,
+         or archive the method. A working surface for refining the methods
+         list. Collapsed by default. -->
     <div id="hubAssetMatrixSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubAssetMatrix()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Method Matrix <span id="hubAssetMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <button onclick="event.stopPropagation();hamAddMethod()" title="Create a new Live method (adds a column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ method</button>
+          <button onclick="event.stopPropagation();hamAddMethod()" title="Create a new method (adds a column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ method</button>
           <span id="hubAssetMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
         </span>
       </div>
@@ -1846,7 +1848,9 @@
   <div class="modal" style="max-width:640px;">
     <div class="modal-title" id="matTypeModalTitle">Method notes</div>
     <div class="modal-field">
-      <label class="modal-label">Name</label>
+      <label class="modal-label" style="display:flex;align-items:center;gap:8px;">Name
+        <a id="mtNotionLink" href="#" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;font-weight:600;color:var(--accent);text-decoration:none;">↗ Notion record</a>
+      </label>
       <input class="modal-input" id="mtName" type="text" placeholder="method name">
     </div>
     <div class="modal-field">
@@ -1858,7 +1862,7 @@
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="modal-btn" id="mtSaveBtn" onclick="matTypeSave()">Save</button>
-      <button class="modal-btn" id="mtDeleteBtn" onclick="matTypeDelete()" style="background:transparent;border-color:#e05252;color:#e05252;" title="Set this method's Status to Development — removes its column (counts unaffected)">↓ Development</button>
+      <button class="modal-btn" id="mtDeleteBtn" onclick="matTypeDelete()" style="background:transparent;border-color:#e05252;color:#e05252;" title="Archive this method in Notion — removes its column (title counts unaffected; restore from the Notion trash)">Archive</button>
       <button class="modal-btn" onclick="document.getElementById('matTypeModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Cancel</button>
     </div>
     <div id="mtMsg" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
@@ -14308,7 +14312,8 @@ async function hubFrontDelete() {
 // Each cell = "# Development / # Publish" Content Strategy titles for that
 // hub × method. "+ method" creates a new Live method. Click a column header
 // to edit that method's notes.
-let HAM_DATA = null;   // { columns:[{id,name,notes}], counts:{slug:{methodId:{dev,pub}}}, hubs:[{slug}] }
+let HAM_DATA = null;   // { columns:[{id,name,notes,status,url}], counts:{slug:{methodId:{dev,pub}}}, hubs:[{slug}] }
+const HAM_STATUS_DOT = { 'Live': '#4ade80', 'Development': 'var(--text3)', 'Migrate': '#facc15', 'Delete': '#f87171' };
 let hubAssetMatrixCollapsed = true;
 try { hubAssetMatrixCollapsed = localStorage.getItem('hubAssetMatrixCollapsed') !== 'false'; } catch(e) {}
 // Manual drag-to-reorder for the column list, persisted in localStorage
@@ -14365,15 +14370,16 @@ function renderHubAssetMatrix() {
   if (!body || !HAM_DATA) return;
   const cols = hamSortCols(HAM_DATA.columns || []);
   const counts = HAM_DATA.counts || {};
-  if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No Live methods yet — use + method.</div>'; if (summary) summary.textContent = ''; return; }
+  if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No methods yet — use + method.</div>'; if (summary) summary.textContent = ''; return; }
   const colgroup = `<colgroup><col style="width:90px;">${cols.map(() => '<col>').join('')}</colgroup>`;
-  const headRow = cols.map(c => `<th title="${esc(c.name)} — click to edit notes · drag to reorder" draggable="true"`
+  const headRow = cols.map(c => `<th title="${esc(c.name)}${c.status ? ' (' + esc(c.status) + ')' : ''} — click for notes / Notion link / archive · drag to reorder" draggable="true"`
     + ` onclick="openMatTypeModal(${esc(JSON.stringify(c.id))})"`
     + ` ondragstart="hamColDragStart(${esc(JSON.stringify(c.id))})" ondragover="event.preventDefault()"`
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hamColDrop(${esc(JSON.stringify(c.id))})"`
     + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:pointer;">`
-    + `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">`
+    + `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">`
+    + `<span style="width:5px;height:5px;border-radius:50%;background:${HAM_STATUS_DOT[c.status] || 'var(--text3)'};flex-shrink:0;" title="${esc(c.status || '')}"></span>`
     + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
     + `</div></th>`).join('');
   let totDev = 0, totPub = 0;
@@ -14395,18 +14401,20 @@ function renderHubAssetMatrix() {
     rows += `<tr>${tds}</tr>`;
   });
   if (summary) summary.textContent = `— ${totDev} dev · ${totPub} publish · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
-  body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · click a method header to edit its notes · drag headers to reorder</div>`;
+  body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · every method is a column (dot = <span style="color:#4ade80;">Live</span> · <span style="color:var(--text3);">Development</span> · <span style="color:#facc15;">Migrate</span> · <span style="color:#f87171;">Delete</span>) · click a header for notes / Notion link / archive · drag to reorder</div>`;
 }
 let matEditingId = null;
 async function openMatTypeModal(methodId) {
   matEditingId = methodId || null;
   const c = methodId && HAM_DATA ? (HAM_DATA.columns || []).find(x => x.id === methodId) : null;
   if (!c) return;
-  document.getElementById('matTypeModalTitle').textContent = 'Method notes — ' + c.name;
+  document.getElementById('matTypeModalTitle').textContent = 'Method — ' + c.name + (c.status ? '  (' + c.status + ')' : '');
   document.getElementById('mtName').value = c.name;
   document.getElementById('mtNotes').value = c.notes || '';
-  document.getElementById('mtMsg').textContent = 'Name + notes save to the Method record. The Notes text is read by nothing in code — it’s your own reference.';
+  const link = document.getElementById('mtNotionLink');
+  link.href = c.url || ('https://www.notion.so/' + c.id);
+  document.getElementById('mtMsg').textContent = 'Name + notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
   document.getElementById('matTypeModal').classList.add('open');
   setTimeout(() => document.getElementById('mtNotes').focus(), 30);
 }
@@ -14429,20 +14437,24 @@ async function matTypeSave() {
   btn.disabled = false; btn.textContent = 'Save';
 }
 async function matTypeDelete() {
-  if (!matEditingId || !confirm('Set this method to Status: Development? It drops out of the matrix and every method picker, but nothing is deleted and counts are unaffected.')) return;
+  const c = matEditingId && HAM_DATA ? (HAM_DATA.columns || []).find(x => x.id === matEditingId) : null;
+  if (!matEditingId || !confirm('Archive the method "' + (c ? c.name : '') + '" in Notion? Its column disappears here and it drops out of every method picker. Title counts are unaffected; you can restore it from the Notion trash.')) return;
+  const btn = document.getElementById('mtDeleteBtn');
+  btn.disabled = true; btn.textContent = 'Archiving…';
   try {
-    const r = await call('updateMethod', { methodId: matEditingId, status: 'Development' });
+    const r = await call('deleteMethod', { methodId: matEditingId });
     if (r.error) throw new Error(r.error);
     document.getElementById('matTypeModal').classList.remove('open');
     HAM_DATA = null;
     await loadHubAssetMatrix();
   } catch(e) { document.getElementById('mtMsg').textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = 'Archive';
 }
 async function hamAddMethod() {
-  const name = prompt('New method name (created as a Live method — a new column):');
+  const name = prompt('New method name (added as a column; starts at Status: Development):');
   if (!name || !name.trim()) return;
   try {
-    const r = await call('createMethod', { title: name.trim(), status: 'Live' });
+    const r = await call('createMethod', { title: name.trim() });
     if (r.error) throw new Error(r.error);
     HAM_DATA = null;
     if (hubAssetMatrixCollapsed) { hubAssetMatrixCollapsed = false; try { localStorage.setItem('hubAssetMatrixCollapsed', 'false'); } catch(e) {} applyHubAssetMatrixCollapse(); }
