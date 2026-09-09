@@ -5253,12 +5253,13 @@ ${candBlock || "(none on file yet)"}
 ${infoFlow ? `\n# Information Flow — this app's pipeline contract (use it to score USEFULNESS)\n${infoFlow}\n\nFor every item also decide, grounded in the contract above:\n- "usefulness": "high" | "medium" | "low" — how directly it can improve the app's real pipeline output. High = it can become or materially sharpen a real stage artifact (a Method, a Strategy angle, a Product Research point, an Asset). Medium = useful reference that supports a stage indirectly. Low = mildly interesting, no clear path into the flow.\n- "feedsStage": the stage it most directly feeds — one of "Idea", "Campaign Research", "Product Research", "Strategy", "Title", "Method", "Asset", "Publish", or "None".\n` : ""}
 For every item ALSO decide:
 - "intendedUse": ONE concrete sentence — how this operator would actually put this to work in their pipeline (be specific: "swap X into the <method> for auto-captions, ~15min saved per asset"; "add as a hook pattern to the <method> intro"). Not a restatement of the extract.
+- "recommendedUse": UP TO THREE sentences — how this knowledge should be applied inside the operator's dash system specifically. Name the concrete surface (a dashboard tab / panel / DB / Method / modal / cron / automation) it should feed, what to change or build there, and the outcome. This is the fuller "so what do I actually do in the app" answer — go beyond intendedUse, don't just echo it or the extract. If there's genuinely no path into the app, "".
 - "targetMethod": if this item could concretely improve ONE of the Live Methods listed above, its EXACT name; otherwise "". Only a real name from that list.
 - "expectedEffect": with a targetMethod, the goal it would move — one of "traffic" | "leads" | "sales" | "authority" | "efficiency". Empty if no targetMethod.
 
 Respond ONLY with JSON:
 {"creator":{"name":"","handle":"${account}","platforms":["${platform}"],"subjectMatter":["","",""]},
- "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low","intendedUse":"one concrete sentence","targetMethod":"exact Live Method name or empty","expectedEffect":"traffic|leads|sales|authority|efficiency or empty"${infoFlow ? `,"usefulness":"high|medium|low","feedsStage":"Idea|Campaign Research|Product Research|Strategy|Title|Method|Asset|Publish|None"` : ""}}]}`;
+ "items":[{"type":"tool|method|post-type|strategy-note|growth-strategy-note|podcast-idea|knowledge","name":"short label","extract":"1-2 sentences","snippet":"<=200 chars quoted from the transcript","match":"exact existing name, or empty","matchKind":"exact|similar|alternative|new","category":"tool category or empty","confidence":"high|medium|low","intendedUse":"one concrete sentence","recommendedUse":"up to three sentences on how to apply this inside the dash app, or empty","targetMethod":"exact Live Method name or empty","expectedEffect":"traffic|leads|sales|authority|efficiency or empty"${infoFlow ? `,"usefulness":"high|medium|low","feedsStage":"Idea|Campaign Research|Product Research|Strategy|Title|Method|Asset|Publish|None"` : ""}}]}`;
 
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -5309,6 +5310,7 @@ Respond ONLY with JSON:
     const tgtMethod = methodByLc.get(String(it.targetMethod || "").toLowerCase().trim()) || "";
     const effect = EFFECTS.find(e => e === String(it.expectedEffect || "").toLowerCase().trim()) || "";
     if (caps.intendedUse && it.intendedUse) props["Intended Use"] = mineRT(it.intendedUse);
+    if (caps.recommendedUse && it.recommendedUse) props["Recommended Use"] = mineRT(String(it.recommendedUse).slice(0, 1200));
     if (caps.targetMethod && tgtMethod) props["Target Method"] = mineRT(tgtMethod);
     if (caps.expectedEffect && tgtMethod && effect) props["Expected Effect"] = { select: { name: effect } };
     if (creatorId) props["Creator"] = { relation: [{ id: dash32(creatorId) }] };
@@ -5321,7 +5323,7 @@ Respond ONLY with JSON:
         match: it.match || "", matchKind: kl || "", confidence: cl || "",
         usefulness: USEFUL[String(it.usefulness || "").toLowerCase()] || "",
         feedsStage: STAGES.find(x => x.toLowerCase() === String(it.feedsStage || "").toLowerCase()) || "",
-        intendedUse: it.intendedUse || "", targetMethod: tgtMethod, expectedEffect: tgtMethod ? effect : "",
+        intendedUse: it.intendedUse || "", recommendedUse: it.recommendedUse || "", targetMethod: tgtMethod, expectedEffect: tgtMethod ? effect : "",
       });
     } else console.error("link mining row:", (await r.json().catch(() => ({}))).message);
   }
@@ -5360,9 +5362,9 @@ async function getLinkMiningCaps(hdr) {
     const props = db.properties || {};
     return {
       usefulness: !!props["Usefulness"], feedsStage: !!props["Feeds Stage"],
-      intendedUse: !!props["Intended Use"], targetMethod: !!props["Target Method"], expectedEffect: !!props["Expected Effect"],
+      intendedUse: !!props["Intended Use"], recommendedUse: !!props["Recommended Use"], targetMethod: !!props["Target Method"], expectedEffect: !!props["Expected Effect"],
     };
-  } catch { return { usefulness: false, feedsStage: false, intendedUse: false, targetMethod: false, expectedEffect: false }; }
+  } catch { return { usefulness: false, feedsStage: false, intendedUse: false, recommendedUse: false, targetMethod: false, expectedEffect: false }; }
 }
 
 // ═══ Information Flow contract (shared pipeline context) ════════════════
@@ -30681,6 +30683,7 @@ ${assemblyManifest}`;
             usefulness: pr.Usefulness?.select?.name || "",
             feedsStage: pr["Feeds Stage"]?.select?.name || "",
             intendedUse: rt(pr["Intended Use"]),
+            recommendedUse: rt(pr["Recommended Use"]),
             targetMethod: rt(pr["Target Method"]),
             expectedEffect: pr["Expected Effect"]?.select?.name || "",
             status: pr.Status?.select?.name || "New",

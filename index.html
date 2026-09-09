@@ -907,7 +907,12 @@
           <span id="glMiningFilters" style="display:flex;gap:5px;flex-wrap:wrap;"></span>
           <button onclick="loadLinkMining(true)" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
         </div>
-        <div id="glMiningFilters2" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <div id="glMiningFilters2" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;"></div>
+        <div style="font-size:10px;color:var(--text3);line-height:1.5;margin-bottom:10px;">
+          <b style="color:var(--text2);">Promote</b> = turn the item into a real record in its table (Tool, Method Idea, Post Type, Podcast Idea, Trading Strategy) — a form opens, row becomes <i>Promoted</i>.
+          <b style="color:var(--text2);">Keep</b> = shown for types with no table (Strategy Note, Knowledge…): mark it reviewed and keep it here as a note, nothing new is created (<i>Merged</i>).
+          <b style="color:var(--text2);">✕</b> = dismiss. Click a row to expand its extract, <i>Recommended use in dash</i>, and a <i>⟳ re-mine</i> button.
+        </div>
         <div id="glMiningList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
       </div>
     </div>
@@ -4789,9 +4794,14 @@ async function runRemine() {
     if (r.error) throw new Error(r.error);
     const rid = REMINE_POST;
     closeRemineModal();
-    await loadLinks();
-    const p = LINKS_POSTS.find(x => x.id === rid); if (p) { p.mineResults = r.results || []; renderLinks(); }
+    if (typeof linksLoaded !== 'undefined' && linksLoaded) {
+      await loadLinks();
+      const p = LINKS_POSTS.find(x => x.id === rid); if (p) { p.mineResults = r.results || []; renderLinks(); }
+    }
     if (typeof LM_DATA !== 'undefined') LM_DATA = [];
+    // If the Mining Results section is open (e.g. re-mined from its own row), refresh it in place.
+    const mb = document.getElementById('glMiningBody');
+    if (mb && mb.style.display !== 'none' && typeof loadLinkMining === 'function') loadLinkMining(true);
   } catch (e) { document.getElementById('remineErr').textContent = e.message; }
   finally { btn.disabled = false; btn.textContent = 'Re-run mining'; }
 }
@@ -12448,9 +12458,9 @@ function lmTableRow(i) {
   const dest = LM_TYPE_DEST[i.type];
   const actions = i.status === 'New'
     ? (dest
-        ? '<button onclick="event.stopPropagation();lmPromoteModalOpen(\'' + i.id + '\')" style="' + LM_BTN_A + '">Promote</button>'
-        : '<button onclick="event.stopPropagation();lmKeep(\'' + i.id + '\')" style="' + LM_BTN_B + '">Keep</button>')
-      + '<button onclick="event.stopPropagation();lmDismiss(\'' + i.id + '\')" style="' + LM_BTN_B + 'margin-left:4px;">✕</button>'
+        ? '<button title="Create a real ' + esc(i.type) + ' record from this (opens a form). The row is then marked Promoted." onclick="event.stopPropagation();lmPromoteModalOpen(\'' + i.id + '\')" style="' + LM_BTN_A + '">Promote</button>'
+        : '<button title="No target table for a ' + esc(i.type) + ' — mark it reviewed &amp; keep it in the queue as a note. Nothing new is created." onclick="event.stopPropagation();lmKeep(\'' + i.id + '\')" style="' + LM_BTN_B + '">Keep</button>')
+      + '<button title="Not useful — hide this row (Dismissed)." onclick="event.stopPropagation();lmDismiss(\'' + i.id + '\')" style="' + LM_BTN_B + 'margin-left:4px;">✕</button>'
     : '<span style="font-size:10px;color:var(--text3);">' + esc(i.status) + '</span>';
   const useChip = i.usefulness ? '<span style="font-size:9px;font-weight:700;color:' + (LM_USE_COLOR[i.usefulness] || 'var(--text3)') + ';">' + esc(i.usefulness) + '</span>' : '<span style="color:var(--text3);">—</span>';
   const methodChip = i.targetMethod
@@ -12468,6 +12478,7 @@ function lmTableRow(i) {
     + '<tr id="lmDet_' + i.id + '" style="display:none;"><td colspan="7" style="padding:2px 12px 10px;background:var(--surface2);">'
     + (i.extract ? '<div style="font-size:11px;color:var(--text2);line-height:1.5;">' + esc(i.extract) + '</div>' : '')
     + (i.intendedUse ? '<div style="font-size:11px;color:var(--text);line-height:1.5;margin-top:3px;">↪ ' + esc(i.intendedUse) + '</div>' : '')
+    + (i.recommendedUse ? '<div style="font-size:11px;color:var(--text);line-height:1.5;margin-top:5px;border-left:2px solid var(--accent);padding-left:8px;"><span style="font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);">Recommended use in dash</span><br>' + esc(i.recommendedUse) + '</div>' : '')
     + (i.snippet ? '<div style="font-size:10px;color:var(--text3);font-style:italic;margin-top:3px;">“' + esc(i.snippet) + '”</div>' : '')
     + '<div style="font-size:10px;color:var(--text3);margin-top:4px;">'
     +   (i.sourceUrl ? '<a href="' + esc(i.sourceUrl) + '" target="_blank" style="color:var(--accent);">open source ↗</a> · ' : '')
@@ -12476,7 +12487,14 @@ function lmTableRow(i) {
     +   (i.creator ? ' · ' + esc(i.creator) : '')
     +   (i.category ? ' · category: ' + esc(i.category) : '')
     +   (i.promotedTo ? ' · → ' + esc(i.promotedTo) : '')
-    + '</div></td></tr>';
+    + '</div>'
+    + (i.sourcePostId ? '<div style="margin-top:7px;"><button onclick="event.stopPropagation();lmRemine(\'' + i.id + '\')" style="' + LM_BTN_B + '" title="Re-run the mining analysis on this source link — refreshes fields (incl. Recommended use) and adds anything new. Clears this link’s un-actioned rows; Promoted / Dismissed / Kept rows stay.">⟳ re-mine source link</button></div>' : '')
+    + '</td></tr>';
+}
+function lmRemine(id) {
+  const i = LM_DATA.find(x => x.id === id);
+  if (!i || !i.sourcePostId) { alert('This row has no linked source post to re-mine.'); return; }
+  openRemineModal(i.sourcePostId, i.sourcePost || '');
 }
 function lmToggleDetail(id) {
   const d = document.getElementById('lmDet_' + id);
