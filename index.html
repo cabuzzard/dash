@@ -806,6 +806,14 @@
       <div id="bulkHubStratBody" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5;">Click Start to research + strategize every hub-campaign product with titles (excludes Sm business software tools). The cron then does 1 product per 4-min tick.</div>
     </div>
 
+    <div id="hubSitesSection" style="margin-bottom:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleHubSites()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Content Hubs <span id="hubSitesCount" style="font-weight:400;"></span></span>
+        <span id="hubSitesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="hubSitesList" style="display:none;"></div>
+    </div>
+
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
@@ -820,17 +828,29 @@
       <div id="wpBoard" style="display:grid;grid-template-columns:repeat(7,minmax(126px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px;"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
     </div>
 
+    <!-- 🤖 AUTOMATIONS — a plain wishlist, "things I intend to automate."
+         Not a workflow or a tracker for what's already built — just a place
+         to drop an idea before it's forgotten. Backed by MAIN_TD_DB (same td
+         list as everywhere else), filtered to priority=automation. Lazy-loads
+         via glToggle('automations') / GL_SECTIONS — IDs, not tab placement,
+         are what wire it up, so it works here the same as on the Globals tab. -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('automations')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🤖 Automations <span id="glAutoCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— things I intend to automate</span></span>
+        <span id="glAutoIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glAutoBody" style="display:none;padding:0 13px 13px;">
+        <div style="display:flex;gap:6px;margin-bottom:10px;">
+          <input id="glAutoInput" type="text" placeholder="Something to automate someday…" onkeydown="if(event.key==='Enter')glAutoAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
+          <button onclick="glAutoAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
+        </div>
+        <div id="glAutoList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+      </div>
+    </div>
+
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
     <div id="tdTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
-    </div>
-
-    <div id="hubSitesSection" style="margin-top:24px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleHubSites()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Content Hubs <span id="hubSitesCount" style="font-weight:400;"></span></span>
-        <span id="hubSitesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
-      </div>
-      <div id="hubSitesList" style="display:none;"></div>
     </div>
 
     <div id="todaySection" style="margin-top:24px;">
@@ -951,26 +971,68 @@
       </div>
     </div>
 
-    <!-- 🤖 AUTOMATIONS — a plain wishlist, "things I intend to automate."
-         Not a workflow or a tracker for what's already built — just a place
-         to drop an idea before it's forgotten. Backed by MAIN_TD_DB (same td
-         list as everywhere else), filtered to priority=automation. -->
+    <!-- ⏰ CRON SCRIPTS — read-only registry of everything running on a schedule.
+         The counterpart to the 🤖 Automations wishlist on the TD tab (that's
+         the wishlist; this is what actually runs). Source of truth is worker/worker.js `scheduled()`
+         + worker/wrangler.toml `[triggers] crons` — CRON_REGISTRY below is a
+         hand-maintained mirror; update it whenever a cron job is added/removed. -->
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('automations')">
-        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🤖 Automations <span id="glAutoCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— things I intend to automate</span></span>
-        <span id="glAutoIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('cronScripts')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">⏰ Cron Scripts <span id="glCronCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— everything running on a schedule</span></span>
+        <span id="glCronIcon" style="font-size:11px;color:var(--text3);">▸</span>
       </div>
-      <div id="glAutoBody" style="display:none;padding:0 13px 13px;">
-        <div style="display:flex;gap:6px;margin-bottom:10px;">
-          <input id="glAutoInput" type="text" placeholder="Something to automate someday…" onkeydown="if(event.key==='Enter')glAutoAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
-          <button onclick="glAutoAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
+      <div id="glCronBody" style="display:none;padding:0 13px 13px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
+          Registered in <code style="font-size:10px;">worker/wrangler.toml</code> → dispatched by <code style="font-size:10px;">scheduled()</code> in <code style="font-size:10px;">worker/worker.js</code>. Times are UTC. This list is a hand-maintained mirror — keep it in sync when cron jobs change.
         </div>
-        <div id="glAutoList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
+        <div id="glCronList"></div>
+      </div>
+    </div>
+
+    <!-- 🧲 LEAD SOURCING — standalone, extensible lead-sourcing engine.
+         Pluggable source adapters → normalize (with a full source trail) →
+         dedupe → stage in the 🧲 Sourced Leads Notion DB. A separate enrich
+         pass infers buyer type / deal type wanted / psychological profile /
+         Active + Data-Confidence scores, grounded only in each lead's own
+         source material. Never touches production Campaigns/Products/etc.
+         Worker: runLeadSourcing / enrichSourcedLead + sourceLeads action. -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('leadSourcing')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧲 Lead Sourcing <span id="glLeadCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— sourced leads + source trail</span></span>
+        <span id="glLeadIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glLeadBody" style="display:none;padding:0 13px 13px;">
+        <div id="glLeadConfig" style="margin-bottom:10px;"></div>
+        <div id="glLeadAddForm" hidden style="border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px;margin-bottom:10px;"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+          <button onclick="leadAddFormToggle()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ Add lead manually</button>
+          <button onclick="loadGlLeadSourcing(true)" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↺ Refresh</button>
+          <span id="glLeadStatus" style="font-size:11px;color:var(--text3);"></span>
+        </div>
+        <div id="glLeadFilters" style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;"></div>
+        <div id="glLeadList"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+      </div>
+    </div>
+
+    <!-- 🏢 MULTIFAMILY FEEDS — static map of every input (source) and output
+         (recipient) for the Multifamily Acquisition vertical: what each feed
+         collects, its wiring status, why it belongs, and what it needs to get
+         hooked up. Data model is MF_FEEDS in the script below — edit there. -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('mfFeeds')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🏢 Multifamily Feeds <span id="glMfCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— inputs (sources) &amp; outputs (recipients)</span></span>
+        <span id="glMfIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glMfBody" style="display:none;padding:0 13px 13px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5;">
+          Map for the <b>Multifamily Acquisition</b> vertical. Status: <span style="color:#68d391;">✅ wired</span> · <span style="color:#f6ad55;">🟡 partial / unverified</span> · <span style="color:#63b3ed;">⚪ stub (code present, not implemented)</span> · <span style="color:var(--text3);">⬜ not built</span>. Edit <code style="font-size:10px;">MF_FEEDS</code> in <code style="font-size:10px;">index.html</code>.
+        </div>
+        <div id="glMfList"></div>
       </div>
     </div>
 
     <!-- 🏷️ POST TYPES — a plain wishlist, "post type ideas to consider."
-         Same pattern as Automations above: NOT the real 🏷️ Post Types
+         Same pattern as the Automations wishlist (now on the TD tab): NOT the real 🏷️ Post Types
          catalog (POST_TYPES_DB, used live by Growth Strategy generation
          and by Link Mining's "Post Type" promotion) — just a place to drop
          an idea for a possible new post type before it's forgotten.
@@ -11849,6 +11911,9 @@ const GL_SECTIONS = {
   trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
   automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
+  cronScripts: { icon: 'glCronIcon',  body: 'glCronBody',     load: () => renderCronScripts() },
+  leadSourcing:{ icon: 'glLeadIcon',  body: 'glLeadBody',     load: () => loadGlLeadSourcing() },
+  mfFeeds:     { icon: 'glMfIcon',    body: 'glMfBody',       load: () => renderMfFeeds() },
   postTypes: { icon: 'glPostTypesIcon', body: 'glPostTypesBody', load: () => loadGlPostTypes() },
   companies: { icon: 'glCompaniesIcon', body: 'glCompaniesBody', load: () => loadGlCompanies() },
   friends:  { icon: 'glFriendsIcon',  body: 'glFriendsBody',  load: () => loadGlFriends() },
@@ -11866,6 +11931,421 @@ function glToggle(key) {
 }
 function loadGlobalsTab() {
   // All sections start collapsed and lazy-load on first open (glToggle).
+}
+
+// ── ⏰ CRON SCRIPTS — read-only registry ────────────────────────────────
+// Hand-maintained mirror of worker/wrangler.toml `[triggers] crons` and the
+// `scheduled(event, env, ctx)` dispatcher in worker/worker.js. When a cron
+// job is added, removed, or re-timed there, update this array to match.
+// `cron` is the raw 5-field expression; `when` is the human reading (UTC).
+const CRON_REGISTRY = [
+  { fn: 'runOrbStrategy', cron: '*/5 12-16 * * 1-5', when: 'Every 5 min · Mon–Fri 12:00–16:59 UTC', group: 'Trading',
+    what: 'ORB_MOMENTUM_001 — morning screen (08:00–09:30 ET) then opening-range-breakout monitor (10:00–11:30 ET). Self-no-ops outside those windows, so the 5-min cadence is cheap the rest of the day.',
+    io: 'KV: orb:* · writes 🎯 ORB paper signals' },
+  { fn: 'enrichUnprocessedSavedPosts', cron: '*/30 * * * *', when: 'Every 30 min', group: 'Links / content',
+    what: 'Cheap "clean save" enrichment of 🔗 Saved Posts — fills Name / Platform / real Date Saved for any row the iOS Shortcut left bare. Never touches Apify / ElevenLabs / Claude.',
+    io: 'Notion: 🔗 Saved Posts' },
+  { fn: 'runBulkHubStrategy', cron: '*/4 * * * *', when: 'Every 4 min', group: 'Content strategy',
+    what: 'Drains the bulk hub research+strategy queue ~1 product per tick (seeded by bulkHubStrategyStart). Once the queue is empty this is a 1-KV-read no-op forever until re-seeded.',
+    io: 'KV: bulk_hub_strategy · writes 🔬 Product Research + 🚀 Growth Strategy' },
+  { fn: 'deepScan', cron: '0 0 * * *', when: 'Daily 00:00 UTC (~20:00 ET)', group: 'Dashboard',
+    what: 'Morning snapshot + diff of Campaigns and Products — schema changes, new/removed/changed records, recency buckets (active / cooling / orphaned). Powers the "what changed" view.',
+    io: 'KV: morning:snapshot, morning:diff' },
+  { fn: 'runAutoTradeScan', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Trading',
+    what: 'Stock screener auto-scan over the saved watchlist ∪ Yahoo top-100 most-actives; records qualifying setups.',
+    io: 'KV: screener:* · Notion: 📈 Trades' },
+  { fn: 'runOrbMissScoring', cron: '0 0 * * *', when: 'Daily 00:00 UTC (~20:00 ET, after the close)', group: 'Trading',
+    what: 'ORB miss tracking — archives the day’s rejected breakouts, then scores MFE/MAE for every horizon that has come due and syncs each to Notion. Capped Notion writes per run; backlog drains oldest-first.',
+    io: 'KV: orb:rejects:* · Notion: 📉 ORB Misses' },
+  { fn: 'runLinkTagging', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Links / content',
+    what: 'Keeps editable Draft Tags fresh on transcribed 🔗 Saved Posts (limit 20/run). The full mine pass is operator-triggered per post so tags can be edited first.',
+    io: 'Notion: 🔗 Saved Posts (Draft Tags)' },
+  { fn: 'runLinkMiningPipeline', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Links / content',
+    what: 'Full chain for links ticked "Mine": transcribe (Apify / ElevenLabs) → mine the transcript into usefulness-scored ⛏️ Link Mining rows. Gated — does nothing (no AI, no Apify) when no link is tagged. Capped 5/run to bound spend.',
+    io: 'Notion: ⛏️ Link Mining, 🧑‍🎨 Creators' },
+  { fn: 'buildEcosystemGraph', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Dashboard',
+    what: 'Rebuilds the 3D Ecosystem graph (nodes + edges across every core DB) and caches it for the Ecosystem tab.',
+    io: 'KV: ecosystem_graph (48h TTL)' },
+  { fn: 'runListingRepostReminders', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Planner reminders',
+    what: 'Makes sure exactly one 🗓️ Weekly Planner row exists per Published "listing" Asset (idempotent via the Source Asset relation). The Planner’s own weekly re-projection takes it from there.',
+    io: 'Notion: 🗓️ Weekly Planner ← Assets' },
+  { fn: 'runHubFrontReminders', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Planner reminders',
+    what: 'Turns the 🎯 Hub Fronts standing mandate (Type "Cadence", Active, Running/Maintaining) into the right number of 🗓️ Weekly Planner rows for the current week. Idempotent via Source Hub Front + anchor weekday.',
+    io: 'Notion: 🗓️ Weekly Planner ← 🎯 Hub Fronts' },
+  { fn: 'runStrategySequenceReminders', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Planner reminders',
+    what: 'Queues one Main TD item per "line" (Growth Strategy + Grouping) for the next sequential / due recurring Strategy Slot. Idempotent by re-derivation.',
+    io: 'Notion: Main TD ← 🚀 Growth Strategy / 🎯 Strategy Slots' },
+  { fn: 'runAffiliateScan', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Globals',
+    what: 'Per content hub with Research Keywords: discover newly-open affiliate programs (web_search agent) → re-rank the hub’s set → research signup for rows still missing Setup Notes (capped per run). Actual signups are a separate browser job.',
+    io: 'Notion: 🤝 Affiliate Programs' },
+  { fn: 'runLeadSourcing', cron: '0 0 * * *', when: 'Daily 00:00 UTC', group: 'Globals',
+    what: 'Lead-sourcing engine — OPT-IN. Sources only the verticals whose key is in KV leadsrc:auto (toggled from the 🧲 Lead Sourcing panel). For each: run its source adapters (Crexi / LoopNet via Apify) → normalize with a source trail → dedupe against KV → stage new rows. No-op with an empty auto list, so no standing scrape bill.',
+    io: 'KV: leadsrc:auto, leadsrc:index · Notion: 🧲 Sourced Leads' },
+];
+// Not server-side cron — listed for completeness, runs elsewhere:
+//  · GitHub Actions deploy-worker / deploy-bluehost / deploy-hub-pages — push-triggered, not scheduled.
+//  · tas_poller.py — local script, run by hand (`python tas_poller.py`), not on any server.
+const CRON_GROUP_ORDER = ['Trading', 'Links / content', 'Content strategy', 'Planner reminders', 'Dashboard', 'Globals'];
+
+function renderCronScripts() {
+  const el = document.getElementById('glCronList');
+  if (!el) return;
+  document.getElementById('glCronCount').textContent =
+    '· ' + CRON_REGISTRY.length + ' jobs · ' + new Set(CRON_REGISTRY.map(j => j.cron)).size + ' triggers';
+  const groups = [...new Set(CRON_REGISTRY.map(j => j.group))]
+    .sort((a, b) => CRON_GROUP_ORDER.indexOf(a) - CRON_GROUP_ORDER.indexOf(b));
+  el.innerHTML = groups.map(g => {
+    const rows = CRON_REGISTRY.filter(j => j.group === g).map(j =>
+      '<div style="border-top:1px solid var(--border);padding:9px 0;">'
+      + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;">'
+      +   '<code style="font-size:12px;font-weight:700;color:var(--text);">' + esc(j.fn) + '()</code>'
+      +   '<span style="font-size:10px;color:var(--text3);white-space:nowrap;">' + esc(j.when) + '</span>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--text2);line-height:1.5;margin-top:3px;">' + esc(j.what) + '</div>'
+      + '<div style="font-size:10px;color:var(--text3);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap;">'
+      +   '<span>trigger <code style="font-size:10px;">' + esc(j.cron) + '</code></span>'
+      +   (j.io ? '<span>· ' + esc(j.io) + '</span>' : '')
+      + '</div>'
+      + '</div>'
+    ).join('');
+    return '<div style="margin-bottom:12px;">'
+      + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);">' + esc(g) + '</div>'
+      + rows + '</div>';
+  }).join('')
+  + '<div style="font-size:10px;color:var(--text3);line-height:1.5;margin-top:6px;border-top:1px solid var(--border);padding-top:8px;">'
+  + 'Also running, not server cron: GitHub Actions deploys (push-triggered) · <code style="font-size:10px;">tas_poller.py</code> (local, manual).'
+  + '</div>';
+}
+
+// ── 🏢 MULTIFAMILY FEEDS — inputs & outputs map ────────────────────────
+// Static reference. Keep in sync with LEAD_SOURCE_ADAPTERS / LEAD_VERTICALS
+// in worker.js and docs/lead-sourcing.md. `st`: wired | partial | stub | none.
+const MF_ST = {
+  wired:   { icon: '✅', color: '#68d391', label: 'wired' },
+  partial: { icon: '🟡', color: '#f6ad55', label: 'partial' },
+  stub:    { icon: '⚪', color: '#63b3ed', label: 'stub' },
+  none:    { icon: '⬜', color: 'var(--text3)', label: 'not built' },
+};
+const MF_INPUTS = [
+  { name: 'Crexi', code: 'crexi adapter', st: 'wired',
+    collects: 'MF for-sale listings — address, price, cap rate, NOI, units, year built, APN, brokerage, marketing description, Opportunity-Zone / note-sale flags. Via Apify parseforge/commercial-real-estate-listings-scraper.',
+    why: 'Primary marketplace for sub-institutional multifamily; broadest inventory in the 10–100 unit / $2–10M band.',
+    hookup: 'Live. Needs APIFY_TOKEN (already set). ~$0.02/listing + detail fetch. Tune price band / states in LEAD_VERTICALS.query.' },
+  { name: 'LoopNet', code: 'loopnet adapter', st: 'partial',
+    collects: 'MF for-sale listings — address, price, size, units, broker contact, year built, photos, description. Via Apify memo23/loopnet-scraper-ppe (free-text search + price band).',
+    why: 'CoStar-owned, largest CRE listing site; catches listings not cross-posted to Crexi.',
+    hookup: 'Adapter is live but the actor has no published output schema — run once, then fix normalize() field names against the real output. Needs APIFY_TOKEN.' },
+  { name: 'Broker websites / listing pages', code: 'broker adapter (stub)', st: 'stub',
+    collects: 'Off-portal pocket listings, "coming soon", broker relationships — the deals that never hit Crexi/LoopNet.',
+    why: 'The best deals trade before they list. East Bay MF brokers (Marcus & Millichap, Kidder Mathews, NAI NorCal, Colliers, local shops) post to their own sites first.',
+    hookup: 'Build: a per-domain selector config OR an LLM-extraction pass (fetch page → Claude → JSON schema). Plus a curated list of ~15–20 East Bay CRE brokerage sites.' },
+  { name: 'County recorder / assessor (Contra Costa)', code: 'county adapter (stub)', st: 'stub',
+    collects: 'APN → owner of record + mailing address, sale history (grantor / grantee / price / date / doc type), tax assessment.',
+    why: 'The backbone for BOTH (a) APN-based dedup and (b) buyer intelligence — answering "who bought a 10–100 unit building in the East Bay in the last ~3 years".',
+    hookup: 'Build: a licensed feed — Regrid (parcels + owners API), ATTOM or CoreLogic (deed / sale feeds), or ParcelQuest (CA assessor aggregator). API key + paid plan. Do NOT scrape the county portal directly (brittle + ToS).' },
+  { name: 'CA Secretary of State (bizfile)', code: '—', st: 'none',
+    collects: 'Owner LLC → registered agent, officers, principal address, formation date.',
+    why: 'Resolves the ownership graph: PROPERTY → OWNER LLC → PARENT ORG → PRINCIPAL / acquisitions contact.',
+    hookup: 'Build: a bizfileonline.sos.ca.gov lookup step (semi-usable search endpoint) or an OpenCorporates-style Apify actor. Feeds the "Parent Org" / "Contact Name" fields on Buyer rows.' },
+  { name: 'Web search — acquisition press / news', code: '—', st: 'none',
+    collects: 'News of recent buys, principal names, company sites, press releases ("X Capital acquires 40-unit in Concord").',
+    why: 'Finds active buyers by their own press and fills the ownership graph where public records lag.',
+    hookup: 'Build: an enrichment step calling Claude with the web_search tool, gated + capped per run (same pattern as runAffiliateScan).' },
+  { name: 'Commercial CRE data APIs', code: '—', st: 'none',
+    collects: 'Owner contacts, portfolio holdings, debt / loan maturity, off-market signals, rent comps. Reonomy (off-market + owner contacts), RentCast (cheap rent comps / AVM), CoStar (gold standard, $$$).',
+    why: 'Off-market origination and real underwriting comps — the layer portals can’t give you.',
+    hookup: 'Build: one adapter per provider. Each needs its own API key / subscription. Start with RentCast (cheap) for comps; Reonomy for owner contacts.' },
+  { name: 'Apify broker instant-databases', code: 'via existing actors', st: 'partial',
+    collects: 'Pre-collected broker / brokerage contact records (memo23/crexi-ppe ships a 214k-broker DB; the LoopNet actor has a broker instant-DB too). Google Maps for property managers.',
+    why: 'Cheap enrichment of broker / PM / principal contact info once a deal or entity is identified.',
+    hookup: 'Enable instantDatabase mode in the crexi / loopnet adapter input, or add a dedicated enrichment call. Per-record cost.' },
+  { name: 'Manual deal entry', code: 'manual adapter', st: 'wired',
+    collects: 'Anything the operator types — a lead from a conversation, a referral, a name off a sign.',
+    why: 'Relationships and referrals are the highest-quality source; the pipeline must accept them first-class, not as an afterthought.',
+    hookup: 'Live — "+ Add lead manually" in the panel above.' },
+  { name: 'CSV / list import', code: 'manual adapter (batch)', st: 'none',
+    collects: 'Bulk lists — a broker’s buyer list, an exported skip-trace, a conference attendee sheet.',
+    why: 'Onboarding lists you already have without retyping.',
+    hookup: 'Build: a CSV paste / upload box in the panel that maps columns → passes records[] to the manual adapter (runLeadSourcing already accepts a records array).' },
+  { name: 'Broker emails · OMs · rent rolls · T-12', code: '—', st: 'none',
+    collects: 'Offering Memorandum PDFs, current rent rolls, trailing-12 financials emailed by brokers.',
+    why: 'The actual operating numbers live here, not on the listing — this is the "GET FINANCIALS" stage the whole underwrite depends on.',
+    hookup: 'Build: an email intake (forwarding address → parse) + PDF extraction (Claude vision / doc parse). Downstream of sourcing — attach to the deal lead.' },
+];
+const MF_OUTPUTS = [
+  { name: '🧲 Sourced Leads (Notion DB)', code: 'SOURCED_LEADS_DB', st: 'wired',
+    collects: 'Every sourced lead — deal, buyer, capital partner, broker, seller — with full source trail (Source / Source Title verbatim / URL / Ref / Trail / Provenance JSON / Raw).',
+    why: 'The staging store. One place to review, dedupe, and triage before anything acts on a lead.',
+    hookup: 'Live. Must be shared with the Hermes integration (Connections step) before the worker can write.' },
+  { name: 'Deal classification (from source)', code: 'classifyDealFromText', st: 'wired',
+    collects: 'Deal-Story taxonomy tags parsed from the listing title + marketing blurb (Value-Add / Turnaround / Distress / Redevelopment / Seller-motivated / Stabilized / …).',
+    why: 'Your ask — read the classification the broker already put in the title, deterministically, before any AI.',
+    hookup: 'Live. Extend the keyword cue list in LEAD_DEAL_CLASS_CUES.' },
+  { name: 'Lead enrichment', code: 'enrichSourcedLead', st: 'wired',
+    collects: 'Buyer Type, Deal Type Wanted, Psychological Profile, Active Score, Data Confidence, Evidence — one grounded Claude call per lead, source-material-only.',
+    why: 'Turns a raw listing/contact into a profiled lead: what kind of buyer, what deal they want, how to pitch them.',
+    hookup: 'Live (manual "✦ Enrich" per row). Could auto-run on new rows via a capped cron pass.' },
+  { name: 'Deal Story Engine', code: '—', st: 'none',
+    collects: 'Diagnostic scores (financial / operational / physical / location distress), owner-vs-building-vs-neighborhood test, revenue vs defensive CapEx split, "what’s wrong / can it be fixed / what does the fix cost".',
+    why: 'The full version of classification — the actual investment test from the source concept.',
+    hookup: 'Build once financials intake exists (needs rent roll + T-12). Deterministic math + one reasoning pass.' },
+  { name: 'Buyer Intelligence', code: 'Lead Kind = Buyer', st: 'partial',
+    collects: 'Demonstrated apartment buyers — entity, principal, buy box, markets, unit / price range, acquisition frequency, most recent transaction.',
+    why: 'Not a generic investor list — a database of people who actually bought comparable assets.',
+    hookup: 'Buyers can be stored now, but populating them at scale + the transaction history / Active Buyer Score needs the county / deed feed.' },
+  { name: 'Buyer Matching ("MATCH BUYERS")', code: '—', st: 'none',
+    collects: 'Per property: ranked top ~25 buyers by geo / units / price / asset age / recency / known buy box / nearby ownership.',
+    why: 'The core value — route each verified deal to the buyers most likely to close it.',
+    hookup: 'Build: needs both deal leads and buyer leads populated, then a scoring function. Straightforward once the buyer DB has data.' },
+  { name: 'Dashboard panel (🧲 Lead Sourcing)', code: 'loadGlLeadSourcing', st: 'wired',
+    collects: 'Human review / triage / filter / enrich / status for every sourced lead.',
+    why: 'Nothing is auto-trusted — the operator qualifies leads here.',
+    hookup: 'Live (this Globals tab).' },
+  { name: 'Deal Package Generator', code: '—', st: 'none',
+    collects: 'Investor/buyer-ready package — summary, seller vs normalized NOI, financing, DSCR, equity, downside, source-document audit trail.',
+    why: 'The outbound artifact per the source concept.',
+    hookup: 'Deferred — you said marketing later. Needs financials intake + underwriting math first.' },
+  { name: 'Outreach CRM', code: '—', st: 'none',
+    collects: 'Per property: matched buyers, targeted campaign, personalized email, sent / replied / interested / pass tracking, structured buyer feedback back into the buy box.',
+    why: 'Closes the loop — every interaction sharpens the buyer database.',
+    hookup: 'Deferred — marketing later.' },
+  { name: 'MCP / agent tools', code: '—', st: 'none',
+    collects: 'search_properties · get_property · find_buyers · get_buyer_profile · create_deal_package · add_research_note.',
+    why: 'Lets a Claude Code / agent session drive sourcing and matching directly.',
+    hookup: 'Build: wrap the existing worker actions as MCP tools. Actions already exist (sourceLeads / listSourcedLeads / getSourcedLead / enrichSourcedLead).' },
+];
+function mfFeedTable(rows) {
+  return '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:11px;">'
+    + '<thead><tr style="text-align:left;color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.06em;">'
+    + '<th style="padding:5px 6px;min-width:130px;">Feed</th><th style="padding:5px 6px;">Collects</th><th style="padding:5px 6px;white-space:nowrap;">Status</th><th style="padding:5px 6px;">Why it belongs</th><th style="padding:5px 6px;">To hook up</th>'
+    + '</tr></thead><tbody>'
+    + rows.map(r => {
+        const s = MF_ST[r.st] || MF_ST.none;
+        return '<tr style="border-top:1px solid var(--border);vertical-align:top;">'
+          + '<td style="padding:6px;font-weight:600;">' + esc(r.name) + (r.code && r.code !== '—' ? '<div style="font-size:9px;color:var(--text3);font-weight:400;font-family:monospace;margin-top:2px;">' + esc(r.code) + '</div>' : '') + '</td>'
+          + '<td style="padding:6px;color:var(--text2);line-height:1.45;">' + esc(r.collects) + '</td>'
+          + '<td style="padding:6px;white-space:nowrap;color:' + s.color + ';font-weight:600;">' + s.icon + ' ' + s.label + '</td>'
+          + '<td style="padding:6px;color:var(--text2);line-height:1.45;">' + esc(r.why) + '</td>'
+          + '<td style="padding:6px;color:var(--text3);line-height:1.45;">' + esc(r.hookup) + '</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table></div>';
+}
+function renderMfFeeds() {
+  const el = document.getElementById('glMfList');
+  if (!el) return;
+  const count = st => [...MF_INPUTS, ...MF_OUTPUTS].filter(r => r.st === st).length;
+  document.getElementById('glMfCount').textContent =
+    '· ' + MF_INPUTS.length + ' in / ' + MF_OUTPUTS.length + ' out · ' + count('wired') + ' wired, ' + (count('stub') + count('none')) + ' to build';
+  el.innerHTML =
+    '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:4px;">Inputs — sources</div>'
+    + mfFeedTable(MF_INPUTS)
+    + '<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin:14px 0 4px;">Outputs — recipients</div>'
+    + mfFeedTable(MF_OUTPUTS)
+    + '<div style="font-size:10px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px;">'
+    + 'Flow: <b>sources</b> → normalize (+ source trail) → dedupe → <b>🧲 Sourced Leads</b> → classify + enrich → <b>review / match / package</b>. '
+    + 'Priority to hook up next: <b>county / deed feed</b> (unlocks dedup + buyer discovery), then <b>broker sites</b> (off-portal deals), then <b>buyer matching</b>.'
+    + '</div>';
+}
+
+// ── 🧲 LEAD SOURCING panel ─────────────────────────────────────────────
+// Reads from the standalone 🧲 Sourced Leads DB via the worker. "Source now"
+// runs the pipeline (runLeadSourcing) for a vertical; "Enrich" runs the
+// grounded profile pass on one lead. Everything here is isolated from
+// production data.
+let LEAD_CFG = null, LEAD_DATA = [];
+let LEAD_F_KIND = 'All', LEAD_F_STATUS = 'All', LEAD_F_CLASS = 'All';
+const LEAD_STATUS_COLOR = { New: '#fc8181', Enriching: '#f6ad55', Qualified: '#68d391', Contacted: '#63b3ed', Passed: 'var(--text3)', 'Do Not Contact': '#b794f4' };
+const LEAD_KIND_COLOR = { 'Deal / Property': '#68d391', Buyer: '#b794f4', 'Capital Partner': '#f687b3', Seller: '#f6ad55', Broker: '#f6e05e', Vendor: '#a0aec0', Other: 'var(--text3)' };
+
+async function loadGlLeadSourcing(force) {
+  const el = document.getElementById('glLeadList');
+  if (force || !LEAD_DATA.length) el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    if (!LEAD_CFG || force) LEAD_CFG = await call('getLeadSourcingConfig', {});
+    const data = await call('listSourcedLeads', {});
+    if (data.error) throw new Error(data.error);
+    LEAD_DATA = data.items || [];
+    document.getElementById('glLeadCount').textContent =
+      '· ' + LEAD_DATA.filter(l => l.status === 'New').length + ' new · ' + LEAD_DATA.length + ' total';
+    renderLeadConfig();
+    renderLeadFilters();
+    renderLeadList();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+
+function renderLeadConfig() {
+  const c = document.getElementById('glLeadConfig');
+  if (!LEAD_CFG || LEAD_CFG.error) { c.innerHTML = ''; return; }
+  const apifyWarn = LEAD_CFG.apifyConfigured ? '' :
+    '<div style="font-size:10px;color:#f6ad55;margin-bottom:6px;">⚠ APIFY_TOKEN not set on the worker — Crexi / LoopNet adapters will error. Manual entry still works.</div>';
+  c.innerHTML = apifyWarn + (LEAD_CFG.verticals || []).map(v => {
+    const chips = v.sources.map(s =>
+      '<span style="font-size:9px;padding:1px 6px;border-radius:999px;border:1px solid var(--border2);color:' + (s.stub ? 'var(--text3)' : 'var(--text2)') + ';">'
+      + esc(s.label) + (s.stub ? ' (stub)' : '') + '</span>').join(' ');
+    return '<div style="border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 10px;margin-bottom:6px;">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap;">'
+      +   '<span style="font-size:12px;font-weight:700;color:var(--text);">' + esc(v.label) + '</span>'
+      +   '<span style="display:flex;gap:6px;align-items:center;">'
+      +     '<button onclick="leadSourceNow(\'' + v.key + '\',this)" style="font-size:10px;font-weight:600;padding:3px 9px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ Source now</button>'
+      +     '<label style="font-size:10px;color:var(--text3);display:flex;gap:3px;align-items:center;cursor:pointer;"><input type="checkbox" ' + (v.auto ? 'checked' : '') + ' onchange="leadToggleAuto(\'' + v.key + '\',this.checked)"> auto nightly</label>'
+      +   '</span>'
+      + '</div>'
+      + '<div style="margin-top:4px;">' + chips + '</div>'
+      + (v.thesis ? '<div style="font-size:10px;color:var(--text3);line-height:1.5;margin-top:4px;">' + esc(v.thesis) + '</div>' : '')
+      + '</div>';
+  }).join('');
+}
+
+async function leadSourceNow(vertical, btn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'Sourcing…';
+  const st = document.getElementById('glLeadStatus'); st.textContent = 'Running ' + vertical + '…';
+  try {
+    const r = await call('sourceLeads', { vertical });
+    if (r.error) throw new Error(r.error);
+    st.textContent = '+' + (r.created || 0) + ' new, ' + (r.seen || 0) + ' re-seen'
+      + ((r.errors && r.errors.length) ? ' · ' + r.errors.length + ' error(s): ' + r.errors[0] : '');
+    await loadGlLeadSourcing(true);
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+  finally { btn.disabled = false; btn.textContent = t; }
+}
+
+async function leadToggleAuto(vertical, on) {
+  const st = document.getElementById('glLeadStatus');
+  try {
+    const r = await call('setLeadSourcingAuto', { vertical, on });
+    if (r.error) throw new Error(r.error);
+    st.textContent = 'Nightly auto-source: ' + (r.auto && r.auto.length ? r.auto.join(', ') : 'off');
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+}
+
+function leadAddFormToggle() {
+  const f = document.getElementById('glLeadAddForm');
+  f.hidden = !f.hidden;
+  if (f.hidden) return;
+  const kinds = (LEAD_CFG && LEAD_CFG.kinds) || ['Buyer', 'Capital Partner', 'Seller', 'Broker', 'Other'];
+  const verts = (LEAD_CFG && LEAD_CFG.verticals) || [];
+  const inp = (id, ph) => '<input id="' + id + '" placeholder="' + ph + '" style="font-size:12px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;">';
+  f.innerHTML =
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;">'
+    + inp('leadN_name', 'Name / entity *') + inp('leadN_org', 'Org / entity')
+    + inp('leadN_contact', 'Contact name') + inp('leadN_email', 'Email')
+    + inp('leadN_phone', 'Phone') + inp('leadN_loc', 'Location / markets')
+    + inp('leadN_buybox', 'Buy box (units, price, geo, yield)') + inp('leadN_url', 'Source URL')
+    + '<select id="leadN_kind" style="font-size:12px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;">' + kinds.map(k => '<option>' + esc(k) + '</option>').join('') + '</select>'
+    + '<select id="leadN_vert" style="font-size:12px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;">' + verts.map(v => '<option value="' + v.key + '">' + esc(v.label) + '</option>').join('') + '</select>'
+    + '</div>'
+    + '<textarea id="leadN_notes" placeholder="Notes / raw source text (used for deal classification + enrichment)" style="width:100%;margin-top:6px;font-size:12px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:5px;color:var(--text);font-family:inherit;min-height:48px;"></textarea>'
+    + '<div style="margin-top:6px;"><button onclick="leadAddSubmit(this)" style="font-size:12px;font-weight:600;padding:6px 14px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">Add lead</button> <span id="leadN_msg" style="font-size:11px;color:var(--text3);"></span></div>';
+}
+
+async function leadAddSubmit(btn) {
+  const v = id => (document.getElementById(id) || {}).value || '';
+  const name = v('leadN_name').trim();
+  const msg = document.getElementById('leadN_msg');
+  if (!name) { msg.textContent = 'Name required'; return; }
+  btn.disabled = true; msg.textContent = 'Adding…';
+  try {
+    const r = await call('addManualLead', {
+      name, kind: v('leadN_kind'), vertical: v('leadN_vert'),
+      orgEntity: v('leadN_org'), contactName: v('leadN_contact'), email: v('leadN_email'),
+      phone: v('leadN_phone'), location: v('leadN_loc'), buyBox: v('leadN_buybox'),
+      sourceUrl: v('leadN_url'), notes: v('leadN_notes'), sourceTitle: name,
+    });
+    if (r.error) throw new Error(r.error);
+    msg.textContent = 'Added.';
+    document.getElementById('glLeadAddForm').hidden = true;
+    await loadGlLeadSourcing(true);
+  } catch (e) { msg.textContent = 'Error: ' + e.message; }
+  finally { btn.disabled = false; }
+}
+
+function leadChip(val, cur, setter, label) {
+  const on = cur === val;
+  return '<button onclick="' + setter + '=\'' + val + '\';renderLeadFilters();renderLeadList()" style="font-size:10px;padding:2px 8px;border:1px solid ' + (on ? 'var(--accent)' : 'var(--border2)') + ';border-radius:999px;background:' + (on ? 'var(--accent)' : 'transparent') + ';color:' + (on ? 'var(--bg)' : 'var(--text3)') + ';cursor:pointer;">' + esc(label) + '</button>';
+}
+function renderLeadFilters() {
+  const kinds = [...new Set(LEAD_DATA.map(l => l.kind).filter(Boolean))].sort();
+  const statuses = ['New', 'Enriching', 'Qualified', 'Contacted', 'Passed', 'Do Not Contact'].filter(s => LEAD_DATA.some(l => l.status === s));
+  const classes = [...new Set(LEAD_DATA.flatMap(l => l.dealClass || []))].sort();
+  document.getElementById('glLeadFilters').innerHTML =
+    '<span style="font-size:9px;color:var(--text3);align-self:center;">kind</span>'
+    + leadChip('All', LEAD_F_KIND, 'LEAD_F_KIND', 'all') + kinds.map(k => leadChip(k, LEAD_F_KIND, 'LEAD_F_KIND', k)).join('')
+    + '<span style="width:8px;"></span><span style="font-size:9px;color:var(--text3);align-self:center;">status</span>'
+    + leadChip('All', LEAD_F_STATUS, 'LEAD_F_STATUS', 'all') + statuses.map(s => leadChip(s, LEAD_F_STATUS, 'LEAD_F_STATUS', s)).join('')
+    + (classes.length ? '<span style="width:8px;"></span><span style="font-size:9px;color:var(--text3);align-self:center;">deal class</span>'
+        + leadChip('All', LEAD_F_CLASS, 'LEAD_F_CLASS', 'all') + classes.map(c => leadChip(c, LEAD_F_CLASS, 'LEAD_F_CLASS', c)).join('') : '');
+}
+
+function renderLeadList() {
+  const el = document.getElementById('glLeadList');
+  const rows = LEAD_DATA
+    .filter(l => LEAD_F_KIND === 'All' || l.kind === LEAD_F_KIND)
+    .filter(l => LEAD_F_STATUS === 'All' || l.status === LEAD_F_STATUS)
+    .filter(l => LEAD_F_CLASS === 'All' || (l.dealClass || []).includes(LEAD_F_CLASS))
+    .sort((a, b) => (b.activeScore ?? -1) - (a.activeScore ?? -1) || a.name.localeCompare(b.name));
+  if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">No leads yet. Hit “Source now” on a vertical above, or add one manually.</div>'; return; }
+  el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
+    + '<thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;">'
+    + '<th style="padding:5px 8px;">Lead</th><th style="padding:5px 8px;">Kind</th><th style="padding:5px 8px;">Buyer type</th><th style="padding:5px 8px;">Deal class</th><th style="padding:5px 8px;">Act</th><th style="padding:5px 8px;">Conf</th><th style="padding:5px 8px;">Source</th><th style="padding:5px 8px;"></th>'
+    + '</tr></thead><tbody>' + rows.map(leadTableRow).join('') + '</tbody></table></div>';
+}
+
+function leadTableRow(l) {
+  const kc = LEAD_KIND_COLOR[l.kind] || 'var(--text3)';
+  const sc = LEAD_STATUS_COLOR[l.status] || 'var(--text3)';
+  const classChips = (l.dealClass || []).map(c => '<span style="font-size:9px;padding:0 5px;border-radius:999px;background:var(--surface);border:1px solid var(--border2);color:var(--text2);">' + esc(c) + '</span>').join(' ') || '<span style="color:var(--text3);">—</span>';
+  const wantChips = (l.dealTypeWanted || []).map(c => esc(c)).join(', ');
+  const statuses = ['New', 'Enriching', 'Qualified', 'Contacted', 'Passed', 'Do Not Contact'];
+  const statusSel = '<select onchange="leadSetStatus(\'' + l.id + '\',this.value)" onclick="event.stopPropagation()" style="font-size:10px;padding:2px 4px;background:transparent;border:1px solid var(--border2);border-radius:4px;color:' + sc + ';font-family:inherit;">'
+    + statuses.map(s => '<option ' + (s === l.status ? 'selected' : '') + '>' + s + '</option>').join('') + '</select>';
+  return '<tr onclick="leadToggleDetail(\'' + l.id + '\')" style="border-top:1px solid var(--border);cursor:pointer;">'
+    + '<td style="padding:6px 8px;font-weight:600;max-width:220px;">' + esc(l.name) + (l.leadId ? ' <span style="font-size:9px;color:var(--text3);font-weight:400;">' + esc(l.leadId) + '</span>' : '') + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;"><span style="color:' + kc + ';">●</span> ' + esc(l.kind || '—') + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text2);white-space:nowrap;font-size:11px;">' + esc(l.buyerType || '—') + '</td>'
+    + '<td style="padding:6px 8px;">' + classChips + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;">' + (l.activeScore == null ? '<span style="color:var(--text3);">—</span>' : '<b>' + l.activeScore + '</b>') + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;color:var(--text3);">' + (l.dataConfidence == null ? '—' : l.dataConfidence + '%') + '</td>'
+    + '<td style="padding:6px 8px;color:var(--text3);font-size:10px;white-space:nowrap;">' + esc(l.source || '') + '</td>'
+    + '<td style="padding:6px 8px;white-space:nowrap;text-align:right;">' + statusSel + '</td>'
+    + '</tr>'
+    + '<tr id="leadDet_' + l.id + '" style="display:none;"><td colspan="8" style="padding:4px 12px 12px;background:var(--surface2);">'
+    + (l.sourceTitle ? '<div style="font-size:11px;color:var(--text);"><b>Source title:</b> ' + esc(l.sourceTitle) + (l.sourceUrl ? ' · <a href="' + esc(l.sourceUrl) + '" target="_blank" style="color:var(--accent);">open ↗</a>' : '') + '</div>' : '')
+    + (l.sourceTrail ? '<div style="font-size:10px;color:var(--text3);margin-top:2px;">🔗 ' + esc(l.sourceTrail) + '</div>' : '')
+    + (l.buyBox ? '<div style="font-size:11px;color:var(--text2);margin-top:4px;"><b>Buy box:</b> ' + esc(l.buyBox) + '</div>' : '')
+    + (wantChips ? '<div style="font-size:11px;color:var(--text2);margin-top:2px;"><b>Deal type wanted:</b> ' + wantChips + '</div>' : '')
+    + ((l.org || l.parentOrg || l.contactName || l.email || l.phone || l.location) ?
+        '<div style="font-size:11px;color:var(--text2);margin-top:4px;">'
+        + [l.org && 'Entity: ' + esc(l.org), l.parentOrg && 'Parent: ' + esc(l.parentOrg), l.contactName && esc(l.contactName), l.email && esc(l.email), l.phone && esc(l.phone), l.location && esc(l.location)].filter(Boolean).join(' · ')
+        + '</div>' : '')
+    + (l.psychProfile ? '<div style="font-size:11px;color:var(--text);line-height:1.5;margin-top:5px;"><b>Psychological profile:</b> ' + esc(l.psychProfile) + '</div>' : '')
+    + (l.evidence ? '<div style="font-size:10px;color:var(--text3);line-height:1.5;margin-top:3px;"><b>Evidence:</b> ' + esc(l.evidence) + '</div>' : '')
+    + (l.provenance ? '<div style="font-size:9px;color:var(--text3);margin-top:3px;font-family:monospace;">provenance ' + esc(l.provenance) + '</div>' : '')
+    + '<div style="margin-top:7px;"><button onclick="event.stopPropagation();leadEnrich(\'' + l.id + '\',this)" style="font-size:10px;font-weight:600;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">✦ Enrich</button></div>'
+    + '</td></tr>';
+}
+function leadToggleDetail(id) {
+  const d = document.getElementById('leadDet_' + id);
+  if (d) d.style.display = d.style.display === 'none' ? '' : 'none';
+}
+async function leadEnrich(id, btn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = 'Enriching…';
+  try {
+    const r = await call('enrichSourcedLead', { id });
+    if (r.error) throw new Error(r.error);
+    await loadGlLeadSourcing(true);
+    const d = document.getElementById('leadDet_' + id); if (d) d.style.display = '';
+  } catch (e) { btn.textContent = 'Error: ' + e.message; btn.disabled = false; return; }
+}
+async function leadSetStatus(id, status) {
+  try {
+    const r = await call('setSourcedLeadStatus', { id, status });
+    if (r.error) throw new Error(r.error);
+    const l = LEAD_DATA.find(x => x.id === id); if (l) l.status = status;
+    renderLeadFilters();
+  } catch (e) { alert('Error: ' + e.message); }
 }
 
 // ── Mining Results table (every mined item, filterable) ──

@@ -5944,6 +5944,415 @@ async function runAffiliateScan(env) {
   }
 }
 
+// ════════════════════════════════════════════════════════════════════════
+// LEAD SOURCING ENGINE  (Globals tab · 🧲 Sourced Leads)
+// ════════════════════════════════════════════════════════════════════════
+// Standalone, extensible pipeline: pluggable SOURCE ADAPTERS pull raw records,
+// each normalizes to one lead shape carrying a full SOURCE TRAIL, the pipeline
+// dedupes against a KV index and stages new rows in SOURCED_LEADS_DB. A
+// separate enrichment pass (enrichSourcedLead) infers buyer type, the kind of
+// deal the lead wants, a psychological profile, and Active / Data-Confidence
+// scores — grounded ONLY in that lead's own source material, never invented.
+//
+// Isolation: never reads from or writes to a production Campaign / Product /
+// Method / Strategy / Research / Leads record ([[feedback_dash_standalone_systems_isolation]]).
+//
+// Extend by:
+//   · new market/target  -> add a LEAD_VERTICALS entry
+//   · new place to scrape -> add a LEAD_SOURCE_ADAPTERS entry (fetch + normalize)
+// The nightly cron is OPT-IN: it sources only the verticals whose key is in the
+// KV list `leadsrc:auto` (set from the dashboard). Empty list -> cheap no-op.
+const SOURCED_LEADS_DB = "886f4007dd1e45caa6f3bbccbf8b71db";
+const LEAD_INDEX_KV     = "leadsrc:index:v1";  // { dedupKey: notionPageId }
+const LEAD_AUTO_KV      = "leadsrc:auto";      // JSON string[] of vertical keys the cron should source
+
+const LEAD_KINDS      = ["Deal / Property", "Buyer", "Capital Partner", "Seller", "Broker", "Vendor", "Other"];
+const LEAD_BUYER_TYPES = ["Private buyer", "Owner-operator", "Syndicator", "Family office", "Fund / Institutional", "1031 buyer", "Developer", "Unknown"];
+const LEAD_DEAL_CLASSES = [
+  "Stabilized / Basis", "Cosmetic Value-Add", "Operational Turnaround",
+  "Physical Distress / Heavy Rehab", "Location-Impaired", "Redevelopment",
+  "Seller / Capital-Structure", "No Identifiable Edge",
+];
+// "Deal Type Wanted" shares the class taxonomy but adds "Any".
+const LEAD_DEAL_WANTS = [...LEAD_DEAL_CLASSES.filter(c => c !== "No Identifiable Edge"), "Any"];
+
+// Deterministic first-pass classifier — reads the listing TITLE + marketing
+// blurb for the language brokers actually use, maps it onto the Deal Story
+// taxonomy. Cheap, no AI; the enrichment pass can refine later.
+const LEAD_DEAL_CLASS_CUES = [
+  ["Seller / Capital-Structure", /motivated seller|must sell|forced sale|estate sale|probate|note sale|distressed (owner|seller|debt)|bankruptcy|foreclosur|lender[-\s]?owned|\breo\b|receivership|partnership disput|loan matur|1031|price reduc|bring all offers/i],
+  ["Physical Distress / Heavy Rehab", /gut rehab|full rehab|heavy (rehab|lift)|distressed asset|major (capex|deferred)|significant deferred maintenance|fire[-\s]?damaged|storm[-\s]?damaged|\bas[-\s]?is\b|down units|non[-\s]?operational|uninhabitable|needs? (full |major |significant )?(work|renovation|rehab)/i],
+  ["Redevelopment", /redevelop|tear[-\s]?down|teardown|land value play|higher[ -]and[ -]better use|development (site|opportunity|potential)|entitl|upzone|by[-\s]?right density|scrape/i],
+  ["Operational Turnaround", /turnaround|mismanaged|self[-\s]?managed upside|below[-\s]?market rents?|rents? \d+%?\s*below|operational upside|lease[-\s]?up|classic value creation through management|collections? (issue|upside)|high (vacancy|delinquency)|underperform|loss[- ]to[- ]lease/i],
+  ["Cosmetic Value-Add", /value[-\s]?add|light (rehab|value)|cosmetic|interior upgrade|renovat(e|ed|ion) (premium|upside)|upside on turn|proven (renovation|upgrade) premium|classic to renovated|partially renovated/i],
+  ["Location-Impaired", /path of progress|emerging (submarket|area|neighborhood|market)|transitional (area|block|corridor)|gentrif|up[-\s]?and[-\s]?coming/i],
+  ["Stabilized / Basis", /stabilized|turnkey|pride of ownership|fully (leased|occupied|stabilized)|100% occup|strong in[-\s]?place (income|cash flow)|below replacement cost|core[-\s]?plus|truly passive|no deferred maintenance|meticulously maintained/i],
+];
+function classifyDealFromText(...parts) {
+  const hay = parts.filter(Boolean).join("  ").slice(0, 6000);
+  const hits = [];
+  for (const [cls, re] of LEAD_DEAL_CLASS_CUES) if (re.test(hay)) hits.push(cls);
+  return [...new Set(hits)];
+}
+
+const _leadNum = v => {
+  if (v == null) return null;
+  const n = Number(String(v).replace(/[^0-9.\-]/g, ""));
+  return Number.isFinite(n) && n !== 0 ? n : null;
+};
+const _leadToday = () => new Date().toISOString().slice(0, 10);
+const _leadSafeJson = x => { try { return JSON.stringify(x).slice(0, 1900); } catch { return ""; } };
+function _leadDedupKey(vertical, source, ref, name) {
+  const norm = s => String(s || "").toLowerCase().replace(/\b(llc|lp|l\.p\.|inc|corp|company|co|the|apartments?|units?)\b/g, "").replace(/[^a-z0-9]+/g, "").slice(0, 64);
+  return `${norm(vertical)}:${norm(source)}:${norm(ref || name)}`;
+}
+function _leadProvenanceDefault(source) {
+  if (["Crexi", "LoopNet", "Broker Site"].includes(source))
+    return { askingPrice: "broker", units: "broker", capRate: "broker", NOI: "broker", contact: "broker", dealClass: "ai_extracted" };
+  if (source === "County Record") return { owner: "public_record", price: "public_record", date: "public_record" };
+  return { all: "manual" };
+}
+
+// ── Source adapters ──
+// fetch(env, query) -> raw record[]   ·   normalize(raw) -> partial lead
+// A normalize() result may set any of: name, kind, orgEntity, parentOrg,
+// contactName, email, phone, website, linkedin, location, buyBox, sourceTitle,
+// sourceUrl, sourceRef, sourceTrail, provenance, dealClass[], raw.
+const LEAD_SOURCE_ADAPTERS = {
+  crexi: {
+    label: "Crexi listings (Apify)", source: "Crexi", defaultKind: "Deal / Property",
+    async fetch(env, q) {
+      const AT = (env.APIFY_TOKEN || "").trim();
+      if (!AT) throw new Error("APIFY_TOKEN not configured");
+      return callApifyActor(AT, "parseforge~commercial-real-estate-listings-scraper", {
+        transactionType: "sale",
+        propertyTypes: ["Multifamily"],
+        states: q.states || ["CA"],
+        minAskingPrice: q.priceMin, maxAskingPrice: q.priceMax,
+        minCapRate: q.capRateMin, maxCapRate: q.capRateMax,
+        sortOrder: "activatedOn", sortDirection: "Descending",
+        maxItems: Math.min(q.limit || 20, 40), fetchDetails: true,
+      }, 110);
+    },
+    normalize(r) {
+      const d = r.details || {}, m = r.summaryDetailsMap || {};
+      const units = _leadNum(m.Units ?? d.Units);
+      const price = _leadNum(r.askingPrice ?? d["Asking Price"]);
+      const cap   = _leadNum(r.capRate ?? d["Cap Rate"]);
+      const title = r.name || "";
+      const blurb = [r.marketingDescription, r.investmentHighlights, r.description].filter(Boolean).join("  ");
+      return {
+        name: title || [units && `${units} units`, r.city, price && `$${(price / 1e6).toFixed(2)}M`].filter(Boolean).join(" — ") || "Untitled listing",
+        orgEntity: r.brokerageName || "",
+        location: r.fullAddress || [r.address, r.city, r.state, r.zip].filter(Boolean).join(", "),
+        buyBox: [units && `${units} units`, price && `$${price.toLocaleString()}`, cap && `${cap}% cap`,
+                 (d["Year Built"] || m.YearBuilt) && `built ${d["Year Built"] || m.YearBuilt}`,
+                 d["Price/Unit"] && `${d["Price/Unit"]}/unit`, r.county && `${r.county} County`,
+                 r.isInOpportunityZone && "Opportunity Zone", r.isNoteLoan && "note/loan sale"].filter(Boolean).join(" · "),
+        sourceTitle: title,
+        sourceUrl: r.url || r.sourceUrl || "",
+        sourceRef: String(r.id || d.APN || r.url || "").trim(),
+        dealClass: classifyDealFromText(title, blurb, r.isNoteLoan ? "note loan sale" : ""),
+        raw: r,
+      };
+    },
+  },
+  loopnet: {
+    label: "LoopNet listings (Apify)", source: "LoopNet", defaultKind: "Deal / Property",
+    async fetch(env, q) {
+      const AT = (env.APIFY_TOKEN || "").trim();
+      if (!AT) throw new Error("APIFY_TOKEN not configured");
+      const loc = (q.cities && q.cities[0]) || (q.states && q.states[0]) || "California";
+      return callApifyActor(AT, "memo23~loopnet-scraper-ppe", {
+        searchQuery: `multifamily apartment buildings for sale ${loc}`,
+        searchType: "for-sale",
+        PriceMin: q.priceMin, PriceMax: q.priceMax,
+        maxItems: Math.min(q.limit || 20, 40), includeListingDetails: true,
+      }, 110);
+    },
+    normalize(r) {
+      const title = r.title || r.name || r.listingName || r.propertyName || "";
+      const price = _leadNum(r.price ?? r.askingPrice ?? r.priceValue ?? r.salePrice);
+      const units = _leadNum(r.units ?? r.numberOfUnits ?? r.unitCount ?? r.noOfUnits);
+      const blurb = [r.description, r.marketingDescription, r.summary, (r.highlights || []).join(" ")].filter(Boolean).join("  ");
+      const broker = (Array.isArray(r.brokers) && r.brokers[0]) || r.broker || {};
+      return {
+        name: title || [units && `${units} units`, r.city || r.addressCity, price && `$${(price / 1e6).toFixed(2)}M`].filter(Boolean).join(" — ") || "Untitled listing",
+        orgEntity: r.brokerageName || r.company || broker.company || broker.brokerage || "",
+        contactName: r.brokerName || r.agentName || broker.name || "",
+        email: r.brokerEmail || broker.email || "",
+        phone: r.brokerPhone || r.phone || broker.phone || "",
+        location: r.address || r.fullAddress || [r.addressStreet, r.city || r.addressCity, r.state || r.addressState, r.zip || r.addressZip].filter(Boolean).join(", "),
+        buyBox: [units && `${units} units`, price && `$${price.toLocaleString()}`,
+                 (r.capRate || r.caprate) && `${r.capRate || r.caprate}% cap`,
+                 (r.yearBuilt || r.year_built) && `built ${r.yearBuilt || r.year_built}`,
+                 (r.buildingSize || r.sqft) && `${r.buildingSize || r.sqft} sf`].filter(Boolean).join(" · "),
+        sourceTitle: title,
+        sourceUrl: r.url || r.listingUrl || r.detailUrl || r.link || "",
+        sourceRef: String(r.id || r.listingId || r.url || "").trim(),
+        dealClass: classifyDealFromText(title, blurb),
+        raw: r,
+      };
+    },
+  },
+  manual: {
+    label: "Manual entry", source: "Manual", defaultKind: "Buyer",
+    async fetch(env, q) { return Array.isArray(q.records) ? q.records : []; },
+    normalize(r) {
+      return {
+        name: r.name || r.Name || "Untitled lead",
+        kind: r.kind, orgEntity: r.orgEntity || r.org, contactName: r.contactName || r.contact,
+        email: r.email, phone: r.phone, website: r.website, linkedin: r.linkedin,
+        location: r.location, buyBox: r.buyBox,
+        sourceTitle: r.sourceTitle || r.name || "", sourceUrl: r.sourceUrl || r.url || "",
+        sourceRef: r.sourceRef || r.name || "",
+        sourceTrail: r.sourceTrail || "Hand-entered from the dashboard",
+        dealClass: Array.isArray(r.dealClass) ? r.dealClass : classifyDealFromText(r.sourceTitle, r.notes),
+        raw: r,
+      };
+    },
+  },
+  // ── stubs — wired but not implemented; documented in docs/lead-sourcing.md ──
+  county: {
+    label: "County recorder / deed data (STUB)", source: "County Record", defaultKind: "Buyer", stub: true,
+    async fetch() { throw new Error("county adapter not implemented — needs a licensed deed feed (ATTOM / Regrid / ParcelQuest). See docs/lead-sourcing.md"); },
+    normalize(r) { return { name: r.grantee || "Unknown buyer", raw: r }; },
+  },
+  broker: {
+    label: "Broker website crawl (STUB)", source: "Broker Site", defaultKind: "Deal / Property", stub: true,
+    async fetch() { throw new Error("broker-site adapter not implemented — needs a per-domain selector config or an LLM-extraction pass. See docs/lead-sourcing.md"); },
+    normalize(r) { return { name: r.title || "Untitled listing", raw: r }; },
+  },
+};
+
+// ── Verticals (extensible target configs) ──
+const LEAD_VERTICALS = {
+  "multifamily-buyers": {
+    label: "Multifamily Acquisition",
+    verticalOption: "Multifamily Acquisition",       // must match the DB's Vertical select
+    sources: ["crexi", "loopnet"],
+    query: {
+      states: ["CA"],
+      cities: ["Concord", "Pleasant Hill", "Martinez", "Walnut Creek", "Pittsburg", "Antioch"],
+      priceMin: 1_000_000, priceMax: 12_000_000, limit: 25,
+    },
+    thesis: "10–100 unit apartment buildings, East Bay / Contra Costa first (Concord, Pleasant Hill, Martinez, Walnut Creek, Pittsburg, Bay Point, Antioch). Preferred 15–50 units, ~$2M–$10M. Underwrite on CURRENT operations, not broker pro forma. Secondary market: Phoenix.",
+  },
+};
+
+// ── The pipeline ──
+async function runLeadSourcing(env, { vertical, limit, sources, records } = {}) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN) return { ran: false, reason: "no NOTION_TOKEN" };
+
+  let verts;
+  if (vertical) verts = [vertical];
+  else {
+    const auto = await env.TRADES.get(LEAD_AUTO_KV, "json").catch(() => null);
+    verts = Array.isArray(auto) ? auto.filter(v => LEAD_VERTICALS[v]) : [];
+  }
+  if (!verts.length) return { ran: false, reason: "no vertical enabled (set one from the Lead Sourcing panel)" };
+
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  let idx = (await env.TRADES.get(LEAD_INDEX_KV, "json").catch(() => null)) || {};
+  // Hydrate the dedup index from the DB the first time (or after a KV wipe).
+  if (!Object.keys(idx).length) {
+    const rows = await notionQuery(SOURCED_LEADS_DB, {}).catch(() => []);
+    for (const p of rows) {
+      const pr = p.properties;
+      const k = _leadDedupKey(
+        pr.Vertical?.select?.name, pr.Source?.select?.name,
+        (pr["Source Ref"]?.rich_text || []).map(t => t.plain_text).join(""),
+        (pr.Name?.title || []).map(t => t.plain_text).join(""));
+      if (k) idx[k] = p.id;
+    }
+  }
+
+  const out = { ran: true, verticals: verts, created: 0, seen: 0, skipped: 0, errors: [] };
+  for (const vkey of verts) {
+    const V = LEAD_VERTICALS[vkey];
+    const useSources = sources && sources.length ? sources : V.sources;
+    for (const sKey of useSources) {
+      const A = LEAD_SOURCE_ADAPTERS[sKey];
+      if (!A) { out.errors.push(`unknown source: ${sKey}`); continue; }
+      const q = { ...V.query, limit: limit || V.query.limit, records };
+      let raws;
+      try { raws = await A.fetch(env, q); }
+      catch (e) { out.errors.push(`${vkey}/${sKey}: ${e.message}`); continue; }
+      if (!Array.isArray(raws)) raws = [];
+      for (const raw of raws.slice(0, q.limit || 25)) {
+        try {
+          const n = A.normalize(raw) || {};
+          if (!n.name) { out.skipped++; continue; }
+          const key = _leadDedupKey(V.verticalOption, A.source, n.sourceRef, n.name);
+          if (idx[key]) {
+            await fetch(`https://api.notion.com/v1/pages/${idx[key]}`, {
+              method: "PATCH", headers: hdr,
+              body: JSON.stringify({ properties: { "Last Seen": { date: { start: _leadToday() } } } }),
+            }).catch(() => {});
+            out.seen++;
+            continue;
+          }
+          const props = _buildLeadProps(V, A, n);
+          const r = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ parent: { database_id: SOURCED_LEADS_DB }, properties: props }),
+          });
+          const j = await r.json().catch(() => ({}));
+          if (r.ok && j.id) { idx[key] = j.id; out.created++; }
+          else { out.skipped++; out.errors.push(`write: ${j.message || r.status}`); }
+        } catch (e) { out.skipped++; out.errors.push(String(e.message || e)); }
+      }
+    }
+  }
+  await env.TRADES.put(LEAD_INDEX_KV, JSON.stringify(idx)).catch(() => {});
+  return out;
+}
+
+function _buildLeadProps(V, A, n) {
+  const props = {
+    "Name":       { title: [{ text: { content: String(n.name || "Untitled").slice(0, 200) } }] },
+    "Vertical":   { select: { name: V.verticalOption } },
+    "Lead Kind":  { select: { name: LEAD_KINDS.includes(n.kind) ? n.kind : (A.defaultKind || "Other") } },
+    "Status":     { select: { name: "New" } },
+    "Source":     { select: { name: A.source } },
+    "First Seen": { date: { start: _leadToday() } },
+    "Last Seen":  { date: { start: _leadToday() } },
+  };
+  const rt = (k, v) => { const s = (v == null ? "" : String(v)).trim(); if (s) props[k] = { rich_text: [{ text: { content: s.slice(0, 1900) } }] }; };
+  rt("Org / Entity", n.orgEntity);
+  rt("Parent Org", n.parentOrg);
+  rt("Contact Name", n.contactName);
+  rt("Location / Markets", n.location);
+  rt("Buy Box", n.buyBox);
+  rt("Source Title", n.sourceTitle);
+  rt("Source Ref", n.sourceRef);
+  rt("Source Trail", n.sourceTrail || `${A.label} → ${_leadToday()}${n.sourceUrl ? "  ·  " + n.sourceUrl : ""}`);
+  rt("Provenance", JSON.stringify(n.provenance || _leadProvenanceDefault(A.source)));
+  rt("Raw", _leadSafeJson(n.raw));
+  if (n.email && /^[^@\s]+@[^@\s]+$/.test(String(n.email).trim())) props["Email"] = { email: String(n.email).trim().slice(0, 200) };
+  if (n.phone && String(n.phone).trim()) props["Phone"] = { phone_number: String(n.phone).trim().slice(0, 60) };
+  if (n.sourceUrl && /^https?:\/\//i.test(n.sourceUrl)) props["Source URL"] = { url: String(n.sourceUrl).slice(0, 1900) };
+  if (n.website && /^https?:\/\//i.test(n.website)) props["Website"] = { url: String(n.website).slice(0, 1900) };
+  if (n.linkedin && /^https?:\/\//i.test(n.linkedin)) props["LinkedIn"] = { url: String(n.linkedin).slice(0, 1900) };
+  const dc = (n.dealClass || []).filter(c => LEAD_DEAL_CLASSES.includes(c));
+  if (dc.length) props["Deal Classification (Source)"] = { multi_select: dc.map(name => ({ name })) };
+  return props;
+}
+
+// ── Enrichment — one grounded Claude call per lead ──
+// Reads ONLY this lead's own source material (Raw + Source Title + Buy Box +
+// Source Trail + the vertical thesis) and infers: buyer type, the kind(s) of
+// deal it wants, a psychological profile, and Active / Data-Confidence scores.
+// Never web-searches, never invents facts; missing evidence -> "Unknown" / low
+// confidence. Writes only the fields it could support; bumps Status New->Enriching.
+async function enrichSourcedLead(env, pageId) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+  const page = await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { headers: hdr }).then(r => r.json());
+  if (page.object === "error") throw new Error(page.message || "lead not found");
+  const P = page.properties || {};
+  const tx = k => (P[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const name = (P.Name?.title || []).map(t => t.plain_text).join("");
+  const vertical = P.Vertical?.select?.name || "";
+  const V = Object.values(LEAD_VERTICALS).find(v => v.verticalOption === vertical);
+  const ctx = {
+    name, kind: P["Lead Kind"]?.select?.name || "", vertical,
+    org: tx("Org / Entity"), location: tx("Location / Markets"), buyBox: tx("Buy Box"),
+    sourceTitle: tx("Source Title"), sourceTrail: tx("Source Trail"),
+    dealClassFromSource: (P["Deal Classification (Source)"]?.multi_select || []).map(o => o.name),
+    raw: tx("Raw").slice(0, 7000),
+  };
+
+  const prompt = `You are profiling one sourced lead for a real-estate deal-origination desk. Work ONLY from the material below. Do not use outside knowledge about this specific company or person. If the evidence does not support a field, say so (use "Unknown", an empty list, or a low confidence score) — never guess to fill a blank.
+
+VERTICAL THESIS: ${V?.thesis || vertical || "(none)"}
+
+LEAD
+- Name: ${ctx.name}
+- Current kind: ${ctx.kind}
+- Org / entity: ${ctx.org || "(none given)"}
+- Location / markets: ${ctx.location || "(none given)"}
+- Buy box / deal facts: ${ctx.buyBox || "(none given)"}
+- Deal classification already parsed from the source title: ${ctx.dealClassFromSource.join(", ") || "(none)"}
+- Source trail: ${ctx.sourceTrail || "(none)"}
+- Raw source record (JSON, truncated):
+${ctx.raw || "(none)"}
+
+Return ONLY a JSON object, no prose, no fences:
+{
+  "buyerType": one of ${JSON.stringify(LEAD_BUYER_TYPES)},
+  "dealTypeWanted": subset of ${JSON.stringify(LEAD_DEAL_WANTS)} — the kind(s) of deal THIS lead is demonstrably after (from their entity type, the asset they listed/bought, stated buy box). Empty list if unknown.
+  "dealClassification": subset of ${JSON.stringify(LEAD_DEAL_CLASSES)} — your read of what is actually going on with the asset in the source (refine the parsed value above). Empty list if not a specific asset.
+  "psychologicalProfile": 2-4 sentences — decision style, risk posture, apparent motivations, and what kind of pitch this lead would respond to. Ground every clause in something in the material. If there is almost nothing to go on, say that plainly.
+  "activeScore": 0-100 — how demonstrably ACTIVE this lead is (recent + repeat activity, geographic + size fit to the thesis). 0 if there is no evidence of activity.
+  "dataConfidence": 0-100 — completeness and reliability of the material behind this profile.
+  "evidence": 1-3 sentences citing the specific facts in the material that drive the scores and classification.
+}`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1400, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  let raw = "";
+  for (const b of (aiData.content || [])) if (b.type === "text") raw += b.text;
+  let o;
+  try {
+    const s = raw.indexOf("{"), e = raw.lastIndexOf("}");
+    o = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1)));
+  } catch (e) { throw new Error("couldn't parse enrichment: " + e.message); }
+
+  const props = {};
+  if (LEAD_BUYER_TYPES.includes(o.buyerType)) props["Buyer Type"] = { select: { name: o.buyerType } };
+  const wants = (o.dealTypeWanted || []).filter(x => LEAD_DEAL_WANTS.includes(x));
+  if (wants.length) props["Deal Type Wanted"] = { multi_select: wants.map(name => ({ name })) };
+  const cls = (o.dealClassification || []).filter(x => LEAD_DEAL_CLASSES.includes(x));
+  if (cls.length) props["Deal Classification (Source)"] = { multi_select: cls.map(name => ({ name })) };
+  if (o.psychologicalProfile) props["Psychological Profile"] = { rich_text: [{ text: { content: String(o.psychologicalProfile).slice(0, 1900) } }] };
+  if (o.evidence) props["Evidence / Reasoning"] = { rich_text: [{ text: { content: String(o.evidence).slice(0, 1900) } }] };
+  if (Number.isFinite(+o.activeScore)) props["Active Score"] = { number: Math.max(0, Math.min(100, Math.round(+o.activeScore))) };
+  if (Number.isFinite(+o.dataConfidence)) props["Data Confidence"] = { number: Math.max(0, Math.min(100, Math.round(+o.dataConfidence))) };
+  if ((P.Status?.select?.name || "New") === "New") props["Status"] = { select: { name: "Enriching" } };
+
+  if (Object.keys(props).length) {
+    const r = await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: props }) });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).message || "write failed");
+  }
+  return { updated: Object.keys(props), profile: o };
+}
+
+function _sourcedLeadRow(p) {
+  const pr = p.properties || {};
+  const tx = k => (pr[k]?.rich_text || []).map(t => t.plain_text).join("");
+  return {
+    id: p.id.replace(/-/g, ""),
+    leadId: pr["Lead ID"]?.unique_id ? `${pr["Lead ID"].unique_id.prefix}-${pr["Lead ID"].unique_id.number}` : "",
+    name: (pr.Name?.title || []).map(t => t.plain_text).join(""),
+    vertical: pr.Vertical?.select?.name || "",
+    kind: pr["Lead Kind"]?.select?.name || "",
+    status: pr.Status?.select?.name || "New",
+    buyerType: pr["Buyer Type"]?.select?.name || "",
+    dealTypeWanted: (pr["Deal Type Wanted"]?.multi_select || []).map(o => o.name),
+    dealClass: (pr["Deal Classification (Source)"]?.multi_select || []).map(o => o.name),
+    org: tx("Org / Entity"), parentOrg: tx("Parent Org"), contactName: tx("Contact Name"),
+    email: pr.Email?.email || "", phone: pr.Phone?.phone_number || "",
+    website: pr.Website?.url || "", linkedin: pr.LinkedIn?.url || "",
+    location: tx("Location / Markets"), buyBox: tx("Buy Box"),
+    psychProfile: tx("Psychological Profile"), evidence: tx("Evidence / Reasoning"),
+    activeScore: pr["Active Score"]?.number ?? null, dataConfidence: pr["Data Confidence"]?.number ?? null,
+    source: pr.Source?.select?.name || "", sourceTitle: tx("Source Title"),
+    sourceUrl: pr["Source URL"]?.url || "", sourceRef: tx("Source Ref"), sourceTrail: tx("Source Trail"),
+    provenance: tx("Provenance"),
+    firstSeen: pr["First Seen"]?.date?.start || "", lastSeen: pr["Last Seen"]?.date?.start || "",
+  };
+}
+
 // ── runStrategySequenceReminders ──
 // Nightly reconciliation for the Strategy Slot -> Title -> "what's next"
 // queue, per operator design: scan every Published title that traces back
@@ -30432,6 +30841,105 @@ ${assemblyManifest}`;
         return json({ success: true });
       }
 
+      // ── Lead Sourcing engine (Globals tab · 🧲 Sourced Leads) ──
+      // config for the panel: verticals, their sources, and which are auto-on.
+      if (body.action === "getLeadSourcingConfig") {
+        const auto = (await env.TRADES.get(LEAD_AUTO_KV, "json").catch(() => null)) || [];
+        return json({
+          verticals: Object.entries(LEAD_VERTICALS).map(([key, v]) => ({
+            key, label: v.label, thesis: v.thesis || "",
+            sources: v.sources.map(s => ({ key: s, label: (LEAD_SOURCE_ADAPTERS[s] || {}).label || s, stub: !!(LEAD_SOURCE_ADAPTERS[s] || {}).stub })),
+            auto: auto.includes(key),
+          })),
+          adapters: Object.entries(LEAD_SOURCE_ADAPTERS).map(([key, a]) => ({ key, label: a.label, source: a.source, stub: !!a.stub })),
+          dealClasses: LEAD_DEAL_CLASSES, buyerTypes: LEAD_BUYER_TYPES, kinds: LEAD_KINDS,
+          apifyConfigured: !!(env.APIFY_TOKEN || "").trim(),
+        });
+      }
+
+      // toggle a vertical's nightly auto-sourcing on/off
+      if (body.action === "setLeadSourcingAuto") {
+        const key = String(body.vertical || "").trim();
+        if (!LEAD_VERTICALS[key]) return json({ error: "unknown vertical" }, 400);
+        let auto = (await env.TRADES.get(LEAD_AUTO_KV, "json").catch(() => null)) || [];
+        auto = auto.filter(v => v !== key);
+        if (body.on) auto.push(key);
+        await env.TRADES.put(LEAD_AUTO_KV, JSON.stringify(auto));
+        return json({ success: true, auto });
+      }
+
+      // run the pipeline now (one vertical, optional source subset)
+      if (body.action === "sourceLeads") {
+        try {
+          const res = await runLeadSourcing(env, {
+            vertical: String(body.vertical || "").trim() || undefined,
+            sources: Array.isArray(body.sources) && body.sources.length ? body.sources : undefined,
+            limit: Number.isFinite(+body.limit) ? +body.limit : undefined,
+          });
+          return json({ success: true, ...res });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
+      if (body.action === "addManualLead") {
+        const name = String(body.name || "").trim();
+        if (!name) return json({ error: "name required" }, 400);
+        const rec = {
+          name,
+          kind: LEAD_KINDS.includes(body.kind) ? body.kind : "Buyer",
+          orgEntity: body.orgEntity, contactName: body.contactName,
+          email: body.email, phone: body.phone, website: body.website, linkedin: body.linkedin,
+          location: body.location, buyBox: body.buyBox,
+          sourceTitle: body.sourceTitle || name, sourceUrl: body.sourceUrl,
+          sourceRef: body.sourceRef || name, notes: body.notes,
+          dealClass: Array.isArray(body.dealClass) ? body.dealClass : undefined,
+        };
+        try {
+          const res = await runLeadSourcing(env, {
+            vertical: LEAD_VERTICALS[body.vertical] ? body.vertical : Object.keys(LEAD_VERTICALS)[0],
+            sources: ["manual"], limit: 1, records: [rec],
+          });
+          return json({ success: true, ...res });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
+      if (body.action === "listSourcedLeads") {
+        const q = { sorts: [{ timestamp: "created_time", direction: "descending" }], page_size: 100 };
+        const and = [];
+        if (body.vertical) and.push({ property: "Vertical", select: { equals: String(body.vertical) } });
+        if (body.status)   and.push({ property: "Status", select: { equals: String(body.status) } });
+        if (body.kind)     and.push({ property: "Lead Kind", select: { equals: String(body.kind) } });
+        if (and.length) q.filter = and.length === 1 ? and[0] : { and };
+        const rows = await notionQuery(SOURCED_LEADS_DB, q).catch(e => { console.error("listSourcedLeads:", e.message); return []; });
+        return json({ items: rows.map(_sourcedLeadRow) });
+      }
+
+      if (body.action === "getSourcedLead") {
+        if (!body.id) return json({ error: "id required" }, 400);
+        const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const p = await fetch(`https://api.notion.com/v1/pages/${dash(body.id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+        if (p.object === "error") return json({ error: p.message }, 404);
+        return json({ lead: _sourcedLeadRow(p) });
+      }
+
+      if (body.action === "enrichSourcedLead") {
+        if (!body.id) return json({ error: "id required" }, 400);
+        try { return json({ success: true, ...(await enrichSourcedLead(env, body.id)) }); }
+        catch (e) { return json({ error: e.message }, 502); }
+      }
+
+      if (body.action === "setSourcedLeadStatus") {
+        const statuses = ["New", "Enriching", "Qualified", "Contacted", "Passed", "Do Not Contact"];
+        if (!body.id || !statuses.includes(body.status)) return json({ error: "id + valid status required" }, 400);
+        const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const r = await fetch(`https://api.notion.com/v1/pages/${dash(body.id)}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Status": { select: { name: body.status } } } }),
+        });
+        if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "failed" }, r.status);
+        return json({ success: true });
+      }
+
       // ── Automations wishlist (Globals tab) ── "things I intend to automate" —
       // a plain list, not a workflow. Deliberately reuses MAIN_TD_DB (the same
       // "td" the operator already tracks everything else in) rather than a new
@@ -32965,6 +33473,16 @@ Produce all of this by calling the submit_listing tool — do not include any of
     ctx.waitUntil(runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
     ctx.waitUntil(runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
     ctx.waitUntil(runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
+    // Lead sourcing — OPT-IN: no-ops unless a vertical key is in KV `leadsrc:auto`
+    // (toggled from the 🧲 Lead Sourcing panel). Pulls listings via Apify, so it
+    // stays off by default to avoid a standing scrape bill.
+    ctx.waitUntil(
+      runLeadSourcing(env)
+        .then(r => r.ran
+          ? console.log(`lead sourcing: +${r.created} new, ${r.seen} re-seen, ${r.skipped} skipped${r.errors.length ? ` (${r.errors.length} errs)` : ''}`)
+          : console.log(`lead sourcing skipped: ${r.reason}`))
+        .catch(e => console.error('runLeadSourcing failed:', e.message))
+    );
   },
 };
 

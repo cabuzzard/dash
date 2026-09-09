@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Deep history / incident write-ups live in `docs/`** to keep this file small (it's injected every turn):
-> `docs/visual-brief.md` · `docs/hub-hosting-history.md` · `docs/notion-incidents.md` · `docs/strategy-changelog.md` · `docs/methods-titles-assets.md` · `docs/strategy-sequence-next.md`
+> `docs/visual-brief.md` · `docs/hub-hosting-history.md` · `docs/notion-incidents.md` · `docs/strategy-changelog.md` · `docs/methods-titles-assets.md` · `docs/strategy-sequence-next.md` · `docs/lead-sourcing.md`
 
 ## Architecture Overview
 
@@ -102,6 +102,7 @@ All core databases live directly under 🏠 Home (`3431f7d3a4bb80378e64ce26578d0
 | 📄 Strategy | `6f7a8666944746b2ae98d41db0c4e419` |
 | 🚀 Growth Strategy | `437b8c2615234b6bbe4a694b31f3000f` |
 | 🎯 Strategy Slots | `cc6bf6dc995e485d8c5bd13c33b7e0fa` |
+| 🧲 Sourced Leads | `886f4007dd1e45caa6f3bbccbf8b71db` |
 
 **Two Notion-DB rules that cost real debugging / data time (full write-ups: `docs/notion-incidents.md`):**
 - When wiring a new `_DB` constant: use the **database id** (page-URL segment), never the `collection://` data-source id — and keep a logged `.catch(e => { console.error(...); return []; })` on any `notionQuery` a feature depends on.
@@ -185,6 +186,29 @@ An unassigned Planning title (no Growth Strategy relation) can either 🔗 attac
 - Guides and Runs (`launchStrategyRun`, 2026-08-27) — any strategy is a reusable **Guide**; a **Run** is a Growth Strategy child re-creating the Guide's slots against a Product without AI. 🚀 Launch Run.
 - `deleteGrowthStrategy` (2026-08-27) — 🗑️ real Notion archive, cascades to children + slots; real titles unlinked not deleted.
 - Offer asset type (2026-09-01/02) — direct-sales asset; `Offer – Pillar` / `Offer – Content Hub` methods hit `generateTitleAssets`'s `/\boffers?\b/i` branch, create ONE Asset (Type "Offer", Status Publish) with a fenced `json` **OFFER CARD** block + `Product` relation + `Content Hub` select. Hub chosen at publish time.
+
+## Lead Sourcing engine (Globals tab · 🧲 Sourced Leads)
+
+Standalone, extensible lead-sourcing pipeline (2026-09-08). Pluggable source
+adapters → normalize with a full source trail → dedupe (KV index) → stage in
+`SOURCED_LEADS_DB`. `enrichSourcedLead` runs one grounded Claude call per lead
+for buyer type / deal-type-wanted / psychological profile / Active + Data-Confidence
+scores. Deal classification is parsed from the source listing title/blurb by a
+deterministic keyword classifier (`classifyDealFromText`), then optionally refined
+by enrichment. Nightly cron `runLeadSourcing` is **opt-in** — no-ops unless a
+vertical key is in KV `leadsrc:auto` (panel toggle), so there's no standing Apify
+bill. Never touches production Campaigns/Products/Methods/Strategy/Research/Leads.
+Adapters: `crexi` + `loopnet` (Apify, live), `manual` (live), `county` + `broker`
+(stubs). Add a vertical → `LEAD_VERTICALS`; add a source → `LEAD_SOURCE_ADAPTERS`.
+**Full spec + how to extend + setup checklist: `docs/lead-sourcing.md`.**
+
+## Cron Scripts panel (Globals tab · ⏰)
+
+Read-only registry of everything on a schedule — the counterpart to the 🤖
+Automations wishlist (which lives on the TD tab). `CRON_REGISTRY` in `index.html` is a **hand-maintained
+mirror** of `worker/wrangler.toml` `[triggers] crons` + the `scheduled()`
+dispatcher in `worker.js`. When a cron job is added / removed / re-timed, update
+`CRON_REGISTRY` to match (and `runLeadSourcing`'s entry if its gating changes).
 
 ## Visual Brief
 
