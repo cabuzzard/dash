@@ -75,6 +75,15 @@
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
 
+  /* ── CONTENT HUBS TAB — edit column + zoomed full-roll rail ── */
+  .hub-layout { display:grid; grid-template-columns:minmax(0,1fr) var(--hub-rail-w,340px); gap:16px; align-items:start; }
+  .hub-left { min-width:0; }
+  .hub-rail { position:sticky; top:12px; align-self:start; }
+  .hub-rail-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
+  .hub-rail-frame { position:relative; overflow:hidden; width:100%; border:1px solid var(--border); border-radius:10px; background:#fff; }
+  .hub-rail-frame iframe { position:absolute; top:0; left:0; border:0; background:#fff; transform-origin:top left; }
+  @media (max-width:1080px) { .hub-layout { grid-template-columns:1fr; } .hub-rail { position:static; } }
+
   /* ── SKILL CARDS ── */
   .skill-card {
     display: flex; align-items: flex-start; gap: 14px;
@@ -10747,8 +10756,46 @@ const HPI_MAP = [
   ['#footLegal','footer.legal','Footer legal',0],
 ];
 const HPI_ON = {}; let _hpiTry = {}; let HPI_CTX = null;
+let _hpiFitTry = {}, _hpiRO = {};
+const HUB_RAIL_BASE_W = 1280;   // the desktop width the roll is rendered at, then scaled to the column
 function hpiDoc(slug){ try { const f = document.getElementById('hpiFrame-'+slug); return f ? f.contentDocument : null; } catch(e){ return null; } }
-function hubPreviewLoaded(slug){ _hpiTry[slug] = 0; if (HPI_ON[slug]) setTimeout(()=>wireHubPreview(slug), 350); }
+function hubPreviewLoaded(slug){
+  _hpiTry[slug] = 0; _hpiFitTry[slug] = 0;
+  hubRailFit(slug);
+  [300, 900, 2200, 4500].forEach(ms => setTimeout(() => hubRailFit(slug), ms));
+  hubRailObserve(slug);
+  if (HPI_ON[slug]) setTimeout(() => wireHubPreview(slug), 350);
+}
+// Scale the full hub page down to the rail column width — height follows the
+// real scrollHeight with no cap, so the whole roll shows.
+function hubRailFit(slug){
+  const f = document.getElementById('hpiFrame-'+slug), wrap = document.getElementById('hpiWrap-'+slug);
+  if (!f || !wrap) return;
+  const innerW = wrap.clientWidth || 0;
+  if (innerW < 40) { setTimeout(() => hubRailFit(slug), 400); return; }   // tab not laid out yet
+  const scale = innerW / HUB_RAIL_BASE_W;
+  let hgt = 0;
+  try { const d = f.contentDocument; if (d && d.body) hgt = Math.max(d.body.scrollHeight, d.documentElement.scrollHeight, d.body.offsetHeight); } catch(e){}
+  if (!hgt) {
+    _hpiFitTry[slug] = (_hpiFitTry[slug] || 0) + 1;
+    if (_hpiFitTry[slug] < 40) { setTimeout(() => hubRailFit(slug), 250); return; }
+    hgt = HUB_RAIL_BASE_W * 2;   // fallback only if the doc never becomes reachable
+  }
+  f.style.width = HUB_RAIL_BASE_W + 'px';
+  f.style.height = hgt + 'px';
+  f.style.transform = 'scale(' + scale + ')';
+  wrap.style.height = Math.max(120, Math.round(hgt * scale)) + 'px';
+}
+// Re-fit whenever the hub's own content changes height (fonts, lazy blog/product lists, images).
+function hubRailObserve(slug){
+  let d; try { const f = document.getElementById('hpiFrame-'+slug); d = f && f.contentDocument; } catch(e){}
+  if (!d || !d.body || typeof ResizeObserver === 'undefined') return;
+  if (_hpiRO[slug]) { try { _hpiRO[slug].disconnect(); } catch(e){} }
+  try { const ro = new ResizeObserver(() => hubRailFit(slug)); ro.observe(d.body); _hpiRO[slug] = ro; } catch(e){}
+}
+window.addEventListener('resize', () => {
+  try { const h = HUB_SITES[_hubIdx]; if (h) hubRailFit(h.slug); } catch(e){}
+});
 function toggleHubPreviewEdit(slug){
   HPI_ON[slug] = !HPI_ON[slug];
   const b = document.getElementById('hpiEdit-'+slug);
@@ -10763,7 +10810,7 @@ function wireHubPreview(slug){
   if (!hh || !hh.textContent.trim()){ _hpiTry[slug] = (_hpiTry[slug]||0)+1; if (_hpiTry[slug] < 30) setTimeout(()=>wireHubPreview(slug), 300); return; }
   if (!d.getElementById('hpi-style')){
     const st = d.createElement('style'); st.id = 'hpi-style';
-    st.textContent = '.hpi-hot{outline:1.5px dashed rgba(80,140,255,.55);outline-offset:2px;cursor:pointer;border-radius:2px;} .hpi-hot:hover,.hpi-hot:active{outline-color:#3b82f6;background:rgba(80,140,255,.08);}';
+    st.textContent = '.hpi-hot{outline:2px dashed rgba(80,140,255,.7);outline-offset:1px;cursor:pointer;border-radius:2px;} .hpi-hot:hover,.hpi-hot:active{outline:2px solid #3b82f6;background:rgba(80,140,255,.16);}';
     d.head.appendChild(st);
   }
   HPI_MAP.forEach(([sel, path, label, big])=>{
@@ -10953,6 +11000,7 @@ function renderHubsTab() {
   fetchHubSpec();
   if (_hubIdx >= HUB_SITES.length) _hubIdx = 0;
   const h = HUB_SITES[_hubIdx], slug = h.slug;
+  if (HPI_ON[slug] === undefined) HPI_ON[slug] = true;   // tap-to-edit on by default for the roll rail
   // pull the researched Palette + Fonts off the Research record (once per hub per session)
   if (h.campaignId && !_hpFetched[slug]) {
     _hpFetched[slug] = true;
@@ -10990,6 +11038,8 @@ function renderHubsTab() {
     </div>
   </div>
 
+  <div class="hub-layout">
+  <div class="hub-left">
   <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);">
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <div><a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:18px;font-weight:700;color:var(--text);text-decoration:none;">${esc(h.name)}</a>
@@ -11057,17 +11107,26 @@ function renderHubsTab() {
       <span style="font-size:11px;color:var(--text3);margin-left:auto;">${doneCrit}/${totalCrit} critical · <span style="color:${badge.color};">${badge.text}</span></span>
     </div>
 
-    <div style="padding:8px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Live preview</span>
-      <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Tap-to-edit: off</button>
-      <span style="font-size:10px;color:var(--text3);">— tap any heading / blurb in the preview to edit that one field</span>
-    </div>
-    <iframe id="hpiFrame-${slug}" src="${hubUrl}" title="${esc(h.name)} — live" loading="lazy" onload="hubPreviewLoaded('${slug}')" style="display:block;width:100%;height:560px;border:0;background:#fff;"></iframe>
   </div>
 
   <div style="margin-top:10px;font-size:10px;color:var(--text3);line-height:1.7;">
     Every field opens a modal. <b>Palette</b> — Regenerate builds the token set from the campaign research (+ your photo / instructions), Save stores it on the campaign, Push commits it to <code>hubs.design.json</code> + the hub HTML and redeploys. Checklist / counts / contact are saved in this browser; * items don't block the LIVE badge.
+  </div>
+  </div>
+
+  <div class="hub-rail">
+    <div class="hub-rail-head">
+      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Full roll</span>
+      <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid ${HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:transparent;color:${HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">✎ Tap-to-edit: ${HPI_ON[slug] ? 'on' : 'off'}</button>
+      <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">open ↗</a>
+    </div>
+    <div class="hub-rail-frame" id="hpiWrap-${slug}" style="height:600px;">
+      <iframe id="hpiFrame-${slug}" src="${hubUrl}" title="${esc(h.name)} — full roll" loading="lazy" onload="hubPreviewLoaded('${slug}')" style="width:1280px;height:600px;"></iframe>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the column — no height limit. ${HPI_ON[slug] ? 'Click any heading / blurb to edit that field.' : 'Turn tap-to-edit on to click a section into its editor.'}</div>
+  </div>
   </div>`;
+  setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
 }
 let hubSitesCollapsed = true;
 try { hubSitesCollapsed = localStorage.getItem('hubSitesCollapsed') !== 'false'; } catch(e) {}
