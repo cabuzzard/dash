@@ -10455,6 +10455,8 @@ let _hpWork = {};             // slug -> palette generated/saved but not pushed
 let _hpNote = {};             // slug -> last status line
 let _hpFonts = {};            // slug -> researched {display,body,mono} not yet pushed
 let _hpFetched = {};          // slug -> already pulled getHubPalette this session
+let _hubMainProd = {};        // slug -> { id, name, productsite, stack, status, via } | null — the product the hub is built around
+let _hubMainProdFetched = {}; // slug -> getHubMainProduct has run this session
 let _hf = {};                 // field-modal state
 
 function fetchHubSpec() {
@@ -11011,6 +11013,14 @@ function renderHubsTab() {
       if (touched) { _hpNote[slug] = _hpNote[slug] || 'From Research — Push to make it live.'; if (HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
     }).catch(() => {});
   }
+  // the product this hub is built around (Content Hub tracking asset → else campaign's first product)
+  if (h.campaignId && !_hubMainProdFetched[slug]) {
+    _hubMainProdFetched[slug] = true;
+    call('getHubMainProduct', { campaignId: h.campaignId }).then(r => {
+      _hubMainProd[slug] = (r && r.product) || null;
+      if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
+    }).catch(() => {});
+  }
   const meta = hubMeta(h), state = hubReadyState(slug), badge = hubBadge(state, meta);
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
   const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
@@ -11028,6 +11038,21 @@ function renderHubsTab() {
   const swDetail = pal ? HP_ROLES.map(([k, label]) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);margin:2px 8px 2px 0;"><span style="width:12px;height:12px;border-radius:3px;border:1px solid var(--border2);background:${esc(pal[k] || '#888')};"></span>${label} <span style="opacity:.7;">${esc(pal[k] || '')}</span></span>`).join('') : '';
   const briefRow = (k, label) => design[k] ? `<div style="margin:4px 0;"><span style="color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.07em;">${label}</span><br><span style="font-size:12px;color:var(--text2);line-height:1.5;">${esc(design[k])}</span></div>` : '';
 
+  const mp = _hubMainProd[slug];
+  const mpBar = `<div style="padding:9px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);">
+    <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Main product</span>
+    ${mp
+      ? `<span style="font-size:12px;color:var(--text);font-weight:600;">${esc(mp.name)}</span>`
+        + (mp.stack ? `<span style="font-size:10px;color:var(--text3);">· ${esc(mp.stack)}</span>` : '')
+        + (mp.status ? `<span style="font-size:10px;color:var(--text3);">· ${esc(mp.status)}</span>` : '')
+        + (mp.productsite ? `<a href="${esc(mp.productsite)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;">site ↗</a>` : '')
+        + `<a href="https://www.notion.so/${esc(String(mp.id))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">Notion ↗</a>`
+        + (mp.via === 'campaign-products' ? `<span title="No Content Hub tracking asset yet — showing the campaign's first attached product" style="font-size:10px;color:var(--text3);">(campaign default)</span>` : '')
+      : ((slug in _hubMainProd)
+        ? `<span style="font-size:11px;color:var(--text3);">— no product attached to this hub's campaign yet</span>`
+        : `<span style="font-size:11px;color:var(--text3);">loading…</span>`)}
+  </div>`;
+
   el.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
     <div style="display:flex;gap:5px;flex-wrap:wrap;">${HUB_SITES.map((x, i) => `<button onclick="hubJump(${i})" style="font-size:10px;padding:4px 8px;border:1px solid ${i === _hubIdx ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:${i === _hubIdx ? 'var(--surface2)' : 'transparent'};color:${i === _hubIdx ? 'var(--text)' : 'var(--text3)'};cursor:pointer;">${esc(x.name)}</button>`).join('')}</div>
@@ -11041,6 +11066,7 @@ function renderHubsTab() {
   <div class="hub-layout">
   <div class="hub-left">
   <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);">
+    ${mpBar}
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <div><a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:18px;font-weight:700;color:var(--text);text-decoration:none;">${esc(h.name)}</a>
         <span style="font-size:11px;color:var(--text3);margin-left:10px;">${esc(h.campaign || '')}</span></div>

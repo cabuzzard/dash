@@ -10394,6 +10394,50 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ products });
       }
 
+      // ── getHubMainProduct ── the single Product a content hub is built
+      // around. Canonical source: the campaign's "Content Hub" tracking Asset
+      // carries it on its Product relation (set from the Content Hub method's
+      // "Main Product" picker in the microsite). Falls back to the campaign's
+      // first attached Product when no such asset exists yet.
+      if (body.action === "getHubMainProduct") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dashId = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const norm = s => String(s || "").replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        let productId = null, via = null;
+        try {
+          const rows = await notionQuery(ASSETS_DB, {
+            filter: { and: [
+              { property: "Campaign", relation: { contains: dashId(campaignId) } },
+              { property: "Asset Type", select: { equals: "Content Hub" } },
+            ] },
+            sorts: [{ timestamp: "created_time", direction: "descending" }],
+          });
+          for (const r of rows) {
+            const rel = r.properties?.Product?.relation || [];
+            if (rel.length) { productId = norm(rel[0].id); via = "content-hub-asset"; break; }
+          }
+        } catch (e) { /* property missing / query failed → fall through to campaign products */ }
+        if (!productId) {
+          try {
+            const camp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, { headers: hdr }).then(r => r.json());
+            const rels = camp?.properties?.["Products"]?.relation || [];
+            if (rels.length) { productId = norm(rels[0].id); via = "campaign-products"; }
+          } catch (e) {}
+        }
+        if (!productId) return json({ product: null });
+        let name = "Untitled", productsite = null, stack = null, status = null;
+        try {
+          const p = await fetch(`https://api.notion.com/v1/pages/${dashId(productId)}`, { headers: hdr }).then(r => r.json());
+          name = (p?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
+          productsite = p?.properties?.["URL"]?.url || null;
+          stack = (p?.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("") || null;
+          status = p?.properties?.Status?.select?.name || null;
+        } catch (e) {}
+        return json({ product: { id: productId, name, productsite, stack, status, via } });
+      }
+
       if (body.action === "addCampaignProduct") {
         const { campaignId, productId } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
