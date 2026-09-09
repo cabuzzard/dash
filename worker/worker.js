@@ -18714,6 +18714,51 @@ Return ONLY this JSON object:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], offer: { name: offer.offerName || title, kicker: offer.kicker || "", hasUrl: !!ctaUrl }, sitePublished: !!offerSite.published, liveUrl: offerSite.liveUrl || null, siteError: offerSite.error || null });
         }
 
+        // ── Content Hub asset type: tracks the production of an actual
+        // Content Hub (web/hub/{slug}) as a real Asset record. No AI writing
+        // happens here — a hub is a built website (template copy, design
+        // tokens, HUB object content, domain routing — see the "hub"
+        // Method's own page body for the full methodology), not generated
+        // ad copy, so this just creates the tracking Asset directly, like
+        // the Offer branch above but with no content-generation step.
+        // Always product-tied, same reasoning as Offer: per operator
+        // instruction, a hub carries no research record of its own — it
+        // inherits whatever 🔬 Product Research already exists on its
+        // attached Product as its audience/keywords/positioning.
+        if (/^content hub$/i.test(assetType)) {
+          if (!hasProduct) return json({ error: "A Content Hub needs a main Product from its campaign — pick one above, then Generate again. The hub inherits that product's own 🔬 Product Research as its audience/keywords/positioning; a hub carries no separate research record of its own." }, 400);
+          const prodPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
+          const productName = (prodPage?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "this product";
+          const hubSlug = campaignId ? (HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === String(campaignId).replace(/-/g, "")) || {}).slug : null;
+          const assetProps = {
+            "Asset Title":      { title: [{ text: { content: String(title).slice(0, 200) } }] },
+            "Asset Status":     { select: { name: "Development" } },
+            "Asset Type":       { select: { name: "Content Hub" } },
+            "Status":           { select: { name: "Draft" } },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Product":          { relation: [{ id: dsDash(productId) }] },
+            "Notes":            { rich_text: [{ text: { content: `Main product: ${productName}. Build/deploy per the "hub" Method's own framework (Hub Setup → Content Authoring → Deploy & Domain Routing).`.slice(0, 1990) } }] },
+          };
+          if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (hubSlug) assetProps["Content Hub"] = { select: { name: hubSlug } };
+          const assetResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+          });
+          const assetResult = await assetResp.json();
+          if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create Content Hub asset" }, 502);
+          const assetId = assetResult.id.replace(/-/g, "");
+          // Keep the title's own `product` relation in sync too, so a later
+          // Generate Assets call on this same title resolves the same
+          // product automatically via the title-fallback earlier in this
+          // action, without having to re-pick it.
+          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "product": { relation: [{ id: dsDash(productId) }] } } }),
+          }).catch(() => {});
+          return json({ success: true, created: 1, assets: [{ id: assetId, title }], hubProduct: productName });
+        }
+
         // ── LinkedIn Post asset type: reshapes the title's own pillar
         // content into ONE finished, publish-ready LinkedIn Article — not N
         // options. Framework (length, headline/hook/structure/voice/CTA
