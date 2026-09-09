@@ -9599,7 +9599,6 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const norm = s => (s || "").replace(/-/g, "");
         const hubByCamp = {};
         HUB_SITES.forEach(h => { hubByCamp[norm(h.campaignId)] = h.slug; });
-        const hubSet = new Set(HUB_SITES.map(h => h.slug));
         const [titleRows, methodRows] = await Promise.all([
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
           notionQuery(METHODS_DB, {}).catch(e => { console.error('getHubMethodMatrix methods:', e.message); return []; }),
@@ -9622,9 +9621,15 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           if (stage !== "Development" && stage !== "Publish") return;
           const methodId = norm((p.method?.relation || [])[0]?.id);
           if (!methodId || !colIds.has(methodId)) return;
-          const hub0 = p["Content Hub"]?.select?.name || "";
+          // Hub attribution is by CAMPAIGN, not any per-title "Content Hub"
+          // select tag (that tag is for other purposes — an Offer's publish
+          // target, a hub's own blog scan — not this matrix). A hub is an
+          // attachment of its parent campaign, so every title under that
+          // campaign counts toward its hub column — including the hub's own
+          // Content Hub Content Strategy Title/Asset (Method: hub) itself,
+          // which is why every hub shows its own 1 published count here.
           const campId = norm((p.Campaign?.relation || [])[0]?.id);
-          const slug = hubSet.has(hub0) ? hub0 : (hubByCamp[campId] || "");
+          const slug = hubByCamp[campId] || "";
           if (!slug) return;
           const cell = ((counts[slug] = counts[slug] || {})[methodId] = counts[slug][methodId] || { dev: 0, pub: 0 });
           if (stage === "Development") cell.dev++; else cell.pub++;
