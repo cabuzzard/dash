@@ -5486,6 +5486,118 @@ async function runLinkMiningPipeline(env, { limit = 5 } = {}) {
   return { ran: true, transcribed, mined, bits };
 }
 
+// ═══ Bulk link processing queue ══════════════════════════════════════
+// One KV-backed work queue for running transcription / mining across the
+// WHOLE 🔗 Saved Posts backlog in the background — drained ~2 links per
+// tick by the */4 cron, same pattern as runBulkHubStrategy. Modes:
+//   "transcribe" — every row with a URL and Status != Done → processSavedPost
+//   "mine"       — every Done row with Mined == false → mine the transcript
+//   "remine"     — every Done row → archive its still-New ⛏️ Link Mining
+//                  rows, then mine fresh (refreshes every field, incl.
+//                  Recommended Use, and picks up new items)
+// Seed with bulkLinksStart {mode}; poll bulkLinksStatus; bulkLinksReset
+// clears it. Standalone — writes only 🔗 Saved Posts / ⛏️ Link Mining /
+// 🧑‍🎨 Creators, never a production Campaign / Product / Method record.
+const BULK_LINKS_KV = "bulklinks:v1";
+const BULK_LINKS_MODES = { transcribe: 1, mine: 1, remine: 1 };
+async function runBulkLinks(env, opts = {}) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  if (!NOTION_TOKEN || !env.ANTHROPIC_API_KEY) return { error: "missing NOTION_TOKEN / ANTHROPIC_API_KEY" };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+  let state = await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null);
+
+  if (opts.seed || !state || !Array.isArray(state.ids)) {
+    const mode = BULK_LINKS_MODES[opts.mode] ? opts.mode : (state && state.mode) || "transcribe";
+    let filter;
+    if (mode === "transcribe") {
+      filter = { and: [
+        { property: "Status", status: { does_not_equal: "Done" } },
+        { property: "URL", url: { is_not_empty: true } },
+      ] };
+    } else if (mode === "mine") {
+      filter = { and: [
+        { property: "Status", status: { equals: "Done" } },
+        { property: "Mined", checkbox: { equals: false } },
+      ] };
+    } else { // remine
+      filter = { property: "Status", status: { equals: "Done" } };
+    }
+    const rows = await notionQuery(SAVED_POSTS_DB, { filter }).catch(e => { console.error("bulkLinks seed:", e.message); return []; });
+    const ids = rows.map(r => r.id);
+    state = { mode, started: new Date().toISOString(), ids, done: [], errors: {}, transcribed: 0, mined: 0, lock: 0 };
+    await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
+    if (opts.seed) return { seeded: true, mode, total: ids.length, done: 0, remaining: ids.length };
+  }
+
+  const doneSet = new Set(state.done);
+  const pending = state.ids.filter(id => !doneSet.has(id));
+  if (!pending.length) {
+    return { complete: true, mode: state.mode, total: state.ids.length, done: state.done.length, remaining: 0,
+      errors: state.errors || {}, transcribed: state.transcribed || 0, mined: state.mined || 0 };
+  }
+
+  // Lock so two overlapping */4 ticks don't double-process a link (one Apify
+  // transcription legitimately runs several minutes). Stale after 15 min.
+  if (!opts.force && state.lock && Date.now() - state.lock < 15 * 60 * 1000) {
+    return { locked: true, mode: state.mode, total: state.ids.length, done: state.done.length, remaining: pending.length };
+  }
+  state.lock = Date.now();
+  await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
+
+  const limit = Math.max(1, Math.min(opts.limit || 2, 5));
+  const [candidates, infoFlow, caps] = state.mode === "transcribe"
+    ? [null, null, null]
+    : await Promise.all([buildMiningCandidates(hdr), getInformationFlowContext(env), getLinkMiningCaps(hdr)]);
+
+  const processed = [];
+  for (const id of pending.slice(0, limit)) {
+    try {
+      let page = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
+      if (!page || !page.id) throw new Error("page not found");
+      let status = page.properties?.Status?.status?.name || "";
+      const mined = page.properties?.Mined?.checkbox === true;
+
+      if (state.mode === "transcribe") {
+        if (status !== "Done") {
+          const res = await processSavedPost(env, page);
+          if (!res.ok) throw new Error("transcribe — " + (res.error || "failed"));
+          state.transcribed++;
+        }
+      } else if (state.mode === "mine") {
+        if (status === "Done" && !mined) {
+          await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps });
+          state.mined++;
+        }
+      } else { // remine
+        if (status === "Done") {
+          const old = await notionQuery(LINK_MINING_DB, { filter: { and: [
+            { property: "Source Post", relation: { contains: dash32(id) } },
+            { property: "Status", select: { equals: "New" } },
+          ] } }).catch(() => []);
+          for (const r of old) await fetch(`https://api.notion.com/v1/pages/${r.id}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) }).catch(() => {});
+          await integrateOneSavedPost(env, hdr, page, candidates, "", { infoFlow, caps });
+          state.mined++;
+        }
+      }
+
+      state.done.push(id);
+      delete state.errors[id];
+      processed.push({ id, ok: true });
+    } catch (e) {
+      state.errors[id] = String(e.message || e);
+      state.done.push(id); // never wedge the whole queue on one bad link
+      processed.push({ id, error: String(e.message || e) });
+    }
+    await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
+  }
+  state.lock = 0;
+  await env.TRADES.put(BULK_LINKS_KV, JSON.stringify(state));
+  const remaining = state.ids.filter(id => !state.done.includes(id)).length;
+  return { processed, mode: state.mode, total: state.ids.length, done: state.done.length, remaining,
+    errors: state.errors, transcribed: state.transcribed, mined: state.mined, complete: remaining === 0 };
+}
+
 // ── runListingRepostReminders ──
 // Weekly repost nudge for the "Listing" method, per operator instruction:
 // once a listing Asset's Asset Status is "Published", it should recur on
@@ -11129,6 +11241,35 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === "bulkHubStrategyReset") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         await env.TRADES.delete(BULK_HUB_KV).catch(() => {});
+        return json({ success: true });
+      }
+
+      // ── Bulk link transcription / mining (see runBulkLinks) ──
+      if (body.action === "bulkLinksStart") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        if (!BULK_LINKS_MODES[body.mode]) return json({ error: "mode must be transcribe | mine | remine" }, 400);
+        const r = await runBulkLinks(env, { seed: true, mode: body.mode });
+        // one immediate step so it doesn't feel dead until the first cron tick
+        ctx.waitUntil(runBulkLinks(env, { force: true, limit: 1 }).catch(() => {}));
+        return json({ success: true, ...r });
+      }
+      if (body.action === "bulkLinksStep") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const r = await runBulkLinks(env, { force: true, limit: body.limit });
+        return json({ success: true, ...r });
+      }
+      if (body.action === "bulkLinksStatus") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const st = await env.TRADES.get(BULK_LINKS_KV, "json").catch(() => null);
+        if (!st || !Array.isArray(st.ids)) return json({ success: true, seeded: false, total: 0, done: 0, remaining: 0, errors: {} });
+        const done = st.done || [];
+        return json({ success: true, seeded: true, mode: st.mode, started: st.started,
+          total: st.ids.length, done: done.length, remaining: st.ids.filter(id => !done.includes(id)).length,
+          transcribed: st.transcribed || 0, mined: st.mined || 0, errors: st.errors || {} });
+      }
+      if (body.action === "bulkLinksReset") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        await env.TRADES.delete(BULK_LINKS_KV).catch(() => {});
         return json({ success: true });
       }
 
@@ -33436,6 +33577,17 @@ Produce all of this by calling the submit_listing tool — do not include any of
           const r = await runBulkHubStrategy(env, { limit: 1 });
           console.log(`bulkHubStrategy tick: ${r.done}/${r.total} done, ${r.remaining} left`);
         } catch (e) { console.error('bulkHubStrategy cron failed:', e.message); }
+      })());
+      // Bulk link transcription / mining queue — same idea: no KV state → no-op
+      // (1 read). Seeded from the Links tab (bulkLinksStart). ~2 links/tick.
+      ctx.waitUntil((async () => {
+        try {
+          const st = await env.TRADES.get(BULK_LINKS_KV, "json");
+          if (!st || !Array.isArray(st.ids)) return;
+          if (st.ids.filter(id => !(st.done || []).includes(id)).length === 0) return;
+          const r = await runBulkLinks(env, { limit: 2 });
+          console.log(`bulkLinks tick (${r.mode}): ${r.done}/${r.total}, ${r.remaining} left`);
+        } catch (e) { console.error('bulkLinks cron failed:', e.message); }
       })());
       return;
     }
