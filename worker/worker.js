@@ -9379,7 +9379,234 @@ Return ONLY this JSON, no other text, no markdown fences:
           const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid);
           if (h) hubSlug = h.slug;
         }
-        return json({ forms, hubSlug });
+        // Resolve each form's hub-main product (the campaign's "hub"-method
+        // title's `product` relation) so the Globals panel / hub cards can
+        // show it and the email-sequence build can ground on its keywords.
+        const HUB_METHOD_ID = "3d61f7d3-a4bb-81d5-9083-da4af143c3ec";
+        let hubTitleRows = [];
+        try {
+          hubTitleRows = await notionQuery(CONTENT_STRATEGY_DB, {
+            filter: { property: "method", relation: { contains: HUB_METHOD_ID } },
+          });
+        } catch (e) { /* best-effort */ }
+        const prodIdByCampaign = {};
+        const hubTitleIdByCampaign = {};
+        hubTitleRows.forEach(r => {
+          const camp = (r.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "");
+          if (!camp) return;
+          hubTitleIdByCampaign[camp] = r.id.replace(/-/g, "");
+          const pid = (r.properties?.product?.relation || [])[0]?.id?.replace(/-/g, "");
+          if (pid) prodIdByCampaign[camp] = pid;
+        });
+        const wantedPids = [...new Set(Object.values(prodIdByCampaign))];
+        const pNameById = {};
+        if (wantedPids.length) {
+          try {
+            const allP = await notionQuery(PRODUCTS_DB, {});
+            allP.forEach(p => { pNameById[p.id.replace(/-/g, "")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); });
+          } catch (e) {}
+        }
+        const bySlugCampaign = {};
+        (typeof HUB_SITES !== "undefined" ? HUB_SITES : []).forEach(h => { bySlugCampaign[h.slug] = String(h.campaignId || "").replace(/-/g, ""); });
+        const formsPlus = forms.map(f => {
+          const camp = bySlugCampaign[f.hub];
+          const pid = camp ? prodIdByCampaign[camp] : null;
+          return { ...f, mainProduct: pid ? { id: pid, name: pNameById[pid] || "" } : null, hubTitleId: camp ? (hubTitleIdByCampaign[camp] || null) : null };
+        });
+        return json({ forms: formsPlus, hubSlug });
+      }
+
+      // ── setHubMainProduct ── writes the `product` relation on a campaign's
+      // "hub"-method title (the source of truth for "the hub's main product").
+      if (body.action === "setHubMainProduct") {
+        const { campaignId, productId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        let rows = [];
+        try {
+          rows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+            { property: "method", relation: { contains: "3d61f7d3-a4bb-81d5-9083-da4af143c3ec" } },
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+          ] } });
+        } catch (e) { return json({ error: "Couldn't find the hub title: " + e.message }, 502); }
+        if (!rows.length) return json({ error: "This campaign has no hub-method title to hang a main product on." }, 400);
+        const r = await fetch(`https://api.notion.com/v1/pages/${rows[0].id}`, {
+          method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { product: { relation: productId ? [{ id: dash(productId) }] : [] } } }),
+        });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ error: d.message || "Update failed" }, r.status);
+        return json({ success: true });
+      }
+
+      // ── runHubEmailSequence ── creates (once) a Content Strategy title +
+      // an "email hub main - <purpose>" email-sequence Asset for one hub,
+      // grounded campaign Keywords -> hub-main-product Keywords -> the
+      // method's per-purpose arc, and leaves the asset at Asset Status
+      // "Publish" (the operator pushes it into ActiveCampaign via browser
+      // automation later, then flips it to Published). Purpose is fixed per
+      // hub. The 3 newsletter-intent hubs run "nurture" for now — the
+      // newsletter method is a container until its recurring-issue logic is
+      // built. home-services (contact-only form) is intentionally excluded.
+      if (body.action === "runHubEmailSequence") {
+        const { campaignId, force } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const cidRaw = String(campaignId).replace(/-/g, "");
+        const hub = (typeof HUB_SITES !== "undefined" ? HUB_SITES : []).find(h => String(h.campaignId || "").replace(/-/g, "") === cidRaw);
+        if (!hub) return json({ error: "Not a hub campaign" }, 400);
+
+        const HUB_SEQ_PLAN = {
+          "surf-vacations":       "nurture",           // newsletter-intent — nurture until the newsletter method is built
+          "sunflower-acres":      "nurture",
+          "owners-rep":           "sales",
+          "creative-flow-guitar": "nurture",           // newsletter-intent
+          "ai-implementation":    "sales",
+          "mountainwize":         "nurture",
+          "care-gap":             "donor cultivation",
+          "sustainable-aquarium": "nurture",           // newsletter-intent
+        };
+        const purpose = HUB_SEQ_PLAN[hub.slug];
+        if (!purpose) return json({ error: `No email sequence planned for ${hub.slug} (contact-only form).` }, 400);
+        const methodName = "email hub main - " + purpose;
+        const methodId = await resolveMethodIdByName(methodName);
+        if (!methodId) return json({ error: `Method "${methodName}" not found` }, 404);
+        const methodDash = dash(methodId);
+
+        // Idempotent — one sequence title per hub unless force.
+        let existing = [];
+        try {
+          existing = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "method", relation: { contains: methodDash } },
+          ] } });
+        } catch (e) {}
+        if (existing.length && !force) {
+          return json({ skipped: true, reason: "already exists", titleId: existing[0].id.replace(/-/g, ""), hub: hub.slug, purpose });
+        }
+
+        // hub-main product (from the "hub"-method title) + campaign research
+        const HUB_METHOD_ID = "3d61f7d3-a4bb-81d5-9083-da4af143c3ec";
+        let hubTitleRows = [];
+        try {
+          hubTitleRows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+            { property: "method", relation: { contains: HUB_METHOD_ID } },
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+          ] } });
+        } catch (e) {}
+        const productId = (hubTitleRows[0]?.properties?.product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+
+        const [prodPage, researchRaw] = await Promise.all([
+          productId ? fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] })),
+        ]);
+        const rtFirst = (res, key) => { for (const r of (res.results || [])) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const campaignKeywords = rtFirst(researchRaw, "Keywords");
+        const productName = prodPage ? (prodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") : "";
+        const productKeywords = prodPage ? (prodPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
+        const productDesc = prodPage ? (prodPage.properties?.Description?.rich_text || []).map(t => t.plain_text).join("") : "";
+        const methodFramework = (await extractBlocksTextRecursive(hdr, methodDash).catch(() => "")) || "";
+
+        // Create the container title
+        const titleText = `${hub.name} — ${purpose} email sequence`;
+        const titleProps = {
+          "Title":    { title: [{ type: "text", text: { content: titleText.slice(0, 200) } }] },
+          "Status":   { select: { name: "Development" } },
+          "Cohort":   { select: { name: "Email Sequence" } },
+          "Grouping": { rich_text: [{ type: "text", text: { content: "Hub email sequence" } }] },
+          "Campaign": { relation: [{ id: dash(campaignId) }] },
+          "method":   { relation: [{ id: methodDash }] },
+        };
+        if (productId) titleProps["product"] = { relation: [{ id: dash(productId) }] };
+        const titleResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+        });
+        const titleOut = await titleResp.json();
+        if (!titleResp.ok || !titleOut.id) return json({ error: titleOut.message || "Title create failed" }, 502);
+        const titleId = titleOut.id.replace(/-/g, "");
+
+        // Write the sequence
+        const captureFormId = hub.slug + "/main";
+        const captureLine = [captureFormId, "ActiveCampaign", "tag: lead-hub-" + hub.slug].join(" · ");
+        const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options — for the purpose "${purpose}".
+
+GROUNDING CHAIN (priority order):
+1. CAMPAIGN KEYWORDS: ${campaignKeywords || "(none on file)"}
+2. MAIN HUB PRODUCT: ${productName || "(none — ground on the campaign keywords)"}${productKeywords ? ` — keywords: ${productKeywords}` : ""}${productDesc ? `\n   ${productDesc.slice(0, 500)}` : ""}
+3. PURPOSE: ${purpose}
+
+METHOD FRAMEWORK (sets sequence length, arc, and per-email output format — follow exactly):
+${methodFramework.slice(0, 3500) || `(framework not found — use a standard ${purpose} arc)`}
+
+CONTEXT: the list is subscribers from the "${hub.name}" content hub's signup form ("${hub.slug}/main"). Real, sendable copy — every email complete.
+
+Output as Markdown, for EACH email in order:
+### Email N — <one-line purpose>
+- **Send:** <trigger/delay>
+- **Subject:** <states an outcome, not a teaser>
+- **Preview:** <inbox preview line>
+
+<body — short paragraphs, one idea, exactly one CTA>
+
+Begin directly with "### Email 1". No preamble, no trailing notes.`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 5000, messages: [{ role: "user", content: seqPrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude error", titleId }, 502);
+        const sequenceMd = (aiData.content?.[0]?.text || "").trim();
+        if (!sequenceMd) return json({ error: "No sequence generated — try again", titleId }, 502);
+        const emailCount = (sequenceMd.match(/^###\s+Email\s+\d+/gim) || []).length;
+
+        await ensureDbRichTextProperty(hdr, ASSETS_DB, "Capture Form");
+        const assetProps = {
+          "Asset Title":      { title: [{ type: "text", text: { content: titleText.slice(0, 200) } }] },
+          "Asset Status":     { select: { name: "Publish" } },
+          "Asset Type":       { select: { name: methodName.slice(0, 100) } },
+          "Status":           { select: { name: "Ready" } },
+          "Body":             { rich_text: [{ type: "text", text: { content: sequenceMd.slice(0, 2000) } }] },
+          "Content Strategy": { relation: [{ id: dash(titleId) }] },
+          "Capture Form":     { rich_text: [{ type: "text", text: { content: captureLine } }] },
+          "Platform Name":    { select: { name: "Email" } },
+          "Campaign":         { relation: [{ id: dash(campaignId) }] },
+        };
+        if (productId) assetProps["Product"] = { relation: [{ id: dash(productId) }] };
+        const assetResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+        });
+        const assetOut = await assetResp.json();
+        if (!assetResp.ok || !assetOut.id) return json({ error: assetOut.message || "Asset create failed", titleId }, 502);
+        const assetId = assetOut.id.replace(/-/g, "");
+
+        try {
+          const rt = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1900) } }] : [];
+          const children = [];
+          String(sequenceMd).split("\n").forEach(ln => {
+            const line = ln.trim();
+            if (!line) return;
+            if (/^###\s+/.test(line)) children.push({ object: "block", type: "heading_3", heading_3: { rich_text: rt(line.replace(/^###\s+/, "")) } });
+            else if (/^[-*]\s+/.test(line)) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rt(line.replace(/^[-*]\s+/, "")) } });
+            else children.push({ object: "block", type: "paragraph", paragraph: { rich_text: rt(line) } });
+          });
+          for (let i = 0; i < children.length; i += 90) {
+            await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
+              method: "PATCH", headers: hdr,
+              body: JSON.stringify({ children: children.slice(i, i + 90) }),
+            });
+          }
+        } catch (e) { /* Body property carries the text; blocks are a bonus */ }
+
+        return json({ success: true, hub: hub.slug, purpose, titleId, assetId, emailCount, productName: productName || null, captureForm: captureLine });
       }
       // Live ActiveCampaign lists — read-only reference so the Globals panel
       // can show what lists exist (one intro list per hub, made on creation).

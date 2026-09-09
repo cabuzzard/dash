@@ -982,7 +982,11 @@
           Read-only. Forms and lists are created during hub creation, not here. <b>id</b> (e.g. <code style="font-size:10px;">owners-rep/main</code>) is what the Generate Assets modal references; <b>routes via</b> is the tag <code style="font-size:10px;">submitLead</code> sets on the ActiveCampaign contact — the operator's AC automation sends that tag to the hub's intro list.
         </div>
         <div id="glHubFormsList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
-        <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+        <div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.5;">
+          <b>⚡ Generate</b> creates the Content Strategy title + writes the email sequence as an Asset at <b>Publish</b> status (purpose fixed per hub — newsletter-intent hubs run <i>nurture</i> until the newsletter method is built). Push each into ActiveCampaign via browser automation, then flip it to Published.
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+          <button id="glHubFormsRunAllBtn" onclick="glRunAllHubSequences()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">⚡ Generate all sequences</button>
           <button id="glHubFormsPullBtn" onclick="glHubFormsPullLists()" title="Fetch the live list names from ActiveCampaign for reference" style="font-size:11px;padding:5px 11px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↓ Show ActiveCampaign lists</button>
           <span id="glHubFormsStatus" style="font-size:11px;color:var(--text3);"></span>
         </div>
@@ -12132,20 +12136,67 @@ async function loadGlHubForms(force) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
 }
+// hubs with no planned email sequence (contact-only form)
+const HUB_SEQ_SKIP = ['home-services'];
 function glHubFormsRender() {
   const el = document.getElementById('glHubFormsList');
   document.getElementById('glHubFormsCount').textContent = '· ' + GL_HUB_FORMS.length;
-  const gt = 'grid-template-columns:15ch 1fr 21ch;';
+  const gt = 'grid-template-columns:14ch 1fr 17ch 1fr auto;';
   const head = '<div style="display:grid;' + gt + 'gap:8px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);padding:0 0 6px;border-bottom:1px solid var(--border);">'
-    + '<span>form id</span><span>label</span><span>routes via</span></div>';
-  const rows = GL_HUB_FORMS.map(f =>
-    '<div style="display:grid;' + gt + 'gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:baseline;">'
-    + '<code style="font-size:10.5px;color:var(--text);">' + esc(f.id) + '</code>'
-    + '<span style="color:var(--text2);">' + esc(f.label || '') + '</span>'
-    + '<code style="font-size:10px;color:var(--text3);">' + esc(f.routingTag || '—') + '</code>'
-    + '</div>'
-  ).join('');
+    + '<span>form id</span><span>label</span><span>routes via</span><span>main product</span><span>sequence</span></div>';
+  const rows = GL_HUB_FORMS.map((f, i) => {
+    const skip = HUB_SEQ_SKIP.includes(f.hub);
+    const prod = f.mainProduct && f.mainProduct.name ? f.mainProduct.name : (f.mainProduct ? '(unnamed)' : '—');
+    const btn = skip
+      ? '<span style="font-size:10px;color:var(--text3);">contact-only</span>'
+      : '<button id="glSeqBtn' + i + '" onclick="glRunHubSequence(' + i + ')" style="font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;white-space:nowrap;">⚡ Generate</button>';
+    return '<div style="display:grid;' + gt + 'gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center;">'
+      + '<code style="font-size:10.5px;color:var(--text);">' + esc(f.id) + '</code>'
+      + '<span style="color:var(--text2);">' + esc(f.label || '') + '</span>'
+      + '<code style="font-size:10px;color:var(--text3);">' + esc(f.routingTag || '—') + '</code>'
+      + '<span style="color:' + (f.mainProduct ? 'var(--text2)' : 'var(--text3)') + ';font-size:11px;">' + esc(prod) + '</span>'
+      + btn
+      + '</div>'
+      + '<div id="glSeqMsg' + i + '" style="font-size:10.5px;color:var(--text3);margin:-3px 0 3px 2px;min-height:0;"></div>';
+  }).join('');
   el.innerHTML = head + (rows || '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No hubs.</div>');
+}
+async function glRunHubSequence(i) {
+  const f = GL_HUB_FORMS[i];
+  if (!f) return;
+  const hub = (typeof HUB_SITES !== 'undefined') ? HUB_SITES.find(h => h.slug === f.hub) : null;
+  if (!hub) { return; }
+  const btn = document.getElementById('glSeqBtn' + i), msg = document.getElementById('glSeqMsg' + i);
+  btn.disabled = true; btn.textContent = 'Writing…';
+  msg.style.color = 'var(--text3)'; msg.textContent = 'Creating the title + writing the sequence (campaign keywords → hub product → the method arc)…';
+  try {
+    const r = await call('runHubEmailSequence', { campaignId: hub.campaignId });
+    if (r.skipped) {
+      msg.textContent = 'Already exists — a sequence title for this hub is already there.'; msg.style.color = 'var(--text2)';
+      btn.textContent = '✓ exists';
+      return;
+    }
+    msg.innerHTML = '✓ ' + r.emailCount + '-email <b>' + esc(r.purpose) + '</b> sequence created at <b>Publish</b>'
+      + (r.productName ? ' · product: ' + esc(r.productName) : ' · no product (campaign keywords only)')
+      + ' · <a href="https://www.notion.so/' + esc(r.assetId) + '" target="_blank" style="color:var(--accent);">open asset ↗</a>';
+    msg.style.color = '#4ade80';
+    btn.textContent = '✓ done';
+  } catch (e) {
+    msg.textContent = 'Failed: ' + e.message; msg.style.color = '#f87171';
+    btn.disabled = false; btn.textContent = '⚡ Generate';
+  }
+}
+async function glRunAllHubSequences() {
+  const btn = document.getElementById('glHubFormsRunAllBtn');
+  btn.disabled = true;
+  for (let i = 0; i < GL_HUB_FORMS.length; i++) {
+    if (HUB_SEQ_SKIP.includes(GL_HUB_FORMS[i].hub)) continue;
+    const b = document.getElementById('glSeqBtn' + i);
+    if (b && /done|exists/.test(b.textContent)) continue;
+    btn.textContent = 'Running ' + (i + 1) + '/' + GL_HUB_FORMS.length + '…';
+    await glRunHubSequence(i);
+  }
+  btn.disabled = false; btn.textContent = '⚡ Generate all sequences';
 }
 async function glHubFormsPullLists() {
   const btn = document.getElementById('glHubFormsPullBtn'), st = document.getElementById('glHubFormsStatus');
