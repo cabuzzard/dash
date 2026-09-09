@@ -761,15 +761,16 @@
       <div id="hubFrontBody" style="display:none;margin-top:10px;"></div>
     </div>
 
-    <!-- HUB METHOD / ASSET-TYPE MATRIX — rows = hubs, columns = the
-         operator-grown 🧱 Method & Asset Types list, cell = count of
-         PUBLISHED assets for that hub attributed to that method/asset type.
-         Read-only counts. "+ type" adds a column. Collapsed by default. -->
+    <!-- HUB METHOD MATRIX — rows = hubs, columns = the LIVE methods (one
+         column per method, 1:1). Each cell = "# Development / # Publish"
+         Content Strategy titles for that hub × method. "+ method" creates a
+         new Live method (= a new column). Click a column header to edit that
+         method's notes. Collapsed by default. -->
     <div id="hubAssetMatrixSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubAssetMatrix()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Method / Asset Matrix <span id="hubAssetMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Method Matrix <span id="hubAssetMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:8px;">
-          <button onclick="event.stopPropagation();openMatTypeModal()" title="Add a method or asset type (new column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ type</button>
+          <button onclick="event.stopPropagation();hamAddMethod()" title="Create a new Live method (adds a column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ method</button>
           <span id="hubAssetMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
         </span>
       </div>
@@ -1841,30 +1842,24 @@
   </div>
 </div>
 
-<!-- Hub Method / Asset Matrix → add / edit a column (🧱 Method & Asset Types) -->
+<!-- Hub Method Matrix → click a column header to edit that method's notes -->
 <div class="modal-bg" id="matTypeModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:640px;">
-    <div class="modal-title" id="matTypeModalTitle">Add method / asset type</div>
-    <div style="display:flex;gap:8px;">
-      <div class="modal-field" style="flex:1;">
-        <label class="modal-label">Name</label>
-        <input class="modal-input" id="mtName" type="text" placeholder="e.g. explainer video">
-      </div>
-      <div class="modal-field" style="width:130px;flex-shrink:0;">
-        <label class="modal-label">Kind</label>
-        <select class="modal-input" id="mtKind"><option>Asset Type</option><option>Method</option><option>Both</option></select>
-      </div>
+    <div class="modal-title" id="matTypeModalTitle">Method notes</div>
+    <div class="modal-field">
+      <label class="modal-label">Name</label>
+      <input class="modal-input" id="mtName" type="text" placeholder="method name">
     </div>
     <div class="modal-field">
       <label class="modal-label" style="display:flex;align-items:center;gap:8px;">
-        Write-up / notes <span style="color:var(--text3);font-weight:400;">— your own notes on what this method does &amp; how it's achieved; paste into code chats</span>
+        Notes <span style="color:var(--text3);font-weight:400;">— what this method does &amp; how it's achieved; paste into code chats</span>
         <button type="button" onclick="mtCopyNotes(this)" style="margin-left:auto;font-size:10px;font-weight:600;background:none;border:1px solid var(--border2);border-radius:5px;color:var(--text3);padding:2px 8px;cursor:pointer;white-space:nowrap;">⧉ Copy</button>
       </label>
       <textarea class="modal-input" id="mtNotes" rows="16" style="resize:vertical;font-size:13px;line-height:1.6;font-family:inherit;" placeholder="What this method produces, the step-by-step of how it's done, gotchas, examples…"></textarea>
     </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="modal-btn" id="mtSaveBtn" onclick="matTypeSave()">Save</button>
-      <button class="modal-btn" id="mtDeleteBtn" onclick="matTypeDelete()" style="background:transparent;border-color:#e05252;color:#e05252;display:none;">Delete</button>
+      <button class="modal-btn" id="mtDeleteBtn" onclick="matTypeDelete()" style="background:transparent;border-color:#e05252;color:#e05252;" title="Set this method's Status to Development — removes its column (counts unaffected)">↓ Development</button>
       <button class="modal-btn" onclick="document.getElementById('matTypeModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);margin-left:auto;">Cancel</button>
     </div>
     <div id="mtMsg" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
@@ -14318,14 +14313,14 @@ async function hubFrontDelete() {
   } catch(e) { document.getElementById('hfMsg').textContent = 'Error: ' + e.message; }
 }
 
-// ── HUB METHOD / ASSET MATRIX — published-asset counts per hub ──────────
-// Rows = hubs, columns = the operator-grown 🧱 Method & Asset Types list,
-// cell = number of PUBLISHED assets for that hub attributed to that
-// method / asset type. Read-only. "+ type" grows the column list.
-let HAM_DATA = null;   // { columns:[{id,name,kind}], counts:{slug:{name:n}}, hubs:[{slug}] }
+// ── HUB METHOD MATRIX — Development / Publish title counts per hub × method
+// Rows = hubs, columns = the LIVE methods (one column per method, 1:1).
+// Each cell = "# Development / # Publish" Content Strategy titles for that
+// hub × method. "+ method" creates a new Live method. Click a column header
+// to edit that method's notes.
+let HAM_DATA = null;   // { columns:[{id,name,notes}], counts:{slug:{methodId:{dev,pub}}}, hubs:[{slug}] }
 let hubAssetMatrixCollapsed = true;
 try { hubAssetMatrixCollapsed = localStorage.getItem('hubAssetMatrixCollapsed') !== 'false'; } catch(e) {}
-const HAM_KIND_MARK = { 'Method': '⚙', 'Asset Type': '▢', 'Both': '⚙▢' };
 // Manual drag-to-reorder for the column list, persisted in localStorage
 // (same approach as platColumnOrder / tradeColOrder). Unknown ids sort last.
 let hamColOrder = [];
@@ -14380,100 +14375,89 @@ function renderHubAssetMatrix() {
   if (!body || !HAM_DATA) return;
   const cols = hamSortCols(HAM_DATA.columns || []);
   const counts = HAM_DATA.counts || {};
-  if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No columns yet — use + type.</div>'; if (summary) summary.textContent = ''; return; }
+  if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No Live methods yet — use + method.</div>'; if (summary) summary.textContent = ''; return; }
   const colgroup = `<colgroup><col style="width:90px;">${cols.map(() => '<col>').join('')}</colgroup>`;
-  const headRow = cols.map(c => `<th title="${esc(c.name)}${c.kind ? ' — ' + esc(c.kind) : ''} · drag to reorder" draggable="true"`
+  const headRow = cols.map(c => `<th title="${esc(c.name)} — click to edit notes · drag to reorder" draggable="true"`
+    + ` onclick="openMatTypeModal(${esc(JSON.stringify(c.id))})"`
     + ` ondragstart="hamColDragStart(${esc(JSON.stringify(c.id))})" ondragover="event.preventDefault()"`
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hamColDrop(${esc(JSON.stringify(c.id))})"`
-    + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;">`
+    + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:pointer;">`
     + `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">`
-    + `<span style="font-size:7px;color:var(--text3);line-height:1;">${HAM_KIND_MARK[c.kind] || ''}</span>`
-    + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;">${esc(c.name)}</span>`
-    + `<button onclick="openMatTypeModal(${esc(JSON.stringify(c.id))})" title="Edit / remove" style="font-size:8px;border:0;background:transparent;color:var(--text3);cursor:pointer;padding:0;line-height:1;">✎</button>`
+    + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
     + `</div></th>`).join('');
-  let total = 0;
+  let totDev = 0, totPub = 0;
   let rows = '';
   (HAM_DATA.hubs || []).forEach(h => {
     const hc = counts[h.slug] || {};
     let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(h.slug)}">${esc(HM_LABELS[h.slug] || h.slug)}</td>`;
     cols.forEach(c => {
-      const n = hc[c.name] || 0;
-      total += n;
-      tds += `<td style="padding:1px;text-align:center;border-left:1px solid var(--border);font-size:10px;font-weight:${n ? '700' : '400'};color:${n ? 'var(--text)' : 'var(--text3)'};">${n || '·'}</td>`;
+      const cell = hc[c.id] || { dev: 0, pub: 0 };
+      totDev += cell.dev; totPub += cell.pub;
+      const empty = !cell.dev && !cell.pub;
+      tds += `<td title="${esc(c.name)} · ${cell.dev} Development · ${cell.pub} Publish" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
+        + (empty ? '<span style="color:var(--text3);">·</span>'
+          : `<span style="color:#5aa6db;font-weight:${cell.dev ? '700' : '400'};">${cell.dev}</span>`
+            + `<span style="color:var(--text3);">/</span>`
+            + `<span style="color:#5fbf7c;font-weight:${cell.pub ? '700' : '400'};">${cell.pub}</span>`)
+        + `</td>`;
     });
     rows += `<tr>${tds}</tr>`;
   });
-  if (summary) summary.textContent = `— ${total} published · ${cols.length} column${cols.length === 1 ? '' : 's'}`;
+  if (summary) summary.textContent = `— ${totDev} dev · ${totPub} publish · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
   body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">count of published assets per hub · ⚙ method · ▢ asset type · drag column headers to reorder</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · click a method header to edit its notes · drag headers to reorder</div>`;
 }
 let matEditingId = null;
-let mtNotesOk = true;   // false if getMatType failed — then don't let a blank save wipe the stored write-up
-const MT_NOTES_PLACEHOLDER = "What this method produces, the step-by-step of how it's done, gotchas, examples…";
-async function openMatTypeModal(typeId) {
-  matEditingId = typeId || null;
-  const c = typeId && HAM_DATA ? (HAM_DATA.columns || []).find(x => x.id === typeId) : null;
-  document.getElementById('matTypeModalTitle').textContent = c ? 'Edit column' : 'Add method / asset type';
-  document.getElementById('mtDeleteBtn').style.display = c ? '' : 'none';
-  document.getElementById('mtName').value = c ? c.name : '';
-  document.getElementById('mtName').disabled = false;
-  document.getElementById('mtKind').value = c && c.kind ? c.kind : 'Asset Type';
-  const ta = document.getElementById('mtNotes');
-  ta.value = '';
-  ta.disabled = false;
-  ta.placeholder = MT_NOTES_PLACEHOLDER;
-  document.getElementById('mtMsg').textContent = c ? 'Name is the match key — it maps to an Asset Type / Method by name. The write-up is your own notes, saved on the record; no code reads it.' : '';
+async function openMatTypeModal(methodId) {
+  matEditingId = methodId || null;
+  const c = methodId && HAM_DATA ? (HAM_DATA.columns || []).find(x => x.id === methodId) : null;
+  if (!c) return;
+  document.getElementById('matTypeModalTitle').textContent = 'Method notes — ' + c.name;
+  document.getElementById('mtName').value = c.name;
+  document.getElementById('mtNotes').value = c.notes || '';
+  document.getElementById('mtMsg').textContent = 'Name + notes save to the Method record. The Notes text is read by nothing in code — it’s your own reference.';
   document.getElementById('matTypeModal').classList.add('open');
-  mtNotesOk = true;
-  if (typeId) {
-    ta.disabled = true; ta.placeholder = 'Loading…';
-    try {
-      const r = await call('getMatType', { typeId });
-      if (matEditingId === typeId && document.getElementById('matTypeModal').classList.contains('open')) {
-        ta.value = r.notes || '';
-        if (r.name) document.getElementById('mtName').value = r.name;
-        if (r.kind) document.getElementById('mtKind').value = r.kind;
-      }
-    } catch(e) {
-      mtNotesOk = false;
-      if (matEditingId === typeId) document.getElementById('mtMsg').textContent = 'Could not load the write-up (name/kind still editable): ' + e.message;
-    }
-    ta.disabled = false; ta.placeholder = MT_NOTES_PLACEHOLDER;
-  }
+  setTimeout(() => document.getElementById('mtNotes').focus(), 30);
 }
 async function matTypeSave() {
+  if (!matEditingId) return;
   const btn = document.getElementById('mtSaveBtn');
   const msg = document.getElementById('mtMsg');
   const name = document.getElementById('mtName').value.trim();
-  const kind = document.getElementById('mtKind').value;
   const notes = document.getElementById('mtNotes').value.replace(/\s+$/, '');
   if (!name) { msg.textContent = 'Name required'; return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    let r;
-    if (matEditingId) {
-      const payload = { typeId: matEditingId, name, kind };
-      if (mtNotesOk) payload.notes = notes;   // skip if the write-up never loaded — don't overwrite it blank
-      r = await call('updateMatType', payload);
-    } else {
-      r = await call('createMatType', { name, kind, notes });
-    }
+    const r = await call('updateMethod', { methodId: matEditingId, name, notes });
     if (r.error) throw new Error(r.error);
+    const c = (HAM_DATA && HAM_DATA.columns || []).find(x => x.id === matEditingId);
+    if (c) { c.name = name; c.notes = notes; }
+    renderHubAssetMatrix();
     document.getElementById('matTypeModal').classList.remove('open');
-    HAM_DATA = null;
-    await loadHubAssetMatrix();
   } catch(e) { msg.textContent = 'Error: ' + e.message; }
   btn.disabled = false; btn.textContent = 'Save';
 }
 async function matTypeDelete() {
-  if (!matEditingId || !confirm('Remove this column? (archives it — asset counts are unaffected)')) return;
+  if (!matEditingId || !confirm('Set this method to Status: Development? It drops out of the matrix and every method picker, but nothing is deleted and counts are unaffected.')) return;
   try {
-    await call('deleteMatType', { typeId: matEditingId });
+    const r = await call('updateMethod', { methodId: matEditingId, status: 'Development' });
+    if (r.error) throw new Error(r.error);
     document.getElementById('matTypeModal').classList.remove('open');
     HAM_DATA = null;
     await loadHubAssetMatrix();
   } catch(e) { document.getElementById('mtMsg').textContent = 'Error: ' + e.message; }
+}
+async function hamAddMethod() {
+  const name = prompt('New method name (created as a Live method — a new column):');
+  if (!name || !name.trim()) return;
+  try {
+    const r = await call('createMethod', { title: name.trim(), status: 'Live' });
+    if (r.error) throw new Error(r.error);
+    HAM_DATA = null;
+    if (hubAssetMatrixCollapsed) { hubAssetMatrixCollapsed = false; try { localStorage.setItem('hubAssetMatrixCollapsed', 'false'); } catch(e) {} applyHubAssetMatrixCollapse(); }
+    await loadHubAssetMatrix();
+  } catch(e) { alert('Error: ' + e.message); }
 }
 async function mtCopyNotes(btn) {
   const txt = document.getElementById('mtNotes').value;

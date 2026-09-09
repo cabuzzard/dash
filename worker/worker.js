@@ -9175,17 +9175,20 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       if (body.action === "createMethod") {
-        const { title } = body;
+        const { title, status } = body;
         if (!title) return json({ error: "title required" }, 400);
+        // New methods start in Development — Live is a deliberate, explicit
+        // promotion once a method is actually built out, not the default for
+        // "just typed a name in." The one exception: the Hub Method/Asset
+        // Matrix's "+ method" button, whose columns ARE the Live methods —
+        // adding one there is itself the promotion, so it passes status: "Live".
+        const startStatus = ["Development", "Live", "Migrate"].includes(status) ? status : "Development";
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({
             parent: { database_id: METHODS_DB },
-            // New methods start in Development — Live is a deliberate,
-            // explicit promotion once a method is actually built out, not
-            // the default for "just typed a name in."
-            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: "Development" } } }
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: startStatus } } }
           }),
         });
         const result = await resp.json();
@@ -9583,60 +9586,45 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true, id: created.id.replace(/-/g,""), created: true });
       }
 
-      // ── Hub Method / Asset-Type Matrix (🧱 Method & Asset Types DB) ───────
-      // Second TD-tab matrix: rows = hubs, columns = the operator-grown list
-      // of methods / asset types, cell = count of PUBLISHED assets for that
-      // hub attributed to that method or asset type. Hub attribution per
-      // asset: Content Hub select → else Campaign relation → else the source
-      // title's Campaign. Method attribution: the source title's `method`.
+      // ── Hub Method Matrix ────────────────────────────────────────────────
+      // Second TD-tab matrix: rows = hubs, columns = the LIVE methods
+      // (METHODS_DB Status = "Live"), one column per method. Each cell shows
+      // two counts for that hub × method: how many Content Strategy titles
+      // are at Status "Development" and how many at "Status" "Publish" (NOT
+      // "Published"). A title counts for a hub when its Campaign relation is
+      // that hub's campaign (or its "Content Hub" select names the slug) and
+      // for a method when its `method` relation points at that method.
+      // The old 🧱 Method & Asset Types column list (MAT_TYPES_DB) and the
+      // get/create/update/deleteMatType actions below are superseded by this
+      // — kept only so any stray reference degrades quietly.
       if (body.action === "getHubMethodMatrix") {
         const norm = s => (s || "").replace(/-/g, "");
         const hubByCamp = {};
         HUB_SITES.forEach(h => { hubByCamp[norm(h.campaignId)] = h.slug; });
         const hubSet = new Set(HUB_SITES.map(h => h.slug));
-        const [assetRows, titleRows, methodRows, colRows] = await Promise.all([
-          notionQuery(ASSETS_DB, { filter: { or: [
-            { property: "Asset Status", select: { equals: "Published" } },
-            { property: "Asset Status", select: { equals: "Publish" } },
-          ] } }).catch(e => { console.error('getHubMethodMatrix assets:', e.message); return []; }),
+        const [titleRows, methodRows] = await Promise.all([
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
-          notionQuery(METHODS_DB, {}).catch(() => []),
-          notionQuery(MAT_TYPES_DB, {}).catch(e => { console.error('getHubMethodMatrix cols:', e.message); return []; }),
+          notionQuery(METHODS_DB, { filter: { property: "Status", select: { equals: "Live" } } }).catch(e => { console.error('getHubMethodMatrix methods:', e.message); return []; }),
         ]);
-        const methodName = {};
-        methodRows.forEach(m => { methodName[norm(m.id)] = (m.properties?.Name?.title || []).map(t => t.plain_text).join(""); });
-        const titleInfo = {};
-        titleRows.forEach(t => {
-          const p = t.properties || {};
-          titleInfo[norm(t.id)] = {
-            camp: norm((p.Campaign?.relation || [])[0]?.id),
-            method: methodName[norm((p.method?.relation || [])[0]?.id)] || "",
-          };
-        });
-        // write-up (per-method notes) lives in each row's page body — fetched
-        // on demand by getMatType when the edit modal opens, not here.
-        const columns = colRows.map(r => ({
+        const columns = methodRows.map(r => ({
           id: norm(r.id),
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
-          kind: r.properties?.Kind?.select?.name || "",
+          notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
-        const colByLc = {};
-        columns.forEach(c => { colByLc[c.name.toLowerCase()] = c.name; });
-        const counts = {};
-        assetRows.forEach(a => {
-          const p = a.properties || {};
-          const at = p["Asset Type"]?.select?.name || "";
+        const colIds = new Set(columns.map(c => c.id));
+        const counts = {};   // { slug: { methodId: { dev, pub } } }
+        titleRows.forEach(t => {
+          const p = t.properties || {};
+          const stage = p.Status?.select?.name || "";
+          if (stage !== "Development" && stage !== "Publish") return;
+          const methodId = norm((p.method?.relation || [])[0]?.id);
+          if (!methodId || !colIds.has(methodId)) return;
           const hub0 = p["Content Hub"]?.select?.name || "";
           const campId = norm((p.Campaign?.relation || [])[0]?.id);
-          const ti = titleInfo[norm((p["Content Strategy"]?.relation || [])[0]?.id)] || {};
-          const slug = hubSet.has(hub0) ? hub0 : (hubByCamp[campId] || hubByCamp[ti.camp] || "");
+          const slug = hubSet.has(hub0) ? hub0 : (hubByCamp[campId] || "");
           if (!slug) return;
-          const hits = new Set();
-          if (at && colByLc[at.toLowerCase()]) hits.add(colByLc[at.toLowerCase()]);
-          if (ti.method && colByLc[ti.method.toLowerCase()]) hits.add(colByLc[ti.method.toLowerCase()]);
-          if (!hits.size) return;
-          counts[slug] = counts[slug] || {};
-          hits.forEach(name => { counts[slug][name] = (counts[slug][name] || 0) + 1; });
+          const cell = ((counts[slug] = counts[slug] || {})[methodId] = counts[slug][methodId] || { dev: 0, pub: 0 });
+          if (stage === "Development") cell.dev++; else cell.pub++;
         });
         return json({ success: true, columns, counts, hubs: HUB_SITES.map(h => ({ slug: h.slug })) });
       }
