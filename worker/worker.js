@@ -9225,7 +9225,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       if (body.action === "updateMethod") {
-        const { methodId, name, status, platform, category, template, notes, bodyText } = body;
+        const { methodId, name, status, platform, category, template, notes, bodyText, type } = body;
         if (!methodId) return json({ error: "methodId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -9234,6 +9234,10 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const props = {};
         if (name !== undefined && String(name).trim()) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] };
         if (status !== undefined && status !== "") props["Status"] = { select: { name: status } };
+        // Type is a Notion select — passing a name that isn't an existing
+        // option creates it (that's the "add new type" path from the Hub
+        // Method Matrix modal). Empty string clears it.
+        if (type !== undefined) props["Type"] = String(type).trim() ? { select: { name: String(type).trim().slice(0, 100) } } : { select: null };
         if (platform !== undefined) props["Platform"] = platform ? { select: { name: platform } } : { select: null };
         if (category !== undefined) props["Category"] = { multi_select: (Array.isArray(category) ? category : []).map(name => ({ name })) };
         if (template !== undefined) props["Template"] = { url: template || null };
@@ -9605,8 +9609,11 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
           status: r.properties?.Status?.select?.name || "",
+          type: r.properties?.Type?.select?.name || "",
           url: r.url || `https://www.notion.so/${norm(r.id)}`,
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
+        // every distinct Type currently in use — feeds the modal's Type picker
+        const allTypes = [...new Set(columns.map(c => c.type).filter(Boolean))].sort((a, b) => a.localeCompare(b));
         const colIds = new Set(columns.map(c => c.id));
         const counts = {};   // { slug: { methodId: { dev, pub } } }
         titleRows.forEach(t => {
@@ -9622,7 +9629,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           const cell = ((counts[slug] = counts[slug] || {})[methodId] = counts[slug][methodId] || { dev: 0, pub: 0 });
           if (stage === "Development") cell.dev++; else cell.pub++;
         });
-        return json({ success: true, columns, counts, hubs: HUB_SITES.map(h => ({ slug: h.slug })) });
+        return json({ success: true, columns, counts, allTypes, hubs: HUB_SITES.map(h => ({ slug: h.slug })) });
       }
 
       if (body.action === "createMatType") {

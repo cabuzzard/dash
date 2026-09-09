@@ -1768,7 +1768,7 @@
         </label>
         <input class="modal-input" id="mtName" type="text" placeholder="method name">
       </div>
-      <div class="modal-field" style="width:140px;flex-shrink:0;">
+      <div class="modal-field" style="width:130px;flex-shrink:0;">
         <label class="modal-label">Status</label>
         <select class="modal-input" id="mtStatus">
           <option value="Development">Development</option>
@@ -1776,6 +1776,10 @@
           <option value="Migrate">Migrate</option>
           <option value="Delete">Delete</option>
         </select>
+      </div>
+      <div class="modal-field" style="width:150px;flex-shrink:0;">
+        <label class="modal-label">Type <span style="color:var(--text3);font-weight:400;">— tints column</span></label>
+        <select class="modal-input" id="mtType" onchange="mtTypeChange(this)"></select>
       </div>
     </div>
     <div class="modal-field">
@@ -13989,11 +13993,28 @@ async function loadTdTab() {
 // Notion record, or archive the method. The operator's working surface for
 // refining the methods list — all other work-type / hub-front matrix UI was
 // removed 2026-09-09 in favour of this.
-let HAM_DATA = null;   // { columns:[{id,name,notes,status,url}], counts:{slug:{methodId:{dev,pub}}}, hubs:[{slug}] }
-// Status tints the whole column header (no dot). Development is the neutral
-// majority so it gets no tint.
-const HAM_STATUS_BG = { 'Live': 'rgba(74,222,128,.15)', 'Development': 'transparent', 'Migrate': 'rgba(250,204,21,.15)', 'Delete': 'rgba(248,113,113,.18)' };
-const HAM_STATUS_FG = { 'Live': '#4ade80', 'Development': 'var(--text2)', 'Migrate': '#facc15', 'Delete': '#f87171' };
+let HAM_DATA = null;   // { columns:[{id,name,notes,status,type,url}], counts:{slug:{methodId:{dev,pub}}}, allTypes:[], hubs:[{slug}] }
+// Column headers are tinted by the method's Type (a Notion select). Unset =
+// no tint / default dash styling. Known types get a fixed colour; any
+// operator-added type gets a stable colour hashed from its name.
+const HAM_TYPE_COLORS = {
+  'Distribution': '#5aa6db', 'Ecommerce': '#e0a13c', 'Outreach': '#c17ae0',
+  'SEO': '#5fbf7c', 'video': '#e05c8a', 'Community': '#e8c14a',
+  'Paid': '#e0645c', 'Research': '#7a9fe0',
+};
+function hamTypeStyle(t) {
+  if (!t) return { fg: '', bg: '' };
+  const hex = HAM_TYPE_COLORS[t];
+  if (hex) return { fg: hex, bg: hex + '22' };
+  let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) >>> 0;
+  h = h % 360;
+  return { fg: `hsl(${h} 60% 62%)`, bg: `hsl(${h} 60% 62% / .16)` };
+}
+function hamAllTypes() {
+  const set = new Set((HAM_DATA && HAM_DATA.allTypes) || []);
+  ((HAM_DATA && HAM_DATA.columns) || []).forEach(c => { if (c.type) set.add(c.type); });
+  return [...set].sort((a, b) => a.localeCompare(b));
+}
 const HM_LABELS = { 'creative-flow-guitar':'guitar', 'owners-rep':'o-rep', 'ai-implementation':'ai', 'sunflower-acres':'sun', 'surf-vacations':'surf', 'sustainable-aquarium':'aqua', 'home-services':'home', 'mountainwize':'mtn', 'care-gap':'care' };  // hub slug -> short column/row label (shared with the method matrix)
 let hubAssetMatrixCollapsed = true;
 try { hubAssetMatrixCollapsed = localStorage.getItem('hubAssetMatrixCollapsed') !== 'false'; } catch(e) {}
@@ -14054,23 +14075,32 @@ function renderHubAssetMatrix() {
   const cols = hamSortCols(HAM_DATA.columns || []);
   const counts = HAM_DATA.counts || {};
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No methods yet — use + method.</div>'; if (summary) summary.textContent = ''; return; }
-  const colgroup = `<colgroup><col style="width:90px;">${cols.map(() => '<col>').join('')}</colgroup>`;
+  const colgroup = `<colgroup><col style="width:76px;"><col style="width:15px;"><col style="width:15px;">${cols.map(() => '<col>').join('')}</colgroup>`;
   const headRow = cols.map(c => {
     const id = esc(JSON.stringify(c.id));
-    return `<th title="${esc(c.name)}${c.status ? ' — ' + esc(c.status) : ''} · click for notes / status / Notion link / archive · drag to reorder" draggable="true"`
+    const ts = hamTypeStyle(c.type);
+    return `<th title="${esc(c.name)}${c.type ? ' — ' + esc(c.type) : ''}${c.status ? ' · ' + esc(c.status) : ''} · click to edit · drag to reorder" draggable="true"`
     + ` onclick="hamColClick(${id})"`
     + ` ondragstart="hamColDragStart(${id},event)" ondragover="event.preventDefault()"`
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline='';hamColDragEnd()" ondrop="this.style.outline='';hamColDrop(${id})"`
-    + ` style="padding:4px 2px;border-left:1px solid var(--border);border-top:2px solid ${HAM_STATUS_FG[c.status] || 'transparent'};background:${HAM_STATUS_BG[c.status] || 'transparent'};vertical-align:bottom;cursor:pointer;">`
-    + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${HAM_STATUS_FG[c.status] || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
+    + ` style="padding:4px 2px;border-left:1px solid var(--border);border-top:2px solid ${ts.fg || 'transparent'};background:${ts.bg || 'transparent'};vertical-align:bottom;cursor:pointer;">`
+    + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${ts.fg || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
     + `</th>`;
   }).join('');
   let totDev = 0, totPub = 0;
   let rows = '';
+  const hubLink = (url, tip) => `<td style="text-align:center;padding:0;border-left:1px solid var(--border);">`
+    + (url ? `<a href="${esc(url)}" target="_blank" rel="noopener" title="${tip}" onclick="event.stopPropagation()" style="color:var(--text3);text-decoration:none;font-size:11px;">↗</a>` : '')
+    + `</td>`;
   (HAM_DATA.hubs || []).forEach(h => {
     const hc = counts[h.slug] || {};
-    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(h.slug)}">${esc(HM_LABELS[h.slug] || h.slug)}</td>`;
+    const hs = (typeof HUB_SITES !== 'undefined' ? HUB_SITES : []).find(x => x.slug === h.slug) || {};
+    const msUrl = hs.microsite ? `https://cabuzzard.github.io/dash/microsites/${hs.microsite}/` : '';
+    const hubUrl = hs.domain ? `https://${hs.domain}/` : `https://cabuzzard.github.io/dash/web/hub/${h.slug}/`;
+    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(h.slug)}">${esc(HM_LABELS[h.slug] || h.slug)}</td>`
+      + hubLink(msUrl, 'Admin microsite ↗')
+      + hubLink(hubUrl, 'Live content hub ↗');
     cols.forEach(c => {
       const cell = hc[c.id] || { dev: 0, pub: 0 };
       totDev += cell.dev; totPub += cell.pub;
@@ -14085,8 +14115,11 @@ function renderHubAssetMatrix() {
     rows += `<tr>${tds}</tr>`;
   });
   if (summary) summary.textContent = `— ${totDev} dev · ${totPub} publish · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
-  body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · every method is a column, header tinted by status (<span style="color:#4ade80;">Live</span> · Development · <span style="color:#facc15;">Migrate</span> · <span style="color:#f87171;">Delete</span>) · click a header for notes / status / Notion link / archive · drag to reorder</div>`;
+  const corner = `<th style="background:var(--bg);"></th>`
+    + `<th title="Admin microsite" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">ms</th>`
+    + `<th title="Live content hub" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">hub</th>`;
+  body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder</div>`;
 }
 let matEditingId = null;
 async function openMatTypeModal(methodId) {
@@ -14096,12 +14129,36 @@ async function openMatTypeModal(methodId) {
   document.getElementById('matTypeModalTitle').textContent = 'Method — ' + c.name;
   document.getElementById('mtName').value = c.name;
   document.getElementById('mtStatus').value = ['Development', 'Live', 'Migrate', 'Delete'].includes(c.status) ? c.status : 'Development';
+  mtFillTypeSelect(c.type || '');
   document.getElementById('mtNotes').value = c.notes || '';
   const link = document.getElementById('mtNotionLink');
   link.href = c.url || ('https://www.notion.so/' + c.id);
-  document.getElementById('mtMsg').textContent = 'Name / status / notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
+  document.getElementById('mtMsg').textContent = 'Name / status / type / notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
   document.getElementById('matTypeModal').classList.add('open');
   setTimeout(() => document.getElementById('mtNotes').focus(), 30);
+}
+// Type <select>: "(none)" to unset · every type currently in use · "+ new
+// type…" prompts for a name and adds it as the selected option (created on
+// the Method record on Save; a hashed colour is assigned automatically).
+function mtFillTypeSelect(current) {
+  const sel = document.getElementById('mtType');
+  const types = hamAllTypes();
+  if (current && !types.includes(current)) types.push(current);
+  types.sort((a, b) => a.localeCompare(b));
+  sel.innerHTML = '<option value="">(none)</option>'
+    + types.map(t => `<option value="${esc(t)}"${t === current ? ' selected' : ''}>${esc(t)}</option>`).join('')
+    + '<option value="__new__">+ new type…</option>';
+  sel.value = current || '';
+}
+function mtTypeChange(sel) {
+  if (sel.value !== '__new__') return;
+  const name = (prompt('New method type:') || '').trim();
+  if (!name) { sel.value = ''; return; }
+  if (![...sel.options].some(o => o.value === name)) {
+    const opt = new Option(name, name);
+    sel.add(opt, sel.options[sel.options.length - 1]);
+  }
+  sel.value = name;
 }
 async function matTypeSave() {
   if (!matEditingId) return;
@@ -14109,14 +14166,17 @@ async function matTypeSave() {
   const msg = document.getElementById('mtMsg');
   const name = document.getElementById('mtName').value.trim();
   const status = document.getElementById('mtStatus').value;
+  let type = document.getElementById('mtType').value;
+  if (type === '__new__') type = '';
   const notes = document.getElementById('mtNotes').value.replace(/\s+$/, '');
   if (!name) { msg.textContent = 'Name required'; return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const r = await call('updateMethod', { methodId: matEditingId, name, status, notes });
+    const r = await call('updateMethod', { methodId: matEditingId, name, status, type, notes });
     if (r.error) throw new Error(r.error);
     const c = (HAM_DATA && HAM_DATA.columns || []).find(x => x.id === matEditingId);
-    if (c) { c.name = name; c.notes = notes; c.status = status; }
+    if (c) { c.name = name; c.notes = notes; c.status = status; c.type = type; }
+    if (type && HAM_DATA && !(HAM_DATA.allTypes || []).includes(type)) (HAM_DATA.allTypes = HAM_DATA.allTypes || []).push(type);
     renderHubAssetMatrix();
     document.getElementById('matTypeModal').classList.remove('open');
   } catch(e) { msg.textContent = 'Error: ' + e.message; }
