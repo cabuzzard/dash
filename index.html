@@ -14435,7 +14435,16 @@ const HM_CELL = {
 let hmColOrder = [];
 try { hmColOrder = JSON.parse(localStorage.getItem('hmColOrder') || '[]'); } catch(e) {}
 function hmSaveColOrder() { try { localStorage.setItem('hmColOrder', JSON.stringify(hmColOrder)); } catch(e) {} }
-function hmWorkTypes() {
+// Columns hidden from the matrix view only (non-destructive — the work type
+// stays in the 🧰 Work Types catalog and its 🎯 Hub Fronts cells are untouched).
+// Persisted per browser like hmColOrder. Delete a type for real via the ✎ modal.
+let hmColHidden = [];
+try { hmColHidden = JSON.parse(localStorage.getItem('hmColHidden') || '[]'); } catch(e) {}
+function hmSaveColHidden() { try { localStorage.setItem('hmColHidden', JSON.stringify(hmColHidden)); } catch(e) {} }
+function hmHideCol(id) { if (!hmColHidden.includes(id)) { hmColHidden.push(id); hmSaveColHidden(); renderHubMatrix(); } }
+function hmShowCol(id) { hmColHidden = hmColHidden.filter(x => x !== id); hmSaveColHidden(); renderHubMatrix(); }
+function hmShowAllCols() { hmColHidden = []; hmSaveColHidden(); renderHubMatrix(); }
+function hmAllWorkTypes() {
   const byClass = {};
   WORK_TYPES.forEach(t => { (byClass[t.klass] ||= []).push(t); });
   let out = [];
@@ -14449,6 +14458,7 @@ function hmWorkTypes() {
   }
   return out;
 }
+function hmWorkTypes() { return hmAllWorkTypes().filter(t => !hmColHidden.includes(t.id)); }
 let _hmDragCol = null;
 function hmColDragStart(id) { _hmDragCol = id; }
 function hmColDrop(targetId) {
@@ -14496,7 +14506,12 @@ function renderHubMatrix() {
   const summary = document.getElementById('hubMatrixSummary');
   if (!body || !HUB_MATRIX) return;
   if (!WORK_TYPES.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No work types yet.</div>'; if (summary) summary.textContent = ''; return; }
-  const wts = hmWorkTypes();           // columns
+  const wts = hmWorkTypes();           // columns (minus hmColHidden)
+  if (!wts.length) {
+    body.innerHTML = `<div style="font-size:11px;color:var(--text3);">All ${hmColHidden.length} column${hmColHidden.length === 1 ? '' : 's'} hidden. <button onclick="hmShowAllCols()" style="border:1px solid var(--border2);background:transparent;color:var(--accent);font-size:10px;border-radius:3px;padding:1px 7px;cursor:pointer;">show all</button></div>`;
+    if (summary) summary.textContent = `— ${hmColHidden.length} col${hmColHidden.length === 1 ? '' : 's'} hidden`;
+    return;
+  }
   const cellOf = (wtId, hub) => (HUB_MATRIX.find(f => f.workTypeId === wtId && f.hub === hub) || {}).matrixStatus || '';
   let weekly = 0, td = 0, done = 0;
   // class band: consecutive columns sharing a class collapse to one header
@@ -14516,7 +14531,8 @@ function renderHubMatrix() {
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hmColDrop(${esc(JSON.stringify(t.id))})"`
     + ` style="padding:3px 2px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;">`
-    + `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;">`
+    + `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">`
+    + `<button onclick="event.stopPropagation();hmHideCol(${esc(JSON.stringify(t.id))})" title="Hide this column from the matrix (does not delete the work type)" style="border:none;background:transparent;color:var(--text3);font-size:9px;line-height:1;padding:0;cursor:pointer;opacity:.4;" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.4">✕</button>`
     + (t.icon ? `<span style="font-size:12px;line-height:1;">${esc(t.icon)}</span>` : '')
     + `<span style="font-size:8.5px;line-height:1.12;font-weight:600;color:var(--text2);white-space:normal;overflow-wrap:anywhere;hyphens:auto;">${esc(t.name)}</span>`
     + `</div></th>`).join('');
@@ -14541,9 +14557,17 @@ function renderHubMatrix() {
     });
     rows += `<tr>${tds}</tr>`;
   });
-  if (summary) summary.textContent = `— ${weekly} weekly · ${td} td · ${done} done`;
+  if (summary) summary.textContent = `— ${weekly} weekly · ${td} td · ${done} done`
+    + (hmColHidden.length ? ` · ${hmColHidden.length} col${hmColHidden.length === 1 ? '' : 's'} hidden` : '');
+  const hiddenTypes = hmAllWorkTypes().filter(t => hmColHidden.includes(t.id));
+  const hiddenLine = hiddenTypes.length
+    ? `<div style="font-size:10px;color:var(--text3);margin-top:5px;">hidden: `
+      + hiddenTypes.map(t => `<button onclick="hmShowCol(${esc(JSON.stringify(t.id))})" title="Show this column again" style="border:1px solid var(--border2);background:transparent;color:var(--text2);font-size:9px;border-radius:3px;padding:1px 5px;margin:0 3px 3px 0;cursor:pointer;">${esc(t.name)} ✕</button>`).join('')
+      + ` <button onclick="hmShowAllCols()" style="border:none;background:transparent;color:var(--accent);font-size:9px;cursor:pointer;padding:0;">show all</button></div>`
+    : '';
   body.innerHTML = `<table style="width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${bandRow}</tr><tr>${headRow}</tr></thead><tbody>${rows}</tbody></table>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">click a cell: blank → TD → weekly → done · writes to 🎯 Hub Fronts · drag column headers to reorder</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">click a cell: blank → TD → weekly → done · writes to 🎯 Hub Fronts · drag column headers to reorder · ✕ above a header hides that column</div>`
+    + hiddenLine;
 }
 async function cycleHubMatrixCell(wtId, hub, klass) {
   const row = HUB_MATRIX.find(f => f.workTypeId === wtId && f.hub === hub);
