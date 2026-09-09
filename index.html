@@ -814,20 +814,6 @@
       <div id="hubSitesList" style="display:none;"></div>
     </div>
 
-    <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
-        <span style="display:flex;gap:6px;">
-          <button onclick="wpSetAllGroups(true)" title="Expand all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▾ all</button>
-          <button onclick="wpSetAllGroups(false)" title="Collapse all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ all</button>
-          <button onclick="wpShiftWeek(-1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">←</button>
-          <button onclick="wpShiftWeek(0)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Today</button>
-          <button onclick="wpShiftWeek(1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">→</button>
-        </span>
-      </div>
-      <div id="wpBoard" style="display:grid;grid-template-columns:repeat(7,minmax(126px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px;"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
-    </div>
-
     <!-- 🤖 AUTOMATIONS — a plain wishlist, "things I intend to automate."
          Not a workflow or a tracker for what's already built — just a place
          to drop an idea before it's forgotten. Backed by MAIN_TD_DB (same td
@@ -846,6 +832,20 @@
         </div>
         <div id="glAutoList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
       </div>
+    </div>
+
+    <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="display:flex;gap:6px;">
+          <button onclick="wpSetAllGroups(true)" title="Expand all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▾ all</button>
+          <button onclick="wpSetAllGroups(false)" title="Collapse all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ all</button>
+          <button onclick="wpShiftWeek(-1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">←</button>
+          <button onclick="wpShiftWeek(0)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Today</button>
+          <button onclick="wpShiftWeek(1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">→</button>
+        </span>
+      </div>
+      <div id="wpBoard" style="display:grid;grid-template-columns:repeat(7,minmax(126px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px;"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
     </div>
 
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
