@@ -733,6 +733,41 @@ async function propagateMethodToCampaigns(productId, methodId) {
   } catch(e) { /* best-effort — never block the product-method attach */ }
 }
 
+// Resolve a Method page id by its exact Name (case-insensitive), preferring a
+// Status "Live" row. Cached per isolate. Used to attribute a title/asset to the
+// method that produced it when the caller only knows the Asset Type string
+// (Asset Type ↔ Method Name is 1:1 by design for the finished-deliverable
+// methods — "Offer – Content Hub", "Blog - SEO - News", "SEO Post", …). Pass
+// { create: true } to search-or-create (used for the "Unattributed (legacy)"
+// catch-all so every asset's title still lands in a real matrix column).
+const _methodIdByName = new Map();
+async function resolveMethodIdByName(name, { create = false, status = "Live" } = {}) {
+  const key = String(name || "").trim().toLowerCase();
+  if (!key) return null;
+  if (_methodIdByName.has(key)) return _methodIdByName.get(key);
+  const norm = s => String(s || "").replace(/-/g, "");
+  let rows = [];
+  try { rows = await notionQuery(METHODS_DB, {}); } catch (e) { rows = []; }
+  const matches = rows.filter(r => (r.properties?.Name?.title || []).map(t => t.plain_text).join("").trim().toLowerCase() === key);
+  let hit = matches.find(r => (r.properties?.Status?.select?.name || "") === status) || matches[0];
+  if (!hit && create) {
+    try {
+      const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+      const created = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers: hdr,
+        body: JSON.stringify({ parent: { database_id: METHODS_DB }, properties: {
+          "Name":   { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
+          "Status": { select: { name: status } },
+        } }),
+      }).then(r => r.json());
+      if (created.id) hit = created;
+    } catch (e) { /* fall through to null */ }
+  }
+  const id = hit ? norm(hit.id) : null;
+  _methodIdByName.set(key, id);
+  return id;
+}
+
 // Recursively reads a Notion block's children into a flattened text outline,
 // descending into any block with has_children (toggles and toggleable
 // headings included). A Method's own methodology page is commonly
@@ -7617,6 +7652,222 @@ Return ONLY this JSON, no other text, no fences:
         return json({ success: true, count: results.length, results });
       }
 
+      // ── backfillHubProductChain ── Content Hubs tab "⟳ Backfill product chain".
+      // Makes every hub PRODUCT LISTING (the Products-section cards, i.e. the
+      // published "Offer – Content Hub" assets) traceable as
+      // product → title → method → asset:
+      //   • the source Content Strategy title gets `method` = "Offer – Content
+      //     Hub" (the Hub Method Matrix attributes an asset through its title,
+      //     so without this the whole column reads empty);
+      //   • an asset with no linked title gets one created + linked both ways;
+      //   • a "thin" asset (page body has no OFFER CARD block and no pitch
+      //     headings) has its pitch LIFTED — no LLM, no hub write — from its
+      //     own live hub page, else the hub offers.json entry, else its own
+      //     Body/Platform Title/Content URL properties, and written onto the
+      //     asset page in the same shape generateTitleAssets' offer branch uses.
+      // Deliberately does NOT regenerate copy or (re)publish any hub page — the
+      // operator does that pass separately. `{ campaignId?, force? }`; safe to
+      // re-run (idempotent). Assets that share one stale Site URL with a
+      // sibling (an earlier bug published one page for several offers) are
+      // reported "needs-operator-regen" rather than lifted from the wrong page.
+      if (body.action === "backfillHubProductChain") {
+        const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const jhdr = { ...hdr, "Content-Type": "application/json" };
+        const only = body.campaignId ? String(body.campaignId).replace(/-/g,"") : null;
+        const force = !!body.force;
+        const targets = only ? HUB_SITES.filter(h => h.campaignId.replace(/-/g,"") === only) : HUB_SITES.slice();
+        if (only && !targets.length) return json({ error: "That campaign has no content hub (not in HUB_SITES)." }, 400);
+        const offerMethodId = await resolveMethodIdByName("Offer – Content Hub");
+        if (!offerMethodId) return json({ error: "Couldn't find the 'Offer – Content Hub' method in the Methods DB." }, 500);
+
+        const rtB = (txt, opts = {}) => txt ? [{ type: "text", text: { content: String(txt).slice(0, 1990), link: null }, annotations: { bold: !!opts.bold, italic: false, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+        const h2 = txt => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtB(txt) } });
+        const par = txt => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtB(txt) } });
+        const pars = txt => String(txt || "").split(/\n{2,}/).flatMap(p => { const x = p.trim(); if (!x) return []; const out = []; for (let i = 0; i < x.length; i += 1900) out.push(par(x.slice(i, i + 1900))); return out; });
+        const bul = txt => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rtB(txt) } });
+        const unent = s => String(s || "").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;|&rsquo;|&#8217;/g, "'").replace(/&mdash;|&#8212;/g, "—").replace(/&ndash;|&#8211;/g, "–").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+        // Parse a hub offer page (publishOfferToHub's markup) → offer object.
+        const parseOfferPage = html => {
+          if (!html) return null;
+          const body = (html.match(/<body[^>]*>([\s\S]*?)<\/body>/i) || [, ""])[1];
+          const pick = re => { const m = body.match(re); return m ? unent(m[1]) : ""; };
+          const o = {
+            kicker:  pick(/<div class="kicker">([\s\S]*?)<\/div>/i),
+            name:    pick(/<h1>([\s\S]*?)<\/h1>/i),
+            promise: pick(/<p class="lede">([\s\S]*?)<\/p>/i),
+            forWho:  pick(/<p><strong>Who it's for:<\/strong>([\s\S]*?)<\/p>/i),
+            included: [], whyItWorks: "", objection: "", terms: "", ctaLabel: "", ctaUrl: "",
+          };
+          const incBlock = body.match(/<h2>What's included<\/h2>\s*<ul class="inc">([\s\S]*?)<\/ul>/i);
+          if (incBlock) o.included = (incBlock[1].match(/<li>([\s\S]*?)<\/li>/gi) || []).map(li => unent(li));
+          const sect = label => { const m = body.match(new RegExp(`<h2>${label}<\\/h2>\\s*([\\s\\S]*?)(?=<h2>|<form|<footer)`, "i")); return m ? (m[1].match(/<p>([\s\S]*?)<\/p>/gi) || []).map(p => unent(p)).join("\n\n") : ""; };
+          o.whyItWorks = sect("Why it works");
+          o.objection  = sect("The objection it answers");
+          o.terms      = sect("Terms");
+          const buy = body.match(/<a class="btn out" href="([^"]+)"/i);
+          if (buy) o.ctaUrl = unent(buy[1]);
+          return o;
+        };
+        const writeOfferBody = async (aid, o) => {
+          const card = JSON.stringify({ kicker: o.kicker || "", name: o.name || "", promise: o.promise || "", ctaLabel: o.ctaLabel || "", ctaUrl: o.ctaUrl || "" }, null, 0);
+          const children = [
+            { object: "block", type: "code", code: { language: "json", rich_text: rtB(card) } },
+            o.forWho ? par(`For ${o.forWho}.`) : null,
+            ...pars(o.promise),
+            (o.included || []).length ? h2("What's included") : null,
+            ...(o.included || []).map(bul),
+            o.whyItWorks ? h2("Why it works") : null, ...pars(o.whyItWorks),
+            o.objection ? h2("The objection it answers") : null, ...pars(o.objection),
+            o.terms ? h2("Terms") : null, ...pars(o.terms),
+          ].filter(Boolean);
+          for (let i = 0; i < children.length; i += 100) {
+            const r = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children`, { method: "PATCH", headers: jhdr, body: JSON.stringify({ children: children.slice(i, i + 100) }) });
+            if (!r.ok) return false;
+          }
+          return true;
+        };
+
+        const results = [];
+        for (const h of targets) {
+          const rows = await notionQuery(ASSETS_DB, {
+            filter: { and: [
+              { property: "Campaign", relation: { contains: dashId(h.campaignId) } },
+              { or: [
+                { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Published" } },
+              ] },
+            ] },
+          }).catch(() => []);
+          const offerAssets = rows.filter(r => /\boffer\b/i.test(r.properties?.["Asset Type"]?.select?.name || ""));
+          // Site URLs shared by >1 offer asset on this hub = an old one-page-
+          // for-many-offers bug; don't lift the (wrong) page into siblings.
+          const urlCount = {};
+          offerAssets.forEach(a => { const u = (a.properties?.["Site URL"]?.url || "").trim(); if (u) urlCount[u] = (urlCount[u] || 0) + 1; });
+
+          let ojson = {};
+          try {
+            const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${h.slug}/offers/offers.json`);
+            const list = pr.ok ? await pr.json() : [];
+            if (Array.isArray(list)) for (const o of list) if (o && o.slug) ojson[o.slug] = o;
+          } catch (e) {}
+          const matchedOfferSlugs = new Set();
+
+          for (const a of offerAssets) {
+            const aid = a.id.replace(/-/g, "");
+            const p = a.properties || {};
+            const assetTitle = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+            const platTitle  = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+            const bodyProp   = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+            const ctaProp    = (p["Content URL"]?.url || "").trim();
+            const siteUrl    = (p["Site URL"]?.url || "").trim();
+            const stage      = p["Asset Status"]?.select?.name || "Publish";
+            const rec = { hub: h.slug, asset: aid, name: platTitle || assetTitle || "(untitled)" };
+            const sm = siteUrl.match(/\/offers\/([^/]+)\/?$/); if (sm) matchedOfferSlugs.add(sm[1]);
+
+            // ── 1. title + method ──
+            let titleId = (p["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+            if (!titleId) {
+              const tProps = {
+                "Title": { title: [{ type: "text", text: { content: (platTitle || assetTitle || "Untitled offer").slice(0, 200) } }] },
+                "Status": { select: { name: stage === "Published" ? "Published" : "Publish" } },
+                "method": { relation: [{ id: dashId(offerMethodId) }] },
+                "Campaign": { relation: [{ id: dashId(h.campaignId) }] },
+              };
+              const prodId = (p["Product"]?.relation || [])[0]?.id;
+              if (prodId) tProps["product"] = { relation: [{ id: prodId }] };
+              const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: jhdr, body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: tProps }) }).then(r => r.json());
+              if (cr.id) {
+                titleId = cr.id.replace(/-/g, "");
+                await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, { method: "PATCH", headers: jhdr, body: JSON.stringify({ properties: { "Content Strategy": { relation: [{ id: cr.id }] } } }) }).catch(() => {});
+                if (prodId) ctx.waitUntil(propagateMethodToCampaigns(prodId.replace(/-/g, ""), offerMethodId).catch(() => {}));
+                rec.title = "created"; rec.method = "set";
+              } else { rec.title = "create-failed"; }
+            } else {
+              rec.title = "ok";
+              const tPage = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+              const hasM = ((tPage?.properties?.method?.relation) || []).length > 0;
+              if (!hasM || force) {
+                await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { method: "PATCH", headers: jhdr, body: JSON.stringify({ properties: { "method": { relation: [{ id: dashId(offerMethodId) }] } } }) }).catch(() => {});
+                const prodId = (tPage?.properties?.product?.relation || p["Product"]?.relation || [])[0]?.id;
+                if (prodId) ctx.waitUntil(propagateMethodToCampaigns(prodId.replace(/-/g, ""), offerMethodId).catch(() => {}));
+                rec.method = "set";
+              } else { rec.method = "ok"; }
+            }
+
+            // ── 2. thin-body lift ──
+            try {
+              const kids = await fetch(`https://api.notion.com/v1/blocks/${dashId(aid)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
+              const blocks = kids.results || [];
+              const hasCard  = blocks.some(b => b.type === "code");
+              const hasPitch = blocks.some(b => b.type === "heading_2");
+              if (hasCard || hasPitch) { rec.body = "already-populated"; }
+              else if (siteUrl && urlCount[siteUrl] > 1) { rec.body = "needs-operator-regen"; }
+              else {
+                let offer = null;
+                if (siteUrl) {
+                  const html = await fetch(siteUrl).then(r => r.ok ? r.text() : "").catch(() => "");
+                  offer = parseOfferPage(html);
+                  if (offer && !offer.included.length && !offer.whyItWorks && !offer.promise) offer = null;
+                }
+                if (!offer) {
+                  const oj = sm ? ojson[sm[1]] : null;
+                  if (oj || bodyProp || platTitle) {
+                    offer = { kicker: oj?.kicker || "", name: oj?.name || platTitle || assetTitle || "", promise: oj?.promise || bodyProp || "", forWho: "", included: [], whyItWorks: "", objection: "", terms: "", ctaLabel: "", ctaUrl: oj?.ctaUrl || ctaProp || "" };
+                  }
+                }
+                if (offer) {
+                  const ok = await writeOfferBody(aid, offer);
+                  const fill = {};
+                  if (!bodyProp && offer.promise) fill["Body"] = { rich_text: [{ text: { content: offer.promise.slice(0, 2000) } }] };
+                  if (!platTitle && offer.name) fill["Platform Title"] = { rich_text: [{ text: { content: offer.name.slice(0, 200) } }] };
+                  if (!ctaProp && offer.ctaUrl) fill["Content URL"] = { url: offer.ctaUrl };
+                  if (Object.keys(fill).length) await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, { method: "PATCH", headers: jhdr, body: JSON.stringify({ properties: fill }) }).catch(() => {});
+                  rec.body = ok ? (offer.included.length || offer.whyItWorks ? "lifted" : "lifted-from-props") : "lift-write-failed";
+                } else { rec.body = "no-source"; }
+              }
+            } catch (e) { rec.body = "error:" + e.message; }
+
+            results.push(rec);
+          }
+
+          // ── 3. orphan offers.json entries (a listing with no asset at all) ──
+          for (const slug of Object.keys(ojson)) {
+            if (matchedOfferSlugs.has(slug)) continue;
+            const oj = ojson[slug];
+            if (!oj || !oj.name) continue;
+            const tProps = {
+              "Title": { title: [{ type: "text", text: { content: String(oj.name).slice(0, 200) } }] },
+              "Status": { select: { name: "Publish" } },
+              "method": { relation: [{ id: dashId(offerMethodId) }] },
+              "Campaign": { relation: [{ id: dashId(h.campaignId) }] },
+            };
+            const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: jhdr, body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: tProps }) }).then(r => r.json());
+            if (!cr.id) { results.push({ hub: h.slug, orphan: slug, error: "title create failed" }); continue; }
+            const aProps = {
+              "Asset Title": { title: [{ text: { content: String(oj.name).slice(0, 200) } }] },
+              "Asset Status": { select: { name: "Publish" } },
+              "Asset Type": { select: { name: "Offer – Content Hub" } },
+              "Content Hub": { select: { name: h.slug } },
+              "Campaign": { relation: [{ id: dashId(h.campaignId) }] },
+              "Content Strategy": { relation: [{ id: cr.id }] },
+              "Platform Title": { rich_text: [{ text: { content: String(oj.name).slice(0, 200) } }] },
+              "Body": { rich_text: [{ text: { content: String(oj.promise || "").slice(0, 2000) } }] },
+              "Site URL": { url: `https://cabuzzard.github.io/dash/web/hub/${h.slug}/offers/${slug}/` },
+            };
+            if (oj.ctaUrl) aProps["Content URL"] = { url: oj.ctaUrl };
+            const ar = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: jhdr, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: aProps }) }).then(r => r.json());
+            if (ar.id) {
+              await writeOfferBody(ar.id.replace(/-/g, ""), { kicker: oj.kicker || "", name: oj.name, promise: oj.promise || "", forWho: "", included: [], whyItWorks: "", objection: "", terms: "", ctaLabel: "", ctaUrl: oj.ctaUrl || "" });
+              results.push({ hub: h.slug, orphan: slug, title: "created", asset: "created", body: "lifted-from-props" });
+            } else {
+              results.push({ hub: h.slug, orphan: slug, title: "created", asset: "asset create failed" });
+            }
+          }
+        }
+        return json({ success: true, count: results.length, results });
+      }
+
       // ── getHubLogoPrompt ── Content Hubs tab "📋 Logo prompt" button.
       // Assembles a ready-to-paste image prompt for a rectangular header logo,
       // prefilled with this hub's campaign Research + its own hubs.design.json
@@ -9586,12 +9837,21 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // METHODS_DB (any Status; archived methods drop out automatically since
       // Notion queries never return archived pages). One column per method —
       // the operator uses this matrix to refine/prune the methods list, so
-      // it shows all of them. Each cell shows two counts for that hub ×
-      // method: how many Content Strategy titles are at Status "Development"
-      // and how many at "Publish" (NOT "Published"). A title counts for a hub
-      // when its Campaign relation is that hub's campaign (or its "Content
-      // Hub" select names the slug) and for a method when its `method`
-      // relation points at that method.
+      // it shows all of them.
+      //
+      // Each cell shows THREE counts for that hub × method, with two bases
+      // (per operator: "an asset references a title which called a method"):
+      //   dev  — Content Strategy TITLES at Status "Development"
+      //   pub  — ASSETS at Asset Status "Publish"
+      //   pubd — ASSETS at Asset Status "Published"
+      // A title counts for a method via its own `method` relation; an asset via
+      // the `method` of the title it links through "Content Strategy".
+      // Hub attribution is by CAMPAIGN, not any per-record "Content Hub" select
+      // tag (that tag is for other purposes — an Offer's publish target, a
+      // hub's own blog scan — not this matrix). A hub is an attachment of its
+      // parent campaign, so every title/asset under that campaign counts toward
+      // its hub column — including the hub's own Content Hub Title/Asset
+      // (Method: hub), which is why every hub shows its own 1 published count.
       // The old 🧱 Method & Asset Types column list (MAT_TYPES_DB) and the
       // get/create/update/deleteMatType actions below are superseded by this
       // — kept only so any stray reference degrades quietly.
@@ -9599,8 +9859,9 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const norm = s => (s || "").replace(/-/g, "");
         const hubByCamp = {};
         HUB_SITES.forEach(h => { hubByCamp[norm(h.campaignId)] = h.slug; });
-        const [titleRows, methodRows] = await Promise.all([
+        const [titleRows, assetRows, methodRows] = await Promise.all([
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
+          notionQuery(ASSETS_DB, {}).catch(e => { console.error('getHubMethodMatrix assets:', e.message); return []; }),
           notionQuery(METHODS_DB, {}).catch(e => { console.error('getHubMethodMatrix methods:', e.message); return []; }),
         ]);
         const columns = methodRows.map(r => ({
@@ -9614,25 +9875,32 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         // every distinct Type currently in use — feeds the modal's Type picker
         const allTypes = [...new Set(columns.map(c => c.type).filter(Boolean))].sort((a, b) => a.localeCompare(b));
         const colIds = new Set(columns.map(c => c.id));
-        const counts = {};   // { slug: { methodId: { dev, pub } } }
+        const counts = {};   // { slug: { methodId: { dev, pub, pubd } } }
+        const cellFor = (slug, methodId) => ((counts[slug] = counts[slug] || {})[methodId] = counts[slug][methodId] || { dev: 0, pub: 0, pubd: 0 });
+        // title id (normalised) → its method id (normalised) — lets an asset
+        // resolve its method through the title it was made from.
+        const titleMethodById = {};
         titleRows.forEach(t => {
           const p = t.properties || {};
-          const stage = p.Status?.select?.name || "";
-          if (stage !== "Development" && stage !== "Publish") return;
-          const methodId = norm((p.method?.relation || [])[0]?.id);
-          if (!methodId || !colIds.has(methodId)) return;
-          // Hub attribution is by CAMPAIGN, not any per-title "Content Hub"
-          // select tag (that tag is for other purposes — an Offer's publish
-          // target, a hub's own blog scan — not this matrix). A hub is an
-          // attachment of its parent campaign, so every title under that
-          // campaign counts toward its hub column — including the hub's own
-          // Content Hub Content Strategy Title/Asset (Method: hub) itself,
-          // which is why every hub shows its own 1 published count here.
-          const campId = norm((p.Campaign?.relation || [])[0]?.id);
-          const slug = hubByCamp[campId] || "";
+          const mId = norm((p.method?.relation || [])[0]?.id);
+          if (mId) titleMethodById[norm(t.id)] = mId;
+          // dev bucket — from titles at Status "Development"
+          if ((p.Status?.select?.name || "") !== "Development") return;
+          if (!mId || !colIds.has(mId)) return;
+          const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
+          if (slug) cellFor(slug, mId).dev++;
+        });
+        // pub / pubd buckets — from assets, method resolved through the title
+        assetRows.forEach(a => {
+          const p = a.properties || {};
+          const stage = p["Asset Status"]?.select?.name || "";
+          if (stage !== "Publish" && stage !== "Published") return;
+          const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
+          const mId = titleMethodById[titleId];
+          if (!mId || !colIds.has(mId)) return;
+          const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
           if (!slug) return;
-          const cell = ((counts[slug] = counts[slug] || {})[methodId] = counts[slug][methodId] || { dev: 0, pub: 0 });
-          if (stage === "Development") cell.dev++; else cell.pub++;
+          if (stage === "Publish") cellFor(slug, mId).pub++; else cellFor(slug, mId).pubd++;
         });
         return json({ success: true, columns, counts, allTypes, hubs: HUB_SITES.map(h => ({ slug: h.slug })) });
       }
@@ -18683,10 +18951,21 @@ Return ONLY this JSON object:
             if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Offer asset created but failed to write its body" }, 502); }
           }
 
+          // Source title → Publish, and attribute it to the method that made
+          // this asset: the modal's methodId if a real one was picked, else the
+          // Method row whose Name matches this Asset Type ("Offer – Content
+          // Hub" / "Offer – Pillar"). Without this the title carries no
+          // `method` and the Hub Method Matrix can't count the asset.
+          const offerMethodId = (methodId && methodId !== "__none__")
+            ? methodId
+            : await resolveMethodIdByName(assetType).catch(() => null);
+          const titleProps = { "Status": { select: { name: "Publish" } } };
+          if (offerMethodId) titleProps["method"] = { relation: [{ id: dsDash(offerMethodId) }] };
           await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
             method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
+            body: JSON.stringify({ properties: titleProps }),
           }).catch(() => {});
+          if (offerMethodId && productId) ctx.waitUntil(propagateMethodToCampaigns(productId, offerMethodId).catch(() => {}));
 
           // Publish the offer as a real hub sub-page (pitch + Turnstile lead
           // form) — same pattern as SEO Post → the hub blog. Best-effort:
@@ -22461,6 +22740,31 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         });
         const result2 = await resp.json();
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
+
+        // Picking a Content Hub here is the moment an offer asset becomes a
+        // tracked product listing — make sure its source title carries the
+        // method, otherwise the Hub Method Matrix (asset → title → method)
+        // can't attribute it. Best-effort; never fails the publish save.
+        if (contentHub !== undefined && HUB_SITES.some(h => h.slug === contentHub)) {
+          ctx.waitUntil((async () => {
+            try {
+              const at = result2.properties?.["Asset Type"]?.select?.name || "";
+              if (!/\boffer\b/i.test(at)) return;
+              const titleId = (result2.properties?.["Content Strategy"]?.relation || [])[0]?.id;
+              if (!titleId) return;
+              const tPage = await fetch(`https://api.notion.com/v1/pages/${titleId}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+              if ((tPage.properties?.method?.relation || []).length) return;
+              const mId = await resolveMethodIdByName(at);
+              if (!mId) return;
+              await fetch(`https://api.notion.com/v1/pages/${titleId}`, {
+                method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { method: { relation: [{ id: dash(mId) }] } } }),
+              });
+              const prodId = (result2.properties?.Product?.relation || [])[0]?.id;
+              if (prodId) await propagateMethodToCampaigns(prodId, mId).catch(() => {});
+            } catch (e) { /* best-effort */ }
+          })());
+        }
         return json({ success: true });
       }
 

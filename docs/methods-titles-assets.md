@@ -448,3 +448,36 @@ longer offered from inside this modal.
   connector and does **not** currently pass through this grading — a real
   gap if you want every asset graded regardless of which path made it, not
   yet built.
+
+---
+
+## Method attribution and the Hub Method Matrix
+
+The **Hub Method Matrix** (TD tab) counts, per hub × method, **Development
+*titles*** and **Publish / Published *assets***. An asset has no `Method`
+property — it is attributed **through the title it was made from**
+(`asset → Content Strategy → title.method`), so **every title must carry a
+`method` relation** for its assets to show up.
+
+- Most `generateTitleAssets` branches already set `method` when they create a
+  title. The **offer branch** (`/\boffers?\b/i`, `worker.js` ~18560) was the
+  exception — it now stamps `method` on the source title (the modal's
+  `methodId`, else `resolveMethodIdByName(assetType)` → `Offer – Content Hub`
+  / `Offer – Pillar`) and calls `propagateMethodToCampaigns`.
+- `updatePublishFields` does the same when a **Content Hub** is picked on an
+  offer asset (that's the moment it becomes a tracked product listing).
+- **Hub product listings** (the Products-section cards, `getHubProducts`) =
+  the `Offer – Content Hub` method. Backfill for pre-existing ones:
+  **`backfillHubProductChain`** (`{ campaignId?, force? }`; Content Hubs tab
+  "⟳ Backfill product chain") — sets `method` on every offer title, creates a
+  missing title/asset, and **lifts a *thin* asset's pitch** (no `OFFER CARD`
+  block, no pitch headings) back from its own live hub page HTML into the
+  asset's Notion body. No LLM call, no hub write — a lift-and-store only. It
+  does **not** regenerate copy or (re)publish pages (operator does that pass
+  separately); assets that share one stale `Site URL` with a sibling are
+  reported `needs-operator-regen` rather than lifted from the wrong page.
+- **Skill-path writers** (`make-carousel`, `make-*-video`,
+  `create-design-specs`) write assets straight through the Notion connector
+  and do **not** yet ensure their title carries a `method` — same known gap
+  as the grading gate above. A method-less title's assets fall out of the
+  matrix; a follow-up should have every skill set the title's `method` too.

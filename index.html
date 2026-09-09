@@ -10535,6 +10535,31 @@ async function hubRebuildBlog(slug, ev) {
   btn.disabled = false; btn.textContent = '⟳ Rebuild blog + offers';
 }
 
+// Backfill the product → title → method → asset chain for this hub's product
+// listings (the published "Offer – Content Hub" assets): stamps `method` on
+// each source title (so the Hub Method Matrix can attribute the asset through
+// it), creates a missing title/asset, and lifts a thin asset's pitch back from
+// its live hub page. Does NOT regenerate copy or republish any hub page.
+async function hubBackfillProductChain(slug, ev) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const forceAll = !!(ev && ev.shiftKey);
+  const btn = document.getElementById('hpChain'), msg = document.getElementById('hpMsg');
+  if (!confirm('Backfill the "' + slug + '" product chain?\n\nSets the method on each product-listing title, creates any missing title/asset, and copies a thin asset\'s blurb back from its live hub page. No regeneration, no hub writes. Safe to re-run.\n\n(Hold Shift to re-stamp the method even where one is already set.)')) return;
+  btn.disabled = true; btn.textContent = 'Backfilling…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Linking titles + methods…';
+  try {
+    const r = await call('backfillHubProductChain', { campaignId: h.campaignId, force: forceAll });
+    const res = r.results || [];
+    const mSet = res.filter(x => x.method === 'set').length;
+    const tNew = res.filter(x => x.title === 'created').length;
+    const lifted = res.filter(x => x.body === 'lifted' || x.body === 'lifted-from-props').length;
+    const regen = res.filter(x => x.body === 'needs-operator-regen').length;
+    const errs = res.filter(x => x.error || String(x.body || '').startsWith('error'));
+    if (!res.length) { msg.style.color = '#ffb020'; msg.textContent = 'No product-listing (Offer – Content Hub) assets on this campaign.'; }
+    else { msg.style.color = '#4cff4c'; msg.textContent = `${mSet} method${mSet !== 1 ? 's' : ''} set, ${tNew} title${tNew !== 1 ? 's' : ''} created, ${lifted} blurb${lifted !== 1 ? 's' : ''} lifted${regen ? `, ${regen} need operator regen` : ''}${errs.length ? `, ${errs.length} failed` : ''}. Reload the Hub Method Matrix.`; }
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = '⟳ Backfill product chain';
+}
+
 // Logo: copy a ready-to-paste image prompt (campaign research + this hub's
 // design tokens/fonts/brief), then upload the resulting file back — it's
 // committed to web/hub/{slug}/logo.<ext> and wired to HUB.logoImg so the
@@ -11005,6 +11030,7 @@ function renderHubsTab() {
             <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
             <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub</button>
             <button id="hpBlog" onclick="hubRebuildBlog('${slug}', event)" title="Publish every published article + offer that's missing a live page (Shift-click to force-rebuild everything)" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">⟳ Rebuild blog + offers</button>
+            <button id="hpChain" onclick="hubBackfillProductChain('${slug}', event)" title="Link each product listing's title → method (Offer – Content Hub), create a missing title/asset, lift a thin asset's blurb from its live page. No regeneration (Shift-click to re-stamp existing methods)." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">⟳ Backfill product chain</button>
           </div>
           <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
           <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
@@ -14160,7 +14186,7 @@ function renderHubAssetMatrix() {
     + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${ts.fg || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
     + `</th>`;
   }).join('');
-  let totDev = 0, totPub = 0;
+  let totDev = 0, totPub = 0, totPubd = 0;
   let rows = '';
   const hubLink = (url, tip) => `<td style="text-align:center;padding:0;border-left:1px solid var(--border);">`
     + (url ? `<a href="${esc(url)}" target="_blank" rel="noopener" title="${tip}" onclick="event.stopPropagation()" style="color:var(--text3);text-decoration:none;font-size:11px;">↗</a>` : '')
@@ -14174,24 +14200,27 @@ function renderHubAssetMatrix() {
       + hubLink(msUrl, 'Admin microsite ↗')
       + hubLink(hubUrl, 'Live content hub ↗');
     cols.forEach(c => {
-      const cell = hc[c.id] || { dev: 0, pub: 0 };
-      totDev += cell.dev; totPub += cell.pub;
-      const empty = !cell.dev && !cell.pub;
-      tds += `<td title="${esc(c.name)} · ${cell.dev} Development · ${cell.pub} Publish" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
+      const cell = hc[c.id] || { dev: 0, pub: 0, pubd: 0 };
+      const cd = cell.dev || 0, cp = cell.pub || 0, cpd = cell.pubd || 0;
+      totDev += cd; totPub += cp; totPubd += cpd;
+      const empty = !cd && !cp && !cpd;
+      tds += `<td title="${esc(c.name)} · ${cd} dev title${cd === 1 ? '' : 's'} · ${cp} publish asset${cp === 1 ? '' : 's'} · ${cpd} published asset${cpd === 1 ? '' : 's'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
         + (empty ? '<span style="color:var(--text3);">·</span>'
-          : `<span style="color:#5aa6db;font-weight:${cell.dev ? '700' : '400'};">${cell.dev}</span>`
+          : `<span style="color:#5aa6db;font-weight:${cd ? '700' : '400'};">${cd}</span>`
             + `<span style="color:var(--text3);">/</span>`
-            + `<span style="color:#5fbf7c;font-weight:${cell.pub ? '700' : '400'};">${cell.pub}</span>`)
+            + `<span style="color:#d9a441;font-weight:${cp ? '700' : '400'};">${cp}</span>`
+            + `<span style="color:var(--text3);">/</span>`
+            + `<span style="color:#5fbf7c;font-weight:${cpd ? '700' : '400'};">${cpd}</span>`)
         + `</td>`;
     });
     rows += `<tr>${tds}</tr>`;
   });
-  if (summary) summary.textContent = `— ${totDev} dev · ${totPub} publish · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
+  if (summary) summary.textContent = `— ${totDev} dev titles · ${totPub} publish · ${totPubd} published assets · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
   const corner = `<th style="background:var(--bg);"></th>`
     + `<th title="Admin microsite" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">ms</th>`
     + `<th title="Live content hub" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">hub</th>`;
   body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> / <span style="color:#5fbf7c;">Publish</span> titles per hub × method · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> titles / <span style="color:#d9a441;">Publish</span> / <span style="color:#5fbf7c;">Published</span> assets per hub × method (an asset is attributed through the title it was made from) · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder</div>`;
 }
 let matEditingId = null;
 async function openMatTypeModal(methodId) {
