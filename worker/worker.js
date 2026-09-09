@@ -811,6 +811,7 @@ async function wpFetchProjectedItems(campaignId, weekStart, hdr) {
     rawDate: r.properties?.Date?.date?.start?.slice(0, 10) || null,
     order: r.properties?.Order?.number ?? 0,
     status: r.properties?.Status?.select?.name || "Open",
+    flag: r.properties?.Flag?.select?.name || null,
     source: r.properties?.Source?.select?.name || "Manual",
     notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
     sourceTitleId: (r.properties?.["Source Title"]?.relation || [])[0]?.id?.replace(/-/g,"") || null,
@@ -9789,6 +9790,51 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const result = await resp.json().catch(() => ({}));
         if (!resp.ok) return json({ error: result.message || "Notes update failed" }, resp.status);
         return json({ success: true, notes: txt });
+      }
+
+      // Traffic-light flag on one Weekly Planner row. The card's dot cycles
+      // none → 🔴 Urgent → 🟡 Planning → 🟢 Done → none; the "Done"/"None"
+      // ends also move Status (green just mirrors Status: Done, so nothing
+      // is stored as a Flag option for it). Persists on the real row so a
+      // recurring/projected item carries the same flag on every week.
+      if (body.action === "setWeeklyPlannerItemFlag") {
+        const { itemId, flag } = body;
+        if (!itemId) return json({ error: "itemId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let props;
+        if (flag === "Urgent" || flag === "Planning") {
+          props = { "Flag": { select: { name: flag } } };
+        } else if (flag === "Done") {
+          props = { "Flag": { select: null }, "Status": { select: { name: "Done" } }, "Date": { date: { start: new Date().toISOString().slice(0, 10) } } };
+        } else {
+          props = { "Flag": { select: null }, "Status": { select: { name: "Open" } } };
+        }
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
+          method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        const result = await resp.json().catch(() => ({}));
+        if (!resp.ok) return json({ error: result.message || "Flag update failed" }, resp.status);
+        return json({ success: true, flag: (flag === "Urgent" || flag === "Planning") ? flag : null });
+      }
+
+      // Persist a full within-day ordering after a drag-reorder. orderedIds
+      // is the day's item ids in their new top-to-bottom order; each row's
+      // Order is set to its index and its Date pinned to `day` (so a card
+      // dragged in from another day also lands on that weekday, matching
+      // moveWeeklyPlannerItem).
+      if (body.action === "reorderWeeklyPlannerItems") {
+        const { orderedIds, day } = body;
+        if (!Array.isArray(orderedIds) || !orderedIds.length || !day) return json({ error: "orderedIds and day required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const results = await Promise.all(orderedIds.slice(0, 50).map((id, i) =>
+          fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "Order": { number: i }, "Date": { date: { start: day } } } }),
+          }).then(r => r.ok).catch(() => false)
+        ));
+        return json({ success: true, updated: results.filter(Boolean).length, total: orderedIds.length });
       }
 
       if (body.action === "createPlatform") {

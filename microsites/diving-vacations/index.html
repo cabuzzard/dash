@@ -5595,15 +5595,20 @@ function renderWeeklyPlanner(monday, items) {
     const isToday = dateIso === todayIso;
     const openCount = dayItems.filter(it => it.status !== 'Done').length;
     const overCap = openCount > 5;
-    const itemsHtml = dayItems.map(it => `
-      <div class="wp-item" draggable="true" ondragstart="wpDragStart(event,'${it.id}')" style="background:${it.status==='Done'?'#0d2b0d':'#1a1a1a'};border:1px solid ${it.status==='Done'?'#2a5a2a':'#333'};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
+    const itemsHtml = dayItems.map(it => {
+      const fs = it.status === 'Done' ? 'done' : (it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
+      const fc = { none: {b:'#333', d:'#555'}, urgent: {b:'#ff4444', d:'#ff4444'}, planning: {b:'#e8c14a', d:'#e8c14a'}, done: {b:'#3ba55d', d:'#3ba55d'} }[fs];
+      return `
+      <div class="wp-item" draggable="true" ondragstart="wpDragStart(event,'${it.id}')" ondragover="wpItemDragOver(event)" ondrop="wpItemDrop(event,'${it.id}','${dateIso}')" style="background:${it.status==='Done'?'#0d2b0d':'#1a1a1a'};border:1px solid ${it.status==='Done'?'#2a5a2a':'#333'};border-left:3px solid ${fc.b};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
+          <button onclick="wpCycleFlag('${it.id}')" title="Flag: ${fs} — click to cycle (urgent → planning → done → clear)" style="width:12px;height:12px;border-radius:50%;border:1px solid #555;background:${fc.d};flex-shrink:0;margin-top:3px;cursor:pointer;padding:0;"></button>
           <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
           <span style="flex:1;font-size:12px;color:${it.status==='Done'?'#888':'#fff'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
           <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:#666;cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
         </div>
         ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
-      </div>`).join('');
+      </div>`;
+    }).join('');
     return `<div class="wp-day" ondragover="event.preventDefault()" ondrop="wpDrop(event,'${dateIso}')" style="background:${isToday?'#1c1f14':'transparent'};border:1px solid ${isToday?'#e8ff47':'#222'};border-radius:8px;padding:8px;min-height:120px;">
       <div style="font-size:11px;font-weight:700;color:${isToday?'#e8ff47':'#fff'};margin-bottom:6px;display:flex;justify-content:space-between;">
         <span>${WP_DAY_NAMES[i]} ${d.getUTCDate()}</span>
@@ -5642,6 +5647,31 @@ async function wpDrop(e, dateIso) {
   const id = WP_DRAG_ID; WP_DRAG_ID = null;
   try { const r = await w('moveWeeklyPlannerItem', { itemId: id, day: dateIso }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
   catch(err) { alert('Error: ' + err.message); }
+}
+// Drop ONTO a card = reorder within (or into) that card's day. Top half →
+// above the target, bottom half → below. reorderWeeklyPlannerItems renumbers
+// the whole day and pins each row's Date to that weekday.
+function wpItemDragOver(e) { e.preventDefault(); e.stopPropagation(); }
+async function wpItemDrop(e, targetId, dateIso) {
+  e.preventDefault(); e.stopPropagation();
+  const dragId = WP_DRAG_ID; WP_DRAG_ID = null;
+  if (!dragId || dragId === targetId) return;
+  const dayIds = WP_ITEMS_CACHE.filter(it => it.date === dateIso).sort((a, b) => a.order - b.order)
+                    .map(it => it.id).filter(id => id !== dragId);
+  const rect = e.currentTarget.getBoundingClientRect();
+  let idx = dayIds.indexOf(targetId);
+  if (idx < 0) idx = dayIds.length;
+  else if ((e.clientY - rect.top) > rect.height / 2) idx += 1;
+  dayIds.splice(idx, 0, dragId);
+  try { const r = await w('reorderWeeklyPlannerItems', { orderedIds: dayIds, day: dateIso }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(err) { alert('Error: ' + err.message); }
+}
+async function wpCycleFlag(itemId) {
+  const it = WP_ITEMS_CACHE.find(x => x.id === itemId);
+  const cur = !it ? 'none' : (it.status === 'Done' ? 'done' : it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
+  const next = { none: 'Urgent', urgent: 'Planning', planning: 'Done', done: 'None' }[cur];
+  try { const r = await w('setWeeklyPlannerItemFlag', { itemId, flag: next }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(e) { alert('Error: ' + e.message); }
 }
 // Called from the small "TD" link on a Development Titles row — adds that
 // title to This Week on demand. Deliberately NOT automatic on every

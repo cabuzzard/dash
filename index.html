@@ -14735,12 +14735,24 @@ function renderWpBoard(monday, items) {
   const todayIso = wpIso(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
 
   const NO_CAMP = '—';
-  const itemCard = it => {
+  // Traffic-light flag: red = urgent, yellow = planning, green = done
+  // (green just mirrors Status: Done). The dot cycles none → 🔴 → 🟡 → 🟢 → none.
+  const WP_FLAG = {
+    none:     { border: 'var(--border)',  dot: 'var(--border2)' },
+    urgent:   { border: '#ff4444',        dot: '#ff4444' },
+    planning: { border: '#e8c14a',        dot: '#e8c14a' },
+    done:     { border: '#3ba55d',        dot: '#3ba55d' },
+  };
+  const wpFlagState = it => it.status === 'Done' ? 'done' : (it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
+  const itemCard = (it, dateIso) => {
     const hasNotes = !!(it.notes && it.notes.trim());
     const notePreview = hasNotes ? esc(it.notes.trim().split('\n').filter(Boolean).slice(0, 3).join(' · ')).slice(0, 160) : '';
+    const fs = wpFlagState(it);
+    const fc = WP_FLAG[fs];
     return `
-      <div draggable="true" ondragstart="wpDragStart(event,'${it.id}')" style="background:${it.status==='Done'?'rgba(0,200,100,.08)':'var(--surface)'};border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
+      <div draggable="true" ondragstart="wpDragStart(event,'${it.id}')" ondragover="wpItemDragOver(event)" ondrop="wpItemDrop(event,'${it.id}','${dateIso}')" style="background:${it.status==='Done'?'rgba(0,200,100,.08)':'var(--surface)'};border:1px solid var(--border);border-left:3px solid ${fc.border};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
+          <button onclick="wpCycleFlag('${it.id}')" title="Flag: ${fs} — click to cycle (urgent → planning → done → clear)" style="width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);background:${fc.dot};flex-shrink:0;margin-top:3px;cursor:pointer;padding:0;"></button>
           <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
           <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--text3)':'var(--text)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
           <button onclick="wpOpenNotes('${it.id}')" title="${hasNotes ? 'Edit notes' : 'Add notes'}" style="background:none;border:none;color:${hasNotes ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">📝</button>
@@ -14777,7 +14789,7 @@ function renderWpBoard(monday, items) {
           ${gHeading}
           <span style="font-size:9px;color:${gOpenCount ? 'var(--text3)' : '#3ba55d'};flex-shrink:0;">${gOpenCount || '✓'}</span>
         </div>
-        <div style="display:${gOpen ? 'block' : 'none'};padding-top:4px;">${gi.map(itemCard).join('')}</div>
+        <div style="display:${gOpen ? 'block' : 'none'};padding-top:4px;">${gi.map(it => itemCard(it, dateIso)).join('')}</div>
       </div>`;
     }).join('');
 
@@ -14859,6 +14871,33 @@ async function wpDrop(e, dateIso) {
   const id = wpDragId; wpDragId = null;
   try { const r = await call('moveWeeklyPlannerItem', { itemId: id, day: dateIso }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
   catch(err) { alert('Error: ' + err.message); }
+}
+// Drop ONTO a card = reorder within (or into) that card's day. Dropping in
+// the top half puts the dragged item above the target, bottom half below;
+// reorderWeeklyPlannerItems renumbers the whole day and pins each row's
+// Date to that weekday (so a card dragged in from another day lands here).
+function wpItemDragOver(e) { e.preventDefault(); e.stopPropagation(); }
+async function wpItemDrop(e, targetId, dateIso) {
+  e.preventDefault(); e.stopPropagation();
+  const dragId = wpDragId; wpDragId = null;
+  if (!dragId || dragId === targetId) return;
+  const all = (wpLastRender && wpLastRender.items) || [];
+  const dayIds = all.filter(it => it.date === dateIso).sort((a, b) => a.order - b.order)
+                    .map(it => it.id).filter(id => id !== dragId);
+  const rect = e.currentTarget.getBoundingClientRect();
+  let idx = dayIds.indexOf(targetId);
+  if (idx < 0) idx = dayIds.length;
+  else if ((e.clientY - rect.top) > rect.height / 2) idx += 1;
+  dayIds.splice(idx, 0, dragId);
+  try { const r = await call('reorderWeeklyPlannerItems', { orderedIds: dayIds, day: dateIso }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
+  catch(err) { alert('Error: ' + err.message); }
+}
+async function wpCycleFlag(itemId) {
+  const it = wpFindItem(itemId);
+  const cur = !it ? 'none' : (it.status === 'Done' ? 'done' : it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
+  const next = { none: 'Urgent', urgent: 'Planning', planning: 'Done', done: 'None' }[cur];
+  try { const r = await call('setWeeklyPlannerItemFlag', { itemId, flag: next }); if (r.error) throw new Error(r.error); await loadWpBoard(); }
+  catch(e) { alert('Error: ' + e.message); }
 }
 // Called from the small "TD" link on a Development Titles row — that
 // title's own campaign is already known, so no picker needed here (only
