@@ -12352,6 +12352,7 @@ async function leadSetStatus(id, status) {
 let LM_DATA = [];
 let LM_FILTER = 'New';       // Status
 let LM_F_TYPE = 'All', LM_F_STAGE = 'All', LM_F_USE = 'All';
+let LM_SORT = { key: 'use', dir: -1 };   // Mining Results table sort (default: usefulness High→Low)
 const LM_TYPE_DEST = { 'Tool': 'tool', 'Method': 'method', 'Post Type': 'post-type', 'Podcast Idea': 'podcast-idea', 'Trading Strategy': 'trading-strategy' };
 const LM_TYPE_COLOR = { 'Tool': '#63b3ed', 'Method': '#68d391', 'Post Type': '#b794f4', 'Strategy Note': '#f6ad55', 'Growth Strategy Note': '#f6e05e', 'Podcast Idea': '#f687b3', 'Trading Strategy': '#38b2ac', 'Knowledge': '#a0aec0' };
 const LM_USE_COLOR = { High: '#fc8181', Medium: '#f6ad55', Low: 'var(--text3)' };
@@ -12398,19 +12399,48 @@ function renderLmFilters() {
 const LM_BTN_A = 'font-size:10px;padding:3px 9px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;';
 const LM_BTN_B = 'font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;';
 const LM_USE_RANK = { High: 3, Medium: 2, Low: 1, '': 0 };
+// Click-to-sort for the Mining Results table. 'use' sorts by usefulness rank
+// and 'stage' by pipeline order (LM_STAGES); the rest sort alphabetically.
+// Clicking the active column flips direction. The last (actions) column is
+// not sortable. Ties always fall back to usefulness desc, then name.
+const LM_SORT_COLS = [
+  { key: 'type',   label: 'Type',   num: false, val: i => (i.type || '').toLowerCase() },
+  { key: 'name',   label: 'Item',   num: false, val: i => (i.name || '').toLowerCase() },
+  { key: 'use',    label: 'Use',    num: true,  val: i => LM_USE_RANK[i.usefulness] || 0 },
+  { key: 'stage',  label: 'Stage',  num: true,  val: i => { const x = LM_STAGES.indexOf(i.feedsStage); return x < 0 ? 99 : x; } },
+  { key: 'method', label: 'Method', num: false, val: i => (i.targetMethod || '').toLowerCase() },
+  { key: 'source', label: 'Source', num: false, val: i => (i.sourcePost || '').toLowerCase() },
+];
+function lmSort(key) {
+  if (LM_SORT.key === key) LM_SORT = { key, dir: -LM_SORT.dir };
+  else LM_SORT = { key, dir: (key === 'use' || key === 'stage') ? -1 : 1 };
+  renderLinkMining();
+}
 function renderLinkMining() {
   const el = document.getElementById('glMiningList');
+  const col = LM_SORT_COLS.find(c => c.key === LM_SORT.key) || LM_SORT_COLS[2];
   const rows = LM_DATA
     .filter(i => LM_FILTER === 'All' || i.status === LM_FILTER)
     .filter(i => LM_F_TYPE === 'All' || i.type === LM_F_TYPE)
     .filter(i => LM_F_STAGE === 'All' || i.feedsStage === LM_F_STAGE)
     .filter(i => LM_F_USE === 'All' || i.usefulness === LM_F_USE)
-    .sort((a, b) => (LM_USE_RANK[b.usefulness] || 0) - (LM_USE_RANK[a.usefulness] || 0)
-      || (a.type || '').localeCompare(b.type || '') || (a.name || '').localeCompare(b.name || ''));
+    .sort((a, b) => {
+      const av = col.val(a), bv = col.val(b);
+      const d = col.num ? (av - bv) : String(av).localeCompare(String(bv));
+      if (d) return d * LM_SORT.dir;
+      return (LM_USE_RANK[b.usefulness] || 0) - (LM_USE_RANK[a.usefulness] || 0)
+        || (a.name || '').localeCompare(b.name || '');
+    });
   if (!rows.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px 0;">Nothing matches. Mine a transcribed link from the Links tab.</div>'; return; }
+  const th = LM_SORT_COLS.map(c => {
+    const active = c.key === LM_SORT.key;
+    const arrow = active ? (LM_SORT.dir === 1 ? ' ▲' : ' ▼') : '<span style="opacity:.35;"> ⇅</span>';
+    return '<th onclick="lmSort(\'' + c.key + '\')" title="Sort by ' + c.label + '" style="padding:5px 8px;cursor:pointer;white-space:nowrap;user-select:none;'
+      + (active ? 'color:var(--text);' : '') + '">' + c.label + arrow + '</th>';
+  }).join('');
   el.innerHTML = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">'
     + '<thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;letter-spacing:.06em;">'
-    + '<th style="padding:5px 8px;">Type</th><th style="padding:5px 8px;">Item</th><th style="padding:5px 8px;">Use</th><th style="padding:5px 8px;">Stage</th><th style="padding:5px 8px;">Method</th><th style="padding:5px 8px;">Source</th><th style="padding:5px 8px;"></th>'
+    + th + '<th style="padding:5px 8px;"></th>'
     + '</tr></thead><tbody>' + rows.map(lmTableRow).join('') + '</tbody></table></div>';
 }
 function lmTableRow(i) {
