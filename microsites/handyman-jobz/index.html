@@ -10132,6 +10132,11 @@ async function submitGenAssets() {
       }
       const r = await w(skillMatch.workerAction, {
         titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, carouselType, presenter,
+        // The specific Method the operator picked — so the created asset's
+        // `Method` relation records which one produced it, not just a guess
+        // from Asset Type (matters where several methods share one type, e.g.
+        // the ~6 carousel methods all making Asset Type "carousel").
+        methodId: GA_METHOD_ID || undefined,
         designNotes: overrideText, overrideText,
         description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
         platformId, platformName, loginId,
