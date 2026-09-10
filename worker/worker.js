@@ -20641,18 +20641,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const hasMethod = methodId && methodId !== "__none__";
           const hubSlug = hubSlugForCampaign(campaignId);
 
-          // resolve the chosen template: registry pick → method Template prop → default
-          const templates = await getSinglePostTemplates(env, hubSlug, methodId).catch(() => []);
-          let tpl = templates.find(t => t.id === body.templateId) || templates[0] || null;
-          if (!tpl && hasMethod) {
+          // A run CYCLES through every registered template for this hub+method,
+          // in order, repeating — 6 iterations over 6 templates = one each; over
+          // 3 templates = two passes. No registered templates → fall back to the
+          // method's Template prop, else the built-in default (a cycle of one).
+          let tplCycle = (await getSinglePostTemplates(env, hubSlug, methodId).catch(() => []))
+            .filter(t => t && t.canvaUrl);
+          if (!tplCycle.length && hasMethod) {
             try {
               const mp = await fetch(`https://api.notion.com/v1/pages/${dsDash(methodId)}`, { headers: dsHdr }).then(r => r.json());
               const u = mp?.properties?.["Template"]?.url;
-              if (u) tpl = { id: "method", name: (mp.properties?.Name?.title || []).map(t => t.plain_text).join("") || "method template", canvaUrl: u };
+              if (u) tplCycle = [{ id: "method", name: (mp.properties?.Name?.title || []).map(t => t.plain_text).join("") || "method template", canvaUrl: u }];
             } catch (e) {}
           }
-          if (!tpl) tpl = { ...SINGLE_POST_DEFAULT_TEMPLATE };
-          if (!tpl.canvaUrl) return json({ error: "This hub has no single-post template yet — add one in the Content Hubs card (Design → Single-Post Templates → + New template)." }, 400);
+          if (!tplCycle.length) tplCycle = [{ ...SINGLE_POST_DEFAULT_TEMPLATE }];
 
           const [prodPage, researchRec, methodFrameworkText, pillarContent, campResearch] = await Promise.all([
             hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
@@ -20769,7 +20771,9 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
 
           const spMProp = await assetMethodProp(methodId, "single post");
           const created = [], failures = [];
-          for (const post of posts) {
+          for (let pi = 0; pi < posts.length; pi++) {
+            const post = posts[pi];
+            const tpl = tplCycle[pi % tplCycle.length];   // cycle through the templates in order
             const hp = String(post.headlinePrimary || "").trim();
             const ha = String(post.headlineAccent || "").trim();
             const bd = String(post.body || "").trim();
@@ -20839,7 +20843,9 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
           return json({
             success: true, created: created.length, failed: failures.length,
             assets: created, awaitingCanva: created.length,
-            assetType: "single post", templateName: tpl.name, contentType,
+            assetType: "single post", contentType,
+            templateCount: tplCycle.length,
+            templateNames: tplCycle.map(t => t.name),
           });
         }
 

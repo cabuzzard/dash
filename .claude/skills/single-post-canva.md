@@ -21,8 +21,8 @@ Read `.claude/skills/_content-governance.md` — the voice-fit bar every rewrite
 ## Step 1 — gather the batch
 From the handoff prompt (assets are listed one JSON object per line) or, with just a `titleId`, query the Assets DB: `Asset Type = "single post"` AND `Content Strategy` contains the titleId AND `Post Image` is empty. For each asset read its `SINGLE POST` fenced json block from the page body — it carries `template` (`url`, `name`), `contentType`, `fields` (`Headline Primary` / `Headline Accent` / `Body`), `altText`, `accent`.
 
-## Step 2 — inspect the template once
-All assets in one run usually share a template. `read-design` its URL to see the three text elements, their `locator_id`s, positions and box sizes. Note which element is the dark **Headline Primary**, which is the accent-coloured **Headline Accent**, and which is the small **Body**. Confirm the template's accent colour matches the hub's Design System accent (the Content Hubs card's Design section) — if the operator says it's wrong, stop and have them fix the template, don't recolour per card.
+## Step 2 — inspect each distinct template once
+A run **cycles through all the hub's templates in order**, so a batch usually spans several. Collect the distinct `template.url` values across the assets and `read-design` each once — cache its three text-element `locator_id`s (dark **Headline Primary**, accent **Headline Accent**, small **Body**) and box sizes. Each asset's `SINGLE POST` block names which template it belongs to.
 
 ## Step 3 — per asset
 1. `copy-design` the template into a new design. **NEVER edit the original template.**

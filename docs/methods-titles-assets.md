@@ -621,9 +621,13 @@ three text boxes → paste the link back → `saveSinglePostTemplate`.
 product's 🔬 Product Research (Customer / Pain Points / Emotions / Objections /
 Benefits / Proof Points / Transformation), the Product page, campaign Research
 Pain Points, the Title's Notes + override, Pillar Content, and the hub's global
-Image Spec (`assembleImageBrief` → `brief.storedSpec`). Modal picks
-`templateId`, `contentType` (Hook / Pain Point / Benefit / Informational /
-Customer Focus / Proof / Objection / Contrarian), `count` (1–12, default 6).
+Image Spec (`assembleImageBrief` → `brief.storedSpec`). Modal picks `contentType`
+(Hook / Pain Point / Benefit / Informational / Customer Focus / Proof / Objection
+/ Contrarian) and `count` (1–12, default 6). **A run cycles through every
+registered template for the hub in order, repeating** — `count` 6 over 6
+templates = one each; over 3 = two passes. Each asset stamps `tplCycle[i %
+tplCycle.length]`. No templates registered → the method's `Template` prop, else
+the built-in default (a cycle of one).
 Each post = `headlinePrimary` (~25–35 chars, the setup), `headlineAccent`
 (~15–25 chars, same sentence, the payoff/turn — rendered in the template's accent
 colour), `body` (≤~110 chars, may be empty), `caption` (→ `Post Caption`),
