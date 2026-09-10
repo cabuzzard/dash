@@ -229,8 +229,8 @@ meaningful design point, not just a UI convenience.
 `generateTitleAssets` also dispatches on the literal `assetType` string (=
 the method name for non-skill methods) to its own dedicated branches before
 the generic N-concepts path: `SEO Post` / `Blog - SEO - News`, `Offer …`,
-`Content Hub`, `landing page`, and **`Hook Posts`** (`/\bhook post/i` — see
-§ "Hook Posts" at the end of this doc).
+`Content Hub`, `landing page`, and **`single post`** (`/\bsingle post\b/i` — see
+§ "Single Post" at the end of this doc).
 
 **As of this pass, the modal's input surface was deliberately stripped down**
 to Title (read-only) / Method / Platform (now always visible, not
@@ -471,7 +471,7 @@ legacy assets not yet backfilled.
   `resolveMethodIdByName`) → a `{ "Method": { relation:[{id}] } }` fragment (or
   `{}`). Prefers an explicit `methodId`; else maps the Asset Type string to a
   Method Name — Asset Type ≈ Method Name, with `ASSET_TYPE_METHOD_ALIAS` for the
-  few that diverge (`hook post`→`Hook Posts`, `avatar video`→`Avatar Video —
+  few that diverge (`single post`→`single post`, `avatar video`→`Avatar Video —
   Growth`, `text video`→`Text Video — Growth`, `t shirt`→`t shirt EVALUATE`,
   `content hub`→`hub`, `drawing post`→`Drawing Post`, `carousel`→
   `carousel — Template CSV Export`, `upwork search`→`Upwork Search`).
@@ -598,50 +598,53 @@ yet (images live on the asset record; a later pass can surface them).
 
 ---
 
-## Hook Posts (`generateTitleAssets` `/\bhook post/i` branch)
+## Single Post (`generateTitleAssets` `/\bsingle post\b/i` branch)
 
-The `Hook Posts` Method (Methods DB, Status Live — **retasked from the old
-`Product Cards` method**, same page id, so its Hub Method Matrix column is
-preserved). One Title + the attached product's objections → a **batch of
-one-page social posts, one Asset each** (`Asset Type: hook post`), grouped
-under the Title in Publish. `quote card` / `short form copy` /
-`text pic — Growth` / `instagram crunch evaluate text` were downgraded to
-Development ("merged into Hook Posts").
+The `single post` Method (Methods DB `3ca1f7d3a4bb81ffa775e5f3e0426f8a`, Status
+Live — **renamed from `quote card`** 2026-09-10; the old `Hook Posts` method and
+its Grok-plate + HTML-overlay render are archived). Fills one of a **hub's fixed
+Canva templates** with researched copy — **one Asset per iteration**, all using
+the same template for a run (`Asset Type: single post`), grouped under the Title.
+Two stage, because the Worker can't drive Canva.
 
-**Phase A — copy (synchronous, one Claude call).** Objections gathered from
-the product's 🔬 Product Research (Objections / Pain Points / Emotions /
-Customer), the Product page, campaign Research Pain Points, the Title's Notes
-+ the modal override box, and the Title's Pillar Content. The hub image spec
-is assembled once (`assembleImageBrief` + `writeImageSpec`, same as the offer
-images). Claude returns N posts (default 6, cap 10) — each with `objection`,
-`format` (`picture` | `text`, model's choice per post), `snippet` (the exact
-on-image words, ≤22 words), `caption` (→ `Post Caption`), `zone`
-(`top`/`center`/`lower-third`/`left-column`), and for picture posts an
-`imagePrompt` (wordless plate prompt that keeps `zone` calm). Each becomes an
-Asset (Status Development) with a fenced `json` **HOOK POST** block. The Title
-is stamped with the `Hook Posts` method (`resolveMethodIdByName`) +
-`propagateMethodToCampaigns`. Returns `{ created, imagesPending, formatKey }`
-immediately.
+**Per-hub template registry (KV `singlepost:templates:<slug>`).** Each row is
+`{ id, name, methodId, methodName, canvaUrl, promptOverride, createdAt }`, tagged
+to a single-post method. Managed from the **Content Hubs card → Design →
+Single-Post Templates → + New template** modal:
+`buildSinglePostTemplatePrompt` (generation prompt from the hub's global Image
+Spec + palette + the operator's override) → operator builds the Canva design with
+three text boxes → paste the link back → `saveSinglePostTemplate`.
+`getSinglePostConfig {campaignId}` feeds the modal + the Generate Assets picker
+(`templates`, `methods` matching `/^single post/i`, `contentTypes`).
 
-**Phase B — images (`ctx.waitUntil`, then a re-runnable action).**
-`renderHookPostImage(env, assetId)` per asset, sequentially. Every image is
-made for one **dimension set** (`HOOK_POST_FORMATS` — `ig-portrait` 1080×1350
-default, `ig-square`, `ig-story`), chosen in the modal (`formatKey`). Picture
-posts: `imagePrompt` → xAI `grok-imagine-image-2.0` at the set's aspect ratio
-→ plate hosted (`Instagram Background`). Then, for **every** post, an HTML
-card (hub display font + palette tokens, accent rule, wordmark, `snippet` set
-in `zone`; plate as full-bleed bg for picture, palette ground for text) →
-**Cloudflare Browser Rendering `/screenshot`** (same pipeline as
-`generateDesignCardMotif` / carousel slides) → hosted → `Post Image`, Asset
-Status → Publish. **No Canva/Remotion step.** `HOOK_POST_FORMATS[].canvaTemplate`
-is an optional "open in Canva" convenience link per set, never on the auto path.
+**Stage 1 — copy (one forced `submit_single_posts` tool call).** Grounded in the
+product's 🔬 Product Research (Customer / Pain Points / Emotions / Objections /
+Benefits / Proof Points / Transformation), the Product page, campaign Research
+Pain Points, the Title's Notes + override, Pillar Content, and the hub's global
+Image Spec (`assembleImageBrief` → `brief.storedSpec`). Modal picks
+`templateId`, `contentType` (Hook / Pain Point / Benefit / Informational /
+Customer Focus / Proof / Objection / Contrarian), `count` (1–12, default 6).
+Each post = `headlinePrimary` (~25–35 chars, the setup), `headlineAccent`
+(~15–25 chars, same sentence, the payoff/turn — rendered in the template's accent
+colour), `body` (≤~110 chars, may be empty), `caption` (→ `Post Caption`),
+`hashtags` (→ `Notes`), `altText` (→ `Alt Text`). Each becomes an Asset (Status
+Development) with a fenced `json` **SINGLE POST** block (`template`, `hubSlug`,
+`contentType`, `fields`, …) + `Canva Template` set. Title stamped with the
+method + `propagateMethodToCampaigns`. Returns `{ created, awaitingCanva,
+templateName, contentType }`. **No worker-side image render.**
 
-**`renderHookPostImages { titleId }`** — idempotent action: (re-)renders any
-`hook post` asset under the Title with no `Post Image`. The Generate Assets
-modal auto-pings it a few times after generation (safety net for a cut-short
-`ctx.waitUntil`); also the way to re-render after editing a snippet in Notion.
+**Stage 2 — Canva port (a Claude session with the Canva connector).**
+`buildSinglePostCanvaHandoff {titleId}` assembles a self-contained prompt:
+`.claude/skills/single-post-canva.md` + `_content-governance.md` + every pending
+`single post` asset's copy + template + box budgets. In the chat: `copy-design`
+the template (never the original) → `edit-design` replace Headline Primary /
+Headline Accent / Body → verify + rewrite to fit → `export-design` PNG → POST
+`saveSinglePostImage {assetId, token, fileData, designUrl, altText}` → hosts the
+PNG on `Post Image` (`web/<deployPath>/single-posts/…?v=<ts>`), sets `Design
+Link`, flips Status → Publish. `listSinglePostsAwaitingCanva {titleId}` for the
+pending count. Same pattern as `carousel — Template CSV Export`
+(`buildCanvaPortPrompt`) and `LinkedIn Post` (`buildLinkedInBannerPortPrompt`).
 
-Reuses `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `CF_ACCOUNT_ID`,
-`CF_API_TOKEN` — all already set. `getTitles`' `buildAssetRow` returns
-`postImage` / `canvaTemplate`; the modal's existing-assets list and the
-asset rows show the thumbnail.
+Reuses `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`. `getTitles`' asset rows show the
+`postImage` thumbnail, a `Canva` link, `⏳ Canva` for pending, and a
+**📋 Copy Canva handoff** button.
