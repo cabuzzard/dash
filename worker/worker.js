@@ -8547,7 +8547,8 @@ Return: the logo on a transparent background, plus one preview placed on the sit
           body.action === "saveHubPalette" || body.action === "pushHubPalette" ||
           body.action === "generateResearchPalette" || body.action === "generateResearchFonts" ||
           body.action === "generateResearchDesign" || body.action === "saveResearchDesignField" ||
-          body.action === "getHubDesignHistory" || body.action === "getHubDesignBriefPrompt") {
+          body.action === "getHubDesignHistory" || body.action === "getHubDesignBriefPrompt" ||
+          body.action === "saveHubBrief" || body.action === "getHubKeywords") {
         const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const PKEYS = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"];
@@ -8699,16 +8700,17 @@ Return: the logo on a transparent background, plus one preview placed on the sit
         // design to hub" — one button then writes the selected version to
         // Research AND commits it live. Append-only, capped, per hub slug.
         const HDKEY = slug => `hubdesign:${String(slug || "").trim()}`;
+        const HD_LISTS = { palette: "palettes", fonts: "fonts", direction: "directions" };
         const hdHistoryGet = async slug => {
-          try { const v = await env.TRADES.get(HDKEY(slug), "json"); if (v && (v.palettes || v.fonts)) return { palettes: v.palettes || [], fonts: v.fonts || [] }; } catch (e) {}
-          return { palettes: [], fonts: [] };
+          try { const v = await env.TRADES.get(HDKEY(slug), "json"); if (v && (v.palettes || v.fonts || v.directions)) return { palettes: v.palettes || [], fonts: v.fonts || [], directions: v.directions || [] }; } catch (e) {}
+          return { palettes: [], fonts: [], directions: [] };
         };
         const hdHistoryAppend = async (slug, kind, entry) => {
           if (!slug) return;
           const h = await hdHistoryGet(slug);
-          const list = kind === "fonts" ? h.fonts : h.palettes;
-          list.unshift({ ts: Date.now(), ...entry });
-          if (list.length > 12) list.length = 12;
+          const key = HD_LISTS[kind] || "palettes";
+          h[key].unshift({ ts: Date.now(), ...entry });
+          if (h[key].length > 12) h[key].length = 12;
           try { await env.TRADES.put(HDKEY(slug), JSON.stringify(h)); } catch (e) {}
         };
 
@@ -8826,16 +8828,28 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
             }
           } catch (e) {}
           const opDirection = rtOf(t.resProps, "Design Notes") || rtOf(t.props, "Design Notes");
-          let out;
-          try {
-            out = await claude([{ type: "text", text:
-`You are researching the VISUAL DIRECTION for a campaign, from its research below. This is a Stage-1 artifact that everything downstream (hub, images, offer plates) inherits from — derive it from the customer's real world, do not invent a generic "editorial / premium" look.
-
-${briefFor(t)}
-${prodBrief ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR DIRECTION (honour this — it is the operator's standing call on this hub's look; it overrides the derived choices where they conflict):\n${opDirection}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
+          // Source mode: an attached reference image wins; else the operator's
+          // edited keyword string; else the campaign + product research.
+          const hasImg = body.image && /^data:image\//.test(body.image);
+          const kw = String(body.keywords || "").trim();
+          const parts = [];
+          if (hasImg) {
+            const m = body.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
+            if (m && m[2].length < 6_000_000) parts.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
+          }
+          const groundBlock = kw
+            ? `PRIMARY BRIEF FOR THIS RUN — build the direction around these keywords:\n${kw}\n\nSECONDARY CONTEXT:\n${briefFor(t)}`
+            : briefFor(t);
+          parts.push({ type: "text", text:
+`You are setting the VISUAL DIRECTION for a content hub — a Stage-1 artifact everything downstream (the hub, the wordless image plates, every offer plate) inherits from. Concrete, specific to this subject; never a generic "editorial / premium / cinematic" default.
+${hasImg ? `\nA REFERENCE IMAGE IS ATTACHED AND IT IS THE DIRECTION. Derive all three fields FROM THE IMAGE: "register" = the mood / world it projects; "photography" = describe the kind of real images it exemplifies (subjects, settings, light — time of day, quality, colour cast — how colour sits in it, the medium/finish); "avoid" = the looks that would break from this image. The brief below is only secondary context — where it conflicts with the image, the image wins.\n` : ""}
+${groundBlock}
+${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (honour this — it overrides derived choices where they conflict):\n${opDirection}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
 Return ONLY this minified JSON object, nothing before or after:
-{"register":"1-2 sentences — the overall look and mood the research implies (e.g. 'a policy-brief cover', 'an after-hours listening room'). Concrete.","photography":"3-4 sentences — the real images that belong here: the customer's actual settings and objects (concrete nouns), the light (time of day, quality, colour cast), how the palette shows up in a photo, the medium/finish. No people looking at camera.","avoid":"a semicolon-separated list of the specific AI / stock-photo / cliché looks to reject for THIS niche"}` }], 1400);
-          } catch (e) { return json({ error: e.message }, 502); }
+{"register":"1-2 sentences — the overall look and mood. Concrete.","photography":"3-4 sentences — the real images that belong: subjects and settings (concrete nouns), the light, how the palette shows up in a photo, the medium/finish. Say plainly whether people/faces belong or not — do not default to banning them.","avoid":"a semicolon-separated list of the specific AI / stock-photo / cliché looks to reject for THIS niche"}` });
+          let out;
+          try { out = await claude(parts, 1400); }
+          catch (e) { return json({ error: e.message }, 502); }
           let parsed;
           try { const s = out.indexOf("{"), e = out.lastIndexOf("}"); parsed = JSON.parse(out.slice(s, e + 1)); }
           catch (e) { return json({ error: "model did not return the JSON design object", raw: out }, 502); }
@@ -8844,12 +8858,18 @@ Return ONLY this minified JSON object, nothing before or after:
             photography: String(parsed.photography || "").trim(),
             avoid: String(parsed.avoid || "").trim(),
           };
+          const source = hasImg ? "image" : (kw ? "keywords" : "research");
+          if (body.stage && body.slug) {
+            const ts = Date.now();
+            await hdHistoryAppend(body.slug, "direction", { ts, ...design, source });
+            return json({ ok: true, staged: true, ts, design: { ...design, notes: opDirection }, source });
+          }
           try {
             await writeResearchField(t.pageId, "Visual Register", design.register);
             await writeResearchField(t.pageId, "Photography Direction", design.photography);
             await writeResearchField(t.pageId, "Visual Avoid", design.avoid);
           } catch (e) { return json({ error: e.message }, 502); }
-          return json({ ok: true, design: { ...design, notes: opDirection }, scope: t.kind });
+          return json({ ok: true, design: { ...design, notes: opDirection }, source, scope: t.kind });
         }
 
         // ---- saveResearchDesignField : hand-edit one Design-section field ----
@@ -8921,34 +8941,49 @@ Return ONLY this minified JSON object, nothing before or after:
         // ---- pushHubPalette / publishHubDesign : one button — write the
         //      selected Palette + Fonts to the campaign Research record AND
         //      commit them into hubs.design.json + the hub HTML, then redeploy.
-        if (body.action === "pushHubPalette" || body.action === "publishHubDesign") {
+        if (body.action === "pushHubPalette" || body.action === "publishHubDesign" || body.action === "saveHubBrief") {
+          // saveHubBrief / body.briefOnly = write the selected versions to the
+          // campaign Research record ONLY (upstream). publishHubDesign also
+          // commits palette + fonts into the live hub (downstream).
+          const briefOnly = body.action === "saveHubBrief" || !!body.briefOnly;
           const GT = (env.GITHUB_TOKEN || "").trim();
-          if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+          if (!briefOnly && !GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
           const slug = String(body.slug || "").trim();
           if (!HUB_SITES.some(h => h.slug === slug)) return json({ error: `unknown hub "${slug}"` }, 400);
 
           // pull palette + fonts from the campaign's Research record (unless passed in)
           let palette = body.palette ? safePalette(body.palette) : null;
           let fonts = (body.fonts && body.fonts.display) ? body.fonts : null;
+          const dir = body.direction && (body.direction.register || body.direction.photography || body.direction.avoid) ? body.direction : null;
           const { rid: researchId, props: resProps } = await resolveResearch();
           if (!palette) { const p = parseJsonTail(rtOf(resProps, "Palette")); if (p) palette = safePalette(p); }
           if (!fonts)   { const f = parseJsonTail(rtOf(resProps, "Fonts"));   if (f && f.display) fonts = f; }
-          if (!palette) return json({ error: "no Palette selected or on the Research record — Regenerate it first" }, 400);
+          if (!palette && !briefOnly) return json({ error: "no Palette selected or on the Research record — Regenerate it first" }, 400);
+          if (briefOnly && !body.palette && !body.fonts && !dir) return json({ error: "nothing to post — select a staged palette, fonts or direction first" }, 400);
 
           // Write the selected versions back to the campaign Research record —
           // it stays the source of truth (Stage 1). Best-effort; a Notion
           // hiccup here shouldn't block the commit.
+          let wrote = [];
           if (researchId) {
             try {
-              if (body.palette) {
+              if (body.palette && palette) {
                 const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
                 await writeResearchField(researchId, "Palette", `${(body.rationale || "Selected from staged versions.").trim()}\n\n${strip}\n\n${JSON.stringify(palette)}`);
+                wrote.push("Palette");
               }
               if (body.fonts && fonts) {
                 await writeResearchField(researchId, "Fonts", `${(body.fontsNote || "Selected from staged versions.").trim()}\n\n${JSON.stringify(fonts)}`);
+                wrote.push("Fonts");
               }
-            } catch (e) { /* commit still proceeds — Research write is best-effort */ }
+              if (dir) {
+                if (dir.register)    { await writeResearchField(researchId, "Visual Register", String(dir.register).trim()); wrote.push("Visual Register"); }
+                if (dir.photography) { await writeResearchField(researchId, "Photography Direction", String(dir.photography).trim()); wrote.push("Photography Direction"); }
+                if (dir.avoid)       { await writeResearchField(researchId, "Visual Avoid", String(dir.avoid).trim()); wrote.push("Visual Avoid"); }
+              }
+            } catch (e) { if (briefOnly) return json({ error: "Notion write failed: " + e.message }, 502); /* else commit still proceeds */ }
           }
+          if (briefOnly) return json({ ok: true, briefOnly: true, wrote, palette: body.palette ? palette : undefined, fonts: body.fonts ? fonts : undefined, direction: dir || undefined });
 
           const REPO = "cabuzzard/dash", BRANCH = "main";
           const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
@@ -9008,13 +9043,41 @@ Return ONLY this minified JSON object, nothing before or after:
           const slug = String(body.slug || "").trim();
           if (!slug) return json({ error: "slug required" }, 400);
           const hist = await hdHistoryGet(slug);
-          let current = { palette: null, fonts: null };
+          let current = { palette: null, fonts: null, direction: null };
           try {
             const { props } = await resolveResearch();
             const p = parseJsonTail(rtOf(props, "Palette")); if (p) current.palette = safePalette(p);
             const f = parseJsonTail(rtOf(props, "Fonts"));   if (f && f.display) current.fonts = f;
+            const reg = rtOf(props, "Visual Register"), pho = rtOf(props, "Photography Direction"), avd = rtOf(props, "Visual Avoid");
+            if (reg || pho || avd) current.direction = { register: reg, photography: pho, avoid: avd };
           } catch (e) {}
-          return json({ ok: true, palettes: hist.palettes, fonts: hist.fonts, current });
+          return json({ ok: true, palettes: hist.palettes, fonts: hist.fonts, directions: hist.directions, current });
+        }
+
+        // ---- getHubKeywords : product keywords for the "direction from
+        //      keywords" modal. Main product's own Keywords, else campaign's.
+        if (body.action === "getHubKeywords") {
+          const { props: r, campProps: c } = await resolveResearch();
+          let productKw = "", productName = "";
+          try {
+            const cid = dash(body.campaignId || "");
+            let productId = null;
+            const arows = await notionQuery(ASSETS_DB, { filter: { and: [
+              { property: "Campaign", relation: { contains: cid } },
+              { property: "Asset Type", select: { equals: "Content Hub" } },
+            ] }, sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(() => []);
+            for (const a of arows) { const rel = a.properties?.Product?.relation || []; if (rel.length) { productId = rel[0].id.replace(/-/g, ""); break; } }
+            if (!productId) {
+              const camp = await fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: hdr }).then(x => x.json()).catch(() => null);
+              const rels = camp?.properties?.["Products"]?.relation || []; if (rels.length) productId = rels[0].id.replace(/-/g, "");
+            }
+            if (productId) {
+              const pp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(x => x.json()).catch(() => null);
+              productKw = rtOf(pp?.properties || {}, "Keywords");
+              productName = (pp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+            }
+          } catch (e) {}
+          return json({ ok: true, keywords: productKw || rtOf(r, "Keywords") || rtOf(c, "Keywords") || "", source: productKw ? "product" : "campaign", productName });
         }
 
         // ---- getHubDesignBriefPrompt : the ✎ ChatGPT brief prompt ----------

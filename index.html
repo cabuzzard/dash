@@ -1733,6 +1733,25 @@
   </div>
 </div>
 
+<!-- Direction from keywords — load the product's keywords, edit, regenerate the visual direction around them -->
+<div class="modal-bg" id="hubKwModal" onclick="if(event.target===this)closeHubKwModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-title" id="hkwTitle">Direction from keywords</div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">
+      The main product's keywords, loaded for editing. Regenerate builds the visual
+      direction (register / photography / avoid) <b>around these</b> instead of the
+      full research. Result is staged — review it, then <b>Post to brief</b>.
+    </div>
+    <textarea id="hkwText" wrap="soft" placeholder="keyword one, keyword two, …"
+      style="width:100%;height:120px;font-family:inherit;font-size:13px;line-height:1.5;padding:10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;"></textarea>
+    <div style="display:flex;gap:10px;margin-top:10px;align-items:center;">
+      <button class="modal-btn" id="hkwGoBtn" onclick="hkwRegen()" style="flex:0 0 auto;">Regenerate direction</button>
+      <button class="modal-btn" onclick="closeHubKwModal()" style="margin-left:auto;background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+    </div>
+    <div id="hkwMsg" style="font-size:12px;color:var(--text3);margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Hub image guidance — operator direction folded into the image plate spec + every Grok render -->
 <div class="modal-bg" id="hubImgGuidanceModal" onclick="if(event.target===this)closeHubImgGuidanceModal()">
   <div class="modal" style="max-width:560px;">
@@ -10541,7 +10560,7 @@ let _hpFetched = {};          // slug -> already pulled getHubPalette this sessi
 let _hpHist = {};             // slug -> { palettes:[{ts,palette,rationale,source}], fonts:[{ts,fonts,note}], current:{palette,fonts} }
 let _hpHistFetched = {};      // slug -> getHubDesignHistory has run this session
 let _hpSel = {};              // slug -> { palette: ts|'current', fonts: ts|'current' } — which staged version is "on deck"
-function _hpSelLoad(slug){ try { return JSON.parse(localStorage.getItem('hpSel:' + slug) || 'null') || { palette:'current', fonts:'current' }; } catch(e){ return { palette:'current', fonts:'current' }; } }
+function _hpSelLoad(slug){ try { return Object.assign({ palette:'current', fonts:'current', direction:'current' }, JSON.parse(localStorage.getItem('hpSel:' + slug) || 'null') || {}); } catch(e){ return { palette:'current', fonts:'current', direction:'current' }; } }
 function _hpSelSave(slug){ try { localStorage.setItem('hpSel:' + slug, JSON.stringify(_hpSel[slug] || {})); } catch(e){} }
 let _hubMainProd = {};        // slug -> { id, name, productsite, stack, status, via } | null — the product the hub is built around
 let _hubMainProdFetched = {}; // slug -> getHubMainProduct has run this session
@@ -10564,9 +10583,10 @@ function hubGo(d) { _hubIdx = (_hubIdx + d + HUB_SITES.length) % HUB_SITES.lengt
 function hubJump(i) { _hubIdx = i; try { localStorage.setItem('hubDeckIdx', String(i)); } catch (e) {} renderHubsTab(); }
 // The "on deck" palette = the staged version the dropdown has selected, else
 // the current Research/live value. hpSelFonts() is the same for the type pairing.
+const _HP_LIST = { palette: 'palettes', fonts: 'fonts', direction: 'directions' };
 function _hpEntry(slug, kind){
   const sel = (_hpSel[slug] || {})[kind];
-  const list = ((_hpHist[slug] || {})[kind === 'palette' ? 'palettes' : 'fonts']) || [];
+  const list = ((_hpHist[slug] || {})[_HP_LIST[kind]]) || [];
   if (sel && sel !== 'current') { const hit = list.find(e => String(e.ts) === String(sel)); if (hit) return hit; }
   return null;
 }
@@ -10596,7 +10616,7 @@ async function hpGen(slug) {
     // STAGED — appended as a candidate version, not written to Research.
     // "Publish design to hub" writes the selected version + commits it live.
     const r = await call('generateResearchPalette', { campaignId: h.campaignId, slug, image, instructions, stage: true });
-    _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], current: {} };
+    _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], directions: [], current: {} };
     _hpHist[slug].palettes.unshift({ ts: r.ts, palette: r.palette, rationale: r.note || '', source: image ? 'image' : (instructions ? 'steer' : 'research') });
     _hpSel[slug] = _hpSel[slug] || _hpSelLoad(slug); _hpSel[slug].palette = r.ts; _hpSelSave(slug);
     _hpNote[slug] = (r.note || 'New palette staged.') + ' — staged, not live. Pick a version, then Publish.';
@@ -10610,25 +10630,95 @@ async function hpGenFonts(slug) {
   try {
     const instructions = (document.getElementById('hpInstr') || {}).value ? document.getElementById('hpInstr').value.trim() : undefined;
     const r = await call('generateResearchFonts', { campaignId: h.campaignId, slug, instructions, stage: true });
-    _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], current: {} };
+    _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], directions: [], current: {} };
     _hpHist[slug].fonts.unshift({ ts: r.ts, fonts: r.fonts, note: '' });
     _hpSel[slug] = _hpSel[slug] || _hpSelLoad(slug); _hpSel[slug].fonts = r.ts; _hpSelSave(slug);
     _hpNote[slug] = 'Fonts staged: ' + [r.fonts.display, r.fonts.body, r.fonts.mono].join(' · ') + ' — pick a version, then Publish.';
     renderHubsTab();
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = '↻ Regenerate fonts'; }
 }
-async function hpGenDesign(slug) {
+// Design direction — STAGED (like palette/fonts). Source: an attached
+// reference image wins; else `keywords` (from the keyword modal); else the
+// campaign + product research. "Post to brief" writes the selected one to
+// the Research record; only then does the image plate spec change.
+async function hpGenDesign(slug, opts) {
+  opts = opts || {};
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
-  const btn = document.getElementById('hpGenDesign'), msg = document.getElementById('hpMsg');
-  btn.disabled = true; btn.textContent = 'Researching…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Researching the visual direction from campaign + product research…';
+  const btn = document.getElementById(opts.btnId || 'hpGenDesign'), msg = document.getElementById('hpMsg');
+  const orig = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Researching…'; }
+  msg.style.color = 'var(--text3)';
   try {
-    const instructions = (document.getElementById('hpInstr') || {}).value ? document.getElementById('hpInstr').value.trim() : '';
-    const r = await call('generateResearchDesign', { campaignId: h.campaignId, instructions: instructions || undefined });
-    _hpDesign[slug] = Object.assign({}, _hpDesign[slug], r.design);
-    _hpNote[slug] = 'Visual direction researched → Research › Visual Register / Photography Direction / Visual Avoid';
-    _hubImgBrief[slug] = null; fetchHubImgBrief(slug, true);   // the spec inherits from these
+    const instructions = (document.getElementById('hpInstr') || {}).value ? document.getElementById('hpInstr').value.trim() : undefined;
+    let image = null;
+    if (!opts.keywords) {
+      const f = (document.getElementById('hpImg') || {}).files && document.getElementById('hpImg').files[0];
+      if (f) {
+        if (f.size > 4000000) throw new Error('Keep the image under 4 MB');
+        image = await new Promise((res, rej) => { const rr = new FileReader(); rr.onload = () => res(rr.result); rr.onerror = () => rej(new Error('could not read that image')); rr.readAsDataURL(f); });
+      }
+    }
+    msg.textContent = image ? 'Reading the direction off the image…' : opts.keywords ? 'Building the direction from those keywords…' : 'Researching the visual direction…';
+    const r = await call('generateResearchDesign', { campaignId: h.campaignId, slug, instructions, image, keywords: opts.keywords || undefined, stage: true });
+    _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], directions: [], current: {} };
+    _hpHist[slug].directions.unshift({ ts: r.ts, register: r.design.register, photography: r.design.photography, avoid: r.design.avoid, source: r.source });
+    _hpSel[slug] = _hpSel[slug] || _hpSelLoad(slug); _hpSel[slug].direction = r.ts; _hpSelSave(slug);
+    _hpNote[slug] = 'Direction staged (' + (r.source || 'research') + ') — review it below, then Post to brief to save it upstream.';
     renderHubsTab();
-  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = '↻ Regenerate design direction'; }
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; if (btn) { btn.disabled = false; btn.textContent = orig; } }
+}
+async function openHubKwModal(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  HKW_SLUG = slug;
+  document.getElementById('hkwTitle').textContent = 'Direction from keywords — ' + h.name;
+  const ta = document.getElementById('hkwText'); ta.value = 'Loading the product keywords…';
+  document.getElementById('hkwMsg').textContent = '';
+  document.getElementById('hubKwModal').classList.add('open');
+  try {
+    const r = await call('getHubKeywords', { slug, campaignId: h.campaignId });
+    ta.value = r.keywords || '';
+    document.getElementById('hkwMsg').textContent = r.keywords ? ('From the ' + (r.source || 'campaign') + (r.productName ? ' — ' + r.productName : '') + '. Edit freely, then Regenerate.') : 'No keywords on file — type some, then Regenerate.';
+  } catch (e) { ta.value = ''; document.getElementById('hkwMsg').textContent = 'Could not load keywords: ' + e.message; }
+}
+function closeHubKwModal(){ document.getElementById('hubKwModal').classList.remove('open'); }
+async function hkwRegen() {
+  if (!HKW_SLUG) return;
+  const kw = (document.getElementById('hkwText').value || '').trim();
+  if (!kw) { document.getElementById('hkwMsg').textContent = 'Enter some keywords first.'; return; }
+  const btn = document.getElementById('hkwGoBtn'); btn.disabled = true; btn.textContent = 'Regenerating…';
+  const slug = HKW_SLUG;
+  closeHubKwModal();
+  await hpGenDesign(slug, { keywords: kw });
+  btn.disabled = false; btn.textContent = 'Regenerate direction';
+}
+let HKW_SLUG = '';
+async function hpSave(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug), msg = document.getElementById('hpMsg');
+  try { await call('saveHubPalette', { campaignId: h.campaignId, palette: hpPalette(slug) }); msg.style.color = '#4cff4c'; msg.textContent = 'Saved to Research › Palette.'; }
+  catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+}
+// Post to brief (UPSTREAM only) — write the selected staged palette / fonts /
+// direction to the campaign Research record. No commit, no deploy.
+async function hpPostBrief(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const msg = document.getElementById('hpMsg');
+  const pe = _hpEntry(slug, 'palette'), fe = _hpEntry(slug, 'fonts'), de = _hpEntry(slug, 'direction');
+  if (!pe && !fe && !de) { msg.style.color = '#ffb020'; msg.textContent = 'Nothing staged — regenerate a palette, fonts or direction first.'; return; }
+  const btn = document.getElementById('hpPostBrief'); btn.disabled = true; btn.textContent = 'Posting…';
+  try {
+    const r = await call('saveHubBrief', {
+      slug, campaignId: h.campaignId,
+      palette: pe ? hpPalette(slug) : undefined, rationale: pe ? pe.rationale : undefined,
+      fonts: fe ? hpSelFonts(slug) : undefined, fontsNote: fe ? (fe.note || '') : undefined,
+      direction: de ? { register: de.register, photography: de.photography, avoid: de.avoid } : undefined,
+    });
+    if (de) _hpDesign[slug] = Object.assign({}, _hpDesign[slug], { register: de.register, photography: de.photography, avoid: de.avoid });
+    _hpSel[slug] = { palette: pe ? 'current' : (_hpSel[slug]||{}).palette, fonts: fe ? 'current' : (_hpSel[slug]||{}).fonts, direction: de ? 'current' : (_hpSel[slug]||{}).direction };
+    _hpSelSave(slug);
+    _hpNote[slug] = 'Posted to brief: ' + (r.wrote || []).join(', ') + ' → Research record. (Not on the live hub — use Publish for that.)';
+    _hubImgBrief[slug] = null; fetchHubImgBrief(slug, true);   // the spec inherits from these now
+    renderHubsTab();
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Post to brief'; }
 }
 async function hpSave(slug) {
   const h = HUB_SITES.find(x => x.slug === slug), msg = document.getElementById('hpMsg');
@@ -10638,10 +10728,11 @@ async function hpSave(slug) {
 async function hpPush(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   const msg = document.getElementById('hpMsg');
-  const pe = _hpEntry(slug, 'palette'), fe = _hpEntry(slug, 'fonts');
+  const pe = _hpEntry(slug, 'palette'), fe = _hpEntry(slug, 'fonts'), de = _hpEntry(slug, 'direction');
   const palOnDeck = hpPalette(slug), fontsOnDeck = hpSelFonts(slug);
   if (!palOnDeck) { msg.style.color = '#ff6b6b'; msg.textContent = 'No palette to publish — Regenerate one first.'; return; }
-  if (!confirm('Publish the "' + slug + '" hub design?\n\nWrites the selected palette' + (fontsOnDeck ? ' + fonts' : '') + ' to the campaign Research record, commits them into hubs.design.json + the hub HTML, refreshes the image plate spec, and redeploys (~1 min).\n\n(The four direction fields save on their own when you ✎-edit them — they are already on the record.)')) return;
+  const parts = [pe && 'palette', fe && 'fonts', de && 'direction'].filter(Boolean);
+  if (!confirm('Publish the "' + slug + '" hub design?\n\n' + (parts.length ? 'Writes the staged ' + parts.join(' + ') + ' to the campaign Research record, then ' : 'Uses the current Research palette + fonts. ') + 'commits palette + fonts into hubs.design.json + the hub HTML, refreshes the image plate spec, and redeploys (~1 min).')) return;
   const btn = document.getElementById('hpPush'); btn.disabled = true; btn.textContent = 'Publishing…';
   try {
     const r = await call('publishHubDesign', {
@@ -10650,14 +10741,16 @@ async function hpPush(slug) {
       fonts:   fe ? fontsOnDeck : undefined,
       rationale: pe ? pe.rationale : undefined,
       fontsNote: fe ? (fe.note || '') : undefined,
+      direction: de ? { register: de.register, photography: de.photography, avoid: de.avoid } : undefined,
     });
     if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette;
     if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts;
     _hpWork[slug] = r.palette || _hpWork[slug]; if (r.fonts) _hpFonts[slug] = r.fonts;
-    // the just-published version is now "current" — reset the selectors
-    _hpSel[slug] = { palette: 'current', fonts: 'current' }; _hpSelSave(slug);
+    if (de) _hpDesign[slug] = Object.assign({}, _hpDesign[slug], { register: de.register, photography: de.photography, avoid: de.avoid });
+    // the just-published versions are now "current" — reset the selectors
+    _hpSel[slug] = { palette: 'current', fonts: 'current', direction: 'current' }; _hpSelSave(slug);
     _hpNote[slug] = 'Published — live in ~1 min. Reload the preview below.';
-    _hubImgBrief[slug] = null; fetchHubImgBrief(slug, true);   // spec picks up the new palette/fonts
+    _hubImgBrief[slug] = null; fetchHubImgBrief(slug, true);   // spec picks up the new palette/fonts/direction
     renderHubsTab();
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Publish design to hub'; }
 }
@@ -11235,7 +11328,7 @@ function renderHubsTab() {
     _hpSel[slug] = _hpSel[slug] || _hpSelLoad(slug);
     call('getHubDesignHistory', { slug, campaignId: h.campaignId }).then(r => {
       if (!r || r.error) return;
-      _hpHist[slug] = { palettes: r.palettes || [], fonts: r.fonts || [], current: r.current || {} };
+      _hpHist[slug] = { palettes: r.palettes || [], fonts: r.fonts || [], directions: r.directions || [], current: r.current || {} };
       if (HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
     }).catch(() => {});
   }
@@ -11261,26 +11354,27 @@ function renderHubsTab() {
   const swStrip = pal ? HP_ROLES.map(([k]) => `<span style="width:16px;height:22px;display:inline-block;background:${esc(pal[k] || '#888')};"></span>`).join('') : '<span style="color:var(--text3);font-size:11px;padding:4px;">loading…</span>';
   const swDetail = pal ? HP_ROLES.map(([k, label]) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);margin:2px 8px 2px 0;"><span style="width:12px;height:12px;border-radius:3px;border:1px solid var(--border2);background:${esc(pal[k] || '#888')};"></span>${label} <span style="opacity:.7;">${esc(pal[k] || '')}</span></span>`).join('') : '';
   // version dropdowns — each ↻ Regenerate stages a new candidate; picking one
-  // sets what "Publish design to hub" will commit. Nothing is live until then.
-  const verSelect = (kind) => {
-    const list = ((_hpHist[slug] || {})[kind === 'palette' ? 'palettes' : 'fonts']) || [];
+  // sets what "Post to brief" / "Publish" will commit. Nothing lands until then.
+  const verSelect = (kind, label) => {
+    const list = ((_hpHist[slug] || {})[_HP_LIST[kind]]) || [];
     if (!list.length) return '';
     const sel = String((_hpSel[slug] || {})[kind] || 'current');
     const opt = e => {
-      const desc = kind === 'palette'
-        ? ((e.source ? e.source[0].toUpperCase() + e.source.slice(1) : 'Staged'))
-        : [e.fonts.display, e.fonts.body].filter(Boolean).join(' · ');
+      const desc = kind === 'fonts'
+        ? [e.fonts.display, e.fonts.body].filter(Boolean).join(' · ')
+        : (e.source ? e.source[0].toUpperCase() + e.source.slice(1) : 'Staged');
       return `<option value="${e.ts}" ${sel === String(e.ts) ? 'selected' : ''}>${esc(desc)} · ${_hpAgo(e.ts)}</option>`;
     };
-    return `<label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;">${kind === 'palette' ? 'Palette ' : 'Fonts &nbsp;&nbsp;'}
+    return `<label style="display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3);margin-top:6px;"><span style="min-width:58px;">${label}</span>
       <select onchange="hpPickVersion('${slug}','${kind}',this.value)" style="font-size:10px;padding:2px 5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);color:var(--text);max-width:220px;">
         <option value="current" ${sel === 'current' ? 'selected' : ''}>current (live)</option>
         ${list.map(opt).join('')}
       </select>${sel !== 'current' ? '<span style="color:#ffb020;">staged</span>' : ''}</label>`;
   };
-  const versionRows = verSelect('palette') + verSelect('fonts');
-  const anyStaged = _hpSel[slug] && ((_hpSel[slug].palette && _hpSel[slug].palette !== 'current') || (_hpSel[slug].fonts && _hpSel[slug].fonts !== 'current'));
+  const versionRows = verSelect('palette', 'Palette') + verSelect('fonts', 'Fonts') + verSelect('direction', 'Direction');
+  const anyStaged = _hpSel[slug] && ['palette','fonts','direction'].some(k => _hpSel[slug][k] && _hpSel[slug][k] !== 'current');
   const selFonts = hpSelFonts(slug);
+  const selDir = _hpEntry(slug, 'direction');
   const briefRow = (k, label) => design[k] ? `<div style="margin:4px 0;"><span style="color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.07em;">${label}</span><br><span style="font-size:12px;color:var(--text2);line-height:1.5;">${esc(design[k])}</span></div>` : '';
 
   el.innerHTML = `
@@ -11332,21 +11426,29 @@ function renderHubsTab() {
         <div title="These fields all live on this CAMPAIGN's 🔬 Research row (not the product, not hubs.design.json). Palette + fonts are STAGED as candidate versions when you regenerate; the direction fields save on ✎-edit. 'Publish design to hub' writes the selected palette/fonts to the record AND commits everything live. hubs.design.json only holds the resolved outputs. Everything visual downstream inherits from here." style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;cursor:help;">Design — stored on the campaign's Research record (Stage 1)</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
           <div style="flex:1;min-width:250px;">
-            <input id="hpImg" type="file" accept="image/*" title="Optional colour seed for ↻ Regenerate palette ONLY — that button pulls the palette from this image's dominant colours instead of researching from scratch. Ignored by the fonts and design-direction buttons. Not stored." style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
+            <input id="hpImg" type="file" accept="image/*" title="Optional reference image. ↻ Regenerate palette pulls the palette from its dominant colours; ↻ Regenerate design direction reads the whole vibe off it (register / photography / avoid all describe THIS image). Ignored by the fonts button. Not stored — attach it each time." style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
             <input id="hpInstr" class="modal-input" type="text" title="A one-off steer for THIS run — fed to ↻ Regenerate palette and ↻ Regenerate design direction (not fonts). Not saved. For standing direction that persists and is re-consulted, use the Design notes ✎ field instead." placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button id="hpGen" onclick="hpGen('${slug}')" title="Researches a 10-token palette from campaign + product research — or seeds it from the image above if one is attached. STAGED as a new candidate version (not written to the Research record). Pick it in the Palette dropdown, then Publish design to hub." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
               <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" title="Researches a display / body / mono pairing (now honours the override box). STAGED as a candidate version — pick it in the Fonts dropdown, then Publish. Not written to Research until then." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
-              <button id="hpGenDesign" onclick="hpGenDesign('${slug}')" title="One Claude pass over campaign + main-product research → rewrites Visual Register / Photography Direction / Visual Avoid on the Research record (these save immediately — they're deliberate edits, not staged), honouring your Design notes + the override box. Then refreshes the image plate spec. Never pushed to CSS — steers image generation only." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate design direction</button>
-              <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} title="ONE button for the whole session. Writes the selected palette + fonts to the campaign Research record, commits them into hubs.design.json + the hub HTML, refreshes the image plate spec, and redeploys (~1 min). The four direction fields are already on the record (they save on ✎-edit)." style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Publish design to hub</button>
+              <button id="hpGenDesign" onclick="hpGenDesign('${slug}')" title="Visual direction (register / photography / avoid), STAGED as a candidate. Source: if a reference image is attached above, it reads the direction OFF THE IMAGE and all three fields describe it; otherwise it researches from campaign + product. Honours your Design notes + the override box. Review it below, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate design direction</button>
+              <button id="hpGenDesignKw" onclick="openHubKwModal('${slug}')" title="Load the main product's keywords into a box, edit them, then regenerate the visual direction built around those keywords. Also staged — review, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ direction from keywords</button>
             </div>
             ${versionRows}
+            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
+              <button id="hpPostBrief" onclick="hpPostBrief('${slug}')" ${anyStaged ? '' : 'disabled'} title="UPSTREAM. Writes the staged palette / fonts / direction to the campaign Research record and refreshes the image plate spec. Does NOT touch the live hub." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">Post to brief ↑</button>
+              <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} title="DOWNSTREAM (includes upstream). Writes the staged palette/fonts/direction to the Research record, then commits palette + fonts into hubs.design.json + the hub HTML, refreshes the plate spec, and redeploys (~1 min)." style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Publish to hub ↓</button>
+            </div>
             <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${anyStaged ? ' <span style="color:#ffb020;">staged — not live</span>' : ''}</div>
             <div title="The on-deck display · body · mono pairing — the selected version, else what's live. Publish design to hub commits it." style="font-size:10px;margin-top:6px;color:var(--text3);cursor:help;">Fonts: ${esc((selFonts && [selFonts.display,selFonts.body,selFonts.mono].filter(Boolean).join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
-            ${(function(d){ d = d || {};
-              const row = (key,l,v) => `<div style="margin-top:7px;"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px;">${l}</span> <button onclick="openHubDesignFieldModal('${slug}','${key}')" title="Hand-edit this field on the CAMPAIGN's Research record (saveResearchDesignField). Saves instantly and refreshes the image plate spec. Design notes is your standing direction — it's re-consulted on every regenerate and every spec build; the other three are regenerated from research." style="border:0;background:none;color:var(--accent);cursor:pointer;font-size:10px;padding:0 2px;">✎</button><br><span style="opacity:${v?'1':'.5'}">${v ? esc(v) : '— not set —'}</span></div>`;
-              return `<div style="font-size:10px;line-height:1.5;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${row('register','Visual register',d.register)}${row('photography','Photography direction',d.photography)}${row('avoid','Visual avoid',d.avoid)}${row('notes','Design notes (yours)',d.notes)}</div>`;
-            })(_hpDesign[slug])}
+            ${(function(){
+              const staged = selDir;
+              const saved = _hpDesign[slug] || {};
+              const d = staged ? { register: staged.register, photography: staged.photography, avoid: staged.avoid, notes: saved.notes } : saved;
+              const row = (key,l,v,ro) => `<div style="margin-top:7px;"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px;">${l}</span>${ro ? '' : ` <button onclick="openHubDesignFieldModal('${slug}','${key}')" title="Hand-edit this field on the CAMPAIGN's Research record. Saves instantly + refreshes the plate spec. Design notes is your standing direction (re-consulted every regenerate); the other three are regenerated." style="border:0;background:none;color:var(--accent);cursor:pointer;font-size:10px;padding:0 2px;">✎</button>`}<br><span style="opacity:${v?'1':'.5'}">${v ? esc(v) : '— not set —'}</span></div>`;
+              const banner = staged ? `<div style="font-size:9px;color:#ffb020;margin-bottom:2px;">Staged direction (${esc(staged.source || '')}) — not on the record. <b>Post to brief</b> to save it; the dropdown's “current (live)” shows what's saved.</div>` : '';
+              return `<div style="font-size:10px;line-height:1.5;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${banner}${row('register','Visual register',d.register,!!staged)}${row('photography','Photography direction',d.photography,!!staged)}${row('avoid','Visual avoid',d.avoid,!!staged)}${row('notes','Design notes (yours)',d.notes,false)}</div>`;
+            })()}
           </div>
           <div style="flex:0 0 auto;">
             <span title="Preview of the on-deck palette — whichever version the Palette dropdown has selected (or the live one). Single tokens aren't hand-editable; regenerate for a new candidate, pick it, then Publish." style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;cursor:help;">${swStrip}</span>
