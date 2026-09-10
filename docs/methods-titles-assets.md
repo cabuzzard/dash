@@ -507,10 +507,15 @@ brief:
 | `Visual Avoid` | the AI/stock/cliché looks to reject for this niche |
 | `Design Notes` | the operator's own refinements (written by `saveImageGuidance`) |
 
-`generateResearchDesign` `{ campaignId }` writes the first three in one Claude
-call from the campaign + main-product research — same pattern as
-`generateResearchPalette` / `generateResearchFonts`. The Content Hubs card's
-"Design" section has a **↻ Regenerate design direction** button.
+`generateResearchDesign` `{ campaignId, instructions? }` writes the first three
+in one Claude call from the campaign + main-product research — same pattern as
+`generateResearchPalette` / `generateResearchFonts`. It **honours `Design
+Notes`** (the operator's standing direction) plus the optional one-off
+`instructions` (the card's override box). The Content Hubs card's **Design**
+section: **↻ Regenerate design direction**, and a **✎** on each of the four
+fields → an editor that writes back via **`saveResearchDesignField`
+`{ campaignId, field, text }`**. So the direction is fully hand-editable and
+steerable from the card.
 
 **`assembleImageBrief`** (worker helper) gathers the grounded context:
 - the **Research Design section** (authoritative) + campaign Research
