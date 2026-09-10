@@ -8464,7 +8464,19 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
             campaignId = (assetPage?.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "") || "";
           }
           if (!campaignId) return { error: "campaignId (or assetId) required" };
-          const registered = HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === campaignId) || null;
+          // worker.js is >1MB, so scaffoldHub's regex-insert into the
+          // HUB_SITES const can't read the file back and silently no-ops.
+          // KV "hub:sites:extra" is the durable registry — a scaffolded hub
+          // is registered here even before the next worker deploy folds it
+          // into the const.
+          let registered = HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === campaignId) || null;
+          if (!registered) {
+            try {
+              const extra = (await env.TRADES.get("hub:sites:extra", "json")) || [];
+              const hit = extra.find(e => e && String(e.campaignId || "").replace(/-/g, "") === campaignId);
+              if (hit) registered = hit;
+            } catch (e) {}
+          }
           const campPage = await fetch(`https://api.notion.com/v1/pages/${dashHb(campaignId)}`, { headers: nhdr }).then(r => r.json()).catch(() => null);
           if (!campPage || campPage.object === "error") return { error: "campaign not found" };
           const campName = (campPage.properties?.Name?.title || []).map(t => t.plain_text).join("");
@@ -8560,23 +8572,22 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
           const offerLive = offerAssets.some(a => /\boffer\b/i.test(a.properties?.["Asset Type"]?.select?.name || "") && isPub(a));
           const emailLive = emailAssets.some(a => /^email hub main/i.test(a.properties?.["Asset Type"]?.select?.name || "") && isPub(a));
 
-          // The card is a status board, not a build console. Content /
-          // research / design / offers / blog / email are all authored from
-          // the campaign microsite now — the checklist just reports whether
-          // the result is live and links out. Only "scaffold" (a health
-          // check) and the two manual audit rows stay actionable here.
+          // The card is a status board, not a build console. Scaffold /
+          // register is automatic (publish trigger + KV registry — never a
+          // manual step). Content / research / design / offers / blog /
+          // email are authored from the campaign microsite — the checklist
+          // just reports whether the result is live and links out.
           const steps = [
-            { id: "scaffold",   phase: "Chassis",  label: "Hub scaffolded + registered", run: "scaffoldHub",
-              done: !idxF.missing && ctxH.registered, hint: (!idxF.missing && ctxH.registered) ? "live" : (idxF.missing ? "no hub file" : "not in HUB_SITES") },
             { id: "offers",     phase: "Content",   label: "Offers published on the hub", link: "microsite",
               done: offerLive, hint: offerLive ? "" : "build offers from the microsite" },
             { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
               done: postsN > 0, hint: postsN ? `${postsN} live` : "publish SEO posts from the microsite" },
             { id: "email",      phase: "Email",     label: "Nurture sequence published for the main form", link: "microsite",
               done: emailLive, hint: emailLive ? "" : "generate + publish the sequence from the microsite" },
-            { id: "domain",     phase: "Deploy",    label: "Custom domain + HUB_ORIGINS + _worker.js HUBS map", prompt: "domain", manual: true, done: man("domain") },
-            { id: "newsletter", phase: "Audit",     label: "Newsletter signup tested end-to-end", manual: true, build: true, done: man("newsletter") },
-            { id: "buildcheck", phase: "Audit",     label: "Design JSON in sync with the built hub (build-hubs --check)", manual: true, build: true, done: man("buildcheck") },
+            { id: "domain",     phase: "Deploy",    label: "Custom domain", prompt: "domain", manual: true, done: man("domain"),
+              tip: "Point a real domain at this hub. The 📋 button copies a full wiring prompt for Claude Code: add the domain to the dash-hubs Cloudflare Pages project, map it in web/hub/_worker.js, add it to the worker's HUB_ORIGINS (CORS), set domain on the HUB_SITES entry, and set the campaign's live-site URL. Tick 'done' once it resolves." },
+            { id: "newsletter", phase: "Audit",     label: "Newsletter signup tested end-to-end", manual: true, build: true, done: man("newsletter"),
+              tip: "Manual check for now — submit the hub's signup form end to end (incl. Turnstile) and confirm the lead lands in Notion + ActiveCampaign. A real automated audit isn't built yet." },
           ];
           return json({ slug, campaignId, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
         }
@@ -8824,8 +8835,19 @@ Return: {
             committed.push("hubs.design.json");
           }
 
-          // 5. register in HUB_SITES (both source files) if not already
+          // 5. register the hub. worker.js is too big for the Contents API
+          // to read back, so its HUB_SITES row goes to KV (unioned into
+          // `registered` by resolveHub above — never silently lost).
+          // index.html is small enough for the git-committed mirror.
           if (!ctxH.registered) {
+            try {
+              const cur = (await env.TRADES.get("hub:sites:extra", "json")) || [];
+              if (!cur.some(e => e && e.slug === slug)) {
+                cur.push({ slug, name: campName, campaignId });
+                await env.TRADES.put("hub:sites:extra", JSON.stringify(cur));
+                committed.push("KV hub:sites:extra");
+              }
+            } catch (e) {}
             const wF = await ghGet("worker/worker.js");
             if (wF.text && wF.text.includes("const HUB_SITES = [")) {
               const line = `  { slug: "${slug}", name: "${campName.replace(/"/g, "'")}", campaignId: "${campaignId}" },\n`;

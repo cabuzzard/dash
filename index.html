@@ -11151,22 +11151,9 @@ function renderHubsTab() {
       <summary>
         <span>Build checklist</span>
         <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
-        <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
-        <button onclick="event.stopPropagation();hubBuildRunNext('${slug}')" title="Run the next un-done auto step" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
+        <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status from the live site + Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳ re-check</button>
       </summary>
       <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
-    </details>
-
-    <details class="hub-sec" ${hubSecOpen('brief') ? 'open' : ''} ontoggle="hubSecToggle('brief', this.open)">
-      <summary><span>Upstream brief</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">hubs.design.json — not a Notion title / asset</span></summary>
-      <div style="padding:10px 14px;">
-        ${briefRow('subject', 'Subject')}
-        ${briefRow('audience', 'Audience')}
-        ${briefRow('job', "The page's one job")}
-        ${briefRow('signature', 'Signature element')}
-        ${briefRow('risk', 'The one risk')}
-        ${!design.subject ? '<div style="font-size:11px;color:var(--text3);">Empty — the ✎ ChatGPT brief prompt in Design seeds this block.</div>' : ''}
-      </div>
     </details>
 
     <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open)">
@@ -11204,7 +11191,7 @@ function renderHubsTab() {
     </details>
 
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:12px;">
-      ${chip('Domain', meta.domain ? esc(meta.domain) : '<span style="color:var(--text3);">—</span>', `hubFieldModal('${slug}','domain')`, 'Set the custom domain')}
+      ${chip('Domain', h.domain ? esc(h.domain) : '<span style="color:var(--text3);">not set</span>', `hubBuildPrompt('${slug}','domain')`, h.domain ? ('Live domain for this hub (from HUB_SITES). ' + (h.routingNote || '')) : 'No custom domain yet — click to copy the wiring prompt for Claude Code')}
     </div>
 
   </div>
@@ -11270,9 +11257,9 @@ function renderHubBuildRows(slug) {
         ? '<span style="font-size:10px;color:#4ade80;flex-shrink:0;">✓</span>'
         : `<button ${busy ? 'disabled' : ''} onclick="hubBuildRun('${slug}','${s.id}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;flex-shrink:0;">${busy ? '…' : 'run'}</button>`;
     }
-    return phaseHdr + `<div style="padding:5px 12px;display:flex;align-items:center;gap:8px;">
+    return phaseHdr + `<div title="${s.tip ? esc(s.tip) : ''}" style="padding:5px 12px;display:flex;align-items:center;gap:8px;">
       <span style="flex-shrink:0;">${dot}</span>
-      <span style="flex:1;min-width:0;font-size:11px;color:var(--text);line-height:1.35;">${esc(s.label)}${s.hint ? `<span style="color:var(--text3);"> — ${esc(s.hint)}</span>` : ''}</span>
+      <span style="flex:1;min-width:0;font-size:11px;color:var(--text);line-height:1.35;">${esc(s.label)}${s.tip ? ' <span style="color:var(--text3);cursor:help;" title="' + esc(s.tip) + '">ⓘ</span>' : ''}${s.hint ? `<span style="color:var(--text3);"> — ${esc(s.hint)}</span>` : ''}</span>
       ${ctrl}
     </div>`;
   }).join('');
