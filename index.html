@@ -776,6 +776,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubAssetMatrix()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Method Matrix <span id="hubAssetMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:8px;">
+          <button onclick="event.stopPropagation();hamBackfillMethods(this)" title="Stamp the producing Method onto every Asset that has none (from its title's method, else its Asset Type). Idempotent — safe to re-run; also catches skill-path assets." style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⟳ backfill methods</button>
           <button onclick="event.stopPropagation();hamAddMethod()" title="Create a new method (adds a column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ method</button>
           <span id="hubAssetMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
         </span>
@@ -14831,6 +14832,18 @@ async function matTypeDelete() {
     await loadHubAssetMatrix();
   } catch(e) { document.getElementById('mtMsg').textContent = 'Error: ' + e.message; }
   btn.disabled = false; btn.textContent = 'Archive';
+}
+async function hamBackfillMethods(btn) {
+  const o = btn.textContent;
+  btn.disabled = true; btn.textContent = 'backfilling…';
+  try {
+    const r = await call('backfillAssetMethods', {});
+    if (r.error) throw new Error(r.error);
+    btn.textContent = `set ${r.set} / ${r.total}`;
+    HAM_DATA = null;
+    await loadHubAssetMatrix();
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 3500);
+  } catch(e) { btn.textContent = o; btn.disabled = false; alert('Error: ' + e.message); }
 }
 async function hamAddMethod() {
   const name = prompt('New method name (added as a column; starts at Status: Development):');
