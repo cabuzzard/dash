@@ -155,13 +155,17 @@ async function findBestProductResearchRecord(hdr, productId) {
 // one Claude call. Shared by getImageBrief (the Content Hubs card field) and
 // generateOfferImage (the actual Grok render), so the art direction has ONE
 // definition, grounded in the customer.
-async function assembleImageBrief(env, { campaignId, assetId }) {
+async function assembleImageBrief(env, { campaignId, assetId, override }) {
+  // `override` = a STAGED (unsaved) brief from the Content Hubs card:
+  // { register, photography, avoid, notes, palette, fonts }. When present its
+  // values replace what's read from the Research record, so the operator can
+  // preview the image spec before saving the brief.
   const NT = (env.NOTION_TOKEN || "").trim();
   const hdr = { "Authorization": `Bearer ${NT}`, "Notion-Version": NOTION_VERSION };
   const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const norm = s => String(s || "").replace(/-/g, "");
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [] };
+  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "" };
 
   let cid = norm(campaignId || "");
   let contentHubSel = "", titleId = "", assetProductId = "";
@@ -187,13 +191,15 @@ async function assembleImageBrief(env, { campaignId, assetId }) {
       // same record everywhere.
       const score = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtp(r.properties, k).length, 0);
       const rp = (rows.slice().sort((a, b) => score(b) - score(a))[0]?.properties) || {};
+      const ov = override || {};
       rDesign = {
-        register:    rtp(rp, "Visual Register"),
-        photography: rtp(rp, "Photography Direction"),
-        avoid:       rtp(rp, "Visual Avoid"),
-        notes:       rtp(rp, "Design Notes"),
+        register:    (ov.register    != null ? String(ov.register)    : rtp(rp, "Visual Register")),
+        photography: (ov.photography != null ? String(ov.photography) : rtp(rp, "Photography Direction")),
+        avoid:       (ov.avoid       != null ? String(ov.avoid)       : rtp(rp, "Visual Avoid")),
+        notes:       (ov.notes       != null ? String(ov.notes)       : rtp(rp, "Design Notes")),
       };
       out.guidance = rDesign.notes;
+      out.storedSpec = rtp(rp, "Image Spec");   // frozen spec, written by publishHubDesign
       if (rDesign.register)    out.facts.push(`VISUAL REGISTER (from research): ${rDesign.register}`);
       if (rDesign.photography) out.facts.push(`PHOTOGRAPHY DIRECTION (from research — the images that belong): ${rDesign.photography}`);
       if (rDesign.avoid)       out.facts.push(`VISUAL AVOID (from research): ${rDesign.avoid}`);
@@ -209,9 +215,12 @@ async function assembleImageBrief(env, { campaignId, assetId }) {
       out.hub = (dj.hubs || {})[out.hubSlug] || null;
     } catch (e) { /* spec is best-effort */ }
   }
-  if (out.hub) {
-    const d = out.hub.design || {}, tk = out.hub.tokens || {}, tn = out.hub.tokenNotes || {}, f = out.hub.fonts || {};
-    out.facts.push(`HUB: ${out.hub.logoText || out.hubSlug}`);
+  if (out.hub || (override && (override.palette || override.fonts))) {
+    const oh = out.hub || {};
+    const d = oh.design || {}, tn = oh.tokenNotes || {};
+    const tk = (override && override.palette) ? override.palette : (oh.tokens || {});
+    const f  = (override && override.fonts && override.fonts.display) ? override.fonts : (oh.fonts || {});
+    out.facts.push(`HUB: ${oh.logoText || out.hubSlug}`);
     // genuine per-hub design decisions — always relevant
     if (d.signature) out.facts.push(`Signature element: ${d.signature}`);
     if (d.risk)      out.facts.push(`Aesthetic risk to hold: ${d.risk}`);
@@ -8729,7 +8738,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
 `You are researching the COLOUR PALETTE for a ${scopeWord(t)}, from its research below. Treat it as research: the keywords and audience point to a colour world; pick the one that fits, with a real point of view.
 
 ${briefFor(t)}
-${parts.length ? "\nA reference image is attached — pull the palette from its dominant colours, adapted to the audience.\n" : ""}${body.instructions ? `\nOverride: ${body.instructions}\n` : ""}
+${parts.length ? "\nA reference image is attached — pull the palette from its dominant colours, adapted to the audience.\n" : ""}${(body.current && body.current.bg && !parts.length) ? `\nCURRENT STAGED PALETTE (the operator is iterating — nudge THIS toward the steer, keep what works): ${JSON.stringify(body.current)}\n` : ""}${body.instructions ? `\nOverride: ${body.instructions}\n` : ""}
 Roles: bg = page background; surface = raised card; ink = body text; ink-head = headings; ink-soft = muted text; line = hairlines; sea = primary (links, eyebrows, focus); deep = the one dark band; deep-ink = text on it; accent = the CTA button (white label on it).
 Constraints: ink >= 7:1 on bg; ink-head & sea >= 4.5:1 on bg; deep-ink >= 7:1 on deep; white >= 4.4:1 on accent. One committed ground (light or dark). One primary. Accent used once. Avoid the AI-default looks (cream+serif+terracotta / near-black+acid / broadsheet hairlines).
 
@@ -8844,7 +8853,7 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
 `You are setting the VISUAL DIRECTION for a content hub — a Stage-1 artifact everything downstream (the hub, the wordless image plates, every offer plate) inherits from. Concrete, specific to this subject; never a generic "editorial / premium / cinematic" default.
 ${hasImg ? `\nA REFERENCE IMAGE IS ATTACHED AND IT IS THE DIRECTION. Derive all three fields FROM THE IMAGE: "register" = the mood / world it projects; "photography" = describe the kind of real images it exemplifies (subjects, settings, light — time of day, quality, colour cast — how colour sits in it, the medium/finish); "avoid" = the looks that would break from this image. The brief below is only secondary context — where it conflicts with the image, the image wins.\n` : ""}
 ${groundBlock}
-${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (honour this — it overrides derived choices where they conflict):\n${opDirection}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
+${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (honour this — it overrides derived choices where they conflict):\n${opDirection}\n` : ""}${(body.current && (body.current.register || body.current.photography || body.current.avoid) && !hasImg) ? `\nCURRENT STAGED DIRECTION (the operator is iterating — refine and sharpen THIS toward the steer, don't discard it):\nRegister: ${String(body.current.register || "").slice(0, 500)}\nPhotography: ${String(body.current.photography || "").slice(0, 700)}\nAvoid: ${String(body.current.avoid || "").slice(0, 400)}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
 Return ONLY this minified JSON object, nothing before or after:
 {"register":"1-2 sentences — the overall look and mood. Concrete.","photography":"3-4 sentences — the real images that belong: subjects and settings (concrete nouns), the light, how the palette shows up in a photo, the medium/finish. Say plainly whether people/faces belong or not — do not default to banning them.","avoid":"a semicolon-separated list of the specific AI / stock-photo / cliché looks to reject for THIS niche"}` });
           let out;
@@ -8951,35 +8960,40 @@ Return ONLY this minified JSON object, nothing before or after:
           const slug = String(body.slug || "").trim();
           if (!HUB_SITES.some(h => h.slug === slug)) return json({ error: `unknown hub "${slug}"` }, 400);
 
-          // pull palette + fonts from the campaign's Research record (unless passed in)
+          // The card sends the whole STAGE state — palette / fonts / direction
+          // (register·photography·avoid) / notes. Whatever's present gets
+          // written to the campaign Research record. Push also needs a palette
+          // for the CSS commit (fall back to what's on the record).
           let palette = body.palette ? safePalette(body.palette) : null;
           let fonts = (body.fonts && body.fonts.display) ? body.fonts : null;
-          const dir = body.direction && (body.direction.register || body.direction.photography || body.direction.avoid) ? body.direction : null;
+          const dir = body.direction || null;
+          const notes = (body.notes != null) ? String(body.notes) : null;
           const { rid: researchId, props: resProps } = await resolveResearch();
           if (!palette) { const p = parseJsonTail(rtOf(resProps, "Palette")); if (p) palette = safePalette(p); }
           if (!fonts)   { const f = parseJsonTail(rtOf(resProps, "Fonts"));   if (f && f.display) fonts = f; }
-          if (!palette && !briefOnly) return json({ error: "no Palette selected or on the Research record — Regenerate it first" }, 400);
-          if (briefOnly && !body.palette && !body.fonts && !dir) return json({ error: "nothing to post — select a staged palette, fonts or direction first" }, 400);
+          if (!palette && !briefOnly) return json({ error: "no Palette staged or on the Research record — Regenerate one first" }, 400);
+          if (briefOnly && !body.palette && !body.fonts && !dir && notes == null) return json({ error: "nothing to save — nothing staged" }, 400);
 
-          // Write the selected versions back to the campaign Research record —
-          // it stays the source of truth (Stage 1). Best-effort; a Notion
-          // hiccup here shouldn't block the commit.
+          // Write the staged brief to the campaign Research record — the source
+          // of truth (Stage 1). Best-effort; a Notion hiccup shouldn't block
+          // the hub commit on a Push.
           let wrote = [];
           if (researchId) {
             try {
               if (body.palette && palette) {
                 const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
-                await writeResearchField(researchId, "Palette", `${(body.rationale || "Selected from staged versions.").trim()}\n\n${strip}\n\n${JSON.stringify(palette)}`);
+                await writeResearchField(researchId, "Palette", `${(body.rationale || "Staged design, saved from the Content Hubs card.").trim()}\n\n${strip}\n\n${JSON.stringify(palette)}`);
                 wrote.push("Palette");
               }
               if (body.fonts && fonts) {
-                await writeResearchField(researchId, "Fonts", `${(body.fontsNote || "Selected from staged versions.").trim()}\n\n${JSON.stringify(fonts)}`);
+                await writeResearchField(researchId, "Fonts", `${(body.fontsNote || "Staged design, saved from the Content Hubs card.").trim()}\n\n${JSON.stringify(fonts)}`);
                 wrote.push("Fonts");
               }
+              if (notes != null) { await writeResearchField(researchId, "Design Notes", notes.trim()); wrote.push("Design Notes"); }
               if (dir) {
-                if (dir.register)    { await writeResearchField(researchId, "Visual Register", String(dir.register).trim()); wrote.push("Visual Register"); }
-                if (dir.photography) { await writeResearchField(researchId, "Photography Direction", String(dir.photography).trim()); wrote.push("Photography Direction"); }
-                if (dir.avoid)       { await writeResearchField(researchId, "Visual Avoid", String(dir.avoid).trim()); wrote.push("Visual Avoid"); }
+                if (dir.register    != null) { await writeResearchField(researchId, "Visual Register", String(dir.register).trim()); wrote.push("Visual Register"); }
+                if (dir.photography != null) { await writeResearchField(researchId, "Photography Direction", String(dir.photography).trim()); wrote.push("Photography Direction"); }
+                if (dir.avoid       != null) { await writeResearchField(researchId, "Visual Avoid", String(dir.avoid).trim()); wrote.push("Visual Avoid"); }
               }
             } catch (e) { if (briefOnly) return json({ error: "Notion write failed: " + e.message }, 502); /* else commit still proceeds */ }
           }
@@ -9031,7 +9045,24 @@ Return ONLY this minified JSON object, nothing before or after:
             }
             await putFile(htmlPath, html, `hub design: ${slug} — live (research)`, htmlF.sha);
 
-            return json({ ok: true, palette, fonts, note: "committed — GitHub Pages redeploys in ~1 min" });
+            // ── image spec goes live in the same save ──────────────────────
+            // Regenerate the wordless-plate art-direction spec from the
+            // just-saved brief and FREEZE it on the Research record. Every
+            // offer plate + the card's spec field read this stored version.
+            let specNote = "";
+            if (researchId && env.ANTHROPIC_API_KEY) {
+              try {
+                const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+                if (!db.properties?.["Image Spec"]) await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+                  method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Image Spec": { rich_text: {} } } }),
+                });
+                const brief = await assembleImageBrief(env, { campaignId: dash(body.campaignId || "") });
+                const spec = await writeImageSpec(env, brief);
+                if (spec && spec.length > 200) { await writeResearchField(researchId, "Image Spec", spec); wrote.push("Image Spec"); specNote = " · image spec refreshed"; }
+              } catch (e) { specNote = " · image spec refresh failed (" + e.message + ")"; }
+            }
+
+            return json({ ok: true, palette, fonts, wrote, note: "committed — GitHub Pages redeploys in ~1 min" + specNote });
           } catch (e) { return json({ error: e.message }, 502); }
         }
 
@@ -9043,13 +9074,16 @@ Return ONLY this minified JSON object, nothing before or after:
           const slug = String(body.slug || "").trim();
           if (!slug) return json({ error: "slug required" }, 400);
           const hist = await hdHistoryGet(slug);
-          let current = { palette: null, fonts: null, direction: null };
+          let current = { palette: null, fonts: null, register: "", photography: "", avoid: "", notes: "", imageSpec: "" };
           try {
             const { props } = await resolveResearch();
             const p = parseJsonTail(rtOf(props, "Palette")); if (p) current.palette = safePalette(p);
             const f = parseJsonTail(rtOf(props, "Fonts"));   if (f && f.display) current.fonts = f;
-            const reg = rtOf(props, "Visual Register"), pho = rtOf(props, "Photography Direction"), avd = rtOf(props, "Visual Avoid");
-            if (reg || pho || avd) current.direction = { register: reg, photography: pho, avoid: avd };
+            current.register    = rtOf(props, "Visual Register");
+            current.photography = rtOf(props, "Photography Direction");
+            current.avoid       = rtOf(props, "Visual Avoid");
+            current.notes       = rtOf(props, "Design Notes");
+            current.imageSpec   = rtOf(props, "Image Spec");
           } catch (e) {}
           return json({ ok: true, palettes: hist.palettes, fonts: hist.fonts, directions: hist.directions, current });
         }
@@ -23436,10 +23470,13 @@ Rules:
         const kicker    = String(cardObj.kicker || "").trim();
         const offerLines = `${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}`;
 
-        // The shared, customer-grounded art-direction spec for this hub.
+        // The shared, customer-grounded art-direction spec for this hub — the
+        // frozen "Image Spec" written by publishHubDesign if there is one,
+        // otherwise derived on the fly.
         const brief = await assembleImageBrief(env, { assetId });
         let spec = "";
-        try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); }
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
 
         const shape = kind === "ig-background"
           ? "a VERTICAL 3:4 background image for an Instagram post (a headline + 1-2 lines of body text get laid OVER it afterward — keep the top 40% and the vertical centre calm and near-empty)"
@@ -23613,16 +23650,22 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
       // The Content Hubs card's copyable field calls this with { campaignId };
       // regenerated fresh each call (client caches per session). Same spec
       // generateOfferImage renders against.
-      if (body.action === "getImageBrief") {
+      if (body.action === "getImageBrief" || body.action === "previewImageSpec") {
         const { campaignId, assetId, hubSlug } = body;
         if (!campaignId && !assetId && !hubSlug) return json({ error: "campaignId, assetId or hubSlug required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         let cid = campaignId;
         if (!cid && hubSlug) cid = (HUB_SITES.find(h => h.slug === hubSlug) || {}).campaignId || null;
-        const brief = await assembleImageBrief(env, { campaignId: cid, assetId });
-        let text = "";
-        try { text = await writeImageSpec(env, brief); } catch (e) { return json({ error: e.message }, 502); }
-        return json({ text, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
+        // previewImageSpec: derive from the STAGED (unsaved) brief the card sends.
+        const override = body.action === "previewImageSpec" && body.staged ? {
+          register: body.staged.register, photography: body.staged.photography, avoid: body.staged.avoid,
+          notes: body.staged.notes, palette: body.staged.palette, fonts: body.staged.fonts,
+        } : undefined;
+        const brief = await assembleImageBrief(env, { campaignId: cid, assetId, override });
+        let text = "", stored = false;
+        if (!override && brief.storedSpec && brief.storedSpec.length > 200) { text = brief.storedSpec; stored = true; }
+        else { try { text = await writeImageSpec(env, brief); } catch (e) { return json({ error: e.message }, 502); } }
+        return json({ text, stored, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
       }
 
       // -- saveImageGuidance (operator's "Design Notes" on the Research record) --
