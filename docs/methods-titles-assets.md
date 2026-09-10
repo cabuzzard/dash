@@ -493,24 +493,44 @@ rows — 📸 **Instagram background** (3:4) and 🖼️ **Blog thumbnail** (1:1
 synchronous). The headline is added afterward in Remotion / Canva
 (`make-offer-still`). Nano Banana / Seedream are gone — Grok was better.
 
-### The image spec (assembled from the customer, not just the hub)
+### The image spec (a downstream artifact of the Information Flow)
 
-`assembleImageBrief` (worker helper) gathers the GROUNDED art direction from
-every real source:
+The visual direction is **the Design section of the Campaign Research record**
+— a Stage-1 artifact, same tier as `Palette` / `Fonts`, not a standalone
+brief:
 
-- the hub design record — `web/hub/hubs.design.json → hubs[slug]` (`tokens` +
-  `tokenNotes`, `design.subject`/`type`/`signature`/`risk`/`photography`/`avoided`)
-- campaign **Research** — `Statement`, `Pain Points`, `Emotions`,
-  `Unique Opportunity`, `Keywords`, and `Image Direction` (operator guidance)
-- the **main product's 🔬 Product Research** — all `STRATEGY_FIELDS`
-  (`Customer`/`Niche`/`Pain Points`/`Emotions`/`Solution`/`Benefits`/…), via
-  `findBestProductResearchRecord`. Product = the asset's `Product` relation,
-  else the hub's Content-Hub-asset product, else the campaign's first product.
+| Research field | Owns |
+|---|---|
+| `Palette` / `Fonts` | resolved tokens + type pairing (existing) |
+| `Visual Register` | the look/mood the research implies |
+| `Photography Direction` | the real images that belong — subjects, light, palette-in-photo, medium |
+| `Visual Avoid` | the AI/stock/cliché looks to reject for this niche |
+| `Design Notes` | the operator's own refinements (written by `saveImageGuidance`) |
+
+`generateResearchDesign` `{ campaignId }` writes the first three in one Claude
+call from the campaign + main-product research — same pattern as
+`generateResearchPalette` / `generateResearchFonts`. The Content Hubs card's
+"Design" section has a **↻ Regenerate design direction** button.
+
+**`assembleImageBrief`** (worker helper) gathers the grounded context:
+- the **Research Design section** (authoritative) + campaign Research
+  `Statement`/`Pain Points`/`Emotions`/`Unique Opportunity`/`Keywords`
+- the **main product's 🔬 Product Research** — all `STRATEGY_FIELDS`, via
+  `findBestProductResearchRecord` (product = asset's `Product`, else the hub's
+  Content-Hub-asset product, else the campaign's first)
 - the asset's **Content Strategy title** (verbatim headline concept) + Notes
+- `web/hub/hubs.design.json → hubs[slug]` — `tokens`/`tokenNotes` (the resolved
+  palette) + `design.signature`/`risk`/`type` (genuine per-hub decisions).
+  `design.subject`/`audience`/`photography`/`avoided` are **fallback only**,
+  used when the matching Research field is empty.
 
-`writeImageSpec` turns that into the full markdown spec (What this is /
-Palette / Photography & subjects / Light / Composition & safe areas / Never /
-Prompt skeleton / Filled examples) via one `claude-sonnet-4-6` call.
+It uses the campaign's **richest** Research record (same scoring as
+`getHubPalette`'s `resolveTarget`), so the Design section resolves the same
+record everywhere. **`writeImageSpec`** grounds the spec-writing call in
+`getInformationFlowContext(env)` — it's told it inherits from Stages 1–2 —
+then produces the full markdown spec (What this is / Palette / Photography &
+subjects / Light / Composition & safe areas / Never / Prompt skeleton /
+Filled examples).
 
 ### Flow
 
@@ -527,14 +547,15 @@ persisted to `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)`.
 
 ### The copyable spec + guidance (Content Hubs card)
 
-Content Hubs card → Design section → **Image plate spec** — a readonly
+Content Hubs card → **Design** section → **Image plate spec** — a readonly
 copyable `<textarea>` fed by the **`getImageBrief`** action
 (`{ campaignId | assetId | hubSlug }` → `{ text, guidance, product }`), the
 same `assembleImageBrief` + `writeImageSpec`. Fetched per hub, cached client
 -side per session; **↻ Regenerate** forces a fresh assembly. **✎ Guidance**
-opens a modal → **`saveImageGuidance`** `{ campaignId, text }` writes Research
-`Image Direction` (property auto-created), then re-assembles. Guidance
-overrides the derived choices in both the spec and every render.
+(the modal, titled "Design notes") → **`saveImageGuidance`** `{ campaignId,
+text }` writes Research `Design Notes` (property auto-created), then
+re-assembles. Notes override the derived choices in both the spec and every
+render.
 
 ### Local script — `scripts/grok-image.py`
 

@@ -1767,8 +1767,9 @@
     <div class="modal-title" id="hubImgGuidanceTitle">Image guidance</div>
     <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">
       Free-text direction for this hub's images — subjects, light, what to avoid, a specific look you want.
-      It's stored on the campaign's Research record (<b>Image Direction</b>) and folded into the image plate
-      spec and every offer-image render, overriding the derived choices where they conflict.
+      Stored on the campaign's Research record as <b>Design Notes</b>, alongside the generated Visual Register /
+      Photography Direction / Visual Avoid. Folded into the image plate spec and every render, overriding the
+      derived choices where they conflict.
     </div>
     <textarea id="hubImgGuidanceText" wrap="soft" placeholder="e.g. lean into interiors not exteriors · one lamp-lit room · no wide shots · keep it winter"
       style="width:100%;height:150px;font-family:inherit;font-size:13px;line-height:1.5;padding:10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;"></textarea>
@@ -10559,6 +10560,7 @@ try { _hubIdx = Math.max(0, Math.min(HUB_SITES.length - 1, parseInt(localStorage
 let _hpWork = {};             // slug -> palette generated/saved but not pushed
 let _hpNote = {};             // slug -> last status line
 let _hpFonts = {};            // slug -> researched {display,body,mono} not yet pushed
+let _hpDesign = {};           // slug -> Research Design section { register, photography, avoid, notes }
 let _hpFetched = {};          // slug -> already pulled getHubPalette this session
 let _hubMainProd = {};        // slug -> { id, name, productsite, stack, status, via } | null — the product the hub is built around
 let _hubMainProdFetched = {}; // slug -> getHubMainProduct has run this session
@@ -10608,6 +10610,18 @@ async function hpGenFonts(slug) {
     _hpFonts[slug] = r.fonts; _hpNote[slug] = 'Fonts researched: ' + [r.fonts.display, r.fonts.body, r.fonts.mono].join(' · ') + ' → Research › Fonts';
     renderHubsTab();
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = '↻ Regenerate fonts'; }
+}
+async function hpGenDesign(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const btn = document.getElementById('hpGenDesign'), msg = document.getElementById('hpMsg');
+  btn.disabled = true; btn.textContent = 'Researching…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Researching the visual direction from campaign + product research…';
+  try {
+    const r = await call('generateResearchDesign', { campaignId: h.campaignId });
+    _hpDesign[slug] = Object.assign({}, _hpDesign[slug], r.design);
+    _hpNote[slug] = 'Visual direction researched → Research › Visual Register / Photography Direction / Visual Avoid';
+    _hubImgBrief[slug] = null; fetchHubImgBrief(slug, true);   // the spec inherits from these
+    renderHubsTab();
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = '↻ Regenerate design direction'; }
 }
 async function hpSave(slug) {
   const h = HUB_SITES.find(x => x.slug === slug), msg = document.getElementById('hpMsg');
@@ -11135,8 +11149,8 @@ function hubImgSpecText(slug) {
 function openHubImgGuidanceModal(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   _hubImgGuidanceSlug = slug;
-  document.getElementById('hubImgGuidanceTitle').textContent = 'Image guidance — ' + h.name;
-  document.getElementById('hubImgGuidanceText').value = (_hubImgBrief[slug] && _hubImgBrief[slug].guidance) || '';
+  document.getElementById('hubImgGuidanceTitle').textContent = 'Design notes — ' + h.name;
+  document.getElementById('hubImgGuidanceText').value = (_hpDesign[slug] && _hpDesign[slug].notes) || (_hubImgBrief[slug] && _hubImgBrief[slug].guidance) || '';
   document.getElementById('hubImgGuidanceMsg').textContent = '';
   document.getElementById('hubImgGuidanceModal').classList.add('open');
 }
@@ -11146,8 +11160,10 @@ async function saveHubImgGuidance() {
   const msg = document.getElementById('hubImgGuidanceMsg');
   const btn = document.getElementById('hubImgGuidanceSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    await call('saveImageGuidance', { campaignId: h.campaignId, text: document.getElementById('hubImgGuidanceText').value.trim() });
-    if (_hubImgBrief[slug]) _hubImgBrief[slug].guidance = document.getElementById('hubImgGuidanceText').value.trim();
+    const v = document.getElementById('hubImgGuidanceText').value.trim();
+    await call('saveImageGuidance', { campaignId: h.campaignId, text: v });
+    if (_hubImgBrief[slug]) _hubImgBrief[slug].guidance = v;
+    _hpDesign[slug] = Object.assign({}, _hpDesign[slug], { notes: v });
     closeHubImgGuidanceModal();
     fetchHubImgBrief(slug, true);
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
@@ -11175,6 +11191,7 @@ function renderHubsTab() {
       let touched = false;
       if (r && r.palette && !_hpWork[slug]) { _hpWork[slug] = r.palette; touched = true; }
       if (r && r.fonts && !_hpFonts[slug]) { _hpFonts[slug] = r.fonts; touched = true; }
+      if (r && r.design) { _hpDesign[slug] = r.design; touched = true; }
       if (touched) { _hpNote[slug] = _hpNote[slug] || 'From Research — Push to make it live.'; if (HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
     }).catch(() => {});
   }
@@ -11247,7 +11264,7 @@ function renderHubsTab() {
           <label style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
         </div>
 
-        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Palette &amp; Fonts — stored on the campaign's Research record</div>
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Design — stored on the campaign's Research record (Stage 1)</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
           <div style="flex:1;min-width:250px;">
             <input id="hpImg" type="file" accept="image/*" style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
@@ -11255,10 +11272,12 @@ function renderHubsTab() {
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button id="hpGen" onclick="hpGen('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
               <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
+              <button id="hpGenDesign" onclick="hpGenDesign('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate design direction</button>
               <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub</button>
             </div>
             <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
             <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
+            ${(function(d){ if (!d) return ''; const row = (l,v) => v ? `<div style="margin-top:6px;"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px;">${l}</span><br>${esc(v)}</div>` : ''; const body = row('Visual register', d.register) + row('Photography direction', d.photography) + row('Visual avoid', d.avoid) + row('Design notes (yours)', d.notes); return body ? `<div style="font-size:10px;line-height:1.5;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${body}</div>` : '<div style="font-size:10px;color:var(--text3);margin-top:8px;">No visual direction on the Research record yet — hit “↻ Regenerate design direction”.</div>'; })(_hpDesign[slug])}
           </div>
           <div style="flex:0 0 auto;">
             <span style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">${swStrip}</span>
