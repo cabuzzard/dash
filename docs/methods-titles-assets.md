@@ -226,6 +226,12 @@ worker action (Carousel: `generateCarouselPreview`) routed via
 Publish/Assets sections — see "Pillar content" below for why that's now a
 meaningful design point, not just a UI convenience.
 
+`generateTitleAssets` also dispatches on the literal `assetType` string (=
+the method name for non-skill methods) to its own dedicated branches before
+the generic N-concepts path: `SEO Post` / `Blog - SEO - News`, `Offer …`,
+`Content Hub`, `landing page`, and **`Hook Posts`** (`/\bhook post/i` — see
+§ "Hook Posts" at the end of this doc).
+
 **As of this pass, the modal's input surface was deliberately stripped down**
 to Title (read-only) / Method / Platform (now always visible, not
 conditionally hidden) / one free-text **Override / notes** field — Design
@@ -580,3 +586,53 @@ writes back via `saveOfferImage`).
 Reuses `KIE_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` —
 all already set. Not wired into the hub offer page / blog template rendering
 yet (images live on the asset record; a later pass can surface them).
+
+---
+
+## Hook Posts (`generateTitleAssets` `/\bhook post/i` branch)
+
+The `Hook Posts` Method (Methods DB, Status Live — **retasked from the old
+`Product Cards` method**, same page id, so its Hub Method Matrix column is
+preserved). One Title + the attached product's objections → a **batch of
+one-page social posts, one Asset each** (`Asset Type: hook post`), grouped
+under the Title in Publish. `quote card` / `short form copy` /
+`text pic — Growth` / `instagram crunch evaluate text` were downgraded to
+Development ("merged into Hook Posts").
+
+**Phase A — copy (synchronous, one Claude call).** Objections gathered from
+the product's 🔬 Product Research (Objections / Pain Points / Emotions /
+Customer), the Product page, campaign Research Pain Points, the Title's Notes
++ the modal override box, and the Title's Pillar Content. The hub image spec
+is assembled once (`assembleImageBrief` + `writeImageSpec`, same as the offer
+images). Claude returns N posts (default 6, cap 10) — each with `objection`,
+`format` (`picture` | `text`, model's choice per post), `snippet` (the exact
+on-image words, ≤22 words), `caption` (→ `Post Caption`), `zone`
+(`top`/`center`/`lower-third`/`left-column`), and for picture posts an
+`imagePrompt` (wordless plate prompt that keeps `zone` calm). Each becomes an
+Asset (Status Development) with a fenced `json` **HOOK POST** block. The Title
+is stamped with the `Hook Posts` method (`resolveMethodIdByName`) +
+`propagateMethodToCampaigns`. Returns `{ created, imagesPending, formatKey }`
+immediately.
+
+**Phase B — images (`ctx.waitUntil`, then a re-runnable action).**
+`renderHookPostImage(env, assetId)` per asset, sequentially. Every image is
+made for one **dimension set** (`HOOK_POST_FORMATS` — `ig-portrait` 1080×1350
+default, `ig-square`, `ig-story`), chosen in the modal (`formatKey`). Picture
+posts: `imagePrompt` → xAI `grok-imagine-image-2.0` at the set's aspect ratio
+→ plate hosted (`Instagram Background`). Then, for **every** post, an HTML
+card (hub display font + palette tokens, accent rule, wordmark, `snippet` set
+in `zone`; plate as full-bleed bg for picture, palette ground for text) →
+**Cloudflare Browser Rendering `/screenshot`** (same pipeline as
+`generateDesignCardMotif` / carousel slides) → hosted → `Post Image`, Asset
+Status → Publish. **No Canva/Remotion step.** `HOOK_POST_FORMATS[].canvaTemplate`
+is an optional "open in Canva" convenience link per set, never on the auto path.
+
+**`renderHookPostImages { titleId }`** — idempotent action: (re-)renders any
+`hook post` asset under the Title with no `Post Image`. The Generate Assets
+modal auto-pings it a few times after generation (safety net for a cut-short
+`ctx.waitUntil`); also the way to re-render after editing a snippet in Notion.
+
+Reuses `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `CF_ACCOUNT_ID`,
+`CF_API_TOKEN` — all already set. `getTitles`' `buildAssetRow` returns
+`postImage` / `canvaTemplate`; the modal's existing-assets list and the
+asset rows show the thumbnail.

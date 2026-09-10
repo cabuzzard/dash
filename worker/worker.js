@@ -319,6 +319,208 @@ ${brief.facts.join("\n") || "(sparse — infer conservatively, do not invent spe
   if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
   return (data.content?.[0]?.text || "").trim();
 }
+
+// ── Hook Posts method — dimension sets + the pure (no-manual) image render ──
+// The "Hook Posts" method (generateTitleAssets' /\bhook post/i branch) turns
+// one title + the product's known objections into a batch of one-page social
+// posts, one Asset each. Each Asset is made for ONE named dimension set below,
+// so the Grok plate and the text box are cut for the same canvas. The finished
+// image is composited entirely Worker-side: Grok renders a WORDLESS plate that
+// deliberately leaves the post's zone calm, then an HTML card (hub fonts +
+// palette, text in that zone) is rendered to PNG via Cloudflare Browser
+// Rendering — the same HTML→PNG pipeline proven for carousel slides and the
+// Design Card motif. No Canva/Remotion chat step; the PNG lands back on the
+// Notion asset. `canvaTemplate` is an OPTIONAL convenience link per set (the
+// operator can rebuild the same post in Canva at the same size), never on the
+// automated path.
+const HOOK_POST_FORMATS = {
+  "ig-portrait": { w: 1080, h: 1350, grok: "3:4", label: "Instagram portrait 4:5", canvaTemplate: "" },
+  "ig-square":   { w: 1080, h: 1080, grok: "1:1", label: "Instagram square 1:1",   canvaTemplate: "" },
+  "ig-story":    { w: 1080, h: 1920, grok: "3:4", label: "Instagram story 9:16",   canvaTemplate: "" },
+};
+// Where the snippet sits on the canvas + the phrase the Grok prompt is given so
+// the plate leaves that same region open. Keep the two in sync.
+const HOOK_POST_ZONES = {
+  "top":         { keep: "keep the entire top 45% of the frame calm, open and near-empty — no subject, no busy detail there" },
+  "center":      { keep: "keep a wide calm horizontal band through the vertical centre of the frame, open and near-empty" },
+  "lower-third": { keep: "keep the entire bottom 45% of the frame calm, open and near-empty — subject and detail sit high in the frame" },
+  "left-column": { keep: "keep the entire left half of the frame calm, open and near-empty — subject sits on the right" },
+};
+function hookPostZoneCss(zone, fmt) {
+  const pad = Math.round(fmt.w * 0.085);
+  const base = `position:absolute;left:${pad}px;right:${pad}px;display:flex;flex-direction:column;`;
+  if (zone === "top")         return `${base}top:${pad}px;justify-content:flex-start;`;
+  if (zone === "center")      return `${base}top:0;bottom:0;justify-content:center;`;
+  if (zone === "left-column") return `position:absolute;left:${pad}px;top:${pad}px;bottom:${pad}px;width:54%;display:flex;flex-direction:column;justify-content:center;`;
+  return `${base}bottom:${Math.round(fmt.h * 0.085)}px;justify-content:flex-end;`; // lower-third
+}
+function hookPostEscHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+// Builds the overlay/text-card HTML for one post. `plateUrl` present → picture
+// post (plate as full-bleed background); absent → text post (palette ground).
+function buildHookPostHtml({ fmt, zone, snippet, plateUrl, tokens, fonts, hubName }) {
+  const bg = tokens.bg || "#0f1115";
+  const ink = tokens.ink || tokens["ink-head"] || "#f4f1ea";
+  const accent = tokens.accent || tokens.sea || "#c8a24a";
+  const deep = tokens.deep || tokens.sea || bg;
+  const display = fonts.display || "Playfair Display";
+  const bodyFont = fonts.body || "Inter";
+  const fam = n => n.trim().replace(/\s+/g, "+");
+  const chars = snippet.length;
+  const fs = Math.round(fmt.w * (chars > 135 ? 0.049 : chars > 90 ? 0.060 : chars > 55 ? 0.074 : 0.090));
+  const markTop = zone === "top";
+  const scrimDir = zone === "top" ? "to bottom" : zone === "left-column" ? "to right" : "to top";
+  const scrim = plateUrl
+    ? `<div style="position:absolute;inset:0;background:linear-gradient(${scrimDir}, rgba(0,0,0,.62) 0%, rgba(0,0,0,.30) 42%, rgba(0,0,0,0) 68%);"></div>`
+    : "";
+  const stageBg = plateUrl
+    ? `background:#000 url('${hookPostEscHtml(plateUrl)}') center/cover no-repeat;`
+    : `background:linear-gradient(155deg, ${bg} 0%, ${deep} 100%);`;
+  const lines = hookPostEscHtml(snippet).replace(/\n+/g, "<br>");
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=${fam(display)}:wght@700;800;900&family=${fam(bodyFont)}:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:${fmt.w}px;height:${fmt.h}px;overflow:hidden;background:${bg}}
+.stage{position:relative;width:${fmt.w}px;height:${fmt.h}px;${stageBg}}
+.mark{position:absolute;left:${Math.round(fmt.w*0.085)}px;${markTop ? `bottom:${Math.round(fmt.w*0.06)}px` : `top:${Math.round(fmt.w*0.075)}px`};font-family:'${bodyFont}',system-ui,sans-serif;font-weight:600;font-size:22px;letter-spacing:.16em;text-transform:uppercase;color:${ink};opacity:.72}
+.box{${hookPostZoneCss(zone, fmt)}}
+.rule{width:68px;height:5px;background:${accent};margin-bottom:26px;flex:none}
+.snippet{font-family:'${display}',Georgia,serif;font-weight:800;color:${ink};font-size:${fs}px;line-height:1.14;letter-spacing:-.01em;text-wrap:balance;${plateUrl ? "text-shadow:0 2px 30px rgba(0,0,0,.45)" : ""}}
+</style></head><body>
+<div class="stage">${scrim}
+<div class="mark">${hookPostEscHtml(hubName || "")}</div>
+<div class="box"><div class="rule"></div><div class="snippet">${lines}</div></div>
+</div></body></html>`;
+}
+
+// Renders + hosts ONE hook-post image and writes it onto the asset. Pure: no
+// operator step. Called from the branch via ctx.waitUntil and from the
+// re-runnable `renderHookPostImages` action. Best-effort — on any failure it
+// records the reason on the asset's Grade Notes and leaves it at Development.
+async function renderHookPostImage(env, assetId) {
+  const NT = (env.NOTION_TOKEN || "").trim();
+  const hdr = { "Authorization": `Bearer ${NT}`, "Notion-Version": NOTION_VERSION };
+  const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const noteFail = async msg => {
+    try {
+      await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Grade Notes": { rich_text: [{ text: { content: `Image render failed: ${String(msg).slice(0, 1800)}` } }] } } }),
+      });
+    } catch (e) {}
+    return { ok: false, error: String(msg) };
+  };
+  try {
+    const CF_ACCOUNT_ID = (env.CF_ACCOUNT_ID || "").trim();
+    const CF_API_TOKEN = (env.CF_API_TOKEN || "").trim();
+    const GT = (env.GITHUB_TOKEN || "").trim();
+    if (!CF_ACCOUNT_ID || !CF_API_TOKEN) return noteFail("CF_ACCOUNT_ID / CF_API_TOKEN not configured");
+    if (!GT) return noteFail("GITHUB_TOKEN not configured");
+
+    const page = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+    const p = page.properties || {};
+    if (!/\bhook post/i.test(p["Asset Type"]?.select?.name || "")) return { ok: false, error: "not a hook post asset" };
+    const campaignId = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g, "") || "";
+    const assetTitle = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "hook-post";
+
+    // The HOOK POST json block carries format/zone/snippet/imagePrompt.
+    let spec = {};
+    try {
+      const kids = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json());
+      const code = (kids.results || []).find(b => b.type === "code");
+      if (code) spec = JSON.parse((code.code?.rich_text || []).map(t => t.plain_text).join(""));
+    } catch (e) { return noteFail("couldn't read the HOOK POST spec block: " + e.message); }
+    const fmt = HOOK_POST_FORMATS[spec.formatKey] || HOOK_POST_FORMATS["ig-portrait"];
+    const zone = HOOK_POST_ZONES[spec.zone] ? spec.zone : "lower-third";
+    const snippet = String(spec.snippet || "").trim();
+    if (!snippet) return noteFail("no snippet text on the asset");
+    const isPicture = String(spec.format || "").toLowerCase() === "picture" && !!String(spec.imagePrompt || "").trim();
+
+    // Hub palette + fonts (same grounding the plate spec used).
+    const brief = await assembleImageBrief(env, { assetId }).catch(() => null);
+    const tokens = (brief && brief.hub && brief.hub.tokens) || {};
+    const fonts = (brief && brief.hub && brief.hub.fonts) || {};
+    const hubName = (brief && brief.hub && (brief.hub.logoText || brief.hubSlug)) || "";
+
+    const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+    const slug = (assetTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 44) || "hook-post") + "-" + String(assetId).slice(0, 6);
+    const REPO = "cabuzzard/dash", BRANCH = "main";
+    const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const bytesToB64 = bytes => { let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000)); return btoa(bin); };
+    const commit = async (path, b64, msg) => {
+      let sha = null;
+      const g = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+      if (g.ok) { try { sha = (await g.json()).sha || null; } catch (e) {} }
+      const body = { message: msg, content: b64, branch: BRANCH }; if (sha) body.sha = sha;
+      await sleep(1100);
+      const put = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!put.ok) { const r = await put.json().catch(() => ({})); throw new Error(`GitHub commit failed (${path}): ${r.message || put.status}`); }
+      return `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+    };
+    const renderHtml = async html => {
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const resp = await fetch(`https://api.cloudflare.com/client/v4/accounts/${CF_ACCOUNT_ID}/browser-rendering/screenshot`, {
+          method: "POST", headers: { "Authorization": `Bearer ${CF_API_TOKEN}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ html, viewport: { width: fmt.w, height: fmt.h, deviceScaleFactor: 1 }, gotoOptions: { waitUntil: "networkidle0", timeout: 22000 }, screenshotOptions: { type: "png", fullPage: false } }),
+        });
+        if (resp.status === 429) { await sleep((parseInt(resp.headers.get("Retry-After") || "11", 10) + 1) * 1000); continue; }
+        if (resp.status === 422 && attempt < 3) { await sleep(3000); continue; }
+        if (!resp.ok) throw new Error(`Browser Rendering ${resp.status}: ${(await resp.text()).slice(0, 240)}`);
+        return new Uint8Array(await resp.arrayBuffer());
+      }
+      throw new Error("Browser Rendering stayed rate-limited after retries");
+    };
+
+    const props = { "Asset Status": { select: { name: "Publish" } } };
+    let plateUrlForHtml = "";
+    if (isPicture) {
+      if (!(env.XAI_API_KEY || "").trim()) return noteFail("XAI_API_KEY not configured (picture post needs the Grok plate)");
+      const zoneKeep = (HOOK_POST_ZONES[zone] || HOOK_POST_ZONES["lower-third"]).keep;
+      const grokPrompt = `${String(spec.imagePrompt || "").trim()}\n\nComposition constraint: ${zoneKeep}. No people, no text, no letters, no logos, no watermarks.`;
+      const xr = await fetch("https://api.x.ai/v1/images/generations", {
+        method: "POST", headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: grokPrompt.slice(0, 5000), n: 1, aspect_ratio: fmt.grok, resolution: "2k" }),
+      });
+      const xd = await xr.json().catch(() => ({}));
+      if (!xr.ok) return noteFail((xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})`);
+      const xUrl = xd.data?.[0]?.url || "";
+      if (!xUrl) return noteFail("xAI returned no image URL");
+      const plateResp = await fetch(xUrl);
+      if (!plateResp.ok) return noteFail(`couldn't fetch the Grok plate (HTTP ${plateResp.status})`);
+      const plateB64 = bytesToB64(new Uint8Array(await plateResp.arrayBuffer()));
+      const plateUrl = await commit(`web/${deployPath}/hook-posts/${slug}-plate.png`, plateB64, `Hook post plate: ${assetTitle}`);
+      props["Instagram Background"] = { url: plateUrl };
+      plateUrlForHtml = xUrl; // ephemeral but fine for the immediate screenshot
+    }
+
+    let finalBytes;
+    try {
+      finalBytes = await renderHtml(buildHookPostHtml({ fmt, zone, snippet, plateUrl: plateUrlForHtml || "", tokens, fonts, hubName }));
+    } catch (e) {
+      // xAI url may have expired between commit and render — retry once off the committed plate.
+      if (plateUrlForHtml && props["Instagram Background"]) {
+        finalBytes = await renderHtml(buildHookPostHtml({ fmt, zone, snippet, plateUrl: props["Instagram Background"].url, tokens, fonts, hubName }));
+      } else { throw e; }
+    }
+    const finalUrl = await commit(`web/${deployPath}/hook-posts/${slug}.png`, bytesToB64(finalBytes), `Hook post image: ${assetTitle}`);
+    props["Post Image"] = { url: finalUrl };
+    const canva = (HOOK_POST_FORMATS[spec.formatKey] || {}).canvaTemplate || "";
+    if (canva) props["Canva Template"] = { url: canva };
+
+    await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: props }),
+    });
+    return { ok: true, url: finalUrl };
+  } catch (e) {
+    return noteFail(e.message || String(e));
+  }
+}
+
 // The dashboard + microsites are served from cabuzzard.github.io. Content hubs
 // (web/hub/*) are additionally served from their own custom domains on Bluehost,
 // and their page JS calls this worker (getHubSocials on load, submitLead on
@@ -16693,6 +16895,11 @@ Return ONLY a JSON array — no other text, no markdown fences:
             instagramBackground: p["Instagram Background"]?.url || "",
             igBackgroundPrompt: p["Image Prompt (IG Background)"]?.rich_text?.map(x => x.plain_text).join("") || "",
             blogThumbnailPrompt: p["Image Prompt (Blog Thumbnail)"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            // Hook Posts method — the finished, composited social image
+            // (renderHookPostImage); an optional Canva template for the
+            // dimension set it was made for.
+            postImage: p["Post Image"]?.url || "",
+            canvaTemplate: p["Canva Template"]?.url || "",
           };
         };
         titleList.forEach(t => { t.assets = []; });
@@ -20243,6 +20450,175 @@ Return ONLY this JSON object, no other text, no markdown fences:
           });
         }
 
+        // ── Hook Posts: one title + the product's known objections / pain
+        // points → a BATCH of one-page social posts, one Asset each (one
+        // creation → many assets under the title, the shape Publish groups by).
+        // The model picks text vs picture per post; both grounded in the hub's
+        // image spec. For picture posts the image prompt and the on-image text
+        // are designed together — the plate carves negative space in a named
+        // zone, and renderHookPostImage() composites the snippet into it via
+        // Cloudflare Browser Rendering, entirely Worker-side (no Canva/Remotion
+        // chat step). Copy is written synchronously here; images render in the
+        // background (ctx.waitUntil) and land on the assets a minute or so
+        // later — renderHookPostImages is the idempotent re-run/safety net.
+        if (/\bhook post/i.test(assetType)) {
+          if (!hasProduct) return json({ error: "Hook Posts needs a product — an objection is an objection to buying something. Attach a Product to this title, then Generate again." }, 400);
+          const hpCount = Math.min(Math.max(parseInt(body.count) || 6, 1), 10);
+          const formatKey = HOOK_POST_FORMATS[body.formatKey] ? body.formatKey : "ig-portrait";
+          const hasMethod = methodId && methodId !== "__none__";
+
+          const [prodPage, researchRec, methodFrameworkText, pillarContent, campResearch] = await Promise.all([
+            fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null),
+            findBestProductResearchRecord(dsHdr, productId).catch(() => null),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+            campaignId ? notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }).catch(() => []) : Promise.resolve([]),
+          ]);
+          const rtp = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const pp = prodPage?.properties || {};
+          const productName = (pp.Name?.title || []).map(t => t.plain_text).join("").trim() || "this product";
+          const rp = researchRec?.properties || {};
+          const objectionFacts = [
+            rtp(rp, "Objections")  && `Product Research — Objections:\n${rtp(rp, "Objections")}`,
+            rtp(rp, "Pain Points") && `Product Research — Pain Points:\n${rtp(rp, "Pain Points")}`,
+            rtp(rp, "Emotions")    && `Product Research — Emotions:\n${rtp(rp, "Emotions")}`,
+            rtp(rp, "Customer")    && `Product Research — Customer:\n${rtp(rp, "Customer")}`,
+            rtp(pp, "Objections")  && `Product page — Objections: ${rtp(pp, "Objections")}`,
+            rtp(pp, "Unique Angle") && `Product page — Unique Angle: ${rtp(pp, "Unique Angle")}`,
+            rtp(pp, "Transformation") && `Product page — Transformation: ${rtp(pp, "Transformation")}`,
+          ].filter(Boolean).join("\n\n");
+          const campPain = (() => {
+            for (const r of (campResearch || [])) { const v = rtp(r.properties, "Pain Points"); if (v) return v; }
+            return "";
+          })();
+
+          const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
+          let imageSpec = "";
+          try { imageSpec = brief ? await writeImageSpec(env, brief) : ""; } catch (e) { imageSpec = ""; }
+
+          const zoneList = Object.keys(HOOK_POST_ZONES).join(" | ");
+          const hpPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a short-form social copywriter. Produce ${hpCount} DISTINCT one-page "hook posts" for the product below — each post confronts ONE specific customer objection or rejection head-on and turns it. These publish as separate posts, grouped under one campaign title.
+
+PRODUCT: ${productName}
+TITLE / ANGLE: ${title}
+${description ? `OPERATOR NOTES (follow): ${description}\n` : ""}${methodFrameworkText ? `METHOD FRAMEWORK (follow its voice/structure rules):\n${methodFrameworkText.slice(0, 2500)}\n` : ""}
+OBJECTIONS / PAIN POINTS TO DRAW FROM (pick the ${hpCount} sharpest, most distinct — one per post, never two posts on the same objection):
+${objectionFacts || "(sparse — infer the real hesitations from the product + pillar below)"}
+${campPain ? `\nCampaign-level pain points: ${campPain}\n` : ""}${pillarContent ? `\nPILLAR CONTENT (voice + facts to stay faithful to — do not invent claims beyond this):\n${pillarContent.slice(0, 2500)}\n` : ""}
+${imageSpec ? `HUB IMAGE SPEC (the visual world every post lives in — palette, subjects, light, the "Never" list; picture prompts must obey it, text posts still match its register):\n${imageSpec.slice(0, 2400)}\n` : ""}
+RULES
+- One objection per post, in the buyer's own words. The post names the objection, then turns it — a reframe, a receipt, a specific number, a small proof.
+- "format": "picture" when there's a concrete real scene from the spec's world worth showing behind the words; "text" when the line lands harder alone. Aim for a natural mix.
+- "snippet" is the EXACT on-image words — <= 22 words, <= 3 short lines. This is the whole post's spine, not a caption. No hashtags, no emoji, no quotation marks around the whole thing.
+- "caption" is the text that runs under the image in the feed — 2-4 sentences, conversational, ends with one soft nudge (not a hard CTA).
+- "zone" is where the words sit on the image: ${zoneList}. Pick per post.
+- "imagePrompt" (picture posts only): a WORDLESS plate prompt obeying the hub spec — concrete nouns, palette hexes, and it MUST keep the chosen zone calm and near-empty for the text. End it "No people, no text, no letters, no logos, no watermarks." Omit entirely for text posts.
+
+Return ONLY a JSON array of exactly ${hpCount} objects, no markdown fences:
+[{ "objection": "...", "format": "picture" | "text", "snippet": "...", "caption": "...", "zone": "${Object.keys(HOOK_POST_ZONES)[0]}", "imagePrompt": "... (picture only)" }]`;
+
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 5000, messages: [{ role: "user", content: hpPrompt }] }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          let posts;
+          try {
+            const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+            posts = JSON.parse(sanitizeJsonControlChars(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1)));
+          } catch (e) { return json({ error: "Could not parse the generated hook posts — try again" }, 502); }
+          posts = (Array.isArray(posts) ? posts : []).filter(x => x && String(x.snippet || "").trim()).slice(0, hpCount);
+          if (!posts.length) return json({ error: "No hook posts generated — try again" }, 502);
+
+          try {
+            await ensureAssetsDbProperties(dsHdr, {
+              "Post Image": { type: "url" }, "Canva Template": { type: "url" },
+              "Instagram Background": { type: "url" }, "Image Prompt (IG Background)": { type: "rich_text" },
+              "Post Caption": { type: "rich_text" },
+            });
+          } catch (e) { /* PATCH below will surface a real prop error if one slips through */ }
+
+          const rtBlock = (text, opts = {}) => text ? [{ type: "text", text: { content: String(text).slice(0, 1990), link: null }, annotations: { bold: !!opts.bold, italic: !!opts.italic, strikethrough: false, underline: false, code: false, color: "default" } }] : [];
+          const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+          const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+          const zoneOk = z => HOOK_POST_ZONES[z] ? z : "lower-third";
+
+          const created = [], failures = [];
+          for (const post of posts) {
+            const isPic = String(post.format || "").toLowerCase() === "picture" && !!String(post.imagePrompt || "").trim();
+            const label = `${String(post.objection || "Hook").slice(0, 70)} — hook`;
+            const cardObj = {
+              format: isPic ? "picture" : "text",
+              formatKey,
+              zone: zoneOk(post.zone),
+              snippet: String(post.snippet || "").trim(),
+              caption: String(post.caption || "").trim(),
+              objection: String(post.objection || "").trim(),
+              imagePrompt: isPic ? String(post.imagePrompt || "").trim() : "",
+            };
+            const props = {
+              "Asset Title":  { title: [{ text: { content: label.slice(0, 200) } }] },
+              "Asset Status": { select: { name: "Development" } },
+              "Asset Type":   { select: { name: "hook post" } },
+              "Body":         { rich_text: [{ text: { content: cardObj.snippet.slice(0, 2000) } }] },
+              "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+              "Product":      { relation: [{ id: dsDash(productId) }] },
+              "Post Caption": { rich_text: [{ text: { content: cardObj.caption.slice(0, 1990) } }] },
+            };
+            if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+            props["Platform Name"] = { select: { name: platformName || "Instagram" } };
+            if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+            if (cardObj.imagePrompt) props["Image Prompt (IG Background)"] = { rich_text: [{ text: { content: cardObj.imagePrompt.slice(0, 1990) } }] };
+            const aResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }),
+            });
+            const aRes = await aResp.json();
+            if (!aResp.ok || !aRes.id) { failures.push(aRes.message || "create failed"); continue; }
+            const newAssetId = aRes.id.replace(/-/g, "");
+            const children = [
+              { object: "block", type: "code", code: { language: "json", rich_text: rtBlock(JSON.stringify(cardObj, null, 0)) } },
+              heading2("On-image text"), para(cardObj.snippet),
+              heading2("Caption"), para(cardObj.caption),
+              heading2("Objection it answers"), para(cardObj.objection),
+              para(`Format: ${cardObj.format} · Dimension set: ${formatKey} (${(HOOK_POST_FORMATS[formatKey] || {}).label || formatKey}) · Text zone: ${cardObj.zone}`),
+            ];
+            await fetch(`https://api.notion.com/v1/blocks/${dsDash(newAssetId)}/children`, {
+              method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children }),
+            }).catch(() => {});
+            created.push({ id: newAssetId, format: cardObj.format });
+          }
+          if (!created.length) return json({ error: "All hook-post asset creates failed: " + (failures[0] || "unknown") }, 502);
+
+          // Attribute the title to the method that made these (so the Hub
+          // Method Matrix counts the assets) — same as the offer branch.
+          const hpMethodId = (methodId && methodId !== "__none__") ? methodId : await resolveMethodIdByName("Hook Posts").catch(() => null);
+          const titleProps = {};
+          if (hpMethodId) titleProps["method"] = { relation: [{ id: dsDash(hpMethodId) }] };
+          if (Object.keys(titleProps).length) {
+            await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+              method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: titleProps }),
+            }).catch(() => {});
+          }
+          if (hpMethodId && productId) ctx.waitUntil(propagateMethodToCampaigns(productId, hpMethodId).catch(() => {}));
+
+          // Images render in the background — pure, no operator step. The
+          // frontend re-pings renderHookPostImages once as a safety net if
+          // ctx.waitUntil is cut short.
+          ctx.waitUntil((async () => {
+            for (const a of created) { await renderHookPostImage(env, a.id).catch(() => {}); }
+          })());
+
+          return json({
+            success: true, created: created.length, failed: failures.length,
+            assets: created, imagesPending: created.length, formatKey, assetType: "hook post",
+          });
+        }
+
         // ── Offer asset type: turns one product into ONE finished,
         // publish-ready OFFER — how the offer is presented on a content hub /
         // sales page, not N concept options. Always product-tied (an offer is
@@ -22895,6 +23271,43 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || `Failed to save the ${SLOT[kind].prop} property` }, 500); }
 
         return json({ success: true, url, prop: SLOT[kind].prop });
+      }
+
+      // -- renderHookPostImages -----------------------------------------
+      // Idempotent (re-)render for the "Hook Posts" method. Renders + hosts a
+      // finished image for every `hook post` asset under a title that doesn't
+      // have one yet, straight onto the asset (Post Image, and Instagram
+      // Background for picture posts) — no operator step. Called automatically
+      // by the Generate Assets modal a few seconds after generation as a
+      // safety net if the branch's ctx.waitUntil was cut short, and usable to
+      // force a re-render after editing a snippet in Notion (pass `force`).
+      if (body.action === "renderHookPostImages") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let rows = [];
+        try {
+          rows = await notionQuery(ASSETS_DB, { filter: { and: [
+            { property: "Content Strategy", relation: { contains: dash(titleId) } },
+            { property: "Asset Type", select: { equals: "hook post" } },
+          ] } });
+        } catch (e) { return json({ error: "Couldn't list hook-post assets: " + e.message }, 502); }
+        const pending = rows.filter(r => body.force || !(r.properties?.["Post Image"]?.url || "").trim());
+        if (!pending.length) return json({ success: true, rendered: 0, total: rows.length, pending: 0 });
+        const results = [];
+        for (const r of pending.slice(0, 12)) {
+          const id = r.id.replace(/-/g, "");
+          const out = await renderHookPostImage(env, id).catch(e => ({ ok: false, error: e.message }));
+          results.push({ id, ok: !!out.ok, error: out.error || null });
+        }
+        return json({
+          success: true, total: rows.length,
+          rendered: results.filter(x => x.ok).length,
+          failed: results.filter(x => !x.ok).length,
+          pending: rows.filter(r => !(r.properties?.["Post Image"]?.url || "").trim()).length - results.filter(x => x.ok).length,
+          results,
+        });
       }
 
       // -- getImageBrief (the "image plate design spec" for a hub) -------
