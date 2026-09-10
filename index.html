@@ -1783,7 +1783,11 @@
     <label style="font-size:11px;color:var(--text3);">Direction for this template (optional)</label>
     <textarea id="spTplOverride" wrap="soft" placeholder="e.g. warmer than the hub default · a paper texture · room for a photo strip on the left"
       style="width:100%;height:70px;font-family:inherit;font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;margin-bottom:8px;"></textarea>
-    <button class="modal-btn" onclick="spTplGenPrompt(this)" style="margin-bottom:10px;">📋 Copy generation prompt</button>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
+      <button class="modal-btn" onclick="spTplGenPrompt(this)" style="flex:0 0 auto;">📋 Copy generation prompt</button>
+      <button class="modal-btn" onclick="spTplGenBg(this)" style="flex:0 0 auto;background:transparent;border-color:var(--accent);color:var(--accent);">✨ Generate background (Grok)</button>
+    </div>
+    <div id="spTplBg" style="font-size:11px;color:var(--text3);margin-bottom:10px;min-height:14px;"></div>
     <label style="font-size:11px;color:var(--text3);">Finished Canva template link</label>
     <input id="spTplUrl" class="modal-input" type="text" placeholder="https://www.canva.com/design/…/edit" style="margin-bottom:10px;">
     <div style="display:flex;gap:10px;align-items:center;">
@@ -10853,6 +10857,23 @@ async function spTplGenPrompt(btn){
     await navigator.clipboard.writeText(r.prompt);
     btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 1600);
   } catch (e) { btn.textContent = o; btn.disabled = false; document.getElementById('spTplMsg').style.color = '#ff6b6b'; document.getElementById('spTplMsg').textContent = e.message; }
+}
+async function spTplGenBg(btn){
+  const h = HUB_SITES.find(x => x.slug === _spTplSlug); if (!h) return;
+  const out = document.getElementById('spTplBg');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Generating… (~20s)';
+  out.style.color = 'var(--text3)'; out.textContent = 'Grok is rendering a wordless plate from this hub\'s Image Spec…';
+  try {
+    const r = await call('generateSinglePostBackground', {
+      campaignId: h.campaignId,
+      name: document.getElementById('spTplName').value.trim() || 'template',
+      override: document.getElementById('spTplOverride').value.trim(),
+    });
+    if (r.error) throw new Error(r.error);
+    out.style.color = 'var(--text2)';
+    out.innerHTML = `Background ready → <a href="${esc(r.imageUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">open ↗</a> · <button onclick="navigator.clipboard.writeText('${esc(r.imageUrl)}');this.textContent='copied ✓'" style="border:0;background:none;color:var(--accent);cursor:pointer;font-size:11px;">copy URL</button><br><span style="font-size:10px;">In Canva: add this as the page background (or Uploads → import by URL), then place the 3 text boxes over the calm upper-left.</span>`;
+  } catch (e) { out.style.color = '#ff6b6b'; out.textContent = e.message; }
+  btn.disabled = false; btn.textContent = o;
 }
 async function spTplSave(){
   const h = HUB_SITES.find(x => x.slug === _spTplSlug); if (!h) return;

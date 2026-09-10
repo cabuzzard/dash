@@ -23428,6 +23428,81 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ imageUrl, prompt, spec, kind, model: "grok-imagine-image-2.0", sync: true });
       }
 
+      // -- generateSinglePostBackground: a wordless 3:4 (1080x1440) plate for a
+      // hub's single-post Canva template, grounded in the hub's GLOBAL Image
+      // Spec. Same "assemble spec → Claude writes the Grok prompt → xAI render"
+      // path as generateOfferImage, but composed so the LEFT + TOP stay calm for
+      // the stacked headline. Hosts the PNG on GitHub Pages so the Canva
+      // connector can upload-asset-from-url it as the template background.
+      // { campaignId | hubSlug, override?, name? }.
+      if (body.action === "generateSinglePostBackground") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const hubSlug = String(body.hubSlug || "").trim() || hubSlugForCampaign(body.campaignId);
+        const cid = String(body.campaignId || (HUB_SITES.find(h => h.slug === hubSlug) || {}).campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId or a known hubSlug required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const brief = await assembleImageBrief(env, { campaignId: cid });
+        let spec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
+
+WHAT IT IS: a VERTICAL 3:4 (1080x1440) BACKGROUND for a social-post TEMPLATE. A two-line headline sits in the UPPER-LEFT with a one-line body below it, so keep the entire LEFT HALF and the TOP 55% of the frame calm, open and near-empty — a flat wash, soft gradient, or quiet out-of-focus area with no subject or busy detail there. Any subject, object, or texture belongs low and to the right. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+
+Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
+${spec}
+${body.override ? `\nOPERATOR DIRECTION for this template (follow it): ${String(body.override).slice(0, 600)}\n` : ""}
+End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+        });
+        const xd = await xr.json().catch(() => ({}));
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+        const xUrl = xd.data?.[0]?.url || "";
+        if (!xUrl) return json({ error: "xAI returned no image URL" }, 502);
+
+        const plateResp = await fetch(xUrl);
+        if (!plateResp.ok) return json({ error: `couldn't fetch the plate (HTTP ${plateResp.status})` }, 502);
+        const bytes = new Uint8Array(await plateResp.arrayBuffer());
+        if (!bytes.length) return json({ error: "empty plate" }, 502);
+        let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        const b64 = btoa(bin);
+        const deployPath = await resolveDeployPath(cid, hdr, dash).catch(() => hubSlug || "hub");
+        const slugify = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48);
+        const nm = slugify(body.name) || ("tpl-" + Date.now().toString(36));
+        const path = `web/${deployPath}/single-posts/templates/${nm}.png`;
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        let sha = null;
+        const g = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        if (g.ok) { try { sha = (await g.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `single-post template bg: ${nm}`, content: b64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const put = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
+        if (!put.ok) { const r = await put.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || put.status}` }, 500); }
+        const imageUrl = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+        return json({ success: true, imageUrl, prompt, hubSlug });
+      }
+
       // -- saveOfferImage (rehost a finished image on GitHub Pages and write
       //    it onto the Offer asset) --------------------------------------
       // Second half of the generateOfferImage flow. Takes EITHER an
