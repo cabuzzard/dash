@@ -141,6 +141,158 @@ async function findBestProductResearchRecord(hdr, productId) {
   const filledCount = r => STRATEGY_FIELDS.reduce((n, f) => n + ((r.properties?.[f]?.rich_text || []).length ? 1 : 0), 0);
   return results.reduce((best, r) => filledCount(r) > filledCount(best) ? r : best, results[0]);
 }
+
+// ── Image art-direction: assemble + write ──────────────────────────────
+// assembleImageBrief gathers the GROUNDED context for a hub's images from
+// every real source: the hub design record (web/hub/hubs.design.json),
+// campaign Research (positioning / pain / emotions / keywords), the 🔬
+// Product Research of the hub's or asset's MAIN PRODUCT, the asset's Content
+// Strategy title, and the operator's stored "Image Direction" guidance
+// (Research field). Best-effort — every source is optional.
+// writeImageSpec turns that into the copyable "image plate design spec" via
+// one Claude call. Shared by getImageBrief (the Content Hubs card field) and
+// generateOfferImage (the actual Grok render), so the art direction has ONE
+// definition, grounded in the customer.
+async function assembleImageBrief(env, { campaignId, assetId }) {
+  const NT = (env.NOTION_TOKEN || "").trim();
+  const hdr = { "Authorization": `Bearer ${NT}`, "Notion-Version": NOTION_VERSION };
+  const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const norm = s => String(s || "").replace(/-/g, "");
+  const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [] };
+
+  let cid = norm(campaignId || "");
+  let contentHubSel = "", titleId = "", assetProductId = "";
+  if (assetId) {
+    const ap = (await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()).catch(() => ({})))?.properties || {};
+    if (!cid) cid = norm(ap["Campaign"]?.relation?.[0]?.id || "");
+    contentHubSel = ap["Content Hub"]?.select?.name || "";
+    titleId = norm(ap["Content Strategy"]?.relation?.[0]?.id || "");
+    assetProductId = norm(ap["Product"]?.relation?.[0]?.id || "");
+  }
+
+  out.hubSlug = contentHubSel || (HUB_SITES.find(h => norm(h.campaignId) === cid) || {}).slug || "";
+
+  if (out.hubSlug) {
+    try {
+      const dj = await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json());
+      out.hub = (dj.hubs || {})[out.hubSlug] || null;
+    } catch (e) { /* spec is best-effort */ }
+  }
+  if (out.hub) {
+    const d = out.hub.design || {}, tk = out.hub.tokens || {}, tn = out.hub.tokenNotes || {}, f = out.hub.fonts || {};
+    out.facts.push(`HUB: ${out.hub.logoText || out.hubSlug}`);
+    if (d.subject)   out.facts.push(`Hub subject: ${d.subject}`);
+    if (d.audience)  out.facts.push(`Hub audience: ${d.audience}`);
+    if (d.type)      out.facts.push(`Type register: ${d.type}`);
+    if (d.signature) out.facts.push(`Signature element: ${d.signature}`);
+    if (d.risk)      out.facts.push(`Aesthetic risk to hold: ${d.risk}`);
+    if (d.photography) out.facts.push(`Existing photography direction: ${d.photography}`);
+    if (Array.isArray(d.avoided) && d.avoided.length) out.facts.push(`Deliberately avoided: ${d.avoided.join("; ")}`);
+    const palLine = ["bg", "ink", "ink-head", "sea", "ink-soft", "accent", "deep"].map(k => tk[k] && `${k} ${tk[k]}${tn[k] ? " (" + tn[k] + ")" : ""}`).filter(Boolean).join("; ");
+    if (palLine) out.facts.push(`Palette tokens: ${palLine}`);
+    if (f.display) out.facts.push(`Fonts (set in Remotion afterward, NOT in the image): ${[f.display, f.body, f.mono].filter(Boolean).join(" / ")}`);
+  }
+
+  if (cid) {
+    try {
+      const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(cid) } } });
+      const rp = rows[0]?.properties || {};
+      out.guidance = rtp(rp, "Image Direction");
+      for (const [fld, label] of [["Statement", "Positioning statement"], ["Pain Points", "Audience pain points"], ["Emotions", "Audience emotional state"], ["Unique Opportunity", "Unique opportunity"], ["Keywords", "Keywords"]]) {
+        const v = rtp(rp, fld); if (v) out.facts.push(`${label}: ${v}`);
+      }
+    } catch (e) { /* research optional */ }
+  }
+
+  let productId = assetProductId;
+  if (!productId && cid) {
+    try {
+      const rows = await notionQuery(ASSETS_DB, { filter: { and: [
+        { property: "Campaign", relation: { contains: dash(cid) } },
+        { property: "Asset Type", select: { equals: "Content Hub" } },
+      ] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
+      for (const r of rows) { const rel = r.properties?.Product?.relation || []; if (rel.length) { productId = norm(rel[0].id); break; } }
+    } catch (e) {}
+    if (!productId) {
+      try {
+        const camp = await fetch(`https://api.notion.com/v1/pages/${dash(cid)}`, { headers: hdr }).then(r => r.json());
+        const rels = camp?.properties?.["Products"]?.relation || []; if (rels.length) productId = norm(rels[0].id);
+      } catch (e) {}
+    }
+  }
+  if (productId) {
+    let prodPage = null, prodResearch = null;
+    try { [prodPage, prodResearch] = await Promise.all([
+      fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+      findBestProductResearchRecord(hdr, productId).catch(() => null),
+    ]); } catch (e) {}
+    const pp = prodPage?.properties || {};
+    const pname = (pp.Name?.title || []).map(t => t.plain_text).join("").trim();
+    out.product = { id: productId, name: pname || "" };
+    if (pname) out.facts.push(`MAIN PRODUCT: ${pname}`);
+    for (const fld of ["Description", "Transformation", "Avatar", "Unique Angle"]) { const v = rtp(pp, fld); if (v) out.facts.push(`Product ${fld}: ${v}`); }
+    if (prodResearch) {
+      const prp = prodResearch.properties || {};
+      for (const fld of STRATEGY_FIELDS) { const v = rtp(prp, fld); if (v) out.facts.push(`Product Research — ${fld}: ${v}`); }
+    }
+  }
+
+  if (titleId) {
+    try {
+      const tp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+      const tt = ((tp.properties?.["Title"]?.title) || (tp.properties?.["Name"]?.title) || []).map(t => t.plain_text).join("").trim();
+      const notes = rtp(tp.properties, "Notes");
+      if (tt) out.facts.push(`THIS ASSET'S TITLE (use verbatim as the headline concept): ${tt}`);
+      if (notes) out.facts.push(`Title notes: ${notes}`);
+    } catch (e) {}
+  }
+
+  return out;
+}
+
+async function writeImageSpec(env, brief) {
+  const name = (brief.hub && (brief.hub.logoText || brief.hubSlug)) || brief.hubSlug || "this hub";
+  const prompt = `You are writing an IMAGE ART-DIRECTION SPEC for "${name}". The images are WORDLESS plates — a headline is set afterward in the real fonts, so this spec is about the PICTURE only.
+
+Write it in EXACTLY this structure (markdown headings), grounded in the customer's world in GROUNDED FACTS below. Every choice — subjects, light, palette-in-photo, what's forbidden — must trace to a real fact, never a generic "editorial / premium / cinematic" default. Tight, concrete. Output ONLY the spec.
+
+# ${name} — image plate design spec
+## What this is
+2-3 sentences: the hub, exactly who it's for, and the emotional register — drawn from the positioning + the audience's real pain/emotions.
+## Palette (match exactly)
+A markdown table \`| Role | Hex | Note |\` using the palette tokens VERBATIM (Ground / Ink / Primary / Muted / Accent / Dark band). One line after it stating cool vs warm and "if it looks {opposite} it's wrong".
+## Photography & subjects
+The KIND of real scene that belongs here — the customer's actual setting, their day, the objects and places around them. Concrete nouns, not adjectives. If an existing photography-direction fact is given, keep faith with it. Medium/finish (documentary photograph unless the register says otherwise).
+## Light
+Specific: time of day, quality, colour cast — consistent with the palette temperature.
+## Composition & safe areas
+- Instagram background — 4:5: keep the top 40% + vertical centre calm and near-empty. Subject low or to one side.
+- Blog / social thumbnail — 1:1: keep the top ~45% calm. Subject in the lower half.
+- Hero / OG — 16:9: keep the left ~45% calm. Subject right / lower band.
+One off-centre focal element, generous negative space, horizon never dead-centre. No collage.
+## Never
+The hub's "deliberately avoided" list verbatim, then: any text, letters, numbers, logos, watermarks, UI or signage; a face as the subject (distant incidental silhouettes only); stock-photo clichés (handshakes, lightbulbs, growth arrows, piggy banks, glowing globes, a lone tree, sunrise-over-hills); gradient decoration, lens flare, heavy bokeh, tilt-shift, fisheye, HDR.
+## Prompt skeleton
+One fill-in-the-blanks line with the palette hexes baked in, ending: No people, no text, no letters, no logos, no watermarks.
+## Filled examples
+Two — one 4:5 Instagram background, one 1:1 thumbnail — REAL scenes from the customer's world (not placeholders), palette hexes baked in, each ending: No people, no text, no letters, no logos, no watermarks.
+
+OPERATOR GUIDANCE (follow this; it overrides the derived choices where they conflict):
+${brief.guidance || "(none)"}
+
+GROUNDED FACTS:
+${brief.facts.join("\n") || "(sparse — infer conservatively, do not invent specifics)"}`;
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2200, messages: [{ role: "user", content: prompt }] }),
+  });
+  const data = await resp.json();
+  if (!resp.ok) throw new Error(data.error?.message || "Claude API error");
+  return (data.content?.[0]?.text || "").trim();
+}
 // The dashboard + microsites are served from cabuzzard.github.io. Content hubs
 // (web/hub/*) are additionally served from their own custom domains on Bluehost,
 // and their page JS calls this worker (getHubSocials on load, submitLead on
@@ -22444,42 +22596,25 @@ Rules:
         return json({ state: data.state, imageUrls: imageUrls, raw: data });
       }
 
-      // -- generateOfferImage (Claude writes a tuned prompt from the offer's
-      //    OFFER CARD, then Kie.ai renders it) -----------------------------
-      // Powers the two "Generate" buttons in the Publish modal for Offer
-      // assets:
-      //   ig-background  — an Instagram text-post BACKGROUND (Nano Banana,
-      //                    4:5, kept deliberately calm/empty in the middle
-      //                    so an overlaid headline + body stay legible)
-      //   blog-thumbnail — a blog-post THUMBNAIL (Seedream 4.0, 16:9, 2K,
-      //                    editorial, no text)
-      // Reads the asset's OFFER CARD json + "What's included" bullets + Body
-      // promise + the campaign Research palette/fonts for on-brand mood, has
-      // Claude write ONE image prompt tuned to `kind`, submits it to Kie.ai,
-      // persists the prompt on the asset (survives closing the modal), and
-      // returns { taskId, prompt }. The frontend polls getImageTask, then
-      // hands the finished URL to saveOfferImage — same split-request shape
-      // generateCarouselImages uses, because a single Worker request can't
-      // wait out a 20-40s render.
+      // -- generateOfferImage (assemble the hub image spec from the customer's
+      //    research, write a Grok prompt from it, render on xAI) -----------
+      // Powers the two "Generate" rows in the Publish modal for Offer assets:
+      //   ig-background  — a VERTICAL 3:4 wordless plate (xAI has no 4:5)
+      //   blog-thumbnail — a 1:1 wordless plate
+      // Both are WORDLESS — the headline is set afterward in Remotion / Canva
+      // in the hub's real fonts (make-offer-still). The art direction is the
+      // shared image spec: assembleImageBrief pulls the hub design record +
+      // campaign Research + the MAIN PRODUCT's 🔬 Product Research + this
+      // asset's title + the operator's "Image Direction" guidance;
+      // writeImageSpec turns it into the spec; a second Claude call writes
+      // the Grok prompt for THIS offer + kind, obeying the spec. Synchronous
+      // (xAI images return the URL directly) → { imageUrl, sync:true }.
       if (body.action === "generateOfferImage") {
         const { assetId, kind } = body;
-        // Two image backends the operator picks between in the modal ("try
-        // either"):
-        //   nano  — Kie.ai. ig-background = nano-banana text-to-image (4:5);
-        //           blog-thumbnail = nano-banana-EDIT of the IG background
-        //           (reframe 4:5 -> 16:9, bake the offer title on). Async
-        //           (returns a taskId the frontend polls).
-        //   grok  — xAI Grok Imagine (grok-imagine-image-2.0), synchronous.
-        //           Always a WORDLESS PLATE (ig-background 3:4, blog-thumbnail
-        //           1:1 — xAI has no 4:5); text is added later in Remotion /
-        //           Canva. Returns { imageUrl, sync:true }.
-        const PROMPT_PROP = kind === "ig-background" ? "Image Prompt (IG Background)" : "Image Prompt (Blog Thumbnail)";
         if (!assetId || !["ig-background", "blog-thumbnail"].includes(kind)) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
-        const imageModel = body.imageModel === "grok" ? "grok" : "nano";
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const KIE_KEY = (env.KIE_API_KEY || "").trim();
-        if (imageModel === "nano" && !KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
-        if (imageModel === "grok" && !env.XAI_API_KEY) return json({ error: "XAI_API_KEY not configured — the Grok Imagine option needs it." }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured — offer images render on xAI Grok Imagine." }, 500);
+        const PROMPT_PROP = kind === "ig-background" ? "Image Prompt (IG Background)" : "Image Prompt (Blog Thumbnail)";
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
 
@@ -22490,7 +22625,6 @@ Rules:
         const assetTitle    = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
         const platformTitle = rtp(ap, "Platform Title");
         const bodyPromise   = rtp(ap, "Body");
-        const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
 
         // OFFER CARD json + "What's included" bullets, straight off the asset page
         let cardObj = {}, included = [];
@@ -22507,83 +22641,27 @@ Rules:
         const offerName = String(cardObj.name || platformTitle || assetTitle || "this offer").trim();
         const promise   = String(cardObj.promise || bodyPromise || "").trim();
         const kicker    = String(cardObj.kicker || "").trim();
-
-        // Global site design spec — web/hub/hubs.design.json is the ONE master
-        // (see docs/hub-design-spec / project_dash_hub_design_spec). Resolve
-        // this offer's hub, pull its tokens + register + "avoided" list, and
-        // hand the image model those constraints so the plate INHERITS the
-        // site's look instead of the model guessing a palette. Falls back to
-        // the campaign Research Palette/Statement when there's no hub.
-        let hubSlug = String(ap["Content Hub"]?.select?.name || "").trim();
-        if (!hubSlug && campaignId) hubSlug = (HUB_SITES.find(h => String(h.campaignId).replace(/-/g, "") === campaignId) || {}).slug || "";
-        let styleBlock = "";
-        if (hubSlug) {
-          try {
-            const dj = await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json());
-            const hs = (dj.hubs || {})[hubSlug];
-            if (hs) {
-              const tk = hs.tokens || {}, tn = hs.tokenNotes || {}, dz = hs.design || {};
-              const firstSentence = s => (String(s || "").match(/^[^.!?]*[.!?]?/) || [""])[0].trim();
-              styleBlock = [
-                `INHERIT THIS SITE'S LOOK ("${hs.logoText || hubSlug}") — match it exactly, do not invent a new palette or mood:`,
-                tk.bg     && `- Ground tone: ${tk.bg}${tn.bg ? ` — ${tn.bg}` : ""}`,
-                tk.sea    && `- Primary colour: ${tk.sea}${tn.sea ? ` — ${tn.sea}` : ""}`,
-                tk.accent && `- Accent ${tk.accent}${tn.accent ? ` (${tn.accent})` : ""} — at most once, small`,
-                tk.ink    && `- Darkest value / ink: ${tk.ink}`,
-                dz.subject && `- Register: ${firstSentence(dz.subject)}`,
-                dz.photography && `- Photography: ${dz.photography}`,
-                dz.risk    && `- Tone to hold: ${dz.risk}`,
-                Array.isArray(dz.avoided) && dz.avoided.length && `- DO NOT: ${dz.avoided.join("; ")}`,
-                `- The real headline/body type is added afterward in the site's own fonts — leave clean, uncluttered space for it and put NO text in the image.`,
-              ].filter(Boolean).join("\n");
-            }
-          } catch (e) { /* spec is best-effort */ }
-        }
-        if (!styleBlock && campaignId) {
-          try {
-            const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
-            const rp = rows[0]?.properties || {};
-            styleBlock = [
-              rtp(rp, "Palette")   && `Palette: ${rtp(rp, "Palette")}`,
-              rtp(rp, "Statement") && `Positioning: ${rtp(rp, "Statement")}`,
-              `Text is added afterward in the brand fonts — put NO text in the image, leave room for it.`,
-            ].filter(Boolean).join("\n");
-          } catch (e) { /* optional */ }
-        }
-
-        // Text is baked into the image ONLY on the nano blog-thumbnail (the
-        // nano-banana-edit path). Every other combo is a wordless plate.
-        const wantsBakedText = imageModel === "nano" && kind === "blog-thumbnail";
-        let igBgUrl = "";
-        if (wantsBakedText) {
-          igBgUrl = String(ap["Instagram Background"]?.url || "").trim();
-          if (!igBgUrl) return json({ error: "Generate the Instagram background first, or switch this row to Grok Imagine (which makes a fresh wordless plate)." }, 400);
-        }
-
         const offerLines = `${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}`;
-        const plateBrief = shape => `You are writing ONE image-generation prompt for an AI image model. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words.
 
-WHAT IT IS: a ${shape} for this offer. A headline${kind === "ig-background" ? " and 1-2 lines of body text" : ""} get laid OVER it afterward in the site's real fonts, so this image carries NO text of its own.
-- Keep the top ~${kind === "ig-background" ? "40" : "45"}% ${kind === "ig-background" ? "and the vertical centre " : ""}calm and near-empty (open sky, soft gradient, gentle texture, out-of-focus depth) for the overlaid type.
-- Any subject or contrast sits low or to one side.
-- NO text, letters, numbers, logos, watermarks, UI or signage anywhere.
+        // The shared, customer-grounded art-direction spec for this hub.
+        const brief = await assembleImageBrief(env, { assetId });
+        let spec = "";
+        try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); }
 
-THE OFFER IT'S FOR:
+        const shape = kind === "ig-background"
+          ? "a VERTICAL 3:4 background image for an Instagram post (a headline + 1-2 lines of body text get laid OVER it afterward — keep the top 40% and the vertical centre calm and near-empty)"
+          : "a SQUARE 1:1 blog thumbnail plate (a headline gets laid over it afterward — keep the top ~45% calm and near-empty)";
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
+
+WHAT IT IS: ${shape}. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+
+Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
+${spec}
+
+THE OFFER THIS PARTICULAR IMAGE IS FOR (pick a scene from the spec's world that fits it — do NOT put its words in the image):
 ${offerLines}
-${styleBlock ? `\n${styleBlock}\n` : ""}
-One vivid paragraph: subject/scene, where the empty space sits, colour and light (match the site's ground tone and primary colour), texture, mood, medium/finish (documentary photography unless the register says otherwise). End with: "No text, no letters, no logos, no watermarks."`;
 
-        const claudePrompt = wantsBakedText
-          ? `You are writing ONE image-EDIT instruction for an AI image editor (Nano Banana). It receives the attached VERTICAL 4:5 image (an Instagram post background for this same offer) and must return a 16:9 blog thumbnail. Output ONLY the instruction — no preamble, no quotes, no alternatives. 40-90 words.
-
-THE EDIT:
-- Reframe to 16:9 landscape: keep the existing subject, palette and mood; extend the scene naturally outward on the left and right. Do NOT stretch, squash or crop out the subject.
-- Overlay the headline text, spelled EXACTLY: "${offerName.replace(/"/g, "'")}"
-- Put the headline over the calmest part of the image (lower third or one side), large enough to read as a small blog card, high contrast — add a subtle scrim behind the text ONLY if needed for legibility.
-- A magazine feature image, not a meme caption.
-${styleBlock ? `\n${styleBlock}\n` : ""}
-- No other text, no logos, no watermarks, no UI.`
-          : plateBrief(kind === "ig-background" ? "VERTICAL background image for an Instagram post" : "SQUARE thumbnail background image");
+End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -22595,48 +22673,26 @@ ${styleBlock ? `\n${styleBlock}\n` : ""}
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
 
-        const persistPrompt = async () => {
-          try {
-            await ensureAssetsDbProperties(hdr, { [PROMPT_PROP]: { type: "rich_text" } });
-            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ properties: { [PROMPT_PROP]: { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
-            });
-          } catch (e) { /* best-effort */ }
-        };
-
-        // ── Grok Imagine (xAI, synchronous) ──
-        if (imageModel === "grok") {
-          const aspect = kind === "ig-background" ? "3:4" : "1:1";
-          const xr = await fetch("https://api.x.ai/v1/images/generations", {
-            method: "POST",
-            headers: { "Authorization": `Bearer ${env.XAI_API_KEY}`, "content-type": "application/json" },
-            body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
-          });
-          const xd = await xr.json().catch(() => ({}));
-          if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
-          const imageUrl = xd.data?.[0]?.url || "";
-          if (!imageUrl) return json({ error: "xAI returned no image URL: " + JSON.stringify(xd).slice(0, 300) }, 502);
-          await persistPrompt();
-          return json({ imageUrl, prompt, kind, model: "grok-imagine-image-2.0", sync: true });
-        }
-
-        // ── Nano Banana (Kie.ai, async) ──
-        const kieModel = wantsBakedText ? "google/nano-banana-edit" : "google/nano-banana";
-        const input = kind === "ig-background"
-          ? { prompt: prompt.slice(0, 5000), aspect_ratio: "4:5", output_format: "png" }
-          : { prompt: prompt.slice(0, 5000), image_urls: [igBgUrl], aspect_ratio: "16:9", output_format: "png" };
-        const kieResp = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
+        const aspect = kind === "ig-background" ? "3:4" : "1:1";
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
-          headers: { "Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: kieModel, input }),
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
         });
-        const kieData = await kieResp.json();
-        if (!kieResp.ok) return json({ error: kieData.message || kieData.msg || "Kie.ai error" }, kieResp.status);
-        const taskId = kieData.data?.taskId || kieData.data?.task_id || kieData.data?.id || kieData.taskId || null;
-        if (!taskId) return json({ error: "Kie.ai returned no taskId: " + JSON.stringify(kieData).slice(0, 300) }, 502);
-        await persistPrompt();
-        return json({ taskId, prompt, kind, model: kieModel });
+        const xd = await xr.json().catch(() => ({}));
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+        const imageUrl = xd.data?.[0]?.url || "";
+        if (!imageUrl) return json({ error: "xAI returned no image URL: " + JSON.stringify(xd).slice(0, 300) }, 502);
+
+        try {
+          await ensureAssetsDbProperties(hdr, { [PROMPT_PROP]: { type: "rich_text" } });
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { [PROMPT_PROP]: { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
+          });
+        } catch (e) { /* best-effort */ }
+
+        return json({ imageUrl, prompt, spec, kind, model: "grok-imagine-image-2.0", sync: true });
       }
 
       // -- saveOfferImage (rehost a finished image on GitHub Pages and write
@@ -22718,6 +22774,56 @@ ${styleBlock ? `\n${styleBlock}\n` : ""}
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || `Failed to save the ${SLOT[kind].prop} property` }, 500); }
 
         return json({ success: true, url, prop: SLOT[kind].prop });
+      }
+
+      // -- getImageBrief (the "image plate design spec" for a hub) -------
+      // Assembles from the hub design record + campaign Research + the MAIN
+      // PRODUCT's 🔬 Product Research + (with assetId) the asset's title +
+      // the operator's "Image Direction" guidance, then writes the spec.
+      // The Content Hubs card's copyable field calls this with { campaignId };
+      // regenerated fresh each call (client caches per session). Same spec
+      // generateOfferImage renders against.
+      if (body.action === "getImageBrief") {
+        const { campaignId, assetId, hubSlug } = body;
+        if (!campaignId && !assetId && !hubSlug) return json({ error: "campaignId, assetId or hubSlug required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        let cid = campaignId;
+        if (!cid && hubSlug) cid = (HUB_SITES.find(h => h.slug === hubSlug) || {}).campaignId || null;
+        const brief = await assembleImageBrief(env, { campaignId: cid, assetId });
+        let text = "";
+        try { text = await writeImageSpec(env, brief); } catch (e) { return json({ error: e.message }, 502); }
+        return json({ text, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
+      }
+
+      // -- saveImageGuidance (operator's per-hub "Image Direction") -------
+      // Stored on the campaign's Research record (rich_text), same place
+      // Palette / Fonts live. Folded into every image spec + Grok render.
+      if (body.action === "saveImageGuidance") {
+        const { campaignId, text } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
+        const rec = rows[0];
+        if (!rec) return json({ error: "No Research record for this campaign" }, 404);
+        // ensure the property exists
+        try {
+          const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+          if (!db.properties?.["Image Direction"]) {
+            await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Image Direction": { rich_text: {} } } }),
+            });
+          }
+        } catch (e) {}
+        const chunk = s => { const o = []; for (let i = 0; i < s.length; i += 1900) o.push({ text: { content: s.slice(i, i + 1900) } }); return o; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${rec.id.replace(/-/g, "")}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Image Direction": { rich_text: text ? chunk(String(text)) : [] } } }),
+        });
+        const r = await resp.json();
+        if (!resp.ok) return json({ error: r.message || "Save failed" }, resp.status);
+        return json({ success: true });
       }
 
       // -- updateAssetVideoUrl (save Kie.ai video URL to Notion Content URL field) ------

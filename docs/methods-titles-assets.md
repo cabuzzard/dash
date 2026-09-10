@@ -487,49 +487,54 @@ property — it is attributed **through the title it was made from**
 ## Offer images (Publish modal, Offer assets)
 
 The Publish modal (`renderAssetRow`'s 📋 Publish button) shows a **🖼️ Offer
-images** block for any asset whose type matches `/\boffer\b/i`: a **Model**
-dropdown and two Generate rows (📸 Instagram background, 🖼️ Blog thumbnail).
-Claude writes the image prompt from the asset's `OFFER CARD` + "What's
-included" + the **hub's global design spec** (see below); the model renders;
-`saveOfferImage` rehosts it on GitHub Pages and writes it onto the asset.
+images** block for any asset whose type matches `/\boffer\b/i`: two Generate
+rows — 📸 **Instagram background** (3:4) and 🖼️ **Blog thumbnail** (1:1).
+**Both are WORDLESS plates from xAI Grok Imagine** (`grok-imagine-image-2.0`,
+synchronous). The headline is added afterward in Remotion / Canva
+(`make-offer-still`). Nano Banana / Seedream are gone — Grok was better.
 
-### Model dropdown — "try either"
+### The image spec (assembled from the customer, not just the hub)
 
-| Model | ig-background | blog-thumbnail | Sync? |
-|---|---|---|---|
-| **Nano Banana** (Kie.ai) | `google/nano-banana`, `4:5`, wordless plate → `Instagram Background` | `google/nano-banana-edit`, `16:9`, reframes the IG background + **bakes the offer title in** → `Thumbnail` (needs the IG background first, else 400) | no — returns `taskId`, frontend polls `getImageTask` |
-| **Grok Imagine** (xAI) | `grok-imagine-image-2.0`, `3:4` (xAI has no 4:5), **wordless plate** → `Instagram Background` | `grok-imagine-image-2.0`, `1:1`, **fresh wordless plate** (no edit, no baked text) → `Thumbnail` | yes — returns `{ imageUrl, sync:true }`, frontend saves immediately |
+`assembleImageBrief` (worker helper) gathers the GROUNDED art direction from
+every real source:
 
-Grok plates carry no text on purpose — the headline is added afterward in
-Remotion / Canva in the site's real fonts. Nano's blog-thumbnail is the only
-path that bakes the title into the pixels.
+- the hub design record — `web/hub/hubs.design.json → hubs[slug]` (`tokens` +
+  `tokenNotes`, `design.subject`/`type`/`signature`/`risk`/`photography`/`avoided`)
+- campaign **Research** — `Statement`, `Pain Points`, `Emotions`,
+  `Unique Opportunity`, `Keywords`, and `Image Direction` (operator guidance)
+- the **main product's 🔬 Product Research** — all `STRATEGY_FIELDS`
+  (`Customer`/`Niche`/`Pain Points`/`Emotions`/`Solution`/`Benefits`/…), via
+  `findBestProductResearchRecord`. Product = the asset's `Product` relation,
+  else the hub's Content-Hub-asset product, else the campaign's first product.
+- the asset's **Content Strategy title** (verbatim headline concept) + Notes
 
-### Global design spec (hub → `hubs.design.json`)
+`writeImageSpec` turns that into the full markdown spec (What this is /
+Palette / Photography & subjects / Light / Composition & safe areas / Never /
+Prompt skeleton / Filled examples) via one `claude-sonnet-4-6` call.
 
-`generateOfferImage` resolves the offer's hub (`Content Hub` select, else
-`HUB_SITES` by campaign) and pulls `web/hub/hubs.design.json → hubs[slug]`:
-`tokens` + `tokenNotes` (ground tone, primary colour, accent, ink),
-`design.subject`/`design.photography`/`design.risk`/`design.avoided[]`. That
-becomes an "INHERIT THIS SITE'S LOOK — do not restyle" block in the Claude
-prompt. The Content Hubs card shows the full human-readable version of the
-same thing — `buildHubImageSpec` in `index.html`, a derived copyable field. Falls back to
-the campaign Research `Palette`/`Statement` when there's no hub. This is the
-same "seeded once, not reinvented per asset" rule as the campaign design
-system — [[project_dash_hub_design_spec]].
+### Flow
 
-### Actions
+`generateOfferImage` `{ assetId, kind }` → `assembleImageBrief({assetId})` →
+`writeImageSpec` → a **second** Claude call writes a **format-tailored** Grok
+prompt (3:4 IG plate, top-40%-calm / 1:1 thumb, top-45%-calm) obeying the
+spec → xAI renders → `{ imageUrl, prompt, spec, sync:true }`. Frontend calls
+`saveOfferImage` immediately (no polling). `saveOfferImage`
+`{ assetId, kind, imageUrl | fileData, prompt }` commits to
+`web/<deployPath>/offer-images/<slug>-<kind>.<ext>`, patches
+`Instagram Background` / `Thumbnail` with a `?v=<ts>` cache-buster. Prompt
+persisted to `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)`.
+**Regenerate** copies the prompt to the clipboard, then reruns.
 
-- **`generateOfferImage`** `{ assetId, kind, imageModel }` (`imageModel` =
-  `nano` default | `grok`) → `{ taskId, prompt }` (nano) or
-  `{ imageUrl, prompt, sync:true }` (grok). Persists the prompt to
-  `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)`.
-- **`getImageTask`** — extended to parse the `{"resultUrls":[…]}` shape.
-- **`saveOfferImage`** `{ assetId, kind, imageUrl | fileData, prompt }` —
-  `fileData` (base64) is the alternative to `imageUrl`, used by the local
-  script. Commits to `web/<deployPath>/offer-images/<slug>-<kind>.<ext>`,
-  patches the property with a `?v=<ts>` cache-buster.
-- **Regenerate** copies the current prompt to the clipboard first, then
-  reruns — the escape hatch to hand-editing or taking the prompt to ChatGPT.
+### The copyable spec + guidance (Content Hubs card)
+
+Content Hubs card → Design section → **Image plate spec** — a readonly
+copyable `<textarea>` fed by the **`getImageBrief`** action
+(`{ campaignId | assetId | hubSlug }` → `{ text, guidance, product }`), the
+same `assembleImageBrief` + `writeImageSpec`. Fetched per hub, cached client
+-side per session; **↻ Regenerate** forces a fresh assembly. **✎ Guidance**
+opens a modal → **`saveImageGuidance`** `{ campaignId, text }` writes Research
+`Image Direction` (property auto-created), then re-assembles. Guidance
+overrides the derived choices in both the spec and every render.
 
 ### Local script — `scripts/grok-image.py`
 
