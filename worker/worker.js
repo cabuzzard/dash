@@ -16413,6 +16413,13 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // asset renders on (set in the Publish modal). Empty = not yet
             // chosen (shows on the asset's own campaign hub by default).
             contentHub: p["Content Hub"]?.select?.name || "",
+            // Offer image generation (Publish modal, Offer assets) — the
+            // Instagram text-post background lives on its own url property;
+            // the blog thumbnail reuses "Thumbnail" above. The prompts Claude
+            // wrote are kept so Regenerate can copy them to the clipboard.
+            instagramBackground: p["Instagram Background"]?.url || "",
+            igBackgroundPrompt: p["Image Prompt (IG Background)"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            blogThumbnailPrompt: p["Image Prompt (Blog Thumbnail)"]?.rich_text?.map(x => x.plain_text).join("") || "",
           };
         };
         titleList.forEach(t => { t.assets = []; });
@@ -22420,7 +22427,10 @@ Rules:
         if (data.resultJson) {
           try {
             const rj = typeof data.resultJson === "string" ? JSON.parse(data.resultJson) : data.resultJson;
-            if (Array.isArray(rj)) {
+            if (Array.isArray(rj.resultUrls)) {
+              // Nano Banana + Seedream 4.0 shape: {"resultUrls":["https://..."]}
+              imageUrls = rj.resultUrls.filter(Boolean);
+            } else if (Array.isArray(rj)) {
               imageUrls = rj.map(function(item) { return item.url || item.resource || item; }).filter(Boolean);
             } else if (rj.images) {
               imageUrls = rj.images.map(function(item) { return item.url || item; }).filter(Boolean);
@@ -22433,6 +22443,207 @@ Rules:
         }
         return json({ state: data.state, imageUrls: imageUrls, raw: data });
       }
+
+      // -- generateOfferImage (Claude writes a tuned prompt from the offer's
+      //    OFFER CARD, then Kie.ai renders it) -----------------------------
+      // Powers the two "Generate" buttons in the Publish modal for Offer
+      // assets:
+      //   ig-background  — an Instagram text-post BACKGROUND (Nano Banana,
+      //                    4:5, kept deliberately calm/empty in the middle
+      //                    so an overlaid headline + body stay legible)
+      //   blog-thumbnail — a blog-post THUMBNAIL (Seedream 4.0, 16:9, 2K,
+      //                    editorial, no text)
+      // Reads the asset's OFFER CARD json + "What's included" bullets + Body
+      // promise + the campaign Research palette/fonts for on-brand mood, has
+      // Claude write ONE image prompt tuned to `kind`, submits it to Kie.ai,
+      // persists the prompt on the asset (survives closing the modal), and
+      // returns { taskId, prompt }. The frontend polls getImageTask, then
+      // hands the finished URL to saveOfferImage — same split-request shape
+      // generateCarouselImages uses, because a single Worker request can't
+      // wait out a 20-40s render.
+      if (body.action === "generateOfferImage") {
+        const { assetId, kind } = body;
+        const KINDS = {
+          "ig-background":  { model: "google/nano-banana",                  promptProp: "Image Prompt (IG Background)" },
+          "blog-thumbnail": { model: "bytedance/seedream-v4-text-to-image", promptProp: "Image Prompt (Blog Thumbnail)" },
+        };
+        if (!assetId || !KINDS[kind]) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
+        const KIE_KEY = (env.KIE_API_KEY || "").trim();
+        if (!KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const assetTitle    = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+        const platformTitle = rtp(ap, "Platform Title");
+        const bodyPromise   = rtp(ap, "Body");
+        const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
+
+        // OFFER CARD json + "What's included" bullets, straight off the asset page
+        let cardObj = {}, included = [];
+        try {
+          const kids = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json());
+          const blocks = kids.results || [];
+          const codeBlock = blocks.find(b => b.type === "code");
+          if (codeBlock) { try { cardObj = JSON.parse((codeBlock.code?.rich_text || []).map(t => t.plain_text).join("")); } catch (e) {} }
+          included = blocks.filter(b => b.type === "bulleted_list_item")
+            .map(b => (b.bulleted_list_item?.rich_text || []).map(t => t.plain_text).join("").trim())
+            .filter(Boolean).slice(0, 8);
+        } catch (e) { /* body is optional context */ }
+
+        // Campaign Research — palette / fonts / positioning for on-brand mood
+        let palette = "", fonts = "", statement = "", keyMessage = "";
+        if (campaignId) {
+          try {
+            const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
+            const rp = rows[0]?.properties || {};
+            palette    = rtp(rp, "Palette");
+            fonts      = rtp(rp, "Fonts");
+            statement  = rtp(rp, "Statement");
+            keyMessage = rtp(rp, "Key Message");
+          } catch (e) { /* brand direction is optional */ }
+        }
+
+        const offerName = String(cardObj.name || platformTitle || assetTitle || "this offer").trim();
+        const promise   = String(cardObj.promise || bodyPromise || "").trim();
+        const kicker    = String(cardObj.kicker || "").trim();
+        const brandBits = [
+          palette    && `Brand palette: ${palette}`,
+          fonts      && `Brand typography (mood only — no text in the image): ${fonts}`,
+          statement  && `Positioning: ${statement}`,
+          keyMessage && `Campaign message: ${keyMessage}`,
+        ].filter(Boolean).join("\n");
+
+        const kindBrief = kind === "ig-background"
+          ? `A VERTICAL 4:5 BACKGROUND image for an Instagram post. A headline and a few lines of body text will be laid OVER this image afterward, so:
+- The centre ~60% (both axes) must stay visually calm and near-empty — soft gradient, gentle texture, out-of-focus depth, or plain negative space — so overlaid text stays fully legible.
+- Any subject, detail or contrast belongs in the outer margins / top / bottom third only.
+- Absolutely NO text, letters, numbers, logos, watermarks, UI or signage anywhere.
+- Editorial and premium, evoking the offer's theme — not literal, not a stock-photo cliche.`
+          : `A 16:9 editorial THUMBNAIL image illustrating the offer's core idea, the way a serious magazine or a quality blog would.
+- One strong focal concept, confident composition, rich but restrained.
+- NO text, letters, numbers, logos, watermarks or UI anywhere.
+- Conceptual over literal; avoid stock-photo cliches (handshakes, lightbulbs, generic laptops).`;
+
+        const claudePrompt = `You are writing ONE image-generation prompt for an AI image model. Output ONLY the prompt text — no preamble, no quotes, no notes, no alternatives. 60-120 words.
+
+WHAT THE IMAGE IS FOR:
+${kindBrief}
+
+THE OFFER IT ILLUSTRATES:
+Name: ${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}
+${brandBits ? `\n${brandBits}\n` : ""}
+Write it as a single vivid paragraph: subject/scene, composition and where the empty space sits, colour and light, texture and mood, medium/finish. End with the sentence: "No text, no letters, no logos, no watermarks."`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+
+        const input = kind === "ig-background"
+          ? { prompt: prompt.slice(0, 5000), aspect_ratio: "4:5", output_format: "png" }
+          : { prompt: prompt.slice(0, 5000), image_size: "landscape_16_9", image_resolution: "2K" };
+        const kieResp = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
+          method: "POST",
+          headers: { "Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json" },
+          body: JSON.stringify({ model: KINDS[kind].model, input }),
+        });
+        const kieData = await kieResp.json();
+        if (!kieResp.ok) return json({ error: kieData.message || kieData.msg || "Kie.ai error" }, kieResp.status);
+        const taskId = kieData.data?.taskId || kieData.data?.task_id || kieData.data?.id || kieData.taskId || null;
+        if (!taskId) return json({ error: "Kie.ai returned no taskId: " + JSON.stringify(kieData).slice(0, 300) }, 502);
+
+        try {
+          await ensureAssetsDbProperties(hdr, { [KINDS[kind].promptProp]: { type: "rich_text" } });
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { [KINDS[kind].promptProp]: { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
+          });
+        } catch (e) { /* prompt persistence is best-effort */ }
+
+        return json({ taskId, prompt, kind, model: KINDS[kind].model });
+      }
+
+      // -- saveOfferImage (rehost a finished Kie.ai image on GitHub Pages and
+      //    write it onto the Offer asset) --------------------------------
+      // Second half of the generateOfferImage flow. The frontend polls
+      // getImageTask, then hands the finished Kie.ai CDN url here — those
+      // urls expire, so we fetch the bytes and commit them to
+      // web/<deployPath>/offer-images/ (same commit-and-link pattern as
+      // uploadAssetThumbnail), then point the right Notion property at the
+      // committed file:
+      //   ig-background  -> "Instagram Background" (url property, created on demand)
+      //   blog-thumbnail -> "Thumbnail" (the same property the modal's manual
+      //                     thumbnail upload already writes)
+      // The URL carries a ?v=<ts> cache-buster — a stable committed path
+      // serves stale from the CDN forever otherwise (the hub hero-image trap).
+      if (body.action === "saveOfferImage") {
+        const { assetId, kind, imageUrl, prompt } = body;
+        const SLOT = {
+          "ig-background":  { prop: "Instagram Background", suffix: "ig-background",  promptProp: "Image Prompt (IG Background)" },
+          "blog-thumbnail": { prop: "Thumbnail",           suffix: "blog-thumbnail", promptProp: "Image Prompt (Blog Thumbnail)" },
+        };
+        if (!assetId || !SLOT[kind] || !imageUrl) return json({ error: "assetId, a valid kind, and imageUrl required" }, 400);
+        if (!/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
+        const GT = (env.GITHUB_TOKEN || '').trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const assetTitle = assetPage.properties["Asset Title"]?.title?.map(t => t.plain_text).join("") || "asset";
+        const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash);
+
+        const imgResp = await fetch(String(imageUrl));
+        if (!imgResp.ok) return json({ error: `Couldn't fetch the rendered image (HTTP ${imgResp.status})` }, 502);
+        const ct = (imgResp.headers.get("content-type") || "image/png").split(";")[0].trim();
+        const bytes = new Uint8Array(await imgResp.arrayBuffer());
+        if (!bytes.length) return json({ error: "Rendered image was empty" }, 502);
+        if (bytes.length > 15 * 1024 * 1024) return json({ error: "Rendered image is too large (>15MB)" }, 400);
+        let bin = "";
+        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        const b64 = btoa(bin);
+
+        const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+        const ext = ((ct.split('/')[1] || 'png').toLowerCase()).replace('jpeg', 'jpg').replace('svg+xml', 'svg').replace(/[^a-z0-9]/g, '') || 'png';
+        const path = `web/${deployPath}/offer-images/${slugify(assetTitle) || assetId}-${SLOT[kind].suffix}.${ext}`;
+
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        let sha = null;
+        const getResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        if (getResp.ok) { try { sha = (await getResp.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `Offer image (${kind}): ${assetTitle}`, content: b64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const putResp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+          method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody),
+        });
+        if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
+
+        const url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+        const props = { [SLOT[kind].prop]: { url } };
+        if (prompt) props[SLOT[kind].promptProp] = { rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] };
+        try { await ensureAssetsDbProperties(hdr, { [SLOT[kind].prop]: { type: "url" }, [SLOT[kind].promptProp]: { type: "rich_text" } }); } catch (e) {}
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: props }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || `Failed to save the ${SLOT[kind].prop} property` }, 500); }
+
+        return json({ success: true, url, prop: SLOT[kind].prop });
+      }
+
       // -- updateAssetVideoUrl (save Kie.ai video URL to Notion Content URL field) ------
       if (body.action === "updateAssetVideoUrl") {
         const { assetId, videoUrl } = body;

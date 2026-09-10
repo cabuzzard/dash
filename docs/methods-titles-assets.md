@@ -481,3 +481,39 @@ property — it is attributed **through the title it was made from**
   and do **not** yet ensure their title carries a `method` — same known gap
   as the grading gate above. A method-less title's assets fall out of the
   matrix; a follow-up should have every skill set the title's `method` too.
+
+---
+
+## Offer images (Publish modal, Offer assets)
+
+The Publish modal (`renderAssetRow`'s 📋 Publish button) shows a **🖼️ Offer
+images** block for any asset whose type matches `/\boffer\b/i`. Two buttons,
+each a two-step Claude-writes-the-prompt → Kie.ai-renders → rehost-and-save
+flow (same split-request shape as `generateCarouselImages` — one Worker
+request can't wait out a 20–40s render):
+
+| Button | Worker model | Output | Saved to Assets property |
+|---|---|---|---|
+| 📸 Instagram text-post background | `google/nano-banana` (`aspect_ratio: "4:5"`) | vertical, calm/empty centre for a text overlay, no text in image | `Instagram Background` (url, created on demand) |
+| 🖼️ Blog post thumbnail | `bytedance/seedream-v4-text-to-image` (`landscape_16_9`, `2K`) | 16:9 editorial, no text | `Thumbnail` (same property the manual thumbnail upload writes) |
+
+- **`generateOfferImage`** `{ assetId, kind }` (`kind` = `ig-background` |
+  `blog-thumbnail`) — reads the asset's `OFFER CARD` json + "What's included"
+  bullets + `Body` promise + the campaign Research `Palette`/`Fonts`/
+  `Statement`/`Key Message`, has Claude (`claude-sonnet-4-6`) write ONE image
+  prompt tuned to `kind`, submits to Kie.ai, persists the prompt to
+  `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)` (rich_text),
+  returns `{ taskId, prompt }`.
+- Frontend polls **`getImageTask`** (extended to parse the
+  `{"resultUrls":[…]}` shape both models return), then calls
+  **`saveOfferImage`** `{ assetId, kind, imageUrl, prompt }` — fetches the
+  bytes (Kie's own urls expire), commits to
+  `web/<deployPath>/offer-images/<slug>-<kind>.<ext>` (same commit-and-link
+  pattern as `uploadAssetThumbnail`), patches the property with a `?v=<ts>`
+  cache-buster.
+- **Regenerate** copies the current prompt to the clipboard first, then
+  reruns `generateOfferImage` — the escape hatch to hand-editing the prompt
+  or taking it to ChatGPT (see `CLAUDE.md` § "ChatGPT image generation").
+- Secrets: reuses `KIE_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` — all
+  already set. Not wired into the hub offer page / blog template rendering
+  yet (the images live on the asset record; a later pass can surface them).

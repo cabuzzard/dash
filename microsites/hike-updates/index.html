@@ -1315,6 +1315,35 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
           <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubDallePrompt', this)">📋</button>
         </div>
       </div>
+      <div id="pubOfferImagesWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
+        <label class="lm-label" style="margin-bottom:6px;">🖼️ Offer images <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— Claude writes a prompt from this offer's card, then renders it and saves it to the asset. Regenerate copies the prompt to your clipboard first, so you can tweak it or take it to ChatGPT.</span></label>
+        <div style="display:flex;gap:10px;margin-top:4px;align-items:flex-start;">
+          <img id="pubIgBgPreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;color:#fff;font-weight:600;">📸 Instagram text-post background <span style="font-weight:400;opacity:.7;">— 4:5, calm centre for a text overlay</span></div>
+            <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
+              <button class="modal-btn cancel" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
+              <button class="modal-btn cancel" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate (copies prompt)</button>
+              <button class="modal-btn cancel" id="pubIgBgOpenBtn" onclick="openPublishFieldLink('pubIgBgUrl')" title="Open in a new tab" style="display:none;">↗</button>
+              <span class="modal-status" id="pubIgBgStatus" style="margin:0;"></span>
+            </div>
+            <input type="hidden" id="pubIgBgUrl" />
+            <textarea class="modal-ta" id="pubIgBgPrompt" rows="3" readonly placeholder="Prompt appears here after Generate" style="display:none;resize:vertical;min-height:56px!important;width:100%;margin-top:5px;line-height:1.5;opacity:.85;font-size:11px;"></textarea>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2a2a;align-items:flex-start;">
+          <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:65px;height:37px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:11px;color:#fff;font-weight:600;">🖼️ Blog post thumbnail <span style="font-weight:400;opacity:.7;">— 16:9 editorial, saved to Thumbnail below</span></div>
+            <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
+              <button class="modal-btn cancel" id="pubBlogThumbGenBtn" onclick="genOfferImage('blog-thumbnail')">✨ Generate</button>
+              <button class="modal-btn cancel" id="pubBlogThumbRegenBtn" onclick="regenOfferImage('blog-thumbnail')" style="display:none;">🔄 Regenerate (copies prompt)</button>
+              <span class="modal-status" id="pubBlogThumbStatus" style="margin:0;"></span>
+            </div>
+            <textarea class="modal-ta" id="pubBlogThumbPrompt" rows="3" readonly placeholder="Prompt appears here after Generate" style="display:none;resize:vertical;min-height:56px!important;width:100%;margin-top:5px;line-height:1.5;opacity:.85;font-size:11px;"></textarea>
+          </div>
+        </div>
+      </div>
       <label class="lm-label" for="pubThumbnail" style="margin-top:10px;">Thumbnail</label>
       <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
         <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:44px;height:44px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
@@ -7535,6 +7564,17 @@ function openPublishAssetModal(btn) {
   const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
   hubWrap.style.display = isHubOffer ? 'block' : 'none';
   if (isHubOffer) { document.getElementById('pubContentHubStatus').textContent = ''; pubLoadContentHubs(data.contentHub || ''); }
+  // Offer image generation — Instagram text-post background + blog thumbnail.
+  // Shown for any Offer asset type (hub or pillar). _offerImgReset() clears
+  // any in-flight poll and both rows; then prefill from whatever's already
+  // saved on the asset.
+  const isOffer = /\boffer\b/i.test(data.type || '');
+  document.getElementById('pubOfferImagesWrap').style.display = isOffer ? 'block' : 'none';
+  _offerImgReset();
+  if (isOffer) {
+    if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
+    if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
+  }
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
@@ -7580,6 +7620,110 @@ async function pubLoadContentHubs(current) {
 function renderPubThumbnailPreview(url) {
   const img = document.getElementById('pubThumbnailPreview');
   if (url) { img.src = url; img.style.display = ''; } else { img.src = ''; img.style.display = 'none'; }
+}
+// ── Offer image generation (Publish modal, Offer assets) ────────────────
+// Two buttons — 📸 an Instagram text-post background (Nano Banana, 4:5, calm
+// middle for a text overlay) and 🖼️ a blog thumbnail (Seedream 4.0, 16:9).
+// generateOfferImage has Claude write the prompt from the asset's OFFER CARD
+// and returns { taskId, prompt }; we poll getImageTask, then saveOfferImage
+// rehosts the finished image on GitHub Pages and writes it onto the asset
+// ("Instagram Background" / "Thumbnail"). Regenerate copies the current
+// prompt to the clipboard first, then reruns — the escape hatch to
+// hand-editing the prompt or taking it to ChatGPT.
+const OFFER_IMG = {
+  'ig-background':  { btn:'pubIgBgGenBtn',      regen:'pubIgBgRegenBtn',      status:'pubIgBgStatus',      prev:'pubIgBgPreview',      promptEl:'pubIgBgPrompt',      urlEl:'pubIgBgUrl', open:'pubIgBgOpenBtn' },
+  'blog-thumbnail': { btn:'pubBlogThumbGenBtn', regen:'pubBlogThumbRegenBtn', status:'pubBlogThumbStatus', prev:'pubBlogThumbPreview', promptEl:'pubBlogThumbPrompt', urlEl:null,        open:null },
+};
+let _offerImgPrompt = { 'ig-background':'', 'blog-thumbnail':'' };
+let _offerImgPoll   = { 'ig-background':null, 'blog-thumbnail':null };
+function _offerImgReset() {
+  Object.keys(OFFER_IMG).forEach(kind => {
+    const c = OFFER_IMG[kind];
+    if (_offerImgPoll[kind]) { clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null; }
+    _offerImgPrompt[kind] = '';
+    const g = document.getElementById(c.btn); if (g) { g.disabled = false; g.textContent = '✨ Generate'; }
+    const rg = document.getElementById(c.regen); if (rg) rg.style.display = 'none';
+    const st = document.getElementById(c.status); if (st) { st.textContent = ''; st.className = 'modal-status'; }
+    const pv = document.getElementById(c.prev); if (pv) { pv.src = ''; pv.style.display = 'none'; }
+    const pr = document.getElementById(c.promptEl); if (pr) { pr.value = ''; pr.style.display = 'none'; }
+    if (c.urlEl) { const u = document.getElementById(c.urlEl); if (u) u.value = ''; }
+    if (c.open) { const o = document.getElementById(c.open); if (o) o.style.display = 'none'; }
+  });
+}
+function _offerImgShow(kind, url, prompt) {
+  const c = OFFER_IMG[kind];
+  if (url) {
+    const pv = document.getElementById(c.prev); pv.src = url; pv.style.display = '';
+    if (c.urlEl) document.getElementById(c.urlEl).value = url;
+    if (c.open) document.getElementById(c.open).style.display = '';
+  }
+  if (prompt) {
+    _offerImgPrompt[kind] = prompt;
+    const pr = document.getElementById(c.promptEl); pr.value = prompt; pr.style.display = '';
+  }
+  document.getElementById(c.regen).style.display = _offerImgPrompt[kind] ? '' : 'none';
+}
+async function genOfferImage(kind) {
+  if (!pubAssetId) return;
+  const c = OFFER_IMG[kind];
+  const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
+  genBtn.disabled = true; genBtn.textContent = '✨ Working…';
+  document.getElementById(c.regen).style.display = 'none';
+  statusEl.className = 'modal-status'; statusEl.textContent = 'Writing the prompt…';
+  if (_offerImgPoll[kind]) { clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null; }
+  const myAsset = pubAssetId;
+  try {
+    const r = await w('generateOfferImage', { assetId: myAsset, kind });
+    if (!r.taskId) throw new Error(r.error || 'No task id returned');
+    _offerImgShow(kind, null, r.prompt);
+    statusEl.textContent = 'Rendering… (checking every 5s)';
+    _offerImgPoll[kind] = setInterval(async () => {
+      if (pubAssetId !== myAsset) { clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null; return; }
+      try {
+        const t = await w('getImageTask', { taskId: r.taskId });
+        const state = (t.state || '').toLowerCase();
+        if (state === 'success' && t.imageUrls && t.imageUrls.length) {
+          clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null;
+          statusEl.textContent = 'Saving to Notion…';
+          try {
+            const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl: t.imageUrls[0], prompt: r.prompt });
+            _offerImgShow(kind, s.url, r.prompt);
+            if (kind === 'blog-thumbnail') {
+              document.getElementById('pubThumbnail').value = s.url;
+              renderPubThumbnailPreview(s.url);
+              if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
+            } else if (PUB_ASSET_CACHE[myAsset]) {
+              PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+            }
+            genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
+            statusEl.className = 'modal-status ok'; statusEl.textContent = 'Saved ✓';
+            setTimeout(() => { if (statusEl.textContent === 'Saved ✓') { statusEl.textContent = ''; statusEl.className = 'modal-status'; } }, 1800);
+          } catch (se) {
+            genBtn.disabled = false; genBtn.textContent = '✨ Retry';
+            statusEl.className = 'modal-status err';
+            statusEl.textContent = 'Rendered OK but saving failed: ' + se.message;
+          }
+        } else if (state === 'fail' || state === 'failed') {
+          clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null;
+          genBtn.disabled = false; genBtn.textContent = '✨ Retry';
+          statusEl.className = 'modal-status err'; statusEl.textContent = 'Render failed — retry.';
+        }
+      } catch (e) {
+        // Transient poll blip — keep polling, the render may still land.
+        statusEl.className = 'modal-status'; statusEl.textContent = 'Checking… (retrying)';
+      }
+    }, 5000);
+  } catch (e) {
+    genBtn.disabled = false; genBtn.textContent = '✨ Generate';
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+async function regenOfferImage(kind) {
+  const p = _offerImgPrompt[kind];
+  if (p) { try { await navigator.clipboard.writeText(p); } catch (e) {} }
+  const statusEl = document.getElementById(OFFER_IMG[kind].status);
+  statusEl.className = 'modal-status'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
+  genOfferImage(kind);
 }
 // Uploads the picked file straight to GitHub Pages hosting and points the
 // Asset's Thumbnail property at it (uploadAssetThumbnail, worker.js) — same
@@ -7796,6 +7940,7 @@ async function removePubListingPhoto(url) {
 function closePublishAssetModal() {
   document.getElementById('publishAssetModal').classList.remove('open');
   pubAssetId = null;
+  _offerImgReset(); // stop any in-flight image poll
 }
 document.getElementById('publishAssetModal').addEventListener('click', function(e) {
   if (e.target === this) closePublishAssetModal();

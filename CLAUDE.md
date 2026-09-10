@@ -186,6 +186,7 @@ An unassigned Planning title (no Growth Strategy relation) can either 🔗 attac
 - Guides and Runs (`launchStrategyRun`, 2026-08-27) — any strategy is a reusable **Guide**; a **Run** is a Growth Strategy child re-creating the Guide's slots against a Product without AI. 🚀 Launch Run.
 - `deleteGrowthStrategy` (2026-08-27) — 🗑️ real Notion archive, cascades to children + slots; real titles unlinked not deleted.
 - Offer asset type (2026-09-01/02) — direct-sales asset; `Offer – Pillar` / `Offer – Content Hub` methods hit `generateTitleAssets`'s `/\boffers?\b/i` branch, create ONE Asset (Type "Offer", Status Publish) with a fenced `json` **OFFER CARD** block + `Product` relation + `Content Hub` select. Hub chosen at publish time.
+- Offer images (2026-09-09) — the Publish modal shows a **🖼️ Offer images** block for any `/\boffer\b/i` asset: **📸 Instagram text-post background** (`google/nano-banana`, 4:5, calm centre for a text overlay → `Instagram Background` url prop) and **🖼️ Blog post thumbnail** (`bytedance/seedream-v4-text-to-image`, 16:9 2K → `Thumbnail`). Worker `generateOfferImage` (Claude writes the prompt from the OFFER CARD + campaign palette) → poll `getImageTask` → `saveOfferImage` (rehost on GitHub Pages, `?v=` cache-bust). Regenerate copies the prompt to the clipboard, then reruns. Reuses `KIE_API_KEY`/`ANTHROPIC_API_KEY`/`GITHUB_TOKEN`. Full spec: `docs/methods-titles-assets.md` § "Offer images".
 
 ## Lead Sourcing engine (Globals tab · 🧲 Sourced Leads)
 
@@ -325,6 +326,8 @@ Per operator direction: images are built in ChatGPT (the raw image API doesn't m
 3. File lands in Downloads as a GUID-named `.tmp` (extension skips the `.png` rename) but bytes are valid — confirm via magic bytes (`89 50 4E 47…`), move/rename out of Downloads.
 4. Base64-encode and POST to the existing `uploadAssetThumbnail` action (`{assetId, fileName, contentType, fileData}`).
 5. **Stop there.** This only fills the thumbnail — it does NOT flip Status to Published (manual step in the Publish Asset modal).
+
+**Offer assets have an automated in-modal alternative** (2026-09-09): the Publish modal's **🖼️ Offer images** block generates an Instagram text-post background and a blog thumbnail via Kie.ai (Nano Banana / Seedream 4.0), no browser. Its **Regenerate** button copies the Claude-written prompt to the clipboard so the operator can bring it into this ChatGPT flow when the auto result isn't good enough. See the Strategy section's "Offer images" bullet and `docs/methods-titles-assets.md`.
 
 ## Security Notes
 
