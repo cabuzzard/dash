@@ -11348,22 +11348,49 @@ const LANDING_BUILD_DISPATCH = {
   scaffoldLandingPage: (slug, cid) => call('scaffoldLandingPage', { campaignId: cid }),
   generateLandingCopy: (slug, cid) => call('generateLandingCopy', { campaignId: cid }),
 };
+let _landingPending = null, _landingPendingFetched = false;
 function renderLandingTab() {
   const el = document.getElementById('landingTabContent');
   if (!el) return;
+  if (!_landingPendingFetched) {
+    _landingPendingFetched = true;
+    call('getLandingPages').then(r => { _landingPending = (r && r.pending) || []; renderLandingTab(); }).catch(() => { _landingPending = []; });
+  }
+  const pendingHtml = (_landingPending && _landingPending.length) ? `
+    <div style="border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--surface2);">
+      <div style="font-size:11px;font-weight:700;color:var(--text2);margin-bottom:8px;">⚡ Published Landing Page assets not built yet (${_landingPending.length})</div>
+      ${_landingPending.map(p => `<div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:12px;">
+        <span style="flex:1;color:var(--text);">${esc(p.title || '(untitled)')} <span style="color:var(--text3);">· ${esc(p.status)}</span></span>
+        <button onclick="landingScaffoldPending('${p.campaignId}', this)" style="font-size:10px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">⚡ Scaffold now</button>
+      </div>`).join('')}
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Scaffolds the page + registers it (Claude writes the copy/palette from the source title's product + keyword). Reload the tab after.</div>
+    </div>` : '';
   if (!LANDING_PAGES.length) {
-    el.innerHTML = `<div style="max-width:620px;">
-      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">No landing pages yet</div>
+    el.innerHTML = pendingHtml + `<div style="max-width:620px;">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">No landing pages built yet</div>
       <div style="font-size:12px;color:var(--text3);line-height:1.7;">
         A landing page slices <b>one niche product</b> off a hub and publishes it as its own standalone conversion site
         (<code>web/landing/&lt;slug&gt;/</code>) — title, subhead, email form, then the SEO posts for that keyword. It tracks to the campaign like a hub does.<br><br>
-        <b>To create one:</b> on a product's title, run <b>Generate Assets → Landing Page</b> (method), then set that asset to <b>Published</b>.
-        Publishing scaffolds the page, writes the copy + palette from the product's research and keyword, and registers it here.
-        Reload this tab once it's built, then run the rest of its checklist à la carte.
+        <b>To create one:</b> on a product's title (the title needs a <b>product</b> attached), run <b>Generate Assets → Landing Page</b>, then set that asset to <b>Published</b>.
+        Publishing scaffolds the page and registers it here; if the trigger misses, it shows above as "not built yet" with a Scaffold button.
       </div>
     </div>`;
     return;
   }
+  el.innerHTML = pendingHtml + '<div id="landingDeck"></div>';
+  const deck = document.getElementById('landingDeck');
+  renderLandingDeck(deck);
+}
+async function landingScaffoldPending(campaignId, btn) {
+  btn.disabled = true; btn.textContent = 'Scaffolding…';
+  try {
+    const r = await call('scaffoldLandingPage', { campaignId });
+    if (r.error) throw new Error(r.error);
+    btn.textContent = '✓ ' + (r.slug || 'done') + ' — reload the tab';
+  } catch (e) { btn.disabled = false; btn.textContent = '⚡ Scaffold now'; alert('Scaffold failed: ' + e.message); }
+}
+function renderLandingDeck(el) {
+  if (!el) return;
   if (_landingIdx >= LANDING_PAGES.length) _landingIdx = 0;
   const l = LANDING_PAGES[_landingIdx], slug = l.slug;
   const url = 'https://cabuzzard.github.io/dash/web/landing/' + slug + '/';

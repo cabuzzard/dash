@@ -8881,6 +8881,7 @@ Return: {
         const dLp = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const nh = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const slugLp = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+        const norm2 = s => String(s || "").replace(/-/g, "");
         const ghH = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
         const encB = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(x); };
         const decB = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
@@ -8892,7 +8893,31 @@ Return: {
           const pids = [...new Set(LANDING_PAGES.map(l => l.productId).filter(Boolean))];
           const pNames = {};
           if (pids.length) { try { (await notionQuery(PRODUCTS_DB, {})).forEach(p => { pNames[p.id.replace(/-/g, "")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); }); } catch (e) {} }
-          return json({ pages: LANDING_PAGES.map(l => ({ ...l, productName: l.productId ? (pNames[l.productId] || "") : "" })) });
+          // Pending — published "Landing Page" assets whose campaign isn't
+          // registered yet (the publish trigger missed, or predates it).
+          const regCamps = new Set(LANDING_PAGES.map(l => norm2(l.campaignId)));
+          let pending = [];
+          try {
+            const rows = await notionQuery(ASSETS_DB, { filter: { and: [
+              { property: "Asset Type", select: { equals: LANDING_METHOD_NAME } },
+              { or: [
+                { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Published" } },
+              ] },
+            ] } });
+            const seen = new Set();
+            for (const a of rows) {
+              const cid = norm2((a.properties?.Campaign?.relation || [])[0]?.id);
+              if (!cid || regCamps.has(cid) || seen.has(cid)) continue;
+              seen.add(cid);
+              pending.push({
+                assetId: a.id.replace(/-/g, ""), campaignId: cid,
+                title: (a.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join(""),
+                status: a.properties?.["Asset Status"]?.select?.name || "",
+              });
+            }
+          } catch (e) {}
+          return json({ pages: LANDING_PAGES.map(l => ({ ...l, productName: l.productId ? (pNames[l.productId] || "") : "" })), pending });
         }
         if (body.action === "setLandingBuildCheck") {
           const slug = String(body.slug || "").trim(), stepId = String(body.stepId || "").trim();
@@ -8925,7 +8950,17 @@ Return: {
         if (!lpAsset) return json({ error: "no Landing Page asset on this campaign yet" }, 400);
         const lpAssetId = lpAsset.id.replace(/-/g, "");
         const lpAssetTitle = (lpAsset.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join("");
-        const lpProductId = (lpAsset.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+        let lpProductId = (lpAsset.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+        // Fall back to the SOURCE TITLE's product — the generic asset path
+        // doesn't copy the title's product onto the asset the way the offer/
+        // hub branches do, but a landing page IS a product page.
+        if (!lpProductId) {
+          const srcTitleId = (lpAsset.properties?.["Content Strategy"]?.relation || [])[0]?.id;
+          if (srcTitleId) {
+            const tp = await fetch(`https://api.notion.com/v1/pages/${srcTitleId}`, { headers: nh }).then(r => r.json()).catch(() => null);
+            lpProductId = (tp?.properties?.product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+          }
+        }
         const registered = LANDING_PAGES.find(l => l.campaignId.replace(/-/g, "") === lpCampId && (!lpAssetTitle || l.name === lpAssetTitle))
           || LANDING_PAGES.find(l => l.campaignId.replace(/-/g, "") === lpCampId) || null;
 
@@ -9089,7 +9124,10 @@ Return: {
 
         await fetch(`https://api.notion.com/v1/pages/${dLp(lpAssetId)}`, {
           method: "PATCH", headers: nh,
-          body: JSON.stringify({ properties: { "Site URL": { url: lpUrl } } }),
+          body: JSON.stringify({ properties: {
+            "Site URL": { url: lpUrl },
+            ...(lpProductId ? { "Product": { relation: [{ id: dLp(lpProductId) }] } } : {}),
+          } }),
         }).catch(() => {});
 
         return json({ success: true, slug: lpSlug, url: lpUrl, keyword: lpKeyword, committed: committedLp,
