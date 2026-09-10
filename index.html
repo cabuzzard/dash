@@ -10559,6 +10559,19 @@ let _hpDesign = {};           // slug -> Research Design section { register, pho
 let _hpFetched = {};          // slug -> already pulled getHubPalette this session
 let _hpHist = {};             // slug -> { palettes:[{ts,palette,rationale,source}], fonts:[{ts,fonts,note}], current:{palette,fonts} }
 let _hpHistFetched = {};      // slug -> getHubDesignHistory has run this session
+let _hpImgData = {};          // slug -> { name, data } — reference image HELD in state (survives the card re-render; the <input type=file> can't)
+let _hpInstrVal = {};         // slug -> override-box text, held so it survives re-renders too
+async function hpSetImage(slug, input){
+  const f = input.files && input.files[0]; if (!f) return;
+  if (f.size > 4000000) { document.getElementById('hpMsg').textContent = 'Keep the image under 4 MB.'; return; }
+  try {
+    const data = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('read failed')); r.readAsDataURL(f); });
+    _hpImgData[slug] = { name: f.name, data };
+    _hpNote[slug] = 'Image held — it now steers ↻ Regenerate palette and ↻ Regenerate design direction. Regenerate, then Post to brief.';
+    renderHubsTab();
+  } catch (e) { document.getElementById('hpMsg').textContent = e.message; }
+}
+function hpClearImage(slug){ delete _hpImgData[slug]; renderHubsTab(); }
 let _hpSel = {};              // slug -> { palette: ts|'current', fonts: ts|'current' } — which staged version is "on deck"
 function _hpSelLoad(slug){ try { return Object.assign({ palette:'current', fonts:'current', direction:'current' }, JSON.parse(localStorage.getItem('hpSel:' + slug) || 'null') || {}); } catch(e){ return { palette:'current', fonts:'current', direction:'current' }; } }
 function _hpSelSave(slug){ try { localStorage.setItem('hpSel:' + slug, JSON.stringify(_hpSel[slug] || {})); } catch(e){} }
@@ -10600,21 +10613,20 @@ function hpSelFonts(slug) {
 }
 function _hpAgo(ts){ const s = Math.max(0, Math.round((Date.now() - ts) / 1000)); if (s < 90) return 'just now'; if (s < 5400) return Math.round(s/60) + 'm ago'; if (s < 172800) return Math.round(s/3600) + 'h ago'; return Math.round(s/86400) + 'd ago'; }
 function hpPickVersion(slug, kind, val){ _hpSel[slug] = _hpSel[slug] || _hpSelLoad(slug); _hpSel[slug][kind] = val; _hpSelSave(slug); renderHubsTab(); }
+// Override text held in state (survives re-render) — sync from the live field
+// first in case the user is mid-type when a fetch re-renders the card.
+function hpInstr(slug){ const el = document.getElementById('hpInstr'); if (el) _hpInstrVal[slug] = el.value; const v = (_hpInstrVal[slug] || '').trim(); return v || undefined; }
 
 async function hpGen(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   const btn = document.getElementById('hpGen'), msg = document.getElementById('hpMsg');
   btn.disabled = true; btn.textContent = 'Generating…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Reading the research…';
   try {
-    let image = null;
-    const f = (document.getElementById('hpImg') || {}).files && document.getElementById('hpImg').files[0];
-    if (f) {
-      if (f.size > 4000000) throw new Error('Keep the image under 4 MB');
-      image = await new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(new Error('could not read that image')); r.readAsDataURL(f); });
-    }
-    const instructions = (document.getElementById('hpInstr').value || '').trim() || undefined;
+    // the image + override are HELD in state so they survive the card
+    // re-renders that async fetches trigger — read from there, not the DOM.
+    const image = (_hpImgData[slug] && _hpImgData[slug].data) || null;
+    const instructions = hpInstr(slug);
     // STAGED — appended as a candidate version, not written to Research.
-    // "Publish design to hub" writes the selected version + commits it live.
     const r = await call('generateResearchPalette', { campaignId: h.campaignId, slug, image, instructions, stage: true });
     _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], directions: [], current: {} };
     _hpHist[slug].palettes.unshift({ ts: r.ts, palette: r.palette, rationale: r.note || '', source: image ? 'image' : (instructions ? 'steer' : 'research') });
@@ -10628,7 +10640,7 @@ async function hpGenFonts(slug) {
   const btn = document.getElementById('hpGenFonts'), msg = document.getElementById('hpMsg');
   btn.disabled = true; btn.textContent = 'Researching…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Researching a type pairing…';
   try {
-    const instructions = (document.getElementById('hpInstr') || {}).value ? document.getElementById('hpInstr').value.trim() : undefined;
+    const instructions = hpInstr(slug);
     const r = await call('generateResearchFonts', { campaignId: h.campaignId, slug, instructions, stage: true });
     _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], directions: [], current: {} };
     _hpHist[slug].fonts.unshift({ ts: r.ts, fonts: r.fonts, note: '' });
@@ -10649,15 +10661,8 @@ async function hpGenDesign(slug, opts) {
   if (btn) { btn.disabled = true; btn.textContent = 'Researching…'; }
   msg.style.color = 'var(--text3)';
   try {
-    const instructions = (document.getElementById('hpInstr') || {}).value ? document.getElementById('hpInstr').value.trim() : undefined;
-    let image = null;
-    if (!opts.keywords) {
-      const f = (document.getElementById('hpImg') || {}).files && document.getElementById('hpImg').files[0];
-      if (f) {
-        if (f.size > 4000000) throw new Error('Keep the image under 4 MB');
-        image = await new Promise((res, rej) => { const rr = new FileReader(); rr.onload = () => res(rr.result); rr.onerror = () => rej(new Error('could not read that image')); rr.readAsDataURL(f); });
-      }
-    }
+    const instructions = hpInstr(slug);
+    const image = opts.keywords ? null : ((_hpImgData[slug] && _hpImgData[slug].data) || null);
     msg.textContent = image ? 'Reading the direction off the image…' : opts.keywords ? 'Building the direction from those keywords…' : 'Researching the visual direction…';
     const r = await call('generateResearchDesign', { campaignId: h.campaignId, slug, instructions, image, keywords: opts.keywords || undefined, stage: true });
     _hpHist[slug] = _hpHist[slug] || { palettes: [], fonts: [], directions: [], current: {} };
@@ -11426,12 +11431,17 @@ function renderHubsTab() {
         <div title="These fields all live on this CAMPAIGN's 🔬 Research row (not the product, not hubs.design.json). Palette + fonts are STAGED as candidate versions when you regenerate; the direction fields save on ✎-edit. 'Publish design to hub' writes the selected palette/fonts to the record AND commits everything live. hubs.design.json only holds the resolved outputs. Everything visual downstream inherits from here." style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;cursor:help;">Design — stored on the campaign's Research record (Stage 1)</div>
         <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
           <div style="flex:1;min-width:250px;">
-            <input id="hpImg" type="file" accept="image/*" title="Optional reference image. ↻ Regenerate palette pulls the palette from its dominant colours; ↻ Regenerate design direction reads the whole vibe off it (register / photography / avoid all describe THIS image). Ignored by the fonts button. Not stored — attach it each time." style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
-            <input id="hpInstr" class="modal-input" type="text" title="A one-off steer for THIS run — fed to ↻ Regenerate palette and ↻ Regenerate design direction (not fonts). Not saved. For standing direction that persists and is re-consulted, use the Design notes ✎ field instead." placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
+            ${_hpImgData[slug] ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);">
+              <img src="${_hpImgData[slug].data}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0;">
+              <span style="flex:1;min-width:0;font-size:10px;color:var(--text2);line-height:1.4;">Reference image held — steers <b>↻ Regenerate palette</b> and <b>↻ Regenerate design direction</b>. It's the image that goes into the brief (as a written direction). </span>
+              <button onclick="hpClearImage('${slug}')" title="Remove the held image" style="flex-shrink:0;font-size:11px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕</button>
+            </div>` : ''}
+            <input id="hpImg" type="file" accept="image/*" onchange="hpSetImage('${slug}', this)" title="Optional reference image — held once picked (a thumbnail appears). ↻ Regenerate palette pulls colours from it; ↻ Regenerate design direction reads the whole vibe off it. To send it 'to the brief': regenerate direction from it → Post to brief." style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
+            <input id="hpInstr" class="modal-input" type="text" value="${esc(_hpInstrVal[slug] || '')}" oninput="_hpInstrVal['${slug}'] = this.value" title="A one-off steer for THIS run — fed to ↻ Regenerate palette / fonts / design direction. Held in the field but not saved to the record. For standing direction that persists, use the Design notes ✎ field." placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               <button id="hpGen" onclick="hpGen('${slug}')" title="Researches a 10-token palette from campaign + product research — or seeds it from the image above if one is attached. STAGED as a new candidate version (not written to the Research record). Pick it in the Palette dropdown, then Publish design to hub." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
               <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" title="Researches a display / body / mono pairing (now honours the override box). STAGED as a candidate version — pick it in the Fonts dropdown, then Publish. Not written to Research until then." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
-              <button id="hpGenDesign" onclick="hpGenDesign('${slug}')" title="Visual direction (register / photography / avoid), STAGED as a candidate. Source: if a reference image is attached above, it reads the direction OFF THE IMAGE and all three fields describe it; otherwise it researches from campaign + product. Honours your Design notes + the override box. Review it below, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate design direction</button>
+              <button id="hpGenDesign" onclick="hpGenDesign('${slug}')" title="Visual direction (register / photography / avoid), STAGED as a candidate. Source: if a reference image is held above, it reads the direction OFF THE IMAGE and all three fields describe it; otherwise it researches from campaign + product. Honours your Design notes + the override box. Review below, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid ${_hpImgData[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ ${_hpImgData[slug] ? 'direction from image' : 'Regenerate design direction'}</button>
               <button id="hpGenDesignKw" onclick="openHubKwModal('${slug}')" title="Load the main product's keywords into a box, edit them, then regenerate the visual direction built around those keywords. Also staged — review, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ direction from keywords</button>
             </div>
             ${versionRows}
