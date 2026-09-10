@@ -661,6 +661,7 @@
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
     <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
+    <div class="tab"        onclick="switchTab('landingpages')">Landing Pages</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
@@ -837,6 +838,12 @@
 
   <div class="tab-panel" id="tabContenthubs">
     <div id="hubsTabContent">
+      <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <div class="tab-panel" id="tabLandingpages">
+    <div id="landingTabContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
   </div>
@@ -3803,6 +3810,7 @@ let stackLoaded = false;
 let ecoLoaded = false;
 let globalsLoaded = false;
 let hubsTabLoaded = false;
+let landingTabLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
 function assetStatusStyle(status) {
@@ -4578,6 +4586,7 @@ function loadTabContent(name) {
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
+  if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); loadOrbPanel(); }
@@ -10290,6 +10299,13 @@ const HUB_SITES = [
     domainOptions: ["multifamilyacquisitions.com", "multifamilydealroom.com"] },
 ];
 
+// Landing pages — a niche product sliced off a hub, published standalone at
+// web/landing/<slug>/ (title / subhead / form / SEO posts). Tracks to a
+// campaign like a hub. scaffoldLandingPage registers new rows here + in
+// worker.js via the GitHub API on Landing Page asset publish.
+const LANDING_PAGES = [
+];
+
 // Yes/no checklist columns. `crit:true` = blocks the LIVE badge; the rest
 // are polish. (Products & Blog are shown as COUNT columns, not here.)
 const HUB_CHECKLIST = [
@@ -11317,6 +11333,111 @@ async function hubBuildRunNext(slug) {
   const next = b.steps.find(s => !s.done && s.run && HUB_BUILD_DISPATCH[s.run]);
   if (!next) { _hpNote[slug] = 'All auto steps done — remaining are modal / manual.'; renderHubsTab(); return; }
   await hubBuildRun(slug, next.id);
+}
+
+// ── LANDING PAGES tab ────────────────────────────────────────────────
+// A niche product sliced off a hub, published as its own conversion site.
+// LANDING_PAGES is grown by scaffoldLandingPage (fires on a "Landing Page"
+// asset → Published). Each card carries a runnable build checklist.
+let _landingBuild = {};        // slug -> getLandingBuildStatus result
+let _landingBuildFetched = {};
+let _landingBuildBusy = {};
+let _landingIdx = 0;
+try { _landingIdx = Math.max(0, parseInt(localStorage.getItem('landingIdx') || '0', 10) || 0); } catch (e) {}
+const LANDING_BUILD_DISPATCH = {
+  scaffoldLandingPage: (slug, cid) => call('scaffoldLandingPage', { campaignId: cid }),
+  generateLandingCopy: (slug, cid) => call('generateLandingCopy', { campaignId: cid }),
+};
+function renderLandingTab() {
+  const el = document.getElementById('landingTabContent');
+  if (!el) return;
+  if (!LANDING_PAGES.length) {
+    el.innerHTML = `<div style="max-width:620px;">
+      <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">No landing pages yet</div>
+      <div style="font-size:12px;color:var(--text3);line-height:1.7;">
+        A landing page slices <b>one niche product</b> off a hub and publishes it as its own standalone conversion site
+        (<code>web/landing/&lt;slug&gt;/</code>) — title, subhead, email form, then the SEO posts for that keyword. It tracks to the campaign like a hub does.<br><br>
+        <b>To create one:</b> on a product's title, run <b>Generate Assets → Landing Page</b> (method), then set that asset to <b>Published</b>.
+        Publishing scaffolds the page, writes the copy + palette from the product's research and keyword, and registers it here.
+        Reload this tab once it's built, then run the rest of its checklist à la carte.
+      </div>
+    </div>`;
+    return;
+  }
+  if (_landingIdx >= LANDING_PAGES.length) _landingIdx = 0;
+  const l = LANDING_PAGES[_landingIdx], slug = l.slug;
+  const url = 'https://cabuzzard.github.io/dash/web/landing/' + slug + '/';
+  if (l.campaignId && !_landingBuildFetched[slug]) {
+    _landingBuildFetched[slug] = true;
+    call('getLandingBuildStatus', { campaignId: l.campaignId }).then(r => {
+      if (r && r.steps) _landingBuild[slug] = r;
+      if (LANDING_PAGES[_landingIdx] && LANDING_PAGES[_landingIdx].slug === slug) renderLandingTab();
+    }).catch(() => {});
+  }
+  const b = _landingBuild[slug];
+  el.innerHTML = `
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
+    <div style="display:flex;gap:5px;flex-wrap:wrap;">${LANDING_PAGES.map((x, i) => `<button onclick="_landingIdx=${i};try{localStorage.setItem('landingIdx','${i}')}catch(e){};renderLandingTab()" style="font-size:10px;padding:4px 8px;border:1px solid ${i === _landingIdx ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:${i === _landingIdx ? 'var(--surface2)' : 'transparent'};color:${i === _landingIdx ? 'var(--text)' : 'var(--text3)'};cursor:pointer;">${esc(x.name)}</button>`).join('')}</div>
+    <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${String(_landingIdx + 1).padStart(2, '0')} / ${LANDING_PAGES.length}</span>
+  </div>
+  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);max-width:760px;">
+    <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
+      <a href="${url}" target="_blank" rel="noopener" style="font-size:17px;font-weight:700;color:var(--text);text-decoration:none;">${esc(l.name)}</a>
+      <span style="font-size:11px;color:var(--text3);margin-left:10px;">${esc(l.campaign || '')}</span>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">
+        ${l.keyword ? `keyword <code style="font-size:10px;">${esc(l.keyword)}</code> · ` : ''}form tag <code style="font-size:10px;">lp-${esc(slug)}</code>
+        · <a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">live ↗</a>
+        · <a href="${url}blog/" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">blog ↗</a>
+      </div>
+    </div>
+    <div style="padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;">Build checklist</span>
+      <span style="font-size:10px;color:var(--text3);">${b ? b.doneCount + '/' + b.total : '…'}</span>
+      <button onclick="_landingBuildFetched['${slug}']=false;renderLandingTab()" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+      <button onclick="landingBuildRunNext('${slug}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
+    </div>
+    <div id="landingBuildBody-${slug}">${renderLandingBuildRows(slug)}</div>
+  </div>`;
+}
+function renderLandingBuildRows(slug) {
+  const b = _landingBuild[slug];
+  if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
+  let lastPhase = '';
+  return b.steps.map(s => {
+    const busy = _landingBuildBusy[slug + '|' + s.id];
+    const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
+    const ph = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}</div>`) : '';
+    let ctrl;
+    if (s.manual) ctrl = `<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);cursor:pointer;flex-shrink:0;"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="landingBuildToggle('${slug}','${s.id}',this.checked)">done</label>`;
+    else if (s.modal) ctrl = `<span style="font-size:10px;color:var(--text3);flex-shrink:0;">set on the asset</span>`;
+    else ctrl = `<button ${busy ? 'disabled' : ''} onclick="landingBuildRun('${slug}','${s.id}')" style="font-size:10px;padding:2px 9px;border:1px solid ${s.done ? 'var(--border2)' : 'var(--accent)'};border-radius:4px;background:${s.done ? 'transparent' : 'var(--accent)'};color:${s.done ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;flex-shrink:0;">${busy ? '…' : (s.done ? 'rerun' : 'run')}</button>`;
+    return ph + `<div style="padding:5px 12px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);">
+      <span style="flex-shrink:0;">${dot}</span>
+      <span style="flex:1;min-width:0;font-size:11px;color:var(--text);line-height:1.35;">${esc(s.label)}${s.hint ? `<span style="color:var(--text3);"> — ${esc(s.hint)}</span>` : ''}</span>
+      ${ctrl}
+    </div>`;
+  }).join('');
+}
+function landingBuildRefreshRows(slug) { const el = document.getElementById('landingBuildBody-' + slug); if (el) el.innerHTML = renderLandingBuildRows(slug); }
+async function landingBuildRun(slug, stepId) {
+  const l = LANDING_PAGES.find(x => x.slug === slug); if (!l) return;
+  const fn = LANDING_BUILD_DISPATCH[(_landingBuild[slug].steps.find(s => s.id === stepId) || {}).run];
+  if (!fn) return;
+  _landingBuildBusy[slug + '|' + stepId] = true; landingBuildRefreshRows(slug);
+  try { const r = await fn(slug, l.campaignId); if (r && r.error) throw new Error(r.error); }
+  catch (e) { alert('Landing step failed: ' + e.message); }
+  finally { _landingBuildBusy[slug + '|' + stepId] = false; _landingBuildFetched[slug] = false; renderLandingTab(); }
+}
+async function landingBuildToggle(slug, stepId, done) {
+  try { await call('setLandingBuildCheck', { slug, stepId, done }); } catch (e) {}
+  if (_landingBuild[slug]) { const s = _landingBuild[slug].steps.find(x => x.id === stepId); if (s) s.done = done; _landingBuild[slug].doneCount = _landingBuild[slug].steps.filter(x => x.done).length; }
+  landingBuildRefreshRows(slug);
+}
+async function landingBuildRunNext(slug) {
+  const b = _landingBuild[slug]; if (!b) return;
+  const next = b.steps.find(s => !s.done && s.run && LANDING_BUILD_DISPATCH[s.run]);
+  if (!next) { alert('Auto steps done — the rest are manual (list wiring, blog posts, domain, form test).'); return; }
+  await landingBuildRun(slug, next.id);
 }
 let hubSitesCollapsed = true;
 try { hubSitesCollapsed = localStorage.getItem('hubSitesCollapsed') !== 'false'; } catch(e) {}
@@ -14542,12 +14663,14 @@ function renderHubAssetMatrix() {
     + `</td>`;
   (HAM_DATA.hubs || []).forEach(h => {
     const hc = counts[h.slug] || {};
+    const isLp = h.kind === 'landing';
     const hs = (typeof HUB_SITES !== 'undefined' ? HUB_SITES : []).find(x => x.slug === h.slug) || {};
-    const msUrl = hs.microsite ? `https://cabuzzard.github.io/dash/microsites/${hs.microsite}/` : '';
-    const hubUrl = hs.domain ? `https://${hs.domain}/` : `https://cabuzzard.github.io/dash/web/hub/${h.slug}/`;
-    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(h.slug)}">${esc(HM_LABELS[h.slug] || h.slug)}</td>`
+    const msUrl = isLp ? '' : (hs.microsite ? `https://cabuzzard.github.io/dash/microsites/${hs.microsite}/` : '');
+    const hubUrl = isLp ? `https://cabuzzard.github.io/dash/web/landing/${h.slug}/` : (hs.domain ? `https://${hs.domain}/` : `https://cabuzzard.github.io/dash/web/hub/${h.slug}/`);
+    const rowLabel = isLp ? '◆ ' + (h.name || h.slug) : (HM_LABELS[h.slug] || h.slug);
+    let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:${isLp ? 'var(--accent)' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(isLp ? 'landing page · ' + (h.keyword || h.slug) : h.slug)}">${esc(rowLabel)}</td>`
       + hubLink(msUrl, 'Admin microsite ↗')
-      + hubLink(hubUrl, 'Live content hub ↗');
+      + hubLink(hubUrl, isLp ? 'Live landing page ↗' : 'Live content hub ↗');
     cols.forEach(c => {
       const cell = hc[c.id] || { dev: 0, pub: 0, pubd: 0 };
       const cd = cell.dev || 0, cp = cell.pub || 0, cpd = cell.pubd || 0;

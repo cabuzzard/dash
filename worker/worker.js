@@ -188,6 +188,13 @@ const HUB_SITES = [
   { slug: "multifamily-acquisitions", name: "Multifamily Acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee" },
 ];
 
+// Landing pages — a niche product sliced off a hub and published as its own
+// standalone conversion site at web/landing/<slug>/. Tracks to a campaign
+// like a hub. Mirror of index.html's LANDING_PAGES; scaffoldLandingPage
+// registers new ones here (and in index.html) via the GitHub API.
+const LANDING_PAGES = [
+];
+
 // Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
 // spread in json()/OPTIONS picks up the right Access-Control-Allow-Origin.
 const CORS = {
@@ -8859,6 +8866,236 @@ Return: {
         }
       }
 
+      // ══ LANDING PAGES ══════════════════════════════════════════════════
+      // A niche product sliced off a hub → its own standalone conversion
+      // site at web/landing/<slug>/ (title / subhead / form / SEO posts).
+      // scaffoldLandingPage = the chassis, fires on Landing Page asset →
+      // Published (self-call, idempotent). generateLandingCopy re-writes the
+      // LP copy. getLandingBuildStatus drives the checklist on the Landing
+      // Pages tab card. Tracks to a campaign the same way a hub does.
+      if (body.action === "scaffoldLandingPage" || body.action === "generateLandingCopy" ||
+          body.action === "getLandingBuildStatus" || body.action === "setLandingBuildCheck" ||
+          body.action === "getLandingPages") {
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const dLp = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const nh = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const slugLp = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+        const ghH = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const encB = str => { const b = new TextEncoder().encode(str); let x = ""; for (let i = 0; i < b.length; i += 0x8000) x += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(x); };
+        const decB = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+        const gGet = async p => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}?ref=${BRANCH}`, { headers: ghH }); if (!r.ok) return { missing: true }; const j = await r.json().catch(() => ({})); return { sha: j.sha, text: j.content ? decB(j.content) : "" }; };
+        const gPut = async (p, text, msg, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { method: "PUT", headers: { ...ghH, "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, content: encB(text), branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${p}`); } };
+        const LANDING_METHOD_NAME = "Landing Page";
+
+        if (body.action === "getLandingPages") {
+          const pids = [...new Set(LANDING_PAGES.map(l => l.productId).filter(Boolean))];
+          const pNames = {};
+          if (pids.length) { try { (await notionQuery(PRODUCTS_DB, {})).forEach(p => { pNames[p.id.replace(/-/g, "")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); }); } catch (e) {} }
+          return json({ pages: LANDING_PAGES.map(l => ({ ...l, productName: l.productId ? (pNames[l.productId] || "") : "" })) });
+        }
+        if (body.action === "setLandingBuildCheck") {
+          const slug = String(body.slug || "").trim(), stepId = String(body.stepId || "").trim();
+          if (!slug || !stepId) return json({ error: "slug and stepId required" }, 400);
+          let rec = {};
+          try { rec = (await env.TRADES.get("lp:build:" + slug, "json")) || {}; } catch (e) {}
+          rec[stepId] = { done: !!body.done, at: new Date().toISOString() };
+          try { await env.TRADES.put("lp:build:" + slug, JSON.stringify(rec)); } catch (e) { return json({ error: "KV write failed" }, 502); }
+          return json({ success: true, checks: rec });
+        }
+
+        // resolve landing-page context from campaignId or assetId
+        let lpCampId = String(body.campaignId || "").replace(/-/g, "");
+        let lpAsset = null;
+        if (body.assetId) {
+          lpAsset = await fetch(`https://api.notion.com/v1/pages/${dLp(body.assetId)}`, { headers: nh }).then(r => r.json()).catch(() => null);
+          if (!lpCampId) lpCampId = (lpAsset?.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "") || "";
+        }
+        if (!lpCampId) return json({ error: "campaignId or assetId required" }, 400);
+        const lpCamp = await fetch(`https://api.notion.com/v1/pages/${dLp(lpCampId)}`, { headers: nh }).then(r => r.json()).catch(() => null);
+        if (!lpCamp || lpCamp.object === "error") return json({ error: "campaign not found" }, 400);
+        const lpCampName = (lpCamp.properties?.Name?.title || []).map(t => t.plain_text).join("");
+        if (!lpAsset) {
+          const rows = await notionQuery(ASSETS_DB, { filter: { and: [
+            { property: "Campaign", relation: { contains: dLp(lpCampId) } },
+            { property: "Asset Type", select: { equals: LANDING_METHOD_NAME } },
+          ] } }).catch(() => []);
+          lpAsset = rows.sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))[0] || null;
+        }
+        if (!lpAsset) return json({ error: "no Landing Page asset on this campaign yet" }, 400);
+        const lpAssetId = lpAsset.id.replace(/-/g, "");
+        const lpAssetTitle = (lpAsset.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join("");
+        const lpProductId = (lpAsset.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+        const registered = LANDING_PAGES.find(l => l.campaignId.replace(/-/g, "") === lpCampId && (!lpAssetTitle || l.name === lpAssetTitle))
+          || LANDING_PAGES.find(l => l.campaignId.replace(/-/g, "") === lpCampId) || null;
+
+        const [lpProd, lpResearch] = await Promise.all([
+          lpProductId ? fetch(`https://api.notion.com/v1/pages/${dLp(lpProductId)}`, { headers: nh }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dLp(lpCampId) } } }).catch(() => []),
+        ]);
+        const lpProdName = lpProd ? (lpProd.properties?.Name?.title || []).map(t => t.plain_text).join("") : "";
+        const lpProdKw = lpProd ? (lpProd.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "";
+        const lpProdDesc = lpProd ? (lpProd.properties?.Description?.rich_text || []).map(t => t.plain_text).join("") : "";
+        const lpKeyword = (lpProdKw.split(/[,;\n]/)[0] || (lpCamp.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").split(/[,;\n]/)[0] || "").trim();
+        const lpSlug = registered?.slug || slugLp(lpAssetTitle || lpProdName || lpCampName);
+        const lpUrl = `https://cabuzzard.github.io/dash/web/landing/${lpSlug}/`;
+
+        if (body.action === "getLandingBuildStatus") {
+          let kv = {};
+          try { kv = (await env.TRADES.get("lp:build:" + lpSlug, "json")) || {}; } catch (e) {}
+          const [idxF, contentF, postsF] = await Promise.all([
+            gGet(`web/landing/${lpSlug}/index.html`), gGet(`web/landing/${lpSlug}/content.json`), gGet(`web/landing/${lpSlug}/blog/posts.json`),
+          ]);
+          let contentJson = {}; try { contentJson = contentF.text ? JSON.parse(contentF.text) : {}; } catch (e) {}
+          let postsN = 0; try { const pj = postsF.text ? JSON.parse(postsF.text) : []; postsN = Array.isArray(pj) ? pj.length : (pj.posts || []).length; } catch (e) {}
+          const man = id => !!kv[id]?.done;
+          const steps = [
+            { id: "scaffold", phase: "Chassis",  label: "Scaffold + register the landing page", run: "scaffoldLandingPage", done: !idxF.missing && !!registered, hint: idxF.missing ? "not scaffolded" : "" },
+            { id: "keyword",  phase: "Focus",    label: `Product + primary keyword${lpKeyword ? ` — "${lpKeyword}"` : ""}`, manual: false, modal: "openLandingKeyword", done: !!(lpProductId && lpKeyword), hint: lpProductId ? (lpKeyword ? "" : "no keyword on the product") : "no product on the asset" },
+            { id: "copy",     phase: "Content",  label: "Copy — H1 / subhead / form headline / button / success", run: "generateLandingCopy", done: !!(contentJson?.h1), hint: contentF.missing ? "template copy only" : "" },
+            { id: "list",     phase: "List",     label: `Wire the "lp-${lpSlug}" tag to its own list`, manual: true, done: man("list") },
+            { id: "blog",     phase: "Blog",     label: "Publish ≥1 SEO pillar post for the keyword to /blog/", manual: true, done: postsN > 0 || man("blog"), hint: postsN ? `${postsN} live` : "" },
+            { id: "design",   phase: "Design",   label: "Tune tokens / fonts in the page file", manual: true, done: man("design") },
+            { id: "domain",   phase: "Deploy",   label: "Custom domain (optional)", manual: true, done: man("domain") },
+            { id: "formtest", phase: "Audit",    label: "Form tested end-to-end (submits, lands in Leads)", manual: true, done: man("formtest") },
+          ];
+          return json({ slug: lpSlug, campaignId: lpCampId, url: lpUrl, keyword: lpKeyword, productName: lpProdName, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
+        }
+
+        if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const rp = lpResearch[0]?.properties || {};
+        const rget = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const methodBodyLp = (await resolveMethodIdByName(LANDING_METHOD_NAME).then(id => id ? extractBlocksTextRecursive(nh, dLp(id)) : "").catch(() => "")).slice(0, 3500);
+
+        const lpPrompt = `Write the copy + palette for a standalone product landing page. It slices ONE product out of a broader campaign and sells it / captures leads on its own. Return ONLY JSON.
+
+PRODUCT: "${lpProdName || lpCampName}"
+PRIMARY KEYWORD: ${lpKeyword || "(none — use the product name)"}
+${lpProdDesc ? `DESCRIPTION: ${lpProdDesc.slice(0, 600)}\n` : ""}${lpProdKw ? `PRODUCT KEYWORDS: ${lpProdKw}\n` : ""}${rget("Statement") ? `CAMPAIGN POSITIONING: ${rget("Statement").slice(0, 400)}\n` : ""}${rget("Unique Opportunity") ? `UNIQUE OPPORTUNITY: ${rget("Unique Opportunity").slice(0, 300)}\n` : ""}
+METHOD GUIDANCE (the "Landing Page" method — follow its conversion framework):
+${methodBodyLp.slice(0, 2500)}
+
+The page is: eyebrow → H1 (the keyword AS the outcome) → subhead (mechanism + who it's for) → email form → trust strip → SEO blog posts → repeat CTA → footer. Real, specific copy, never placeholder. Button = the specific outcome, never "Submit".
+Fonts from: Space Grotesk, Inter, IBM Plex Sans, IBM Plex Mono, Newsreader, DM Serif Display, Fraunces, Archivo, Libre Franklin, Space Mono.
+Tokens are hex; AA contrast for ink on bg and deep-ink on deep.
+
+Return: {
+ "tokens": { "bg":"#..","surface":"#..","ink":"#..","ink-soft":"#..","line":"#..","accent":"#..","deep":"#..","deep-ink":"#.." },
+ "fonts": { "display":"..","body":".." },
+ "lp": {
+  "brand": "short name",
+  "eyebrow": "short keyword/category line or empty",
+  "h1": "the keyword as an outcome, ends with a period, 6-12 words",
+  "sub": "one sentence: the mechanism + exactly who it's for",
+  "form": { "headline": "e.g. Get the guide", "note": "one line", "button": "specific-outcome label", "fine": "No spam. One-click unsubscribe.", "success": "confirmation line" },
+  "trust": ["2-4 short proof points, or empty array"],
+  "posts": { "title": "e.g. Read first", "lead": "one line or empty" },
+  "recap": "the short version + a nudge to the form",
+  "recapButton": "button label",
+  "footerTagline": "one-line offer description"
+ }
+}`;
+        const aiLp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: lpPrompt }] }),
+        });
+        const aiLpD = await aiLp.json();
+        if (!aiLp.ok) return json({ error: aiLpD.error?.message || "Claude error" }, 502);
+        let planLp;
+        try { const raw = (aiLpD.content?.[0]?.text || ""); planLp = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); }
+        catch (e) { return json({ error: "could not parse landing plan" }, 502); }
+        const lp = planLp.lp || {}, tk = planLp.tokens || {}, fn = planLp.fonts || {};
+        const sLp = v => String(v == null ? "" : v).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ").slice(0, 500);
+        const FQ = { "Space Grotesk":"Space+Grotesk:wght@500;600;700","Inter":"Inter:wght@400;500;600","IBM Plex Sans":"IBM+Plex+Sans:wght@400;500;600","IBM Plex Mono":"IBM+Plex+Mono:wght@400;700","Newsreader":"Newsreader:opsz,wght@6..72,500;6..72,600","DM Serif Display":"DM+Serif+Display:ital@0;1","Fraunces":"Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700","Archivo":"Archivo:wght@500;600;700","Libre Franklin":"Libre+Franklin:wght@400;500;600;700","Space Mono":"Space+Mono:wght@400;700" };
+        const FF = f => /serif|newsreader|fraunces/i.test(f) ? "Georgia, serif" : /mono/i.test(f) ? "ui-monospace, monospace" : "system-ui, sans-serif";
+        const Th = k => String(tk[k] || "").match(/^#[0-9a-fA-F]{3,8}$/) ? tk[k] : null;
+        const tokens = { bg: Th("bg") || "#ffffff", surface: Th("surface") || "#f6f7f9", ink: Th("ink") || "#15181d", "ink-soft": Th("ink-soft") || "#57606c", line: Th("line") || "#e4e6ea", accent: Th("accent") || "#1f5fd0", deep: Th("deep") || "#10233a", "deep-ink": Th("deep-ink") || "#dbe4ef" };
+        const fonts = { display: (fn.display && FQ[fn.display]) ? fn.display : "Space Grotesk", body: (fn.body && FQ[fn.body]) ? fn.body : "Inter" };
+
+        // ── generateLandingCopy ── refresh the copy into content.json (page reads it? no — bake into HTML). Re-bake the LP object + tokens.
+        // Both scaffoldLandingPage and generateLandingCopy write the same file; the difference is generateLandingCopy requires it to already exist.
+        const idxF = await gGet(`web/landing/${lpSlug}/index.html`);
+        if (body.action === "generateLandingCopy" && idxF.missing) return json({ error: `web/landing/${lpSlug}/ not scaffolded yet — Scaffold first` }, 400);
+
+        const tplF = idxF.missing ? await gGet("web/landing/landing-template.html") : idxF;
+        if (tplF.missing || !tplF.text) return json({ error: "could not read the landing template / page" }, 502);
+        let html = tplF.text;
+        const rootLp = [
+          `  --bg:        ${tokens.bg};`, `  --surface:   ${tokens.surface};`, `  --ink:       ${tokens.ink};`,
+          `  --ink-soft:  ${tokens["ink-soft"]};`, `  --line:      ${tokens.line};`,
+          `  --accent:    ${tokens.accent};   /* used once — the button */`, `  --accent-ink:#ffffff;`,
+          `  --deep:      ${tokens.deep};`, `  --deep-ink:  ${tokens["deep-ink"]};`, ``,
+          `  --font-display: "${fonts.display}", ${FF(fonts.display)};`, `  --font-body:    "${fonts.body}", ${FF(fonts.body)};`,
+        ].join("\r\n");
+        html = html.replace(/(:root\{\r?\n)[\s\S]*?(\r?\n\})/, (m, a) => a + rootLp + "\r\n}");
+        html = html.replace(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?[^"]*&display=swap" rel="stylesheet">/,
+          `<link href="https://fonts.googleapis.com/css2?family=${FQ[fonts.display]}&family=${FQ[fonts.body]}&display=swap" rel="stylesheet">`);
+        const metaT = `${sLp(lp.brand || lpProdName || lpCampName)} — ${sLp(lp.h1 || "").replace(/\.$/, "")}`.slice(0, 90);
+        const metaD = sLp(lp.sub || lpProdDesc || "").slice(0, 160);
+        html = html.replace(/<title>[^<]*<\/title>/, `<title>${sLp(metaT)}</title>`);
+        html = html.replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${sLp(metaD)}">`);
+        html = html.replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${sLp(lp.brand || lpProdName || lpCampName)}">`);
+        html = html.replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${sLp(metaD)}">`);
+        const f = lp.form || {};
+        const lpObj = `const LP = {
+  slug: "${lpSlug}",
+  campaignTag: "lp-${lpSlug}",
+  campaignId: "${lpCampId}",
+  contactEmail: null,
+
+  brand: "${sLp(lp.brand || lpProdName || lpCampName)}",
+  eyebrow: "${sLp(lp.eyebrow)}",
+  h1: "${sLp(lp.h1 || "One clear sentence — the outcome, in the buyer's words.")}",
+  sub: "${sLp(lp.sub || "The mechanism, and exactly who this is for.")}",
+
+  form: {
+    headline: "${sLp(f.headline || "Get the guide")}",
+    note: "${sLp(f.note || "Where to send it.")}",
+    button: "${sLp(f.button || "Send it to me")}",
+    fine: "${sLp(f.fine || "No spam. One-click unsubscribe.")}",
+    success: "${sLp(f.success || "You're in — check your inbox.")}",
+  },
+
+  trust: [ ${(Array.isArray(lp.trust) ? lp.trust : []).slice(0, 4).map(t => `"${sLp(t)}"`).join(", ")} ],
+
+  posts: { title: "${sLp(lp.posts?.title || "Read first")}", lead: "${sLp(lp.posts?.lead)}" },
+
+  recap: "${sLp(lp.recap || "Drop your email and start.")}",
+  recapButton: "${sLp(lp.recapButton || "Get started")}",
+
+  footerTagline: "${sLp(lp.footerTagline || lpProdName || lpCampName)}",
+};`;
+        html = html.replace(/const LP = \{[\s\S]*?\n\};/, lpObj.replace(/\n/g, "\r\n"));
+        await gPut(`web/landing/${lpSlug}/index.html`, html, `landing: ${body.action === "generateLandingCopy" ? "regen copy" : "scaffold"} ${lpSlug}`, idxF.missing ? undefined : idxF.sha);
+
+        const committedLp = [`web/landing/${lpSlug}/index.html`];
+
+        // register in LANDING_PAGES (both source files) on first scaffold
+        if (body.action === "scaffoldLandingPage" && !registered) {
+          const wF = await gGet("worker/worker.js");
+          if (wF.text && wF.text.includes("const LANDING_PAGES = [")) {
+            const line = `  { slug: "${lpSlug}", name: "${(lpAssetTitle || lpProdName || lpCampName).replace(/"/g, "'")}", campaignId: "${lpCampId}", productId: ${lpProductId ? `"${lpProductId}"` : "null"}, keyword: "${lpKeyword.replace(/"/g, "'")}" },\n`;
+            const wNew = wF.text.replace(/(const LANDING_PAGES = \[\r?\n)(\];)/, (m, a, b) => a + line + b).replace(/(const LANDING_PAGES = \[[\s\S]*?\n)(\];)/, (m, a, b) => a.includes(line.trim()) ? m : a + line + b);
+            if (wNew !== wF.text) { await gPut("worker/worker.js", wNew, `landing: register ${lpSlug}`, wF.sha); committedLp.push("worker.js LANDING_PAGES"); }
+          }
+          const iF = await gGet("index.html");
+          if (iF.text && iF.text.includes("const LANDING_PAGES = [")) {
+            const entry = `  { name: "${(lpAssetTitle || lpProdName || lpCampName).replace(/"/g, "'")}", slug: "${lpSlug}", campaignId: "${lpCampId}", campaign: "${lpCampName.replace(/"/g, "'")}", productId: ${lpProductId ? `"${lpProductId}"` : "null"}, keyword: "${lpKeyword.replace(/"/g, "'")}" },\n`;
+            const iNew = iF.text.replace(/(const LANDING_PAGES = \[[\s\S]*?\n)(\];)/, (m, a, b) => a.includes(`slug: "${lpSlug}"`) ? m : a + entry + b);
+            if (iNew !== iF.text) { await gPut("index.html", iNew, `landing: register ${lpSlug}`, iF.sha); committedLp.push("index.html LANDING_PAGES"); }
+          }
+        }
+
+        await fetch(`https://api.notion.com/v1/pages/${dLp(lpAssetId)}`, {
+          method: "PATCH", headers: nh,
+          body: JSON.stringify({ properties: { "Site URL": { url: lpUrl } } }),
+        }).catch(() => {});
+
+        return json({ success: true, slug: lpSlug, url: lpUrl, keyword: lpKeyword, committed: committedLp,
+          note: "committed — Pages + worker redeploy in ~1-2 min." });
+      }
+
       // ── getContentOutputStats ──
       // Weekly Reel-vs-Carousel output from the 📝 Content Strategy DB, for the
       // dashboard's "Weekly Content Output" card. "Output" = items whose
@@ -10655,6 +10892,10 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const norm = s => (s || "").replace(/-/g, "");
         const hubByCamp = {};
         HUB_SITES.forEach(h => { hubByCamp[norm(h.campaignId)] = h.slug; });
+        // Landing pages are product-scoped, not campaign-scoped (a campaign
+        // can have a hub AND landing pages) — attribute their rows by product.
+        const landingByProduct = {};
+        LANDING_PAGES.forEach(l => { if (l.productId) landingByProduct[norm(l.productId)] = l.slug; });
         const [titleRows, assetRows, methodRows] = await Promise.all([
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
           notionQuery(ASSETS_DB, {}).catch(e => { console.error('getHubMethodMatrix assets:', e.message); return []; }),
@@ -10676,15 +10917,20 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         // title id (normalised) → its method id (normalised) — lets an asset
         // resolve its method through the title it was made from.
         const titleMethodById = {};
+        const titleProductById = {};
         titleRows.forEach(t => {
           const p = t.properties || {};
           const mId = norm((p.method?.relation || [])[0]?.id);
           if (mId) titleMethodById[norm(t.id)] = mId;
+          const pId = norm((p.product?.relation || [])[0]?.id);
+          if (pId) titleProductById[norm(t.id)] = pId;
           // dev bucket — from titles at Status "Development"
           if ((p.Status?.select?.name || "") !== "Development") return;
           if (!mId || !colIds.has(mId)) return;
           const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
           if (slug) cellFor(slug, mId).dev++;
+          const lpSlug = landingByProduct[norm((p.product?.relation || [])[0]?.id)] || "";
+          if (lpSlug) cellFor(lpSlug, mId).dev++;
         });
         // pub / pubd buckets — from assets, method resolved through the title
         assetRows.forEach(a => {
@@ -10695,10 +10941,14 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           const mId = titleMethodById[titleId];
           if (!mId || !colIds.has(mId)) return;
           const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
-          if (!slug) return;
-          if (stage === "Publish") cellFor(slug, mId).pub++; else cellFor(slug, mId).pubd++;
+          const lpSlug = landingByProduct[norm(titleProductById[titleId])] || "";
+          if (slug) { if (stage === "Publish") cellFor(slug, mId).pub++; else cellFor(slug, mId).pubd++; }
+          if (lpSlug) { if (stage === "Publish") cellFor(lpSlug, mId).pub++; else cellFor(lpSlug, mId).pubd++; }
         });
-        return json({ success: true, columns, counts, allTypes, hubs: HUB_SITES.map(h => ({ slug: h.slug })) });
+        return json({ success: true, columns, counts, allTypes,
+          hubs: HUB_SITES.map(h => ({ slug: h.slug }))
+            .concat(LANDING_PAGES.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
+        });
       }
 
       if (body.action === "createMatType") {
@@ -23705,12 +23955,14 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         // scaffoldHub in the background (self-call so the heavy Claude +
         // GitHub-commit work doesn't block this save); scaffoldHub is
         // idempotent, so a re-publish is a cheap no-op.
-        if (status === "Published" && (result2.properties?.["Asset Type"]?.select?.name || "") === "Content Hub") {
-          const hubCampId = (result2.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "");
-          if (hubCampId) {
+        if (status === "Published") {
+          const at2 = result2.properties?.["Asset Type"]?.select?.name || "";
+          const trigCampId = (result2.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "");
+          const trigAction = at2 === "Content Hub" ? "scaffoldHub" : at2 === "Landing Page" ? "scaffoldLandingPage" : null;
+          if (trigAction && trigCampId) {
             ctx.waitUntil(fetch(request.url, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "scaffoldHub", token: body.token, campaignId: hubCampId }),
+              body: JSON.stringify({ action: trigAction, token: body.token, campaignId: trigCampId, assetId: assetId.replace(/-/g, "") }),
             }).catch(() => {}));
           }
         }
