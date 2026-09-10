@@ -8557,7 +8557,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
           body.action === "generateResearchPalette" || body.action === "generateResearchFonts" ||
           body.action === "generateResearchDesign" || body.action === "saveResearchDesignField" ||
           body.action === "getHubDesignHistory" || body.action === "getHubDesignBriefPrompt" ||
-          body.action === "saveHubBrief" || body.action === "getHubKeywords") {
+          body.action === "saveHubBrief" || body.action === "publishHubDesign" || body.action === "getHubKeywords") {
         const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const PKEYS = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"];
