@@ -8353,6 +8353,14 @@ Return ONLY this JSON, no other text, no fences:
           rtq(rows, "Statement Detail")   && `Detail: ${rtq(rows, "Statement Detail")}`,
           rtq(rows, "Keywords")           && `Keywords: ${rtq(rows, "Keywords")}`,
         ].filter(Boolean).join("\n");
+        // Current design direction off the Research record — the same brief
+        // the image plate spec runs on, so the logo tracks it.
+        const dirNow = [
+          rtq(rows, "Visual Register")      && `Visual register: ${rtq(rows, "Visual Register")}`,
+          rtq(rows, "Photography Direction") && `Photography direction: ${rtq(rows, "Photography Direction")}`,
+          rtq(rows, "Visual Avoid")         && `Deliberately avoid: ${rtq(rows, "Visual Avoid")}`,
+          rtq(rows, "Design Notes")         && `Operator's standing notes: ${rtq(rows, "Design Notes")}`,
+        ].filter(Boolean).join("\n");
 
         let ds = {};
         try {
@@ -8381,7 +8389,7 @@ ${research || "(sparse — infer a fitting tone from the visual system below)"}
 
 VISUAL SYSTEM — the site already uses these EXACT values, match them
   ${palette || "(no palette on file — use a restrained, high-contrast neutral scheme)"}
-  fonts — display: "${fonts.display || "—"}", body: "${fonts.body || "—"}"${briefLines ? `\n\nDESIGN BRIEF\n${briefLines}` : ""}
+  fonts — display: "${fonts.display || "—"}", body: "${fonts.body || "—"}"${dirNow ? `\n\nCURRENT DESIGN DIRECTION (from the Research record — the live brief)\n${dirNow}` : ""}${briefLines ? `\n\nPER-HUB DESIGN BRIEF\n${briefLines}` : ""}
 
 COLOR USE
 - Use the primary ("sea") for any colored element in the mark.
@@ -8538,7 +8546,8 @@ Return: the logo on a transparent background, plus one preview placed on the sit
       if (body.action === "getHubPalette" || body.action === "generateHubPalette" ||
           body.action === "saveHubPalette" || body.action === "pushHubPalette" ||
           body.action === "generateResearchPalette" || body.action === "generateResearchFonts" ||
-          body.action === "generateResearchDesign" || body.action === "saveResearchDesignField") {
+          body.action === "generateResearchDesign" || body.action === "saveResearchDesignField" ||
+          body.action === "getHubDesignHistory" || body.action === "getHubDesignBriefPrompt") {
         const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const PKEYS = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"];
@@ -8684,6 +8693,25 @@ Return: the logo on a transparent background, plus one preview placed on the sit
 
         const scopeWord = t => t.kind === "product" ? "product" : "campaign";
 
+        // ---- staged design history (KV) ----------------------------------
+        // A hub's regenerated palettes / font pairings are STAGED here, not
+        // written to the Research record, until the operator hits "Publish
+        // design to hub" — one button then writes the selected version to
+        // Research AND commits it live. Append-only, capped, per hub slug.
+        const HDKEY = slug => `hubdesign:${String(slug || "").trim()}`;
+        const hdHistoryGet = async slug => {
+          try { const v = await env.TRADES.get(HDKEY(slug), "json"); if (v && (v.palettes || v.fonts)) return { palettes: v.palettes || [], fonts: v.fonts || [] }; } catch (e) {}
+          return { palettes: [], fonts: [] };
+        };
+        const hdHistoryAppend = async (slug, kind, entry) => {
+          if (!slug) return;
+          const h = await hdHistoryGet(slug);
+          const list = kind === "fonts" ? h.fonts : h.palettes;
+          list.unshift({ ts: Date.now(), ...entry });
+          if (list.length > 12) list.length = 12;
+          try { await env.TRADES.put(HDKEY(slug), JSON.stringify(h)); } catch (e) {}
+        };
+
         // ---- generateResearchPalette : research a palette from the brief ----
         // Target: body.productId → the Product's own Palette; else the campaign's Research › Palette.
         if (body.action === "generateResearchPalette" || body.action === "generateHubPalette") {
@@ -8713,6 +8741,13 @@ Output: 2-3 sentences on the choice and why it fits, then a blank line, then ONE
           const rationale = out.replace(/\{[^{}]*\}\s*$/, "").trim();
           const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
           const field = `${rationale}\n\n${strip}\n\n${JSON.stringify(palette)}`;
+          // Staged mode: keep it as a candidate version, don't touch Research
+          // until Publish. (Legacy callers with no `stage` still write through.)
+          if (body.stage && body.slug) {
+            const ts = Date.now();
+            await hdHistoryAppend(body.slug, "palette", { ts, palette, rationale, source: body.image ? "image" : (body.instructions ? "steer" : "research") });
+            return json({ ok: true, staged: true, ts, palette, text: field, note: rationale.slice(0, 200) });
+          }
           try { await writeResearchField(t.pageId, "Palette", field); } catch (e) { return json({ error: e.message }, 502); }
           return json({ ok: true, palette, text: field, scope: t.kind, researchId: t.kind === "research" ? t.pageId : undefined, note: rationale.slice(0, 200) });
         }
@@ -8729,7 +8764,7 @@ Output: 2-3 sentences on the choice and why it fits, then a blank line, then ONE
 `You are researching the TYPE PAIRING for a ${scopeWord(t)}, from its research below.
 
 ${briefFor(t)}
-
+${body.instructions ? `\nSteer (follow this): ${body.instructions}\n` : ""}
 Pick three Google Fonts: display (headings + wordmark — the characterful face), body (everything else — legible, quiet), mono (eyebrows, nav, labels, button text, dates).
 Reuse from this list if one fits: ${known}. Only pick outside it if nothing fits.
 
@@ -8740,6 +8775,11 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
           if (!parsed || !parsed.display) return json({ error: "model did not return a JSON fonts line", raw: out }, 502);
           const fonts = { display: String(parsed.display).trim(), body: String(parsed.body || "Inter").trim(), mono: String(parsed.mono || "Space Mono").trim() };
           const field = `${out.replace(/\{[^{}]*\}\s*$/, "").trim()}\n\n${JSON.stringify(fonts)}`;
+          if (body.stage && body.slug) {
+            const ts = Date.now();
+            await hdHistoryAppend(body.slug, "fonts", { ts, fonts, note: out.replace(/\{[^{}]*\}\s*$/, "").trim().slice(0, 240) });
+            return json({ ok: true, staged: true, ts, fonts, text: field });
+          }
           try { await writeResearchField(t.pageId, "Fonts", field); } catch (e) { return json({ error: e.message }, 502); }
           return json({ ok: true, fonts, text: field, scope: t.kind });
         }
@@ -8878,22 +8918,37 @@ Return ONLY this minified JSON object, nothing before or after:
           } catch (e) { return json({ error: e.message }, 502); }
         }
 
-        // ---- pushHubPalette : commit the Research Palette + Fonts into the hub ----
-        if (body.action === "pushHubPalette") {
+        // ---- pushHubPalette / publishHubDesign : one button — write the
+        //      selected Palette + Fonts to the campaign Research record AND
+        //      commit them into hubs.design.json + the hub HTML, then redeploy.
+        if (body.action === "pushHubPalette" || body.action === "publishHubDesign") {
           const GT = (env.GITHUB_TOKEN || "").trim();
           if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
           const slug = String(body.slug || "").trim();
-          if (!HUB_SLUGS.includes(slug)) return json({ error: `unknown hub "${slug}"` }, 400);
+          if (!HUB_SITES.some(h => h.slug === slug)) return json({ error: `unknown hub "${slug}"` }, 400);
 
           // pull palette + fonts from the campaign's Research record (unless passed in)
           let palette = body.palette ? safePalette(body.palette) : null;
           let fonts = (body.fonts && body.fonts.display) ? body.fonts : null;
-          if (!palette || !fonts) {
-            const { props } = await resolveResearch();
-            if (!palette) { const p = parseJsonTail(rtOf(props, "Palette")); if (p) palette = safePalette(p); }
-            if (!fonts)   { const f = parseJsonTail(rtOf(props, "Fonts"));   if (f && f.display) fonts = f; }
+          const { rid: researchId, props: resProps } = await resolveResearch();
+          if (!palette) { const p = parseJsonTail(rtOf(resProps, "Palette")); if (p) palette = safePalette(p); }
+          if (!fonts)   { const f = parseJsonTail(rtOf(resProps, "Fonts"));   if (f && f.display) fonts = f; }
+          if (!palette) return json({ error: "no Palette selected or on the Research record — Regenerate it first" }, 400);
+
+          // Write the selected versions back to the campaign Research record —
+          // it stays the source of truth (Stage 1). Best-effort; a Notion
+          // hiccup here shouldn't block the commit.
+          if (researchId) {
+            try {
+              if (body.palette) {
+                const strip = PKEYS.map(k => `${k} ${palette[k]}`).join(" · ");
+                await writeResearchField(researchId, "Palette", `${(body.rationale || "Selected from staged versions.").trim()}\n\n${strip}\n\n${JSON.stringify(palette)}`);
+              }
+              if (body.fonts && fonts) {
+                await writeResearchField(researchId, "Fonts", `${(body.fontsNote || "Selected from staged versions.").trim()}\n\n${JSON.stringify(fonts)}`);
+              }
+            } catch (e) { /* commit still proceeds — Research write is best-effort */ }
           }
-          if (!palette) return json({ error: "no Palette on the Research record — Regenerate it first" }, 400);
 
           const REPO = "cabuzzard/dash", BRANCH = "main";
           const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
@@ -8943,6 +8998,97 @@ Return ONLY this minified JSON object, nothing before or after:
 
             return json({ ok: true, palette, fonts, note: "committed — GitHub Pages redeploys in ~1 min" });
           } catch (e) { return json({ error: e.message }, 502); }
+        }
+
+        // ---- getHubDesignHistory : the staged palette / font candidates ----
+        // Feeds the version dropdowns on the Content Hubs card. Returns the KV
+        // history plus the value currently live on the Research record as the
+        // "current (live)" baseline option.
+        if (body.action === "getHubDesignHistory") {
+          const slug = String(body.slug || "").trim();
+          if (!slug) return json({ error: "slug required" }, 400);
+          const hist = await hdHistoryGet(slug);
+          let current = { palette: null, fonts: null };
+          try {
+            const { props } = await resolveResearch();
+            const p = parseJsonTail(rtOf(props, "Palette")); if (p) current.palette = safePalette(p);
+            const f = parseJsonTail(rtOf(props, "Fonts"));   if (f && f.display) current.fonts = f;
+          } catch (e) {}
+          return json({ ok: true, palettes: hist.palettes, fonts: hist.fonts, current });
+        }
+
+        // ---- getHubDesignBriefPrompt : the ✎ ChatGPT brief prompt ----------
+        // Rebuilds this hub's WHOLE design spec ask — grounded in the Info
+        // Flow contract (Stage 1) + campaign research + the current direction
+        // fields + the current palette/fonts, framed as "regenerate, building
+        // on what's here". Replaces the static client-side buildHubBriefPrompt.
+        if (body.action === "getHubDesignBriefPrompt") {
+          const slug = String(body.slug || "").trim();
+          const hub = HUB_SITES.find(h => h.slug === slug) || (body.campaignId ? HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === String(body.campaignId).replace(/-/g, "")) : null);
+          if (!hub) return json({ error: "unknown hub" }, 400);
+          const { props: r, campProps: c } = await resolveResearch();
+          const infoFlow = await getInformationFlowContext(env).catch(() => "");
+          const curPal = parseJsonTail(rtOf(r, "Palette"));
+          const curFonts = parseJsonTail(rtOf(r, "Fonts"));
+          const palLine = curPal ? PKEYS.map(k => `${k}: ${normHex(curPal[k]) || curPal[k]}`).join("  ·  ") : "(none on file)";
+          const ctx = [
+            rtOf(r, "Statement")          && `Positioning: ${rtOf(r, "Statement")}`,
+            (rtOf(r, "Key Message") || rtOf(c, "Key Message")) && `Key message: ${rtOf(r, "Key Message") || rtOf(c, "Key Message")}`,
+            rtOf(c, "Target Audience")    && `Audience: ${rtOf(c, "Target Audience")}`,
+            rtOf(c, "Pain Points")        && `Pain points: ${rtOf(c, "Pain Points")}`,
+            rtOf(r, "Unique Opportunity") && `Unique opportunity: ${rtOf(r, "Unique Opportunity")}`,
+            `Keywords: ${rtOf(r, "Keywords") || rtOf(c, "Keywords") || "(none)"}`,
+          ].filter(Boolean).join("\n");
+          const dir = [
+            rtOf(r, "Visual Register")      && `Visual register: ${rtOf(r, "Visual Register")}`,
+            rtOf(r, "Photography Direction") && `Photography direction: ${rtOf(r, "Photography Direction")}`,
+            rtOf(r, "Visual Avoid")         && `Visual avoid: ${rtOf(r, "Visual Avoid")}`,
+            rtOf(r, "Design Notes")         && `Operator's standing notes: ${rtOf(r, "Design Notes")}`,
+          ].filter(Boolean).join("\n") || "(no direction fields set yet)";
+          const prompt = `You are the design lead at a studio known for identities that can't be mistaken for anyone else's. You are producing an UPDATED, COMPLETE visual design spec for an existing content-marketing hub — "${hub.name}". It already has a direction; sharpen and extend it, don't start over. Diverge from what's here only where you can say why.
+
+${infoFlow ? `${infoFlow}\n\n` : ""}This spec is a Stage-1 Information-Flow artifact: the hub's live CSS, the wordless image-plate spec, and every generated offer plate all inherit from it.
+
+CAMPAIGN RESEARCH
+${ctx || "(sparse)"}
+
+CURRENT DIRECTION (on the Research record — build on this)
+${dir}
+
+CURRENT PALETTE
+  ${palLine}
+CURRENT FONTS
+  display: ${curFonts?.display || "—"} · body: ${curFonts?.body || "—"} · mono: ${curFonts?.mono || "—"}
+${body.instructions ? `\nWHAT TO CHANGE THIS PASS: ${body.instructions}\n` : ""}
+Return the spec in EXACTLY this format so it drops straight into the system:
+
+THEME NAME: <short name>
+
+COLORS
+bg: #......         page ground
+surface: #......    card / panel, a step off bg
+ink: #......        body text
+ink-head: #......   headings
+ink-soft: #......   secondary / muted text
+line: rgba(...)     hairlines & borders
+sea: #......        primary — eyebrows, links, kickers, focus ring
+deep: #......       the one contrast band (email capture)
+deep-ink: #......   text on deep
+accent: #......     the LOUD accent — used ONCE, on the primary CTA only
+(contrast: accent vs white >= 4.5:1; ink >= 7:1 and ink-head & sea >= 4.5:1 on bg; deep-ink >= 7:1 on deep)
+
+TYPE  (all three Google Fonts)
+display: "Family" | weights | h1/h2/h3
+body: "Family" | weights | everything else
+mono: "Family" | weights | eyebrows, nav, kickers, button text, dates
+
+DIRECTION  (rewrite each, tighter than the current version above)
+visual register (1-2 sentences — the look/mood, concrete, never "editorial/premium/cinematic"):
+photography direction (3-4 sentences — real subjects/settings, light, palette-in-photo, medium; no faces to camera):
+visual avoid (semicolon list — the AI/stock/cliché looks to reject for THIS niche):
+signature element (the one memorable thing):
+the one aesthetic risk taken + why:`;
+          return json({ prompt, hub: hub.name });
         }
       }
 
