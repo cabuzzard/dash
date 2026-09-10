@@ -56,6 +56,10 @@ All secrets are set via `wrangler secret put` and never hardcoded:
 - `PIN` — 4-digit admin access code
 - `HMAC_SECRET` — signs/verifies session tokens
 - `TURNSTILE_SECRET` — Cloudflare Turnstile verification key
+- `ANTHROPIC_API_KEY` — Claude (all AI generation)
+- `GITHUB_TOKEN` — commits to `cabuzzard/dash` (thumbnails, offer images, hub/blog pages)
+- `KIE_API_KEY` — Kie.ai (Nano Banana / Flux images, Kie video)
+- `XAI_API_KEY` — Grok: `grok-4.6` trending grounding **and** `grok-imagine-image-2.0` offer images (needs image access on the plan)
 
 **PowerShell pipe caveat:** always `.trim()` secrets read from `env.*` — PowerShell pipes add a trailing newline.
 
@@ -186,7 +190,7 @@ An unassigned Planning title (no Growth Strategy relation) can either 🔗 attac
 - Guides and Runs (`launchStrategyRun`, 2026-08-27) — any strategy is a reusable **Guide**; a **Run** is a Growth Strategy child re-creating the Guide's slots against a Product without AI. 🚀 Launch Run.
 - `deleteGrowthStrategy` (2026-08-27) — 🗑️ real Notion archive, cascades to children + slots; real titles unlinked not deleted.
 - Offer asset type (2026-09-01/02) — direct-sales asset; `Offer – Pillar` / `Offer – Content Hub` methods hit `generateTitleAssets`'s `/\boffers?\b/i` branch, create ONE Asset (Type "Offer", Status Publish) with a fenced `json` **OFFER CARD** block + `Product` relation + `Content Hub` select. Hub chosen at publish time.
-- Offer images (2026-09-09) — the Publish modal shows a **🖼️ Offer images** block for any `/\boffer\b/i` asset: **📸 Instagram text-post background** (`google/nano-banana`, 4:5, calm centre for a text overlay → `Instagram Background` url prop) and **🖼️ Blog post thumbnail** (`google/nano-banana-edit` — the IG background reframed to 16:9 with the offer title rendered on it → `Thumbnail`; needs the IG background generated first, else a 400). Worker `generateOfferImage` (Claude writes a scene prompt for the IG bg / an edit instruction with the verbatim title for the thumbnail, from the OFFER CARD + campaign palette) → poll `getImageTask` → `saveOfferImage` (rehost on GitHub Pages, `?v=` cache-bust). Regenerate copies the prompt to the clipboard, then reruns. Reuses `KIE_API_KEY`/`ANTHROPIC_API_KEY`/`GITHUB_TOKEN`. Full spec: `docs/methods-titles-assets.md` § "Offer images".
+- Offer images (2026-09-09) — Publish modal **🖼️ Offer images** block for any `/\boffer\b/i` asset: a **Model** dropdown + two rows (📸 Instagram background, 🖼️ Blog thumbnail). Claude writes the prompt from the OFFER CARD **+ the hub's global design spec** (`web/hub/hubs.design.json → hubs[slug]` tokens/register/avoided, resolved by `Content Hub` or `HUB_SITES`; Research palette fallback). **Nano Banana** (Kie.ai, async poll): IG bg = `google/nano-banana` 4:5 plate; thumbnail = `google/nano-banana-edit` 16:9, reframes the IG bg + bakes the title in (needs IG bg first). **Grok Imagine** (xAI `grok-imagine-image-2.0`, synchronous, `XAI_API_KEY`): both are **wordless plates** (IG 3:4, thumbnail 1:1) — text added later in Remotion/Canva. `generateOfferImage {assetId,kind,imageModel}` → `saveOfferImage` (also takes `fileData` b64) rehosts on GitHub Pages, `?v=` cache-bust. Also a standalone CLI **`scripts/grok-image.py`** (`--hub` pulls the spec, `--kind`, `--asset-id`). Full spec: `docs/methods-titles-assets.md` § "Offer images".
 
 ## Lead Sourcing engine (Globals tab · 🧲 Sourced Leads)
 

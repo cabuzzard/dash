@@ -22463,21 +22463,23 @@ Rules:
       // wait out a 20-40s render.
       if (body.action === "generateOfferImage") {
         const { assetId, kind } = body;
-        const KINDS = {
-          // ig-background: a fresh vertical text-to-image.
-          // blog-thumbnail: NOT a fresh image — an EDIT of the already-made
-          // Instagram background (reframe 4:5 -> 16:9, put the offer title on
-          // it). A separate text-to-image "thumbnail" kept producing pictures
-          // unrelated to the post; reshaping the IG image keeps the two in
-          // one visual family and matches what the operator gets by hand in
-          // ChatGPT.
-          "ig-background":  { model: "google/nano-banana",      promptProp: "Image Prompt (IG Background)" },
-          "blog-thumbnail": { model: "google/nano-banana-edit", promptProp: "Image Prompt (Blog Thumbnail)" },
-        };
-        if (!assetId || !KINDS[kind]) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
-        const KIE_KEY = (env.KIE_API_KEY || "").trim();
-        if (!KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
+        // Two image backends the operator picks between in the modal ("try
+        // either"):
+        //   nano  — Kie.ai. ig-background = nano-banana text-to-image (4:5);
+        //           blog-thumbnail = nano-banana-EDIT of the IG background
+        //           (reframe 4:5 -> 16:9, bake the offer title on). Async
+        //           (returns a taskId the frontend polls).
+        //   grok  — xAI Grok Imagine (grok-imagine-image-2.0), synchronous.
+        //           Always a WORDLESS PLATE (ig-background 3:4, blog-thumbnail
+        //           1:1 — xAI has no 4:5); text is added later in Remotion /
+        //           Canva. Returns { imageUrl, sync:true }.
+        const PROMPT_PROP = kind === "ig-background" ? "Image Prompt (IG Background)" : "Image Prompt (Blog Thumbnail)";
+        if (!assetId || !["ig-background", "blog-thumbnail"].includes(kind)) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
+        const imageModel = body.imageModel === "grok" ? "grok" : "nano";
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const KIE_KEY = (env.KIE_API_KEY || "").trim();
+        if (imageModel === "nano" && !KIE_KEY) return json({ error: "KIE_API_KEY not configured" }, 500);
+        if (imageModel === "grok" && !env.XAI_API_KEY) return json({ error: "XAI_API_KEY not configured — the Grok Imagine option needs it." }, 500);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
 
@@ -22502,58 +22504,85 @@ Rules:
             .filter(Boolean).slice(0, 8);
         } catch (e) { /* body is optional context */ }
 
-        // Campaign Research — palette / fonts / positioning for on-brand mood
-        let palette = "", fonts = "", statement = "", keyMessage = "";
-        if (campaignId) {
-          try {
-            const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
-            const rp = rows[0]?.properties || {};
-            palette    = rtp(rp, "Palette");
-            fonts      = rtp(rp, "Fonts");
-            statement  = rtp(rp, "Statement");
-            keyMessage = rtp(rp, "Key Message");
-          } catch (e) { /* brand direction is optional */ }
-        }
-
         const offerName = String(cardObj.name || platformTitle || assetTitle || "this offer").trim();
         const promise   = String(cardObj.promise || bodyPromise || "").trim();
         const kicker    = String(cardObj.kicker || "").trim();
 
-        // blog-thumbnail edits the Instagram background — it has to exist first.
-        let igBgUrl = "";
-        if (kind === "blog-thumbnail") {
-          igBgUrl = String(ap["Instagram Background"]?.url || "").trim();
-          if (!igBgUrl) return json({ error: "Generate the Instagram background first — the blog thumbnail is reshaped from it." }, 400);
+        // Global site design spec — web/hub/hubs.design.json is the ONE master
+        // (see docs/hub-design-spec / project_dash_hub_design_spec). Resolve
+        // this offer's hub, pull its tokens + register + "avoided" list, and
+        // hand the image model those constraints so the plate INHERITS the
+        // site's look instead of the model guessing a palette. Falls back to
+        // the campaign Research Palette/Statement when there's no hub.
+        let hubSlug = String(ap["Content Hub"]?.select?.name || "").trim();
+        if (!hubSlug && campaignId) hubSlug = (HUB_SITES.find(h => String(h.campaignId).replace(/-/g, "") === campaignId) || {}).slug || "";
+        let styleBlock = "";
+        if (hubSlug) {
+          try {
+            const dj = await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json());
+            const hs = (dj.hubs || {})[hubSlug];
+            if (hs) {
+              const tk = hs.tokens || {}, tn = hs.tokenNotes || {}, dz = hs.design || {};
+              const firstSentence = s => (String(s || "").match(/^[^.!?]*[.!?]?/) || [""])[0].trim();
+              styleBlock = [
+                `INHERIT THIS SITE'S LOOK ("${hs.logoText || hubSlug}") — match it exactly, do not invent a new palette or mood:`,
+                tk.bg     && `- Ground tone: ${tk.bg}${tn.bg ? ` — ${tn.bg}` : ""}`,
+                tk.sea    && `- Primary colour: ${tk.sea}${tn.sea ? ` — ${tn.sea}` : ""}`,
+                tk.accent && `- Accent ${tk.accent}${tn.accent ? ` (${tn.accent})` : ""} — at most once, small`,
+                tk.ink    && `- Darkest value / ink: ${tk.ink}`,
+                dz.subject && `- Register: ${firstSentence(dz.subject)}`,
+                dz.risk    && `- Tone to hold: ${dz.risk}`,
+                Array.isArray(dz.avoided) && dz.avoided.length && `- DO NOT: ${dz.avoided.join("; ")}`,
+                `- The real headline/body type is added afterward in the site's own fonts — leave clean, uncluttered space for it and put NO text in the image.`,
+              ].filter(Boolean).join("\n");
+            }
+          } catch (e) { /* spec is best-effort */ }
         }
-        const brandBits = [
-          palette    && `Brand palette: ${palette}`,
-          fonts      && `Brand typography (mood only — no text in the image): ${fonts}`,
-          statement  && `Positioning: ${statement}`,
-          keyMessage && `Campaign message: ${keyMessage}`,
-        ].filter(Boolean).join("\n");
+        if (!styleBlock && campaignId) {
+          try {
+            const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
+            const rp = rows[0]?.properties || {};
+            styleBlock = [
+              rtp(rp, "Palette")   && `Palette: ${rtp(rp, "Palette")}`,
+              rtp(rp, "Statement") && `Positioning: ${rtp(rp, "Statement")}`,
+              `Text is added afterward in the brand fonts — put NO text in the image, leave room for it.`,
+            ].filter(Boolean).join("\n");
+          } catch (e) { /* optional */ }
+        }
 
-        const claudePrompt = kind === "ig-background"
-          ? `You are writing ONE image-generation prompt for an AI image model. Output ONLY the prompt text — no preamble, no quotes, no notes, no alternatives. 60-120 words.
+        // Text is baked into the image ONLY on the nano blog-thumbnail (the
+        // nano-banana-edit path). Every other combo is a wordless plate.
+        const wantsBakedText = imageModel === "nano" && kind === "blog-thumbnail";
+        let igBgUrl = "";
+        if (wantsBakedText) {
+          igBgUrl = String(ap["Instagram Background"]?.url || "").trim();
+          if (!igBgUrl) return json({ error: "Generate the Instagram background first, or switch this row to Grok Imagine (which makes a fresh wordless plate)." }, 400);
+        }
 
-WHAT THE IMAGE IS FOR:
-A VERTICAL 4:5 BACKGROUND image for an Instagram post. A headline and a few lines of body text will be laid OVER this image afterward, so:
-- The centre ~60% (both axes) must stay visually calm and near-empty — soft gradient, gentle texture, out-of-focus depth, or plain negative space — so overlaid text stays fully legible.
-- Any subject, detail or contrast belongs in the outer margins / top / bottom third only.
-- Absolutely NO text, letters, numbers, logos, watermarks, UI or signage anywhere.
-- Editorial and premium, evoking the offer's theme — not literal, not a stock-photo cliche.
+        const offerLines = `${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}`;
+        const plateBrief = shape => `You are writing ONE image-generation prompt for an AI image model. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words.
 
-THE OFFER IT ILLUSTRATES:
-Name: ${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}
-${brandBits ? `\n${brandBits}\n` : ""}
-Write it as a single vivid paragraph: subject/scene, composition and where the empty space sits, colour and light, texture and mood, medium/finish. End with the sentence: "No text, no letters, no logos, no watermarks."`
-          : `You are writing ONE image-EDIT instruction for an AI image editor (Nano Banana). It receives the attached VERTICAL 4:5 image (an Instagram post background for this same offer) and must return a 16:9 blog thumbnail. Output ONLY the instruction — no preamble, no quotes, no alternatives. 40-90 words.
+WHAT IT IS: a ${shape} for this offer. A headline${kind === "ig-background" ? " and 1-2 lines of body text" : ""} get laid OVER it afterward in the site's real fonts, so this image carries NO text of its own.
+- Keep the top ~${kind === "ig-background" ? "40" : "45"}% ${kind === "ig-background" ? "and the vertical centre " : ""}calm and near-empty (open sky, soft gradient, gentle texture, out-of-focus depth) for the overlaid type.
+- Any subject or contrast sits low or to one side.
+- NO text, letters, numbers, logos, watermarks, UI or signage anywhere.
+
+THE OFFER IT'S FOR:
+${offerLines}
+${styleBlock ? `\n${styleBlock}\n` : ""}
+One vivid paragraph: subject/scene, where the empty space sits, colour and light (match the site's ground tone and primary colour), texture, mood, medium/finish (documentary photography unless the register says otherwise). End with: "No text, no letters, no logos, no watermarks."`;
+
+        const claudePrompt = wantsBakedText
+          ? `You are writing ONE image-EDIT instruction for an AI image editor (Nano Banana). It receives the attached VERTICAL 4:5 image (an Instagram post background for this same offer) and must return a 16:9 blog thumbnail. Output ONLY the instruction — no preamble, no quotes, no alternatives. 40-90 words.
 
 THE EDIT:
 - Reframe to 16:9 landscape: keep the existing subject, palette and mood; extend the scene naturally outward on the left and right. Do NOT stretch, squash or crop out the subject.
 - Overlay the headline text, spelled EXACTLY: "${offerName.replace(/"/g, "'")}"
-- Put the headline over the calmest part of the image (lower third or one side), large enough to read as a small blog card, high contrast — add a subtle dark or light scrim behind the text ONLY if needed for legibility.
-- Typography: clean editorial lettering${fonts ? ` in keeping with ${fonts}` : ""}. A magazine feature image, not a meme caption.
-- No other text, no logos, no watermarks, no UI.`;
+- Put the headline over the calmest part of the image (lower third or one side), large enough to read as a small blog card, high contrast — add a subtle scrim behind the text ONLY if needed for legibility.
+- A magazine feature image, not a meme caption.
+${styleBlock ? `\n${styleBlock}\n` : ""}
+- No other text, no logos, no watermarks, no UI.`
+          : plateBrief(kind === "ig-background" ? "VERTICAL background image for an Instagram post" : "SQUARE thumbnail background image");
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -22565,35 +22594,56 @@ THE EDIT:
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
 
+        const persistPrompt = async () => {
+          try {
+            await ensureAssetsDbProperties(hdr, { [PROMPT_PROP]: { type: "rich_text" } });
+            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { [PROMPT_PROP]: { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
+            });
+          } catch (e) { /* best-effort */ }
+        };
+
+        // ── Grok Imagine (xAI, synchronous) ──
+        if (imageModel === "grok") {
+          const aspect = kind === "ig-background" ? "3:4" : "1:1";
+          const xr = await fetch("https://api.x.ai/v1/images/generations", {
+            method: "POST",
+            headers: { "Authorization": `Bearer ${env.XAI_API_KEY}`, "content-type": "application/json" },
+            body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
+          });
+          const xd = await xr.json().catch(() => ({}));
+          if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+          const imageUrl = xd.data?.[0]?.url || "";
+          if (!imageUrl) return json({ error: "xAI returned no image URL: " + JSON.stringify(xd).slice(0, 300) }, 502);
+          await persistPrompt();
+          return json({ imageUrl, prompt, kind, model: "grok-imagine-image-2.0", sync: true });
+        }
+
+        // ── Nano Banana (Kie.ai, async) ──
+        const kieModel = wantsBakedText ? "google/nano-banana-edit" : "google/nano-banana";
         const input = kind === "ig-background"
           ? { prompt: prompt.slice(0, 5000), aspect_ratio: "4:5", output_format: "png" }
           : { prompt: prompt.slice(0, 5000), image_urls: [igBgUrl], aspect_ratio: "16:9", output_format: "png" };
         const kieResp = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
           method: "POST",
           headers: { "Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json" },
-          body: JSON.stringify({ model: KINDS[kind].model, input }),
+          body: JSON.stringify({ model: kieModel, input }),
         });
         const kieData = await kieResp.json();
         if (!kieResp.ok) return json({ error: kieData.message || kieData.msg || "Kie.ai error" }, kieResp.status);
         const taskId = kieData.data?.taskId || kieData.data?.task_id || kieData.data?.id || kieData.taskId || null;
         if (!taskId) return json({ error: "Kie.ai returned no taskId: " + JSON.stringify(kieData).slice(0, 300) }, 502);
-
-        try {
-          await ensureAssetsDbProperties(hdr, { [KINDS[kind].promptProp]: { type: "rich_text" } });
-          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { [KINDS[kind].promptProp]: { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
-          });
-        } catch (e) { /* prompt persistence is best-effort */ }
-
-        return json({ taskId, prompt, kind, model: KINDS[kind].model });
+        await persistPrompt();
+        return json({ taskId, prompt, kind, model: kieModel });
       }
 
-      // -- saveOfferImage (rehost a finished Kie.ai image on GitHub Pages and
-      //    write it onto the Offer asset) --------------------------------
-      // Second half of the generateOfferImage flow. The frontend polls
-      // getImageTask, then hands the finished Kie.ai CDN url here — those
-      // urls expire, so we fetch the bytes and commit them to
+      // -- saveOfferImage (rehost a finished image on GitHub Pages and write
+      //    it onto the Offer asset) --------------------------------------
+      // Second half of the generateOfferImage flow. Takes EITHER an
+      // `imageUrl` (Kie.ai CDN url from the poll, or xAI's url — both expire)
+      // OR `fileData` (base64, from the local scripts/grok-image.py path).
+      // Either way we get the bytes and commit them to
       // web/<deployPath>/offer-images/ (same commit-and-link pattern as
       // uploadAssetThumbnail), then point the right Notion property at the
       // committed file:
@@ -22604,12 +22654,15 @@ THE EDIT:
       // serves stale from the CDN forever otherwise (the hub hero-image trap).
       if (body.action === "saveOfferImage") {
         const { assetId, kind, imageUrl, prompt } = body;
+        // fileData (base64) is the alternative to imageUrl — the local
+        // scripts/grok-image.py path hands raw bytes instead of a URL.
+        const fileData = body.fileData ? String(body.fileData).split(",").pop() : "";
         const SLOT = {
           "ig-background":  { prop: "Instagram Background", suffix: "ig-background",  promptProp: "Image Prompt (IG Background)" },
           "blog-thumbnail": { prop: "Thumbnail",           suffix: "blog-thumbnail", promptProp: "Image Prompt (Blog Thumbnail)" },
         };
-        if (!assetId || !SLOT[kind] || !imageUrl) return json({ error: "assetId, a valid kind, and imageUrl required" }, 400);
-        if (!/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
+        if (!assetId || !SLOT[kind] || (!imageUrl && !fileData)) return json({ error: "assetId, a valid kind, and imageUrl or fileData required" }, 400);
+        if (imageUrl && !/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
         const GT = (env.GITHUB_TOKEN || '').trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
@@ -22621,15 +22674,21 @@ THE EDIT:
         const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         const deployPath = await resolveDeployPath(campaignId, hdr, dash);
 
-        const imgResp = await fetch(String(imageUrl));
-        if (!imgResp.ok) return json({ error: `Couldn't fetch the rendered image (HTTP ${imgResp.status})` }, 502);
-        const ct = (imgResp.headers.get("content-type") || "image/png").split(";")[0].trim();
-        const bytes = new Uint8Array(await imgResp.arrayBuffer());
-        if (!bytes.length) return json({ error: "Rendered image was empty" }, 502);
-        if (bytes.length > 15 * 1024 * 1024) return json({ error: "Rendered image is too large (>15MB)" }, 400);
-        let bin = "";
-        for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
-        const b64 = btoa(bin);
+        let ct = "image/png", b64 = fileData;
+        if (!b64) {
+          const imgResp = await fetch(String(imageUrl));
+          if (!imgResp.ok) return json({ error: `Couldn't fetch the rendered image (HTTP ${imgResp.status})` }, 502);
+          ct = (imgResp.headers.get("content-type") || "image/png").split(";")[0].trim();
+          const bytes = new Uint8Array(await imgResp.arrayBuffer());
+          if (!bytes.length) return json({ error: "Rendered image was empty" }, 502);
+          if (bytes.length > 15 * 1024 * 1024) return json({ error: "Rendered image is too large (>15MB)" }, 400);
+          let bin = "";
+          for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+          b64 = btoa(bin);
+        } else {
+          ct = (body.contentType || "image/png").split(";")[0].trim();
+          if (b64.length > 22 * 1024 * 1024) return json({ error: "Image is too large (>~15MB)" }, 400);
+        }
 
         const slugify = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
         const ext = ((ct.split('/')[1] || 'png').toLowerCase()).replace('jpeg', 'jpg').replace('svg+xml', 'svg').replace(/[^a-z0-9]/g, '') || 'png';

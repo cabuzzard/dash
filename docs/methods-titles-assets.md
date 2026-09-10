@@ -487,42 +487,60 @@ property — it is attributed **through the title it was made from**
 ## Offer images (Publish modal, Offer assets)
 
 The Publish modal (`renderAssetRow`'s 📋 Publish button) shows a **🖼️ Offer
-images** block for any asset whose type matches `/\boffer\b/i`. Two buttons,
-each a two-step Claude-writes-the-prompt → Kie.ai-renders → rehost-and-save
-flow (same split-request shape as `generateCarouselImages` — one Worker
-request can't wait out a 20–40s render):
+images** block for any asset whose type matches `/\boffer\b/i`: a **Model**
+dropdown and two Generate rows (📸 Instagram background, 🖼️ Blog thumbnail).
+Claude writes the image prompt from the asset's `OFFER CARD` + "What's
+included" + the **hub's global design spec** (see below); the model renders;
+`saveOfferImage` rehosts it on GitHub Pages and writes it onto the asset.
 
-| Button | Worker model | Output | Saved to Assets property |
+### Model dropdown — "try either"
+
+| Model | ig-background | blog-thumbnail | Sync? |
 |---|---|---|---|
-| 📸 Instagram text-post background | `google/nano-banana` (`aspect_ratio: "4:5"`) | vertical, calm/empty centre for a text overlay, no text in image | `Instagram Background` (url, created on demand) |
-| 🖼️ Blog post thumbnail | `google/nano-banana-edit` (`aspect_ratio: "16:9"`, `image_urls: [ig background]`) | **the IG background reframed to 16:9 with the offer title rendered on it** | `Thumbnail` (same property the manual thumbnail upload writes) |
+| **Nano Banana** (Kie.ai) | `google/nano-banana`, `4:5`, wordless plate → `Instagram Background` | `google/nano-banana-edit`, `16:9`, reframes the IG background + **bakes the offer title in** → `Thumbnail` (needs the IG background first, else 400) | no — returns `taskId`, frontend polls `getImageTask` |
+| **Grok Imagine** (xAI) | `grok-imagine-image-2.0`, `3:4` (xAI has no 4:5), **wordless plate** → `Instagram Background` | `grok-imagine-image-2.0`, `1:1`, **fresh wordless plate** (no edit, no baked text) → `Thumbnail` | yes — returns `{ imageUrl, sync:true }`, frontend saves immediately |
 
-- The blog thumbnail is **not a fresh image** — a standalone text-to-image
-  "thumbnail" (originally Seedream 4.0) kept producing pictures unrelated to
-  the post. It's now an **edit of the already-generated Instagram background**
-  (`google/nano-banana-edit`): reframe 4:5 → 16:9, overlay the offer title.
-  Keeps the two images in one visual family and matches the by-hand ChatGPT
-  result. **`generateOfferImage` returns a 400 if `Instagram Background` isn't
-  set yet** — generate that row first.
-- **`generateOfferImage`** `{ assetId, kind }` (`kind` = `ig-background` |
-  `blog-thumbnail`) — reads the asset's `OFFER CARD` json + "What's included"
-  bullets + `Body` promise + the campaign Research `Palette`/`Fonts`/
-  `Statement`/`Key Message` (+ the `Instagram Background` url for
-  `blog-thumbnail`), has Claude (`claude-sonnet-4-6`) write ONE prompt tuned
-  to `kind` — a scene prompt for `ig-background`, an **edit instruction with
-  the verbatim title** for `blog-thumbnail` — submits to Kie.ai, persists the
-  prompt to `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)`
-  (rich_text), returns `{ taskId, prompt }`.
-- Frontend polls **`getImageTask`** (extended to parse the
-  `{"resultUrls":[…]}` shape both models return), then calls
-  **`saveOfferImage`** `{ assetId, kind, imageUrl, prompt }` — fetches the
-  bytes (Kie's own urls expire), commits to
-  `web/<deployPath>/offer-images/<slug>-<kind>.<ext>` (same commit-and-link
-  pattern as `uploadAssetThumbnail`), patches the property with a `?v=<ts>`
-  cache-buster.
+Grok plates carry no text on purpose — the headline is added afterward in
+Remotion / Canva in the site's real fonts. Nano's blog-thumbnail is the only
+path that bakes the title into the pixels.
+
+### Global design spec (hub → `hubs.design.json`)
+
+`generateOfferImage` resolves the offer's hub (`Content Hub` select, else
+`HUB_SITES` by campaign) and pulls `web/hub/hubs.design.json → hubs[slug]`:
+`tokens` + `tokenNotes` (ground tone, primary colour, accent, ink),
+`design.subject`/`design.risk`/`design.avoided[]`. That becomes an "INHERIT
+THIS SITE'S LOOK — do not restyle" block in the Claude prompt. Falls back to
+the campaign Research `Palette`/`Statement` when there's no hub. This is the
+same "seeded once, not reinvented per asset" rule as the campaign design
+system — [[project_dash_hub_design_spec]].
+
+### Actions
+
+- **`generateOfferImage`** `{ assetId, kind, imageModel }` (`imageModel` =
+  `nano` default | `grok`) → `{ taskId, prompt }` (nano) or
+  `{ imageUrl, prompt, sync:true }` (grok). Persists the prompt to
+  `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)`.
+- **`getImageTask`** — extended to parse the `{"resultUrls":[…]}` shape.
+- **`saveOfferImage`** `{ assetId, kind, imageUrl | fileData, prompt }` —
+  `fileData` (base64) is the alternative to `imageUrl`, used by the local
+  script. Commits to `web/<deployPath>/offer-images/<slug>-<kind>.<ext>`,
+  patches the property with a `?v=<ts>` cache-buster.
 - **Regenerate** copies the current prompt to the clipboard first, then
-  reruns `generateOfferImage` — the escape hatch to hand-editing the prompt
-  or taking it to ChatGPT (see `CLAUDE.md` § "ChatGPT image generation").
-- Secrets: reuses `KIE_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` — all
-  already set. Not wired into the hub offer page / blog template rendering
-  yet (the images live on the asset record; a later pass can surface them).
+  reruns — the escape hatch to hand-editing or taking the prompt to ChatGPT.
+
+### Local script — `scripts/grok-image.py`
+
+Standalone CLI against the xAI Imagine API (`grok-imagine-image-2.0`). Claude
+runs it, does not draw. `--hub <slug>` prepends that hub's design spec from
+`hubs.design.json`; `--kind thumbnail|ig-background` sets the default aspect
+ratio (1:1 / 3:4) and, with `--asset-id` + `HERMES_TOKEN`, attaches via
+`saveOfferImage` (`fileData`). Needs `XAI_API_KEY` in the env (`setx`, never
+committed). The "plate + Remotion" split lives here — Grok makes the wordless
+plate, a Remotion still sets the type from the hub tokens.
+
+### Secrets / status
+
+Reuses `KIE_API_KEY`, `XAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN` —
+all already set. Not wired into the hub offer page / blog template rendering
+yet (images live on the asset record; a later pass can surface them).

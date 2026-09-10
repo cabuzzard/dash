@@ -1316,11 +1316,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         </div>
       </div>
       <div id="pubOfferImagesWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
-        <label class="lm-label" style="margin-bottom:6px;">🖼️ Offer images <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— Claude writes the prompt from this offer's card. Generate the Instagram background first; the blog thumbnail is that same image reshaped to 16:9 with the offer title on it. Regenerate copies the prompt to your clipboard so you can tweak it or take it to ChatGPT.</span></label>
+        <label class="lm-label" style="margin-bottom:6px;">🖼️ Offer images <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— Claude writes the prompt from this offer's card + the hub's design spec. Regenerate copies the prompt to your clipboard so you can tweak it or take it to ChatGPT.</span></label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <label style="font-size:11px;color:#fff;">Model</label>
+          <select class="modal-ta" id="pubOfferImgModel" style="height:28px;padding:0 6px;background:#1e1e1e;color:#fff;border:1px solid #333;font-size:11px;">
+            <option value="nano">Nano Banana — bakes the title into the thumbnail</option>
+            <option value="grok">Grok Imagine — wordless plate (add text in Remotion/Canva)</option>
+          </select>
+        </div>
         <div style="display:flex;gap:10px;margin-top:4px;align-items:flex-start;">
           <img id="pubIgBgPreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
           <div style="flex:1;min-width:0;">
-            <div style="font-size:11px;color:#fff;font-weight:600;">📸 Instagram text-post background <span style="font-weight:400;opacity:.7;">— 4:5, calm centre for a text overlay</span></div>
+            <div style="font-size:11px;color:#fff;font-weight:600;">📸 Instagram text-post background <span style="font-weight:400;opacity:.7;">— vertical (4:5 Nano / 3:4 Grok), calm centre for a text overlay</span></div>
             <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
               <button class="modal-btn cancel" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
               <button class="modal-btn cancel" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate (copies prompt)</button>
@@ -1334,7 +1341,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <div style="display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2a2a;align-items:flex-start;">
           <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:65px;height:37px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
           <div style="flex:1;min-width:0;">
-            <div style="font-size:11px;color:#fff;font-weight:600;">🖼️ Blog post thumbnail <span style="font-weight:400;opacity:.7;">— the IG image reframed to 16:9 with the title on it → Thumbnail below</span></div>
+            <div style="font-size:11px;color:#fff;font-weight:600;">🖼️ Blog post thumbnail <span style="font-weight:400;opacity:.7;">→ Thumbnail below. Nano: IG image reframed to 16:9 + title baked in (needs the IG background first). Grok: fresh wordless 1:1 plate.</span></div>
             <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
               <button class="modal-btn cancel" id="pubBlogThumbGenBtn" onclick="genOfferImage('blog-thumbnail')">✨ Generate</button>
               <button class="modal-btn cancel" id="pubBlogThumbRegenBtn" onclick="regenOfferImage('blog-thumbnail')" style="display:none;">🔄 Regenerate (copies prompt)</button>
@@ -7663,9 +7670,32 @@ function _offerImgShow(kind, url, prompt) {
   }
   document.getElementById(c.regen).style.display = _offerImgPrompt[kind] ? '' : 'none';
 }
+// Rehost the finished image on GitHub Pages + write it onto the asset, then
+// update the modal. Shared by the async (Nano/Kie) and sync (Grok) paths.
+async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl) {
+  statusEl.textContent = 'Saving to Notion…';
+  try {
+    const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl, prompt });
+    _offerImgShow(kind, s.url, prompt);
+    if (kind === 'blog-thumbnail') {
+      document.getElementById('pubThumbnail').value = s.url;
+      renderPubThumbnailPreview(s.url);
+      if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
+    } else if (PUB_ASSET_CACHE[myAsset]) {
+      PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+    }
+    genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
+    statusEl.className = 'modal-status ok'; statusEl.textContent = 'Saved ✓';
+    setTimeout(() => { if (statusEl.textContent === 'Saved ✓') { statusEl.textContent = ''; statusEl.className = 'modal-status'; } }, 1800);
+  } catch (se) {
+    genBtn.disabled = false; genBtn.textContent = '✨ Retry';
+    statusEl.className = 'modal-status err'; statusEl.textContent = 'Rendered OK but saving failed: ' + se.message;
+  }
+}
 async function genOfferImage(kind) {
   if (!pubAssetId) return;
   const c = OFFER_IMG[kind];
+  const imageModel = (document.getElementById('pubOfferImgModel') || {}).value || 'nano';
   const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
   genBtn.disabled = true; genBtn.textContent = '✨ Working…';
   document.getElementById(c.regen).style.display = 'none';
@@ -7673,9 +7703,14 @@ async function genOfferImage(kind) {
   if (_offerImgPoll[kind]) { clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null; }
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateOfferImage', { assetId: myAsset, kind });
-    if (!r.taskId) throw new Error(r.error || 'No task id returned');
+    const r = await w('generateOfferImage', { assetId: myAsset, kind, imageModel });
     _offerImgShow(kind, null, r.prompt);
+    // Grok Imagine is synchronous — no task to poll, the image URL is right here.
+    if (r.sync && r.imageUrl) {
+      await _offerImgFinish(kind, myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
+      return;
+    }
+    if (!r.taskId) throw new Error(r.error || 'No task id returned');
     statusEl.textContent = 'Rendering… (checking every 5s)';
     _offerImgPoll[kind] = setInterval(async () => {
       if (pubAssetId !== myAsset) { clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null; return; }
@@ -7684,25 +7719,7 @@ async function genOfferImage(kind) {
         const state = (t.state || '').toLowerCase();
         if (state === 'success' && t.imageUrls && t.imageUrls.length) {
           clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null;
-          statusEl.textContent = 'Saving to Notion…';
-          try {
-            const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl: t.imageUrls[0], prompt: r.prompt });
-            _offerImgShow(kind, s.url, r.prompt);
-            if (kind === 'blog-thumbnail') {
-              document.getElementById('pubThumbnail').value = s.url;
-              renderPubThumbnailPreview(s.url);
-              if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
-            } else if (PUB_ASSET_CACHE[myAsset]) {
-              PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
-            }
-            genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
-            statusEl.className = 'modal-status ok'; statusEl.textContent = 'Saved ✓';
-            setTimeout(() => { if (statusEl.textContent === 'Saved ✓') { statusEl.textContent = ''; statusEl.className = 'modal-status'; } }, 1800);
-          } catch (se) {
-            genBtn.disabled = false; genBtn.textContent = '✨ Retry';
-            statusEl.className = 'modal-status err';
-            statusEl.textContent = 'Rendered OK but saving failed: ' + se.message;
-          }
+          await _offerImgFinish(kind, myAsset, t.imageUrls[0], r.prompt, genBtn, statusEl);
         } else if (state === 'fail' || state === 'failed') {
           clearInterval(_offerImgPoll[kind]); _offerImgPoll[kind] = null;
           genBtn.disabled = false; genBtn.textContent = '✨ Retry';
