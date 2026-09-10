@@ -1170,6 +1170,45 @@ async function resolveMethodIdByName(name, { create = false, status = "Live" } =
   return id;
 }
 
+// Asset Type ↔ Method Name "roughly mirror" each other (operator's words), but a
+// handful of Asset Type select options don't match a Method row Name verbatim.
+// Only the divergent ones need an entry — exact matches (Explainer Video,
+// Resume, Listing, LinkedIn Post, SEO Post, Offer – Content Hub, Blog - SEO -
+// News, Landing Page, Upwork Proposal, Upwork Search, the carousel — … CSV
+// Export variants) resolve straight through.
+const ASSET_TYPE_METHOD_ALIAS = {
+  "hook post": "Hook Posts",
+  "avatar video": "Avatar Video — Growth",
+  "text video": "Text Video — Growth",
+  "t shirt": "t shirt EVALUATE",
+  "content hub": "hub",
+  "drawing post": "Drawing Post",
+  "drawing post simple": "Drawing Post",
+  "carousel": "carousel — Template CSV Export",
+  "upwork search": "Upwork Search",
+};
+
+// The producing Method for an asset, as a { "Method": { relation:[{id}] } }
+// property fragment to spread into an Assets-DB create (or {} when it can't be
+// resolved — the asset just carries no Method). Prefers an explicit method id
+// (the branch already resolved one, or the modal passed one); otherwise maps
+// the Asset Type string to a Method Name and resolves that. Every asset-creation
+// path calls this so the Hub Method Matrix can attribute the asset directly,
+// instead of reaching through its (method-agnostic) source title.
+async function assetMethodProp(methodId, assetType) {
+  const norm = s => String(s || "").replace(/-/g, "");
+  const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+  let mid = (methodId && methodId !== "__none__") ? norm(methodId) : null;
+  if (!mid) {
+    const at = String(assetType || "").trim();
+    if (at) {
+      const name = ASSET_TYPE_METHOD_ALIAS[at.toLowerCase()] || at;
+      mid = await resolveMethodIdByName(name).catch(() => null);
+    }
+  }
+  return (mid && mid.length === 32) ? { "Method": { relation: [{ id: dash(mid) }] } } : {};
+}
+
 // Recursively reads a Notion block's children into a flattened text outline,
 // descending into any block with has_children (toggles and toggleable
 // headings included). A Method's own methodology page is commonly
@@ -8274,6 +8313,7 @@ Return ONLY this JSON, no other text, no fences:
               "Site URL": { url: `https://cabuzzard.github.io/dash/web/hub/${h.slug}/offers/${slug}/` },
             };
             if (oj.ctaUrl) aProps["Content URL"] = { url: oj.ctaUrl };
+            if (offerMethodId) aProps["Method"] = { relation: [{ id: dashId(offerMethodId) }] };
             const ar = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: jhdr, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: aProps }) }).then(r => r.json());
             if (ar.id) {
               await writeOfferBody(ar.id.replace(/-/g, ""), { kicker: oj.kicker || "", name: oj.name, promise: oj.promise || "", forWho: "", included: [], whyItWorks: "", objection: "", terms: "", ctaLabel: "", ctaUrl: oj.ctaUrl || "" });
@@ -10813,6 +10853,7 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
           "Campaign":         { relation: [{ id: dash(campaignId) }] },
         };
         if (productId) assetProps["Product"] = { relation: [{ id: dash(productId) }] };
+        if (methodId) assetProps["Method"] = { relation: [{ id: dash(methodId) }] };
         const assetResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: hdr,
           body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
@@ -11480,8 +11521,11 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const colIds = new Set(columns.map(c => c.id));
         const counts = {};   // { slug: { methodId: { dev, pub, pubd } } }
         const cellFor = (slug, methodId) => ((counts[slug] = counts[slug] || {})[methodId] = counts[slug][methodId] || { dev: 0, pub: 0, pubd: 0 });
-        // title id (normalised) → its method id (normalised) — lets an asset
-        // resolve its method through the title it was made from.
+        // A title is method-agnostic — the Method is stamped on the ASSET at
+        // creation time (assetMethodProp), which is what the matrix reads. These
+        // two maps only exist as a fallback for assets created before that
+        // stamping shipped (title.method) and to resolve a landing-page hub by
+        // the title's product when the asset's own Product relation is unset.
         const titleMethodById = {};
         const titleProductById = {};
         titleRows.forEach(t => {
@@ -11490,31 +11534,62 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           if (mId) titleMethodById[norm(t.id)] = mId;
           const pId = norm((p.product?.relation || [])[0]?.id);
           if (pId) titleProductById[norm(t.id)] = pId;
-          // dev bucket — from titles at Status "Development"
-          if ((p.Status?.select?.name || "") !== "Development") return;
-          if (!mId || !colIds.has(mId)) return;
-          const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
-          if (slug) cellFor(slug, mId).dev++;
-          const lpSlug = landingByProduct[norm((p.product?.relation || [])[0]?.id)] || "";
-          if (lpSlug) cellFor(lpSlug, mId).dev++;
         });
-        // pub / pubd buckets — from assets, method resolved through the title
+        // dev / pub / pubd buckets — all asset-driven now. Method comes off the
+        // asset's own `Method` relation, falling back to its source title's
+        // `method` for legacy un-backfilled assets.
         assetRows.forEach(a => {
           const p = a.properties || {};
           const stage = p["Asset Status"]?.select?.name || "";
-          if (stage !== "Publish" && stage !== "Published") return;
+          if (stage !== "Development" && stage !== "Publish" && stage !== "Published") return;
           const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
-          const mId = titleMethodById[titleId];
+          const mId = norm((p["Method"]?.relation || [])[0]?.id) || titleMethodById[titleId];
           if (!mId || !colIds.has(mId)) return;
           const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
-          const lpSlug = landingByProduct[norm(titleProductById[titleId])] || "";
-          if (slug) { if (stage === "Publish") cellFor(slug, mId).pub++; else cellFor(slug, mId).pubd++; }
-          if (lpSlug) { if (stage === "Publish") cellFor(lpSlug, mId).pub++; else cellFor(lpSlug, mId).pubd++; }
+          const lpSlug = landingByProduct[norm((p.Product?.relation || [])[0]?.id) || norm(titleProductById[titleId])] || "";
+          const bucket = stage === "Development" ? "dev" : stage === "Publish" ? "pub" : "pubd";
+          if (slug) cellFor(slug, mId)[bucket]++;
+          if (lpSlug) cellFor(lpSlug, mId)[bucket]++;
         });
         return json({ success: true, columns, counts, allTypes,
           hubs: HUB_SITES.map(h => ({ slug: h.slug }))
             .concat(LP_REG.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
         });
+      }
+
+      // ── backfillAssetMethods ── one-time (re-runnable) pass that stamps the
+      // producing Method onto every Asset that has none yet. New assets get it
+      // at creation (assetMethodProp); this catches everything created before
+      // that shipped. Resolves from the asset's source-title `method` first
+      // (legacy signal), else from the Asset Type string via assetMethodProp.
+      if (body.action === "backfillAssetMethods") {
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const [assetRows, titleRows] = await Promise.all([
+          notionQuery(ASSETS_DB, {}).catch(() => []),
+          notionQuery(CONTENT_STRATEGY_DB, {}).catch(() => []),
+        ]);
+        const titleMethodById = {};
+        titleRows.forEach(t => { const m = norm((t.properties?.method?.relation || [])[0]?.id); if (m) titleMethodById[norm(t.id)] = m; });
+        let scanned = 0, set = 0, skipped = 0; const failures = [];
+        for (const a of assetRows) {
+          const p = a.properties || {};
+          if ((p["Method"]?.relation || []).length) { skipped++; continue; }
+          scanned++;
+          const at = p["Asset Type"]?.select?.name || "";
+          const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
+          const mProp = titleMethodById[titleId]
+            ? { "Method": { relation: [{ id: dash(titleMethodById[titleId]) }] } }
+            : await assetMethodProp(null, at);
+          if (!mProp.Method) { skipped++; continue; }
+          const r = await fetch(`https://api.notion.com/v1/pages/${dash(norm(a.id))}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: mProp }),
+          });
+          if (r.ok) set++; else { failures.push(norm(a.id)); }
+        }
+        return json({ success: true, total: assetRows.length, scanned, set, skipped, failed: failures.length });
       }
 
       if (body.action === "createMatType") {
@@ -20370,6 +20445,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
           if (loginId) assetProps["Login"] = { relation: [{ id: dsDash(loginId) }] };
+          Object.assign(assetProps, await assetMethodProp(methodId, assetType));
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -20545,6 +20621,7 @@ Return ONLY a JSON array of exactly ${hpCount} objects, no markdown fences:
           const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
           const zoneOk = z => HOOK_POST_ZONES[z] ? z : "lower-third";
 
+          const hpMProp = await assetMethodProp(methodId, "hook post");
           const created = [], failures = [];
           for (const post of posts) {
             const isPic = String(post.format || "").toLowerCase() === "picture" && !!String(post.imagePrompt || "").trim();
@@ -20571,6 +20648,7 @@ Return ONLY a JSON array of exactly ${hpCount} objects, no markdown fences:
             props["Platform Name"] = { select: { name: platformName || "Instagram" } };
             if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
             if (cardObj.imagePrompt) props["Image Prompt (IG Background)"] = { rich_text: [{ text: { content: cardObj.imagePrompt.slice(0, 1990) } }] };
+            Object.assign(props, hpMProp);
             const aResp = await fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
               body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }),
@@ -20750,6 +20828,7 @@ Return ONLY this JSON object:
           // asset tied to campaign + product + (at publish time) hub.
           if (productId) assetProps["Product"] = { relation: [{ id: dsDash(productId) }] };
           if (ctaUrl) assetProps["Content URL"] = { url: ctaUrl };
+          Object.assign(assetProps, await assetMethodProp(methodId, assetType));
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -20862,6 +20941,7 @@ Return ONLY this JSON object:
           };
           if (campaignId) assetProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           if (hubSlug) assetProps["Content Hub"] = { select: { name: hubSlug } };
+          Object.assign(assetProps, await assetMethodProp(methodId, "Content Hub"));
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
             body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
@@ -20911,6 +20991,7 @@ Return ONLY this JSON object:
             "Notes":            { rich_text: [{ text: { content: `Standalone landing page for "${lpProdName}". Set this asset to Published to scaffold web/landing/<slug>/ — Claude writes the copy + palette from the product's Research + primary keyword per the "Landing Page" method framework. The page's eyebrow heading is this asset's title verbatim.`.slice(0, 1990) } }] },
           };
           if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          Object.assign(props, await assetMethodProp(methodId, "Landing Page"));
           const r = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
             body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }),
@@ -21038,6 +21119,7 @@ Produce all of this by calling the submit_article tool — do not include any of
           if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
           if (loginId) assetProps["Login"] = { relation: [{ id: dsDash(loginId) }] };
+          Object.assign(assetProps, await assetMethodProp(methodId, assetType));
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -21164,6 +21246,7 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
           };
           if (campaignId) seqProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           if (hasProduct) seqProps["Product"] = { relation: [{ id: dsDash(productId) }] };
+          Object.assign(seqProps, await assetMethodProp(methodId, assetType));
 
           const seqCreateResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -21336,6 +21419,7 @@ Produce all of this by calling the submit_table tool — do not include any of i
           if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
           if (platformId) assetProps["Platform"] = { relation: [{ id: dsDash(platformId) }] };
           if (canvaTemplateLink) assetProps["Canva Link"] = { url: canvaTemplateLink };
+          Object.assign(assetProps, await assetMethodProp(methodId, assetType));
           const assetResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -21493,6 +21577,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const strategyBlock = await fetchStrategyForGrading(dsHdr, dsDash(campaignId), hasProduct ? dsDash(productId) : "", hasProduct);
         const keywordsForGrading = [seedKeywords].filter(Boolean).join(", ");
         const siblingTitles = concepts.map(c => c.assetTitle).filter(Boolean);
+        const gaMProp = await assetMethodProp(subMethodId || methodId, assetType);
 
         const created = [];
         const failures = [];
@@ -21528,6 +21613,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           if (platformId) properties["Platform"] = { relation: [{ id: dsDash(platformId) }] };
           if (loginId) properties["Login"] = { relation: [{ id: dsDash(loginId) }] };
           properties["Asset Type"] = { select: { name: String(assetType).slice(0, 100) } }; // required — every asset has a type
+          Object.assign(properties, gaMProp);
           if (isDrawingPost && current.canvaQuery) properties["Design Link"] = { url: "https://www.canva.com/templates/?query=" + encodeURIComponent(String(current.canvaQuery).slice(0, 80)) };
           if (campaignId)  properties["Campaign"]      = { relation: [{ id: dsDash(campaignId) }] };
           // Platform Title — the platform's own title-entry field (YouTube
@@ -22974,6 +23060,7 @@ Rules:
         if (platformName) properties["Platform Name"] = { select: { name: platformName } };
         if (assetType)    properties["Asset Type"]    = { select: { name: assetType } };
         if (campId)       properties["Campaign"]      = { relation: [{ id: dash(campId) }] };
+        Object.assign(properties, await assetMethodProp(body.methodId, assetType));
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
@@ -27109,6 +27196,11 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           if (loginId) props["Login"] = { relation: [{ id: dash(loginId) }] };
           const srcImages = sp["Images"]?.files || [];
           if (srcImages.length) props["Images"] = { files: srcImages };
+          // Carry the producing method: prefer the source asset's own Method,
+          // else resolve from the (possibly changed) Asset Type.
+          const srcMethodRel = sp["Method"]?.relation || [];
+          if (srcMethodRel.length) props["Method"] = { relation: srcMethodRel.map(r => ({ id: r.id })) };
+          else Object.assign(props, await assetMethodProp(null, type || sp["Asset Type"]?.select?.name));
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -27228,6 +27320,10 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           if (campRel.length) props["Campaign"] = { relation: campRel.map(r => ({ id: r.id })) };
           const csRel = sp["Content Strategy"]?.relation || [];
           if (csRel.length) props["Content Strategy"] = { relation: csRel.map(r => ({ id: r.id })) };
+          // Inherit the parent asset's producing method, else resolve from type.
+          const pMethodRel = sp["Method"]?.relation || [];
+          if (pMethodRel.length) props["Method"] = { relation: pMethodRel.map(r => ({ id: r.id })) };
+          else Object.assign(props, await assetMethodProp(null, assetType));
           const resp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST",
             headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -28668,6 +28764,7 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           "Notes": { rich_text: [{ type: "text", text: { content: hashtags.slice(0, 1990) } }] },
           "Platform Name": { select: { name: platformName || "Instagram" } },
         };
+        Object.assign(assetProps, await assetMethodProp(body.methodId, "carousel"));
         let assetId;
         if (existingAsset) {
           assetId = existingAsset.id.replace(/-/g, "");
@@ -29607,6 +29704,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
+          Object.assign(assetProps, await assetMethodProp(body.methodId, "avatar video"));
           if (existingAvatarAsset) {
             assetId = existingAvatarAsset.id.replace(/-/g, "");
             await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -29862,6 +29960,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
+          Object.assign(assetProps, await assetMethodProp(body.methodId, "text video"));
           // Shared design reference (same brief for the whole batch) onto
           // every script asset, so a later single-script re-render/refine
           // has it without the operator re-uploading — mirrors what
@@ -30538,6 +30637,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Content Strategy": { relation: [{ id: dash(titleId) }] },
             "Campaign": { relation: [{ id: dash(campaignId) }] },
             "Status": { select: { name: "Draft" } },
+            ...(await assetMethodProp(body.methodId, "carousel")),
           } }),
         });
         const created = await createResp.json();
@@ -35068,6 +35168,7 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
+          Object.assign(assetProps, await assetMethodProp(body.methodId, assetType));
           const createResp = await fetch("https://api.notion.com/v1/pages", {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
           });
@@ -35187,6 +35288,7 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           "Content Strategy": { relation: [{ id: dashId(titleId) }] },
           "Campaign":     { relation: [{ id: dashId(campaignId) }] },
         };
+        Object.assign(assetProps, await assetMethodProp(body.methodId, "Upwork Search"));
         const assetResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
@@ -35432,6 +35534,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             "Status": { select: { name: "Ready" } },
             "Asset Status": { select: { name: "Publish" } },
           };
+          Object.assign(assetProps, await assetMethodProp(body.methodId, "Explainer Video"));
           if (existingExplainerAsset) {
             assetId = existingExplainerAsset.id.replace(/-/g, "");
             await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -35588,6 +35691,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
         if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
         if (loginId) assetProps["Login"] = { relation: [{ id: dash(loginId) }] };
+        Object.assign(assetProps, await assetMethodProp(body.methodId, "t shirt"));
 
         let assetId;
         if (existingAsset) {
@@ -35785,6 +35889,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
         if (platformName) assetProps["Platform Name"] = { select: { name: String(platformName).slice(0, 100) } };
         if (platformId) assetProps["Platform"] = { relation: [{ id: dash(platformId) }] };
         if (loginId) assetProps["Login"] = { relation: [{ id: dash(loginId) }] };
+        Object.assign(assetProps, await assetMethodProp(body.methodId, "Listing"));
 
         let assetId;
         if (existingAsset) {

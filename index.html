@@ -14613,10 +14613,13 @@ async function hamNotesFlush() {
   }
 }
 
-// ── HUB METHOD MATRIX — Development / Publish title counts per hub × method
+// ── HUB METHOD MATRIX — asset counts per hub × method, by asset stage
 // Rows = hubs, columns = EVERY method in METHODS_DB (any status; archived
-// methods drop out automatically). Each cell = "# Development / # Publish"
-// Content Strategy titles for that hub × method. "+ method" creates a new
+// methods drop out automatically). Each cell = "# Development / # Publish /
+// # Published" ASSETS for that hub × method — the method is read off each
+// asset's own `Method` relation (stamped at creation by assetMethodProp),
+// falling back to its source title's `method` for legacy assets. "+ method"
+// creates a new
 // method. Click a column header for a modal: edit name/notes, open the
 // Notion record, or archive the method. The operator's working surface for
 // refining the methods list — all other work-type / hub-front matrix UI was
@@ -14736,7 +14739,7 @@ function renderHubAssetMatrix() {
       const cd = cell.dev || 0, cp = cell.pub || 0, cpd = cell.pubd || 0;
       totDev += cd; totPub += cp; totPubd += cpd;
       const empty = !cd && !cp && !cpd;
-      tds += `<td title="${esc(c.name)} · ${cd} dev title${cd === 1 ? '' : 's'} · ${cp} publish asset${cp === 1 ? '' : 's'} · ${cpd} published asset${cpd === 1 ? '' : 's'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
+      tds += `<td title="${esc(c.name)} · ${cd} development · ${cp} publish · ${cpd} published asset${cpd === 1 ? '' : 's'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
         + (empty ? '<span style="color:var(--text3);">·</span>'
           : `<span style="color:#5aa6db;font-weight:${cd ? '700' : '400'};">${cd}</span>`
             + `<span style="color:var(--text3);">/</span>`
@@ -14747,7 +14750,7 @@ function renderHubAssetMatrix() {
     });
     rows += `<tr>${tds}</tr>`;
   });
-  if (summary) summary.textContent = `— ${totDev} dev titles · ${totPub} publish · ${totPubd} published assets · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
+  if (summary) summary.textContent = `— ${totDev} development · ${totPub} publish · ${totPubd} published assets · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
   const corner = `<th style="background:var(--bg);"></th>`
     + `<th title="Admin microsite" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">ms</th>`
     + `<th title="Live content hub" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">hub</th>`;

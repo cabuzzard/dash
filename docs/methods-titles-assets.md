@@ -459,34 +459,43 @@ longer offered from inside this modal.
 
 ## Method attribution and the Hub Method Matrix
 
-The **Hub Method Matrix** (TD tab) counts, per hub × method, **Development
-*titles*** and **Publish / Published *assets***. An asset has no `Method`
-property — it is attributed **through the title it was made from**
-(`asset → Content Strategy → title.method`), so **every title must carry a
-`method` relation** for its assets to show up.
+**A title is method-agnostic** — the Method is the transform that turns a title
+into an asset, not a property of the title. So the **Method is stamped on the
+ASSET** (`Assets.Method` relation → ⚙️ Methods), at creation time, by every
+asset-creation path. The **Hub Method Matrix** (TD tab) reads that: per hub ×
+method, it counts **assets** at **Development / Publish / Published** —
+`asset.Method` first, falling back to the source title's `method` only for
+legacy assets not yet backfilled.
 
-- Most `generateTitleAssets` branches already set `method` when they create a
-  title. The **offer branch** (`/\boffers?\b/i`, `worker.js` ~18560) was the
-  exception — it now stamps `method` on the source title (the modal's
-  `methodId`, else `resolveMethodIdByName(assetType)` → `Offer – Content Hub`
-  / `Offer – Pillar`) and calls `propagateMethodToCampaigns`.
-- `updatePublishFields` does the same when a **Content Hub** is picked on an
-  offer asset (that's the moment it becomes a tracked product listing).
-- **Hub product listings** (the Products-section cards, `getHubProducts`) =
-  the `Offer – Content Hub` method. Backfill for pre-existing ones:
-  **`backfillHubProductChain`** (`{ campaignId?, force? }`; Content Hubs tab
-  "⟳ Backfill product chain") — sets `method` on every offer title, creates a
-  missing title/asset, and **lifts a *thin* asset's pitch** (no `OFFER CARD`
-  block, no pitch headings) back from its own live hub page HTML into the
-  asset's Notion body. No LLM call, no hub write — a lift-and-store only. It
-  does **not** regenerate copy or (re)publish pages (operator does that pass
-  separately); assets that share one stale `Site URL` with a sibling are
-  reported `needs-operator-regen` rather than lifted from the wrong page.
-- **Skill-path writers** (`make-carousel`, `make-*-video`,
-  `create-design-specs`) write assets straight through the Notion connector
-  and do **not** yet ensure their title carries a `method` — same known gap
-  as the grading gate above. A method-less title's assets fall out of the
-  matrix; a follow-up should have every skill set the title's `method` too.
+- **`assetMethodProp(methodId, assetType)`** (`worker.js`, module scope, near
+  `resolveMethodIdByName`) → a `{ "Method": { relation:[{id}] } }` fragment (or
+  `{}`). Prefers an explicit `methodId`; else maps the Asset Type string to a
+  Method Name — Asset Type ≈ Method Name, with `ASSET_TYPE_METHOD_ALIAS` for the
+  few that diverge (`hook post`→`Hook Posts`, `avatar video`→`Avatar Video —
+  Growth`, `text video`→`Text Video — Growth`, `t shirt`→`t shirt EVALUATE`,
+  `content hub`→`hub`, `drawing post`→`Drawing Post`, `carousel`→
+  `carousel — Template CSV Export`, `upwork search`→`Upwork Search`).
+- **Every `parent: { database_id: ASSETS_DB }` create** spreads it in
+  (`Object.assign(props, await assetMethodProp(...))`) — all `generateTitleAssets`
+  branches (incl. the **Content Hub** branch, which previously stamped nothing —
+  the multifamily-acquisitions bug), the skill actions (carousel / avatar / text
+  video / explainer / t-shirt / listing / job assets / upwork search),
+  `runHubEmailSequence`, `backfillHubProductChain`, `createAsset`,
+  `duplicateAsset` (copies the source's `Method`), `createAssetComponent`
+  (copies the parent's).
+- **`backfillAssetMethods`** (`{}`, re-runnable) — stamps `Method` on every
+  asset that has none: from its title's `method` if present, else via
+  `assetMethodProp(null, assetType)`. Run once after this shipped.
+- `title.method` is still written where branches / `createDevTitle` already did
+  (it groups titles under a method in the Development view) — it's just no longer
+  what the matrix reads.
+- **Hub product listings** (`getHubProducts`) = the `Offer – Content Hub`
+  method. **`backfillHubProductChain`** (Content Hubs tab "⟳ Backfill product
+  chain") still sets `method` on offer titles + lifts thin pitches, and now also
+  stamps `Method` on the offer assets it repairs.
+- **Skill-path writers** (`make-carousel`, `make-*-video`, `create-design-specs`
+  — the chat/Notion-connector path) still don't set `Method`; `backfillAssetMethods`
+  catches those from Asset Type.
 
 ---
 
