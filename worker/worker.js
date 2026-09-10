@@ -23718,6 +23718,42 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ success: true });
       }
 
+      // -- saveImageSpec — freeze the spec text the card is showing onto the
+      // campaign Research record's "Image Spec" field. NOT a hub push, NOT a
+      // regenerate: it saves exactly what the operator has in the textarea
+      // (a staged preview, or a hand-edited spec) as the stored spec every
+      // offer plate + the card then reads. Upstream-only counterpart to the
+      // spec-freeze that Push to hub does.
+      if (body.action === "saveImageSpec") {
+        const { campaignId, text } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!text || String(text).trim().length < 40) return json({ error: "nothing to save — the spec is empty" }, 400);
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const rec = rows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0];
+        if (!rec) return json({ error: "No Research record for this campaign" }, 404);
+        try {
+          const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+          if (!db.properties?.["Image Spec"]) {
+            await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+              method: "PATCH", headers: hdr,
+              body: JSON.stringify({ properties: { "Image Spec": { rich_text: {} } } }),
+            });
+          }
+        } catch (e) {}
+        const chunk = s => { const o = []; for (let i = 0; i < s.length; i += 1900) o.push({ text: { content: s.slice(i, i + 1900) } }); return o; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${rec.id.replace(/-/g, "")}`, {
+          method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { "Image Spec": { rich_text: chunk(String(text).slice(0, 24000)) } } }),
+        });
+        const rj = await resp.json();
+        if (!resp.ok) return json({ error: rj.message || "Save failed" }, resp.status);
+        return json({ success: true });
+      }
+
       // -- updateAssetVideoUrl (save Kie.ai video URL to Notion Content URL field) ------
       if (body.action === "updateAssetVideoUrl") {
         const { assetId, videoUrl } = body;

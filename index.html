@@ -10787,6 +10787,27 @@ function fetchHubSpecText(slug, preview){
     .finally(() => { _hpSpecBusy[slug] = false; if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); });
 }
 function hubImgSpecText2(slug){ return _hpSpec[slug] ? _hpSpec[slug].text : (_hpSpecBusy[slug] ? 'Assembling…' : '(loading)'); }
+// Freeze exactly what's in the spec textarea onto Research › Image Spec.
+// Not a hub push, not a regenerate — just "save this as the stored spec".
+async function hpSaveSpec(slug, btn){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId) return;
+  const ta = document.getElementById('hubImgSpec-' + slug);
+  const text = ta ? ta.value : (_hpSpec[slug] && _hpSpec[slug].text) || '';
+  const msg = document.getElementById('hpMsg');
+  if (!text || text.trim().length < 40) { if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = 'The spec is empty — nothing to save.'; } return; }
+  const o = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  try {
+    const r = await call('saveImageSpec', { campaignId: h.campaignId, text });
+    if (r.error) throw new Error(r.error);
+    _hpSpec[slug] = { text, stored: true, preview: false, dirtyEdit: false };
+    _hpNote[slug] = 'Image plate spec saved to the Research record. (Not pushed to the hub — that’s a separate button.)';
+    renderHubsTab();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = o; }
+    if (msg) { msg.style.color = '#ff6b6b'; msg.textContent = 'Save failed: ' + e.message; }
+  }
+}
 // Backfill / rebuild this hub's blog AND offers: (re)publishes every published
 // SEO Post / Blog - SEO - News article to web/hub/{slug}/blog/{post}/ and every
 // published Offer to web/hub/{slug}/offers/{offer}/ (a hub-styled page with a
@@ -11475,12 +11496,13 @@ function renderHubsTab() {
             <span title="Assembled live (getImageBrief → assembleImageBrief + writeImageSpec) from: the four direction fields above (authoritative) + campaign Research (Statement / Pain Points / Emotions / Unique Opportunity / Keywords) + the MAIN PRODUCT's 🔬 Product Research + this hub's pushed hubs.design.json tokens. NOT part of Push to hub — it's a read-only artifact. The exact same spec generateOfferImage renders offer plates against." style="font-size:10px;color:var(--text3);cursor:help;">assembled from this hub + the main product's research + your guidance. Wordless plates; type is set in Remotion. Same spec the offer image generator uses.</span>
             <span style="margin-left:auto;display:flex;gap:6px;">
               <button onclick="openHubDesignFieldModal('${slug}','notes')" title="Edit the Design notes field (same one as above). Goes into the STAGE; it overrides the derived choices in both the spec and every render." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✎ Design notes</button>
-              <button onclick="fetchHubSpecText('${slug}', true)" ${_hpSpecBusy[slug] ? 'disabled' : ''} title="Preview the spec from the STAGED brief — the palette / fonts / direction / notes currently on deck, saved or not. The frozen spec on the record only changes when you Save to brief / Push to hub." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↻ preview from staged brief</button>
+              <button onclick="fetchHubSpecText('${slug}', true)" ${_hpSpecBusy[slug] ? 'disabled' : ''} title="Preview the spec from the STAGED brief — the palette / fonts / direction / notes currently on deck, saved or not. The frozen spec on the record only changes when you save it." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↻ preview from staged brief</button>
+              <button id="hpSaveSpec-${slug}" onclick="hpSaveSpec('${slug}', this)" title="Save exactly what's in the box below onto the campaign Research record's Image Spec field — as-is, hand edits included. NOT a hub push, NOT a regenerate: just freezes this text as the stored spec every offer plate + this card then reads." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">💾 Save spec</button>
               <button onclick="copyHubImageSpec('${slug}', this)" title="Copy the spec text to the clipboard — paste into an image model or a Remotion still job." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">📋 Copy</button>
             </span>
           </div>
-          ${_hpSpec[slug] && _hpSpec[slug].preview ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Preview from the staged brief — not the frozen spec on the record. Save to brief / Push to hub to freeze it.</div>' : (_hpSpec[slug] && _hpSpec[slug].stored ? '<div style="font-size:9px;color:var(--text3);margin-bottom:4px;">Frozen spec from the Research record.</div>' : '')}
-          <textarea id="hubImgSpec-${slug}" readonly rows="14" onclick="this.select()" title="Read-only. Click to select all, or use 📋 Copy." style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.55;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;resize:vertical;">${esc(hubImgSpecText2(slug))}</textarea>
+          ${_hpSpec[slug] && _hpSpec[slug].dirtyEdit ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Hand-edited — not saved. 💾 Save spec to freeze it onto the record.</div>' : (_hpSpec[slug] && _hpSpec[slug].preview ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Preview from the staged brief — not the frozen spec on the record. 💾 Save spec to freeze it, or Save to brief / Push to hub.</div>' : (_hpSpec[slug] && _hpSpec[slug].stored ? '<div style="font-size:9px;color:var(--text3);margin-bottom:4px;">Frozen spec from the Research record.</div>' : ''))}
+          <textarea id="hubImgSpec-${slug}" rows="14" oninput="if(_hpSpec['${slug}']){_hpSpec['${slug}'].text=this.value;_hpSpec['${slug}'].dirtyEdit=true;}" title="Editable. Tweak it here, then 💾 Save spec to store it. Or use ↻ preview to reassemble from the staged brief." style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.55;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;resize:vertical;">${esc(hubImgSpecText2(slug))}</textarea>
         </div>
       </div>
     </details>
