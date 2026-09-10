@@ -277,6 +277,8 @@ async function writeImageSpec(env, brief) {
   const infoFlow = await getInformationFlowContext(env).catch(() => "");
   const prompt = `You are writing an IMAGE ART-DIRECTION SPEC for "${name}". The images are WORDLESS plates — a headline is set afterward in the real fonts, so this spec is about the PICTURE only.
 
+The spec must be MODEL-AGNOSTIC and written for maximum adherence from ANY competent image model: concrete nouns over adjectives, explicit constraints, exact hex values, no model-specific prompt syntax or weighting.
+
 This spec is a DOWNSTREAM ARTIFACT of the Information Flow cascade — it inherits from Stage 1 (Campaign Research) and Stage 2 (Product Research). Derive every visual choice from that research; diverge from it only on purpose to fit this hub's tighter niche, never by accident.
 ${infoFlow ? `\n${infoFlow}\n` : ""}
 Write it in EXACTLY this structure (markdown headings), grounded in the customer's world in GROUNDED FACTS below. Every choice — subjects, light, palette-in-photo, what's forbidden — must trace to a real fact, never a generic "editorial / premium / cinematic" default. Tight, concrete. Output ONLY the spec.
