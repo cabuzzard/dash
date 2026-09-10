@@ -495,15 +495,24 @@ request can't wait out a 20–40s render):
 | Button | Worker model | Output | Saved to Assets property |
 |---|---|---|---|
 | 📸 Instagram text-post background | `google/nano-banana` (`aspect_ratio: "4:5"`) | vertical, calm/empty centre for a text overlay, no text in image | `Instagram Background` (url, created on demand) |
-| 🖼️ Blog post thumbnail | `bytedance/seedream-v4-text-to-image` (`landscape_16_9`, `2K`) | 16:9 editorial, no text | `Thumbnail` (same property the manual thumbnail upload writes) |
+| 🖼️ Blog post thumbnail | `google/nano-banana-edit` (`aspect_ratio: "16:9"`, `image_urls: [ig background]`) | **the IG background reframed to 16:9 with the offer title rendered on it** | `Thumbnail` (same property the manual thumbnail upload writes) |
 
+- The blog thumbnail is **not a fresh image** — a standalone text-to-image
+  "thumbnail" (originally Seedream 4.0) kept producing pictures unrelated to
+  the post. It's now an **edit of the already-generated Instagram background**
+  (`google/nano-banana-edit`): reframe 4:5 → 16:9, overlay the offer title.
+  Keeps the two images in one visual family and matches the by-hand ChatGPT
+  result. **`generateOfferImage` returns a 400 if `Instagram Background` isn't
+  set yet** — generate that row first.
 - **`generateOfferImage`** `{ assetId, kind }` (`kind` = `ig-background` |
   `blog-thumbnail`) — reads the asset's `OFFER CARD` json + "What's included"
   bullets + `Body` promise + the campaign Research `Palette`/`Fonts`/
-  `Statement`/`Key Message`, has Claude (`claude-sonnet-4-6`) write ONE image
-  prompt tuned to `kind`, submits to Kie.ai, persists the prompt to
-  `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)` (rich_text),
-  returns `{ taskId, prompt }`.
+  `Statement`/`Key Message` (+ the `Instagram Background` url for
+  `blog-thumbnail`), has Claude (`claude-sonnet-4-6`) write ONE prompt tuned
+  to `kind` — a scene prompt for `ig-background`, an **edit instruction with
+  the verbatim title** for `blog-thumbnail` — submits to Kie.ai, persists the
+  prompt to `Image Prompt (IG Background)` / `Image Prompt (Blog Thumbnail)`
+  (rich_text), returns `{ taskId, prompt }`.
 - Frontend polls **`getImageTask`** (extended to parse the
   `{"resultUrls":[…]}` shape both models return), then calls
   **`saveOfferImage`** `{ assetId, kind, imageUrl, prompt }` — fetches the

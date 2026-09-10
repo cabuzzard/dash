@@ -1316,7 +1316,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         </div>
       </div>
       <div id="pubOfferImagesWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
-        <label class="lm-label" style="margin-bottom:6px;">🖼️ Offer images <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— Claude writes a prompt from this offer's card, then renders it and saves it to the asset. Regenerate copies the prompt to your clipboard first, so you can tweak it or take it to ChatGPT.</span></label>
+        <label class="lm-label" style="margin-bottom:6px;">🖼️ Offer images <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— Claude writes the prompt from this offer's card. Generate the Instagram background first; the blog thumbnail is that same image reshaped to 16:9 with the offer title on it. Regenerate copies the prompt to your clipboard so you can tweak it or take it to ChatGPT.</span></label>
         <div style="display:flex;gap:10px;margin-top:4px;align-items:flex-start;">
           <img id="pubIgBgPreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
           <div style="flex:1;min-width:0;">
@@ -1334,7 +1334,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <div style="display:flex;gap:10px;margin-top:12px;padding-top:10px;border-top:1px solid #2a2a2a;align-items:flex-start;">
           <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:65px;height:37px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
           <div style="flex:1;min-width:0;">
-            <div style="font-size:11px;color:#fff;font-weight:600;">🖼️ Blog post thumbnail <span style="font-weight:400;opacity:.7;">— 16:9 editorial, saved to Thumbnail below</span></div>
+            <div style="font-size:11px;color:#fff;font-weight:600;">🖼️ Blog post thumbnail <span style="font-weight:400;opacity:.7;">— the IG image reframed to 16:9 with the title on it → Thumbnail below</span></div>
             <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
               <button class="modal-btn cancel" id="pubBlogThumbGenBtn" onclick="genOfferImage('blog-thumbnail')">✨ Generate</button>
               <button class="modal-btn cancel" id="pubBlogThumbRegenBtn" onclick="regenOfferImage('blog-thumbnail')" style="display:none;">🔄 Regenerate (copies prompt)</button>

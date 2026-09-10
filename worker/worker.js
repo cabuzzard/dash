@@ -22464,8 +22464,15 @@ Rules:
       if (body.action === "generateOfferImage") {
         const { assetId, kind } = body;
         const KINDS = {
-          "ig-background":  { model: "google/nano-banana",                  promptProp: "Image Prompt (IG Background)" },
-          "blog-thumbnail": { model: "bytedance/seedream-v4-text-to-image", promptProp: "Image Prompt (Blog Thumbnail)" },
+          // ig-background: a fresh vertical text-to-image.
+          // blog-thumbnail: NOT a fresh image — an EDIT of the already-made
+          // Instagram background (reframe 4:5 -> 16:9, put the offer title on
+          // it). A separate text-to-image "thumbnail" kept producing pictures
+          // unrelated to the post; reshaping the IG image keeps the two in
+          // one visual family and matches what the operator gets by hand in
+          // ChatGPT.
+          "ig-background":  { model: "google/nano-banana",      promptProp: "Image Prompt (IG Background)" },
+          "blog-thumbnail": { model: "google/nano-banana-edit", promptProp: "Image Prompt (Blog Thumbnail)" },
         };
         if (!assetId || !KINDS[kind]) return json({ error: "assetId and a valid kind ('ig-background' | 'blog-thumbnail') required" }, 400);
         const KIE_KEY = (env.KIE_API_KEY || "").trim();
@@ -22511,6 +22518,13 @@ Rules:
         const offerName = String(cardObj.name || platformTitle || assetTitle || "this offer").trim();
         const promise   = String(cardObj.promise || bodyPromise || "").trim();
         const kicker    = String(cardObj.kicker || "").trim();
+
+        // blog-thumbnail edits the Instagram background — it has to exist first.
+        let igBgUrl = "";
+        if (kind === "blog-thumbnail") {
+          igBgUrl = String(ap["Instagram Background"]?.url || "").trim();
+          if (!igBgUrl) return json({ error: "Generate the Instagram background first — the blog thumbnail is reshaped from it." }, 400);
+        }
         const brandBits = [
           palette    && `Brand palette: ${palette}`,
           fonts      && `Brand typography (mood only — no text in the image): ${fonts}`,
@@ -22518,26 +22532,28 @@ Rules:
           keyMessage && `Campaign message: ${keyMessage}`,
         ].filter(Boolean).join("\n");
 
-        const kindBrief = kind === "ig-background"
-          ? `A VERTICAL 4:5 BACKGROUND image for an Instagram post. A headline and a few lines of body text will be laid OVER this image afterward, so:
+        const claudePrompt = kind === "ig-background"
+          ? `You are writing ONE image-generation prompt for an AI image model. Output ONLY the prompt text — no preamble, no quotes, no notes, no alternatives. 60-120 words.
+
+WHAT THE IMAGE IS FOR:
+A VERTICAL 4:5 BACKGROUND image for an Instagram post. A headline and a few lines of body text will be laid OVER this image afterward, so:
 - The centre ~60% (both axes) must stay visually calm and near-empty — soft gradient, gentle texture, out-of-focus depth, or plain negative space — so overlaid text stays fully legible.
 - Any subject, detail or contrast belongs in the outer margins / top / bottom third only.
 - Absolutely NO text, letters, numbers, logos, watermarks, UI or signage anywhere.
-- Editorial and premium, evoking the offer's theme — not literal, not a stock-photo cliche.`
-          : `A 16:9 editorial THUMBNAIL image illustrating the offer's core idea, the way a serious magazine or a quality blog would.
-- One strong focal concept, confident composition, rich but restrained.
-- NO text, letters, numbers, logos, watermarks or UI anywhere.
-- Conceptual over literal; avoid stock-photo cliches (handshakes, lightbulbs, generic laptops).`;
-
-        const claudePrompt = `You are writing ONE image-generation prompt for an AI image model. Output ONLY the prompt text — no preamble, no quotes, no notes, no alternatives. 60-120 words.
-
-WHAT THE IMAGE IS FOR:
-${kindBrief}
+- Editorial and premium, evoking the offer's theme — not literal, not a stock-photo cliche.
 
 THE OFFER IT ILLUSTRATES:
 Name: ${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}
 ${brandBits ? `\n${brandBits}\n` : ""}
-Write it as a single vivid paragraph: subject/scene, composition and where the empty space sits, colour and light, texture and mood, medium/finish. End with the sentence: "No text, no letters, no logos, no watermarks."`;
+Write it as a single vivid paragraph: subject/scene, composition and where the empty space sits, colour and light, texture and mood, medium/finish. End with the sentence: "No text, no letters, no logos, no watermarks."`
+          : `You are writing ONE image-EDIT instruction for an AI image editor (Nano Banana). It receives the attached VERTICAL 4:5 image (an Instagram post background for this same offer) and must return a 16:9 blog thumbnail. Output ONLY the instruction — no preamble, no quotes, no alternatives. 40-90 words.
+
+THE EDIT:
+- Reframe to 16:9 landscape: keep the existing subject, palette and mood; extend the scene naturally outward on the left and right. Do NOT stretch, squash or crop out the subject.
+- Overlay the headline text, spelled EXACTLY: "${offerName.replace(/"/g, "'")}"
+- Put the headline over the calmest part of the image (lower third or one side), large enough to read as a small blog card, high contrast — add a subtle dark or light scrim behind the text ONLY if needed for legibility.
+- Typography: clean editorial lettering${fonts ? ` in keeping with ${fonts}` : ""}. A magazine feature image, not a meme caption.
+- No other text, no logos, no watermarks, no UI.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -22551,7 +22567,7 @@ Write it as a single vivid paragraph: subject/scene, composition and where the e
 
         const input = kind === "ig-background"
           ? { prompt: prompt.slice(0, 5000), aspect_ratio: "4:5", output_format: "png" }
-          : { prompt: prompt.slice(0, 5000), image_size: "landscape_16_9", image_resolution: "2K" };
+          : { prompt: prompt.slice(0, 5000), image_urls: [igBgUrl], aspect_ratio: "16:9", output_format: "png" };
         const kieResp = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
           method: "POST",
           headers: { "Authorization": "Bearer " + KIE_KEY, "Content-Type": "application/json" },
