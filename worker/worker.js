@@ -8296,7 +8296,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
       if (body.action === "getHubPalette" || body.action === "generateHubPalette" ||
           body.action === "saveHubPalette" || body.action === "pushHubPalette" ||
           body.action === "generateResearchPalette" || body.action === "generateResearchFonts" ||
-          body.action === "generateResearchDesign") {
+          body.action === "generateResearchDesign" || body.action === "saveResearchDesignField") {
         const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const PKEYS = ["bg","surface","ink","ink-head","ink-soft","line","sea","deep","deep-ink","accent"];
@@ -8543,13 +8543,14 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
                 .map(f => rtOf(pr.properties, f) && `${f}: ${rtOf(pr.properties, f)}`).filter(Boolean).join("\n");
             }
           } catch (e) {}
+          const opDirection = rtOf(t.resProps, "Design Notes") || rtOf(t.props, "Design Notes");
           let out;
           try {
             out = await claude([{ type: "text", text:
 `You are researching the VISUAL DIRECTION for a campaign, from its research below. This is a Stage-1 artifact that everything downstream (hub, images, offer plates) inherits from — derive it from the customer's real world, do not invent a generic "editorial / premium" look.
 
 ${briefFor(t)}
-${prodBrief ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}
+${prodBrief ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR DIRECTION (honour this — it is the operator's standing call on this hub's look; it overrides the derived choices where they conflict):\n${opDirection}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
 Return ONLY this minified JSON object, nothing before or after:
 {"register":"1-2 sentences — the overall look and mood the research implies (e.g. 'a policy-brief cover', 'an after-hours listening room'). Concrete.","photography":"3-4 sentences — the real images that belong here: the customer's actual settings and objects (concrete nouns), the light (time of day, quality, colour cast), how the palette shows up in a photo, the medium/finish. No people looking at camera.","avoid":"a semicolon-separated list of the specific AI / stock-photo / cliché looks to reject for THIS niche"}` }], 1400);
           } catch (e) { return json({ error: e.message }, 502); }
@@ -8566,7 +8567,26 @@ Return ONLY this minified JSON object, nothing before or after:
             await writeResearchField(t.pageId, "Photography Direction", design.photography);
             await writeResearchField(t.pageId, "Visual Avoid", design.avoid);
           } catch (e) { return json({ error: e.message }, 502); }
-          return json({ ok: true, design, scope: t.kind });
+          return json({ ok: true, design: { ...design, notes: opDirection }, scope: t.kind });
+        }
+
+        // ---- saveResearchDesignField : hand-edit one Design-section field ----
+        // Direct from the Content Hubs card. field ∈ Visual Register /
+        // Photography Direction / Visual Avoid / Design Notes.
+        if (body.action === "saveResearchDesignField") {
+          const FIELD_OK = ["Visual Register", "Photography Direction", "Visual Avoid", "Design Notes"];
+          if (!FIELD_OK.includes(body.field)) return json({ error: "invalid field" }, 400);
+          const t = await resolveTarget();
+          if (!t.pageId) return json({ error: "no Research record for this campaign" }, 400);
+          try {
+            const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+            if (!db.properties?.[body.field]) await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+              method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { [body.field]: { rich_text: {} } } }),
+            });
+          } catch (e) {}
+          try { await writeResearchField(t.pageId, body.field, String(body.text || "")); }
+          catch (e) { return json({ error: e.message }, 502); }
+          return json({ ok: true });
         }
 
         // ---- getHubPalette : product override else campaign default ----

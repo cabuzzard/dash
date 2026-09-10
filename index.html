@@ -1765,12 +1765,7 @@
 <div class="modal-bg" id="hubImgGuidanceModal" onclick="if(event.target===this)closeHubImgGuidanceModal()">
   <div class="modal" style="max-width:560px;">
     <div class="modal-title" id="hubImgGuidanceTitle">Image guidance</div>
-    <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">
-      Free-text direction for this hub's images — subjects, light, what to avoid, a specific look you want.
-      Stored on the campaign's Research record as <b>Design Notes</b>, alongside the generated Visual Register /
-      Photography Direction / Visual Avoid. Folded into the image plate spec and every render, overriding the
-      derived choices where they conflict.
-    </div>
+    <div id="hubImgGuidanceHint" style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;"></div>
     <textarea id="hubImgGuidanceText" wrap="soft" placeholder="e.g. lean into interiors not exteriors · one lamp-lit room · no wide shots · keep it winter"
       style="width:100%;height:150px;font-family:inherit;font-size:13px;line-height:1.5;padding:10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;"></textarea>
     <div style="display:flex;gap:10px;margin-top:10px;align-items:center;">
@@ -10616,7 +10611,8 @@ async function hpGenDesign(slug) {
   const btn = document.getElementById('hpGenDesign'), msg = document.getElementById('hpMsg');
   btn.disabled = true; btn.textContent = 'Researching…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Researching the visual direction from campaign + product research…';
   try {
-    const r = await call('generateResearchDesign', { campaignId: h.campaignId });
+    const instructions = (document.getElementById('hpInstr') || {}).value ? document.getElementById('hpInstr').value.trim() : '';
+    const r = await call('generateResearchDesign', { campaignId: h.campaignId, instructions: instructions || undefined });
     _hpDesign[slug] = Object.assign({}, _hpDesign[slug], r.design);
     _hpNote[slug] = 'Visual direction researched → Research › Visual Register / Photography Direction / Visual Avoid';
     _hubImgBrief[slug] = null; fetchHubImgBrief(slug, true);   // the spec inherits from these
@@ -11128,6 +11124,9 @@ async function hubTdSave() {
 let _hubImgBrief = {};        // slug -> { text, guidance, product }
 let _hubImgBriefBusy = {};    // slug -> true while fetching
 let _hubImgGuidanceSlug = null;
+let _hubDesignFieldEdit = null;   // { slug, key }
+// key on _hpDesign  ↔  Notion Research field name
+const HUB_DESIGN_FIELDS = { register: 'Visual Register', photography: 'Photography Direction', avoid: 'Visual Avoid', notes: 'Design Notes' };
 
 function fetchHubImgBrief(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug);
@@ -11147,26 +11146,37 @@ function hubImgSpecText(slug) {
     : 'Loading…';
 }
 function openHubImgGuidanceModal(slug) {
+  openHubDesignFieldModal(slug, 'notes');
+}
+// Edit any Design-section field of the Research record straight from the card.
+function openHubDesignFieldModal(slug, key) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
-  _hubImgGuidanceSlug = slug;
-  document.getElementById('hubImgGuidanceTitle').textContent = 'Design notes — ' + h.name;
-  document.getElementById('hubImgGuidanceText').value = (_hpDesign[slug] && _hpDesign[slug].notes) || (_hubImgBrief[slug] && _hubImgBrief[slug].guidance) || '';
+  const field = HUB_DESIGN_FIELDS[key]; if (!field) return;
+  _hubDesignFieldEdit = { slug, key };
+  const isNotes = key === 'notes';
+  document.getElementById('hubImgGuidanceTitle').textContent = field + ' — ' + h.name;
+  document.getElementById('hubImgGuidanceHint').textContent = isNotes
+    ? "Your standing direction for this hub's images — subjects, light, what to avoid, a specific look. Honoured on every ↻ Regenerate and every render, overriding the derived choices."
+    : "Hand-edit this generated field. It's a Stage-1 Research artifact — everything visual downstream inherits from it. ↻ Regenerate design direction rewrites it from research (+ your Design Notes).";
+  document.getElementById('hubImgGuidanceText').value = (_hpDesign[slug] && _hpDesign[slug][key]) || '';
   document.getElementById('hubImgGuidanceMsg').textContent = '';
   document.getElementById('hubImgGuidanceModal').classList.add('open');
 }
 function closeHubImgGuidanceModal() { document.getElementById('hubImgGuidanceModal').classList.remove('open'); }
 async function saveHubImgGuidance() {
-  const slug = _hubImgGuidanceSlug; const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const e = _hubDesignFieldEdit; if (!e) return;
+  const h = HUB_SITES.find(x => x.slug === e.slug); if (!h) return;
   const msg = document.getElementById('hubImgGuidanceMsg');
   const btn = document.getElementById('hubImgGuidanceSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const v = document.getElementById('hubImgGuidanceText').value.trim();
-    await call('saveImageGuidance', { campaignId: h.campaignId, text: v });
-    if (_hubImgBrief[slug]) _hubImgBrief[slug].guidance = v;
-    _hpDesign[slug] = Object.assign({}, _hpDesign[slug], { notes: v });
+    await call('saveResearchDesignField', { campaignId: h.campaignId, field: HUB_DESIGN_FIELDS[e.key], text: v });
+    _hpDesign[e.slug] = Object.assign({}, _hpDesign[e.slug], { [e.key]: v });
+    if (e.key === 'notes' && _hubImgBrief[e.slug]) _hubImgBrief[e.slug].guidance = v;
     closeHubImgGuidanceModal();
-    fetchHubImgBrief(slug, true);
-  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+    fetchHubImgBrief(e.slug, true);   // the spec inherits from this
+    renderHubsTab();
+  } catch (err) { msg.style.color = '#ff6b6b'; msg.textContent = err.message; }
   finally { btn.disabled = false; btn.textContent = 'Save'; }
 }
 function copyHubImageSpec(slug, btn) {
@@ -11277,7 +11287,10 @@ function renderHubsTab() {
             </div>
             <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
             <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
-            ${(function(d){ if (!d) return ''; const row = (l,v) => v ? `<div style="margin-top:6px;"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px;">${l}</span><br>${esc(v)}</div>` : ''; const body = row('Visual register', d.register) + row('Photography direction', d.photography) + row('Visual avoid', d.avoid) + row('Design notes (yours)', d.notes); return body ? `<div style="font-size:10px;line-height:1.5;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${body}</div>` : '<div style="font-size:10px;color:var(--text3);margin-top:8px;">No visual direction on the Research record yet — hit “↻ Regenerate design direction”.</div>'; })(_hpDesign[slug])}
+            ${(function(d){ d = d || {};
+              const row = (key,l,v) => `<div style="margin-top:7px;"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px;">${l}</span> <button onclick="openHubDesignFieldModal('${slug}','${key}')" title="Edit this field on the Research record" style="border:0;background:none;color:var(--accent);cursor:pointer;font-size:10px;padding:0 2px;">✎</button><br><span style="opacity:${v?'1':'.5'}">${v ? esc(v) : '— not set —'}</span></div>`;
+              return `<div style="font-size:10px;line-height:1.5;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${row('register','Visual register',d.register)}${row('photography','Photography direction',d.photography)}${row('avoid','Visual avoid',d.avoid)}${row('notes','Design notes (yours)',d.notes)}</div>`;
+            })(_hpDesign[slug])}
           </div>
           <div style="flex:0 0 auto;">
             <span style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">${swStrip}</span>
@@ -11290,7 +11303,7 @@ function renderHubsTab() {
             <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Image plate spec</span>
             <span style="font-size:10px;color:var(--text3);">assembled from this hub + the main product's research + your guidance. Wordless plates; type is set in Remotion. Same spec the offer image generator uses.</span>
             <span style="margin-left:auto;display:flex;gap:6px;">
-              <button onclick="openHubImgGuidanceModal('${slug}')" style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✎ Guidance</button>
+              <button onclick="openHubDesignFieldModal('${slug}','notes')" style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✎ Design notes</button>
               <button onclick="fetchHubImgBrief('${slug}', true)" ${_hubImgBriefBusy[slug] ? 'disabled' : ''} style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↻ Regenerate</button>
               <button onclick="copyHubImageSpec('${slug}', this)" style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">📋 Copy</button>
             </span>
