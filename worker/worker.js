@@ -193,6 +193,7 @@ const HUB_SITES = [
 // like a hub. Mirror of index.html's LANDING_PAGES; scaffoldLandingPage
 // registers new ones here (and in index.html) via the GitHub API.
 const LANDING_PAGES = [
+  { slug: "insider-access-built-in", name: "Insider Access, Built In", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", productId: "3d71f7d3a4bb81f7b137fadbbfba5722", keyword: "multifamily acquisitions" },
 ];
 
 // Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
@@ -8889,13 +8890,31 @@ Return: {
         const gPut = async (p, text, msg, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { method: "PUT", headers: { ...ghH, "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, content: encB(text), branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${p}`); } };
         const LANDING_METHOD_NAME = "Landing Page";
 
+        // worker.js is >1MB, so the GitHub Contents API can't read it back
+        // for the regex-insert that registers a new landing page in the
+        // LANDING_PAGES const (it returns empty content over the size cap).
+        // KV is the durable registry: scaffoldLandingPage appends here, and
+        // every read below unions the const (seed / deploy-time entries)
+        // with KV (anything added since the last manual deploy), deduped by
+        // slug. index.html is <1MB so its mirror still gets the git commit
+        // (the frontend reads that copy).
+        let LP_REG = LANDING_PAGES.slice();
+        try {
+          const extra = await env.TRADES.get("landing:registry", "json");
+          if (Array.isArray(extra) && extra.length) {
+            const bySlug = new Map(LP_REG.map(l => [l.slug, l]));
+            for (const e of extra) if (e && e.slug && !bySlug.has(e.slug)) bySlug.set(e.slug, e);
+            LP_REG = [...bySlug.values()];
+          }
+        } catch (e) {}
+
         if (body.action === "getLandingPages") {
-          const pids = [...new Set(LANDING_PAGES.map(l => l.productId).filter(Boolean))];
+          const pids = [...new Set(LP_REG.map(l => l.productId).filter(Boolean))];
           const pNames = {};
           if (pids.length) { try { (await notionQuery(PRODUCTS_DB, {})).forEach(p => { pNames[p.id.replace(/-/g, "")] = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); }); } catch (e) {} }
           // Pending — published "Landing Page" assets whose campaign isn't
           // registered yet (the publish trigger missed, or predates it).
-          const regCamps = new Set(LANDING_PAGES.map(l => norm2(l.campaignId)));
+          const regCamps = new Set(LP_REG.map(l => norm2(l.campaignId)));
           let pending = [];
           try {
             const rows = await notionQuery(ASSETS_DB, { filter: { and: [
@@ -8917,7 +8936,7 @@ Return: {
               });
             }
           } catch (e) {}
-          return json({ pages: LANDING_PAGES.map(l => ({ ...l, productName: l.productId ? (pNames[l.productId] || "") : "" })), pending });
+          return json({ pages: LP_REG.map(l => ({ ...l, productName: l.productId ? (pNames[l.productId] || "") : "" })), pending });
         }
         if (body.action === "setLandingBuildCheck") {
           const slug = String(body.slug || "").trim(), stepId = String(body.stepId || "").trim();
@@ -8961,8 +8980,8 @@ Return: {
             lpProductId = (tp?.properties?.product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
           }
         }
-        const registered = LANDING_PAGES.find(l => l.campaignId.replace(/-/g, "") === lpCampId && (!lpAssetTitle || l.name === lpAssetTitle))
-          || LANDING_PAGES.find(l => l.campaignId.replace(/-/g, "") === lpCampId) || null;
+        const registered = LP_REG.find(l => l.campaignId.replace(/-/g, "") === lpCampId && (!lpAssetTitle || l.name === lpAssetTitle))
+          || LP_REG.find(l => l.campaignId.replace(/-/g, "") === lpCampId) || null;
 
         const [lpProd, lpResearch] = await Promise.all([
           lpProductId ? fetch(`https://api.notion.com/v1/pages/${dLp(lpProductId)}`, { headers: nh }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
@@ -9106,14 +9125,19 @@ Return: {
 
         const committedLp = [`web/landing/${lpSlug}/index.html`];
 
-        // register in LANDING_PAGES (both source files) on first scaffold
+        // register on first scaffold. worker.js is too big for the Contents
+        // API to read back, so its LANDING_PAGES entry goes to KV (unioned
+        // into LP_REG on every read above). index.html is small enough — its
+        // mirror still gets the git commit for the frontend.
         if (body.action === "scaffoldLandingPage" && !registered) {
-          const wF = await gGet("worker/worker.js");
-          if (wF.text && wF.text.includes("const LANDING_PAGES = [")) {
-            const line = `  { slug: "${lpSlug}", name: "${(lpAssetTitle || lpProdName || lpCampName).replace(/"/g, "'")}", campaignId: "${lpCampId}", productId: ${lpProductId ? `"${lpProductId}"` : "null"}, keyword: "${lpKeyword.replace(/"/g, "'")}" },\n`;
-            const wNew = wF.text.replace(/(const LANDING_PAGES = \[\r?\n)(\];)/, (m, a, b) => a + line + b).replace(/(const LANDING_PAGES = \[[\s\S]*?\n)(\];)/, (m, a, b) => a.includes(line.trim()) ? m : a + line + b);
-            if (wNew !== wF.text) { await gPut("worker/worker.js", wNew, `landing: register ${lpSlug}`, wF.sha); committedLp.push("worker.js LANDING_PAGES"); }
-          }
+          try {
+            const cur = (await env.TRADES.get("landing:registry", "json")) || [];
+            if (!cur.some(e => e && e.slug === lpSlug)) {
+              cur.push({ slug: lpSlug, name: (lpAssetTitle || lpProdName || lpCampName), campaignId: lpCampId, productId: lpProductId || null, keyword: lpKeyword });
+              await env.TRADES.put("landing:registry", JSON.stringify(cur));
+              committedLp.push("KV landing:registry");
+            }
+          } catch (e) {}
           const iF = await gGet("index.html");
           if (iF.text && iF.text.includes("const LANDING_PAGES = [")) {
             const entry = `  { name: "${(lpAssetTitle || lpProdName || lpCampName).replace(/"/g, "'")}", slug: "${lpSlug}", campaignId: "${lpCampId}", campaign: "${lpCampName.replace(/"/g, "'")}", productId: ${lpProductId ? `"${lpProductId}"` : "null"}, keyword: "${lpKeyword.replace(/"/g, "'")}" },\n`;
@@ -10933,7 +10957,15 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         // Landing pages are product-scoped, not campaign-scoped (a campaign
         // can have a hub AND landing pages) — attribute their rows by product.
         const landingByProduct = {};
-        LANDING_PAGES.forEach(l => { if (l.productId) landingByProduct[norm(l.productId)] = l.slug; });
+        let LP_REG = LANDING_PAGES.slice();
+        try {
+          const extra = await env.TRADES.get("landing:registry", "json");
+          if (Array.isArray(extra) && extra.length) {
+            const seen = new Set(LP_REG.map(l => l.slug));
+            for (const e of extra) if (e && e.slug && !seen.has(e.slug)) { seen.add(e.slug); LP_REG.push(e); }
+          }
+        } catch (e) {}
+        LP_REG.forEach(l => { if (l.productId) landingByProduct[norm(l.productId)] = l.slug; });
         const [titleRows, assetRows, methodRows] = await Promise.all([
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(e => { console.error('getHubMethodMatrix titles:', e.message); return []; }),
           notionQuery(ASSETS_DB, {}).catch(e => { console.error('getHubMethodMatrix assets:', e.message); return []; }),
@@ -10985,7 +11017,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         });
         return json({ success: true, columns, counts, allTypes,
           hubs: HUB_SITES.map(h => ({ slug: h.slug }))
-            .concat(LANDING_PAGES.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
+            .concat(LP_REG.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
         });
       }
 

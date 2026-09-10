@@ -11350,12 +11350,21 @@ const LANDING_BUILD_DISPATCH = {
   generateLandingCopy: (slug, cid) => call('generateLandingCopy', { campaignId: cid }),
 };
 let _landingPending = null, _landingPendingFetched = false;
+// Source of truth for the deck is the worker's getLandingPages().pages
+// (const seed ∪ KV registry) — NOT this file's own LANDING_PAGES const,
+// which can go stale when the index.html mirror write is skipped. Falls
+// back to the const until the fetch lands.
+let _landingList = LANDING_PAGES.slice();
 function renderLandingTab() {
   const el = document.getElementById('landingTabContent');
   if (!el) return;
   if (!_landingPendingFetched) {
     _landingPendingFetched = true;
-    call('getLandingPages').then(r => { _landingPending = (r && r.pending) || []; renderLandingTab(); }).catch(() => { _landingPending = []; });
+    call('getLandingPages').then(r => {
+      _landingPending = (r && r.pending) || [];
+      if (r && Array.isArray(r.pages) && r.pages.length) _landingList = r.pages;
+      renderLandingTab();
+    }).catch(() => { _landingPending = []; });
   }
   const pendingHtml = (_landingPending && _landingPending.length) ? `
     <div style="border:1px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:14px;background:var(--surface2);">
@@ -11366,7 +11375,7 @@ function renderLandingTab() {
       </div>`).join('')}
       <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Scaffolds the page + registers it (Claude writes the copy/palette from the source title's product + keyword). Reload the tab after.</div>
     </div>` : '';
-  if (!LANDING_PAGES.length) {
+  if (!_landingList.length) {
     el.innerHTML = pendingHtml + `<div style="max-width:620px;">
       <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:8px;">No landing pages built yet</div>
       <div style="font-size:12px;color:var(--text3);line-height:1.7;">
@@ -11392,21 +11401,21 @@ async function landingScaffoldPending(campaignId, btn) {
 }
 function renderLandingDeck(el) {
   if (!el) return;
-  if (_landingIdx >= LANDING_PAGES.length) _landingIdx = 0;
-  const l = LANDING_PAGES[_landingIdx], slug = l.slug;
+  if (_landingIdx >= _landingList.length) _landingIdx = 0;
+  const l = _landingList[_landingIdx], slug = l.slug;
   const url = 'https://cabuzzard.github.io/dash/web/landing/' + slug + '/';
   if (l.campaignId && !_landingBuildFetched[slug]) {
     _landingBuildFetched[slug] = true;
     call('getLandingBuildStatus', { campaignId: l.campaignId }).then(r => {
       if (r && r.steps) _landingBuild[slug] = r;
-      if (LANDING_PAGES[_landingIdx] && LANDING_PAGES[_landingIdx].slug === slug) renderLandingTab();
+      if (_landingList[_landingIdx] && _landingList[_landingIdx].slug === slug) renderLandingTab();
     }).catch(() => {});
   }
   const b = _landingBuild[slug];
   el.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
-    <div style="display:flex;gap:5px;flex-wrap:wrap;">${LANDING_PAGES.map((x, i) => `<button onclick="_landingIdx=${i};try{localStorage.setItem('landingIdx','${i}')}catch(e){};renderLandingTab()" style="font-size:10px;padding:4px 8px;border:1px solid ${i === _landingIdx ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:${i === _landingIdx ? 'var(--surface2)' : 'transparent'};color:${i === _landingIdx ? 'var(--text)' : 'var(--text3)'};cursor:pointer;">${esc(x.name)}</button>`).join('')}</div>
-    <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${String(_landingIdx + 1).padStart(2, '0')} / ${LANDING_PAGES.length}</span>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;">${_landingList.map((x, i) => `<button onclick="_landingIdx=${i};try{localStorage.setItem('landingIdx','${i}')}catch(e){};renderLandingTab()" style="font-size:10px;padding:4px 8px;border:1px solid ${i === _landingIdx ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:${i === _landingIdx ? 'var(--surface2)' : 'transparent'};color:${i === _landingIdx ? 'var(--text)' : 'var(--text3)'};cursor:pointer;">${esc(x.name)}</button>`).join('')}</div>
+    <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${String(_landingIdx + 1).padStart(2, '0')} / ${_landingList.length}</span>
   </div>
   <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);max-width:760px;">
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
@@ -11448,7 +11457,7 @@ function renderLandingBuildRows(slug) {
 }
 function landingBuildRefreshRows(slug) { const el = document.getElementById('landingBuildBody-' + slug); if (el) el.innerHTML = renderLandingBuildRows(slug); }
 async function landingBuildRun(slug, stepId) {
-  const l = LANDING_PAGES.find(x => x.slug === slug); if (!l) return;
+  const l = _landingList.find(x => x.slug === slug); if (!l) return;
   const fn = LANDING_BUILD_DISPATCH[(_landingBuild[slug].steps.find(s => s.id === stepId) || {}).run];
   if (!fn) return;
   _landingBuildBusy[slug + '|' + stepId] = true; landingBuildRefreshRows(slug);
