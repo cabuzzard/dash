@@ -8510,7 +8510,12 @@ Return: the logo on a transparent background, plus one preview placed on the sit
               let ds = {};
               try { const t = fromB64((await getF("web/hub/hubs.design.json")).content || ""); ds = JSON.parse(t).hubs?.[slug] || {}; } catch (e) {}
               const brief = ds.design || {}, tk = ds.tokens || {};
-              const imgPrompt = `A clean, editorial ${body.kind === "signup" ? "supporting" : "hero"} photograph / illustration for a website about: ${rq("Statement") || brief.subject || hub.name}. Audience: ${rq("Pain Points") ? "people dealing with — " + rq("Pain Points").slice(0, 180) : brief.audience || "a focused niche"}. Keywords: ${(rq("Keywords") || "").slice(0, 160)}. Mood: understated, real, not stocky; palette leaning to ${tk.bg || "#f4f2ec"} / ${tk.sea || "#555"} / ${tk.accent || "#333"}. Composition works cropped to a vertical-ish third of a page. Absolutely NO text, letters, words, numbers, logos, or watermarks anywhere — pure image only.`;
+              // Honour the saved image plate spec (💾 Save spec / Push to hub) —
+              // the operator's vetted visual direction governs hub image gen too.
+              const savedSpec = rq("Image Spec");
+              const imgPrompt = savedSpec && savedSpec.length > 200
+                ? `A clean, editorial ${body.kind === "signup" ? "supporting" : "hero"} image for a website about: ${rq("Statement") || brief.subject || hub.name}. Follow this art-direction spec exactly:\n\n${savedSpec.slice(0, 3200)}\n\nComposition works cropped to a vertical-ish third of a page. Absolutely NO text, letters, words, numbers, logos, or watermarks anywhere — pure image only.`
+                : `A clean, editorial ${body.kind === "signup" ? "supporting" : "hero"} photograph / illustration for a website about: ${rq("Statement") || brief.subject || hub.name}. Audience: ${rq("Pain Points") ? "people dealing with — " + rq("Pain Points").slice(0, 180) : brief.audience || "a focused niche"}. Keywords: ${(rq("Keywords") || "").slice(0, 160)}. Mood: understated, real, not stocky; palette leaning to ${tk.bg || "#f4f2ec"} / ${tk.sea || "#555"} / ${tk.accent || "#333"}. Composition works cropped to a vertical-ish third of a page. Absolutely NO text, letters, words, numbers, logos, or watermarks anywhere — pure image only.`;
               const gr = await fetch("https://api.openai.com/v1/images/generations", {
                 method: "POST", headers: { "Authorization": `Bearer ${OPENAI}`, "Content-Type": "application/json" },
                 body: JSON.stringify({ model: "gpt-image-1", prompt: imgPrompt, size: "1024x1536", quality: "medium", n: 1 }),
@@ -20829,7 +20834,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
           const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
           let imageSpec = "";
-          try { imageSpec = brief ? await writeImageSpec(env, brief) : ""; } catch (e) { imageSpec = ""; }
+          // Prefer the saved/frozen spec on the Research record (💾 Save spec /
+          // Push to hub) — the operator's vetted version. Only assemble a fresh
+          // one if none is stored.
+          if (brief && brief.storedSpec && brief.storedSpec.length > 200) imageSpec = brief.storedSpec;
+          else { try { imageSpec = brief ? await writeImageSpec(env, brief) : ""; } catch (e) { imageSpec = ""; } }
 
           const zoneList = Object.keys(HOOK_POST_ZONES).join(" | ");
           const hpPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a short-form social copywriter. Produce ${hpCount} DISTINCT one-page "hook posts" for the product below — each post confronts ONE specific customer objection or rejection head-on and turns it. These publish as separate posts, grouped under one campaign title.
