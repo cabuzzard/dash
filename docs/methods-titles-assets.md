@@ -537,7 +537,10 @@ runs it, does not draw. `--hub <slug>` prepends that hub's design spec from
 ratio (1:1 / 3:4) and, with `--asset-id` + `HERMES_TOKEN`, attaches via
 `saveOfferImage` (`fileData`). Needs `XAI_API_KEY` in the env (`setx`, never
 committed). The "plate + Remotion" split lives here — Grok makes the wordless
-plate, a Remotion still sets the type from the hub tokens.
+plate, then **`remotion/` + the `make-offer-still` skill** set the type over
+it in the hub's real fonts (`OfferStill` composition, square + 4:5;
+`render-offer-still.mjs --hub <slug> --plate … --title … --attach <assetId>`
+writes back via `saveOfferImage`).
 
 ### Secrets / status
 

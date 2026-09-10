@@ -1,6 +1,11 @@
 videos/
 images/
 
+# Remotion — commit the source, not the build/deps/inputs
+remotion/node_modules/
+remotion/public/
+remotion/out/
+
 # Secrets — never commit
 .env
 .env.*
