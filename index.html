@@ -1767,6 +1767,33 @@
   </div>
 </div>
 
+<!-- New single-post template — title it, copy the generation prompt, paste the Canva link back -->
+<div class="modal-bg" id="spTemplateModal" onclick="if(event.target===this)closeSPTemplateModal()">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-title">New single-post template — <span id="spTplHub"></span></div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:10px;">
+      One fixed Canva template the <b>single post</b> method fills. Title it, copy the generation
+      prompt (built from this hub's Image Spec), make the design in Canva with three text boxes
+      (<b>Headline Primary</b> · <b>Headline Accent</b> · <b>Body</b>), then paste the Canva edit link back.
+    </div>
+    <label style="font-size:11px;color:var(--text3);">Name</label>
+    <input id="spTplName" class="modal-input" type="text" placeholder="e.g. quote card — warm" style="margin-bottom:8px;">
+    <label style="font-size:11px;color:var(--text3);">For which method</label>
+    <select id="spTplMethod" class="modal-input" style="margin-bottom:8px;"></select>
+    <label style="font-size:11px;color:var(--text3);">Direction for this template (optional)</label>
+    <textarea id="spTplOverride" wrap="soft" placeholder="e.g. warmer than the hub default · a paper texture · room for a photo strip on the left"
+      style="width:100%;height:70px;font-family:inherit;font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;margin-bottom:8px;"></textarea>
+    <button class="modal-btn" onclick="spTplGenPrompt(this)" style="margin-bottom:10px;">📋 Copy generation prompt</button>
+    <label style="font-size:11px;color:var(--text3);">Finished Canva template link</label>
+    <input id="spTplUrl" class="modal-input" type="text" placeholder="https://www.canva.com/design/…/edit" style="margin-bottom:10px;">
+    <div style="display:flex;gap:10px;align-items:center;">
+      <button class="modal-btn" id="spTplSaveBtn" onclick="spTplSave()" style="flex:0 0 auto;">Save template</button>
+      <button class="modal-btn" onclick="closeSPTemplateModal()" style="margin-left:auto;background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+    </div>
+    <div id="spTplMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+  </div>
+</div>
+
 <!-- Hub field modal — generic edit for domain / contact / product & blog counts -->
 <div class="modal-bg" id="hubFieldModal" onclick="if(event.target===this)this.classList.remove('open')">
   <div class="modal" style="max-width:420px;">
@@ -10569,6 +10596,9 @@ let _hpInstrVal = {};         // slug -> override-box text, held
 let _hpSpec = {};             // slug -> { text, stored } — the image plate spec (stored one, or a staged preview)
 let _hpSpecBusy = {};
 let _hpTouched = {};          // slug -> the operator has changed the STAGE this session (gate re-seeding from the record)
+let _hpSPT = {};              // slug -> { templates:[], methods:[] } — the hub's single-post Canva templates
+let _hpSPTFetched = {};
+let _spTplSlug = '';
 const _HP_LIST = { palette: 'palettes', fonts: 'fonts', direction: 'directions' };
 
 function _hpStageOf(slug){
@@ -10787,6 +10817,75 @@ function fetchHubSpecText(slug, preview){
     .finally(() => { _hpSpecBusy[slug] = false; if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); });
 }
 function hubImgSpecText2(slug){ return _hpSpec[slug] ? _hpSpec[slug].text : (_hpSpecBusy[slug] ? 'Assembling…' : '(loading)'); }
+
+// ── Single-post Canva template registry (per hub, tagged to a method) ──
+function hpLoadSPTemplates(slug){
+  const h = HUB_SITES.find(x => x.slug === slug);
+  if (!h || !h.campaignId || _hpSPTFetched[slug]) return;
+  _hpSPTFetched[slug] = true;
+  call('getSinglePostConfig', { campaignId: h.campaignId }).then(r => {
+    if (r && !r.error) { _hpSPT[slug] = { templates: r.templates || [], methods: r.methods || [] }; if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
+  }).catch(() => {});
+}
+function openSPTemplateModal(slug){
+  _spTplSlug = slug;
+  const h = HUB_SITES.find(x => x.slug === slug);
+  document.getElementById('spTplHub').textContent = (h && h.name) || slug;
+  document.getElementById('spTplName').value = '';
+  document.getElementById('spTplOverride').value = '';
+  document.getElementById('spTplUrl').value = '';
+  document.getElementById('spTplMsg').textContent = '';
+  const ms = (_hpSPT[slug] || {}).methods || [{ id: '', name: 'single post' }];
+  document.getElementById('spTplMethod').innerHTML = ms.map(m => `<option value="${esc(m.id || '')}" data-name="${esc(m.name)}">${esc(m.name)}</option>`).join('');
+  document.getElementById('spTemplateModal').classList.add('open');
+}
+function closeSPTemplateModal(){ document.getElementById('spTemplateModal').classList.remove('open'); }
+async function spTplGenPrompt(btn){
+  const h = HUB_SITES.find(x => x.slug === _spTplSlug); if (!h) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Building…';
+  try {
+    const r = await call('buildSinglePostTemplatePrompt', {
+      campaignId: h.campaignId,
+      name: document.getElementById('spTplName').value.trim() || 'single-post template',
+      override: document.getElementById('spTplOverride').value.trim(),
+    });
+    if (r.error) throw new Error(r.error);
+    await navigator.clipboard.writeText(r.prompt);
+    btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 1600);
+  } catch (e) { btn.textContent = o; btn.disabled = false; document.getElementById('spTplMsg').style.color = '#ff6b6b'; document.getElementById('spTplMsg').textContent = e.message; }
+}
+async function spTplSave(){
+  const h = HUB_SITES.find(x => x.slug === _spTplSlug); if (!h) return;
+  const msg = document.getElementById('spTplMsg');
+  const name = document.getElementById('spTplName').value.trim();
+  const url = document.getElementById('spTplUrl').value.trim();
+  if (!name) { msg.style.color = '#ff6b6b'; msg.textContent = 'Give it a name.'; return; }
+  if (!/^https:\/\/(www\.)?canva\.com\//i.test(url)) { msg.style.color = '#ff6b6b'; msg.textContent = 'Paste the Canva template link.'; return; }
+  const mSel = document.getElementById('spTplMethod');
+  const btn = document.getElementById('spTplSaveBtn'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await call('saveSinglePostTemplate', {
+      campaignId: h.campaignId, name, canvaUrl: url,
+      methodId: mSel.value || undefined,
+      methodName: mSel.selectedOptions[0]?.dataset.name || 'single post',
+      override: document.getElementById('spTplOverride').value.trim(),
+    });
+    if (r.error) throw new Error(r.error);
+    _hpSPT[_spTplSlug] = Object.assign({}, _hpSPT[_spTplSlug], { templates: r.templates || [] });
+    closeSPTemplateModal();
+    renderHubsTab();
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Save template'; }
+}
+async function spTplDelete(slug, id){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  if (!confirm('Remove this template from the list? (The Canva design itself is not touched.)')) return;
+  try {
+    const r = await call('deleteSinglePostTemplate', { campaignId: h.campaignId, templateId: id });
+    if (r.error) throw new Error(r.error);
+    _hpSPT[slug] = Object.assign({}, _hpSPT[slug], { templates: r.templates || [] });
+    renderHubsTab();
+  } catch (e) { alert(e.message); }
+}
 // Freeze exactly what's in the spec textarea onto Research › Image Spec.
 // Not a hub push, not a regenerate — just "save this as the stored spec".
 async function hpSaveSpec(slug, btn){
@@ -11503,6 +11602,24 @@ function renderHubsTab() {
           </div>
           ${_hpSpec[slug] && _hpSpec[slug].dirtyEdit ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Hand-edited — not saved. 💾 Save spec to store it.</div>' : (_hpSpec[slug] && _hpSpec[slug].preview ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Regenerated from the staged brief — not stored yet. 💾 Save spec to store it.</div>' : (_hpSpec[slug] && _hpSpec[slug].stored ? '<div style="font-size:9px;color:var(--text3);margin-bottom:4px;">Stored spec from the Research record.</div>' : ''))}
           <textarea id="hubImgSpec-${slug}" rows="14" oninput="if(_hpSpec['${slug}']){_hpSpec['${slug}'].text=this.value;_hpSpec['${slug}'].dirtyEdit=true;}" title="Editable. Tweak it here, then 💾 Save spec to store it. Or use ↻ preview to reassemble from the staged brief." style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.55;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;resize:vertical;">${esc(hubImgSpecText2(slug))}</textarea>
+        </div>
+
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Single-Post Templates</span>
+            <span title="The 'single post' method fills one of these per iteration. Build each once in Canva to match this hub's palette / fonts / Image Spec — the New template button copies a generation prompt built from the spec above." style="font-size:10px;color:var(--text3);cursor:help;">the hub's fixed Canva templates the “single post” method fills</span>
+            <button onclick="openSPTemplateModal('${slug}')" style="margin-left:auto;font-size:10px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">+ New template</button>
+          </div>
+          ${(function(){
+            if (!_hpSPTFetched[slug]) { hpLoadSPTemplates(slug); return '<div style="font-size:10px;color:var(--text3);">loading…</div>'; }
+            const t = (_hpSPT[slug] || {}).templates || [];
+            if (!t.length) return '<div style="font-size:10px;color:var(--text3);">No templates yet — <b>+ New template</b> to add one.</div>';
+            return '<div style="display:flex;flex-direction:column;gap:4px;">' + t.map(x => `<div style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--text2);">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.name)} <span style="color:var(--text3);">· ${esc(x.methodName || 'single post')}</span></span>
+              <a href="${esc(x.canvaUrl)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">open ↗</a>
+              <button onclick="spTplDelete('${slug}','${esc(x.id)}')" title="Remove from the list (Canva design untouched)" style="border:0;background:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+            </div>`).join('') + '</div>';
+          })()}
         </div>
       </div>
     </details>

@@ -1933,17 +1933,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <option value="">— none —</option>
       </select>
 
-      <!-- Hook Posts method only: the fixed dimension set every image in this
-           run is made for. The Grok plate and the text box are cut for this
-           one canvas; images are rendered + stored on each asset automatically
-           (no manual step). -->
-      <div id="gaHookFormatWrap" style="display:none;margin-bottom:10px;">
-        <label class="lm-label">Dimension set <span style="color:#fff;font-weight:normal;">— every hook post in this run is rendered at this size. Run again with another set for more.</span></label>
-        <select id="gaHookFormatInput" class="modal-ta">
-          <option value="ig-portrait">Instagram portrait — 1080×1350 (4:5)</option>
-          <option value="ig-square">Instagram square — 1080×1080 (1:1)</option>
-          <option value="ig-story">Instagram story — 1080×1920 (9:16)</option>
-        </select>
+      <!-- "single post" method only: pick one of the hub's fixed Canva
+           templates, the content type, and how many iterations. The worker
+           writes the copy + stamps the template; a Canva-connected Claude
+           session fills the template afterward (📋 Copy Canva handoff on the
+           title row). Every post in a run uses the same template. -->
+      <div id="gaSinglePostWrap" style="display:none;margin-bottom:10px;">
+        <label class="lm-label">Template <span style="color:#fff;font-weight:normal;">— the hub's fixed Canva templates (set them up in the Content Hubs card)</span></label>
+        <select id="gaSinglePostTemplate" class="modal-ta" style="margin-bottom:8px;"></select>
+        <label class="lm-label">Content type</label>
+        <select id="gaSinglePostType" class="modal-ta" style="margin-bottom:8px;"></select>
+        <label class="lm-label">Iterations <span style="color:#fff;font-weight:normal;">— how many posts on this template this run</span></label>
+        <input id="gaSinglePostCount" class="modal-ta" type="number" min="1" max="12" value="6">
       </div>
 
       <!-- This modal takes a title whose content is already fully composed
@@ -2906,8 +2907,9 @@ async function loadTitles(opts = {}) {
       const hookImg = a.postImage || a.instagramBackground || '';
       ar.innerHTML = `<span style="font-size:9px;color:#fff;flex-shrink:0;">↳</span>`
         + `<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#fff;">${esc(a.type || a.title)}</span>`
-        + (hookImg ? `<a href="${esc(hookImg)}" target="_blank" rel="noopener" title="${a.postImage ? 'Finished hook-post image' : 'Image plate'}" style="flex-shrink:0;line-height:0;"><img src="${esc(hookImg)}" alt="" style="width:26px;height:32px;object-fit:cover;border-radius:3px;border:1px solid #444;vertical-align:middle;"></a>` : ((a.type || '') === 'hook post' ? `<span style="font-size:9px;color:#f0b429;flex-shrink:0;">⏳ image</span>` : ''))
-        + (a.canvaTemplate ? `<a href="${esc(a.canvaTemplate)}" target="_blank" rel="noopener" title="Open the Canva template for this dimension set" style="font-size:10px;color:#8be9fd;text-decoration:none;flex-shrink:0;">Canva</a>` : '')
+        + (hookImg ? `<a href="${esc(hookImg)}" target="_blank" rel="noopener" title="Finished post image" style="flex-shrink:0;line-height:0;"><img src="${esc(hookImg)}" alt="" style="width:26px;height:32px;object-fit:cover;border-radius:3px;border:1px solid #444;vertical-align:middle;"></a>` : (/\b(single|hook) post\b/i.test(a.type || '') ? `<span style="font-size:9px;color:#f0b429;flex-shrink:0;">⏳ Canva</span>` : ''))
+        + (a.canvaTemplate ? `<a href="${esc(a.canvaTemplate)}" target="_blank" rel="noopener" title="Open the Canva template this post is built from" style="font-size:10px;color:#8be9fd;text-decoration:none;flex-shrink:0;">Canva</a>` : '')
+        + (/\bsingle post\b/i.test(a.type || '') && !a.postImage ? `<button data-titleid="${titleId}" onclick="copySinglePostCanvaHandoff(this)" title="Copy a batch handoff for every single-post asset under this title that still needs its Canva design — paste into a Claude Code chat with the Canva connector." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva handoff</button>` : '')
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink && !/linkedin post/i.test(a.type || '') ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + (a.canvaLink && /linkedin post/i.test(a.type || '') ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyLinkedInBannerPrompt(this)" title="Copy a ready-to-paste prompt for porting this article's banner copy into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the article." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
@@ -6831,11 +6833,12 @@ function gaUpdateSkillHint() {
   const capWrap = document.getElementById('gaCaptureFormWrap');
   const isEmailHubMain = /^email hub main\b/i.test((GA_METHOD_NAME || '').trim());
   if (capWrap) { capWrap.style.display = isEmailHubMain ? 'block' : 'none'; if (isEmailHubMain) gaLoadCaptureForms(); }
-  // "Hook Posts" — generic generateTitleAssets path (its own /\bhook post/i
-  // branch), no GA_SKILL_METHODS entry; just needs the dimension-set picker.
-  const hookFmtWrap = document.getElementById('gaHookFormatWrap');
-  const isHookPosts = /\bhook posts?\b/i.test((GA_METHOD_NAME || '').trim());
-  if (hookFmtWrap) hookFmtWrap.style.display = isHookPosts ? 'block' : 'none';
+  // "single post" (and future "single post — *" variants) — generic
+  // generateTitleAssets path (its own /\bsingle post\b/i branch); needs the
+  // template + content-type + iterations pickers.
+  const spWrap = document.getElementById('gaSinglePostWrap');
+  const isSinglePost = /^single post\b/i.test((GA_METHOD_NAME || '').trim());
+  if (spWrap) { spWrap.style.display = isSinglePost ? 'block' : 'none'; if (isSinglePost) gaLoadSinglePostConfig(); }
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
@@ -6952,6 +6955,34 @@ async function gaLoadCaptureForms() {
     fill(GA_HUB_FORMS_CACHE.forms, GA_HUB_FORMS_CACHE.hubSlug);
   } catch (e) {
     sel.innerHTML = '<option value="">— couldn\'t load forms —</option>';
+  }
+}
+
+// "single post" method — populate the template + content-type pickers from
+// the hub's fixed Canva template library (getSinglePostConfig).
+let GA_SP_CONFIG = null;
+async function gaLoadSinglePostConfig() {
+  const tSel = document.getElementById('gaSinglePostTemplate');
+  const cSel = document.getElementById('gaSinglePostType');
+  if (!tSel || !cSel) return;
+  const fill = cfg => {
+    const method = (GA_METHOD_NAME || 'single post').trim();
+    const norm = s => String(s || '').replace(/-/g, '');
+    const forMethod = (cfg.templates || []).filter(t => !t.methodName || t.methodName.toLowerCase() === method.toLowerCase() || (GA_METHOD_ID && norm(t.methodId) === norm(GA_METHOD_ID)));
+    const list = forMethod.length ? forMethod : (cfg.templates || []);
+    tSel.innerHTML = list.length
+      ? list.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')
+      : '<option value="">— no templates yet — add one in the Content Hubs card —</option>';
+    cSel.innerHTML = (cfg.contentTypes || ['Hook']).map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  };
+  if (GA_SP_CONFIG) { fill(GA_SP_CONFIG); return; }
+  tSel.innerHTML = '<option value="">loading…</option>';
+  try {
+    const r = await w('getSinglePostConfig', { campaignId: CAMPAIGN_ID });
+    GA_SP_CONFIG = r;
+    fill(r);
+  } catch (e) {
+    tSel.innerHTML = '<option value="">— couldn\'t load templates —</option>';
   }
 }
 
@@ -7390,14 +7421,14 @@ function gaRenderExisting(titleId) {
     if (img) {
       const thumb = document.createElement('a');
       thumb.href = img; thumb.target = '_blank'; thumb.rel = 'noopener';
-      thumb.title = a.postImage ? 'Finished hook-post image' : 'Image plate';
+      thumb.title = 'Finished post image';
       thumb.style.cssText = 'flex-shrink:0;line-height:0;';
       thumb.innerHTML = `<img src="${esc(img)}" alt="" style="width:34px;height:42px;object-fit:cover;border-radius:3px;border:1px solid #444;">`;
       row.appendChild(thumb);
-    } else if ((a.type || '') === 'hook post') {
+    } else if (/\b(single|hook) post\b/i.test(a.type || '')) {
       const wait = document.createElement('span');
       wait.style.cssText = 'font-size:9px;color:#f0b429;flex-shrink:0;';
-      wait.textContent = '⏳ image';
+      wait.textContent = '⏳ Canva';
       row.appendChild(wait);
     }
     const link = document.createElement('a');
@@ -7521,6 +7552,26 @@ async function copyLinkedInBannerPrompt(btn) {
     setTimeout(() => { btn.textContent = orig; }, 1400);
   } catch(e) {
     alert(prompt);
+  }
+}
+
+// "single post" method — the worker assembles the whole batch handoff (skill
+// file + governance + every pending asset's copy + template) since the per-post
+// field values live in the Notion json block, not this asset object.
+async function copySinglePostCanvaHandoff(btn) {
+  const titleId = btn.dataset.titleid;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Building…';
+  try {
+    const r = await w('buildSinglePostCanvaHandoff', { titleId });
+    if (r.error) throw new Error(r.error);
+    if (!r.handoffPrompt) { btn.textContent = r.note || 'Nothing pending'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500); return; }
+    await navigator.clipboard.writeText(r.handoffPrompt);
+    btn.textContent = `Copied ✓ (${r.assetCount})`;
+    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2200);
+  } catch (e) {
+    btn.textContent = orig; btn.disabled = false;
+    alert('Could not build the handoff: ' + e.message);
   }
 }
 
@@ -10296,45 +10347,35 @@ async function submitGenAssets() {
       status.textContent = 'Pick which hub form this sequence attaches to above first.';
       status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate'; return;
     }
-    const isHookPosts = /\bhook posts?\b/i.test((GA_METHOD_NAME || '').trim());
+    const isSinglePost = /^single post\b/i.test((GA_METHOD_NAME || '').trim());
+    const spCount = isSinglePost ? Math.min(Math.max(parseInt(document.getElementById('gaSinglePostCount')?.value) || 6, 1), 12) : 4;
     status.textContent = isHubMethod ? 'Creating the Content Hub asset…'
       : isEmailHubMain ? 'Writing the email sequence (campaign keywords → hub product keywords → the method arc). Leave this tab open.'
-      : isHookPosts ? 'Writing the hook posts from the product’s objections. Images render right after and land on the assets automatically — leave this tab open.'
+      : isSinglePost ? 'Writing the single posts for this template. Leave this tab open.'
       : 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
     const r = await w('generateTitleAssets', {
       titleId: GA_TITLE_ID,
       campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID,
       methodId:    method.id    || undefined,
       productId,
-      assetType,
+      assetType: isSinglePost ? 'single post' : assetType,
       title,
       description: overrideText, seedKeywords: overrideText, researchInstructions: overrideText,
-      count: isHookPosts ? 6 : 4,
-      formatKey: isHookPosts ? (document.getElementById('gaHookFormatInput')?.value || 'ig-portrait') : undefined,
+      count: spCount,
+      templateId:  isSinglePost ? (document.getElementById('gaSinglePostTemplate')?.value || undefined) : undefined,
+      contentType: isSinglePost ? (document.getElementById('gaSinglePostType')?.value || 'Hook') : undefined,
       captureFormId: captureFormId || undefined,
       contextMode: (document.querySelector('input[name="gaContext"]:checked') || {}).value || 'isolate',
       platformId: document.getElementById('gaPlatformInput')?.value || undefined,
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
     });
     gaAutoAttachMethod(method.id);
-    if (r.imagesPending != null) {
-      status.textContent = `✓ Wrote ${r.created} hook post${r.created === 1 ? '' : 's'} — rendering ${r.imagesPending} image${r.imagesPending === 1 ? '' : 's'} now (they land on the assets automatically).`;
+    if (r.awaitingCanva != null) {
+      status.innerHTML = `✓ Wrote ${r.created} single post${r.created === 1 ? '' : 's'} for <b>${esc(r.templateName || 'template')}</b>. Now click <b>📋 Copy Canva handoff</b> on the title row, paste into a Claude Code chat with the Canva connector — the finished images land back on the assets.`;
       status.style.color = '#68d391';
       btn.textContent = 'Done';
       await loadTitles();
-      // Safety net: if the background render was cut short, finish it. Purely
-      // automatic — no button. A few spaced tries, then stop.
-      (async () => {
-        for (let i = 0; i < 4; i++) {
-          await new Promise(res => setTimeout(res, 12000));
-          try {
-            const rr = await w('renderHookPostImages', { titleId: GA_TITLE_ID });
-            await loadTitles();
-            if (rr && rr.pending <= 0) break;
-          } catch (e) { /* keep trying */ }
-        }
-      })();
-      setTimeout(closeGenAssetsModal, 4000);
+      setTimeout(closeGenAssetsModal, 6000);
       return;
     }
     if (r.hubProduct) {
