@@ -10301,10 +10301,11 @@ const HUB_SITES = [
 
 // Landing pages — a niche product sliced off a hub, published standalone at
 // web/landing/<slug>/ (title / subhead / form / SEO posts). Tracks to a
-// campaign like a hub. scaffoldLandingPage registers new rows here + in
-// worker.js via the GitHub API on Landing Page asset publish.
+// campaign like a hub. This const is only a seed — scaffoldLandingPage
+// registers new pages in KV "landing:registry" (worker.js is too big for
+// the GitHub Contents API to rewrite); the deck renders getLandingPages()
+// (const ∪ KV). index.html still gets a git-committed mirror row.
 const LANDING_PAGES = [
-  { name: "Insider Access, Built In", slug: "insider-access-built-in", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", campaign: "Development and Acquisitions", productId: "3d71f7d3a4bb81f7b137fadbbfba5722", keyword: "multifamily acquisitions" },
 ];
 
 // Yes/no checklist columns. `crit:true` = blocks the LIVE badge; the rest

@@ -193,7 +193,6 @@ const HUB_SITES = [
 // like a hub. Mirror of index.html's LANDING_PAGES; scaffoldLandingPage
 // registers new ones here (and in index.html) via the GitHub API.
 const LANDING_PAGES = [
-  { slug: "insider-access-built-in", name: "Insider Access, Built In", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", productId: "3d71f7d3a4bb81f7b137fadbbfba5722", keyword: "multifamily acquisitions" },
 ];
 
 // Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
@@ -9022,10 +9021,11 @@ Return: {
         const rget = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("");
         const methodBodyLp = (await resolveMethodIdByName(LANDING_METHOD_NAME).then(id => id ? extractBlocksTextRecursive(nh, dLp(id)) : "").catch(() => "")).slice(0, 3500);
 
+        const lpEyebrow = String(lpAssetTitle || "").trim().slice(0, 90).replace(/["\\]/g, "");
         const lpPrompt = `Write the copy + palette for a standalone product landing page. It slices ONE product out of a broader campaign and sells it / captures leads on its own. Return ONLY JSON.
 
 PRODUCT: "${lpProdName || lpCampName}"
-PRIMARY KEYWORD: ${lpKeyword || "(none — use the product name)"}
+${lpEyebrow ? `PAGE TITLE (use this string VERBATIM as "eyebrow" — do not paraphrase, rewrite, or expand it): "${lpEyebrow}"\n` : ""}PRIMARY KEYWORD: ${lpKeyword || "(none — use the product name)"}
 ${lpProdDesc ? `DESCRIPTION: ${lpProdDesc.slice(0, 600)}\n` : ""}${lpProdKw ? `PRODUCT KEYWORDS: ${lpProdKw}\n` : ""}${rget("Statement") ? `CAMPAIGN POSITIONING: ${rget("Statement").slice(0, 400)}\n` : ""}${rget("Unique Opportunity") ? `UNIQUE OPPORTUNITY: ${rget("Unique Opportunity").slice(0, 300)}\n` : ""}
 METHOD GUIDANCE (the "Landing Page" method — follow its conversion framework):
 ${methodBodyLp.slice(0, 2500)}
@@ -9039,7 +9039,7 @@ Return: {
  "fonts": { "display":"..","body":".." },
  "lp": {
   "brand": "short name",
-  "eyebrow": "short keyword/category line or empty",
+  "eyebrow": ${lpEyebrow ? `"${lpEyebrow}"  (REQUIRED — the PAGE TITLE above, verbatim)` : `"short keyword/category line or empty"`},
   "h1": "the keyword as an outcome, ends with a period, 6-12 words",
   "sub": "one sentence: the mechanism + exactly who it's for",
   "form": { "headline": "e.g. Get the guide", "note": "one line", "button": "specific-outcome label", "fine": "No spam. One-click unsubscribe.", "success": "confirmation line" },
@@ -9060,6 +9060,7 @@ Return: {
         try { const raw = (aiLpD.content?.[0]?.text || ""); planLp = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); }
         catch (e) { return json({ error: "could not parse landing plan" }, 502); }
         const lp = planLp.lp || {}, tk = planLp.tokens || {}, fn = planLp.fonts || {};
+        if (lpEyebrow) lp.eyebrow = lpEyebrow;  // the page title, verbatim — never Claude's paraphrase
         const sLp = v => String(v == null ? "" : v).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ").slice(0, 500);
         const FQ = { "Space Grotesk":"Space+Grotesk:wght@500;600;700","Inter":"Inter:wght@400;500;600","IBM Plex Sans":"IBM+Plex+Sans:wght@400;500;600","IBM Plex Mono":"IBM+Plex+Mono:wght@400;700","Newsreader":"Newsreader:opsz,wght@6..72,500;6..72,600","DM Serif Display":"DM+Serif+Display:ital@0;1","Fraunces":"Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700","Archivo":"Archivo:wght@500;600;700","Libre Franklin":"Libre+Franklin:wght@400;500;600;700","Space Mono":"Space+Mono:wght@400;700" };
         const FF = f => /serif|newsreader|fraunces/i.test(f) ? "Georgia, serif" : /mono/i.test(f) ? "ui-monospace, monospace" : "system-ui, sans-serif";
@@ -20222,13 +20223,16 @@ Return ONLY this JSON object:
           const lpProd = await fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
           const lpProdName = (lpProd?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "this product";
           const props = {
-            "Asset Title":      { title: [{ text: { content: `${lpProdName} — landing page`.slice(0, 200) } }] },
+            // Asset Title = the title verbatim — never a synthesized name.
+            // scaffoldLandingPage renders this same string as a heading on
+            // the page (the eyebrow above the H1).
+            "Asset Title":      { title: [{ text: { content: String(title).slice(0, 200) } }] },
             "Asset Status":     { select: { name: "Development" } },
             "Asset Type":       { select: { name: "Landing Page" } },
             "Status":           { select: { name: "Draft" } },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
             "Product":          { relation: [{ id: dsDash(productId) }] },
-            "Notes":            { rich_text: [{ text: { content: `Standalone landing page for "${lpProdName}". Set this asset to Published to scaffold web/landing/<slug>/ — Claude writes the copy + palette from the product's Research + primary keyword per the "Landing Page" method framework.`.slice(0, 1990) } }] },
+            "Notes":            { rich_text: [{ text: { content: `Standalone landing page for "${lpProdName}". Set this asset to Published to scaffold web/landing/<slug>/ — Claude writes the copy + palette from the product's Research + primary keyword per the "Landing Page" method framework. The page's eyebrow heading is this asset's title verbatim.`.slice(0, 1990) } }] },
           };
           if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           const r = await fetch("https://api.notion.com/v1/pages", {
@@ -20252,7 +20256,7 @@ Return ONLY this JSON object:
             body: JSON.stringify({ properties: lpTitleProps }),
           }).catch(() => {});
           if (lpMethodId && productId) ctx.waitUntil(propagateMethodToCampaigns(productId, lpMethodId).catch(() => {}));
-          return json({ success: true, created: 1, landingPage: true, assets: [{ id: out.id.replace(/-/g, ""), title: `${lpProdName} — landing page` }],
+          return json({ success: true, created: 1, landingPage: true, assets: [{ id: out.id.replace(/-/g, ""), title }],
             note: `Landing Page asset created (Development). Set it to Published to scaffold + build the page.` });
         }
 
