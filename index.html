@@ -11154,6 +11154,15 @@ function renderHubsTab() {
 
   <div class="hub-layout">
   <div class="hub-left">
+  <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px;">
+    <div style="padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;">Build checklist</span>
+      <span style="font-size:10px;color:var(--text3);">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
+      <button onclick="_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+      <button onclick="hubBuildRunNext('${slug}')" title="Run the next un-done auto step" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
+    </div>
+    <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
+  </div>
   <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);">
     ${mpBar}
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -11230,15 +11239,6 @@ function renderHubsTab() {
   </div>
 
   <div class="hub-rail">
-    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px;">
-      <div style="padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
-        <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;">Build checklist</span>
-        <span style="font-size:10px;color:var(--text3);">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
-        <button onclick="_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
-        <button onclick="hubBuildRunNext('${slug}')" title="Run the next un-done auto step" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
-      </div>
-      <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
-    </div>
     <div class="hub-rail-head">
       <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Full roll</span>
       <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid ${HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:transparent;color:${HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">✎ Tap-to-edit: ${HPI_ON[slug] ? 'on' : 'off'}</button>
@@ -11253,7 +11253,7 @@ function renderHubsTab() {
   setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
 }
 
-// ── Hub build checklist (Content Hubs card, right rail) ────────────────
+// ── Hub build checklist (Content Hubs card, left column) ──────────────
 // Steps + derived done-state come from getHubBuildStatus. `run` steps call
 // a worker action (or an existing card fn); `modal` steps open the tool;
 // `manual` steps are a KV ✓ toggle (setHubBuildCheck).
