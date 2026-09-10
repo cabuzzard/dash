@@ -1,0 +1,52 @@
+{
+  "brand": "Multifamily Acquisitions",
+  "ribbon": [
+    "Off-Market Deal Flow",
+    "Value-Add Underwriting",
+    "Portfolio-Scale Strategy"
+  ],
+  "hero": {
+    "eyebrow": "Development & Acquisitions Intelligence for Multifamily Investors",
+    "headline": "Find, underwrite, and close multifamily acquisitions before the market catches up.",
+    "sub": "Built for sponsors, syndicators, and institutional buyers who acquire apartment communities at scale — and need sharper deal flow, tighter underwriting, and a real edge on off-market opportunities.",
+    "ctaPrimary": {
+      "label": "Explore Acquisitions"
+    },
+    "ctaSecondary": {
+      "label": "Get the Weekly Brief"
+    }
+  },
+  "report": {
+    "label": "Weekly Intelligence",
+    "title": "The Multifamily Acquisitions Brief — deal flow, cap rate shifts, and underwriting insights every week.",
+    "blurb": "Each issue covers off-market deal sourcing, value-add acquisition strategies, market pricing signals, and the underwriting moves separating disciplined buyers from overpaying ones. Concrete, operator-level, no filler.",
+    "buttonLabel": "Send me the weekly"
+  },
+  "journal": {
+    "title": "Acquisitions Journal",
+    "note": "Deep dives on underwriting, deal structure, and multifamily portfolio strategy.",
+    "empty": {
+      "heading": "First issue lands soon.",
+      "body": "We're publishing acquisition case studies, underwriting breakdowns, and value-add playbooks for multifamily buyers who move at scale. Subscribe above to be first in."
+    }
+  },
+  "news": {
+    "title": "Market Pulse",
+    "note": "",
+    "empty": {
+      "heading": "Coverage is warming up.",
+      "body": "Cap rate compression, distressed asset opportunities, syndication deal flow — when multifamily acquisition markets move, we'll surface what actually matters here."
+    }
+  },
+  "trips": {
+    "title": "Deal Spotlights",
+    "note": "Real acquisitions, real numbers, real lessons.",
+    "empty": {
+      "heading": "Deal spotlights coming shortly.",
+      "body": "We'll be breaking down live and closed multifamily acquisitions — purchase price, underwriting assumptions, value-add thesis, and what the numbers looked like at close. The kind of detail you actually need."
+    }
+  },
+  "footer": {
+    "tagline": "Multifamily acquisition strategy for buyers who do this at scale."
+  }
+}
