@@ -10517,6 +10517,9 @@ let _hpFonts = {};            // slug -> researched {display,body,mono} not yet 
 let _hpFetched = {};          // slug -> already pulled getHubPalette this session
 let _hubMainProd = {};        // slug -> { id, name, productsite, stack, status, via } | null — the product the hub is built around
 let _hubMainProdFetched = {}; // slug -> getHubMainProduct has run this session
+let _hubBuild = {};           // slug -> { steps, doneCount, total } from getHubBuildStatus
+let _hubBuildFetched = {};    // slug -> getHubBuildStatus has run this session
+let _hubBuildBusy = {};       // slug|stepId -> true while a step runs
 let _hf = {};                 // field-modal state
 
 function fetchHubSpec() {
@@ -11081,6 +11084,13 @@ function renderHubsTab() {
       if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
     }).catch(() => {});
   }
+  if (h.campaignId && !_hubBuildFetched[slug]) {
+    _hubBuildFetched[slug] = true;
+    call('getHubBuildStatus', { campaignId: h.campaignId }).then(r => {
+      if (r && r.steps) _hubBuild[slug] = r;
+      if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
+    }).catch(() => {});
+  }
   const meta = hubMeta(h), state = hubReadyState(slug), badge = hubBadge(state, meta);
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
   const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
@@ -11201,6 +11211,15 @@ function renderHubsTab() {
   </div>
 
   <div class="hub-rail">
+    <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px;">
+      <div style="padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
+        <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;">Build checklist</span>
+        <span style="font-size:10px;color:var(--text3);">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
+        <button onclick="_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+        <button onclick="hubBuildRunNext('${slug}')" title="Run the next un-done auto step" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
+      </div>
+      <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
+    </div>
     <div class="hub-rail-head">
       <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Full roll</span>
       <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid ${HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:transparent;color:${HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">✎ Tap-to-edit: ${HPI_ON[slug] ? 'on' : 'off'}</button>
@@ -11213,6 +11232,91 @@ function renderHubsTab() {
   </div>
   </div>`;
   setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
+}
+
+// ── Hub build checklist (Content Hubs card, right rail) ────────────────
+// Steps + derived done-state come from getHubBuildStatus. `run` steps call
+// a worker action (or an existing card fn); `modal` steps open the tool;
+// `manual` steps are a KV ✓ toggle (setHubBuildCheck).
+function renderHubBuildRows(slug) {
+  const b = _hubBuild[slug];
+  if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
+  let lastPhase = '';
+  return b.steps.map(s => {
+    const busy = _hubBuildBusy[slug + '|' + s.id];
+    const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
+    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}</div>`) : '';
+    let ctrl;
+    if (s.manual) {
+      ctrl = `<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);cursor:pointer;flex-shrink:0;"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="hubBuildToggle('${slug}','${s.id}',this.checked)">done</label>`;
+    } else if (s.modal) {
+      ctrl = `<button onclick="hubBuildOpen('${slug}','${esc(s.modal)}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">open</button>`;
+    } else {
+      ctrl = `<button ${busy ? 'disabled' : ''} onclick="hubBuildRun('${slug}','${s.id}')" style="font-size:10px;padding:2px 9px;border:1px solid ${s.done ? 'var(--border2)' : 'var(--accent)'};border-radius:4px;background:${s.done ? 'transparent' : 'var(--accent)'};color:${s.done ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;flex-shrink:0;">${busy ? '…' : (s.done ? 'rerun' : 'run')}</button>`;
+    }
+    return phaseHdr + `<div style="padding:5px 12px;display:flex;align-items:center;gap:8px;">
+      <span style="flex-shrink:0;">${dot}</span>
+      <span style="flex:1;min-width:0;font-size:11px;color:var(--text);line-height:1.35;">${esc(s.label)}${s.hint ? `<span style="color:var(--text3);"> — ${esc(s.hint)}</span>` : ''}</span>
+      ${ctrl}
+    </div>`;
+  }).join('');
+}
+function hubBuildRefreshRows(slug) {
+  const el = document.getElementById('hubBuildBody-' + slug);
+  if (el) el.innerHTML = renderHubBuildRows(slug);
+}
+function hubBuildOpen(slug, fnName) {
+  if (fnName === 'openHubResearch') {
+    const h = HUB_SITES.find(x => x.slug === slug);
+    const ms = h && h.microsite ? 'https://cabuzzard.github.io/dash/microsites/' + h.microsite + '/' : '';
+    if (ms) window.open(ms, '_blank'); else alert('No microsite for this hub — run field research from its campaign microsite.');
+    return;
+  }
+  const fn = window[fnName];
+  if (typeof fn === 'function') fn(slug);
+}
+const HUB_BUILD_DISPATCH = {
+  scaffoldHub:            (slug, cid) => call('scaffoldHub', { campaignId: cid }),
+  generateHubContent:     (slug, cid) => call('generateHubContent', { campaignId: cid }),
+  runHubEmailSequence:    (slug, cid) => call('runHubEmailSequence', { campaignId: cid }),
+  pushHubPalette:         (slug, cid) => hubBuildPalette(slug),
+  backfillHubProductChain:(slug, cid) => call('backfillHubProductChain', { campaignId: cid }),
+  backfillHubBlog:        (slug, cid) => call('backfillHubBlog', { campaignId: cid }),
+};
+async function hubBuildPalette(slug) {
+  // generate a palette from research, then push it live
+  const g = await call('generateHubPalette', { campaignId: (HUB_SITES.find(x => x.slug === slug) || {}).campaignId });
+  if (g && g.palette) _hpWork[slug] = g.palette;
+  if (g && g.fonts) _hpFonts[slug] = g.fonts;
+  return call('pushHubPalette', { slug, palette: g && g.palette, fonts: g && g.fonts });
+}
+async function hubBuildRun(slug, stepId) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const fn = HUB_BUILD_DISPATCH[(_hubBuild[slug].steps.find(s => s.id === stepId) || {}).run];
+  if (!fn) return;
+  _hubBuildBusy[slug + '|' + stepId] = true; hubBuildRefreshRows(slug);
+  try {
+    const r = await fn(slug, h.campaignId);
+    if (r && r.error) throw new Error(r.error);
+    _hpNote[slug] = '✓ ' + stepId + (r && r.note ? ' — ' + r.note : ' done');
+  } catch (e) {
+    _hpNote[slug] = '✗ ' + stepId + ': ' + e.message;
+  } finally {
+    _hubBuildBusy[slug + '|' + stepId] = false;
+    _hubBuildFetched[slug] = false;              // force a re-check
+    if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
+  }
+}
+async function hubBuildToggle(slug, stepId, done) {
+  try { await call('setHubBuildCheck', { slug, stepId, done }); } catch (e) {}
+  if (_hubBuild[slug]) { const s = _hubBuild[slug].steps.find(x => x.id === stepId); if (s) s.done = done; _hubBuild[slug].doneCount = _hubBuild[slug].steps.filter(x => x.done).length; }
+  hubBuildRefreshRows(slug);
+}
+async function hubBuildRunNext(slug) {
+  const b = _hubBuild[slug]; if (!b) return;
+  const next = b.steps.find(s => !s.done && s.run && HUB_BUILD_DISPATCH[s.run]);
+  if (!next) { _hpNote[slug] = 'All auto steps done — remaining are modal / manual.'; renderHubsTab(); return; }
+  await hubBuildRun(slug, next.id);
 }
 let hubSitesCollapsed = true;
 try { hubSitesCollapsed = localStorage.getItem('hubSitesCollapsed') !== 'false'; } catch(e) {}

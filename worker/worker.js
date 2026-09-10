@@ -8424,6 +8424,441 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
         }
       }
 
+      // ══ HUB BUILD PIPELINE ══════════════════════════════════════════════
+      // Operationalizes the `hub` method's phased playbook. scaffoldHub =
+      // the chassis (runs on Content Hub asset publish, and re-runnable):
+      // Research record + palette/brief + template scaffold + hubs.design.json
+      // + HUB_SITES registration in BOTH source files. generateHubContent =
+      // the Content Authoring phase (writes content.json). getHubBuildStatus
+      // drives the runnable checklist on each Content Hubs-tab card; the rest
+      // of the steps delegate to actions that already exist (pushHubPalette,
+      // backfillHubProductChain, backfillHubBlog, runHubEmailSequence) or
+      // open a modal. Manual steps (domain, newsletter test) are KV checks.
+      if (body.action === "scaffoldHub" || body.action === "generateHubContent" ||
+          body.action === "getHubBuildStatus" || body.action === "setHubBuildCheck") {
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const dashHb = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const nhdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const slugifyHb = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+        const gh = { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" };
+        const toB64 = str => { const b = new TextEncoder().encode(str); let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
+        const fromB64 = b => new TextDecoder().decode(Uint8Array.from(atob(String(b).replace(/\n/g, "")), c => c.charCodeAt(0)));
+        const ghGet = async p => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}?ref=${BRANCH}`, { headers: gh }); if (!r.ok) return { missing: true }; const j = await r.json().catch(() => ({})); return { sha: j.sha, text: j.content ? fromB64(j.content) : "" }; };
+        const ghPut = async (p, text, message, sha) => { const r = await fetch(`https://api.github.com/repos/${REPO}/contents/${p}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify({ message, content: toB64(text), branch: BRANCH, ...(sha ? { sha } : {}) }) }); if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error(e.message || `commit failed: ${p}`); } };
+        const HUB_METHOD_ID = "3d61f7d3-a4bb-81d5-9083-da4af143c3ec";
+
+        // Resolve the hub context from a campaignId (or an assetId).
+        const resolveHub = async () => {
+          let campaignId = String(body.campaignId || "").replace(/-/g, "");
+          let assetPage = null;
+          if (!campaignId && body.assetId) {
+            assetPage = await fetch(`https://api.notion.com/v1/pages/${dashHb(body.assetId)}`, { headers: nhdr }).then(r => r.json()).catch(() => null);
+            campaignId = (assetPage?.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "") || "";
+          }
+          if (!campaignId) return { error: "campaignId (or assetId) required" };
+          const registered = HUB_SITES.find(h => h.campaignId.replace(/-/g, "") === campaignId) || null;
+          const campPage = await fetch(`https://api.notion.com/v1/pages/${dashHb(campaignId)}`, { headers: nhdr }).then(r => r.json()).catch(() => null);
+          if (!campPage || campPage.object === "error") return { error: "campaign not found" };
+          const campName = (campPage.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          if (!assetPage) {
+            const assets = await notionQuery(ASSETS_DB, { filter: { and: [
+              { property: "Campaign", relation: { contains: dashHb(campaignId) } },
+              { property: "Asset Type", select: { equals: "Content Hub" } },
+            ] } }).catch(() => []);
+            assetPage = assets.sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))[0] || null;
+          }
+          const assetSlug = assetPage?.properties?.["Content Hub"]?.select?.name || "";
+          const assetTitle = assetPage ? (assetPage.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join("") : "";
+          const productId = (assetPage?.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "")
+            || (campPage.properties?.Products?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+          const slug = registered?.slug || assetSlug || slugifyHb(assetTitle || campName);
+          return {
+            campaignId, campName, campPage, assetPage,
+            assetId: assetPage ? assetPage.id.replace(/-/g, "") : null,
+            productId, slug, registered: !!registered,
+            campKeywords: (campPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join(""),
+            campNotes: (campPage.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
+          };
+        };
+
+        // ── setHubBuildCheck ── KV toggle for the manual checklist rows.
+        if (body.action === "setHubBuildCheck") {
+          const slug = String(body.slug || "").trim();
+          const stepId = String(body.stepId || "").trim();
+          if (!slug || !stepId) return json({ error: "slug and stepId required" }, 400);
+          let rec = {};
+          try { rec = (await env.TRADES.get("hub:build:" + slug, "json")) || {}; } catch (e) {}
+          rec[stepId] = { done: !!body.done, at: new Date().toISOString() };
+          try { await env.TRADES.put("hub:build:" + slug, JSON.stringify(rec)); } catch (e) { return json({ error: "KV write failed" }, 502); }
+          return json({ success: true, checks: rec });
+        }
+
+        const ctxH = await resolveHub();
+        if (ctxH.error) return json({ error: ctxH.error }, 400);
+        const { campaignId, campName, campPage, assetId, productId, slug } = ctxH;
+
+        // Shared grounding fetch (product + research + method body).
+        const groundHub = async () => {
+          const [prodPage, researchRows, methodBody] = await Promise.all([
+            productId ? fetch(`https://api.notion.com/v1/pages/${dashHb(productId)}`, { headers: nhdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashHb(campaignId) } } }).catch(() => []),
+            extractBlocksTextRecursive(nhdr, HUB_METHOD_ID).then(t => t.slice(0, 4000)).catch(() => ""),
+          ]);
+          const rp = researchRows[0]?.properties || {};
+          const rt = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("");
+          return {
+            researchId: researchRows[0] ? researchRows[0].id.replace(/-/g, "") : null,
+            productName: prodPage ? (prodPage.properties?.Name?.title || []).map(t => t.plain_text).join("") : "",
+            productKeywords: prodPage ? (prodPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("") : "",
+            productDesc: prodPage ? (prodPage.properties?.Description?.rich_text || []).map(t => t.plain_text).join("") : "",
+            statement: rt("Statement"), uniqueOpp: rt("Unique Opportunity"),
+            researchKeywords: rt("Keywords"), methodBody,
+          };
+        };
+
+        // ── getHubBuildStatus ── the checklist + derived done-state.
+        if (body.action === "getHubBuildStatus") {
+          let kv = {};
+          try { kv = (await env.TRADES.get("hub:build:" + slug, "json")) || {}; } catch (e) {}
+          const [idxF, dsF, contentF, postsF, designJson, offerAssets, emailAssets, researchRows] = await Promise.all([
+            ghGet(`web/hub/${slug}/index.html`),
+            ghGet(`web/hub/hubs.design.json`),
+            ghGet(`web/hub/${slug}/content.json`),
+            ghGet(`web/hub/${slug}/blog/posts.json`),
+            Promise.resolve(null),
+            notionQuery(ASSETS_DB, { filter: { and: [
+              { property: "Campaign", relation: { contains: dashHb(campaignId) } },
+              { property: "Content Hub", select: { equals: slug } },
+            ] } }).catch(() => []),
+            notionQuery(ASSETS_DB, { filter: { and: [
+              { property: "Campaign", relation: { contains: dashHb(campaignId) } },
+              { property: "Platform Name", select: { equals: "Email" } },
+            ] } }).catch(() => []),
+            notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashHb(campaignId) } } }).catch(() => []),
+          ]);
+          let spec = {};
+          try { spec = dsF.text ? JSON.parse(dsF.text) : {}; } catch (e) {}
+          const specHub = spec.hubs?.[slug] || null;
+          const rp0 = researchRows[0]?.properties || {};
+          const hasStatement = ((rp0.Statement?.rich_text || []).map(t => t.plain_text).join("").trim().length > 30);
+          const hasMarket = ((rp0["Market Update"]?.rich_text || []).map(t => t.plain_text).join("").trim().length > 30);
+          let contentJson = {};
+          try { contentJson = contentF.text ? JSON.parse(contentF.text) : {}; } catch (e) {}
+          const hasImages = !!(contentJson?.hero?.image || contentJson?.report?.image);
+          let postsN = 0;
+          try { const pj = postsF.text ? JSON.parse(postsF.text) : []; postsN = Array.isArray(pj) ? pj.length : (pj.posts || []).length; } catch (e) {}
+          const man = id => !!kv[id]?.done;
+
+          const steps = [
+            { id: "scaffold",   phase: "Chassis",  label: "Scaffold + register the hub", run: "scaffoldHub",
+              done: !idxF.missing && ctxH.registered, hint: !idxF.missing ? "hub file exists" : "not scaffolded" },
+            { id: "research",   phase: "Research",  label: "Field research — Statement / Market / Trends / News Feed", modal: "openHubResearch",
+              done: hasStatement && hasMarket, hint: hasStatement ? (hasMarket ? "" : "Statement set, Market Update missing") : "no Statement yet" },
+            { id: "brief",      phase: "Research",  label: "Design brief (Subject / Audience / Job / Signature / Risk)", modal: "openHubBriefModal",
+              done: !!(specHub?.design?.subject), hint: specHub?.design?.subject ? "" : "no design block in hubs.design.json" },
+            { id: "palette",    phase: "Design",    label: "Palette + fonts → push to hub", run: "pushHubPalette",
+              done: !!(specHub && specHub.tokens && specHub.tokens.sea && specHub.tokens.sea.toLowerCase() !== "#2f5fd0"), hint: "regenerate on the card, then Push" },
+            { id: "content",    phase: "Content",   label: "HUB copy — hero / ribbon / report / empty states", run: "generateHubContent",
+              done: !!(contentJson?.hero?.headline || contentJson?.hero?.blurb), hint: contentF.missing ? "no content.json" : "" },
+            { id: "images",     phase: "Content",   label: "Hero + signup images, logo", modal: "openHubImageModal",
+              done: hasImages, hint: hasImages ? "" : "no hero/signup image" },
+            { id: "offers",     phase: "Content",   label: "Offers → hub (product chain)", run: "backfillHubProductChain",
+              done: offerAssets.some(a => /\boffer\b/i.test(a.properties?.["Asset Type"]?.select?.name || "")), hint: "" },
+            { id: "blog",       phase: "Blog",      label: "Publish pending posts + offers", run: "backfillHubBlog",
+              done: postsN > 0, hint: postsN ? `${postsN} live` : "journal empty" },
+            { id: "email",      phase: "Email",     label: "Nurture sequence for the main form", run: "runHubEmailSequence",
+              done: emailAssets.some(a => /^email hub main/i.test(a.properties?.["Asset Type"]?.select?.name || "")), hint: "" },
+            { id: "domain",     phase: "Deploy",    label: "Custom domain + HUB_ORIGINS + _worker.js HUBS map", manual: true, done: man("domain") },
+            { id: "newsletter", phase: "Audit",     label: "Newsletter signup tested end-to-end", manual: true, done: man("newsletter") },
+            { id: "buildcheck", phase: "Audit",     label: "build-hubs.mjs --check passes clean", manual: true, done: man("buildcheck") },
+          ];
+          return json({ slug, campaignId, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
+        }
+
+        if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);
+        const g = await groundHub();
+
+        // ── generateHubContent ── the Content Authoring phase → content.json.
+        if (body.action === "generateHubContent") {
+          const idxF = await ghGet(`web/hub/${slug}/index.html`);
+          if (idxF.missing) return json({ error: `web/hub/${slug}/ not scaffolded yet — run Scaffold first` }, 400);
+          if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+          const prompt = `You are writing the copy for a content-hub home page. Return ONLY JSON.
+
+HUB: "${campName}"${g.productName ? ` — built around the product "${g.productName}"` : ""}
+CAMPAIGN KEYWORDS: ${ctxH.campKeywords || "(none)"}
+${g.statement ? `POSITIONING (Research Statement): ${g.statement}\n` : ""}${g.uniqueOpp ? `UNIQUE OPPORTUNITY: ${g.uniqueOpp}\n` : ""}${g.productDesc ? `PRODUCT: ${g.productDesc.slice(0, 500)}\n` : ""}${g.productKeywords ? `PRODUCT KEYWORDS: ${g.productKeywords}\n` : ""}
+METHOD GUIDANCE (the "hub" method's Content Authoring phase — follow it):
+${g.methodBody.slice(0, 2500)}
+
+Write real, specific copy — never placeholder. Every "empty" state is an invitation, not an apology.
+Return: {
+ "brand": "short brand name",
+ "ribbon": ["3 short status phrases"],
+ "hero": { "eyebrow": "one line about the topic", "headline": "one clear sentence, ends with a period", "sub": "who it's for + what they get", "ctaPrimary": "button label", "ctaSecondary": "button label" },
+ "report": { "label": "short", "title": "newsletter pitch, one line", "blurb": "1-2 sentences, concrete", "buttonLabel": "e.g. Send me the weekly" },
+ "journal": { "title": "section title", "note": "one line or empty", "emptyHeading": "...", "emptyBody": "..." },
+ "news":    { "title": "section title", "emptyHeading": "...", "emptyBody": "..." },
+ "trips":   { "title": "section title", "note": "one line or empty", "emptyHeading": "...", "emptyBody": "..." },
+ "footer":  { "tagline": "one-line brand description" }
+}`;
+          const aiR = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1800, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiD = await aiR.json();
+          if (!aiR.ok) return json({ error: aiD.error?.message || "Claude error" }, 502);
+          let out;
+          try { const raw = (aiD.content?.[0]?.text || ""); out = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); }
+          catch (e) { return json({ error: "could not parse generated copy" }, 502); }
+
+          const cF = await ghGet(`web/hub/${slug}/content.json`);
+          let content = {};
+          try { content = cF.text ? JSON.parse(cF.text) : {}; } catch (e) {}
+          const s = v => String(v == null ? "" : v).slice(0, 600);
+          content.brand = s(out.brand) || content.brand;
+          if (Array.isArray(out.ribbon)) content.ribbon = out.ribbon.slice(0, 4).map(s);
+          content.hero = { ...(content.hero || {}), eyebrow: s(out.hero?.eyebrow), headline: s(out.hero?.headline), sub: s(out.hero?.sub) };
+          if (out.hero?.ctaPrimary) content.hero.ctaPrimary = { ...(content.hero.ctaPrimary || {}), label: s(out.hero.ctaPrimary) };
+          if (out.hero?.ctaSecondary) content.hero.ctaSecondary = { ...(content.hero.ctaSecondary || {}), label: s(out.hero.ctaSecondary) };
+          content.report = { ...(content.report || {}), label: s(out.report?.label), title: s(out.report?.title), blurb: s(out.report?.blurb), buttonLabel: s(out.report?.buttonLabel) };
+          const sec = (k, o) => { content[k] = { ...(content[k] || {}), title: s(o?.title), note: s(o?.note), empty: { heading: s(o?.emptyHeading), body: s(o?.emptyBody) } }; };
+          sec("journal", out.journal); sec("news", out.news); sec("trips", out.trips);
+          content.footer = { ...(content.footer || {}), tagline: s(out.footer?.tagline) };
+          await ghPut(`web/hub/${slug}/content.json`, JSON.stringify(content, null, 2) + "\n", `hub content: ${slug} — generated copy`, cF.sha);
+          return json({ success: true, slug, note: "content.json committed — hub redeploys in ~1 min", content });
+        }
+
+        // ── scaffoldHub ── the chassis.
+        if (body.action === "scaffoldHub") {
+          const idxF = await ghGet(`web/hub/${slug}/index.html`);
+          const alreadyDone = !idxF.missing && ctxH.registered;
+          const committed = [];
+
+          // 1. Research record — the method's Phase 1 ("give hubs their own research record")
+          let researchId = g.researchId;
+          if (!researchId) {
+            const rr = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: nhdr,
+              body: JSON.stringify({ parent: { database_id: RESEARCH_DB }, properties: {
+                Name: { title: [{ type: "text", text: { content: campName.slice(0, 200) } }] },
+                Campaign: { relation: [{ id: dashHb(campaignId) }] },
+                Status: { select: { name: "Draft" } },
+                Keywords: { rich_text: [{ type: "text", text: { content: (ctxH.campKeywords || g.productKeywords || "").slice(0, 1900) } }] },
+              } }),
+            }).then(r => r.json()).catch(() => null);
+            if (rr?.id) { researchId = rr.id.replace(/-/g, ""); committed.push("research record"); }
+          }
+
+          if (!alreadyDone && !env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured", slug }, 500);
+
+          // 2. Claude: design brief + tokens + fonts + a minimal real HUB object
+          let plan = null;
+          if (!alreadyDone) {
+            const prompt = `Design and seed a content-hub home page. Return ONLY JSON.
+
+HUB: "${campName}"${g.productName ? ` — product "${g.productName}"` : ""}
+CAMPAIGN KEYWORDS: ${ctxH.campKeywords || "(none)"}
+${g.statement ? `POSITIONING: ${g.statement}\n` : ""}${g.uniqueOpp ? `UNIQUE OPPORTUNITY: ${g.uniqueOpp}\n` : ""}${g.productDesc ? `PRODUCT: ${g.productDesc.slice(0, 400)}\n` : ""}${ctxH.campNotes ? `NOTES: ${ctxH.campNotes.slice(0, 400)}\n` : ""}
+METHOD GUIDANCE (the "hub" method — Research & Content Authoring phases):
+${g.methodBody.slice(0, 2500)}
+
+Fonts must be chosen from: Space Grotesk, Inter, IBM Plex Sans, IBM Plex Mono, JetBrains Mono, Newsreader, DM Serif Display, Fraunces, Bricolage Grotesque, Hanken Grotesk, Space Mono, Archivo, Bitter, Familjen Grotesk, Libre Franklin, Instrument Serif.
+Tokens are hex; aim for WCAG AA text contrast (ink on bg, ink-soft on bg, deep-ink on deep).
+
+Return: {
+ "design": { "subject": "...", "audience": "...", "job": "...", "type": "one sentence on the type pairing + why", "signature": "the signature visual element", "risk": "the one aesthetic risk", "avoided": ["2-3 things deliberately avoided"] },
+ "tokens": { "bg": "#..", "surface": "#..", "ink": "#..", "ink-head": "#..", "ink-soft": "#..", "line": "#..", "sea": "#..", "deep": "#..", "deep-ink": "#..", "accent": "#.." },
+ "fonts": { "display": "..", "body": "..", "mono": ".." },
+ "hub": {
+  "brand": "short brand name",
+  "ribbon": ["3 short phrases"],
+  "nav": ["Label 1","Label 2","Label 3"],
+  "hero": { "eyebrow": "..", "headline": "one sentence ending with a period", "sub": "..", "ctaPrimary": "button label", "ctaSecondary": "button label" },
+  "report": { "label": "..", "title": "..", "blurb": "..", "buttonLabel": ".." },
+  "journal": { "title": "..", "emptyHeading": "..", "emptyBody": ".." },
+  "news": { "title": "..", "emptyHeading": "..", "emptyBody": ".." },
+  "trips": { "title": "..", "emptyHeading": "..", "emptyBody": ".." },
+  "footer": { "tagline": ".." }
+ }
+}`;
+            const aiR = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2600, messages: [{ role: "user", content: prompt }] }),
+            });
+            const aiD = await aiR.json();
+            if (!aiR.ok) return json({ error: aiD.error?.message || "Claude error", slug }, 502);
+            try { const raw = (aiD.content?.[0]?.text || ""); plan = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1)); }
+            catch (e) { return json({ error: "could not parse the scaffold plan", slug }, 502); }
+          }
+
+          const FONT_Q = {
+            "Space Grotesk":"Space+Grotesk:wght@400;500;600;700","Inter":"Inter:wght@400;500;600","IBM Plex Sans":"IBM+Plex+Sans:wght@400;500;600",
+            "IBM Plex Mono":"IBM+Plex+Mono:wght@400;700","JetBrains Mono":"JetBrains+Mono:wght@400;700","Newsreader":"Newsreader:opsz,wght@6..72,500;6..72,600",
+            "DM Serif Display":"DM+Serif+Display:ital@0;1","Fraunces":"Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700",
+            "Bricolage Grotesque":"Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700","Hanken Grotesk":"Hanken+Grotesk:wght@400;500;600",
+            "Space Mono":"Space+Mono:wght@400;700","Archivo":"Archivo:wght@500;600;700","Bitter":"Bitter:wght@500;600;700","Familjen Grotesk":"Familjen+Grotesk:wght@500;600;700",
+            "Libre Franklin":"Libre+Franklin:wght@400;500;600;700","Instrument Serif":"Instrument+Serif:ital@0;1",
+          };
+          const FONT_F = f => /serif|newsreader|fraunces|bitter|instrument/i.test(f) ? "Georgia, serif" : /mono/i.test(f) ? "ui-monospace, monospace" : "system-ui, sans-serif";
+
+          if (!alreadyDone) {
+            const p = plan, tk = p.tokens || {}, fn = p.fonts || {}, hb = p.hub || {};
+            const T = k => String(tk[k] || "").match(/^#[0-9a-fA-F]{3,8}$/) ? tk[k] : null;
+            const tokens = {
+              bg: T("bg") || "#f7f7f5", surface: T("surface") || "#ffffff", ink: T("ink") || "#1a1d21",
+              "ink-head": T("ink-head") || T("ink") || "#12233a", "ink-soft": T("ink-soft") || "#5b6470", line: T("line") || "#e2e1db",
+              sea: T("sea") || "#1f4e79", deep: T("deep") || "#10233a", "deep-ink": T("deep-ink") || "#d7e0eb", accent: T("accent") || "#c0561f",
+            };
+            const F = (v, d) => (v && FONT_Q[v]) ? v : d;
+            const fonts = { display: F(fn.display, "Space Grotesk"), body: F(fn.body, "Inter"), mono: F(fn.mono, "IBM Plex Mono") };
+            const esc2 = s => String(s == null ? "" : s).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, " ").slice(0, 400);
+            const nav = (Array.isArray(hb.nav) && hb.nav.length === 3 ? hb.nav : ["Blog", "News", "Products"]);
+            const rib = (Array.isArray(hb.ribbon) && hb.ribbon.length ? hb.ribbon.slice(0, 3) : ["New here", "Updated weekly", "Free newsletter"]);
+            const metaTitle = `${hb.brand || campName} — ${esc2(hb.hero?.headline || "").replace(/\.$/, "")}`.slice(0, 90);
+            const metaDesc = esc2(hb.hero?.sub || g.statement || "").slice(0, 160);
+
+            // 3. hub HTML from the template
+            const tplF = await ghGet("web/hub/hub-template.html");
+            if (tplF.missing || !tplF.text) return json({ error: "could not read hub-template.html", slug }, 502);
+            let html = tplF.text;
+            const rootBlock = [
+              `  --bg:        ${tokens.bg};`, `  --surface:   ${tokens.surface};`, `  --ink:       ${tokens.ink};`,
+              `  --ink-head:  ${tokens["ink-head"]};   /* headings */`, `  --ink-soft:  ${tokens["ink-soft"]};`, `  --line:      ${tokens.line};`,
+              `  --sea:       ${tokens.sea};   /* primary */`, `  --deep:      ${tokens.deep};   /* dark band */`, `  --deep-ink:  ${tokens["deep-ink"]};   /* text on --deep */`,
+              `  --accent:    ${tokens.accent};   /* used once, loudly */`, `  --paper:     ${tokens.surface};`, ``,
+              `  --font-display: "${fonts.display}", ${FONT_F(fonts.display)};`, `  --font-body:    "${fonts.body}", ${FONT_F(fonts.body)};`, `  --font-mono:    "${fonts.mono}", ${FONT_F(fonts.mono)};`, ``,
+              `  --logo-text: "${esc2(hb.brand || campName)}";`, `  --logo-img:  none;`,
+            ].join("\r\n");
+            html = html.replace(/(:root\{\r?\n)[\s\S]*?(\r?\n\})/, (m, a) => a + rootBlock + "\r\n}");
+            html = html.replace(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?[^"]*" rel="stylesheet">/,
+              `<link href="https://fonts.googleapis.com/css2?family=${FONT_Q[fonts.display]}&family=${FONT_Q[fonts.body]}&family=${FONT_Q[fonts.mono]}&display=swap" rel="stylesheet">`);
+            html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc2(metaTitle)}</title>`);
+            html = html.replace(/<meta name="description" content="[^"]*">/, `<meta name="description" content="${esc2(metaDesc)}">`);
+            html = html.replace(/<meta property="og:title" content="[^"]*">/, `<meta property="og:title" content="${esc2(hb.brand || campName)}">`);
+            html = html.replace(/<meta property="og:description" content="[^"]*">/, `<meta property="og:description" content="${esc2(metaDesc)}">`);
+            const hubObj = `const HUB = {
+  slug: "${slug}",
+  campaignTag: "hub-${slug}",
+  campaignId: "${campaignId}",
+  contactEmail: null,
+
+  brand: "${esc2(hb.brand || campName)}",
+  logoImg: null,
+
+  nav: [
+    { label: "${esc2(nav[0])}", href: "#journal" },
+    { label: "${esc2(nav[1])}", href: "#news" },
+    { label: "${esc2(nav[2])}", href: "#trips" },
+  ],
+
+  ribbon: [ ${rib.map(r => `"${esc2(r)}"`).join(", ")} ],
+
+  hero: {
+    eyebrow: "${esc2(hb.hero?.eyebrow)}",
+    headline: "${esc2(hb.hero?.headline || "One clear sentence about what this hub is.")}",
+    sub: "${esc2(hb.hero?.sub || "Who it's for and what they get by staying.")}",
+    ctaPrimary:   { label: "${esc2(hb.hero?.ctaPrimary || "Join the newsletter")}", href: "#report" },
+    ctaSecondary: { label: "${esc2(hb.hero?.ctaSecondary || "See what's here")}", href: "#trips" },
+  },
+
+  journal: {
+    label: "Blog", title: "${esc2(hb.journal?.title || "Latest posts")}", note: "", items: [],
+    empty: { heading: "${esc2(hb.journal?.emptyHeading || "Posts are on the way.")}", body: "${esc2(hb.journal?.emptyBody || "Subscribe below and you'll get the first ones before they land here.")}" },
+  },
+
+  news: {
+    label: "News", title: "${esc2(hb.news?.title || "In the news")}", note: "", items: [],
+    empty: { heading: "${esc2(hb.news?.emptyHeading || "Nothing to report yet.")}", body: "${esc2(hb.news?.emptyBody || "Dated updates and outside coverage will show up here.")}" },
+  },
+
+  report: {
+    label: "${esc2(hb.report?.label || "Newsletter")}",
+    title: "${esc2(hb.report?.title || "Get it in your inbox.")}",
+    blurb: "${esc2(hb.report?.blurb || "A short read on a regular schedule — the useful parts, none of the filler.")}",
+    note: "No spam. Unsubscribe in one click. We never share your address.",
+    buttonLabel: "${esc2(hb.report?.buttonLabel || "Subscribe")}",
+    link: null,
+  },
+
+  trips: {
+    label: "Products", title: "${esc2(hb.trips?.title || "What we offer")}", note: "", items: [],
+    empty: { heading: "${esc2(hb.trips?.emptyHeading || "Products are being set up.")}", body: "${esc2(hb.trips?.emptyBody || "The first ones come from the campaign's product shortlist.")}" },
+  },
+
+  social: { label: "Follow", items: [ { label: "LinkedIn", url: "#" } ] },
+
+  footer: { tagline: "${esc2(hb.footer?.tagline || campName)}", legal: "\\u00A9 2026 ${esc2(hb.brand || campName)}" },
+};`;
+            html = html.replace(/const HUB = \{[\s\S]*?\n\};/, hubObj.replace(/\n/g, "\r\n"));
+            await ghPut(`web/hub/${slug}/index.html`, html, `hub: scaffold ${slug} from Content Hub asset`, idxF.sha);
+            committed.push(`web/hub/${slug}/index.html`);
+
+            // 4. hubs.design.json
+            const dsF = await ghGet("web/hub/hubs.design.json");
+            let spec = {};
+            try { spec = dsF.text ? JSON.parse(dsF.text) : { hubs: {}, fontRegistry: {} }; } catch (e) { spec = { hubs: {}, fontRegistry: {} }; }
+            spec.hubs = spec.hubs || {}; spec.fontRegistry = spec.fontRegistry || {};
+            for (const fam of [fonts.display, fonts.body, fonts.mono]) if (!spec.fontRegistry[fam] && FONT_Q[fam]) spec.fontRegistry[fam] = { query: FONT_Q[fam], fallback: FONT_F(fam) };
+            spec.hubs[slug] = {
+              meta: { title: metaTitle, description: metaDesc, ogTitle: hb.brand || campName, ogDescription: metaDesc },
+              fonts, logoText: hb.brand || campName,
+              tokens: { ...tokens, paper: tokens.surface },
+              tokenNotes: { bg: "page ground", surface: "raised card", ink: "body ink", "ink-head": "headings", "ink-soft": "secondary text", line: "hairline", sea: "primary", deep: "dark band", "deep-ink": "text on --deep", accent: "used once, loudly" },
+              design: {
+                subject: String(p.design?.subject || "").slice(0, 500), audience: String(p.design?.audience || "").slice(0, 400),
+                job: String(p.design?.job || "").slice(0, 300), type: String(p.design?.type || "").slice(0, 400),
+                signature: String(p.design?.signature || "").slice(0, 400), risk: String(p.design?.risk || "").slice(0, 400),
+                avoided: Array.isArray(p.design?.avoided) ? p.design.avoided.slice(0, 4).map(x => String(x).slice(0, 200)) : [],
+                superseded: "First palette — seeded by scaffoldHub.",
+              },
+            };
+            spec.hubs = Object.fromEntries(Object.entries(spec.hubs).sort());
+            await ghPut("web/hub/hubs.design.json", JSON.stringify(spec, null, 2) + "\n", `hub: ${slug} design.json entry`, dsF.sha);
+            committed.push("hubs.design.json");
+          }
+
+          // 5. register in HUB_SITES (both source files) if not already
+          if (!ctxH.registered) {
+            const wF = await ghGet("worker/worker.js");
+            if (wF.text && wF.text.includes("const HUB_SITES = [")) {
+              const line = `  { slug: "${slug}", name: "${campName.replace(/"/g, "'")}", campaignId: "${campaignId}" },\n`;
+              const wNew = wF.text.replace(/(const HUB_SITES = \[[\s\S]*?)(\n\];)/, (m, a, b) => a.replace(/\n\];?$/, "") + "\n" + line + b.replace(/^\n/, ""));
+              if (wNew !== wF.text) { await ghPut("worker/worker.js", wNew, `hub: register ${slug} in HUB_SITES`, wF.sha); committed.push("worker.js HUB_SITES"); }
+            }
+            const iF = await ghGet("index.html");
+            if (iF.text && iF.text.includes("const HUB_SITES = [")) {
+              const stamp = new Date().toISOString().slice(0, 10);
+              const entry = `  { name: "${campName.replace(/"/g, "'")}", slug: "${slug}", campaignId: "${campaignId}", campaign: "${campName.replace(/"/g, "'")}", microsite: null, domain: null, contact: null, products: 0, blogPosts: 0,\n    routing: "pending", routingNote: "Auto-scaffolded ${stamp} from the Content Hub asset. Seed copy — build out from this card's checklist.",\n    domainOptions: [] },\n`;
+              const iNew = iF.text.replace(/(const HUB_SITES = \[[\s\S]*?)(\n\];)/, (m, a, b) => a.replace(/\n\];?$/, "") + "\n" + entry + b.replace(/^\n/, ""));
+              if (iNew !== iF.text) { await ghPut("index.html", iNew, `hub: register ${slug} in HUB_SITES`, iF.sha); committed.push("index.html HUB_SITES"); }
+            }
+          }
+
+          // 6. Notion — stamp the asset + campaign
+          if (assetId) {
+            await fetch(`https://api.notion.com/v1/pages/${dashHb(assetId)}`, {
+              method: "PATCH", headers: nhdr,
+              body: JSON.stringify({ properties: {
+                "Content Hub": { select: { name: slug } },
+                "Site URL": { url: `https://cabuzzard.github.io/dash/web/hub/${slug}/` },
+              } }),
+            }).catch(() => {});
+          }
+          await fetch(`https://api.notion.com/v1/pages/${dashHb(campaignId)}`, {
+            method: "PATCH", headers: nhdr,
+            body: JSON.stringify({ properties: { "live site": { url: `https://cabuzzard.github.io/dash/web/hub/${slug}/` } } }),
+          }).catch(() => {});
+
+          return json({
+            success: true, slug, alreadyScaffolded: alreadyDone, committed,
+            url: `https://cabuzzard.github.io/dash/web/hub/${slug}/`,
+            note: committed.length ? "committed — Pages + worker redeploy in ~1-2 min. Build out the rest from the card's checklist." : "already scaffolded — nothing to commit.",
+          });
+        }
+      }
+
       // ── getContentOutputStats ──
       // Weekly Reel-vs-Carousel output from the 📝 Content Strategy DB, for the
       // dashboard's "Weekly Content Output" card. "Output" = items whose
@@ -23265,6 +23700,20 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         });
         const result2 = await resp.json();
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
+
+        // ── Content Hub asset → Published = build the chassis. Fires
+        // scaffoldHub in the background (self-call so the heavy Claude +
+        // GitHub-commit work doesn't block this save); scaffoldHub is
+        // idempotent, so a re-publish is a cheap no-op.
+        if (status === "Published" && (result2.properties?.["Asset Type"]?.select?.name || "") === "Content Hub") {
+          const hubCampId = (result2.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "");
+          if (hubCampId) {
+            ctx.waitUntil(fetch(request.url, {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "scaffoldHub", token: body.token, campaignId: hubCampId }),
+            }).catch(() => {}));
+          }
+        }
 
         // Picking a Content Hub here is the moment an offer asset becomes a
         // tracked product listing — make sure its source title carries the
