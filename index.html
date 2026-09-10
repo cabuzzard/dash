@@ -783,34 +783,6 @@
       <div id="hubAssetMatrixBody" style="display:none;margin-top:10px;"></div>
     </div>
 
-    <div id="hubSitesSection" style="margin-bottom:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;cursor:pointer;" onclick="toggleHubSites()">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Content Hubs <span id="hubSitesCount" style="font-weight:400;"></span></span>
-        <span id="hubSitesToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
-      </div>
-      <div id="hubSitesList" style="display:none;"></div>
-    </div>
-
-    <!-- 🤖 AUTOMATIONS — a plain wishlist, "things I intend to automate."
-         Not a workflow or a tracker for what's already built — just a place
-         to drop an idea before it's forgotten. Backed by MAIN_TD_DB (same td
-         list as everywhere else), filtered to priority=automation. Lazy-loads
-         via glToggle('automations') / GL_SECTIONS — IDs, not tab placement,
-         are what wire it up, so it works here the same as on the Globals tab. -->
-    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('automations')">
-        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🤖 Automations <span id="glAutoCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— things I intend to automate</span></span>
-        <span id="glAutoIcon" style="font-size:11px;color:var(--text3);">▸</span>
-      </div>
-      <div id="glAutoBody" style="display:none;padding:0 13px 13px;">
-        <div style="display:flex;gap:6px;margin-bottom:10px;">
-          <input id="glAutoInput" type="text" placeholder="Something to automate someday…" onkeydown="if(event.key==='Enter')glAutoAdd()" style="flex:1;font-size:12px;padding:8px 10px;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);outline:none;font-family:inherit;">
-          <button onclick="glAutoAdd()" style="font-size:12px;font-weight:600;padding:7px 14px;border:1px solid var(--accent);border-radius:var(--radius-sm);background:var(--accent);color:var(--bg);cursor:pointer;white-space:nowrap;">+ Add</button>
-        </div>
-        <div id="glAutoList"><div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div></div>
-      </div>
-    </div>
-
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
@@ -1008,8 +980,7 @@
     </div>
 
     <!-- ⏰ CRON SCRIPTS — read-only registry of everything running on a schedule.
-         The counterpart to the 🤖 Automations wishlist on the TD tab (that's
-         the wishlist; this is what actually runs). Source of truth is worker/worker.js `scheduled()`
+         Source of truth is worker/worker.js `scheduled()`
          + worker/wrangler.toml `[triggers] crons` — CRON_REGISTRY below is a
          hand-maintained mirror; update it whenever a cron job is added/removed. -->
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
@@ -1068,7 +1039,7 @@
     </div>
 
     <!-- 🏷️ POST TYPES — a plain wishlist, "post type ideas to consider."
-         Same pattern as the Automations wishlist (now on the TD tab): NOT the real 🏷️ Post Types
+         NOT the real 🏷️ Post Types
          catalog (POST_TYPES_DB, used live by Growth Strategy generation
          and by Link Mining's "Post Type" promotion) — just a place to drop
          an idea for a possible new post type before it's forgotten.
@@ -11610,40 +11581,6 @@ async function landingBuildRunNext(slug) {
   if (!next) { alert('Auto steps done — the rest are manual (list wiring, blog posts, domain, form test).'); return; }
   await landingBuildRun(slug, next.id);
 }
-let hubSitesCollapsed = true;
-try { hubSitesCollapsed = localStorage.getItem('hubSitesCollapsed') !== 'false'; } catch(e) {}
-function toggleHubSites() {
-  hubSitesCollapsed = !hubSitesCollapsed;
-  try { localStorage.setItem('hubSitesCollapsed', String(hubSitesCollapsed)); } catch(e) {}
-  applyHubSitesCollapse();
-}
-function applyHubSitesCollapse() {
-  const list = document.getElementById('hubSitesList');
-  const icon = document.getElementById('hubSitesToggleIcon');
-  if (list) list.style.display = hubSitesCollapsed ? 'none' : '';
-  if (icon) icon.textContent = hubSitesCollapsed ? '▸' : '▾';
-}
-function renderHubSites() {
-  const el = document.getElementById('hubSitesList');
-  if (!el) return;
-  const base = 'https://cabuzzard.github.io/dash/web/hub/';
-  const cnt = document.getElementById('hubSitesCount');
-  if (cnt) cnt.textContent = HUB_SITES.length;
-  el.innerHTML = '<div style="border:1px solid var(--border);border-radius:var(--radius-sm);overflow:hidden;">' +
-    HUB_SITES.map((h, i) => {
-      const url = base + h.slug + '/';
-      return `<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:var(--bg);${i ? 'border-top:1px solid var(--border);' : ''}">
-        <span style="flex:1;min-width:0;overflow:hidden;">
-          <a href="${url}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;font-weight:500;">${esc(h.name)}</a>
-          ${h.campaign ? `<span style="font-size:10px;color:var(--text3);margin-left:8px;">${esc(h.campaign)}</span>` : ''}
-        </span>
-        <button onclick="navigator.clipboard&&navigator.clipboard.writeText('${url}');this.textContent='copied';setTimeout(()=>{this.textContent='copy';},1200);" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">copy</button>
-        <a href="${url}" target="_blank" rel="noopener" title="Open" style="font-size:12px;color:var(--text3);text-decoration:none;flex-shrink:0;">↗</a>
-      </div>`;
-    }).join('') + '</div>';
-  applyHubSitesCollapse();
-}
-
 async function loadTodayCampaigns() {
   const el = document.getElementById('todayList');
   const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][new Date().getDay()];
@@ -12494,7 +12431,6 @@ const GL_SECTIONS = {
   trading:  { icon: 'glTradingIcon',  body: 'glTradingBody',  load: () => loadGlTrading() },
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
   hubForms: { icon: 'glHubFormsIcon', body: 'glHubFormsBody', load: () => loadGlHubForms() },
-  automations: { icon: 'glAutoIcon',  body: 'glAutoBody',     load: () => loadGlAutomations() },
   cronScripts: { icon: 'glCronIcon',  body: 'glCronBody',     load: () => renderCronScripts() },
   leadSourcing:{ icon: 'glLeadIcon',  body: 'glLeadBody',     load: () => loadGlLeadSourcing() },
   mfFeeds:     { icon: 'glMfIcon',    body: 'glMfBody',       load: () => renderMfFeeds() },
@@ -13469,53 +13405,7 @@ async function affDelete(id) {
   } catch (e) { alert('Error: ' + e.message); }
 }
 
-// ── Automations wishlist ──
-let GL_AUTO_DATA = [];
-async function loadGlAutomations() {
-  const el = document.getElementById('glAutoList');
-  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
-  try {
-    const data = await call('getAutomationTds', {});
-    if (data.error) throw new Error(data.error);
-    GL_AUTO_DATA = data.items || [];
-    document.getElementById('glAutoCount').textContent = '· ' + GL_AUTO_DATA.length;
-    renderGlAutomations();
-  } catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
-}
-function renderGlAutomations() {
-  const el = document.getElementById('glAutoList');
-  if (!GL_AUTO_DATA.length) { el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Nothing queued yet. Add one above whenever an idea comes up.</div>'; return; }
-  el.innerHTML = GL_AUTO_DATA.map(t =>
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;margin-bottom:6px;background:var(--surface);">'
-    + '<span style="font-size:12px;color:var(--text);' + (t.stage === 'Published' ? 'text-decoration:line-through;color:var(--text3);' : '') + '">' + esc(t.title) + '</span>'
-    + '<button onclick="glAutoDelete(\'' + t.id + '\')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;flex-shrink:0;">✕</button>'
-    + '</div>'
-  ).join('');
-}
-async function glAutoAdd() {
-  const inp = document.getElementById('glAutoInput');
-  const title = inp.value.trim();
-  if (!title) return;
-  inp.disabled = true;
-  try {
-    const r = await call('createAutomationTd', { title });
-    if (r.error) throw new Error(r.error);
-    inp.value = '';
-    await loadGlAutomations();
-  } catch (e) { alert('Error: ' + e.message); }
-  finally { inp.disabled = false; inp.focus(); }
-}
-async function glAutoDelete(id) {
-  try {
-    const r = await call('deleteAutomationTd', { id });
-    if (r.error) throw new Error(r.error);
-    GL_AUTO_DATA = GL_AUTO_DATA.filter(x => x.id !== id);
-    document.getElementById('glAutoCount').textContent = '· ' + GL_AUTO_DATA.length;
-    renderGlAutomations();
-  } catch (e) { alert('Error: ' + e.message); }
-}
-
-// ── Post Types wishlist (same pattern as Automations above) ──
+// ── Post Types wishlist ──
 let GL_POST_TYPES_DATA = [];
 async function loadGlPostTypes() {
   const el = document.getElementById('glPostTypesList');
@@ -14659,7 +14549,6 @@ async function loadTdTab() {
   } catch(e) {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
-  renderHubSites();
   loadTodayCampaigns();
   applyHamNotesCollapse();
   if (!hamNotesCollapsed && !_hamNotesLoaded) { hamNotesCollapsed = true; toggleHamNotes(); }
