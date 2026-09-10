@@ -509,8 +509,10 @@ path that bakes the title into the pixels.
 `generateOfferImage` resolves the offer's hub (`Content Hub` select, else
 `HUB_SITES` by campaign) and pulls `web/hub/hubs.design.json → hubs[slug]`:
 `tokens` + `tokenNotes` (ground tone, primary colour, accent, ink),
-`design.subject`/`design.risk`/`design.avoided[]`. That becomes an "INHERIT
-THIS SITE'S LOOK — do not restyle" block in the Claude prompt. Falls back to
+`design.subject`/`design.photography`/`design.risk`/`design.avoided[]`. That
+becomes an "INHERIT THIS SITE'S LOOK — do not restyle" block in the Claude
+prompt. The Content Hubs card shows the full human-readable version of the
+same thing — `buildHubImageSpec` in `index.html`, a derived copyable field. Falls back to
 the campaign Research `Palette`/`Statement` when there's no hub. This is the
 same "seeded once, not reinvented per asset" rule as the campaign design
 system — [[project_dash_hub_design_spec]].

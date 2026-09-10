@@ -22531,6 +22531,7 @@ Rules:
                 tk.accent && `- Accent ${tk.accent}${tn.accent ? ` (${tn.accent})` : ""} — at most once, small`,
                 tk.ink    && `- Darkest value / ink: ${tk.ink}`,
                 dz.subject && `- Register: ${firstSentence(dz.subject)}`,
+                dz.photography && `- Photography: ${dz.photography}`,
                 dz.risk    && `- Tone to hold: ${dz.risk}`,
                 Array.isArray(dz.avoided) && dz.avoided.length && `- DO NOT: ${dz.avoided.join("; ")}`,
                 `- The real headline/body type is added afterward in the site's own fonts — leave clean, uncluttered space for it and put NO text in the image.`,

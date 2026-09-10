@@ -104,6 +104,8 @@ def hub_style_block(slug: str) -> str:
         lines.append(f"- Darkest value / ink: {tk['ink']}")
     if dz.get("subject"):
         lines.append(f"- Register: {first_sentence(dz['subject'])}")
+    if dz.get("photography"):
+        lines.append(f"- Photography: {dz['photography']}")
     if dz.get("risk"):
         lines.append(f"- Tone to hold: {dz['risk']}")
     if isinstance(dz.get("avoided"), list) and dz["avoided"]:

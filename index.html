@@ -10429,6 +10429,7 @@ function buildHubBriefPrompt(h) {
 `signature element (the one memorable thing):`,
 `the one risk taken + why:`,
 `AI defaults deliberately avoided:`,
+`photography (2-3 sentences — the kind of real image that belongs here: subjects, light, palette-in-photo, what's forbidden; drives the wordless plate spec):`,
   ].join('\n');
 }
 function openHubBriefModal(slug) {
@@ -10552,7 +10553,7 @@ function fetchHubSpec() {
   _hubSpecFetched = true;
   fetch('https://raw.githubusercontent.com/cabuzzard/dash/main/web/hub/hubs.design.json?t=' + Date.now())
     .then(r => r.json())
-    .then(j => { for (const [s, h] of Object.entries(j.hubs || {})) HUB_SPEC[s] = { tokens: h.tokens, design: h.design || {}, fonts: h.fonts || {} }; renderHubsTab(); })
+    .then(j => { for (const [s, h] of Object.entries(j.hubs || {})) HUB_SPEC[s] = { tokens: h.tokens, tokenNotes: h.tokenNotes || {}, design: h.design || {}, fonts: h.fonts || {}, logoText: h.logoText || '', meta: h.meta || {} }; renderHubsTab(); })
     .catch(() => {});
 }
 const HP_ROLES = [['bg','Background'],['surface','Card'],['ink','Body text'],['ink-head','Headings'],['ink-soft','Muted text'],['line','Outlines'],['sea','Primary / links'],['deep','Dark band'],['deep-ink','Text on dark'],['accent','Accent / button']];
@@ -11084,6 +11085,130 @@ async function hubTdSave() {
   }
 }
 
+// ── Image plate design spec — derived, always current ────────────────
+// Composed live from this hub's design record (palette / fonts / brief) so
+// it moves the moment any of those change. Assumes WORDLESS plates — the
+// type is set afterward in Remotion in the real fonts. Copyable field in
+// the Content Hubs card's Design section; paste it above an image prompt.
+function _ispec_warmth(hex) {
+  const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+  if (!m) return 0;
+  const n = parseInt(m[1], 16);
+  return ((n >> 16) & 255) - (n & 255);
+}
+function _ispec_sentence(s) { s = String(s || ''); return (s.match(/^[\s\S]*?[.!?](?=\s|$)/) || [s])[0].trim(); }
+
+function buildHubImageSpec(slug) {
+  const s = HUB_SPEC[slug];
+  const h = HUB_SITES.find(x => x.slug === slug) || {};
+  if (!s) return 'Loading this hub\'s design record…';
+  const T = Object.assign({}, s.tokens || {}, hpPalette(slug) || {});
+  const N = s.tokenNotes || {};
+  const d = s.design || {};
+  const fw = _hpFonts[slug] || s.fonts || {};
+  const name = s.logoText || h.name || slug;
+  const domain = h.domain || '';
+
+  const bg = T.bg || '#eeeeee', ink = T['ink-head'] || T.ink || '#191919', primary = T.sea || T.accent || '#333333';
+  const muted = T['ink-soft'] || '', accent = T.accent || '', dark = T.deep || '';
+  // Temperature reads from ground + primary only — the accent is used "once,
+  // small, often absent" and shouldn't swing the whole mood.
+  const t = _ispec_warmth(bg) + _ispec_warmth(primary);
+  const cool = t < -20, warm = t > 20;
+  const tempWord = cool ? 'cool, desaturated' : warm ? 'warm, low-saturation' : 'near-neutral, desaturated';
+  const tempOpp = cool ? 'warm' : warm ? 'cold' : 'colourful';
+  const lightLine = cool
+    ? 'Overcast daylight or blue hour. Never golden-hour warmth, never harsh midday sun. One small warm pin-light (a window, a lamp) is allowed, in the distance or the margin.'
+    : warm
+    ? 'Soft diffused daylight or overcast; a low warm key is fine. Avoid harsh contrast, neon, and lens flare.'
+    : 'Soft, even daylight or light overcast. No dramatic side-light, no strong colour cast.';
+  const aw = _ispec_warmth(accent);
+  const accentWord = aw > 20 ? 'warm' : aw < -20 ? 'cool' : 'muted';
+  const lightShort = cool ? 'blue hour or overcast' : warm ? 'soft warm daylight' : 'soft daylight';
+
+  const paletteRows = [
+    ['Ground / paper', bg, N.bg || 'the dominant light value'],
+    ['Ink (deepest value)', ink, N.ink || 'near-black — never pure #000'],
+    ['Primary', primary, N.sea || 'the signature colour — skies, shadow, a cool cast'],
+    muted && ['Muted / mid-shadow', muted, N['ink-soft'] || 'weathered surfaces, asphalt, cloth'],
+    accent && ['Accent', accent, (N.accent || 'use once, small') + ' — never a wash, never the subject; often absent'],
+    dark && ['Dark band', dark, N.deep || 'the darkest value, bottom of a night frame'],
+  ].filter(Boolean);
+
+  const avoided = Array.isArray(d.avoided) ? d.avoided : [];
+  const neverList = avoided.concat([
+    'Any text, letters, numbers, logos, watermarks, UI or signage',
+    'People looking at camera; a face as the subject (distant, incidental silhouettes only)',
+    'Stock-photo clichés: handshakes, lightbulbs, growth arrows, piggy banks, glowing globes, a lone tree, sunrise-over-hills',
+    'Gradient decoration, lens flare, heavy bokeh, tilt-shift, fisheye, HDR',
+  ]);
+
+  const photoPara = d.photography
+    ? String(d.photography)
+    : `Documentary photography, medium-format feel — real places and the ordinary infrastructure of this topic, plainly seen. No montage, no collage, no vignette gimmicks. ${tempWord.charAt(0).toUpperCase() + tempWord.slice(1)}, muted contrast, fine grain, slight matte. (No photography line on this hub yet — replace the bracketed scenes below with real ones.)`;
+
+  const scene = '[a real place / environmental subject that fits the register above]';
+  const skeleton = `{portrait | square | wide} documentary photograph, ${lightShort}, ${scene}. [one focal element] placed low or to one side; [the calm zone for this format — see below] left open. Palette: ${tempWord} — ground ${bg}, primary ${primary}, ink ${ink}${accent ? `, one small ${accentWord} ${accent} element (optional)` : ''}. Even natural light, muted contrast, fine grain, medium-format feel. Still, restrained. No people, no text, no letters, no logos, no watermarks.`;
+
+  const exIg = `Vertical documentary photograph, ${lightShort}. ${scene}, one quiet focal element low in the frame; the entire top 40% left open. Palette: ${tempWord} — ground ${bg}, primary ${primary}, ink ${ink}. Even light, muted contrast, fine grain, medium-format feel. Still and understated. No people, no text, no letters, no logos, no watermarks.`;
+  const exThumb = `Square documentary photograph, ${lightShort}. ${scene} in the lower half; the top ~45% calm and near-empty. Palette: ${tempWord} — ground ${bg}, primary ${primary}, ink ${ink}. Even light, muted contrast, fine grain, medium-format feel. Quiet, dignified. No people, no text, no letters, no logos, no watermarks.`;
+
+  return [
+    `# ${name} — image plate design spec`,
+    `Derived from this hub's design record — updates whenever the palette, fonts or brief change. Assumes WORDLESS plates: the headline/figures are set afterward in ${fw.display || 'the display'} / ${fw.body || 'the body'} / ${fw.mono || 'the mono'} face, so every rule below is about the picture only.`,
+    ``,
+    `## What this is`,
+    `${name}. ${_ispec_sentence(d.subject) || (s.meta && s.meta.ogDescription) || ''}`.trim(),
+    d.audience ? `Audience: ${d.audience}` : '',
+    ``,
+    `## Palette (match exactly)`,
+    `| Role | Hex | Note |`,
+    `|---|---|---|`,
+    ...paletteRows.map(r => `| ${r[0]} | \`${r[1]}\` | ${r[2]} |`),
+    ``,
+    `Overall: ${tempWord}. If it looks ${tempOpp} or saturated, it's wrong.`,
+    ``,
+    `## Register & rendering`,
+    d.type ? `Type register (for mood only — no type in the image): ${d.type}` : '',
+    d.risk ? `Tone to hold: ${d.risk}` : '',
+    photoPara,
+    ``,
+    `## Light`,
+    lightLine,
+    ``,
+    `## Composition & safe areas`,
+    `Text lands on the plate afterward — keep these zones calm and near-empty:`,
+    `- Instagram background — 4:5 (3:4 on Grok): top 40% + vertical centre. Subject low or to one side.`,
+    `- Blog / social thumbnail — 1:1: top ~45%. Subject in the lower half.`,
+    `- Hero / OG — 16:9: left ~45%, or the full upper third. Subject right / lower band.`,
+    `One off-centre focal element, generous negative space, horizon never dead-centre. No collage.`,
+    ``,
+    `## Never`,
+    ...neverList.map(x => `- ${x}`),
+    ``,
+    `## Prompt skeleton`,
+    skeleton,
+    ``,
+    `## Filled examples (edit the bracketed scene)`,
+    `Instagram background (4:5):`,
+    exIg,
+    ``,
+    `Blog thumbnail (1:1):`,
+    exThumb,
+    ``,
+    `---`,
+    `Fonts (set in Remotion, not the image): ${[fw.display, fw.body, fw.mono].filter(Boolean).join(' / ') || '—'}${domain ? `  ·  URL: ${domain}` : ''}`,
+    d.photography ? '' : `To sharpen the photography direction, add a "photography" line to web/hub/hubs.design.json → hubs.${slug}.design`,
+  ].filter(l => l !== '').join('\n');
+}
+function copyHubImageSpec(slug, btn) {
+  const ta = document.getElementById('hubImgSpec-' + slug);
+  if (!ta) return;
+  const flash = () => { if (btn) { const o = btn.textContent; btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = o; }, 1400); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(ta.value).then(flash).catch(() => { ta.select(); document.execCommand('copy'); flash(); });
+  else { ta.select(); document.execCommand('copy'); flash(); }
+}
+
 function renderHubsTab() {
   const el = document.getElementById('hubsTabContent');
   if (!el) return;
@@ -11186,6 +11311,15 @@ function renderHubsTab() {
             <span style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">${swStrip}</span>
             <div style="margin-top:6px;max-width:280px;">${swDetail}</div>
           </div>
+        </div>
+
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Image plate spec</span>
+            <span style="font-size:10px;color:var(--text3);">derived from this hub's palette · fonts · brief — always current. Paste above an image prompt (wordless plates; type is set in Remotion).</span>
+            <button onclick="copyHubImageSpec('${slug}', this)" style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;margin-left:auto;">📋 Copy</button>
+          </div>
+          <textarea id="hubImgSpec-${slug}" readonly rows="14" onclick="this.select()" style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.55;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;resize:vertical;">${esc(buildHubImageSpec(slug))}</textarea>
         </div>
       </div>
     </details>
