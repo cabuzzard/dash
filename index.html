@@ -1783,16 +1783,19 @@
     <label style="font-size:11px;color:var(--text3);">Direction for this template (optional)</label>
     <textarea id="spTplOverride" wrap="soft" placeholder="e.g. warmer than the hub default · a paper texture · room for a photo strip on the left"
       style="width:100%;height:70px;font-family:inherit;font-size:12px;line-height:1.5;padding:8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;margin-bottom:8px;"></textarea>
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">
-      <button class="modal-btn" onclick="spTplGenPrompt(this)" style="flex:0 0 auto;">📋 Copy generation prompt</button>
-      <button class="modal-btn" onclick="spTplGenBg(this)" style="flex:0 0 auto;background:transparent;border-color:var(--accent);color:var(--accent);">✨ Generate background (Grok)</button>
-    </div>
-    <div id="spTplBg" style="font-size:11px;color:var(--text3);margin-bottom:10px;min-height:14px;"></div>
-    <label style="font-size:11px;color:var(--text3);">Finished Canva template link</label>
+    <button class="modal-btn" id="spTplBuildBtn" onclick="spTplBuild(this)" style="width:100%;margin-bottom:8px;background:var(--accent);border-color:var(--accent);color:#0b0b0b;font-weight:600;">✨ Build template</button>
+    <div id="spTplBg" style="font-size:11px;color:var(--text3);margin-bottom:10px;min-height:14px;line-height:1.5;"></div>
+    <details style="margin-bottom:10px;"><summary style="font-size:10px;color:var(--text3);cursor:pointer;">or build it by hand</summary>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+        <button class="modal-btn" onclick="spTplGenPrompt(this)" style="flex:0 0 auto;font-size:11px;">📋 Art prompt</button>
+        <button class="modal-btn" onclick="spTplGenBg(this)" style="flex:0 0 auto;font-size:11px;background:transparent;border-color:var(--border2);color:var(--text3);">✨ Background only</button>
+      </div>
+    </details>
+    <label style="font-size:11px;color:var(--text3);">Finished Canva template link <span style="color:var(--text3);font-weight:normal;">— the build handoff registers it for you; paste here only if doing it by hand</span></label>
     <input id="spTplUrl" class="modal-input" type="text" placeholder="https://www.canva.com/design/…/edit" style="margin-bottom:10px;">
     <div style="display:flex;gap:10px;align-items:center;">
-      <button class="modal-btn" id="spTplSaveBtn" onclick="spTplSave()" style="flex:0 0 auto;">Save template</button>
-      <button class="modal-btn" onclick="closeSPTemplateModal()" style="margin-left:auto;background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>
+      <button class="modal-btn" id="spTplSaveBtn" onclick="spTplSave()" style="flex:0 0 auto;">Save link</button>
+      <button class="modal-btn" onclick="closeSPTemplateModal()" style="margin-left:auto;background:transparent;border-color:var(--border2);color:var(--text3);">Close</button>
     </div>
     <div id="spTplMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
   </div>
@@ -10857,6 +10860,40 @@ async function spTplGenPrompt(btn){
     await navigator.clipboard.writeText(r.prompt);
     btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 1600);
   } catch (e) { btn.textContent = o; btn.disabled = false; document.getElementById('spTplMsg').style.color = '#ff6b6b'; document.getElementById('spTplMsg').textContent = e.message; }
+}
+// One button: Grok background → Canva build handoff on the clipboard. Paste
+// it into a Claude Code chat with the Canva connector; it copies the reference
+// template, drops the background in, recolours to the hub, and registers the
+// finished template (it shows up in the list on its own).
+async function spTplBuild(btn){
+  const h = HUB_SITES.find(x => x.slug === _spTplSlug); if (!h) return;
+  const name = document.getElementById('spTplName').value.trim();
+  const out = document.getElementById('spTplBg');
+  if (!name) { out.style.color = '#ff6b6b'; out.textContent = 'Name the template first.'; return; }
+  const mSel = document.getElementById('spTplMethod');
+  const o = btn.textContent; btn.disabled = true;
+  try {
+    btn.textContent = '1/2 · Grok background… (~20s)';
+    out.style.color = 'var(--text3)'; out.textContent = 'Rendering a wordless plate from this hub\'s Image Spec…';
+    const bg = await call('generateSinglePostBackground', { campaignId: h.campaignId, name, override: document.getElementById('spTplOverride').value.trim() });
+    if (bg.error) throw new Error(bg.error);
+    btn.textContent = '2/2 · Assembling handoff…';
+    const r = await call('buildSinglePostTemplatePrompt', {
+      campaignId: h.campaignId, name, bgUrl: bg.imageUrl,
+      override: document.getElementById('spTplOverride').value.trim(),
+      methodId: mSel.value || undefined,
+      methodName: mSel.selectedOptions[0]?.dataset.name || 'single post',
+    });
+    if (r.error) throw new Error(r.error);
+    await navigator.clipboard.writeText(r.handoff);
+    out.style.color = 'var(--text2)';
+    out.innerHTML = `✓ Copied the Canva build handoff. <b>Paste it into a Claude Code chat with the Canva connector</b> — it builds + registers the template (appears in the list here when done).<br>Background: <a href="${esc(bg.imageUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">preview ↗</a>`;
+    btn.textContent = '✓ Handoff copied — paste into a Canva chat';
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 6000);
+  } catch (e) {
+    out.style.color = '#ff6b6b'; out.textContent = e.message;
+    btn.textContent = o; btn.disabled = false;
+  }
 }
 async function spTplGenBg(btn){
   const h = HUB_SITES.find(x => x.slug === _spTplSlug); if (!h) return;

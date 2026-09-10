@@ -23613,31 +23613,58 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const hubSlug = String(body.hubSlug || "").trim() || hubSlugForCampaign(body.campaignId);
         const name = String(body.name || "single-post template").trim();
         const override = String(body.override || "").trim();
-        let spec = "", palette = "", fonts = "";
+        const bgUrl = String(body.bgUrl || "").trim();
+        const methodId = String(body.methodId || "").replace(/-/g, "");
+        const methodName = String(body.methodName || "single post");
+        let spec = "", palette = "", fonts = "", tk = {};
         try {
           const brief = await assembleImageBrief(env, { campaignId: body.campaignId });
           spec = (brief && brief.storedSpec && brief.storedSpec.length > 200) ? brief.storedSpec : (brief ? await writeImageSpec(env, brief).catch(() => "") : "");
           const oh = (brief && brief.hub) || {};
-          const tk = oh.tokens || {};
+          tk = oh.tokens || {};
           palette = ["bg", "surface", "ink", "ink-head", "sea", "accent", "deep"].map(k => tk[k] ? `${k} ${tk[k]}` : "").filter(Boolean).join(" · ");
           const f = oh.fonts || {};
           fonts = [f.display, f.body, f.mono].filter(Boolean).join(" · ");
         } catch (e) {}
+        const ink = tk["ink-head"] || tk.ink || "#1b1e24";
+        const accent = tk.accent || tk.sea || "#a94f2e";
+        const soft = tk["ink-soft"] || "#5a616d";
+
+        // Manual art prompt (for the operator who wants to generate the bg themselves)
         const prompt = [
           `Design a single-page social post TEMPLATE named "${name}" for the ${hubSlug} content hub — 1080 x 1440 portrait, Instagram.`,
-          ``,
-          `It must match this hub's visual direction:`,
+          ``, `It must match this hub's visual direction:`,
           spec ? spec.slice(0, 3000) : "(no image spec on file — use the palette + fonts below)",
-          ``,
-          palette ? `Palette: ${palette}` : "",
-          fonts ? `Fonts: ${fonts}` : "",
-          override ? `\nOperator direction for THIS template: ${override}` : "",
-          ``,
-          `Layout: a flat, on-brand background with a faint texture; leave generous calm space for a stacked two-colour headline (2-3 lines primary in the dark ink, 1-2 lines accent in the hub accent colour, same sentence) and one small one-line body sentence beneath it. A small mark bottom-centre is optional. NO text, letters, words, numbers, logos or watermarks baked into the background art — the words are added as editable Canva text boxes afterward.`,
-          ``,
-          `Build it in Canva with three named text elements: "Headline Primary" (dark), "Headline Accent" (hub accent colour), "Body". Then paste the Canva edit link back into the New Template modal.`,
+          ``, palette ? `Palette: ${palette}` : "", fonts ? `Fonts: ${fonts}` : "",
+          override ? `\nOperator direction for THIS template: ${override}` : "", ``,
+          `Layout: a flat, on-brand background; leave the LEFT HALF + TOP 55% calm for a stacked two-colour headline (2-3 lines primary in the dark ink, 1-2 lines accent in the hub accent colour, same sentence) and one small one-line body sentence beneath it. NO text/letters/numbers/logos/watermarks in the background art — words are added as editable Canva text boxes.`,
+          ``, `Build it in Canva with three named text elements: "Headline Primary" (dark), "Headline Accent" (hub accent colour), "Body". Paste the Canva edit link back into the New Template modal.`,
         ].filter(Boolean).join("\n");
-        return json({ success: true, prompt, hubSlug });
+
+        // One-paste Canva build handoff — for a Claude Code chat with the Canva
+        // connector. Copies the proven reference template, drops in the Grok
+        // background, recolours to this hub, registers the finished URL.
+        const handoff = [
+          `Build the "${name}" single-post template for the ${hubSlug} content hub and register it.`,
+          `Worker: https://jolly-darkness-5dcc.trailnotes2026.workers.dev`,
+          ``,
+          `1. copy-design the reference template DAHTiWOUDro (URL https://www.canva.com/design/DAHTiWOUDro/dPgvbNRzByJB5wm5tE1mIQ/edit). NEVER edit the original.`,
+          `2. update_title the copy to "${name} — ${hubSlug}".`,
+          bgUrl
+            ? `3. upload-asset-from-url  { url: "${bgUrl}", name: "${hubSlug} single-post bg" }  → then update_fill the full-bleed background rect (locator ~PBxxx-LB6HRcFR1M9Q5442, the 1080x1440 rect at ~15% opacity) with that asset and update_opacity it to 1. If update_fill won't target it, insert_fill the asset full-bleed (top 0 left 0 width 1080 height 1440) and layer_element it to back.`
+            : `3. (no background generated — keep the reference template's own texture.)`,
+          `4. recolour the text: format_text "Headline Primary" → color ${ink}; "Headline Accent" → color ${accent}; "Body" → color ${soft}. (Locators from read-design; the accent element is currently green #7ed321, primary + body are #222222.)`,
+          `5. replace_text with neutral placeholders: Headline Primary → "Your headline sets up the point"; Headline Accent → "then lands the turn"; Body → "One short supporting sentence — the proof or context the headline can't carry.".`,
+          `6. delete_element the bottom-centre "BUSINESS TOOLS" logo (locator ~LBWVYHb40MBGmR97).`,
+          `7. Verify the page thumbnail — the headline area (upper-left) must stay legible over the background; nudge text or add a subtle scrim only if needed. Commit the transaction.`,
+          `8. Register it: POST { "action":"saveSinglePostTemplate", "token":"<PIN session token>", "campaignId":"${String(body.campaignId||"").replace(/-/g,"")}", "name":"${name}", "methodId":"${methodId}", "methodName":"${methodName}", "canvaUrl":"<the copy's edit_url>", "override":${JSON.stringify(override)} }`,
+          `   → it appears in the hub's Single-Post Templates list.`,
+          ``,
+          palette ? `Hub palette: ${palette}` : "",
+          fonts ? `Hub fonts (change the template's fonts to these if you can): ${fonts}` : "",
+        ].filter(Boolean).join("\n");
+
+        return json({ success: true, prompt, handoff, hubSlug, palette: { ink, accent, soft }, referenceTemplate: "DAHTiWOUDro" });
       }
 
       if (body.action === "saveSinglePostTemplate") {

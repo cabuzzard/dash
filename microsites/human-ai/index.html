@@ -1939,8 +1939,24 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
            session fills the template afterward (📋 Copy Canva handoff on the
            title row). Every post in a run uses the same template. -->
       <div id="gaSinglePostWrap" style="display:none;margin-bottom:10px;">
-        <label class="lm-label">Template <span style="color:#fff;font-weight:normal;">— the hub's fixed Canva templates (set them up in the Content Hubs card)</span></label>
+        <label class="lm-label">Template
+          <span style="color:#fff;font-weight:normal;">— the hub's fixed Canva templates</span>
+          <button type="button" onclick="gaToggleNewTemplate()" style="float:right;font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;">+ new template</button>
+        </label>
         <select id="gaSinglePostTemplate" class="modal-ta" style="margin-bottom:8px;"></select>
+
+        <div id="gaNewTemplateBox" style="display:none;border:1px solid #444;border-radius:7px;padding:9px;margin-bottom:8px;background:rgba(255,255,255,.03);">
+          <label class="lm-label" style="font-size:11px;">Template name</label>
+          <input id="gaNtName" class="modal-ta" type="text" placeholder="e.g. quote card — warm" style="margin-bottom:6px;">
+          <label class="lm-label" style="font-size:11px;">Direction for it (optional — used by ✨ Build)</label>
+          <input id="gaNtOverride" class="modal-ta" type="text" placeholder="e.g. warmer · a paper texture · room for a photo strip" style="margin-bottom:6px;">
+          <button type="button" id="gaNtBuildBtn" onclick="gaBuildNewTemplate(this)" style="width:100%;font-size:12px;padding:6px;border:1px solid #b8f106;background:transparent;color:#b8f106;font-weight:600;border-radius:6px;cursor:pointer;margin-bottom:6px;">✨ Build it — Grok background + copy the Canva prompt</button>
+          <div id="gaNtMsg" style="font-size:10px;color:#9aa;margin:0 0 6px;line-height:1.5;min-height:12px;"></div>
+          <label class="lm-label" style="font-size:11px;">Canva template link <span style="color:#fff;font-weight:normal;">— paste an existing one, or the one ✨ Build produced</span></label>
+          <input id="gaNtUrl" class="modal-ta" type="text" placeholder="https://www.canva.com/design/…/edit" style="margin-bottom:6px;">
+          <button type="button" id="gaNtSaveBtn" onclick="gaSaveNewTemplate(this)" style="width:100%;font-size:12px;padding:6px;border:1px solid #68d391;background:#68d391;color:#0b0b0b;font-weight:600;border-radius:6px;cursor:pointer;">＋ Add template</button>
+        </div>
+
         <label class="lm-label">Content type</label>
         <select id="gaSinglePostType" class="modal-ta" style="margin-bottom:8px;"></select>
         <label class="lm-label">Iterations <span style="color:#fff;font-weight:normal;">— how many posts on this template this run</span></label>
@@ -6984,6 +7000,64 @@ async function gaLoadSinglePostConfig() {
   } catch (e) {
     tSel.innerHTML = '<option value="">— couldn\'t load templates —</option>';
   }
+}
+
+// "+ new template" inside the Generate Assets modal — add an existing Canva
+// link, or ✨ Build one (Grok background + a copy-paste Canva build prompt).
+function gaToggleNewTemplate() {
+  const b = document.getElementById('gaNewTemplateBox');
+  if (b) b.style.display = b.style.display === 'none' ? 'block' : 'none';
+}
+async function gaBuildNewTemplate(btn) {
+  const name = (document.getElementById('gaNtName').value || '').trim();
+  const msg = document.getElementById('gaNtMsg');
+  if (!name) { msg.style.color = '#fc8181'; msg.textContent = 'Name it first.'; return; }
+  const o = btn.textContent; btn.disabled = true;
+  try {
+    btn.textContent = '1/2 · Grok background… (~20s)';
+    msg.style.color = '#9aa'; msg.textContent = 'Rendering a wordless plate from the hub Image Spec…';
+    const bg = await w('generateSinglePostBackground', { campaignId: CAMPAIGN_ID, name, override: (document.getElementById('gaNtOverride').value || '').trim() });
+    if (bg.error) throw new Error(bg.error);
+    btn.textContent = '2/2 · Canva prompt…';
+    const r = await w('buildSinglePostTemplatePrompt', {
+      campaignId: CAMPAIGN_ID, name, bgUrl: bg.imageUrl,
+      override: (document.getElementById('gaNtOverride').value || '').trim(),
+      methodId: GA_METHOD_ID || undefined, methodName: GA_METHOD_NAME || 'single post',
+    });
+    if (r.error) throw new Error(r.error);
+    await navigator.clipboard.writeText(r.handoff);
+    msg.style.color = '#68d391';
+    msg.innerHTML = '✓ Canva build prompt copied — paste into a Claude Code chat with the Canva connector. It builds + registers the template; or paste the finished link below and ＋ Add. Background: <a href="' + esc(bg.imageUrl) + '" target="_blank" rel="noopener" style="color:#8be9fd;">preview ↗</a>';
+    btn.textContent = '✓ Prompt copied';
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 5000);
+  } catch (e) {
+    msg.style.color = '#fc8181'; msg.textContent = e.message;
+    btn.textContent = o; btn.disabled = false;
+  }
+}
+async function gaSaveNewTemplate(btn) {
+  const name = (document.getElementById('gaNtName').value || '').trim();
+  const url = (document.getElementById('gaNtUrl').value || '').trim();
+  const msg = document.getElementById('gaNtMsg');
+  if (!name) { msg.style.color = '#fc8181'; msg.textContent = 'Name it first.'; return; }
+  if (!/^https:\/\/(www\.)?canva\.com\//i.test(url)) { msg.style.color = '#fc8181'; msg.textContent = 'Paste a canva.com template link.'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const r = await w('saveSinglePostTemplate', {
+      campaignId: CAMPAIGN_ID, name, canvaUrl: url,
+      methodId: GA_METHOD_ID || undefined, methodName: GA_METHOD_NAME || 'single post',
+      override: (document.getElementById('gaNtOverride').value || '').trim(),
+    });
+    if (r.error) throw new Error(r.error);
+    GA_SP_CONFIG = null;
+    await gaLoadSinglePostConfig();
+    const sel = document.getElementById('gaSinglePostTemplate');
+    if (sel && r.template) sel.value = r.template.id;
+    document.getElementById('gaNewTemplateBox').style.display = 'none';
+    document.getElementById('gaNtName').value = ''; document.getElementById('gaNtUrl').value = ''; document.getElementById('gaNtOverride').value = '';
+    msg.textContent = '';
+  } catch (e) { msg.style.color = '#fc8181'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = o;
 }
 
 // Shows what's already saved to the campaign BEFORE generating anything —
