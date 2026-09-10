@@ -8556,29 +8556,27 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
           let postsN = 0;
           try { const pj = postsF.text ? JSON.parse(postsF.text) : []; postsN = Array.isArray(pj) ? pj.length : (pj.posts || []).length; } catch (e) {}
           const man = id => !!kv[id]?.done;
+          const isPub = a => /^publish/i.test(a.properties?.["Asset Status"]?.select?.name || "");
+          const offerLive = offerAssets.some(a => /\boffer\b/i.test(a.properties?.["Asset Type"]?.select?.name || "") && isPub(a));
+          const emailLive = emailAssets.some(a => /^email hub main/i.test(a.properties?.["Asset Type"]?.select?.name || "") && isPub(a));
 
+          // The card is a status board, not a build console. Content /
+          // research / design / offers / blog / email are all authored from
+          // the campaign microsite now — the checklist just reports whether
+          // the result is live and links out. Only "scaffold" (a health
+          // check) and the two manual audit rows stay actionable here.
           const steps = [
-            { id: "scaffold",   phase: "Chassis",  label: "Scaffold + register the hub", run: "scaffoldHub",
-              done: !idxF.missing && ctxH.registered, hint: !idxF.missing ? "hub file exists" : "not scaffolded" },
-            { id: "research",   phase: "Research",  label: "Field research — Statement / Market / Trends / News Feed", modal: "openHubResearch",
-              done: hasStatement && hasMarket, hint: hasStatement ? (hasMarket ? "" : "Statement set, Market Update missing") : "no Statement yet" },
-            { id: "brief",      phase: "Research",  label: "Design brief (Subject / Audience / Job / Signature / Risk)", modal: "openHubBriefModal",
-              done: !!(specHub?.design?.subject), hint: specHub?.design?.subject ? "" : "no design block in hubs.design.json" },
-            { id: "palette",    phase: "Design",    label: "Palette + fonts → push to hub", run: "pushHubPalette",
-              done: !!(specHub && specHub.tokens && specHub.tokens.sea && specHub.tokens.sea.toLowerCase() !== "#2f5fd0"), hint: "regenerate on the card, then Push" },
-            { id: "content",    phase: "Content",   label: "HUB copy — hero / ribbon / report / empty states", run: "generateHubContent",
-              done: !!(contentJson?.hero?.headline || contentJson?.hero?.blurb), hint: contentF.missing ? "no content.json" : "" },
-            { id: "images",     phase: "Content",   label: "Hero + signup images, logo", modal: "openHubImageModal",
-              done: hasImages, hint: hasImages ? "" : "no hero/signup image" },
-            { id: "offers",     phase: "Content",   label: "Offers → hub (product chain)", run: "backfillHubProductChain",
-              done: offerAssets.some(a => /\boffer\b/i.test(a.properties?.["Asset Type"]?.select?.name || "")), hint: "" },
-            { id: "blog",       phase: "Blog",      label: "Publish pending posts + offers", run: "backfillHubBlog",
-              done: postsN > 0, hint: postsN ? `${postsN} live` : "journal empty" },
-            { id: "email",      phase: "Email",     label: "Nurture sequence for the main form", run: "runHubEmailSequence",
-              done: emailAssets.some(a => /^email hub main/i.test(a.properties?.["Asset Type"]?.select?.name || "")), hint: "" },
-            { id: "domain",     phase: "Deploy",    label: "Custom domain + HUB_ORIGINS + _worker.js HUBS map", manual: true, done: man("domain") },
-            { id: "newsletter", phase: "Audit",     label: "Newsletter signup tested end-to-end", manual: true, done: man("newsletter") },
-            { id: "buildcheck", phase: "Audit",     label: "build-hubs.mjs --check passes clean", manual: true, done: man("buildcheck") },
+            { id: "scaffold",   phase: "Chassis",  label: "Hub scaffolded + registered", run: "scaffoldHub",
+              done: !idxF.missing && ctxH.registered, hint: (!idxF.missing && ctxH.registered) ? "live" : (idxF.missing ? "no hub file" : "not in HUB_SITES") },
+            { id: "offers",     phase: "Content",   label: "Offers published on the hub", link: "microsite",
+              done: offerLive, hint: offerLive ? "" : "build offers from the microsite" },
+            { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
+              done: postsN > 0, hint: postsN ? `${postsN} live` : "publish SEO posts from the microsite" },
+            { id: "email",      phase: "Email",     label: "Nurture sequence published for the main form", link: "microsite",
+              done: emailLive, hint: emailLive ? "" : "generate + publish the sequence from the microsite" },
+            { id: "domain",     phase: "Deploy",    label: "Custom domain + HUB_ORIGINS + _worker.js HUBS map", prompt: "domain", manual: true, done: man("domain") },
+            { id: "newsletter", phase: "Audit",     label: "Newsletter signup tested end-to-end", manual: true, build: true, done: man("newsletter") },
+            { id: "buildcheck", phase: "Audit",     label: "Design JSON in sync with the built hub (build-hubs --check)", manual: true, build: true, done: man("buildcheck") },
           ];
           return json({ slug, campaignId, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
         }

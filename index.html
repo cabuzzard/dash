@@ -83,6 +83,12 @@
   .hub-rail-frame { position:relative; overflow:hidden; width:100%; border:1px solid var(--border); border-radius:10px; background:#fff; }
   .hub-rail-frame iframe { position:absolute; top:0; left:0; border:0; background:#fff; transform-origin:top left; }
   @media (max-width:1080px) { .hub-layout { grid-template-columns:1fr; } .hub-rail { position:static; } }
+  .hub-sec { border:1px solid var(--border); border-radius:10px; background:var(--surface); margin-bottom:12px; overflow:hidden; }
+  .hub-sec > summary { list-style:none; cursor:pointer; padding:9px 12px; background:var(--surface2); display:flex; align-items:center; gap:8px; font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--text2); font-weight:700; }
+  .hub-sec[open] > summary { border-bottom:1px solid var(--border); }
+  .hub-sec > summary::-webkit-details-marker { display:none; }
+  .hub-sec > summary::before { content:"\25B8"; color:var(--text3); font-size:10px; }
+  .hub-sec[open] > summary::before { content:"\25BE"; }
 
   /* ── SKILL CARDS ── */
   .skill-card {
@@ -11095,14 +11101,6 @@ function renderHubsTab() {
       if (touched) { _hpNote[slug] = _hpNote[slug] || 'From Research — Push to make it live.'; if (HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
     }).catch(() => {});
   }
-  // the product this hub is built around (Content Hub tracking asset → else campaign's first product)
-  if (h.campaignId && !_hubMainProdFetched[slug]) {
-    _hubMainProdFetched[slug] = true;
-    call('getHubMainProduct', { campaignId: h.campaignId }).then(r => {
-      _hubMainProd[slug] = (r && r.product) || null;
-      if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
-    }).catch(() => {});
-  }
   if (h.campaignId && !_hubBuildFetched[slug]) {
     _hubBuildFetched[slug] = true;
     call('getHubBuildStatus', { campaignId: h.campaignId }).then(r => {
@@ -11114,8 +11112,6 @@ function renderHubsTab() {
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
   const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
   const msUrl = h.microsite ? 'https://cabuzzard.github.io/dash/microsites/' + h.microsite + '/' : '';
-  const totalCrit = HUB_CHECKLIST.filter(c => c.crit).length + 1;
-  const doneCrit = HUB_CHECKLIST.filter(c => c.crit && state[c.key]).length + ((meta.products || 0) > 0 ? 1 : 0);
 
   const chip = (label, valHtml, onclick, title) =>
     `<button onclick="${onclick}" title="${esc(title || '')}" style="text-align:left;background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;cursor:pointer;min-width:0;">
@@ -11126,21 +11122,6 @@ function renderHubsTab() {
   const swStrip = pal ? HP_ROLES.map(([k]) => `<span style="width:16px;height:22px;display:inline-block;background:${esc(pal[k] || '#888')};"></span>`).join('') : '<span style="color:var(--text3);font-size:11px;padding:4px;">loading…</span>';
   const swDetail = pal ? HP_ROLES.map(([k, label]) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);margin:2px 8px 2px 0;"><span style="width:12px;height:12px;border-radius:3px;border:1px solid var(--border2);background:${esc(pal[k] || '#888')};"></span>${label} <span style="opacity:.7;">${esc(pal[k] || '')}</span></span>`).join('') : '';
   const briefRow = (k, label) => design[k] ? `<div style="margin:4px 0;"><span style="color:var(--text3);font-size:9px;text-transform:uppercase;letter-spacing:.07em;">${label}</span><br><span style="font-size:12px;color:var(--text2);line-height:1.5;">${esc(design[k])}</span></div>` : '';
-
-  const mp = _hubMainProd[slug];
-  const mpBar = `<div style="padding:9px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surface);">
-    <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Main product</span>
-    ${mp
-      ? `<span style="font-size:12px;color:var(--text);font-weight:600;">${esc(mp.name)}</span>`
-        + (mp.stack ? `<span style="font-size:10px;color:var(--text3);">· ${esc(mp.stack)}</span>` : '')
-        + (mp.status ? `<span style="font-size:10px;color:var(--text3);">· ${esc(mp.status)}</span>` : '')
-        + (mp.productsite ? `<a href="${esc(mp.productsite)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);text-decoration:none;">site ↗</a>` : '')
-        + `<a href="https://www.notion.so/${esc(String(mp.id))}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">Notion ↗</a>`
-        + (mp.via === 'campaign-products' ? `<span title="No Content Hub tracking asset yet — showing the campaign's first attached product" style="font-size:10px;color:var(--text3);">(campaign default)</span>` : '')
-      : ((slug in _hubMainProd)
-        ? `<span style="font-size:11px;color:var(--text3);">— no product attached to this hub's campaign yet</span>`
-        : `<span style="font-size:11px;color:var(--text3);">loading…</span>`)}
-  </div>`;
 
   el.innerHTML = `
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
@@ -11154,88 +11135,78 @@ function renderHubsTab() {
 
   <div class="hub-layout">
   <div class="hub-left">
-  <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:12px;">
-    <div style="padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
-      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;">Build checklist</span>
-      <span style="font-size:10px;color:var(--text3);">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
-      <button onclick="_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
-      <button onclick="hubBuildRunNext('${slug}')" title="Run the next un-done auto step" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
-    </div>
-    <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
-  </div>
-  <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--bg);">
-    ${mpBar}
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <div><a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:18px;font-weight:700;color:var(--text);text-decoration:none;">${esc(h.name)}</a>
-        <span style="font-size:11px;color:var(--text3);margin-left:10px;">${esc(h.campaign || '')}</span></div>
+
+    <div style="border:1px solid var(--border);border-radius:12px;background:var(--bg);padding:13px 16px;margin-bottom:12px;display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:18px;font-weight:700;color:var(--text);text-decoration:none;">${esc(h.name)}</a>
+        <span style="font-size:11px;color:var(--text3);margin-left:10px;">${esc(h.campaign || '')}</span>
+      </div>
       <div style="display:flex;align-items:center;gap:8px;">
         <button onclick="openHubTdModal('${slug}')" title="Add a weekly to-do for this hub's campaign — lands on the TD tab's This Week board" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ TD</button>
         <span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span>
       </div>
     </div>
 
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
-      <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;flex-wrap:wrap;">
-        <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Design brief</span>
-        <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
-        ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
-        <button onclick="openHubBriefModal('${slug}')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
-        <button onclick="openHubTextModal('${slug}')" title="Edit every fixed heading / subhead / blurb / ribbon / nav label on this hub" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
-        <button onclick="openHubImageModal('${slug}')" title="Hero + signup section images (right third / stacked on mobile)" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">🖼 Images</button>
-        <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with this campaign's research + this hub's tokens/fonts" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
-        <label style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
-      </div>
-      ${briefRow('subject', 'Subject')}
-      ${briefRow('audience', 'Audience')}
-      ${briefRow('job', "The page's one job")}
-      ${briefRow('signature', 'Signature element')}
-      ${briefRow('risk', 'The one risk')}
-      ${!design.subject ? '<div style="font-size:11px;color:var(--text3);">No brief in hubs.design.json yet — fill the design block for this hub.</div>' : ''}
-    </div>
+    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open)">
+      <summary>
+        <span>Build checklist</span>
+        <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
+        <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status" style="margin-left:auto;font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+        <button onclick="event.stopPropagation();hubBuildRunNext('${slug}')" title="Run the next un-done auto step" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">▶ next</button>
+      </summary>
+      <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
+    </details>
 
-    <div style="padding:14px 16px;border-bottom:1px solid var(--border);">
-      <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Palette &amp; Fonts — research fields (stored on the campaign's Research record)</div>
-      <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-        <div style="flex:1;min-width:250px;">
-          <input id="hpImg" type="file" accept="image/*" style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
-          <input id="hpInstr" class="modal-input" type="text" placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
-          <div style="display:flex;gap:6px;flex-wrap:wrap;">
-            <button id="hpGen" onclick="hpGen('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
-            <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
-            <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub</button>
-            <button id="hpBlog" onclick="hubRebuildBlog('${slug}', event)" title="Publish every published article + offer that's missing a live page (Shift-click to force-rebuild everything)" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">⟳ Rebuild blog + offers</button>
-            <button id="hpChain" onclick="hubBackfillProductChain('${slug}', event)" title="Link each product listing's title → method (Offer – Content Hub), create a missing title/asset, lift a thin asset's blurb from its live page. No regeneration (Shift-click to re-stamp existing methods)." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">⟳ Backfill product chain</button>
+    <details class="hub-sec" ${hubSecOpen('brief') ? 'open' : ''} ontoggle="hubSecToggle('brief', this.open)">
+      <summary><span>Upstream brief</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">hubs.design.json — not a Notion title / asset</span></summary>
+      <div style="padding:10px 14px;">
+        ${briefRow('subject', 'Subject')}
+        ${briefRow('audience', 'Audience')}
+        ${briefRow('job', "The page's one job")}
+        ${briefRow('signature', 'Signature element')}
+        ${briefRow('risk', 'The one risk')}
+        ${!design.subject ? '<div style="font-size:11px;color:var(--text3);">Empty — the ✎ ChatGPT brief prompt in Design seeds this block.</div>' : ''}
+      </div>
+    </details>
+
+    <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open)">
+      <summary><span>Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">palette · fonts · copy · images</span></summary>
+      <div style="padding:12px 14px;">
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
+          <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
+          ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
+          <button onclick="openHubBriefModal('${slug}')" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
+          <button onclick="openHubTextModal('${slug}')" title="Edit every fixed heading / subhead / blurb / ribbon / nav label on this hub" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
+          <button onclick="openHubImageModal('${slug}')" title="Hero + signup section images (right third / stacked on mobile)" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">🖼 Images</button>
+          <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with this campaign's research + this hub's tokens/fonts" style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
+          <label style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
+        </div>
+
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;">Palette &amp; Fonts — stored on the campaign's Research record</div>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+          <div style="flex:1;min-width:250px;">
+            <input id="hpImg" type="file" accept="image/*" style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
+            <input id="hpInstr" class="modal-input" type="text" placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button id="hpGen" onclick="hpGen('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
+              <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
+              <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub</button>
+            </div>
+            <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
+            <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
           </div>
-          <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${_hpWork[slug] ? ' <span style="color:#ffb020;">(unsaved)</span>' : ''}</div>
-          <div style="font-size:10px;margin-top:6px;color:var(--text3);">Fonts: ${esc((_hpFonts[slug] && [_hpFonts[slug].display,_hpFonts[slug].body,_hpFonts[slug].mono].join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
-        </div>
-        <div style="flex:0 0 auto;">
-          <span style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">${swStrip}</span>
-          <div style="margin-top:6px;max-width:280px;">${swDetail}</div>
+          <div style="flex:0 0 auto;">
+            <span style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;">${swStrip}</span>
+            <div style="margin-top:6px;max-width:280px;">${swDetail}</div>
+          </div>
         </div>
       </div>
-    </div>
+    </details>
 
-    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-bottom:12px;">
       ${chip('Domain', meta.domain ? esc(meta.domain) : '<span style="color:var(--text3);">—</span>', `hubFieldModal('${slug}','domain')`, 'Set the custom domain')}
-      ${chip('Routing', hubRoutingCell(h), `hubRoutingInfo('${slug}')`, 'Domain → hub folder status')}
-      ${chip('Contact', meta.contact ? esc(meta.contact) : '<span style="color:var(--text3);">—</span>', `hubFieldModal('${slug}','contact')`, 'Contact email')}
-      ${chip('Products', String(meta.products || 0), `hubFieldModal('${slug}','products')`, 'Products featured on the hub')}
-      ${chip('Blog posts', String(meta.blogPosts || 0), `hubFieldModal('${slug}','blogPosts')`, 'Blog posts published')}
-      ${chip('Type', (fonts.display ? esc(fonts.display) : '—') + (fonts.mono ? ' · ' + esc(fonts.mono) : ''), `openHubBriefModal('${slug}')`, 'Typeface pairing — change via the brief prompt')}
     </div>
 
-    <div onclick="hubChecklistModal('${slug}')" title="Open the launch checklist" style="padding:12px 16px;border-bottom:1px solid var(--border);cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-      <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Checklist</span>
-      <span style="letter-spacing:2px;font-size:12px;">${HUB_CHECKLIST.map(c => state[c.key] ? '<span style="color:#4cff4c;">●</span>' : '<span style="color:var(--text3);">○</span>').join('')}</span>
-      <span style="font-size:11px;color:var(--text3);margin-left:auto;">${doneCrit}/${totalCrit} critical · <span style="color:${badge.color};">${badge.text}</span></span>
-    </div>
-
-  </div>
-
-  <div style="margin-top:10px;font-size:10px;color:var(--text3);line-height:1.7;">
-    Every field opens a modal. <b>Palette</b> — Regenerate builds the token set from the campaign research (+ your photo / instructions), Save stores it on the campaign, Push commits it to <code>hubs.design.json</code> + the hub HTML and redeploys. Checklist / counts / contact are saved in this browser; * items don't block the LIVE badge.
-  </div>
   </div>
 
   <div class="hub-rail">
@@ -11253,25 +11224,51 @@ function renderHubsTab() {
   setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
 }
 
+// ── Left-column collapsible sections (open/closed remembered per section) ──
+function hubSecOpen(k) { try { return !!(JSON.parse(localStorage.getItem('hubSecOpen:v1') || '{}')[k]); } catch (e) { return false; } }
+function hubSecToggle(k, open) {
+  let m = {}; try { m = JSON.parse(localStorage.getItem('hubSecOpen:v1') || '{}'); } catch (e) {}
+  if (!!m[k] === !!open) return;
+  m[k] = !!open; try { localStorage.setItem('hubSecOpen:v1', JSON.stringify(m)); } catch (e) {}
+}
+
 // ── Hub build checklist (Content Hubs card, left column) ──────────────
-// Steps + derived done-state come from getHubBuildStatus. `run` steps call
-// a worker action (or an existing card fn); `modal` steps open the tool;
-// `manual` steps are a KV ✓ toggle (setHubBuildCheck).
+// Steps come from getHubBuildStatus. Step kinds:
+//   run    — a worker action / card fn (only the "scaffold" health check now)
+//   link   — "microsite ↗" when not done, "live" when a published asset shows
+//            on the site; NEVER runs a script from the card
+//   prompt — copies a Claude Code prompt to the clipboard, + a manual ✓
+//   build  — manual ✓ styled amber: an audit step we haven't built yet
+//   manual — plain KV ✓ toggle
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
+  const h = HUB_SITES.find(x => x.slug === slug) || {};
+  const msUrl = h.microsite ? 'https://cabuzzard.github.io/dash/microsites/' + h.microsite + '/' : '';
   let lastPhase = '';
   return b.steps.map(s => {
     const busy = _hubBuildBusy[slug + '|' + s.id];
     const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
-    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}</div>`) : '';
+    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
     let ctrl;
-    if (s.manual) {
+    if (s.link === 'microsite') {
+      ctrl = s.done
+        ? '<span style="font-size:10px;color:#4ade80;flex-shrink:0;">live</span>'
+        : (msUrl
+          ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);text-decoration:none;flex-shrink:0;">microsite ↗</a>`
+          : '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">no microsite</span>');
+    } else if (s.prompt) {
+      ctrl = `<button onclick="hubBuildPrompt('${slug}','${esc(s.prompt)}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">📋 CC prompt</button><label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3);cursor:pointer;flex-shrink:0;margin-left:6px;"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="hubBuildToggle('${slug}','${s.id}',this.checked)">done</label>`;
+    } else if (s.build) {
+      ctrl = `<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:#ffb020;cursor:pointer;flex-shrink:0;"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="hubBuildToggle('${slug}','${s.id}',this.checked)">done</label>`;
+    } else if (s.manual) {
       ctrl = `<label style="display:flex;align-items:center;gap:5px;font-size:10px;color:var(--text3);cursor:pointer;flex-shrink:0;"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="hubBuildToggle('${slug}','${s.id}',this.checked)">done</label>`;
     } else if (s.modal) {
       ctrl = `<button onclick="hubBuildOpen('${slug}','${esc(s.modal)}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">open</button>`;
     } else {
-      ctrl = `<button ${busy ? 'disabled' : ''} onclick="hubBuildRun('${slug}','${s.id}')" style="font-size:10px;padding:2px 9px;border:1px solid ${s.done ? 'var(--border2)' : 'var(--accent)'};border-radius:4px;background:${s.done ? 'transparent' : 'var(--accent)'};color:${s.done ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;flex-shrink:0;">${busy ? '…' : (s.done ? 'rerun' : 'run')}</button>`;
+      ctrl = s.done
+        ? '<span style="font-size:10px;color:#4ade80;flex-shrink:0;">✓</span>'
+        : `<button ${busy ? 'disabled' : ''} onclick="hubBuildRun('${slug}','${s.id}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;flex-shrink:0;">${busy ? '…' : 'run'}</button>`;
     }
     return phaseHdr + `<div style="padding:5px 12px;display:flex;align-items:center;gap:8px;">
       <span style="flex-shrink:0;">${dot}</span>
@@ -11279,6 +11276,31 @@ function renderHubBuildRows(slug) {
       ${ctrl}
     </div>`;
   }).join('');
+}
+// Domain step: hand Claude Code a ready prompt for the wiring it can't do from here.
+function hubBuildPrompt(slug, kind) {
+  const h = HUB_SITES.find(x => x.slug === slug) || {};
+  let txt = '';
+  if (kind === 'domain') {
+    txt = [
+      `In the dash repo, wire a custom domain for the "${h.name}" content hub (slug: ${slug}).`,
+      ``,
+      `Candidates on the HUB_SITES entry: ${(h.domainOptions || []).join(', ') || '(none listed — pick one and confirm with me)'}`,
+      ``,
+      `1. Cloudflare: add the domain as a custom domain on the dash-hubs Pages project; confirm MX imported; move the registrar nameservers to Cloudflare.`,
+      `2. web/hub/_worker.js — add "<domain>": "${slug}" to the HUBS map.`,
+      `3. worker/worker.js — add the apex + www (https://) to HUB_ORIGINS, then deploy the worker.`,
+      `4. index.html — set domain: "<domain>" on the ${slug} HUB_SITES entry.`,
+      `5. Set the campaign's "live site" property to the custom-domain URL.`,
+      `6. Tell me it's done so I tick the Domain step (or run setHubBuildCheck yourself if you have a PIN).`,
+      ``,
+      `Runbook: web/hub/CLOUDFLARE-ROUTING.md`,
+    ].join('\n');
+  }
+  if (!txt) return;
+  try { navigator.clipboard.writeText(txt); } catch (e) {}
+  _hpNote[slug] = '📋 ' + kind + ' prompt copied — paste into Claude Code';
+  if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
 }
 function hubBuildRefreshRows(slug) {
   const el = document.getElementById('hubBuildBody-' + slug);
