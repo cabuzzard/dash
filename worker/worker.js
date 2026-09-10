@@ -11808,31 +11808,47 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       if (body.action === "backfillAssetMethods") {
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const [assetRows, titleRows] = await Promise.all([
           notionQuery(ASSETS_DB, {}).catch(() => []),
           notionQuery(CONTENT_STRATEGY_DB, {}).catch(() => []),
         ]);
         const titleMethodById = {};
         titleRows.forEach(t => { const m = norm((t.properties?.method?.relation || [])[0]?.id); if (m) titleMethodById[norm(t.id)] = m; });
-        let scanned = 0, set = 0, skipped = 0; const failures = [];
+        // Cap writes per call + pace them — an unthrottled burst of PATCHes here
+        // trips Notion's SECONDARY rate limit on the whole integration token
+        // (which then also 429s any getTitles / matrix load elsewhere). The
+        // action is idempotent — assets that already have a Method are skipped —
+        // so the operator just re-runs it until `remaining` is 0.
+        const MAX_WRITES = 90;
+        let hasMethod = 0, unresolved = 0, set = 0, remaining = 0; const failures = [];
+        let budget = MAX_WRITES;
         for (const a of assetRows) {
           const p = a.properties || {};
-          if ((p["Method"]?.relation || []).length) { skipped++; continue; }
-          scanned++;
+          if ((p["Method"]?.relation || []).length) { hasMethod++; continue; }
           const at = p["Asset Type"]?.select?.name || "";
           const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
           const mProp = titleMethodById[titleId]
             ? { "Method": { relation: [{ id: dash(titleMethodById[titleId]) }] } }
             : await assetMethodProp(null, at);
-          if (!mProp.Method) { skipped++; continue; }
-          const r = await fetch(`https://api.notion.com/v1/pages/${dash(norm(a.id))}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: mProp }),
-          });
-          if (r.ok) set++; else { failures.push(norm(a.id)); }
+          if (!mProp.Method) { unresolved++; continue; }
+          if (budget <= 0) { remaining++; continue; }
+          budget--;
+          let ok = false;
+          for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dash(norm(a.id))}`, {
+              method: "PATCH", headers: hdr, body: JSON.stringify({ properties: mProp }),
+            });
+            if (r.ok) { ok = true; break; }
+            if (r.status === 429 && attempt === 0) { await sleep((parseInt(r.headers.get("Retry-After") || "2", 10) + 1) * 1000); continue; }
+            console.error("backfillAssetMethods patch", norm(a.id), ":", (await r.json().catch(() => ({}))).message);
+          }
+          if (ok) set++; else failures.push(norm(a.id));
+          await sleep(180); // ~5 writes/sec, under Notion's ~3/sec sustained + burst
         }
-        return json({ success: true, total: assetRows.length, scanned, set, skipped, failed: failures.length });
+        return json({ success: true, total: assetRows.length, alreadyHadMethod: hasMethod,
+          set, failed: failures.length, unresolvable: unresolved, remaining,
+          note: remaining ? `${remaining} more to stamp — run again` : "all assets that resolve to a method are stamped" });
       }
 
       if (body.action === "createMatType") {

@@ -15039,14 +15039,21 @@ async function matTypeDelete() {
 }
 async function hamBackfillMethods(btn) {
   const o = btn.textContent;
-  btn.disabled = true; btn.textContent = 'backfilling…';
+  btn.disabled = true;
   try {
-    const r = await call('backfillAssetMethods', {});
-    if (r.error) throw new Error(r.error);
-    btn.textContent = `set ${r.set} / ${r.total}`;
+    // Paced on the worker (~5 writes/s, capped ~90/call) so it doesn't trip
+    // Notion's rate limit. Idempotent — loop the call until nothing's left.
+    let total = 0, guard = 0;
+    while (guard++ < 12) {
+      btn.textContent = total ? `backfilling… (${total})` : 'backfilling…';
+      const r = await call('backfillAssetMethods', {});
+      if (r.error) throw new Error(r.error);
+      total += (r.set || 0);
+      if (!r.remaining) { btn.textContent = `set ${total} · ${r.unresolvable || 0} had no matching method`; break; }
+    }
     HAM_DATA = null;
     await loadHubAssetMatrix();
-    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 3500);
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 4000);
   } catch(e) { btn.textContent = o; btn.disabled = false; alert('Error: ' + e.message); }
 }
 async function hamAddMethod() {
