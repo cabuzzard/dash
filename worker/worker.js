@@ -20171,6 +20171,59 @@ Return ONLY this JSON object:
           return json({ success: true, created: 1, assets: [{ id: assetId, title }], hubProduct: productName });
         }
 
+        // ── Landing Page asset type: ONE tracked Asset (not N concepts),
+        // product-tied. A landing page slices one niche product off a hub
+        // into its own standalone conversion site. No content is written
+        // here — publishing this asset (Asset Status → "Published") fires
+        // scaffoldLandingPage (savePublishAssetFields trigger), which does
+        // the Claude copy + palette + scaffold + registration per the
+        // "Landing Page" method's own framework. Idempotent per title.
+        if (/^landing ?page$/i.test(assetType)) {
+          if (!hasProduct) return json({ error: "A Landing Page needs a Product — attach one to this title first. The page is built entirely from that product's Research + primary keyword." }, 400);
+          const existing = await notionQuery(ASSETS_DB, { filter: { and: [
+            { property: "Content Strategy", relation: { contains: dsDash(titleId) } },
+            { property: "Asset Type", select: { equals: "Landing Page" } },
+          ] } }).catch(() => []);
+          if (existing.length) {
+            return json({ success: true, created: 0, landingPage: true, assets: [{ id: existing[0].id.replace(/-/g, ""), title }], note: "A Landing Page asset already exists for this title — set it to Published to (re)build the page." });
+          }
+          const lpProd = await fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null);
+          const lpProdName = (lpProd?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "this product";
+          const props = {
+            "Asset Title":      { title: [{ text: { content: `${lpProdName} — landing page`.slice(0, 200) } }] },
+            "Asset Status":     { select: { name: "Development" } },
+            "Asset Type":       { select: { name: "Landing Page" } },
+            "Status":           { select: { name: "Draft" } },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Product":          { relation: [{ id: dsDash(productId) }] },
+            "Notes":            { rich_text: [{ text: { content: `Standalone landing page for "${lpProdName}". Set this asset to Published to scaffold web/landing/<slug>/ — Claude writes the copy + palette from the product's Research + primary keyword per the "Landing Page" method framework.`.slice(0, 1990) } }] },
+          };
+          if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          const r = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }),
+          });
+          const out = await r.json();
+          if (!r.ok || !out.id) return json({ error: out.message || "Failed to create Landing Page asset" }, 502);
+          // Keep the source title's `product` in sync (so a re-Generate on
+          // this title resolves the same product) AND stamp its `method` —
+          // the Hub Method Matrix attributes a landing asset through
+          // `asset → Content Strategy → title.method`, so without this the
+          // asset never shows in the matrix.
+          const lpMethodId = (methodId && methodId !== "__none__")
+            ? methodId
+            : await resolveMethodIdByName("Landing Page").catch(() => null);
+          const lpTitleProps = { "product": { relation: [{ id: dsDash(productId) }] } };
+          if (lpMethodId) lpTitleProps["method"] = { relation: [{ id: dsDash(lpMethodId) }] };
+          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+            method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: lpTitleProps }),
+          }).catch(() => {});
+          if (lpMethodId && productId) ctx.waitUntil(propagateMethodToCampaigns(productId, lpMethodId).catch(() => {}));
+          return json({ success: true, created: 1, landingPage: true, assets: [{ id: out.id.replace(/-/g, ""), title: `${lpProdName} — landing page` }],
+            note: `Landing Page asset created (Development). Set it to Published to scaffold + build the page.` });
+        }
+
         // ── LinkedIn Post asset type: reshapes the title's own pillar
         // content into ONE finished, publish-ready LinkedIn Article — not N
         // options. Framework (length, headline/hook/structure/voice/CTA
@@ -23997,10 +24050,13 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
           const at2 = result2.properties?.["Asset Type"]?.select?.name || "";
           const trigCampId = (result2.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "");
           const trigAction = at2 === "Content Hub" ? "scaffoldHub" : at2 === "Landing Page" ? "scaffoldLandingPage" : null;
-          if (trigAction && trigCampId) {
+          // assetId alone is enough — scaffoldHub/scaffoldLandingPage both
+          // resolve the campaign off the asset's own Campaign relation when
+          // no campaignId is passed. Pass both when we have them.
+          if (trigAction && assetId) {
             ctx.waitUntil(fetch(request.url, {
               method: "POST", headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: trigAction, token: body.token, campaignId: trigCampId, assetId: assetId.replace(/-/g, "") }),
+              body: JSON.stringify({ action: trigAction, token: body.token, ...(trigCampId ? { campaignId: trigCampId } : {}), assetId: assetId.replace(/-/g, "") }),
             }).catch(() => {}));
           }
         }
@@ -24792,6 +24848,22 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
         const ar = await fetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
+        // Content Hub / Landing Page asset → Published = build the site.
+        // Same self-call trigger as updatePublishFields — this is the path
+        // the main dashboard's status badge uses, so it needs it too.
+        if (status === "Published") {
+          try {
+            const ap = await ar.json().catch(() => null);
+            const at2 = ap?.properties?.["Asset Type"]?.select?.name || "";
+            const trigAction = at2 === "Content Hub" ? "scaffoldHub" : at2 === "Landing Page" ? "scaffoldLandingPage" : null;
+            if (trigAction) {
+              ctx.waitUntil(fetch(request.url, {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: trigAction, token: body.token, assetId: assetId.replace(/-/g, "") }),
+              }).catch(() => {}));
+            }
+          } catch (e) { /* best-effort */ }
+        }
         return json({ success: true });
       }
 
