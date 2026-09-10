@@ -10285,6 +10285,9 @@ const HUB_SITES = [
   { name: "Sustainable Aquarium", slug: "sustainable-aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e", campaign: "Sustainable Aquarium", microsite: "sustainable-aquarium", domain: "sustainableaquarium.com", contact: "info@sustainableaquarium.com", products: 0, blogPosts: 0,
     routing: "pending", routingNote: "2026-09-07: added to Cloudflare (Add-a-Site — automatic DNS scan found 3 A records, NO MX/mail records at all, confirming no mailbox exists yet for this domain, nothing to preserve). Nameservers switched at Bluehost (My Domain Names → sustainableaquarium.com → Settings → Edit Nameservers) from ns1/ns2.bluehost.com to lilyana.ns.cloudflare.com / margo.ns.cloudflare.com — confirmed saved, Cloudflare now shows 'checking nameservers, please wait a few hours.' NEXT once Active: Cloudflare dash → Workers & Pages → dash-hubs → Custom domains → add sustainableaquarium.com + www. Affiliate/Amazon-monetized hub dedicated to the Walstad Method (highest-converged term in the natural-planted-tank niche per keyword research) — not general aquarium services, which stay on Home Services.",
     domainOptions: ["sustainableaquarium.com", "homepondaquarium.com"] },
+  { name: "Multifamily Acquisitions", slug: "multifamily-acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", campaign: "Development and Acquisitions", microsite: "development-and-acquisitions", domain: null, contact: null, products: 0, blogPosts: 0,
+    routing: "pending", routingNote: "2026-09-10: launched from the Content Hub asset 'Multifamily Acquisitions' (published). Scaffolded web/hub/multifamily-acquisitions/ from the template + hubs.design.json; seed HUB copy is placeholder-real — refine via the Content Hubs tab (palette / section text / images / offers). No domain yet — serves at cabuzzard.github.io/dash/web/hub/multifamily-acquisitions/ and dash-hubs.pages.dev/multifamily-acquisitions/.",
+    domainOptions: ["multifamilyacquisitions.com", "multifamilydealroom.com"] },
 ];
 
 // Yes/no checklist columns. `crit:true` = blocks the LIVE badge; the rest
@@ -10507,7 +10510,7 @@ function hubBadge(state, meta) {
 let HUB_SPEC = {};            // slug -> { tokens, design, fonts }
 let _hubSpecFetched = false;
 let _hubIdx = 0;
-try { _hubIdx = Math.max(0, Math.min(8, parseInt(localStorage.getItem('hubDeckIdx') || '0', 10) || 0)); } catch (e) {}
+try { _hubIdx = Math.max(0, Math.min(HUB_SITES.length - 1, parseInt(localStorage.getItem('hubDeckIdx') || '0', 10) || 0)); } catch (e) {}
 let _hpWork = {};             // slug -> palette generated/saved but not pushed
 let _hpNote = {};             // slug -> last status line
 let _hpFonts = {};            // slug -> researched {display,body,mono} not yet pushed

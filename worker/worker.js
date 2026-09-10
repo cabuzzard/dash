@@ -185,6 +185,7 @@ const HUB_SITES = [
   { slug: "creative-flow-guitar", name: "Creative Flow Guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a" },
   { slug: "mountainwize",         name: "Mountainwize",         campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1" },
   { slug: "sustainable-aquarium", name: "Sustainable Aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e" },
+  { slug: "multifamily-acquisitions", name: "Multifamily Acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee" },
 ];
 
 // Mutated per request in fetch() (same convention as NOTION_TOKEN below) so the
@@ -9364,6 +9365,7 @@ Return ONLY this JSON, no other text, no markdown fences:
           "mountainwize": "The assessment",
           "care-gap": "The briefing",
           "sustainable-aquarium": "Get Updates",
+          "multifamily-acquisitions": "The weekly",
         };
         const forms = (typeof HUB_SITES !== "undefined" ? HUB_SITES : []).map(h => ({
           id: h.slug + "/main",
@@ -9468,6 +9470,7 @@ Return ONLY this JSON, no other text, no markdown fences:
           "mountainwize":         "nurture",
           "care-gap":             "donor cultivation",
           "sustainable-aquarium": "nurture",           // newsletter-intent
+          "multifamily-acquisitions": "nurture",       // newsletter-intent (weekly), soft offer = acquisitions support
         };
         const purpose = HUB_SEQ_PLAN[hub.slug];
         if (!purpose) return json({ error: `No email sequence planned for ${hub.slug} (contact-only form).` }, 400);

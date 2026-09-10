@@ -329,6 +329,59 @@
         "superseded": "2026-09-02: --bg was #f3f0e8 warm topo paper; pulled cold to #edf0f0, --deep deepened, per the risk note above."
       }
     },
+    "multifamily-acquisitions": {
+      "meta": {
+        "title": "Multifamily Acquisitions — deal analysis, underwriting, market intel",
+        "description": "Off-market sourcing, value-add underwriting, and market reads for teams acquiring apartment communities.",
+        "ogTitle": "Multifamily Acquisitions",
+        "ogDescription": "Underwriting walkthroughs and market intel for multifamily acquisitions teams."
+      },
+      "fonts": {
+        "display": "Space Grotesk",
+        "body": "Inter",
+        "mono": "IBM Plex Mono"
+      },
+      "logoText": "Multifamily Acquisitions",
+      "tokens": {
+        "bg": "#f6f6f3",
+        "surface": "#ffffff",
+        "ink": "#1a1d21",
+        "ink-head": "#12233a",
+        "ink-soft": "#5b6470",
+        "line": "#e2e1db",
+        "sea": "#1f4e79",
+        "deep": "#10233a",
+        "deep-ink": "#d7e0eb",
+        "accent": "#c0561f",
+        "paper": "#ffffff"
+      },
+      "tokenNotes": {
+        "bg": "warm paper-grey",
+        "surface": "raised card",
+        "ink": "near-black body",
+        "ink-head": "headings — deep navy",
+        "ink-soft": "secondary text",
+        "line": "hairline",
+        "sea": "primary — steel blue",
+        "deep": "dark band — deep navy",
+        "deep-ink": "text on --deep",
+        "accent": "burnt orange — used once, loudly"
+      },
+      "design": {
+        "subject": "Deal analysis, underwriting method, and market intel for people acquiring apartment communities — off-market sourcing, value-add assumptions, and the rate/cap-rate/supply reads that change basis.",
+        "audience": "Sponsors, GPs, and acquisitions analysts underwriting multifamily deals — not retail investors or first-time house hackers.",
+        "job": "Get the weekly analysis (email capture), or engage for deal-by-deal underwriting support.",
+        "type": "Space Grotesk display — a precise contemporary grotesk that reads institutional without being stiff. Inter body. IBM Plex Mono for cap rates, unit counts, and underwriting figures.",
+        "signature": "The conditions ribbon reads like an underwriting header. Steel-blue primary on warm paper-grey, a deep-navy dark band, a single burnt-orange accent — a spreadsheet-adjacent, analyst palette, not a brokerage brochure.",
+        "risk": "The restraint can read under-designed; the mono figures and the honest 'what's actually tradeable' copy are what make it deliberate.",
+        "avoided": [
+          "Glossy building renders and drone shots of apartment towers",
+          "Wealth-guru / passive-income styling",
+          "Green 'growth' gradients and stock skyline photography"
+        ],
+        "superseded": "Seeded from the template default (white / #2f5fd0); first real palette."
+      }
+    },
     "owners-rep": {
       "email": "info@modernactivehome.com",
       "meta": {
