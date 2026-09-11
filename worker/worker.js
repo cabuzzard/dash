@@ -24448,6 +24448,87 @@ Call submit_keyword_clusters with your result.`;
         return json({ success: true, staged });
       }
 
+      // More granular than the bulk generate: the operator pastes an
+      // arbitrary keyword group (their own research, a competitor list,
+      // anything — not required to already be in Main Keywords) and this
+      // merges it with the campaign's Main Keywords + existing clusters to
+      // produce ONE new focused cluster, appended to staged (doesn't touch
+      // or replace the others). Unlike every other cluster action, this one
+      // is explicitly allowed to introduce keywords outside the Main
+      // Keywords pool — that's the point, it's how an operator injects a
+      // specific focus area the auto-generated split didn't cover.
+      if (body.action === "generateSingleKeywordCluster") {
+        const { campaignId, pastedKeywords, guidance } = body;
+        if (!campaignId || !pastedKeywords) return json({ error: "campaignId and pastedKeywords required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+
+        const [researchRows, committedRows] = await Promise.all([
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+          notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+        ]);
+        const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const research = researchRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+        const mainKeywords = rtx(research, "Keywords");
+
+        const otherFixed = [
+          ...staged.map(c => ({ name: c.name, keywords: c.keywords })),
+          ...committedRows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+        ];
+
+        const prompt = `The operator has pasted a candidate keyword group representing a specific focus area they want covered. Merge it with this campaign's Main Keywords + existing SEO strategy to produce ONE new focused cluster (an SEO silo).
+
+PASTED KEYWORD GROUP (the operator's specific interest — this is the anchor of the new cluster; unlike every other cluster on this campaign, these do NOT have to already be in Main Keywords):
+${pastedKeywords}
+
+MAIN KEYWORDS (the campaign's overall keyword pool — pull in directly-relevant ones from here too if they reinforce this focus, for consistency with the rest of the SEO strategy):
+${mainKeywords || "(none on file)"}
+
+${otherFixed.length ? `OTHER CLUSTERS (fixed — already claimed; don't reuse their keywords, and don't just recreate one of these):\n${otherFixed.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+Give: a name that is this cluster's single top/most representative keyword (prefer one from the pasted group since that's the operator's stated focus); the merged keyword set (the pasted group plus any directly-relevant Main Keywords, deduplicated, minus anything already claimed by another cluster); and a one-sentence rationale for why they group together as this specific focus.
+
+Call submit_keyword_cluster with your result.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_keyword_cluster",
+              description: "Submit the new focused cluster.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "this cluster's single top/most representative keyword" },
+                  keywords: { type: "string", description: "comma-separated merged keywords for this cluster" },
+                  rationale: { type: "string" },
+                },
+                required: ["name", "keywords", "rationale"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_keyword_cluster" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_cluster");
+        if (!toolUse) return json({ error: "Claude did not return a cluster — try again" }, 502);
+
+        const newCluster = {
+          id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          name: String(toolUse.input.name || "").slice(0, 100),
+          keywords: String(toolUse.input.keywords || "").slice(0, 1900),
+          rationale: String(toolUse.input.rationale || "").slice(0, 500),
+        };
+        staged.push(newCluster);
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
+      }
+
       if (body.action === "getKeywordClusters") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);

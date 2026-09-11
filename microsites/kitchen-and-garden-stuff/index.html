@@ -310,6 +310,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
             <button onclick="event.stopPropagation();openModal('keywords')" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">✎ edit</button>
             <button id="kwRegenBtn" onclick="event.stopPropagation();runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button>
             <button id="seoClusterGenBtn" onclick="event.stopPropagation();runGenerateSeoClusters()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate clusters</button>
+            <button onclick="event.stopPropagation();openGenClusterModal()" title="Paste a keyword group and merge it with the main SEO strategy to create one new focused cluster" style="font-size:10px;padding:2px 8px;border:1px solid #8ab4f8;background:transparent;color:#8ab4f8;cursor:pointer;white-space:nowrap;font-family:inherit;">+ generate cluster</button>
           </span>
         </div>
         <div id="mainKwBody">
@@ -11171,6 +11172,67 @@ async function runRegenKeywords() {
     </div>
   </div>
 </div>
+<!-- GENERATE CLUSTER MODAL — more granular than the bulk "↻ generate
+     clusters": paste any keyword group (not required to already be in Main
+     Keywords) and merge it with the campaign's overall SEO strategy to
+     create ONE new focused cluster, added alongside the existing ones. -->
+<div class="modal-overlay" id="genClusterModal" onclick="if(event.target===this)closeGenClusterModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title">Generate Cluster</div>
+      <button class="modal-close" onclick="closeGenClusterModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Paste a keyword group — your own research, a competitor list, anything. It's merged with Main Keywords + the existing clusters to produce one new focused cluster underneath the top SEO strategy. Staged like every other cluster; nothing commits until you hit Commit on it.</div>
+      <label class="lm-label" for="genClusterKwInput" style="margin-top:12px;">Keyword group</label>
+      <textarea class="modal-ta" id="genClusterKwInput" rows="5" style="resize:vertical;min-height:100px!important;" placeholder="paste keywords, comma or line separated…"></textarea>
+      <label class="lm-label" for="genClusterGuidance" style="margin-top:10px;">Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <input class="modal-ta" id="genClusterGuidance" type="text" style="height:36px;padding:7px 10px;" placeholder="e.g. lean into the beginner angle" />
+      <div id="genClusterStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeGenClusterModal()">Cancel</button>
+      <button class="modal-btn save" id="genClusterGoBtn" onclick="runGenerateSingleCluster()">Generate</button>
+    </div>
+  </div>
+</div>
+<script>
+function openGenClusterModal() {
+  document.getElementById('genClusterKwInput').value = '';
+  document.getElementById('genClusterGuidance').value = '';
+  document.getElementById('genClusterStatus').textContent = '';
+  document.getElementById('genClusterGoBtn').disabled = false;
+  document.getElementById('genClusterGoBtn').textContent = 'Generate';
+  document.getElementById('genClusterModal').classList.add('open');
+}
+function closeGenClusterModal() {
+  document.getElementById('genClusterModal').classList.remove('open');
+}
+async function runGenerateSingleCluster() {
+  const pastedKeywords = document.getElementById('genClusterKwInput').value.trim();
+  const guidance = document.getElementById('genClusterGuidance').value.trim();
+  if (!pastedKeywords) return;
+  const btn = document.getElementById('genClusterGoBtn');
+  const status = document.getElementById('genClusterStatus');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.color = '#888';
+  status.textContent = 'Merging with the main SEO strategy…';
+  try {
+    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords, guidance: guidance || undefined });
+    if (r.error) throw new Error(r.error);
+    SEO_CLUSTERS.staged = r.staged || SEO_CLUSTERS.staged;
+    renderSeoClusters(); renderClusterIdeas();
+    status.textContent = '✓ Added — see the new cluster in the tree below.';
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(closeGenClusterModal, 1400);
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+</script>
 <div class="modal-overlay" id="sourcesModal" onclick="if(event.target===this)closeSourcesModal()">
   <div class="modal" style="max-width:500px;padding:20px;">
     <div class="modal-title">Sources</div>
