@@ -7862,10 +7862,8 @@ Return ONLY this JSON, no other text, no fences:
                 method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
                 body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: intro.slice(0, 2000) } }] }, "Platform Title": { rich_text: [{ text: { content: seoTitle } }] } } }),
               }).catch(() => {});
-              if (titleId) await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
-                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-              }).catch(() => {});
+              // Title Status is never touched by asset creation/rebuild —
+              // titles stay wherever the operator put them (2026-09-11).
             }
 
             const site = await publishSeoPostToLiveSite({
@@ -11707,6 +11705,46 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         return json({ success: true, total: assetRows.length, alreadyHadMethod: hasMethod,
           set, failed: failures.length, unresolvable: unresolved, remaining,
           note: remaining ? `${remaining} more to stamp — run again` : "all assets that resolve to a method are stamped" });
+      }
+
+      // ── revertPublishedTitlesToDevelopment ── one-time (re-runnable) data
+      // fix, 2026-09-11. A dozen+ generateTitleAssets branches used to flip
+      // the SOURCE TITLE's own Status to "Publish" the moment its first
+      // asset was created — a carryover from before titles became stage-
+      // driven ([[feedback_dash_dev_section_stage_driven]]): a title's own
+      // Status is the operator's call, completely independent of any asset's
+      // Asset Status, even though they relate. Those writes are now removed
+      // from every branch; this repairs the titles that already got flipped.
+      // Only touches Content Strategy `Status` == "Publish" → "Development".
+      // Never touches Assets DB / Asset Status at all. Rate-limited same as
+      // backfillAssetMethods — re-run until `remaining` is 0.
+      if (body.action === "revertPublishedTitlesToDevelopment") {
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const rows = await notionQuery(CONTENT_STRATEGY_DB, {
+          filter: { property: "Status", select: { equals: "Publish" } },
+        }).catch(e => { console.error('revertPublishedTitlesToDevelopment query:', e.message); return []; });
+        const MAX_WRITES = 90;
+        let reverted = 0; const failures = [];
+        const batch = rows.slice(0, MAX_WRITES);
+        for (const t of batch) {
+          let ok = false;
+          for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dash(norm(t.id))}`, {
+              method: "PATCH", headers: hdr,
+              body: JSON.stringify({ properties: { "Status": { select: { name: "Development" } } } }),
+            });
+            if (r.ok) { ok = true; break; }
+            if (r.status === 429 && attempt === 0) { await sleep((parseInt(r.headers.get("Retry-After") || "2", 10) + 1) * 1000); continue; }
+            console.error("revertPublishedTitlesToDevelopment patch", norm(t.id), ":", (await r.json().catch(() => ({}))).message);
+          }
+          if (ok) reverted++; else failures.push(norm(t.id));
+          await sleep(180); // ~5 writes/sec, under Notion's ~3/sec sustained + burst
+        }
+        const remaining = Math.max(0, rows.length - batch.length);
+        return json({ success: true, totalMatched: rows.length, reverted, failed: failures.length, remaining,
+          note: remaining ? `${remaining} more titles still at Publish — run again` : "no titles left at Status Publish" });
       }
 
       if (body.action === "createMatType") {
@@ -20597,12 +20635,9 @@ Return ONLY this JSON object, no other text, no markdown fences:
             if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Asset created but failed to write post body" }, 502); }
           }
 
-          // Publish the source title too — the pillar post is done, not pending.
-          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
-            method: "PATCH",
-            headers: { ...dsHdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-          });
+          // Title Status is never touched by asset creation — titles stay
+          // wherever the operator put them, independent of their assets
+          // (2026-09-11).
 
           // Push it live to the campaign's own site under a "blog" section —
           // created there the first time a campaign publishes one, appended
@@ -21034,17 +21069,19 @@ Return ONLY this JSON object:
             if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Offer asset created but failed to write its body" }, 502); }
           }
 
-          // Source title → Publish, and attribute it to the method that made
-          // this asset: the modal's methodId if a real one was picked, else the
-          // Method row whose Name matches this Asset Type ("Offer – Content
-          // Hub" / "Offer – Pillar"). Without this the title carries no
-          // `method` and the Hub Method Matrix can't count the asset.
+          // Attribute the source title to the method that made this asset —
+          // the modal's methodId if a real one was picked, else the Method
+          // row whose Name matches this Asset Type ("Offer – Content Hub" /
+          // "Offer – Pillar"). Without this the title carries no `method`
+          // and the Hub Method Matrix can't count the asset. Title Status is
+          // never touched here (2026-09-11) — it stays wherever the operator
+          // put it, independent of asset creation.
           const offerMethodId = (methodId && methodId !== "__none__")
             ? methodId
             : await resolveMethodIdByName(assetType).catch(() => null);
-          const titleProps = { "Status": { select: { name: "Publish" } } };
+          const titleProps = {};
           if (offerMethodId) titleProps["method"] = { relation: [{ id: dsDash(offerMethodId) }] };
-          await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
+          if (Object.keys(titleProps).length) await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
             method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: titleProps }),
           }).catch(() => {});
@@ -29276,10 +29313,8 @@ ${bodyInnerOf(slideHtml(s, i, slides.length, effectiveCss))}
           assetId = created.id.replace(/-/g, "");
         }
 
-        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-        });
+        // Title Status is never touched by asset creation (2026-09-11) — it
+        // stays wherever the operator put it, independent of its assets.
 
         return { previewUrl, assetId };
       }
@@ -30221,11 +30256,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           resolvedPresenter = existingAvatarAsset?.properties?.Notes?.rich_text?.map(t => t.plain_text).join("") || effectivePresenter;
         }
 
-        // ── Step 5: title -> Publish ──
-        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-        });
+        // Title Status is never touched by asset creation (2026-09-11) — it
+        // stays wherever the operator put it, independent of its assets.
 
         return json({ success: true, titleId, assetId, alreadyScripted, presenterCharacter: resolvedPresenter, presenterWasSpecified: !!(presenterOverride || '').trim() });
       }
@@ -30615,10 +30647,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           }
         }
 
-        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-        });
+        // Title Status is never touched by asset creation (2026-09-11) — it
+        // stays wherever the operator put it, independent of its assets.
 
         return json({ success: true, titleId, assetIds, count: assetIds.length });
       }
@@ -35697,12 +35727,8 @@ Write a complete Upwork proposal as plain text: open by directly addressing what
           }
         }
 
-        if (created > 0) {
-          await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-          }).catch(() => {});
-        }
+        // Title Status is never touched by asset creation (2026-09-11) — it
+        // stays wherever the operator put it, independent of its assets.
 
         return json({ success: true, created, assets, failures: failures.length ? failures : undefined, needsWorkHistory: false, searchTerms });
       }
@@ -36050,10 +36076,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           assetId = existingExplainerAsset.id.replace(/-/g, "");
         }
 
-        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Status": { select: { name: "Publish" } } } }),
-        });
+        // Title Status is never touched by asset creation (2026-09-11) — it
+        // stays wherever the operator put it, independent of its assets.
 
         return json({ success: true, titleId, assetId, alreadyScripted });
       }
@@ -36210,9 +36234,11 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // Pillar content is deliberately left untouched either way.
         const newConceptTitle = trendContext ? String(parsed.conceptTitle || "").trim() : "";
         const titleRewritten = !!newConceptTitle && newConceptTitle !== titleName;
-        const titlePatchProps = { "Status": { select: { name: "Publish" } } };
+        // Title Status is never touched by asset creation (2026-09-11) — it
+        // stays wherever the operator put it, independent of its assets.
+        const titlePatchProps = {};
         if (titleRewritten) titlePatchProps["Title"] = { title: [{ type: "text", text: { content: newConceptTitle.slice(0, 200) } }] };
-        await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+        if (Object.keys(titlePatchProps).length) await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: titlePatchProps }),
         });

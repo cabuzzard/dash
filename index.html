@@ -777,6 +777,7 @@
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Method Matrix <span id="hubAssetMatrixSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:8px;">
           <button onclick="event.stopPropagation();hamBackfillMethods(this)" title="Stamp the producing Method onto every Asset that has none (from its title's method, else its Asset Type). Idempotent — safe to re-run; also catches skill-path assets." style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⟳ backfill methods</button>
+          <button onclick="event.stopPropagation();hamRevertPublishedTitles(this)" title="One-time data fix (2026-09-11): a dozen+ old asset-generation branches used to flip a title's own Status to Publish the moment its first asset was created. That's removed now — this reverts every title still stuck at Publish back to Development. Never touches Assets. Idempotent — safe to re-run." style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⟳ revert titles</button>
           <button onclick="event.stopPropagation();hamAddMethod()" title="Create a new method (adds a column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ method</button>
           <span id="hubAssetMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
         </span>
@@ -15276,6 +15277,25 @@ async function hamBackfillMethods(btn) {
     HAM_DATA = null;
     await loadHubAssetMatrix();
     setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 4000);
+  } catch(e) { btn.textContent = o; btn.disabled = false; alert('Error: ' + e.message); }
+}
+async function hamRevertPublishedTitles(btn) {
+  const o = btn.textContent;
+  btn.disabled = true;
+  try {
+    // Same rate-limited/re-runnable pattern as backfillAssetMethods — loop
+    // the call until nothing's left at Status Publish.
+    let total = 0, guard = 0;
+    while (guard++ < 30) {
+      btn.textContent = total ? `reverting… (${total})` : 'reverting…';
+      const r = await call('revertPublishedTitlesToDevelopment', {});
+      if (r.error) throw new Error(r.error);
+      total += (r.reverted || 0);
+      if (!r.remaining) { btn.textContent = total ? `reverted ${total} title${total === 1 ? '' : 's'}` : 'none left at Publish'; break; }
+    }
+    HAM_DATA = null;
+    await loadHubAssetMatrix();
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 5000);
   } catch(e) { btn.textContent = o; btn.disabled = false; alert('Error: ' + e.message); }
 }
 async function hamAddMethod() {
