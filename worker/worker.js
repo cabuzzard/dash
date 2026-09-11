@@ -24452,16 +24452,21 @@ Call submit_keyword_clusters with your result.`;
       // still-unclaimed keywords from the pool. Per-cluster ↻ regen in the
       // microsite's SEO Clusters section (bulk generateKeywordClusters covers
       // the initial batch only).
+      // Regenerates exactly ONE cluster — staged OR committed (a real
+      // 🔑 Keyword Clusters row) — every operator direction. Every other
+      // staged/committed cluster's keyword allocation is treated as fixed
+      // and passed to Claude as already-spoken-for; this one can also reach
+      // into any still-unclaimed keywords from the Main Keywords pool.
       if (body.action === "regenerateKeywordCluster") {
         const { campaignId, clusterId, guidance } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         let staged = [];
         try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
-        const idx = staged.findIndex(c => c.id === clusterId);
-        if (idx < 0) return json({ error: "Staged cluster not found — it may already be committed or regenerated" }, 404);
-        const target = staged[idx];
+        const stagedIdx = staged.findIndex(c => c.id === clusterId);
+        const isStaged = stagedIdx >= 0;
 
         const [researchRows, committedRows] = await Promise.all([
           notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
@@ -24473,9 +24478,15 @@ Call submit_keyword_clusters with your result.`;
         const keywords = rtx(research, "Keywords");
         if (!keywords) return json({ error: "No Keywords on file for this campaign's Research record" }, 400);
 
+        const committedPage = isStaged ? null : committedRows.find(r => r.id.replace(/-/g, "") === norm(clusterId));
+        if (!isStaged && !committedPage) return json({ error: "Cluster not found — it may have been archived" }, 404);
+        const target = isStaged
+          ? staged[stagedIdx]
+          : { name: (committedPage.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(committedPage, "Cluster Keywords"), rationale: rtx(committedPage, "Rationale") };
+
         const otherFixed = [
           ...staged.filter(c => c.id !== clusterId).map(c => ({ name: c.name, keywords: c.keywords })),
-          ...committedRows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+          ...committedRows.filter(r => r.id.replace(/-/g, "") !== norm(clusterId)).map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
         ];
 
         const prompt = `Regenerate ONE keyword cluster (an SEO silo) from this campaign's Main Keywords pool — refine or rethink just this one; leave every other cluster exactly as it is.
@@ -24521,10 +24532,29 @@ Call submit_keyword_cluster with your result.`;
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_cluster");
         if (!toolUse) return json({ error: "Claude did not return a cluster — try again" }, 502);
+        const name = String(toolUse.input.name || "").slice(0, 100);
+        const newKeywords = String(toolUse.input.keywords || "").slice(0, 1900);
+        const rationale = String(toolUse.input.rationale || "").slice(0, 500);
 
-        staged[idx] = { id: clusterId, name: String(toolUse.input.name || "").slice(0, 100), keywords: String(toolUse.input.keywords || "").slice(0, 1900), rationale: String(toolUse.input.rationale || "").slice(0, 500) };
-        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
-        return json({ success: true, staged });
+        if (isStaged) {
+          staged[stagedIdx] = { id: clusterId, name, keywords: newKeywords, rationale };
+          await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        } else {
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(norm(clusterId))}`, {
+            method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
+              "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+              "Cluster Keywords": { rich_text: [{ type: "text", text: { content: newKeywords } }] },
+              "Rationale": { rich_text: [{ type: "text", text: { content: rationale } }] },
+            } }),
+          });
+          const r = await resp.json();
+          if (!resp.ok) return json({ error: r.message || "Failed to update cluster" }, resp.status);
+          const idx2 = committedRows.findIndex(r2 => r2.id.replace(/-/g, "") === norm(clusterId));
+          if (idx2 >= 0) committedRows[idx2] = { ...committedRows[idx2], properties: { ...committedRows[idx2].properties, Name: { title: [{ plain_text: name }] }, "Cluster Keywords": { rich_text: [{ plain_text: newKeywords }] }, Rationale: { rich_text: [{ plain_text: rationale }] } } };
+        }
+
+        const committed = committedRows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url }));
+        return json({ success: true, staged, committed });
       }
 
       // Discard one staged (uncommitted) cluster outright — an idea rejected,

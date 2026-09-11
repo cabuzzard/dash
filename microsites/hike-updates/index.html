@@ -290,47 +290,53 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 
 </div>
 <div class="tab-page" id="tab-keywords">
-<!-- SEC 1b: three col — keywords+clusters / product ideas / notes. Main
-     Keywords is the root; SEO Clusters are grouped off it. Product Ideas
-     is its own visible column: a Main Stack (off all Main Keywords) plus
-     one grouped stack per SEO Cluster, each carrying that cluster's own
-     keyword as its naming convention. Regen at every level only ever
-     pulls from its own parent's keywords (cluster <- Main Keywords,
-     a cluster's product ideas <- that cluster), enforced server-side. -->
+<!-- SEC 1b: three col — keywords tree / product ideas tree / notes. Each of
+     the first two columns is ONE flat tree, same collapse convention as
+     Development/Strategy/Publish Assets (kwGroupsOpen, see below): a fixed
+     "Main" node (Main Keywords / Main Stack) as the first sibling, then one
+     sibling per SEO Cluster. No separate "SEO Clusters" / "Cluster Stacks"
+     sub-header — clusters sit directly in the same list as Main. Regen at
+     every level only ever pulls from its own parent's keywords (cluster <-
+     Main Keywords, a cluster's product ideas <- that cluster), enforced
+     server-side. -->
 <div class="three-col">
   <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Main Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
+    <h2>Keywords</h2>
     <div class="content">
-      <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
-
-      <div style="margin-top:16px;border-top:1px solid #333;padding-top:10px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
-          <span style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;">SEO Clusters</span>
-          <button id="seoClusterGenBtn" onclick="runGenerateSeoClusters()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate</button>
+      <div style="border-left:2px solid #4ade80;padding-left:8px;margin-bottom:10px;">
+        <div id="mainKwHdr" onclick="toggleMainKwGroup()" style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#4ade80;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;flex-wrap:wrap;">
+          <span id="mainKwArrow" style="font-size:8px;flex-shrink:0;">▾</span>Main Keywords
+          <span style="margin-left:auto;display:flex;gap:6px;">
+            <button onclick="event.stopPropagation();openModal('keywords')" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">✎ edit</button>
+            <button id="kwRegenBtn" onclick="event.stopPropagation();runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button>
+            <button id="seoClusterGenBtn" onclick="event.stopPropagation();runGenerateSeoClusters()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate clusters</button>
+          </span>
         </div>
-        <div style="font-size:9.5px;color:#999;margin-bottom:6px;">Silos grouped off Main Keywords above — each has a matching Product Ideas stack in the column to the right. Ideas only: nothing here is what the campaign actually uses until Main Keywords itself changes, and product ideas never commit.</div>
-        <div id="r-seoclusters"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+        <div id="mainKwBody">
+          <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+        </div>
       </div>
+
+      <div id="r-seoclusters"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
   </div>
   <div class="col">
     <h2>Product Ideas</h2>
     <div class="content">
-      <details style="border-left:2px solid #8ab4f8;padding-left:8px;margin-bottom:10px;">
-        <summary style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8ab4f8;cursor:pointer;user-select:none;">Main Stack — off all Main Keywords</summary>
-        <div style="margin-top:8px;">
+      <div style="border-left:2px solid #8ab4f8;padding-left:8px;margin-bottom:10px;">
+        <div id="mainStackHdr" onclick="toggleMainStackGroup()" style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8ab4f8;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;">
+          <span id="mainStackArrow" style="font-size:8px;flex-shrink:0;">▾</span>Main Stack — off all Main Keywords
+        </div>
+        <div id="mainStackBody">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
             <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:140px;outline:none">
             <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
           </div>
           <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
         </div>
-      </details>
-
-      <div style="margin-top:16px;border-top:1px solid #333;padding-top:10px;">
-        <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;margin-bottom:6px;">Cluster Stacks <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;color:#999;">— one per SEO Cluster, generated off that cluster's keywords, none of these are committed</span></div>
-        <div id="r-clusterideas"><div style="font-size:10px;color:#999;">Generate SEO Clusters first.</div></div>
       </div>
+
+      <div id="r-clusterideas"><div style="font-size:10px;color:#999;">Generate SEO Clusters first.</div></div>
     </div>
   </div>
   <div class="col">
@@ -2310,6 +2316,37 @@ function toggleKwGroup(key) {
   renderSeoClusters();
   renderClusterIdeas();
 }
+// The two fixed root nodes (Main Keywords, Main Stack) are static markup —
+// not re-rendered from a list like the cluster nodes below — so their
+// collapse toggle is a plain imperative show/hide, but reads/writes the
+// SAME persisted kwGroupsOpen store under fixed keys ('mainkw'/'mainstack')
+// so all root-level siblings behave identically.
+function toggleMainKwGroup() {
+  kwGroupsOpen['mainkw'] = !kwGroupsOpen['mainkw'];
+  saveKwGroupsOpen();
+  applyMainKwCollapse();
+}
+function applyMainKwCollapse() {
+  const body = document.getElementById('mainKwBody'), arrow = document.getElementById('mainKwArrow');
+  if (!body || !arrow) return;
+  const open = !!kwGroupsOpen['mainkw'];
+  body.style.display = open ? '' : 'none';
+  arrow.textContent = open ? '▾' : '▶';
+}
+function toggleMainStackGroup() {
+  kwGroupsOpen['mainstack'] = !kwGroupsOpen['mainstack'];
+  saveKwGroupsOpen();
+  applyMainStackCollapse();
+}
+function applyMainStackCollapse() {
+  const body = document.getElementById('mainStackBody'), arrow = document.getElementById('mainStackArrow');
+  if (!body || !arrow) return;
+  const open = !!kwGroupsOpen['mainstack'];
+  body.style.display = open ? '' : 'none';
+  arrow.textContent = open ? '▾' : '▶';
+}
+applyMainKwCollapse();
+applyMainStackCollapse();
 function loadSeoClusters(force) {
   if (SEO_CLUSTERS_FETCHED && !force) return;
   SEO_CLUSTERS_FETCHED = true;
@@ -2337,7 +2374,7 @@ function renderSeoClusters() {
     const key = 'c:' + c.id;
     const kwCount = (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean).length;
     const hdr = kwGroupHeader(key, '#a78bfa', c.name + ' Stack', kwCount);
-    const inner = hdr.collapsed ? '' : `<div style="font-size:10px;color:#ccc;margin-bottom:3px;">${esc(c.keywords)}</div>${c.rationale ? `<div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>` : ''}<div style="display:flex;gap:8px;align-items:center;"><a href="${esc(c.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:10px;color:#8ab4f8;text-decoration:none;">open in Notion ↗</a><button onclick="event.stopPropagation();archiveSeoCluster('${esc(c.id)}')" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">✕ archive</button></div>`;
+    const inner = hdr.collapsed ? '' : `<div style="font-size:10px;color:#ccc;margin-bottom:3px;">${esc(c.keywords)}</div>${c.rationale ? `<div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>` : ''}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><a href="${esc(c.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:10px;color:#8ab4f8;text-decoration:none;">open in Notion ↗</a><button onclick="event.stopPropagation();regenSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button><button onclick="event.stopPropagation();archiveSeoCluster('${esc(c.id)}')" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">✕ archive</button></div>`;
     html += `<div style="border-left:2px solid #a78bfa;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
   });
   staged.forEach(c => {
@@ -2408,6 +2445,7 @@ async function regenSeoCluster(clusterId, btn) {
   try {
     const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId });
     SEO_CLUSTERS.staged = r.staged || [];
+    SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed;
     renderSeoClusters(); renderClusterIdeas();
   } catch (e) { alert('Regenerate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
