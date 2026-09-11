@@ -24380,6 +24380,11 @@ Call submit_seo_audit with your findings.`;
       // cluster's Name is meant to become its member products' existing
       // free-text "Product Stack" label (reusing that mechanism, not a new
       // parallel one), once product-creation-from-cluster ships next.
+      // ADDITIVE, per operator direction — appends to whatever's already
+      // staged (and never touches committed rows) instead of replacing the
+      // whole staged array. Both already-staged and already-committed
+      // clusters are passed as fixed/covered context so the new batch only
+      // fills in what's genuinely left uncovered rather than duplicating.
       if (body.action === "generateKeywordClusters") {
         const { campaignId, guidance } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -24390,20 +24395,25 @@ Call submit_seo_audit with your findings.`;
           notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
           notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
         ]);
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
         const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
         const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
         const research = researchRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
         const keywords = rtx(research, "Keywords");
         if (!keywords) return json({ error: "No Keywords on file for this campaign's Research record yet — that's what clusters get built from" }, 400);
         const productNames = productRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
-        const existingClusters = committedRows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") }));
+        const existingClusters = [
+          ...committedRows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+          ...staged.map(c => ({ name: c.name, keywords: c.keywords })),
+        ];
 
         const prompt = `Group this campaign's target keywords into thematic clusters (SEO silos) — each cluster is a coherent topic a search engine would treat as one subject, tight enough to eventually anchor its own content hierarchy (a product "stack" with multiple titles under it).
 
 CAMPAIGN KEYWORDS (the raw pool to organize — every keyword should end up in exactly one cluster, none invented, none dropped unless truly off-topic):
 ${keywords}
 
-${existingClusters.length ? `ALREADY-COMMITTED CLUSTERS (don't recreate these — build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+${existingClusters.length ? `ALREADY-COVERED CLUSTERS (committed or already staged — don't recreate these; build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
 For each cluster, give: a name that is its single top/most representative keyword from the pool, EXACTLY as that keyword appears there (not an invented phrase, not a paraphrase — pick the one keyword that best represents the whole cluster); the exact keywords from the pool that belong to it (including that top keyword); and a one-sentence rationale for why they group together. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
 
 Call submit_keyword_clusters with your result.`;
@@ -24443,7 +24453,11 @@ Call submit_keyword_clusters with your result.`;
         const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_clusters");
         if (!toolUse || !toolUse.input?.clusters?.length) return json({ error: "Claude did not return clusters — try again" }, 502);
 
-        const staged = toolUse.input.clusters.map((c, i) => ({ id: `s${i}`, name: String(c.name || "").slice(0, 100), keywords: String(c.keywords || "").slice(0, 1900), rationale: String(c.rationale || "").slice(0, 500) }));
+        const fresh = toolUse.input.clusters.map(c => ({
+          id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+          name: String(c.name || "").slice(0, 100), keywords: String(c.keywords || "").slice(0, 1900), rationale: String(c.rationale || "").slice(0, 500),
+        }));
+        staged = staged.concat(fresh);
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
         return json({ success: true, staged });
       }
