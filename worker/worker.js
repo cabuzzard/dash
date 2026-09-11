@@ -11108,24 +11108,49 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
       // the Strategy panel's fields all read this rather than having their
       // own separate Keywords field, so there's a single "Generate" for the
       // whole product's keyword set at the top of the page.
+      //
+      // If this product's Product Stack matches an SEO Cluster's name (the
+      // free-text label a cluster becomes once a product is created from it
+      // — see createProduct's `keywords`/`stack` params), that cluster's own
+      // keywords are pulled in as authoritative upstream context and merged
+      // with whatever's already on the product (downstream input) rather
+      // than regenerating from Name/Description alone — keeps a product
+      // that traces back to an SEO cluster keyword-faithful to it even after
+      // repeated regens.
       if (body.action === "generateProductKeywords") {
         const { productId } = body;
         if (!productId) return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const norm = s => String(s || "").replace(/-/g, "");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const currentKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+        const productStack = (pp["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("");
+        const campaignId = (pp.Campaigns?.relation || [])[0]?.id || null;
+
+        let clusterBlock = "";
+        if (productStack && campaignId) {
+          const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+          const [committedRows, staged] = await Promise.all([
+            notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+            env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json").catch(() => []),
+          ]);
+          const committedMatch = committedRows.find(r => ((r.properties?.Name?.title || []).map(t => t.plain_text).join("")) === productStack);
+          const stagedMatch = (staged || []).find(c => c.name === productStack);
+          const clusterKeywords = committedMatch ? rtx(committedMatch, "Cluster Keywords") : (stagedMatch ? stagedMatch.keywords : "");
+          if (clusterKeywords) clusterBlock = `\nSEO CLUSTER THIS PRODUCT BELONGS TO (Product Stack "${productStack}") — stay faithful to these, merge with the product's own keywords rather than drifting from them: ${clusterKeywords}\n`;
+        }
 
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
 ${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
-
+${clusterBlock}
 Return 10-15 real, specific keywords/phrases this product should be associated with — a mix of category terms, buyer-intent phrases, and long-tail specifics. Comma-separated, no other text, no numbering, no explanation.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -11146,7 +11171,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       }
 
       if (body.action === "createProduct") {
-        const { title, type, description, stack, campaignId, status } = body;
+        const { title, type, description, stack, campaignId, status, keywords } = body;
         if (!title) return json({ error: "title required" }, 400);
         const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
         if (status) createProps["Status"] = { select: { name: status } };
@@ -11159,9 +11184,17 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         if (type) createProps["Type"] = { rich_text: [{ type: "text", text: { content: String(type).slice(0, 100) } }] };
         // Product Stack = a free-text grouping label (e.g. "Coaching Suite")
         // the operator assigns manually — purely organizational, unlike Type/
-        // Ecosystem which feed other pipelines.
+        // Ecosystem which feed other pipelines. When a product is created
+        // straight off an SEO Cluster, its cluster name is passed as `stack`
+        // here, which is also what generateProductKeywords later matches on
+        // to keep this product's keywords faithful to that cluster.
         if (stack) createProps["Product Stack"] = { rich_text: [{ type: "text", text: { content: String(stack).slice(0, 100) } }] };
         if (description) createProps["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
+        // Seeded at creation — e.g. handed down from an SEO Cluster's own
+        // keywords when the product originates from one (see the Keywords &
+        // Notes tab's Cluster Stacks). generateProductKeywords refines this
+        // rather than starting from scratch.
+        if (keywords) createProps["Keywords"] = { rich_text: [{ type: "text", text: { content: String(keywords).slice(0, 1990) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },

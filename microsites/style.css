@@ -199,4 +199,14 @@ h2 {
 /* editable h2 */
 h2.editable { cursor: pointer; }
 h2.editable::after { content: ' ✎'; font-size: 12px; opacity: 0; transition: opacity .15s; vertical-align: middle; }
+
+/* PRODUCT IDEA CARD — one small unified format shared by every stack (Main
+   Stack + every Cluster Stack) in the Keywords & Notes tab's Product Ideas
+   column, so a proposed idea reads the same regardless of which stack it
+   came from. */
+.idea-card { border: 1px solid #333; border-radius: 5px; padding: 6px 8px; margin-bottom: 5px; }
+.idea-card-row { display: flex; align-items: center; gap: 6px; }
+.idea-card-title { flex: 1; min-width: 0; font-size: 11px; font-weight: 600; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.idea-card-desc { font-size: 10px; color: #ccc; margin-top: 2px; }
+.idea-card-kw { font-size: 9px; color: #999; margin-top: 2px; }
 h2.editable:hover::after { opacity: 1; }

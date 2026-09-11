@@ -2410,15 +2410,20 @@ function renderClusterIdeas() {
     const inner = hdr.collapsed ? '' : `
       <div style="font-size:9px;color:#999;margin-bottom:6px;">Products matching this cluster's keywords: <span style="color:#ccc;">${esc(c.keywords)}</span></div>
       <button onclick="event.stopPropagation();proposeClusterProducts('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;margin-bottom:6px;">↻ propose products</button>
-      ${products.length ? products.map(p => `
-        <div style="border:1px solid #333;border-radius:5px;padding:6px 8px;margin-bottom:5px;">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span style="flex:1;min-width:0;font-size:11px;font-weight:600;color:#fff;">${esc(p.name)}</span>
+      ${products.length ? products.map(p => {
+        const srcQ = String(p.name || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
+        return `
+        <div class="idea-card">
+          <div class="idea-card-row">
+            <span class="idea-card-title">${esc(p.name)}</span>
+            <button class="td-add-btn-inline" onclick="event.stopPropagation();openSourcesModal('${srcQ}')" title="Find sources">🔗</button>
+            <button class="td-add-btn-inline" onclick="event.stopPropagation();addClusterIdeaToProduct('${esc(c.id)}','${esc(p.id)}', this)" title="Add to campaign Products — keywords carried down from this cluster">+ Product</button>
             <button onclick="event.stopPropagation();dismissClusterProduct('${esc(c.id)}','${esc(p.id)}')" style="border:0;background:none;color:#999;cursor:pointer;font-size:11px;">✕</button>
           </div>
-          <div style="font-size:10px;color:#ccc;margin-top:2px;">${esc(p.angle)}</div>
-          <div style="font-size:9px;color:#999;margin-top:2px;">${esc(p.keywords)}</div>
-        </div>`).join('') : '<div style="font-size:9.5px;color:#999;">No proposals yet.</div>'}`;
+          <div class="idea-card-desc">${esc(p.angle)}</div>
+          <div class="idea-card-kw">${esc(p.keywords)}</div>
+        </div>`;
+      }).join('') : '<div style="font-size:9.5px;color:#999;">No proposals yet.</div>'}`;
     html += `<div style="border-left:2px solid #ffb020;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
   });
   el.innerHTML = html;
@@ -2493,7 +2498,48 @@ async function dismissClusterProduct(clusterId, productId) {
     renderClusterIdeas();
   } catch (e) { alert('Remove failed: ' + e.message); }
 }
+// Adds one proposed product straight to the campaign's real Products — no
+// ecosystem research, just a direct create. Keywords are handed down: the
+// cluster's own keywords merged with this specific idea's keywords, so the
+// new Product's Keywords field (what generateProductKeywords later refines
+// FROM, staying faithful to this same cluster via its Product Stack) starts
+// seeded from the SEO work instead of blank.
+async function addClusterIdeaToProduct(clusterId, productId, btn) {
+  const c = (SEO_CLUSTERS.staged || []).find(x => x.id === clusterId);
+  const p = c && (c.products || []).find(x => x.id === productId);
+  if (!c || !p) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const mergedKw = Array.from(new Set(
+      (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean)
+        .concat((p.keywords || '').split(',').map(s => s.trim()).filter(Boolean))
+    )).join(', ');
+    await w('createProduct', { title: p.name, description: p.angle, stack: c.name, keywords: mergedKw, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    if (typeof loadProducts === 'function') loadProducts();
+    btn.textContent = '✓ added';
+  } catch (e) {
+    alert('Add failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+// Same, for a Main Stack idea — no single cluster to hand down, so the
+// whole Main Keywords pool seeds the new Product's Keywords instead.
+async function addMainIdeaToProduct(name, desc, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const kw = (RAW && RAW.keywords) || '';
+    await w('createProduct', { title: name, description: desc, keywords: kw, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    if (typeof loadProducts === 'function') loadProducts();
+    btn.textContent = '✓ added';
+  } catch (e) {
+    alert('Add failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
 
+// Same .idea-card format as the Cluster Stacks below it — Main Stack ideas
+// are plain "Name: Description" text (no per-idea keywords field), so
+// +Product hands down the whole Main Keywords pool instead of a cluster's.
 function renderProductIdeas(text) {
   const el = document.getElementById('r-prodideas');
   if (!el) return;
@@ -2504,17 +2550,20 @@ function renderProductIdeas(text) {
   const lines = text.trim().split('\n').filter(l => l.trim());
   el.innerHTML = lines.map(line => {
     const colonIdx = line.indexOf(':');
-    const srcQ = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
-    if (colonIdx === -1) {
-      const t = line.trim().replace(/"/g,'&quot;');
-      const ecoName = t.replace(/'/g,"\\'");
-      return `<div class="sm-trend-row"><span class="sm-trend-body" style="cursor:pointer;flex:1" onclick="openTdModal('${t.replace(/'/g,"\\'")}')">${line}</span><button class="td-add-btn-inline" onclick="openEcosystemModal('${ecoName}','')" title="Build product ecosystem">🧬</button><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
-    }
-    const name = line.slice(0, colonIdx).trim();
-    const desc = line.slice(colonIdx + 1).trim();
-    const ecoName = name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    const ecoDesc = desc.replace(/'/g,"\\'").replace(/"/g,'&quot;');
-    return `<div class="sm-trend-row"><span style="cursor:pointer;flex:1;display:flex;gap:6px;align-items:baseline;min-width:0" onclick="openTdModal('${name.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')"><span class="sm-trend-niche">${name}</span><span class="sm-trend-body">${desc}</span></span><button class="td-add-btn-inline" onclick="openEcosystemModal('${ecoName}','${ecoDesc}')" title="Build product ecosystem">🧬</button><button class="td-add-btn-inline" onclick="openSourcesModal('${srcQ.replace(/'/g,"\\'").replace(/"/g,'&quot;')}')" title="Find sources">🔗</button></div>`;
+    const name = colonIdx === -1 ? line.trim() : line.slice(0, colonIdx).trim();
+    const desc = colonIdx === -1 ? '' : line.slice(colonIdx + 1).trim();
+    const srcQ = name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const addName = name.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const addDesc = desc.replace(/'/g,"\\'").replace(/"/g,'&quot;');
+    const titleClick = `openTdModal('${addName}')`;
+    return `<div class="idea-card">
+      <div class="idea-card-row">
+        <span class="idea-card-title" style="cursor:pointer;" onclick="${titleClick}">${esc(name)}</span>
+        <button class="td-add-btn-inline" onclick="event.stopPropagation();openSourcesModal('${srcQ}')" title="Find sources">🔗</button>
+        <button class="td-add-btn-inline" onclick="event.stopPropagation();addMainIdeaToProduct('${addName}','${addDesc}', this)" title="Add to campaign Products">+ Product</button>
+      </div>
+      ${desc ? `<div class="idea-card-desc">${esc(desc)}</div>` : ''}
+    </div>`;
   }).join('');
 }
 
