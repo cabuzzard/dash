@@ -303,7 +303,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
 
       <details style="border-left:2px solid #8ab4f8;padding-left:8px;margin:12px 0;">
-        <summary style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8ab4f8;cursor:pointer;user-select:none;">Main Stack — product ideas off all Main Keywords</summary>
+        <summary style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8ab4f8;cursor:pointer;user-select:none;">Product Ideas — Main Stack (off all Main Keywords)</summary>
         <div style="margin-top:8px;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
             <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:140px;outline:none">
@@ -2317,7 +2317,7 @@ function kwGroupHeader(key, color, label, count, indent) {
 function renderProposedStack(c) {
   const key = 'ci:' + c.id;
   const products = c.products || [];
-  const hdr = kwGroupHeader(key, '#8ab4f8', 'Proposed Stack — ' + c.name, products.length, 14);
+  const hdr = kwGroupHeader(key, '#8ab4f8', 'Product Ideas — ' + c.name + ' stack', products.length, 14);
   const inner = hdr.collapsed ? '' : `
     <div style="margin-left:14px;">
       <div style="font-size:9px;color:#999;margin-bottom:6px;">Products matching this cluster's keywords: <span style="color:#ccc;">${esc(c.keywords)}</span></div>
