@@ -15169,11 +15169,11 @@ function renderHubAssetMatrix() {
       const empty = !cd && !cp && !cpd;
       tds += `<td title="${esc(c.name)} · ${cd} development · ${cp} publish · ${cpd} published asset${cpd === 1 ? '' : 's'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
         + (empty ? '<span style="color:var(--text3);">·</span>'
-          : `<span style="color:#5aa6db;font-weight:${cd ? '700' : '400'};">${cd}</span>`
+          : `<span style="color:#5aa6db;font-weight:${cd ? '700' : '400'};">${cd || '-'}</span>`
             + `<span style="color:var(--text3);">/</span>`
-            + `<span style="color:#d9a441;font-weight:${cp ? '700' : '400'};">${cp}</span>`
+            + `<span style="color:#d9a441;font-weight:${cp ? '700' : '400'};">${cp || '-'}</span>`
             + `<span style="color:var(--text3);">/</span>`
-            + `<span style="color:#5fbf7c;font-weight:${cpd ? '700' : '400'};">${cpd}</span>`)
+            + `<span style="color:#5fbf7c;font-weight:${cpd ? '700' : '400'};">${cpd || '-'}</span>`)
         + `</td>`;
     });
     rows += `<tr>${tds}</tr>`;
