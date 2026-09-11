@@ -66,6 +66,12 @@ const TOOLS_DB           = "019e7132eeac48ccb77d805f99b085ea"; // campaign-agnos
 // fully standalone. See docs/methods-titles-assets.md for the distinction.
 const KNOWLEDGE_BRAIN_DB = "4476d83727b145de9f74f3eba17d59cf"; // Name/Insight/Excerpt/Knowledge Category/Keywords/Extracted Offering/Status/Source URL/Source Link
 const KEYWORD_CLUSTERS_DB = "cedc9c6c16b344b0bd858823809f14af"; // Cluster Name/Member Keywords/Knowledge Entries (relation)/Status/Last Updated — emergent themes computed from Knowledge Brain Keywords
+// SEO keyword clusters/silos per campaign (2026-09-11, "SEO Audit" section's
+// cluster builder — see docs/methods-titles-assets.md § "SEO audit"). NOT
+// the same system as KEYWORD_CLUSTERS_DB above (that's the standalone
+// Knowledge Atlas pipeline) — deliberately distinct name to avoid confusing
+// the two. Name/Cluster Keywords/Rationale/Status/Campaign (relation).
+const SEO_KEYWORD_CLUSTERS_DB = "28ece99103064fc6874aa45cd17b81e6";
 // Link-mining system (Globals tab) — supersedes the old KNOWLEDGE_BRAIN pipeline.
 // Transcripts are mined into typed staging rows the operator promotes into
 // real app-machinery tables. All standalone. DATABASE ids (page url), not
@@ -24327,6 +24333,157 @@ Call submit_seo_audit with your findings.`;
         });
         const r = await resp.json();
         if (!resp.ok) return json({ error: r.message || "Save failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── SEO keyword clusters / silos (2026-09-11, continuing the SEO Audit
+      // system) ── per operator direction: group the campaign's own Research
+      // Keywords into thematic clusters/silos, staged in KV so they can be
+      // regenerated/reviewed before anything touches the campaign; committing
+      // ONE writes a real SEO_KEYWORD_CLUSTERS_DB row. Recommendations are
+      // invented from the keywords, NOT matched against existing products —
+      // that reconciliation is a later phase. Hierarchy per the operator:
+      // Campaign Keywords -> Stacks(=clusters) -> Products -> Titles — a
+      // cluster's Name is meant to become its member products' existing
+      // free-text "Product Stack" label (reusing that mechanism, not a new
+      // parallel one), once product-creation-from-cluster ships next.
+      if (body.action === "generateKeywordClusters") {
+        const { campaignId, guidance } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const [researchRows, productRows, committedRows] = await Promise.all([
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+          notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+          notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+        ]);
+        const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const research = researchRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+        const keywords = rtx(research, "Keywords");
+        if (!keywords) return json({ error: "No Keywords on file for this campaign's Research record yet — that's what clusters get built from" }, 400);
+        const productNames = productRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
+        const existingClusters = committedRows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") }));
+
+        const prompt = `Group this campaign's target keywords into thematic clusters (SEO silos) — each cluster is a coherent topic a search engine would treat as one subject, tight enough to eventually anchor its own content hierarchy (a product "stack" with multiple titles under it).
+
+CAMPAIGN KEYWORDS (the raw pool to organize — every keyword should end up in exactly one cluster, none invented, none dropped unless truly off-topic):
+${keywords}
+
+${existingClusters.length ? `ALREADY-COMMITTED CLUSTERS (don't recreate these — build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+For each cluster, give: a short clear name (2-5 words, describes the topic, not a slogan), the exact keywords from the pool that belong to it, and a one-sentence rationale for why they group together. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
+
+Call submit_keyword_clusters with your result.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_keyword_clusters",
+              description: "Submit the keyword clusters/silos.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  clusters: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        keywords: { type: "string", description: "comma-separated keywords from the pool that belong to this cluster" },
+                        rationale: { type: "string" },
+                      },
+                      required: ["name", "keywords", "rationale"],
+                    },
+                  },
+                },
+                required: ["clusters"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_keyword_clusters" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_clusters");
+        if (!toolUse || !toolUse.input?.clusters?.length) return json({ error: "Claude did not return clusters — try again" }, 502);
+
+        const staged = toolUse.input.clusters.map((c, i) => ({ id: `s${i}`, name: String(c.name || "").slice(0, 100), keywords: String(c.keywords || "").slice(0, 1900), rationale: String(c.rationale || "").slice(0, 500) }));
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
+      }
+
+      if (body.action === "getKeywordClusters") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const committed = rows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url }));
+        return json({ success: true, staged, committed });
+      }
+
+      // Edits ONE staged (uncommitted) cluster in place — name/keywords, for
+      // when the operator wants to fix a generated cluster before committing
+      // it, same "editable staged content" pattern as the keyword modals.
+      if (body.action === "updateStagedKeywordCluster") {
+        const { campaignId, clusterId, name, keywords, rationale } = body;
+        if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        const idx = staged.findIndex(c => c.id === clusterId);
+        if (idx < 0) return json({ error: "Staged cluster not found" }, 404);
+        if (name !== undefined) staged[idx].name = String(name).slice(0, 100);
+        if (keywords !== undefined) staged[idx].keywords = String(keywords).slice(0, 1900);
+        if (rationale !== undefined) staged[idx].rationale = String(rationale).slice(0, 500);
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
+      }
+
+      if (body.action === "commitKeywordCluster") {
+        const { campaignId, clusterId } = body;
+        if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        const idx = staged.findIndex(c => c.id === clusterId);
+        if (idx < 0) return json({ error: "Staged cluster not found — it may already be committed" }, 404);
+        const c = staged[idx];
+        const props = {
+          "Name": { title: [{ type: "text", text: { content: c.name.slice(0, 200) } }] },
+          "Cluster Keywords": { rich_text: [{ type: "text", text: { content: c.keywords } }] },
+          "Rationale": { rich_text: [{ type: "text", text: { content: c.rationale } }] },
+          "Status": { select: { name: "Active" } },
+          "Campaign": { relation: [{ id: dash(norm(campaignId)) }] },
+        };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: SEO_KEYWORD_CLUSTERS_DB }, properties: props }),
+        });
+        const created = await resp.json();
+        if (!resp.ok || !created.id) return json({ error: created.message || "Failed to commit cluster" }, resp.status || 500);
+        staged.splice(idx, 1);
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, id: created.id.replace(/-/g, ""), staged });
+      }
+
+      if (body.action === "archiveKeywordCluster") {
+        const { clusterId } = body;
+        if (!clusterId) return json({ error: "clusterId required" }, 400);
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(clusterId.replace(/-/g,""))}`, {
+          method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Status": { select: { name: "Archived" } } } }),
+        });
+        const r = await resp.json();
+        if (!resp.ok) return json({ error: r.message || "Archive failed" }, resp.status);
         return json({ success: true });
       }
 

@@ -10641,6 +10641,8 @@ let _hpSPTFetched = {};
 let _hpSeo = {};               // slug -> { staged, committed } — SEO audit (getSeoAudit)
 let _hpSeoFetched = {};
 let _hpSeoBusy = {};
+let _hpClusters = {};          // slug -> { staged:[], committed:[] } — SEO keyword clusters (getKeywordClusters)
+let _hpClustersFetched = {};
 let _spTplSlug = '';
 const _HP_LIST = { palette: 'palettes', fonts: 'fonts', direction: 'directions' };
 
@@ -10907,6 +10909,59 @@ async function hpCommitSeoAudit(slug, btn){
     btn.textContent = o;
   }
   btn.disabled = false;
+}
+function hpLoadClusters(slug){
+  const h = HUB_SITES.find(x => x.slug === slug);
+  if (!h || !h.campaignId || _hpClustersFetched[slug]) return;
+  _hpClustersFetched[slug] = true;
+  call('getKeywordClusters', { campaignId: h.campaignId }).then(r => {
+    if (r && !r.error) { _hpClusters[slug] = { staged: r.staged || [], committed: r.committed || [] }; if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
+  }).catch(() => {});
+}
+async function hpGenerateClusters(slug, btn){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Grouping keywords…';
+  try {
+    const r = await call('generateKeywordClusters', { campaignId: h.campaignId });
+    if (r.error) throw new Error(r.error);
+    _hpClusters[slug] = { staged: r.staged || [], committed: (_hpClusters[slug] || {}).committed || [] };
+  } catch (e) {
+    alert('Generate failed: ' + e.message);
+  }
+  btn.textContent = o; btn.disabled = false;
+  renderHubsTab();
+}
+async function hpEditStagedCluster(slug, clusterId, field, value){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  try {
+    const payload = { campaignId: h.campaignId, clusterId };
+    payload[field] = value;
+    const r = await call('updateStagedKeywordCluster', payload);
+    if (r.error) throw new Error(r.error);
+    if (_hpClusters[slug]) _hpClusters[slug].staged = r.staged || [];
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+async function hpCommitCluster(slug, clusterId, btn){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await call('commitKeywordCluster', { campaignId: h.campaignId, clusterId });
+    if (r.error) throw new Error(r.error);
+    _hpClustersFetched[slug] = false;
+    hpLoadClusters(slug);
+  } catch (e) {
+    alert('Commit failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+async function hpArchiveCluster(slug, clusterId){
+  if (!confirm('Archive this cluster? (kept in Notion trash, not deleted)')) return;
+  try {
+    const r = await call('archiveKeywordCluster', { clusterId });
+    if (r.error) throw new Error(r.error);
+    _hpClustersFetched[slug] = false;
+    hpLoadClusters(slug);
+  } catch (e) { alert('Archive failed: ' + e.message); }
 }
 function openSPTemplateModal(slug){
   _spTplSlug = slug;
@@ -11778,6 +11833,49 @@ function renderHubsTab() {
               ${(rep.actionItems || []).length ? `<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Action items</div><ol style="margin:0 0 0 16px;padding:0;font-size:10.5px;color:var(--text2);">${rep.actionItems.map(a => `<li style="margin-bottom:2px;">${esc(a)}</li>`).join('')}</ol>` : ''}
             ` : '<div style="font-size:10px;color:var(--text3);">Committed audit on file — ↻ Run audit for a fresh staged one.</div>';
             return stagedHtml;
+          })()}
+        </div>
+
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">🔑 Keyword Clusters</span>
+            <span title="Groups this campaign's Research Keywords into thematic silos — the future backbone of a product hierarchy (a cluster's name becomes its products' Product Stack label). Generated candidates stage here for review/edit; nothing touches the campaign until you commit one. Invented fresh from the keywords, not matched to existing products." style="font-size:10px;color:var(--text3);cursor:help;">groups your keywords into silos — the stack hierarchy products/titles will hang off of</span>
+            <span style="margin-left:auto;display:flex;gap:6px;">
+              <button id="hpClusterGen-${slug}" onclick="hpGenerateClusters('${slug}', this)" style="font-size:10px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">↻ Generate clusters</button>
+            </span>
+          </div>
+          ${(function(){
+            if (!_hpClustersFetched[slug]) { hpLoadClusters(slug); return '<div style="font-size:10px;color:var(--text3);">loading…</div>'; }
+            const cl = _hpClusters[slug] || {};
+            const committed = cl.committed || [];
+            const staged = cl.staged || [];
+            let html = '';
+            if (committed.length) {
+              html += `<div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Committed</div>`
+                + `<div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">` + committed.map(c => `
+                <div style="border:1px solid var(--border2);border-radius:6px;padding:6px 8px;">
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <a href="${esc(c.url)}" target="_blank" rel="noopener" style="flex:1;min-width:0;font-size:11px;font-weight:600;color:var(--text);text-decoration:none;">${esc(c.name)}</a>
+                    <button onclick="hpArchiveCluster('${slug}','${esc(c.id)}')" title="Archive (kept in Notion trash, not deleted)" style="border:0;background:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
+                  </div>
+                  <div style="font-size:10px;color:var(--text2);margin-top:2px;">${esc(c.keywords)}</div>
+                  ${c.rationale ? `<div style="font-size:9.5px;color:var(--text3);margin-top:2px;font-style:italic;">${esc(c.rationale)}</div>` : ''}
+                </div>`).join('') + `</div>`;
+            }
+            if (staged.length) {
+              html += `<div style="font-size:9px;color:#ffb020;text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px;">Staged — not committed yet</div>`
+                + `<div style="display:flex;flex-direction:column;gap:6px;">` + staged.map(c => `
+                <div style="border:1px dashed #ffb020;border-radius:6px;padding:6px 8px;">
+                  <input value="${esc(c.name)}" onchange="hpEditStagedCluster('${slug}','${esc(c.id)}','name',this.value)" style="width:100%;font-size:11px;font-weight:600;background:transparent;border:0;color:var(--text);padding:0;margin-bottom:3px;">
+                  <textarea onchange="hpEditStagedCluster('${slug}','${esc(c.id)}','keywords',this.value)" rows="2" style="width:100%;box-sizing:border-box;font-size:10px;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:4px;padding:4px;resize:vertical;margin-bottom:3px;">${esc(c.keywords)}</textarea>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <span style="flex:1;min-width:0;font-size:9.5px;color:var(--text3);font-style:italic;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(c.rationale)}</span>
+                    <button onclick="hpCommitCluster('${slug}','${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #68d391;border-radius:5px;background:transparent;color:#68d391;font-weight:600;cursor:pointer;white-space:nowrap;">💾 Commit</button>
+                  </div>
+                </div>`).join('') + `</div>`;
+            }
+            if (!committed.length && !staged.length) html = '<div style="font-size:10px;color:var(--text3);">No clusters yet — ↻ Generate clusters (needs Keywords on the campaign Research record).</div>';
+            return html;
           })()}
         </div>
       </div>
