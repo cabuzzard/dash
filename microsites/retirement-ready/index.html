@@ -4670,7 +4670,14 @@ function makeProductRow(p) {
   // this re-wires it here, replacing the old backfillLegacyStrategy
   // button (a different, no-longer-used reconstruct-from-history flow).
   const backfillBtn = `<button class="td-add-btn-inline" onclick="openGrowthStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Generate a new Growth Strategy for this product — same flow as the Strategies tab's + button, just with this product already chosen" style="${psStyle};background:none;cursor:pointer;color:#f6ad55;">🚀 strategy</button>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'Idea'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${statusBadge}${typeBadge}${stackEditBtn}${researchLink}${backfillBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  // Ecosystem — expand THIS already-real product into a supporting funnel
+  // (lead-in/credibility/retention, etc.). Staged for review in the modal;
+  // nothing is created until the operator adds one. Kept off the ideation
+  // level entirely (Keywords & Notes tab's Product Ideas) per operator
+  // direction — this is a deliberate per-product decision, not something
+  // that fires off a half-formed keyword-generated idea.
+  const ecoBtn = `<button class="td-add-btn-inline" onclick="openEcosystemModal('${p.name.replace(/'/g,"\\'")}','','${p.id}','${(p.type||'').replace(/'/g,"\\'")}')" title="Build a supporting ecosystem around this product">🧬</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'Idea'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${statusBadge}${typeBadge}${stackEditBtn}${researchLink}${backfillBtn}${ecoBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -11196,77 +11203,121 @@ async function openSourcesModal(query) {
 }
 </script>
 
-<!-- ECOSYSTEM MODAL — build a funnel ecosystem of Products from one idea -->
+<!-- ECOSYSTEM MODAL — research a funnel ecosystem around an EXISTING Product
+     (seed) and stage the proposed supporting products for review; nothing is
+     created until the operator adds one individually. -->
 <div class="modal-overlay" id="ecosystemModal" onclick="if(event.target===this)closeEcosystemModal()">
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
-      <div class="modal-title">Build Product Ecosystem</div>
+      <div class="modal-title">Product Ecosystem</div>
       <button class="modal-close" onclick="closeEcosystemModal()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="modal-hint">Edit the seed idea below, then Generate — this researches the full funnel ecosystem needed to market and sell it (lead-in, core offer, retention, etc.), creates each as a Product, and matches a Method to each (existing methods preferred, new only when nothing fits).</div>
+      <div class="modal-hint">Edit the seed product below, then Generate — this researches the supporting products a real launch would need around it (lead-in, credibility piece, retention/upsell, etc.). Staged here for review; nothing is created until you add one.</div>
       <label class="lm-label" for="ecoTitleInput" style="margin-top:12px;">Title</label>
       <input class="modal-ta" id="ecoTitleInput" type="text" style="height:36px;padding:7px 10px;" />
       <label class="lm-label" for="ecoDescInput" style="margin-top:10px;">Description</label>
       <textarea class="modal-ta" id="ecoDescInput" rows="4" style="resize:vertical;min-height:90px!important;"></textarea>
       <div id="ecoStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;white-space:pre-line;"></div>
+      <div id="ecoStaged" style="margin-top:10px;"></div>
     </div>
     <div class="modal-foot">
-      <button class="modal-btn cancel" onclick="closeEcosystemModal()">Cancel</button>
+      <button class="modal-btn cancel" onclick="closeEcosystemModal()">Close</button>
       <button class="modal-btn save" id="ecoGoBtn" onclick="runEcosystemBuild()">Generate</button>
     </div>
   </div>
 </div>
 <script>
-function openEcosystemModal(name, desc) {
+let _ecoSeedProductId = null, _ecoSeedType = '', _ecoStaged = [], _ecoSeedTagged = false;
+function openEcosystemModal(name, desc, seedProductId, seedType) {
   document.getElementById('ecoTitleInput').value = name || '';
   document.getElementById('ecoDescInput').value = desc || '';
   document.getElementById('ecoStatus').textContent = '';
   document.getElementById('ecoStatus').style.color = '#888';
+  document.getElementById('ecoStaged').innerHTML = '';
   document.getElementById('ecoGoBtn').disabled = false;
   document.getElementById('ecoGoBtn').textContent = 'Generate';
+  _ecoSeedProductId = seedProductId || null;
+  _ecoSeedType = seedType || '';
+  _ecoStaged = [];
+  _ecoSeedTagged = false;
   document.getElementById('ecosystemModal').classList.add('open');
 }
 function closeEcosystemModal() {
   document.getElementById('ecosystemModal').classList.remove('open');
 }
+function renderEcoStaged() {
+  const el = document.getElementById('ecoStaged');
+  if (!_ecoStaged.length) { el.innerHTML = ''; return; }
+  el.innerHTML = _ecoStaged.map((item, i) => `
+    <div class="idea-card">
+      <div class="idea-card-row">
+        <span class="idea-card-title">${esc(item.name)}</span>
+        <span style="font-size:9px;color:#999;flex-shrink:0;">${esc(item.funnelStage || '')}</span>
+        ${item.added
+          ? '<span style="font-size:10px;color:#68d391;">✓ added</span>'
+          : `<button class="td-add-btn-inline" onclick="addEcoStagedProduct(${i}, this)" title="Create this product">+ Product</button>
+             <button onclick="_ecoStaged.splice(${i},1);renderEcoStaged()" style="border:0;background:none;color:#999;cursor:pointer;font-size:11px;">✕</button>`}
+      </div>
+      <div class="idea-card-desc">${esc(item.description || '')}</div>
+      <div class="idea-card-kw">${esc(item.type || '')}</div>
+    </div>`).join('');
+}
+async function addEcoStagedProduct(i, btn) {
+  const item = _ecoStaged[i];
+  if (!item || item.added) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const ideaTitle = document.getElementById('ecoTitleInput').value.trim();
+    const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: ideaTitle, type: item.type, marketingPhase: item.funnelStage });
+    if (r.error) throw new Error(r.error);
+    item.added = true;
+    renderEcoStaged();
+    if (typeof loadProducts === 'function') loadProducts();
+  } catch (e) {
+    alert('Add failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+// Research only — stages the returned funnel members for review (rendered
+// by renderEcoStaged) instead of creating any of them. Only
+// addEcoStagedProduct (one "+ Product" click at a time) ever writes to
+// Notion. If this is expanding an existing seed Product (_ecoSeedProductId
+// set), excludeSeed keeps the seed itself out of the results and the seed
+// gets retroactively tagged into the same Ecosystem group.
 async function runEcosystemBuild() {
   const ideaTitle = document.getElementById('ecoTitleInput').value.trim();
   const ideaDescription = document.getElementById('ecoDescInput').value.trim();
   if (!ideaTitle) return;
   const btn = document.getElementById('ecoGoBtn');
   const status = document.getElementById('ecoStatus');
-  btn.disabled = true; btn.textContent = 'Working…';
+  btn.disabled = true; btn.textContent = 'Researching…';
   status.style.color = '#888';
+  status.textContent = 'Researching the funnel ecosystem…';
   try {
-    status.textContent = 'Researching the funnel ecosystem…';
-    const ecoData = await w('researchProductEcosystem', { ideaTitle, ideaDescription, campaignId: CAMPAIGN_ID });
+    const ecoData = await w('researchProductEcosystem', {
+      ideaTitle, ideaDescription, campaignId: CAMPAIGN_ID,
+      seedType: _ecoSeedType || undefined,
+      excludeSeed: !!_ecoSeedProductId,
+    });
     if (ecoData.error) throw new Error(ecoData.error);
     const ecosystem = ecoData.ecosystem || [];
     if (!ecosystem.length) throw new Error('No ecosystem products returned.');
 
-    const created = [];
-    for (let i = 0; i < ecosystem.length; i++) {
-      status.textContent = `Creating products ${i + 1} / ${ecosystem.length}…`;
-      const item = ecosystem[i];
-      const r = await w('createEcosystemProduct', { name: item.name, description: item.description, campaignId: CAMPAIGN_ID, ecosystemTag: ideaTitle, type: item.type, marketingPhase: item.funnelStage });
-      if (r.error) { status.textContent += `\n(skipped "${item.name}": ${r.error})`; continue; }
-      created.push({ productId: r.productId, name: item.name });
+    if (_ecoSeedProductId && !_ecoSeedTagged) {
+      w('tagProductEcosystem', { productId: _ecoSeedProductId, ecosystemTag: ideaTitle }).catch(() => {});
+      _ecoSeedTagged = true;
     }
-    if (!created.length) throw new Error('No products were created.');
 
-    // No method matching here — pick each product's methods via its own
-    // "⚙ Methods" review modal in the Products panel when you're ready.
-    await loadProducts();
-    status.textContent = `✓ Created ${created.length} product${created.length === 1 ? '' : 's'} — open each one's ⚙ Methods to choose how it's marketed.`;
+    _ecoStaged = ecosystem.map(item => ({ ...item, added: false }));
+    renderEcoStaged();
+    status.textContent = `${ecosystem.length} proposed — review below, then + Product to create one.`;
     status.style.color = '#68d391';
-    btn.textContent = 'Done';
-    setTimeout(closeEcosystemModal, 2600);
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
-    btn.disabled = false; btn.textContent = 'Generate';
   }
+  btn.disabled = false; btn.textContent = 'Regenerate';
 }
 </script>
 
