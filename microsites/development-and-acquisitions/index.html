@@ -3261,6 +3261,7 @@ async function loadTitles(opts = {}) {
         + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-view-body" data-assetid="${a.id}" data-title="${esc(a.title)}" onclick="openAssetBodyModal(this)" title="View the written ${esc(a.type)} text (and cover letter, for Resume) — this asset type has no render/preview link, the text itself is the deliverable." style="font-size:10px;padding:1px 7px;border:1px solid #63b3ed;background:transparent;color:#63b3ed;border-radius:9px;cursor:pointer;flex-shrink:0;">📄 View</button>` : '')
         + ((a.type === 'resume' || a.type === 'upwork proposal') ? `<button class="td-generate-job" data-assetid="${a.id}" data-titleid="${titleId}" data-type="${esc(a.type)}" onclick="generateJobAssetFromRow(this)" title="Pull a fresh batch of 5 matching postings and write a tailored ${esc(a.type)} for each (real career history is global — edit it in the main dashboard's TD tab, Career section)." style="font-size:10px;padding:1px 7px;border:1px solid #68d391;background:transparent;color:#68d391;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate</button>` : '')
         + `<button class="td-status" onclick="openBuildStrategyModal('${a.id}','${esc(a.title || a.type || '').replace(/'/g,"\\'")}')" title="Build a repeatable strategy from this published asset — describe a cadence (e.g. weekly) or a fixed sequence of next steps, and it gets attached to this asset's title so the nightly queue knows what's next." style="font-size:10px;padding:1px 7px;border:1px solid #f6ad55;background:transparent;color:#f6ad55;border-radius:9px;cursor:pointer;flex-shrink:0;">🎯 Build Strategy</button>`
+        + `<button onclick="runAssetSeoGrade('${a.id}','${titleId}')" title="Grade this asset's SEO fit against its cluster/Main Keywords strategy and get a rewrite recommendation. One asset at a time — run it on any existing asset to backfill a grade." style="font-size:10px;padding:1px 7px;border:1px solid #8ab4f8;background:transparent;color:#8ab4f8;border-radius:9px;cursor:pointer;flex-shrink:0;">🔍 SEO Grade</button>`
         + `<button class="td-del" onclick="deleteAssetRow('${a.id}', this)" title="Delete asset (no confirmation)" style="flex-shrink:0;">✕</button>`;
       return ar;
     }
@@ -11242,6 +11243,58 @@ async function runGenerateSingleCluster() {
     status.textContent = 'Error: ' + e.message;
     status.style.color = '#fc8181';
     btn.disabled = false; btn.textContent = 'Generate';
+  }
+}
+</script>
+<!-- SEO GRADE MODAL — grades ONE published asset's SEO fit against the
+     campaign's SEO strategy (its cluster if one matches, else Main
+     Keywords). Singular, per-asset action — no bulk sweep — but callable
+     one at a time on any existing asset to backfill a grade. Never
+     rewrites the asset; the one offered fix (regenerate title keywords) is
+     a separate explicit click, never automatic. -->
+<div class="modal-overlay" id="seoGradeModal" onclick="if(event.target===this)closeSeoGradeModal()">
+  <div class="modal" style="max-width:480px;padding:20px;">
+    <div class="modal-title">SEO Grade</div>
+    <button class="modal-close" onclick="closeSeoGradeModal()">✕</button>
+    <div id="seoGradeBody" style="margin-top:10px;font-size:12px;color:#fff;"><div class="loading"><div class="spinner"></div>Grading…</div></div>
+    <div class="modal-actions" style="margin-top:16px;">
+      <button class="modal-btn cancel" onclick="closeSeoGradeModal()">Close</button>
+    </div>
+  </div>
+</div>
+<script>
+let _seoGradeTitleId = null;
+function closeSeoGradeModal() { document.getElementById('seoGradeModal').classList.remove('open'); }
+async function runAssetSeoGrade(assetId, titleId) {
+  _seoGradeTitleId = titleId || null;
+  const el = document.getElementById('seoGradeBody');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>Grading…</div>';
+  document.getElementById('seoGradeModal').classList.add('open');
+  try {
+    const r = await w('gradeAssetSeo', { assetId });
+    if (r.error) throw new Error(r.error);
+    const scoreColor = r.score == null ? '#999' : r.score >= 7 ? '#68d391' : r.score >= 4 ? '#f0b429' : '#fc8181';
+    el.innerHTML = `
+      <div style="font-size:22px;font-weight:700;color:${scoreColor};">${r.score == null ? '—' : r.score + ' / 10'}</div>
+      ${r.clusterName ? `<div style="font-size:10px;color:#8ab4f8;margin-top:2px;">Graded against: ${esc(r.clusterName)} Stack</div>` : `<div style="font-size:10px;color:#999;margin-top:2px;">Graded against: Main Keywords (no matching cluster)</div>`}
+      <div style="margin-top:10px;">${esc(r.summary || '')}</div>
+      ${(r.recommendations || []).length ? `<div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.06em;margin-top:12px;margin-bottom:4px;">Recommendations</div><ul style="margin:0 0 0 16px;padding:0;font-size:11px;color:#ccc;">${r.recommendations.map(x => `<li style="margin-bottom:4px;">${esc(x)}</li>`).join('')}</ul>` : ''}
+      ${r.suggestKeywordRegen && _seoGradeTitleId ? `<button class="modal-btn save" id="seoGradeRegenBtn" style="margin-top:14px;width:100%;" onclick="runRegenTitleKeywordsFromGrade(this)">↻ Regenerate this title's keywords</button>` : ''}
+    `;
+  } catch (e) {
+    el.innerHTML = `<div style="color:#fc8181;">Error: ${esc(e.message)}</div>`;
+  }
+}
+async function runRegenTitleKeywordsFromGrade(btn) {
+  if (!_seoGradeTitleId) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Regenerating…';
+  try {
+    const r = await w('regenerateTitleKeywords', { titleId: _seoGradeTitleId });
+    if (r.error) throw new Error(r.error);
+    btn.textContent = '✓ Keywords updated';
+  } catch (e) {
+    alert('Regenerate failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
   }
 }
 </script>

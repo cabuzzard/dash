@@ -2696,6 +2696,70 @@ Return ONLY this JSON, no other text: { "assetTitle": "short distinct option nam
   } catch(e) { return original; }
 }
 
+// Given a Product Stack name + campaignId, finds the matching SEO Cluster
+// (checks committed Notion rows first, then staged KV) and returns its
+// keywords, or "" if no match. Shared by everything that keeps a downstream
+// artifact (a Product's Keywords, a Title's seed keywords, an asset's SEO
+// grade) faithful to its originating SEO cluster — top-down keyword
+// fidelity, same rule as regenerateKeywordCluster itself.
+async function findClusterKeywordsForStack(env, hdr, stack, campaignId) {
+  if (!stack || !campaignId) return "";
+  const norm = s => String(s || "").replace(/-/g, "");
+  const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+  const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const [committedRows, staged] = await Promise.all([
+    notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+    env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json").catch(() => []),
+  ]);
+  const committedMatch = committedRows.find(r => ((r.properties?.Name?.title || []).map(t => t.plain_text).join("")) === stack);
+  if (committedMatch) return rtx(committedMatch, "Cluster Keywords");
+  const stagedMatch = (staged || []).find(c => c.name === stack);
+  return stagedMatch ? stagedMatch.keywords : "";
+}
+
+// SEO fit grade for ONE published asset, independent of gradeConcept()'s
+// strategy/viral hard gate above (deliberately not merged into that pass/
+// fail math — this is an informational grade + rewrite recommendation, not
+// a generation-blocking gate). Per operator direction: reinstated at the
+// bottom of the generation pipeline (best-effort, non-blocking) AND
+// callable one asset at a time on anything already published, to re-grade
+// existing content against the SEO strategy.
+async function gradeAssetSeo(env, { content, mainKeywords, clusterName, clusterKeywords }) {
+  if (!env.ANTHROPIC_API_KEY) return { score: null, summary: "Not graded (no ANTHROPIC_API_KEY).", recommendations: [], suggestKeywordRegen: false };
+  if (!content || !content.trim()) return { score: 0, summary: "No published content found to grade.", recommendations: ["Publish content for this asset before grading."], suggestKeywordRegen: false };
+  const prompt = `You are a strict SEO editor. Grade how well this published asset aligns with the campaign's SEO keyword strategy — specifically keyword/topic alignment, not general writing quality.
+
+PUBLISHED CONTENT:
+${content.slice(0, 4000)}
+
+${clusterName ? `THIS ASSET'S SEO CLUSTER — "${clusterName}": ${clusterKeywords}` : `MAIN KEYWORDS (no specific SEO cluster matched this asset — grade against the overall campaign keyword strategy instead): ${mainKeywords || "(none on file)"}`}
+
+Score SEO FIT 0-10: does the content naturally cover its cluster/keyword terms (not stuffed), stay on-topic for that focus, and read as something that would actually rank/convert for these terms? If it drifts off-topic from its cluster, or barely touches the keywords, score low.
+
+Return ONLY this JSON, no other text:
+{ "score": 0-10, "summary": "1-2 sentences on the actual fit", "recommendations": ["specific actionable rewrite point", "..."], "suggestKeywordRegen": true|false }`;
+
+  try {
+    const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: prompt }] }),
+    });
+    const aiData = await aiResp.json();
+    if (!aiResp.ok) throw new Error(aiData.error?.message || "grading call failed");
+    const raw = (aiData.content?.[0]?.text || "").replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "");
+    const parsed = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
+    return {
+      score: Math.max(0, Math.min(10, Number(parsed.score) || 0)),
+      summary: String(parsed.summary || "").slice(0, 500),
+      recommendations: Array.isArray(parsed.recommendations) ? parsed.recommendations.map(r => String(r).slice(0, 300)).slice(0, 6) : [],
+      suggestKeywordRegen: !!parsed.suggestKeywordRegen,
+    };
+  } catch(e) {
+    return { score: null, summary: "Grading failed: " + e.message, recommendations: [], suggestKeywordRegen: false };
+  }
+}
+
 // Researches and writes a COMPLETE Phase>Grouping>items methodology
 // framework for a method — the "replenish until fully researched" step.
 // Skips (returns {skipped:true}) if the method already has a substantial
@@ -11134,14 +11198,7 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
 
         let clusterBlock = "";
         if (productStack && campaignId) {
-          const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
-          const [committedRows, staged] = await Promise.all([
-            notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
-            env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json").catch(() => []),
-          ]);
-          const committedMatch = committedRows.find(r => ((r.properties?.Name?.title || []).map(t => t.plain_text).join("")) === productStack);
-          const stagedMatch = (staged || []).find(c => c.name === productStack);
-          const clusterKeywords = committedMatch ? rtx(committedMatch, "Cluster Keywords") : (stagedMatch ? stagedMatch.keywords : "");
+          const clusterKeywords = await findClusterKeywordsForStack(env, hdr, productStack, campaignId);
           if (clusterKeywords) clusterBlock = `\nSEO CLUSTER THIS PRODUCT BELONGS TO (Product Stack "${productStack}") — stay faithful to these, merge with the product's own keywords rather than drifting from them: ${clusterKeywords}\n`;
         }
 
@@ -11168,6 +11225,118 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords.slice(0, 1990) } }] } } }),
         });
         return json({ success: true, keywords });
+      }
+
+      // Same SEO-cluster-faithful merge as generateProductKeywords, but for
+      // a Title's own "seed idea" field — this is what the info-flow
+      // grading (gradeAssetSeo below) offers as its "regenerate title
+      // research" recommended fix. Resolves the cluster the same way: via
+      // the Title's Product's Product Stack.
+      if (body.action === "regenerateTitleKeywords") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const norm = s => String(s || "").replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(titleId))}`, { headers: hdr }).then(r => r.json());
+        const tp = titlePage.properties || {};
+        const titleName = (tp.Name?.title || []).map(t => t.plain_text).join("") || "Title";
+        const currentKeywords = (tp["seed idea"]?.rich_text || []).map(t => t.plain_text).join("");
+        const productId = (tp.Product?.relation || [])[0]?.id || null;
+
+        let clusterBlock = "";
+        if (productId) {
+          const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(productId))}`, { headers: hdr }).then(r => r.json());
+          const stack = (productPage.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("");
+          const campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
+          if (stack && campaignId) {
+            const clusterKeywords = await findClusterKeywordsForStack(env, hdr, stack, campaignId);
+            if (clusterKeywords) clusterBlock = `\nSEO CLUSTER THIS TITLE'S PRODUCT BELONGS TO (Product Stack "${stack}") — stay faithful to these, merge with the title's own keywords rather than drifting from them: ${clusterKeywords}\n`;
+          }
+        }
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this content title.
+
+TITLE: ${titleName}
+${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
+${clusterBlock}
+Return 8-12 real, specific keywords/phrases this piece of content should target — comma-separated, no other text, no numbering, no explanation.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 400, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const keywords = (aiData.content?.[0]?.text || "").trim();
+        if (!keywords) return json({ error: "Empty response from Claude" }, 500);
+
+        await fetch(`https://api.notion.com/v1/pages/${dash(norm(titleId))}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "seed idea": { rich_text: [{ type: "text", text: { content: keywords.slice(0, 1990) } }] } } }),
+        });
+        return json({ success: true, keywords });
+      }
+
+      // Grades ONE published asset's SEO fit against the campaign's SEO
+      // strategy — a singular, per-asset action (not a bulk sweep), but the
+      // same action can be run one at a time across every existing asset to
+      // backfill grades for content that predates this system. Resolves
+      // context the same way as generateProductKeywords: Asset -> its
+      // Title -> that Title's Product -> Product Stack -> matching SEO
+      // Cluster (staged or committed); falls back to the campaign's Main
+      // Keywords when no cluster matches. Never rewrites the asset itself —
+      // stores the grade + recommendations and returns them for the
+      // operator to act on (regenerateTitleKeywords is one of the
+      // recommended fixes, offered separately, never auto-applied).
+      if (body.action === "gradeAssetSeo") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const norm = s => String(s || "").replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtx = (props, k) => (props?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(assetId))}`, { headers: hdr }).then(r => r.json());
+        const ap = assetPage.properties || {};
+        const content = ["Body", "Post Copy", "Post Caption", "Description"].map(k => rtx(ap, k)).filter(Boolean).join("\n\n");
+        const titleId = (ap["Content Strategy"]?.relation || [])[0]?.id || null;
+
+        let clusterName = "", clusterKeywords = "", mainKeywords = "", campaignId = null;
+        if (titleId) {
+          const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(titleId))}`, { headers: hdr }).then(r => r.json());
+          const productId = (titlePage.properties?.Product?.relation || [])[0]?.id || null;
+          if (productId) {
+            const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(productId))}`, { headers: hdr }).then(r => r.json());
+            const stack = rtx(productPage.properties, "Product Stack");
+            campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
+            if (stack && campaignId) {
+              const found = await findClusterKeywordsForStack(env, hdr, stack, campaignId);
+              if (found) { clusterName = stack; clusterKeywords = found; }
+            }
+          }
+        }
+        if (!clusterName && campaignId) {
+          const researchRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
+          const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r.properties, k).length, 0);
+          const research = researchRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+          if (research) mainKeywords = rtx(research.properties, "Keywords");
+        }
+
+        const grade = await gradeAssetSeo(env, { content, mainKeywords, clusterName, clusterKeywords });
+        try {
+          await fetch(`https://api.notion.com/v1/pages/${dash(norm(assetId))}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: {
+              "SEO Grade Score": { number: grade.score },
+              "SEO Grade Notes": { rich_text: [{ type: "text", text: { content: [grade.summary, ...(grade.recommendations || [])].filter(Boolean).join(" ").slice(0, 1990) } }] },
+            } }),
+          });
+        } catch (e) { /* best-effort — still return the grade even if the write fails */ }
+
+        return json({ success: true, ...grade, clusterName: clusterName || null, titleId });
       }
 
       if (body.action === "createProduct") {
@@ -21994,6 +22163,24 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const siblingTitles = concepts.map(c => c.assetTitle).filter(Boolean);
         const gaMProp = await assetMethodProp(subMethodId || methodId, assetType);
 
+        // SEO-cluster context for the background grade below (reinstated at
+        // the bottom of the pipeline per operator direction) — resolved once
+        // per generation call, reused per created asset. Best-effort: never
+        // blocks or fails the generation itself.
+        let seoStackName = "", seoClusterKeywords = "", seoMainKeywords = "";
+        try {
+          if (hasProduct && productId) {
+            const productPage = await fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json());
+            seoStackName = (productPage.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("");
+          }
+          if (seoStackName && campaignId) seoClusterKeywords = await findClusterKeywordsForStack(env, dsHdr, seoStackName, campaignId);
+          if (!seoClusterKeywords && campaignId) {
+            const researchRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }).catch(() => []);
+            const rtxR = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+            if (researchRows[0]) seoMainKeywords = rtxR(researchRows[0], "Keywords");
+          }
+        } catch (e) { /* best-effort */ }
+
         const created = [];
         const failures = [];
         for (const c of concepts.slice(0, count)) {
@@ -22043,7 +22230,29 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties }),
           });
           const result = await resp.json();
-          if (resp.ok && result.id) created.push({ id: result.id.replace(/-/g,""), title: current.assetTitle || "Untitled option", gradeScore: grade ? grade.score : null, passed });
+          if (resp.ok && result.id) {
+            const newAssetId = result.id.replace(/-/g,"");
+            created.push({ id: newAssetId, title: current.assetTitle || "Untitled option", gradeScore: grade ? grade.score : null, passed });
+            // SEO fit grade, reinstated at the bottom of the pipeline per
+            // operator direction — runs after the response has already
+            // started, never blocks or affects asset creation. Silent on
+            // failure (ctx.waitUntil has no path back to the caller).
+            if (ctx && typeof ctx.waitUntil === "function") {
+              const gradeContent = String(current.body || "");
+              ctx.waitUntil((async () => {
+                try {
+                  const seoGrade = await gradeAssetSeo(env, { content: gradeContent, mainKeywords: seoMainKeywords, clusterName: seoClusterKeywords ? seoStackName : "", clusterKeywords: seoClusterKeywords });
+                  await fetch(`https://api.notion.com/v1/pages/${dsDash(newAssetId)}`, {
+                    method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                    body: JSON.stringify({ properties: {
+                      "SEO Grade Score": { number: seoGrade.score },
+                      "SEO Grade Notes": { rich_text: [{ type: "text", text: { content: [seoGrade.summary, ...(seoGrade.recommendations || [])].filter(Boolean).join(" ").slice(0, 1990) } }] },
+                    } }),
+                  });
+                } catch (e) { /* best-effort */ }
+              })());
+            }
+          }
           else failures.push(result.message || "create failed");
         }
         if (!created.length) return json({ error: "All asset creates failed: " + (failures[0] || "unknown") }, 502);
