@@ -11723,12 +11723,24 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
         const sleep = ms => new Promise(res => setTimeout(res, ms));
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
-        const rows = await notionQuery(CONTENT_STRATEGY_DB, {
-          filter: { property: "Status", select: { equals: "Publish" } },
-        }).catch(e => { console.error('revertPublishedTitlesToDevelopment query:', e.message); return []; });
-        const MAX_WRITES = 90;
+        // Single unpaginated page only (not notionQuery, which loops through
+        // EVERY match — with the whole system potentially having hundreds of
+        // stray Publish titles, that pagination alone was blowing the
+        // Worker's subrequest-per-invocation cap before a single PATCH ran).
+        // Each call fixes up to MAX_WRITES titles; since a fixed title stops
+        // matching the filter, repeat calls naturally surface a fresh page —
+        // no cursor needs to be threaded between calls.
+        const MAX_WRITES = 25;
+        const qResp = await fetch(`https://api.notion.com/v1/databases/${CONTENT_STRATEGY_DB}/query`, {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({ filter: { property: "Status", select: { equals: "Publish" } }, page_size: MAX_WRITES }),
+        });
+        const qData = await qResp.json();
+        if (!qResp.ok) { console.error('revertPublishedTitlesToDevelopment query:', qData.message); return json({ error: qData.message || "Notion query failed" }, 500); }
+        const rows = qData.results || [];
+        const hasMore = !!qData.has_more;
         let reverted = 0; const failures = [];
-        const batch = rows.slice(0, MAX_WRITES);
+        const batch = rows;
         for (const t of batch) {
           let ok = false;
           for (let attempt = 0; attempt < 2 && !ok; attempt++) {
@@ -11743,9 +11755,12 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           if (ok) reverted++; else failures.push(norm(t.id));
           await sleep(180); // ~5 writes/sec, under Notion's ~3/sec sustained + burst
         }
-        const remaining = Math.max(0, rows.length - batch.length);
-        return json({ success: true, totalMatched: rows.length, reverted, failed: failures.length, remaining,
-          note: remaining ? `${remaining} more titles still at Publish — run again` : "no titles left at Status Publish" });
+        // hasMore = Notion says this page wasn't everything; failures also
+        // still match the filter next round (they weren't reverted) — either
+        // way there's more to do. No exact count without a second query.
+        const remaining = (hasMore || failures.length > 0) ? 1 : 0;
+        return json({ success: true, pageSize: rows.length, reverted, failed: failures.length, remaining,
+          note: remaining ? "more titles still at Publish — run again" : "no titles left at Status Publish" });
       }
 
       if (body.action === "createMatType") {
