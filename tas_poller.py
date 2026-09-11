@@ -8,13 +8,23 @@ Usage:
     python tas_poller.py
 """
 
+import sys
 import time
 import requests
 import yfinance as yf
 from datetime import datetime, timezone, date
 
+# Windows redirects stdout to the OEM codepage (cp1252) when it's not a
+# console (e.g. `> tas_poller.log`), which can't encode the arrow/star
+# characters used in the status prints below — reconfigure to UTF-8 so a
+# single print() doesn't crash and abort the rest of that poll cycle.
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 WORKER_URL  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev"
-WORKER_PIN  = "1246"
+WORKER_PIN  = "135679"
 POLL_SECS   = 30 * 60   # 30 minutes
 
 # ── Auth ──────────────────────────────────────────────────────────────
