@@ -24371,7 +24371,7 @@ CAMPAIGN KEYWORDS (the raw pool to organize — every keyword should end up in e
 ${keywords}
 
 ${existingClusters.length ? `ALREADY-COMMITTED CLUSTERS (don't recreate these — build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
-For each cluster, give: a short clear name (2-5 words, describes the topic, not a slogan), the exact keywords from the pool that belong to it, and a one-sentence rationale for why they group together. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
+For each cluster, give: a name that is its single top/most representative keyword from the pool, EXACTLY as that keyword appears there (not an invented phrase, not a paraphrase — pick the one keyword that best represents the whole cluster); the exact keywords from the pool that belong to it (including that top keyword); and a one-sentence rationale for why they group together. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
 
 Call submit_keyword_clusters with your result.`;
 
@@ -24391,7 +24391,7 @@ Call submit_keyword_clusters with your result.`;
                     items: {
                       type: "object",
                       properties: {
-                        name: { type: "string" },
+                        name: { type: "string", description: "this cluster's single top/most representative keyword, exactly as it appears in the pool" },
                         keywords: { type: "string", description: "comma-separated keywords from the pool that belong to this cluster" },
                         rationale: { type: "string" },
                       },
@@ -24446,6 +24446,100 @@ Call submit_keyword_clusters with your result.`;
         return json({ success: true, staged });
       }
 
+      // Regenerate exactly ONE staged cluster in place — every other staged/
+      // committed cluster's keyword allocation is treated as fixed and passed
+      // to Claude as already-spoken-for; this one can also reach into any
+      // still-unclaimed keywords from the pool. Per-cluster ↻ regen in the
+      // microsite's SEO Clusters section (bulk generateKeywordClusters covers
+      // the initial batch only).
+      if (body.action === "regenerateKeywordCluster") {
+        const { campaignId, clusterId, guidance } = body;
+        if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        const idx = staged.findIndex(c => c.id === clusterId);
+        if (idx < 0) return json({ error: "Staged cluster not found — it may already be committed or regenerated" }, 404);
+        const target = staged[idx];
+
+        const [researchRows, committedRows] = await Promise.all([
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+          notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+        ]);
+        const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const research = researchRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+        const keywords = rtx(research, "Keywords");
+        if (!keywords) return json({ error: "No Keywords on file for this campaign's Research record" }, 400);
+
+        const otherFixed = [
+          ...staged.filter(c => c.id !== clusterId).map(c => ({ name: c.name, keywords: c.keywords })),
+          ...committedRows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+        ];
+
+        const prompt = `Regenerate ONE keyword cluster (an SEO silo) from this campaign's Main Keywords pool — refine or rethink just this one; leave every other cluster exactly as it is.
+
+FULL KEYWORD POOL:
+${keywords}
+
+OTHER CLUSTERS (fixed — already claimed, do not reuse these keywords):
+${otherFixed.length ? otherFixed.map(c => `- ${c.name}: ${c.keywords}`).join("\n") : "(none yet)"}
+
+CLUSTER TO REGENERATE (current version — improve it, or rework it):
+- Name: ${target.name}
+- Keywords: ${target.keywords}
+- Rationale: ${target.rationale}
+
+${guidance ? `OPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+You may pull in currently-unclaimed keywords from the pool if it makes this cluster tighter or more complete. Give: a name that is this cluster's single top/most representative keyword, EXACTLY as it appears in the pool (not an invented phrase); the exact keywords (from the pool) that belong, including that top keyword; and a one-sentence rationale.
+
+Call submit_keyword_cluster with your result.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_keyword_cluster",
+              description: "Submit the regenerated cluster.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "this cluster's single top/most representative keyword, exactly as it appears in the pool" },
+                  keywords: { type: "string", description: "comma-separated keywords from the pool" },
+                  rationale: { type: "string" },
+                },
+                required: ["name", "keywords", "rationale"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_keyword_cluster" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_cluster");
+        if (!toolUse) return json({ error: "Claude did not return a cluster — try again" }, 502);
+
+        staged[idx] = { id: clusterId, name: String(toolUse.input.name || "").slice(0, 100), keywords: String(toolUse.input.keywords || "").slice(0, 1900), rationale: String(toolUse.input.rationale || "").slice(0, 500) };
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
+      }
+
+      // Discard one staged (uncommitted) cluster outright — an idea rejected,
+      // not a Notion archive (nothing was ever created there for a staged row).
+      if (body.action === "removeStagedKeywordCluster") {
+        const { campaignId, clusterId } = body;
+        if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        staged = staged.filter(c => c.id !== clusterId);
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
+      }
+
       if (body.action === "commitKeywordCluster") {
         const { campaignId, clusterId } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
@@ -24485,6 +24579,94 @@ Call submit_keyword_clusters with your result.`;
         const r = await resp.json();
         if (!resp.ok) return json({ error: r.message || "Archive failed" }, resp.status);
         return json({ success: true });
+      }
+
+      // Proposed product stacks off an UNCOMMITTED keyword cluster — per
+      // operator direction, this runs on staged (not-yet-committed) clusters,
+      // right alongside them, not gated on committing first. Staged inline on
+      // the cluster object itself (a `products` array) so it rides along with
+      // that cluster's own edit/regenerate/commit lifecycle; nothing is
+      // created in Notion here — idea generation only, same "invented fresh,
+      // never matched against existing products" rule as generateKeywordClusters.
+      if (body.action === "generateClusterProductStacks") {
+        const { campaignId, clusterId, guidance } = body;
+        if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        const idx = staged.findIndex(c => c.id === clusterId);
+        if (idx < 0) return json({ error: "Staged cluster not found — it may already be committed or regenerated" }, 404);
+        const cluster = staged[idx];
+
+        const productRows = await notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
+        const productNames = productRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
+
+        const prompt = `Propose product concepts for ONE keyword cluster (an SEO silo / product stack) that doesn't exist yet — you're inventing what could live under this stack, not filling in anything real.
+
+STACK: ${cluster.name}
+CLUSTER KEYWORDS: ${cluster.keywords}
+RATIONALE: ${cluster.rationale}
+
+${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match or avoid duplicating these; per operator direction, proposals are invented fresh from the cluster's own keywords):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+For each proposed product, give: a short working name/title, a one-sentence angle (what it is / who it's for / why it earns its own page), and the specific keywords from the cluster (plus close long-tail variants if useful) it would target. 2-5 products depending on how the cluster naturally splits — don't force an arbitrary count.
+
+Call submit_product_stack_proposals with your result.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_product_stack_proposals",
+              description: "Submit proposed product concepts for this cluster/stack.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  products: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        angle: { type: "string" },
+                        keywords: { type: "string", description: "comma-separated keywords (from the cluster, plus close long-tail variants) this product would target" },
+                      },
+                      required: ["name", "angle", "keywords"],
+                    },
+                  },
+                },
+                required: ["products"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_product_stack_proposals" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_product_stack_proposals");
+        if (!toolUse || !toolUse.input?.products?.length) return json({ error: "Claude did not return proposals — try again" }, 502);
+
+        cluster.products = toolUse.input.products.map((p, i) => ({ id: `p${i}`, name: String(p.name || "").slice(0, 150), angle: String(p.angle || "").slice(0, 500), keywords: String(p.keywords || "").slice(0, 1000) }));
+        staged[idx] = cluster;
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
+      }
+
+      // Dismiss one proposed product off a staged cluster — an idea rejected,
+      // not a real delete of anything (nothing was ever created in Notion).
+      if (body.action === "removeClusterProductStack") {
+        const { campaignId, clusterId, productId } = body;
+        if (!campaignId || !clusterId || !productId) return json({ error: "campaignId, clusterId and productId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        const idx = staged.findIndex(c => c.id === clusterId);
+        if (idx < 0) return json({ error: "Staged cluster not found" }, 404);
+        staged[idx].products = (staged[idx].products || []).filter(p => p.id !== productId);
+        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        return json({ success: true, staged });
       }
 
       // -- saveImageSpec — freeze the spec text the card is showing onto the

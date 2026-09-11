@@ -293,9 +293,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
 <!-- SEC 1b: three col — keywords / product ideas / notes -->
 <div class="three-col">
   <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
+    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:6px;"><span class="editable" onclick="openModal('keywords')">Main Keywords</span><button id="kwRegenBtn" onclick="runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button></h2>
     <div class="content">
       <div class="kw-list" id="r-keywords"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+
+      <div style="margin-top:16px;border-top:1px solid #333;padding-top:10px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px;">
+          <span style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;">SEO Clusters</span>
+          <button id="seoClusterGenBtn" onclick="runGenerateSeoClusters()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate</button>
+        </div>
+        <div style="font-size:9.5px;color:#999;margin-bottom:6px;">Silos grouped off Main Keywords above — ideas only, nothing here is what the campaign actually uses until Main Keywords itself changes.</div>
+        <div id="r-seoclusters"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      </div>
     </div>
   </div>
   <div class="col">
@@ -308,6 +317,11 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </h2>
     <div class="content">
       <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+
+      <div style="margin-top:16px;border-top:1px solid #333;padding-top:10px;">
+        <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;margin-bottom:6px;">Cluster Ideas <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;color:#999;">— off each SEO Cluster, none of these are committed</span></div>
+        <div id="r-clusterideas"><div style="font-size:10px;color:#999;">Generate SEO Clusters first.</div></div>
+      </div>
     </div>
   </div>
   <div class="col">
@@ -2262,6 +2276,166 @@ async function runSMTrends() {
   }
 }
 
+// ── SEO Clusters + Cluster Ideas (Keywords & Notes tab) ───────────────
+// Separate from the Research record's own fields — own worker calls
+// (getKeywordClusters), staged in KV until Commit writes a real
+//🔑 Keyword Clusters row. Cluster Ideas (proposed products) live inline on
+// the staged cluster object itself and are NEVER committed — pure ideation.
+// Groups render collapsed by default, same convention as Products' Product
+// Stack groups (COLLAPSED_STACKS/SEEN_STACKS above) — session-only, not
+// persisted across a reload.
+let SEO_CLUSTERS = { staged: [], committed: [] };
+let SEO_CLUSTERS_FETCHED = false;
+let COLLAPSED_KW_GROUPS = new Set();
+const SEEN_KW_GROUPS = new Set();
+function toggleKwGroup(key) {
+  if (COLLAPSED_KW_GROUPS.has(key)) COLLAPSED_KW_GROUPS.delete(key);
+  else COLLAPSED_KW_GROUPS.add(key);
+  renderSeoClusters();
+  renderClusterIdeas();
+}
+function loadSeoClusters(force) {
+  if (SEO_CLUSTERS_FETCHED && !force) return;
+  SEO_CLUSTERS_FETCHED = true;
+  w('getKeywordClusters', { campaignId: CAMPAIGN_ID }).then(r => {
+    SEO_CLUSTERS = { staged: r.staged || [], committed: r.committed || [] };
+    renderSeoClusters();
+    renderClusterIdeas();
+  }).catch(() => {
+    const el = document.getElementById('r-seoclusters');
+    if (el) el.innerHTML = '<div style="font-size:10px;color:#c0392b;">Failed to load — try again.</div>';
+  });
+}
+function kwGroupHeader(key, color, label, count) {
+  const collapsed = SEEN_KW_GROUPS.has(key) ? COLLAPSED_KW_GROUPS.has(key) : (SEEN_KW_GROUPS.add(key), COLLAPSED_KW_GROUPS.add(key), true);
+  return { collapsed, html: `<div onclick="toggleKwGroup('${key}')" style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:${color};margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:5px;user-select:none;"><span style="display:inline-block;width:8px;transform:rotate(${collapsed ? '-90deg' : '0deg'});transition:transform .12s;">▾</span>${esc(label)} <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;">(${count})</span></div>` };
+}
+function renderSeoClusters() {
+  const el = document.getElementById('r-seoclusters');
+  if (!el) return;
+  const committed = SEO_CLUSTERS.committed || [];
+  const staged = SEO_CLUSTERS.staged || [];
+  if (!committed.length && !staged.length) { el.innerHTML = '<div style="font-size:10px;color:#999;">No clusters yet — ↻ generate (needs Main Keywords set above).</div>'; return; }
+  let html = '';
+  committed.forEach(c => {
+    const key = 'c:' + c.id;
+    const kwCount = (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean).length;
+    const hdr = kwGroupHeader(key, '#a78bfa', c.name, kwCount);
+    const inner = hdr.collapsed ? '' : `<div style="font-size:10px;color:#ccc;margin-bottom:3px;">${esc(c.keywords)}</div>${c.rationale ? `<div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>` : ''}<div style="display:flex;gap:8px;align-items:center;"><a href="${esc(c.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:10px;color:#8ab4f8;text-decoration:none;">open in Notion ↗</a><button onclick="event.stopPropagation();archiveSeoCluster('${esc(c.id)}')" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">✕ archive</button></div>`;
+    html += `<div style="border-left:2px solid #a78bfa;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
+  });
+  staged.forEach(c => {
+    const key = 's:' + c.id;
+    const kwCount = (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean).length;
+    const hdr = kwGroupHeader(key, '#ffb020', c.name + ' — staged', kwCount);
+    const inner = hdr.collapsed ? '' : `
+      <input value="${esc(c.name)}" onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','name',this.value)" style="width:100%;font-size:11px;font-weight:600;background:transparent;border:0;border-bottom:1px solid #444;color:#fff;padding:2px 0;margin-bottom:5px;">
+      <textarea onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','keywords',this.value)" rows="2" style="width:100%;box-sizing:border-box;font-size:10px;color:#ccc;background:#1a1a1a;border:1px solid #444;border-radius:4px;padding:4px;resize:vertical;margin-bottom:5px;">${esc(c.keywords)}</textarea>
+      <div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <button onclick="event.stopPropagation();regenSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button>
+        <button onclick="event.stopPropagation();commitSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #68d391;background:transparent;color:#68d391;font-weight:600;cursor:pointer;">💾 commit</button>
+        <button onclick="event.stopPropagation();deleteStagedSeoCluster('${esc(c.id)}')" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">✕</button>
+      </div>`;
+    html += `<div style="border-left:2px solid #ffb020;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
+  });
+  el.innerHTML = html;
+}
+function renderClusterIdeas() {
+  const el = document.getElementById('r-clusterideas');
+  if (!el) return;
+  const staged = SEO_CLUSTERS.staged || [];
+  if (!staged.length) { el.innerHTML = '<div style="font-size:10px;color:#999;">Generate SEO Clusters first.</div>'; return; }
+  let html = '';
+  staged.forEach(c => {
+    const key = 'ci:' + c.id;
+    const products = c.products || [];
+    const hdr = kwGroupHeader(key, '#ffb020', c.name, products.length);
+    const inner = hdr.collapsed ? '' : `
+      <button onclick="event.stopPropagation();proposeClusterProducts('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;margin-bottom:6px;">↻ propose products</button>
+      ${products.length ? products.map(p => `
+        <div style="border:1px solid #333;border-radius:5px;padding:6px 8px;margin-bottom:5px;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="flex:1;min-width:0;font-size:11px;font-weight:600;color:#fff;">${esc(p.name)}</span>
+            <button onclick="event.stopPropagation();dismissClusterProduct('${esc(c.id)}','${esc(p.id)}')" style="border:0;background:none;color:#999;cursor:pointer;font-size:11px;">✕</button>
+          </div>
+          <div style="font-size:10px;color:#ccc;margin-top:2px;">${esc(p.angle)}</div>
+          <div style="font-size:9px;color:#999;margin-top:2px;">${esc(p.keywords)}</div>
+        </div>`).join('') : '<div style="font-size:9.5px;color:#999;">No proposals yet.</div>'}`;
+    html += `<div style="border-left:2px solid #ffb020;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
+  });
+  el.innerHTML = html;
+}
+async function runGenerateSeoClusters() {
+  const btn = document.getElementById('seoClusterGenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'grouping…';
+  try {
+    const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID });
+    SEO_CLUSTERS.staged = r.staged || [];
+    renderSeoClusters(); renderClusterIdeas();
+  } catch (e) { alert('Generate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function editStagedSeoCluster(clusterId, field, value) {
+  try {
+    const payload = { campaignId: CAMPAIGN_ID, clusterId }; payload[field] = value;
+    const r = await w('updateStagedKeywordCluster', payload);
+    SEO_CLUSTERS.staged = r.staged || [];
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+async function regenSeoCluster(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId });
+    SEO_CLUSTERS.staged = r.staged || [];
+    renderSeoClusters(); renderClusterIdeas();
+  } catch (e) { alert('Regenerate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function commitSeoCluster(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    await w('commitKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId });
+    SEO_CLUSTERS_FETCHED = false;
+    loadSeoClusters(true);
+  } catch (e) {
+    alert('Commit failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+async function deleteStagedSeoCluster(clusterId) {
+  if (!confirm('Discard this staged cluster idea?')) return;
+  try {
+    const r = await w('removeStagedKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId });
+    SEO_CLUSTERS.staged = r.staged || [];
+    renderSeoClusters(); renderClusterIdeas();
+  } catch (e) { alert('Remove failed: ' + e.message); }
+}
+async function archiveSeoCluster(clusterId) {
+  if (!confirm('Archive this cluster? (kept in Notion trash, not deleted)')) return;
+  try {
+    await w('archiveKeywordCluster', { clusterId });
+    SEO_CLUSTERS_FETCHED = false;
+    loadSeoClusters(true);
+  } catch (e) { alert('Archive failed: ' + e.message); }
+}
+async function proposeClusterProducts(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'proposing…';
+  try {
+    const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId });
+    SEO_CLUSTERS.staged = r.staged || [];
+    renderClusterIdeas();
+  } catch (e) { alert('Generate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function dismissClusterProduct(clusterId, productId) {
+  try {
+    const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId });
+    SEO_CLUSTERS.staged = r.staged || [];
+    renderClusterIdeas();
+  } catch (e) { alert('Remove failed: ' + e.message); }
+}
+
 function renderProductIdeas(text) {
   const el = document.getElementById('r-prodideas');
   if (!el) return;
@@ -2732,6 +2906,10 @@ async function loadResearch() {
 
     // SEC 3 — Product Ideas field
     renderProductIdeas(r.productIdeas || '');
+
+    // SEO Clusters + Cluster Ideas — separate from the Research record fields
+    // above, own worker calls (getKeywordClusters), loaded once per page load.
+    loadSeoClusters();
 
     // SEC 3 — TikTok Shop Products field
     renderTikTokShop(r.tikTokShopProducts || '');
