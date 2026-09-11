@@ -15170,7 +15170,38 @@ function hamSortCols(cols) {
 let _hamDragCol = null, _hamDragging = false;
 function hamColDragStart(id, e) { _hamDragCol = id; _hamDragging = true; if (e && e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }
 function hamColDragEnd() { setTimeout(() => { _hamDragging = false; }, 80); }
-function hamColClick(id) { if (_hamDragging) return; openMatTypeModal(id); }
+function hamColClick(id) { if (_hamDragging || _hamResizing) return; openMatTypeModal(id); }
+// Per-column pixel width, dragged via the thin handle on each method header's
+// right edge (col-resize cursor) — independent of hamColOrder (position).
+// table-layout:fixed + these <col> widths make the drag deterministic instead
+// of the browser re-flowing every column on each mousemove.
+const HAM_COL_MIN = 44, HAM_COL_DEFAULT = 72, HAM_COL_MAX = 360;
+let hamColWidths = {};
+try { hamColWidths = JSON.parse(localStorage.getItem('hamColWidths') || '{}'); } catch(e) {}
+function hamSaveColWidths() { try { localStorage.setItem('hamColWidths', JSON.stringify(hamColWidths)); } catch(e) {} }
+let _hamResizing = false, _hamResizeColId = null, _hamResizeStartX = 0, _hamResizeStartW = 0;
+function hamColResizeStart(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  _hamResizing = true; _hamResizeColId = id; _hamResizeStartX = e.clientX;
+  _hamResizeStartW = hamColWidths[id] || HAM_COL_DEFAULT;
+  document.addEventListener('mousemove', hamColResizeMove);
+  document.addEventListener('mouseup', hamColResizeEnd);
+}
+function hamColResizeMove(e) {
+  if (!_hamResizing) return;
+  const w = Math.max(HAM_COL_MIN, Math.min(HAM_COL_MAX, _hamResizeStartW + (e.clientX - _hamResizeStartX)));
+  const col = document.querySelector('col[data-ham-col="' + CSS.escape(_hamResizeColId) + '"]');
+  if (col) col.style.width = w + 'px';
+}
+function hamColResizeEnd(e) {
+  if (!_hamResizing) return;
+  const w = Math.max(HAM_COL_MIN, Math.min(HAM_COL_MAX, _hamResizeStartW + (e.clientX - _hamResizeStartX)));
+  hamColWidths[_hamResizeColId] = w;
+  hamSaveColWidths();
+  document.removeEventListener('mousemove', hamColResizeMove);
+  document.removeEventListener('mouseup', hamColResizeEnd);
+  setTimeout(() => { _hamResizing = false; _hamResizeColId = null; }, 50);
+}
 function hamColDrop(targetId) {
   const src = _hamDragCol; _hamDragCol = null;
   if (!src || src === targetId || !HAM_DATA) return;
@@ -15215,17 +15246,18 @@ function renderHubAssetMatrix() {
   const cols = hamSortCols(HAM_DATA.columns || []);
   const counts = HAM_DATA.counts || {};
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No methods yet — use + method.</div>'; if (summary) summary.textContent = ''; return; }
-  const colgroup = `<colgroup><col style="width:76px;"><col style="width:15px;"><col style="width:15px;">${cols.map(() => '<col>').join('')}</colgroup>`;
+  const colgroup = `<colgroup><col style="width:76px;"><col style="width:15px;"><col style="width:15px;">${cols.map(c => `<col data-ham-col="${esc(c.id)}" style="width:${hamColWidths[c.id] || HAM_COL_DEFAULT}px;">`).join('')}</colgroup>`;
   const headRow = cols.map(c => {
     const id = esc(JSON.stringify(c.id));
     const ts = hamTypeStyle(c.type);
-    return `<th title="${esc(c.name)}${c.type ? ' — ' + esc(c.type) : ''}${c.status ? ' · ' + esc(c.status) : ''} · click to edit · drag to reorder" draggable="true"`
+    return `<th title="${esc(c.name)}${c.type ? ' — ' + esc(c.type) : ''}${c.status ? ' · ' + esc(c.status) : ''} · click to edit · drag to reorder · drag right edge to resize" draggable="true"`
     + ` onclick="hamColClick(${id})"`
     + ` ondragstart="hamColDragStart(${id},event)" ondragover="event.preventDefault()"`
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline='';hamColDragEnd()" ondrop="this.style.outline='';hamColDrop(${id})"`
-    + ` style="padding:4px 2px;border-left:1px solid var(--border);border-top:2px solid ${ts.fg || 'transparent'};background:${ts.bg || 'transparent'};vertical-align:bottom;cursor:pointer;">`
+    + ` style="padding:4px 2px;border-left:1px solid var(--border);border-top:2px solid ${ts.fg || 'transparent'};background:${ts.bg || 'transparent'};vertical-align:bottom;cursor:pointer;position:relative;overflow:hidden;">`
     + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${ts.fg || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
+    + `<span draggable="false" title="Drag to resize this column" onmousedown="hamColResizeStart(${id},event)" onclick="event.stopPropagation()" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='transparent'" style="position:absolute;top:0;right:0;bottom:0;width:6px;cursor:col-resize;z-index:5;"></span>`
     + `</th>`;
   }).join('');
   let totDev = 0, totPub = 0, totPubd = 0;
@@ -15248,7 +15280,7 @@ function renderHubAssetMatrix() {
       const cd = cell.dev || 0, cp = cell.pub || 0, cpd = cell.pubd || 0;
       totDev += cd; totPub += cp; totPubd += cpd;
       const empty = !cd && !cp && !cpd;
-      tds += `<td title="${esc(c.name)} · ${cd} development · ${cp} publish · ${cpd} published asset${cpd === 1 ? '' : 's'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;">`
+      tds += `<td title="${esc(c.name)} · ${cd} development · ${cp} publish · ${cpd} published asset${cpd === 1 ? '' : 's'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:clip;">`
         + (empty ? '<span style="color:var(--text3);">·</span>'
           : `<span style="color:#5aa6db;font-weight:${cd ? '700' : '400'};">${cd || '-'}</span>`
             + `<span style="color:var(--text3);">/</span>`
@@ -15263,8 +15295,8 @@ function renderHubAssetMatrix() {
   const corner = `<th style="background:var(--bg);"></th>`
     + `<th title="Admin microsite" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">ms</th>`
     + `<th title="Live content hub" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">hub</th>`;
-  body.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> titles / <span style="color:#d9a441;">Publish</span> / <span style="color:#5fbf7c;">Published</span> assets per hub × method (an asset is attributed through the title it was made from) · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder</div>`;
+  body.innerHTML = `<div style="overflow-x:auto;"><table style="table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> titles / <span style="color:#d9a441;">Publish</span> / <span style="color:#5fbf7c;">Published</span> assets per hub × method (an asset is attributed through the title it was made from) · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder, drag a header's right edge to resize it</div>`;
 }
 let matEditingId = null;
 async function openMatTypeModal(methodId) {
