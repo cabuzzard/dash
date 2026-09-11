@@ -2332,8 +2332,9 @@ function renderSeoClusters() {
       <input value="${esc(c.name)}" onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','name',this.value)" style="width:100%;font-size:11px;font-weight:600;background:transparent;border:0;border-bottom:1px solid #444;color:#fff;padding:2px 0;margin-bottom:5px;">
       <textarea onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','keywords',this.value)" rows="2" style="width:100%;box-sizing:border-box;font-size:10px;color:#ccc;background:#1a1a1a;border:1px solid #444;border-radius:4px;padding:4px;resize:vertical;margin-bottom:5px;">${esc(c.keywords)}</textarea>
       <div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>
-      <div style="display:flex;gap:6px;align-items:center;">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
         <button onclick="event.stopPropagation();regenSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button>
+        <button onclick="event.stopPropagation();proposeStackFromCluster('${esc(c.id)}', this)" title="Generate a proposed product stack for this cluster — shows up as a collapsed group in the Product Ideas column, right of here" style="font-size:10px;padding:2px 9px;border:1px solid #8ab4f8;background:transparent;color:#8ab4f8;cursor:pointer;">🏗 propose stack${(c.products && c.products.length) ? ' (' + c.products.length + ')' : ''}</button>
         <button onclick="event.stopPropagation();commitSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #68d391;background:transparent;color:#68d391;font-weight:600;cursor:pointer;">💾 commit</button>
         <button onclick="event.stopPropagation();deleteStagedSeoCluster('${esc(c.id)}')" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">✕</button>
       </div>`;
@@ -2341,6 +2342,9 @@ function renderSeoClusters() {
   });
   el.innerHTML = html;
 }
+// Product ideas grouped by keyword stack (one collapsed group per staged
+// cluster) — same clusters as the SEO Clusters column, so a stack proposed
+// from there (🏗 propose stack) lands here automatically.
 function renderClusterIdeas() {
   const el = document.getElementById('r-clusterideas');
   if (!el) return;
@@ -2350,8 +2354,9 @@ function renderClusterIdeas() {
   staged.forEach(c => {
     const key = 'ci:' + c.id;
     const products = c.products || [];
-    const hdr = kwGroupHeader(key, '#ffb020', c.name, products.length);
+    const hdr = kwGroupHeader(key, '#ffb020', 'Proposed Stack — ' + c.name, products.length);
     const inner = hdr.collapsed ? '' : `
+      <div style="font-size:9px;color:#999;margin-bottom:6px;">Products matching this keyword stack's cluster: <span style="color:#ccc;">${esc(c.keywords)}</span></div>
       <button onclick="event.stopPropagation();proposeClusterProducts('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;margin-bottom:6px;">↻ propose products</button>
       ${products.length ? products.map(p => `
         <div style="border:1px solid #333;border-radius:5px;padding:6px 8px;margin-bottom:5px;">
@@ -2424,6 +2429,23 @@ async function proposeClusterProducts(clusterId, btn) {
   try {
     const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId });
     SEO_CLUSTERS.staged = r.staged || [];
+    renderClusterIdeas();
+  } catch (e) { alert('Generate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+// Triggered from a cluster's own card in the SEO Clusters column — generates
+// (or regenerates) that cluster's proposed product stack, then un-collapses
+// its matching group over in the Product Ideas column so the result is
+// immediately visible without a second click there.
+async function proposeStackFromCluster(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '🏗 proposing…';
+  try {
+    const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId });
+    SEO_CLUSTERS.staged = r.staged || [];
+    const key = 'ci:' + clusterId;
+    SEEN_KW_GROUPS.add(key);
+    COLLAPSED_KW_GROUPS.delete(key);
+    renderSeoClusters();
     renderClusterIdeas();
   } catch (e) { alert('Generate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
