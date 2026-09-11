@@ -2412,8 +2412,11 @@ function renderClusterIdeas() {
     const products = c.products || [];
     const hdr = kwGroupHeader(key, '#ffb020', c.name + ' Stack — Product Ideas', products.length);
     const inner = hdr.collapsed ? '' : `
-      <div style="font-size:9px;color:#999;margin-bottom:6px;">Products matching this cluster's keywords: <span style="color:#ccc;">${esc(c.keywords)}</span></div>
-      <button onclick="event.stopPropagation();proposeClusterProducts('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;margin-bottom:6px;">↻ propose products</button>
+      <div style="font-size:9px;color:#999;margin-bottom:6px;">Monetizable products researched for this cluster's keywords: <span style="color:#ccc;">${esc(c.keywords)}</span></div>
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+        <input id="genProdOverride-${esc(c.id)}" onclick="event.stopPropagation();" type="text" placeholder="platform/pathway override…" style="font-size:10px;padding:3px 7px;border:1px solid #444;border-radius:5px;background:#1a1a1a;color:#fff;width:150px;outline:none;">
+        <button onclick="event.stopPropagation();proposeClusterProducts('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ propose products</button>
+      </div>
       ${products.length ? products.map(p => {
         const srcQ = String(p.name || '').replace(/'/g,"\\'").replace(/"/g,'&quot;');
         return `
@@ -2424,6 +2427,7 @@ function renderClusterIdeas() {
             <button class="td-add-btn-inline" onclick="event.stopPropagation();addClusterIdeaToProduct('${esc(c.id)}','${esc(p.id)}', this)" title="Add to campaign Products — keywords carried down from this cluster">+ Product</button>
             <button onclick="event.stopPropagation();dismissClusterProduct('${esc(c.id)}','${esc(p.id)}')" style="border:0;background:none;color:#999;cursor:pointer;font-size:11px;">✕</button>
           </div>
+          ${(p.platform || p.type) ? `<div style="font-size:9.5px;color:#8ab4f8;margin-top:2px;">${esc(p.platform || '')}${p.platform && p.type ? ' · ' : ''}${esc(p.type || '')}</div>` : ''}
           <div class="idea-card-desc">${esc(p.angle)}</div>
           <div class="idea-card-kw">${esc(p.keywords)}</div>
         </div>`;
@@ -2487,9 +2491,10 @@ async function archiveSeoCluster(clusterId) {
   } catch (e) { alert('Archive failed: ' + e.message); }
 }
 async function proposeClusterProducts(clusterId, btn) {
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'proposing…';
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
   try {
-    const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId });
+    const guidance = (document.getElementById('genProdOverride-' + clusterId)?.value || '').trim() || undefined;
+    const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId, guidance });
     SEO_CLUSTERS.staged = r.staged || [];
     renderClusterIdeas();
   } catch (e) { alert('Generate failed: ' + e.message); }

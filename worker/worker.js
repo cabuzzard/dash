@@ -24746,6 +24746,16 @@ Call submit_keyword_cluster with your result.`;
       // that cluster's own edit/regenerate/commit lifecycle; nothing is
       // created in Notion here — idea generation only, same "invented fresh,
       // never matched against existing products" rule as generateKeywordClusters.
+      // Two-step, per operator direction: this must propose MONETIZABLE
+      // products, not content-page ideas. Step 1 is a real web_search pass
+      // — how is this keyword space actually monetized right now, and on
+      // which platforms (Etsy, Amazon/KDP, Gumroad/Teachable, YouTube ads +
+      // sponsorship, affiliate sites, Shopify/physical goods, service
+      // marketplaces, SaaS, coaching/membership, newsletters, etc.)? Step 2
+      // takes that grounded research (never invented from keywords alone)
+      // and proposes concrete offers, each with an explicit platform +
+      // format chosen from what the research actually found — operator
+      // guidance can override/steer which pathway to prioritize.
       if (body.action === "generateClusterProductStacks") {
         const { campaignId, clusterId, guidance } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
@@ -24760,14 +24770,40 @@ Call submit_keyword_cluster with your result.`;
         const productRows = await notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
         const productNames = productRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
 
-        const prompt = `Propose product concepts for ONE keyword cluster (an SEO silo / product stack) that doesn't exist yet — you're inventing what could live under this stack, not filling in anything real.
+        // Step 1 — grounded research: real, current monetization pathways
+        // for this keyword space, not guessed from training data alone.
+        let researchText = "";
+        try {
+          const researchResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 1500,
+              tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 4 }],
+              messages: [{ role: "user", content: `Research how this keyword/topic space is ACTUALLY monetized right now — find real, current examples, not general theory.
+
+KEYWORDS: ${cluster.keywords}
+TOPIC: ${cluster.name}${guidance ? `\nOPERATOR FOCUS (prioritize this pathway/platform if it's viable, still report others found): ${guidance}` : ""}
+
+Find the most common and most successful monetization pathways people/businesses actually use in this space — e.g. Etsy or Amazon (physical/print-on-demand), Amazon KDP (books), Gumroad/Teachable/Kajabi (digital products, courses), YouTube (ad revenue + sponsorships), affiliate/review sites, Shopify (physical goods brand), service marketplaces (Fiverr/Upwork/local services), SaaS/tools, coaching/consulting, membership/community, newsletter/Substack, etc. — whichever actually fit this space, don't force ones that don't.
+
+For each pathway found, report: the PLATFORM, the specific product/offer format, and why it works for this niche (real examples/evidence, not speculation).` }],
+            }),
+          });
+          const researchData = await researchResp.json();
+          if (researchResp.ok) researchText = (researchData.content || []).filter(b => b.type === "text").map(b => b.text).join("\n");
+        } catch (e) { /* best-effort — step 2 falls back to keywords/rationale alone if this fails */ }
+
+        const prompt = `Propose MONETIZABLE product concepts for ONE keyword cluster — real sellable offers, not blog posts or content pages. Ground every proposal in the monetization research below; do not invent a pathway/platform the research doesn't support.
 
 STACK: ${cluster.name}
 CLUSTER KEYWORDS: ${cluster.keywords}
 RATIONALE: ${cluster.rationale}
 
-${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match or avoid duplicating these; per operator direction, proposals are invented fresh from the cluster's own keywords):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
-For each proposed product, give: a short working name/title, a one-sentence angle (what it is / who it's for / why it earns its own page), and the specific keywords from the cluster (plus close long-tail variants if useful) it would target. 2-5 products depending on how the cluster naturally splits — don't force an arbitrary count.
+${researchText ? `MONETIZATION RESEARCH (base your proposals on this — real pathways/platforms found for this space):\n${researchText}\n` : `(No research results came back — ground proposals in the keywords/rationale above as a fallback, but still choose a concrete platform and format for each.)\n`}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match or avoid duplicating these; per operator direction, proposals are invented fresh from the cluster's own keywords):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this — an override on top of the research above): ${guidance}\n` : ""}
+For each proposed product, give: a short working name/title; the PLATFORM it sells on (from the research, or the operator's override); the FORMAT (concrete deliverable — e.g. PDF, Print-on-demand item, Online course, Coaching package, Membership, Physical product, Affiliate content, SaaS tool, Service); a one-sentence angle (what it is / who it's for / why this platform+format monetizes this niche); and the specific keywords from the cluster (plus close long-tail variants) it targets. 2-5 products depending on how the cluster naturally splits — don't force an arbitrary count, and don't repeat the same platform+format for every one unless the research genuinely points that way.
+
+DEFAULT WHEN NO CLEAR PATHWAY EXISTS: if the research doesn't turn up a solid, well-supported product pathway for this cluster (or a slice of it), don't force a weak invented product — propose an "Introductory Call" instead (platform: direct booking/Calendly-style; type: Consulting call / Discovery call, paid or donation-based). This is always a valid fallback offer; use it rather than inventing a shaky product just to fill a slot.
 
 Call submit_product_stack_proposals with your result.`;
 
@@ -24778,7 +24814,7 @@ Call submit_product_stack_proposals with your result.`;
             model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content: prompt }],
             tools: [{
               name: "submit_product_stack_proposals",
-              description: "Submit proposed product concepts for this cluster/stack.",
+              description: "Submit proposed monetizable product concepts for this cluster/stack.",
               input_schema: {
                 type: "object",
                 properties: {
@@ -24788,10 +24824,12 @@ Call submit_product_stack_proposals with your result.`;
                       type: "object",
                       properties: {
                         name: { type: "string" },
+                        platform: { type: "string", description: "the specific platform/channel this sells through, e.g. Etsy, Amazon KDP, Gumroad, YouTube, Shopify, Fiverr, a membership site" },
+                        type: { type: "string", description: "concrete format/deliverable, e.g. PDF, Print-on-demand item, Online course, Coaching package, Membership, Physical product, Affiliate content, SaaS tool, Service" },
                         angle: { type: "string" },
                         keywords: { type: "string", description: "comma-separated keywords (from the cluster, plus close long-tail variants) this product would target" },
                       },
-                      required: ["name", "angle", "keywords"],
+                      required: ["name", "platform", "type", "angle", "keywords"],
                     },
                   },
                 },
@@ -24806,7 +24844,14 @@ Call submit_product_stack_proposals with your result.`;
         const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_product_stack_proposals");
         if (!toolUse || !toolUse.input?.products?.length) return json({ error: "Claude did not return proposals — try again" }, 502);
 
-        cluster.products = toolUse.input.products.map((p, i) => ({ id: `p${i}`, name: String(p.name || "").slice(0, 150), angle: String(p.angle || "").slice(0, 500), keywords: String(p.keywords || "").slice(0, 1000) }));
+        cluster.products = toolUse.input.products.map((p, i) => ({
+          id: `p${i}`,
+          name: String(p.name || "").slice(0, 150),
+          platform: String(p.platform || "").slice(0, 100),
+          type: String(p.type || "").slice(0, 100),
+          angle: String(p.angle || "").slice(0, 500),
+          keywords: String(p.keywords || "").slice(0, 1000),
+        }));
         staged[idx] = cluster;
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
         return json({ success: true, staged });
