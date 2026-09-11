@@ -2317,7 +2317,7 @@ function kwGroupHeader(key, color, label, count, indent) {
 function renderProposedStack(c) {
   const key = 'ci:' + c.id;
   const products = c.products || [];
-  const hdr = kwGroupHeader(key, '#8ab4f8', 'Product Ideas — ' + c.name + ' stack', products.length, 14);
+  const hdr = kwGroupHeader(key, '#8ab4f8', c.name + ' Stack — Product Ideas', products.length, 14);
   const inner = hdr.collapsed ? '' : `
     <div style="margin-left:14px;">
       <div style="font-size:9px;color:#999;margin-bottom:6px;">Products matching this cluster's keywords: <span style="color:#ccc;">${esc(c.keywords)}</span></div>
@@ -2344,14 +2344,14 @@ function renderSeoClusters() {
   committed.forEach(c => {
     const key = 'c:' + c.id;
     const kwCount = (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean).length;
-    const hdr = kwGroupHeader(key, '#a78bfa', c.name, kwCount);
+    const hdr = kwGroupHeader(key, '#a78bfa', c.name + ' Stack', kwCount);
     const inner = hdr.collapsed ? '' : `<div style="font-size:10px;color:#ccc;margin-bottom:3px;">${esc(c.keywords)}</div>${c.rationale ? `<div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>` : ''}<div style="display:flex;gap:8px;align-items:center;"><a href="${esc(c.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:10px;color:#8ab4f8;text-decoration:none;">open in Notion ↗</a><button onclick="event.stopPropagation();archiveSeoCluster('${esc(c.id)}')" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">✕ archive</button></div>`;
     html += `<div style="border-left:2px solid #a78bfa;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
   });
   staged.forEach(c => {
     const key = 's:' + c.id;
     const kwCount = (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean).length;
-    const hdr = kwGroupHeader(key, '#ffb020', c.name + ' — staged', kwCount);
+    const hdr = kwGroupHeader(key, '#ffb020', c.name + ' Stack — staged', kwCount);
     const inner = hdr.collapsed ? '' : `
       <input value="${esc(c.name)}" onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','name',this.value)" style="width:100%;font-size:11px;font-weight:600;background:transparent;border:0;border-bottom:1px solid #444;color:#fff;padding:2px 0;margin-bottom:5px;">
       <textarea onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','keywords',this.value)" rows="2" style="width:100%;box-sizing:border-box;font-size:10px;color:#ccc;background:#1a1a1a;border:1px solid #444;border-radius:4px;padding:4px;resize:vertical;margin-bottom:5px;">${esc(c.keywords)}</textarea>
