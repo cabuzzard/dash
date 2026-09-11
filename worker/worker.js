@@ -402,6 +402,7 @@ async function extractSeoFacts(html, pageUrl) {
   let origin = ""; try { origin = new URL(pageUrl).origin; } catch (e) {}
   const facts = {
     title: "", metaDescription: "", h1s: [], h2s: [],
+    h1Count: 0, h2Count: 0, anchorsWithoutHref: 0,
     imgTotal: 0, imgMissingAlt: 0, linksInternal: 0, linksExternal: 0,
     wordCount: 0, ogTitle: "", ogDescription: "", canonical: "",
   };
@@ -414,12 +415,18 @@ async function extractSeoFacts(html, pageUrl) {
     .on('meta[property="og:title"]', { element(el) { facts.ogTitle = el.getAttribute("content") || ""; } })
     .on('meta[property="og:description"]', { element(el) { facts.ogDescription = el.getAttribute("content") || ""; } })
     .on('link[rel="canonical"]', { element(el) { facts.canonical = el.getAttribute("href") || ""; } })
-    .on("h1", { element() { facts.h1s.push(""); }, text(t) { if (facts.h1s.length) facts.h1s[facts.h1s.length - 1] += t.text; } })
-    .on("h2", { element() { facts.h2s.push(""); }, text(t) { if (facts.h2s.length) facts.h2s[facts.h2s.length - 1] += t.text; } })
+    // h1Count/h2Count = every element seen, even empty ones — the gap
+    // between this and h1s.length (only non-empty, post-filter) is exactly
+    // how the audit tells "no H1 at all" apart from "an H1 tag exists but
+    // is empty at parse time" (client-side-templated hero content, common
+    // in these hub pages — a real, distinct SEO risk, not a missing tag).
+    .on("h1", { element() { facts.h1Count++; facts.h1s.push(""); }, text(t) { if (facts.h1s.length) facts.h1s[facts.h1s.length - 1] += t.text; } })
+    .on("h2", { element() { facts.h2Count++; facts.h2s.push(""); }, text(t) { if (facts.h2s.length) facts.h2s[facts.h2s.length - 1] += t.text; } })
     .on("img", { element(el) { facts.imgTotal++; if (!(el.getAttribute("alt") || "").trim()) facts.imgMissingAlt++; } })
-    .on("a[href]", {
+    .on("a", {
       element(el) {
-        const href = el.getAttribute("href") || "";
+        const href = el.getAttribute("href");
+        if (href === null) { facts.anchorsWithoutHref++; return; } // href set later by JS
         if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
         try { const u = new URL(href, pageUrl); if (origin && u.origin === origin) facts.linksInternal++; else facts.linksExternal++; }
         catch (e) {}
@@ -24161,11 +24168,11 @@ EXTRACTED FACTS:
 - Title tag (${facts.title.length} chars): "${facts.title || "(missing)"}"
 - Meta description (${facts.metaDescription.length} chars): "${facts.metaDescription || "(missing)"}"
 - OG title: "${facts.ogTitle || "(missing)"}" · OG description: "${facts.ogDescription || "(missing)"}" · Canonical: "${facts.canonical || "(missing)"}"
-- H1s (${facts.h1s.length}): ${facts.h1s.map(h => `"${h}"`).join(", ") || "(none found)"}
-- H2s (${facts.h2s.length}): ${facts.h2s.map(h => `"${h}"`).join(", ") || "(none found)"}
+- H1s with real text at parse time (${facts.h1s.length} of ${facts.h1Count} <h1> tag${facts.h1Count === 1 ? '' : 's'} in the source): ${facts.h1s.map(h => `"${h}"`).join(", ") || "(none)"}${facts.h1Count > facts.h1s.length ? ` — ${facts.h1Count - facts.h1s.length} <h1> tag(s) exist in the source but are EMPTY at parse time (content injected by client-side JS after load — flag this as a crawlability risk distinct from "no H1 at all": a crawler that doesn't execute JS sees no headline text)` : ''}
+- H2s with real text at parse time (${facts.h2s.length} of ${facts.h2Count} <h2> tags in the source): ${facts.h2s.map(h => `"${h}"`).join(", ") || "(none)"}${facts.h2Count > facts.h2s.length ? ` — ${facts.h2Count - facts.h2s.length} more <h2> tag(s) are empty at parse time, same JS-injection risk` : ''}
 - Images: ${facts.imgTotal} total, ${facts.imgMissingAlt} missing alt text
-- Internal links: ${facts.linksInternal} · External links: ${facts.linksExternal}
-- Word count: ${facts.wordCount}
+- Internal links: ${facts.linksInternal} · External links: ${facts.linksExternal}${facts.anchorsWithoutHref ? ` · ${facts.anchorsWithoutHref} more <a> tag(s) have no href in the source at all (also likely JS-injected — can't be counted either way)` : ''}
+- Word count: ${facts.wordCount}${facts.h1Count > facts.h1s.length || facts.anchorsWithoutHref ? " (this text may itself be coming from static content elsewhere on the page even though the hero/nav are JS-injected — don't assume the whole page is empty just because key elements are)" : ""}
 
 TARGET KEYWORDS (from the campaign's own Research record — what this page should actually be found for):
 ${keywords || "(no Keywords on file for this campaign's Research record — flag this as a gap itself)"}
