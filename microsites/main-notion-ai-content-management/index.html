@@ -308,15 +308,18 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
   <div class="col">
-    <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span>Product Ideas</span>
-      <span style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:100px;outline:none">
-        <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
-      </span>
-    </h2>
+    <h2>Product Ideas</h2>
     <div class="content">
-      <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+      <details style="border-left:2px solid #8ab4f8;padding-left:8px;margin-bottom:10px;">
+        <summary style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#8ab4f8;cursor:pointer;user-select:none;">Proposed Stack — Main Keywords</summary>
+        <div style="margin-top:8px;">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:6px;">
+            <input id="prodIdeasKwInput" type="text" placeholder="override keywords…" style="font-size:11px;padding:3px 7px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);width:140px;outline:none">
+            <button id="prodIdeasBtn" onclick="runProductIdeas()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border,#ddd);border-radius:6px;background:var(--surface,#fff);color:var(--text,#111);cursor:pointer;white-space:nowrap">⟳ search</button>
+          </div>
+          <div id="r-prodideas"><div class="loading"><div class="spinner"></div>Loading…</div></div>
+        </div>
+      </details>
 
       <div style="margin-top:16px;border-top:1px solid #333;padding-top:10px;">
         <div style="font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#fff;margin-bottom:6px;">Cluster Ideas <span style="font-size:9px;font-weight:400;text-transform:none;letter-spacing:0;color:#999;">— off each SEO Cluster, none of these are committed</span></div>
