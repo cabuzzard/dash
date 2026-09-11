@@ -393,6 +393,62 @@ async function saveCarouselTemplates(env, hubSlug, list) {
   await env.TRADES.put(`carousel:templates:${hubSlug}`, JSON.stringify((Array.isArray(list) ? list : []).slice(0, 40)));
 }
 
+// ── SEO audit — live-page fact extraction (2026-09-11, Phase 1 of the SEO
+// cluster/silo system) ────────────────────────────────────────────────────
+// Cloudflare's native HTMLRewriter parses the fetched page as a stream; each
+// handler fires per element/text-chunk, so multi-word text (h1/h2/body) is
+// buffered per element instance rather than assumed to arrive in one call.
+async function extractSeoFacts(html, pageUrl) {
+  let origin = ""; try { origin = new URL(pageUrl).origin; } catch (e) {}
+  const facts = {
+    title: "", metaDescription: "", h1s: [], h2s: [],
+    imgTotal: 0, imgMissingAlt: 0, linksInternal: 0, linksExternal: 0,
+    wordCount: 0, ogTitle: "", ogDescription: "", canonical: "",
+  };
+  let bodyText = "";
+  const rewriter = new HTMLRewriter()
+    .on("script", { element(el) { el.remove(); } })
+    .on("style", { element(el) { el.remove(); } })
+    .on("title", { text(t) { facts.title += t.text; } })
+    .on('meta[name="description"]', { element(el) { facts.metaDescription = el.getAttribute("content") || ""; } })
+    .on('meta[property="og:title"]', { element(el) { facts.ogTitle = el.getAttribute("content") || ""; } })
+    .on('meta[property="og:description"]', { element(el) { facts.ogDescription = el.getAttribute("content") || ""; } })
+    .on('link[rel="canonical"]', { element(el) { facts.canonical = el.getAttribute("href") || ""; } })
+    .on("h1", { element() { facts.h1s.push(""); }, text(t) { if (facts.h1s.length) facts.h1s[facts.h1s.length - 1] += t.text; } })
+    .on("h2", { element() { facts.h2s.push(""); }, text(t) { if (facts.h2s.length) facts.h2s[facts.h2s.length - 1] += t.text; } })
+    .on("img", { element(el) { facts.imgTotal++; if (!(el.getAttribute("alt") || "").trim()) facts.imgMissingAlt++; } })
+    .on("a[href]", {
+      element(el) {
+        const href = el.getAttribute("href") || "";
+        if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+        try { const u = new URL(href, pageUrl); if (origin && u.origin === origin) facts.linksInternal++; else facts.linksExternal++; }
+        catch (e) {}
+      },
+    })
+    .on("body", { text(t) { bodyText += t.text; } });
+  await rewriter.transform(new Response(html)).text();
+  facts.title = facts.title.trim();
+  facts.h1s = facts.h1s.map(s => s.trim()).filter(Boolean);
+  facts.h2s = facts.h2s.map(s => s.trim()).filter(Boolean);
+  facts.wordCount = bodyText.trim().split(/\s+/).filter(Boolean).length;
+  return facts;
+}
+// Fixed, hand-maintained checklist — not live-web-search-grounded (per
+// operator: "we will continue to add features to this audit based on
+// ongoing SEO best practices research" — this is v1, refined incrementally,
+// not a one-shot perfect system). Fed into the Claude call as the rubric.
+const SEO_AUDIT_CHECKLIST = `
+- Title tag: 50-60 characters, primary keyword near the front, unique, matches search intent.
+- Meta description: 150-160 characters, includes the primary keyword, a clear value prop, a soft call to action.
+- Exactly one H1 per page, containing (or closely paraphrasing) the primary keyword; distinct from the title tag, not just a copy of it.
+- H2 structure: a logical outline of subtopics, each a natural place for a secondary/long-tail keyword.
+- Image alt text: every meaningful image has descriptive alt text (not decorative/empty), naturally worked in where relevant to keywords.
+- Word count: informational pages generally want 800+ words of real substance to compete; thin pages (under ~300 words) rarely rank for competitive terms.
+- Internal linking: pages should link to and receive links from other relevant pages on the same site (blog posts, offers, related hub pages) — orphan pages with zero internal links rarely rank.
+- Keyword coverage: the campaign's target keywords (below) should appear naturally in the title, H1, first ~100 words, and at least one H2 — not stuffed, not absent.
+- OG tags / canonical: present and matching the real title/description, for clean social sharing and to avoid duplicate-content signals.
+`.trim();
+
 // The dashboard + microsites are served from cabuzzard.github.io. Content hubs
 // (web/hub/*) are additionally served from their own custom domains on Bluehost,
 // and their page JS calls this worker (getHubSocials on load, submitLead on
@@ -24025,6 +24081,186 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const resp = await fetch(`https://api.notion.com/v1/pages/${rec.id.replace(/-/g, "")}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Design Notes": { rich_text: text ? chunk(String(text)) : [] } } }),
+        });
+        const r = await resp.json();
+        if (!resp.ok) return json({ error: r.message || "Save failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── SEO audit (2026-09-11, Phase 1 of the SEO cluster/silo system) ──
+      // Per operator direction: crawl the LIVE deployed page (not just the
+      // Notion source) — title/meta/H1s/H2s/alt text/word count/internal
+      // links — AND compare against the campaign's own Notion Keywords, all
+      // in one report. Staged in KV first (regenerate freely); "Post to
+      // brief" commits it onto the Research record's "SEO Audit" field, same
+      // stage→commit shape as the Design section. Runs against a hub's live
+      // page OR a landing page — whichever this campaign/product resolves to.
+      if (body.action === "runSeoAudit") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+
+        // Resolve the live page: a hub campaign, else a landing page whose
+        // product belongs to this campaign.
+        const hub = HUB_SITES.find(h => norm(h.campaignId) === norm(campaignId));
+        let target = null;
+        if (hub) {
+          target = { kind: "hub", slug: hub.slug, name: hub.name, url: hub.domain ? `https://${hub.domain}/` : `https://cabuzzard.github.io/dash/web/hub/${hub.slug}/` };
+        } else {
+          let lpReg = LANDING_PAGES.slice();
+          try {
+            const extra = await env.TRADES.get("landing:registry", "json");
+            if (Array.isArray(extra)) lpReg = lpReg.concat(extra.filter(e => e && e.slug));
+          } catch (e) {}
+          const prodRows = await notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
+          const prodIds = new Set(prodRows.map(p => norm(p.id)));
+          const lp = lpReg.find(l => prodIds.has(norm(l.productId)));
+          if (lp) target = { kind: "landing", slug: lp.slug, name: lp.name || lp.slug, url: `https://cabuzzard.github.io/dash/web/landing/${lp.slug}/` };
+        }
+        if (!target) return json({ error: "This campaign has no live hub or landing page to audit" }, 400);
+
+        const [pageResp, researchRows, titleRows] = await Promise.all([
+          fetch(target.url, { cf: { cacheTtl: 0 } }).catch(() => null),
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+        ]);
+        if (!pageResp || !pageResp.ok) return json({ error: `Couldn't fetch the live page (${target.url})` }, 502);
+        const html = await pageResp.text();
+        const facts = await extractSeoFacts(html, target.url);
+
+        const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const research = researchRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+        const keywords = rtx(research, "Keywords");
+
+        // "includes all assets that are part of the page as well as assets
+        // that are published to the page" — every Publish/Published asset
+        // under this campaign's titles, by name, so the audit can flag
+        // published work the live page doesn't actually reflect yet.
+        const publishedAssets = [];
+        if (titleRows.length) {
+          const titleIds = new Set(titleRows.map(t => norm(t.id)));
+          const assetRows = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
+          assetRows.forEach(a => {
+            const p = a.properties || {};
+            const stage = p["Asset Status"]?.select?.name || "";
+            if (stage !== "Publish" && stage !== "Published") return;
+            const tid = norm((p["Content Strategy"]?.relation || [])[0]?.id);
+            if (tid && !titleIds.has(tid)) return;
+            publishedAssets.push({ title: (p["Asset Title"]?.title || []).map(t => t.plain_text).join("") || "Untitled", type: p["Asset Type"]?.select?.name || "" });
+          });
+        }
+
+        const prompt = `You are auditing the live SEO of a page against a fixed best-practices checklist and the site's own target keywords. Be specific and concrete — cite the actual numbers/text you were given, never generic advice.
+
+LIVE PAGE: ${target.url}
+
+EXTRACTED FACTS:
+- Title tag (${facts.title.length} chars): "${facts.title || "(missing)"}"
+- Meta description (${facts.metaDescription.length} chars): "${facts.metaDescription || "(missing)"}"
+- OG title: "${facts.ogTitle || "(missing)"}" · OG description: "${facts.ogDescription || "(missing)"}" · Canonical: "${facts.canonical || "(missing)"}"
+- H1s (${facts.h1s.length}): ${facts.h1s.map(h => `"${h}"`).join(", ") || "(none found)"}
+- H2s (${facts.h2s.length}): ${facts.h2s.map(h => `"${h}"`).join(", ") || "(none found)"}
+- Images: ${facts.imgTotal} total, ${facts.imgMissingAlt} missing alt text
+- Internal links: ${facts.linksInternal} · External links: ${facts.linksExternal}
+- Word count: ${facts.wordCount}
+
+TARGET KEYWORDS (from the campaign's own Research record — what this page should actually be found for):
+${keywords || "(no Keywords on file for this campaign's Research record — flag this as a gap itself)"}
+
+PUBLISHED ASSETS UNDER THIS CAMPAIGN (content that exists but may or may not be reflected/linked on the live page above)${publishedAssets.length ? `:\n${publishedAssets.map(a => `- ${a.title}${a.type ? ` (${a.type})` : ""}`).join("\n")}` : " — none found."}
+
+CHECKLIST TO GRADE AGAINST:
+${SEO_AUDIT_CHECKLIST}
+
+Call submit_seo_audit with your findings.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_seo_audit",
+              description: "Submit the SEO audit findings.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  summary: { type: "string", description: "2-3 sentence overall read: is this page in good shape, needs work, or has real gaps." },
+                  findings: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      properties: {
+                        area: { type: "string", description: "e.g. Title tag, Meta description, H1, Alt text, Word count, Internal links, Keyword coverage, OG/canonical" },
+                        status: { type: "string", enum: ["good", "needs-work", "missing"] },
+                        note: { type: "string", description: "Specific, cites the actual extracted value — not generic advice." },
+                      },
+                      required: ["area", "status", "note"],
+                    },
+                  },
+                  actionItems: { type: "array", items: { type: "string" }, description: "3-5 prioritized, concrete next steps, most impactful first." },
+                },
+                required: ["summary", "findings", "actionItems"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_seo_audit" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_seo_audit");
+        if (!toolUse || !toolUse.input) return json({ error: "Claude did not return an audit — try again" }, 502);
+
+        const report = { ...toolUse.input, facts, target, keywordsOnFile: !!keywords, publishedAssetCount: publishedAssets.length, generatedAt: new Date().toISOString() };
+        await env.TRADES.put(`seoaudit:${norm(campaignId)}`, JSON.stringify(report));
+        return json({ success: true, report });
+      }
+
+      if (body.action === "getSeoAudit") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let staged = null;
+        try { staged = await env.TRADES.get(`seoaudit:${norm(campaignId)}`, "json"); } catch (e) {}
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const committed = rows.map(r => rtx(r, "SEO Audit")).find(Boolean) || "";
+        return json({ success: true, staged, committed });
+      }
+
+      // Freezes the CURRENTLY STAGED audit (from runSeoAudit's KV, not a
+      // re-run) onto the Research record's "SEO Audit" field — same
+      // stage→commit shape as saveImageSpec/saveImageGuidance.
+      if (body.action === "commitSeoAudit") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        let staged = null;
+        try { staged = await env.TRADES.get(`seoaudit:${norm(campaignId)}`, "json"); } catch (e) {}
+        if (!staged) return json({ error: "No staged audit to commit — run one first" }, 400);
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const rec = rows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0];
+        if (!rec) return json({ error: "No Research record for this campaign" }, 404);
+        try {
+          const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+          if (!db.properties?.["SEO Audit"]) {
+            await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+              method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "SEO Audit": { rich_text: {} } } }),
+            });
+          }
+        } catch (e) {}
+        const text = `Summary: ${staged.summary}\n\nFindings:\n${(staged.findings || []).map(f => `- [${f.status}] ${f.area}: ${f.note}`).join("\n")}\n\nAction items:\n${(staged.actionItems || []).map((a, i) => `${i + 1}. ${a}`).join("\n")}\n\n(audited ${staged.generatedAt || ""})`;
+        const chunk = s => { const o = []; for (let i = 0; i < s.length; i += 1900) o.push({ text: { content: s.slice(i, i + 1900) } }); return o; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${rec.id.replace(/-/g, "")}`, {
+          method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "SEO Audit": { rich_text: chunk(text) } } }),
         });
         const r = await resp.json();
         if (!resp.ok) return json({ error: r.message || "Save failed" }, resp.status);

@@ -10631,6 +10631,9 @@ let _hpSpecBusy = {};
 let _hpTouched = {};          // slug -> the operator has changed the STAGE this session (gate re-seeding from the record)
 let _hpSPT = {};              // slug -> { templates:[], methods:[] } — the hub's single-post Canva templates
 let _hpSPTFetched = {};
+let _hpSeo = {};               // slug -> { staged, committed } — SEO audit (getSeoAudit)
+let _hpSeoFetched = {};
+let _hpSeoBusy = {};
 let _spTplSlug = '';
 const _HP_LIST = { palette: 'palettes', fonts: 'fonts', direction: 'directions' };
 
@@ -10859,6 +10862,44 @@ function hpLoadSPTemplates(slug){
   call('getSinglePostConfig', { campaignId: h.campaignId }).then(r => {
     if (r && !r.error) { _hpSPT[slug] = { templates: r.templates || [], methods: r.methods || [] }; if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
   }).catch(() => {});
+}
+function hpLoadSeoAudit(slug){
+  const h = HUB_SITES.find(x => x.slug === slug);
+  if (!h || !h.campaignId || _hpSeoFetched[slug]) return;
+  _hpSeoFetched[slug] = true;
+  call('getSeoAudit', { campaignId: h.campaignId }).then(r => {
+    if (r && !r.error) { _hpSeo[slug] = { staged: r.staged || null, committed: r.committed || '' }; if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab(); }
+  }).catch(() => {});
+}
+async function hpRunSeoAudit(slug, btn){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Crawling + auditing… (~15s)';
+  _hpSeoBusy[slug] = true;
+  try {
+    const r = await call('runSeoAudit', { campaignId: h.campaignId });
+    if (r.error) throw new Error(r.error);
+    _hpSeo[slug] = { staged: r.report, committed: (_hpSeo[slug] || {}).committed || '' };
+  } catch (e) {
+    alert('Audit failed: ' + e.message);
+  }
+  _hpSeoBusy[slug] = false;
+  btn.textContent = o; btn.disabled = false;
+  renderHubsTab();
+}
+async function hpCommitSeoAudit(slug, btn){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await call('commitSeoAudit', { campaignId: h.campaignId });
+    if (r.error) throw new Error(r.error);
+    _hpSeoFetched[slug] = false;
+    hpLoadSeoAudit(slug);
+    btn.textContent = 'Saved ✓';
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+    btn.textContent = o;
+  }
+  btn.disabled = false;
 }
 function openSPTemplateModal(slug){
   _spTplSlug = slug;
@@ -11703,6 +11744,33 @@ function renderHubsTab() {
               <a href="${esc(x.canvaUrl)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">open ↗</a>
               <button onclick="spTplDelete('${slug}','${esc(x.id)}')" title="Remove from the list (Canva design untouched)" style="border:0;background:none;color:var(--text3);cursor:pointer;font-size:11px;padding:0 2px;">✕</button>
             </div>`).join('') + '</div>';
+          })()}
+        </div>
+
+        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+            <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">🔍 SEO Audit</span>
+            <span title="Crawls the LIVE deployed page (title/meta/H1s/H2s/alt text/word count/internal links) and grades it against a fixed best-practices checklist + this campaign's own Research Keywords + its published assets. Staged here; Post to brief freezes it onto the Research record's SEO Audit field. Phase 1 of a bigger keyword-cluster/silo system still being built." style="font-size:10px;color:var(--text3);cursor:help;">grades the live page against your keywords + a best-practices checklist</span>
+            <span style="margin-left:auto;display:flex;gap:6px;">
+              <button id="hpSeoRun-${slug}" onclick="hpRunSeoAudit('${slug}', this)" style="font-size:10px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">↻ Run audit</button>
+              ${(_hpSeo[slug] || {}).staged ? `<button onclick="hpCommitSeoAudit('${slug}', this)" title="Freeze the staged audit below onto the Research record's SEO Audit field." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">💾 Post to brief</button>` : ''}
+            </span>
+          </div>
+          ${(function(){
+            if (!_hpSeoFetched[slug]) { hpLoadSeoAudit(slug); return '<div style="font-size:10px;color:var(--text3);">loading…</div>'; }
+            const s = _hpSeo[slug] || {};
+            if (!s.staged && !s.committed) return '<div style="font-size:10px;color:var(--text3);">No audit yet — ↻ Run audit.</div>';
+            const rep = s.staged;
+            const statusColor = st => st === 'good' ? '#5fbf7c' : st === 'missing' ? '#e05252' : '#d9a441';
+            const stagedHtml = rep ? `
+              <div style="font-size:10px;color:var(--text3);margin-bottom:4px;">${esc(rep.target?.kind || '')} · ${esc(rep.target?.url || '')} · audited ${rep.generatedAt ? esc(rep.generatedAt.slice(0,16).replace('T',' ')) : ''}${!rep.keywordsOnFile ? ' · <span style="color:#e05252;">no Keywords on file for this campaign</span>' : ''}</div>
+              <div style="font-size:11px;color:var(--text2);margin-bottom:8px;">${esc(rep.summary || '')}</div>
+              <div style="display:flex;flex-direction:column;gap:3px;margin-bottom:8px;">
+                ${(rep.findings || []).map(f => `<div style="font-size:10.5px;color:var(--text2);"><span style="color:${statusColor(f.status)};font-weight:600;">●</span> <b>${esc(f.area)}</b> — ${esc(f.note)}</div>`).join('')}
+              </div>
+              ${(rep.actionItems || []).length ? `<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px;">Action items</div><ol style="margin:0 0 0 16px;padding:0;font-size:10.5px;color:var(--text2);">${rep.actionItems.map(a => `<li style="margin-bottom:2px;">${esc(a)}</li>`).join('')}</ol>` : ''}
+            ` : '<div style="font-size:10px;color:var(--text3);">Committed audit on file — ↻ Run audit for a fresh staged one.</div>';
+            return stagedHtml;
           })()}
         </div>
       </div>
