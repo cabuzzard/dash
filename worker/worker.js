@@ -368,6 +368,31 @@ async function saveSinglePostTemplates(env, hubSlug, list) {
   await env.TRADES.put(`singlepost:templates:${hubSlug}`, JSON.stringify((Array.isArray(list) ? list : []).slice(0, 40)));
 }
 
+// ── "Carousel" method — per-hub fixed Canva templates (2026-09-11) ───────
+// Consolidation of the carousel-family methods (BRN / LTE / Template CSV
+// Export variants) into one method named "Carousel", per operator direction
+// ("I want one method called carousel for now"). Same registry shape as
+// single post's, but simpler — no content-type picker, no AI-generated
+// background: these are hand-built multi-page Canva carousels the operator
+// already has (or builds following the method's own Format/Page-Field
+// spec), just registered by name + link. generateTitleAssets' existing
+// /template csv/i branch (unchanged generation logic) now resolves its
+// Canva Link from whichever template was picked, instead of always the
+// Method's own single "Template" property (still the final fallback).
+async function getCarouselTemplates(env, hubSlug, methodId) {
+  if (!hubSlug) return [];
+  let list = [];
+  try { list = (await env.TRADES.get(`carousel:templates:${hubSlug}`, "json")) || []; } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  const norm = s => String(s || "").replace(/-/g, "");
+  return (methodId && methodId !== "__none__")
+    ? list.filter(t => !t.methodId || norm(t.methodId) === norm(methodId))
+    : list;
+}
+async function saveCarouselTemplates(env, hubSlug, list) {
+  await env.TRADES.put(`carousel:templates:${hubSlug}`, JSON.stringify((Array.isArray(list) ? list : []).slice(0, 40)));
+}
+
 // The dashboard + microsites are served from cabuzzard.github.io. Content hubs
 // (web/hub/*) are additionally served from their own custom domains on Bluehost,
 // and their page JS calls this worker (getHubSocials on load, submitLead on
@@ -1031,7 +1056,7 @@ const ASSET_TYPE_METHOD_ALIAS = {
   "content hub": "hub",
   "drawing post": "Drawing Post",
   "drawing post simple": "Drawing Post",
-  "carousel": "carousel — Template CSV Export",
+  "carousel": "Carousel",
   "upwork search": "Upwork Search",
 };
 
@@ -21512,8 +21537,11 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
         // pages/fields to follow) and the picked Platform — meant to be
         // ported into a template (e.g. Canva) later, no MCP/Canva
         // involvement at generation time. Skips the grading gate: a
-        // technical table isn't a viral concept to score.
-        if (/template csv/i.test(assetType)) {
+        // technical table isn't a viral concept to score. Also matches the
+        // exact name "Carousel" (2026-09-11 rename/consolidation of the BRN/
+        // LTE/Template-CSV-Export variants) — a generic method's assetType
+        // is just its own Name, which no longer contains "template csv".
+        if (/template csv/i.test(assetType) || /^carousel$/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
           const [pillarContent, methodFrameworkText, methodPage, strategyFields] = await Promise.all([
             extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
@@ -21546,14 +21574,23 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
           // case, fall through and let the prompt lean on the title name,
           // method framework, operator override, and strategy fields
           // instead of refusing to generate.
-          // Tracked on the Method itself (per operator: "the template can be
-          // tracked to the specific method") — the Methods DB already had an
-          // unused "Template" url property from an earlier iteration of this
-          // system; reused here rather than adding a redundant new one. Set
-          // once, in Notion, on the Method page. Copied onto every asset this
-          // method produces so a later porting chat has the template link
-          // ready without being asked.
-          const canvaTemplateLink = methodPage?.properties?.["Template"]?.url || "";
+          // Template resolution (2026-09-11): the carousel-family methods
+          // were consolidated into one "Carousel" method with a per-hub
+          // template REGISTRY + a picker in the Generate Assets modal
+          // (getCarouselConfig/saveCarouselTemplate), same idea as single
+          // post's — an explicit body.templateId wins, else the hub's first
+          // registered template, else the legacy fallback: the Method's own
+          // single "Template" url property (how every other /template csv/i
+          // method — LinkedIn Post, etc. — still works, unregistered).
+          let canvaTemplateLink = methodPage?.properties?.["Template"]?.url || "";
+          try {
+            const hubSlug = hubSlugForCampaign(campaignId);
+            if (hubSlug) {
+              const carouselTemplates = await getCarouselTemplates(env, hubSlug, methodId);
+              const picked = body.templateId ? carouselTemplates.find(t => t.id === body.templateId) : carouselTemplates[0];
+              if (picked && picked.canvaUrl) canvaTemplateLink = picked.canvaUrl;
+            }
+          } catch (e) {}
 
           const strategyBlock = strategyFields ? `
 RESEARCHED BENEFITS & PROOF POINTS (the product's own positioning research — already written in the plain, concrete register this table's Feature/Benefit/Problem/Solution-style fields should match. Lift phrasing from here directly wherever a table field maps to one of these bullets; adapt only for length, never rewrite into cleverer, more abstract, or punchier language than what's here):
@@ -23761,6 +23798,49 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         if (!hubSlug || !body.templateId) return json({ error: "hubSlug and templateId required" }, 400);
         const list = (await getSinglePostTemplates(env, hubSlug).catch(() => [])).filter(t => t.id !== body.templateId);
         await saveSinglePostTemplates(env, hubSlug, list);
+        return json({ success: true, templates: list });
+      }
+
+      // ── Carousel method template registry (2026-09-11) ── same idea as
+      // single post's above, simpler: these are hand-built multi-page Canva
+      // carousels the operator already has (or builds by hand following the
+      // method's own Format/Page-Field spec) — just name + link, no
+      // AI-generated background step, no content-type picker.
+      if (body.action === "getCarouselConfig") {
+        const hubSlug = String(body.hubSlug || "").trim() || hubSlugForCampaign(body.campaignId);
+        if (!hubSlug) return json({ error: "campaignId (a hub campaign) or hubSlug required" }, 400);
+        const templates = await getCarouselTemplates(env, hubSlug).catch(() => []);
+        let methodId = "", methodName = "Carousel";
+        try {
+          const rows = await notionQuery(METHODS_DB, {});
+          const m = rows
+            .map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), status: r.properties?.Status?.select?.name || "" }))
+            .find(x => /^carousel$/i.test(x.name) && x.status !== "Delete");
+          if (m) { methodId = m.id; methodName = m.name; }
+        } catch (e) {}
+        return json({ success: true, hubSlug, templates, methodId, methodName });
+      }
+
+      if (body.action === "saveCarouselTemplate") {
+        const hubSlug = String(body.hubSlug || "").trim() || hubSlugForCampaign(body.campaignId);
+        if (!hubSlug) return json({ error: "campaignId or hubSlug required" }, 400);
+        const name = String(body.name || "").trim();
+        const canvaUrl = String(body.canvaUrl || "").trim();
+        if (!name) return json({ error: "name required" }, 400);
+        if (!/^https:\/\/(www\.)?canva\.com\//i.test(canvaUrl)) return json({ error: "canvaUrl must be a canva.com link" }, 400);
+        const list = await getCarouselTemplates(env, hubSlug).catch(() => []);
+        const id = (Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+        const row = { id, name: name.slice(0, 80), canvaUrl, methodId: String(body.methodId || "").replace(/-/g, "") || "", methodName: String(body.methodName || "Carousel"), createdAt: Date.now() };
+        list.push(row);
+        await saveCarouselTemplates(env, hubSlug, list);
+        return json({ success: true, template: row, templates: list });
+      }
+
+      if (body.action === "deleteCarouselTemplate") {
+        const hubSlug = String(body.hubSlug || "").trim() || hubSlugForCampaign(body.campaignId);
+        if (!hubSlug || !body.templateId) return json({ error: "hubSlug and templateId required" }, 400);
+        const list = (await getCarouselTemplates(env, hubSlug).catch(() => [])).filter(t => t.id !== body.templateId);
+        await saveCarouselTemplates(env, hubSlug, list);
         return json({ success: true, templates: list });
       }
 
