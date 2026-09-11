@@ -1899,6 +1899,13 @@
       </label>
       <textarea class="modal-input" id="mtNotes" rows="16" style="resize:vertical;font-size:13px;line-height:1.6;font-family:inherit;" placeholder="What this method produces, the step-by-step of how it's done, gotchas, examples…"></textarea>
     </div>
+    <div class="modal-field" style="border-top:1px solid var(--border);padding-top:10px;">
+      <label class="modal-label" style="display:flex;align-items:center;gap:8px;">
+        ❓ How this works <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— plain-English, for you, not the raw method body above</span>
+        <button type="button" id="mtExplainRegenBtn" onclick="mtRegenerateExplainer(this)" style="margin-left:auto;font-size:10px;font-weight:600;background:none;border:1px solid var(--border2);border-radius:5px;color:var(--text3);padding:2px 8px;cursor:pointer;white-space:nowrap;">↻ Regenerate</button>
+      </label>
+      <div id="mtExplainBox" style="font-size:12.5px;line-height:1.6;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;min-height:20px;">loading…</div>
+    </div>
     <div style="display:flex;gap:8px;margin-top:12px;">
       <button class="modal-btn" id="mtSaveBtn" onclick="matTypeSave()">Save</button>
       <button class="modal-btn" id="mtDeleteBtn" onclick="matTypeDelete()" style="background:transparent;border-color:#e05252;color:#e05252;" title="Archive this method in Notion — removes its column (title counts unaffected; restore from the Notion trash)">Archive</button>
@@ -15268,6 +15275,40 @@ async function openMatTypeModal(methodId) {
   document.getElementById('mtMsg').textContent = 'Name / status / type / notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
   document.getElementById('matTypeModal').classList.add('open');
   setTimeout(() => document.getElementById('mtNotes').focus(), 30);
+  mtLoadExplainer(methodId);
+}
+// "How this works" — a plain-English explainer for the method, cached in KV
+// per method (getMethodExplainer generates + caches on first view; cheap on
+// every re-open after that). ↻ Regenerate forces a fresh pass — for when
+// the operator has since edited the method's own Notes/body above.
+async function mtLoadExplainer(methodId) {
+  const box = document.getElementById('mtExplainBox');
+  const btn = document.getElementById('mtExplainRegenBtn');
+  box.textContent = 'loading…'; btn.disabled = true;
+  try {
+    const r = await call('getMethodExplainer', { methodId });
+    if (r.error) throw new Error(r.error);
+    if (matEditingId === methodId) box.textContent = r.explainer || '(no explainer yet)';
+  } catch (e) {
+    if (matEditingId === methodId) box.textContent = 'Couldn\'t load: ' + e.message;
+  }
+  if (matEditingId === methodId) btn.disabled = false;
+}
+async function mtRegenerateExplainer(btn) {
+  if (!matEditingId) return;
+  const methodId = matEditingId;
+  const box = document.getElementById('mtExplainBox');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Regenerating…';
+  box.style.opacity = '.5';
+  try {
+    const r = await call('regenerateMethodExplainer', { methodId });
+    if (r.error) throw new Error(r.error);
+    if (matEditingId === methodId) box.textContent = r.explainer || '(no explainer yet)';
+  } catch (e) {
+    alert('Regenerate failed: ' + e.message);
+  }
+  box.style.opacity = '1';
+  btn.textContent = o; btn.disabled = false;
 }
 // Type <select>: "(none)" to unset · every type currently in use · "+ new
 // type…" prompts for a name and adds it as the selected option (created on

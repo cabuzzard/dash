@@ -11280,6 +11280,62 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         });
       }
 
+      // ── Method explainer (2026-09-11) — "clicking a matrix column header
+      // should explain the method clearly and simply, not just the modal's
+      // raw Notes/body." Cached in KV per method (generated once, cheap to
+      // re-open); ↻ Regenerate in the modal forces a fresh pass for when
+      // the operator has since edited the method's own body/Notes.
+      async function generateMethodExplainerText(env, methodId) {
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(methodId)}`, { headers: hdr }).then(r => r.json());
+        if (!page.properties) throw new Error(page.message || "Method not found");
+        const p = page.properties;
+        const name = (p.Name?.title || []).map(t => t.plain_text).join("") || "Untitled";
+        const notes = (p.Notes?.rich_text || []).map(t => t.plain_text).join("");
+        const bodyText = await extractBlocksTextRecursive(hdr, dash(methodId)).catch(() => "");
+        if (!bodyText && !notes) return `"${name}" has no body or notes written yet — nothing to explain. Open it in Notion and write out what it does, or use the "+ method" flow to build it out.`;
+        const prompt = `Explain this content-generation Method in plain, simple English for someone skimming a dashboard — NOT a summary of the document structure, an actual explanation of what it produces and how, like you'd tell a coworker in 3-5 short sentences. No jargon, no headers, no bullet lists — just plain prose. If it's a multi-stage pipeline (e.g. "worker writes X, then a Canva-connected chat does Y"), say so plainly. If it's clearly unfinished/a stub, say that instead of inventing detail.
+
+METHOD NAME: ${name}
+${notes ? `NOTES: ${notes}\n` : ""}
+BODY:
+${bodyText.slice(0, 6000)}`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 400, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+        return (aiData.content?.[0]?.text || "").trim() || "(Claude returned nothing — try Regenerate)";
+      }
+
+      if (body.action === "getMethodExplainer") {
+        const { methodId } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const norm = String(methodId).replace(/-/g, "");
+        let cached = null;
+        try { cached = await env.TRADES.get(`methodexplainer:${norm}`, "json"); } catch (e) {}
+        if (cached && cached.explainer) return json({ success: true, explainer: cached.explainer, generatedAt: cached.generatedAt });
+        try {
+          const explainer = await generateMethodExplainerText(env, methodId);
+          await env.TRADES.put(`methodexplainer:${norm}`, JSON.stringify({ explainer, generatedAt: new Date().toISOString() }));
+          return json({ success: true, explainer });
+        } catch (e) { return json({ error: e.message || "Failed to generate explainer" }, 500); }
+      }
+
+      if (body.action === "regenerateMethodExplainer") {
+        const { methodId } = body;
+        if (!methodId) return json({ error: "methodId required" }, 400);
+        const norm = String(methodId).replace(/-/g, "");
+        try {
+          const explainer = await generateMethodExplainerText(env, methodId);
+          await env.TRADES.put(`methodexplainer:${norm}`, JSON.stringify({ explainer, generatedAt: new Date().toISOString() }));
+          return json({ success: true, explainer });
+        } catch (e) { return json({ error: e.message || "Failed to regenerate explainer" }, 500); }
+      }
+
       if (body.action === "updateMethod") {
         const { methodId, name, status, platform, category, template, notes, bodyText, type } = body;
         if (!methodId) return json({ error: "methodId required" }, 400);
