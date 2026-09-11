@@ -2537,7 +2537,11 @@ async function addMainIdeaToProduct(name, desc, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
   try {
     const kw = (RAW && RAW.keywords) || '';
-    await w('createProduct', { title: name, description: desc, keywords: kw, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    // Every product created from this flow gets a real Product Stack —
+    // per operator direction, no "No Stack" products. Cluster ideas use
+    // the cluster's own name; a Main Stack idea (no single cluster) uses
+    // the fixed stack "Main" instead of leaving it blank.
+    await w('createProduct', { title: name, description: desc, keywords: kw, stack: 'Main', campaignId: CAMPAIGN_ID, status: 'In Development' });
     if (typeof loadProducts === 'function') loadProducts();
     btn.textContent = '✓ added';
   } catch (e) {
