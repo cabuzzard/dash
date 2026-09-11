@@ -547,6 +547,10 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <select class="modal-ta" id="titleProductSelect" style="margin-top:4px;">
         <option value="">— none —</option>
       </select>
+      <label class="lm-label" for="titleMethodSelect" style="margin-top:10px;">Intended Method <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">(tags it — shows in the Hub Method Matrix, doesn't change the title)</span></label>
+      <select class="modal-ta" id="titleMethodSelect" style="margin-top:4px;">
+        <option value="">— none —</option>
+      </select>
       <div class="modal-status" id="titleStrategyModalStatus"></div>
     </div>
     <div class="modal-foot">
@@ -3019,7 +3023,7 @@ async function loadTitles(opts = {}) {
       // if this title doesn't have one yet, and promotes Planning →
       // Development the same way the old 📝 Write Pillar button used to.
       const _bn = t.title.replace(/"/g,'&quot;');
-      div.innerHTML = `${section !== 'pub' ? `<input type="checkbox" class="gabatch-cb" data-id="${t.id}" data-name="${_bn}" onclick="event.stopPropagation()" onchange="gaBatchSync()" title="Select for batch / queued Generate Assets" style="margin-right:6px;flex-shrink:0;">` : ''}<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}')" title="Set which Growth Strategy this title is grouped under">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="title-status-btn" onclick="addTitleToWeeklyPlanner('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Add to This Week — schedules this title as an action item on whichever day is lightest">TD</button><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
+      div.innerHTML = `${section !== 'pub' ? `<input type="checkbox" class="gabatch-cb" data-id="${t.id}" data-name="${_bn}" onclick="event.stopPropagation()" onchange="gaBatchSync()" title="Select for batch / queued Generate Assets" style="margin-right:6px;flex-shrink:0;">` : ''}<span class="title-stage ${SC[t.stage]||'ts-write'}">${t.stage}</span><span class="title-name">${t.title}</span><button class="title-asset-btn" onclick="openGenAssetsModal('${t.id}')" title="Generate assets (real Asset records under this title) — the method-aware entry point for carousels, posts, proposals, etc. Writes this title's pillar content first if it doesn't have any yet.">🧩</button><button class="title-status-btn" onclick="openTrendScanModal('${t.id}','${t.title.replace(/'/g,"\\'")}')" title="Scan live Etsy search data for this title's keywords/research — see whether it (or a t-shirt spin of it) would actually sell right now">📈</button><button class="title-status-btn" onclick="openStatusModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.stage}')" title="Change status">⇄</button><button class="title-status-btn" onclick="openTitleStrategyModal('${t.id}','${t.title.replace(/'/g,"\\'")}','${t.strategyId||''}','${t.productId||''}','${t.methodId||''}')" title="Set which Growth Strategy this title is grouped under, and its intended Method">🔗</button><a class="title-link" href="https://www.notion.so/${t.id}" target="_blank">↗</a><button class="title-status-btn" onclick="addTitleToWeeklyPlanner('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Add to This Week — schedules this title as an action item on whichever day is lightest">TD</button><button class="td-del" onclick="deleteTitleRow('${t.id}','${t.title.replace(/'/g,"\\'")}', this)" title="Delete">✕</button>`;
       // Assets never render under a Development title row — Method/Asset
       // Type is an ASSET-level concept (Assets DB has no Method relation at
       // all, only its own "Asset Type" select), not a title-level one, and
@@ -5556,10 +5560,12 @@ document.getElementById('statusModal').addEventListener('click', function(e) {
 let tsModalTitleId = null;
 let tsModalOrigStrategyId = '';
 let tsModalOrigProductId = '';
-function openTitleStrategyModal(id, title, currentStrategyId, productId) {
+let tsModalOrigMethodId = '';
+function openTitleStrategyModal(id, title, currentStrategyId, productId, methodId) {
   tsModalTitleId = id;
   tsModalOrigStrategyId = (currentStrategyId && currentStrategyId !== '__none__') ? currentStrategyId : '';
   tsModalOrigProductId  = (productId && productId !== '__none__') ? productId : '';
+  tsModalOrigMethodId   = (methodId && methodId !== '__none__') ? methodId : '';
   document.getElementById('titleStrategyModalHint').textContent = title;
   document.getElementById('titleStrategyModalStatus').textContent = '';
   document.getElementById('titleStrategyModalStatus').className = 'modal-status';
@@ -5571,14 +5577,18 @@ function openTitleStrategyModal(id, title, currentStrategyId, productId) {
   prodSel.innerHTML = '<option value="">— none —</option>';
   prodSel.disabled = true;
   prodSel.removeAttribute('data-loaded');
-  // Save stays disabled until BOTH pickers have loaded — otherwise a quick
+  const methodSel = document.getElementById('titleMethodSelect');
+  methodSel.innerHTML = '<option value="">— none —</option>';
+  methodSel.disabled = true;
+  methodSel.removeAttribute('data-loaded');
+  // Save stays disabled until ALL pickers have loaded — otherwise a quick
   // Save on the still-empty selects would send growthStrategyId '' /
   // productId '__none__', which the worker reads as "clear both", silently
   // detaching the title from its product+strategy and dropping it into the
   // collapsed "No Product / No Strategy" bucket at the bottom of the list.
   const saveBtn = document.getElementById('titleStrategySaveBtn');
   saveBtn.disabled = true;
-  let pending = 2;
+  let pending = 3;
   const settle = () => { if (--pending <= 0) saveBtn.disabled = false; };
   document.getElementById('titleStrategyModal').classList.add('open');
   const query = (productId && productId !== '__none__') ? { productId } : { campaignId: CAMPAIGN_ID };
@@ -5603,6 +5613,16 @@ function openTitleStrategyModal(id, title, currentStrategyId, productId) {
     prodSel.disabled = false;
     prodSel.dataset.loaded = '1';
   }).catch(() => { prodSel.disabled = false; }).finally(settle);
+  w('searchMethods', { query: '' }).then(r => {
+    const methods = (r.methods || []).slice().sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    methodSel.innerHTML = '<option value="">— none —</option>' + methods.map(m => `<option value="${m.id}">${esc(m.name)}</option>`).join('');
+    if (tsModalOrigMethodId && !methods.some(m => m.id === tsModalOrigMethodId)) {
+      methodSel.innerHTML += `<option value="${tsModalOrigMethodId}">(current method)</option>`;
+    }
+    methodSel.value = tsModalOrigMethodId;
+    methodSel.disabled = false;
+    methodSel.dataset.loaded = '1';
+  }).catch(() => { methodSel.disabled = false; }).finally(settle);
 }
 function closeTitleStrategyModal() {
   document.getElementById('titleStrategyModal').classList.remove('open');
@@ -5616,6 +5636,7 @@ async function applyTitleStrategyChange() {
   const btn = document.getElementById('titleStrategySaveBtn');
   const sel = document.getElementById('titleStrategySelect');
   const prodSel = document.getElementById('titleProductSelect');
+  const methodSel = document.getElementById('titleMethodSelect');
   // Only send a field the operator actually changed. An unloaded picker, or
   // one whose value still matches what we opened with, is left out entirely
   // so the worker never mistakes "didn't touch it" for "clear it".
@@ -5626,7 +5647,10 @@ async function applyTitleStrategyChange() {
   if (prodSel.dataset.loaded === '1' && (prodSel.value || '') !== (tsModalOrigProductId || '')) {
     payload.productId = prodSel.value || '__none__';
   }
-  if (payload.growthStrategyId === undefined && payload.productId === undefined) {
+  if (methodSel.dataset.loaded === '1' && (methodSel.value || '') !== (tsModalOrigMethodId || '')) {
+    payload.methodId = methodSel.value || '__none__';
+  }
+  if (payload.growthStrategyId === undefined && payload.productId === undefined && payload.methodId === undefined) {
     status.textContent = 'Nothing changed.';
     status.className = 'modal-status';
     return;

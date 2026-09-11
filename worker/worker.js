@@ -10373,6 +10373,7 @@ Return ONLY this JSON, no other text, no markdown fences:
         if (grouping) baseProps["Grouping"] = { rich_text: [{ type: "text", text: { content: String(grouping).slice(0, 1990) } }] };
         if (campaignId) baseProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
         if (productId && productId !== "__none__" && productId !== campaignId) baseProps["product"] = { relation: [{ id: dashId(productId) }] };
+        if (body.methodId && body.methodId !== "__none__") baseProps["method"] = { relation: [{ id: dashId(body.methodId) }] };
         let created = 0, failed = 0;
         const ids = [];
         for (let i = 0; i < names.length; i += 5) {
@@ -11621,19 +11622,33 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           const pId = norm((p.product?.relation || [])[0]?.id);
           if (pId) titleProductById[norm(t.id)] = pId;
         });
-        // dev / pub / pubd buckets — all asset-driven now. Method comes off the
-        // asset's own `Method` relation, falling back to its source title's
-        // `method` for legacy un-backfilled assets.
+        // ── dev = Development-status TITLES tagged with the method ──
+        // The "intended method" tag (title.method) — just a marker, it doesn't
+        // change the title. Hub resolves via the title's Campaign; a landing
+        // page via the title's product.
+        titleRows.forEach(t => {
+          const p = t.properties || {};
+          if ((p.Status?.select?.name || "") !== "Development") return;
+          const mId = titleMethodById[norm(t.id)];
+          if (!mId || !colIds.has(mId)) return;
+          const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
+          const lpSlug = landingByProduct[norm((p.product?.relation || [])[0]?.id)] || "";
+          if (slug) cellFor(slug, mId).dev++;
+          if (lpSlug) cellFor(lpSlug, mId).dev++;
+        });
+        // ── pub / pubd = Publish / Published ASSETS under the method ──
+        // Method comes off the asset's own `Method` relation, falling back to
+        // its source title's `method` for legacy un-backfilled assets.
         assetRows.forEach(a => {
           const p = a.properties || {};
           const stage = p["Asset Status"]?.select?.name || "";
-          if (stage !== "Development" && stage !== "Publish" && stage !== "Published") return;
+          if (stage !== "Publish" && stage !== "Published") return;
           const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
           const mId = norm((p["Method"]?.relation || [])[0]?.id) || titleMethodById[titleId];
           if (!mId || !colIds.has(mId)) return;
           const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
           const lpSlug = landingByProduct[norm((p.Product?.relation || [])[0]?.id) || norm(titleProductById[titleId])] || "";
-          const bucket = stage === "Development" ? "dev" : stage === "Publish" ? "pub" : "pubd";
+          const bucket = stage === "Publish" ? "pub" : "pubd";
           if (slug) cellFor(slug, mId)[bucket]++;
           if (lpSlug) cellFor(lpSlug, mId)[bucket]++;
         });
@@ -25443,7 +25458,7 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
       // generateTitleFromSlot's growthStrategyId (which only sets this at
       // creation time). growthStrategyId '' or '__none__' clears the link.
       if (body.action === "updateTitleStrategy") {
-        const { titleId, growthStrategyId, productId } = body;
+        const { titleId, growthStrategyId, productId, methodId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const props = {};
@@ -25465,6 +25480,13 @@ Return ONLY a comma-separated list of keywords, nothing else. No numbering, no e
         if (productId !== undefined) {
           const clearProduct = !productId || productId === '__none__';
           props["product"] = { relation: clearProduct ? [] : [{ id: dash(productId) }] };
+        }
+        // methodId — the "intended method" tag (worker.js:11624 matrix comment):
+        // just a marker on the title, doesn't touch its content. Same
+        // send-only-if-changed contract as growthStrategyId/productId above.
+        if (methodId !== undefined) {
+          const clearMethod = !methodId || methodId === '__none__';
+          props["method"] = { relation: clearMethod ? [] : [{ id: dash(methodId) }] };
         }
         if (!Object.keys(props).length) return json({ success: true, noop: true });
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {

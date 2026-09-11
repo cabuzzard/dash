@@ -3523,6 +3523,13 @@
       </select>
     </div>
 
+    <div class="modal-field">
+      <label class="modal-label">Intended Method <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">(optional — just tags it, applied to all)</span></label>
+      <select class="modal-select" id="titleMethod">
+        <option value="">— none —</option>
+      </select>
+    </div>
+
     <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">Creates empty titles only. Write pillar / research from the ✍ button on each Development row.</div>
 
     <div class="modal-actions">
@@ -9241,6 +9248,18 @@ function openTitleModal() {
   document.getElementById('titleModalErr').textContent = '';
   document.getElementById('titleSubmitBtn').disabled = false;
   document.getElementById('titleSubmitBtn').textContent = 'Create';
+  const methodSel = document.getElementById('titleMethod');
+  methodSel.innerHTML = '<option value="">— none —</option>';
+  methodSel.value = '';
+  const fillTitleMethods = () => {
+    allMethodsCache.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).forEach(m => {
+      const opt = document.createElement('option');
+      opt.value = m.id; opt.textContent = m.name;
+      methodSel.appendChild(opt);
+    });
+  };
+  if (allMethodsCache.length) fillTitleMethods();
+  else call('searchMethods', { query: '' }).then(d => { allMethodsCache = d.methods || []; fillTitleMethods(); }).catch(() => {});
   document.getElementById('titleModal').classList.add('open');
   setTimeout(() => document.getElementById('titleNames').focus(), 280);
 }
@@ -9358,12 +9377,13 @@ async function submitTitle() {
   const campaignId = document.getElementById('titleCampaignId').value || undefined;
   const grouping = document.getElementById('titleGrouping').value.trim() || undefined;
   const status = document.getElementById('titleStatus').value;
+  const methodId = document.getElementById('titleMethod').value || undefined;
   if (!titles.length) { document.getElementById('titleNames').focus(); return; }
 
   const btn = document.getElementById('titleSubmitBtn');
   btn.disabled = true; btn.textContent = 'Creating ' + titles.length + '…';
   try {
-    const r = await call('createDevTitles', { titles, campaignId, grouping, status });
+    const r = await call('createDevTitles', { titles, campaignId, grouping, status, methodId });
     if (r.error) throw new Error(r.error);
     closeTitleModal();
     showToast('Created ' + r.created + ' title' + (r.created === 1 ? '' : 's') + ' ✓' + (r.failed ? ' (' + r.failed + ' failed)' : ''), r.failed ? 'error' : 'success');

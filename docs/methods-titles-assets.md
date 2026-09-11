@@ -462,10 +462,20 @@ longer offered from inside this modal.
 **A title is method-agnostic** — the Method is the transform that turns a title
 into an asset, not a property of the title. So the **Method is stamped on the
 ASSET** (`Assets.Method` relation → ⚙️ Methods), at creation time, by every
-asset-creation path. The **Hub Method Matrix** (TD tab) reads that: per hub ×
-method, it counts **assets** at **Development / Publish / Published** —
-`asset.Method` first, falling back to the source title's `method` only for
-legacy assets not yet backfilled.
+asset-creation path. The **Hub Method Matrix** (TD tab) reads that for the
+**pub / pubd** columns: per hub × method, it counts **assets** at **Publish /
+Published** — `asset.Method` first, falling back to the source title's `method`
+only for legacy assets not yet backfilled.
+
+**dev is title-driven, not asset-driven (2026-09-10).** The first number in a
+cell's `#/#/#` counts **Content Strategy titles at Status "Development"**
+tagged with that method via `title.method` — an **"intended method" tag**: it
+marks what a title is meant to become, it doesn't touch the title's content.
+Set it either in bulk when creating titles (`titleModal`'s method picker →
+`createDevTitles {methodId}`) or after the fact (the microsite's "Set
+Strategy" 🔗 modal → `updateTitleStrategy {methodId}`, same send-only-if-
+changed contract as `growthStrategyId`/`productId`). Hub attribution for a
+title follows its `Campaign`; a landing page follows its `product`.
 
 - **`assetMethodProp(methodId, assetType)`** (`worker.js`, module scope, near
   `resolveMethodIdByName`) → a `{ "Method": { relation:[{id}] } }` fragment (or
