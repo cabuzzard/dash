@@ -11721,6 +11721,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       if (body.action === "revertPublishedTitlesToDevelopment") {
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const sleep = ms => new Promise(res => setTimeout(res, ms));
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const rows = await notionQuery(CONTENT_STRATEGY_DB, {
           filter: { property: "Status", select: { equals: "Publish" } },
