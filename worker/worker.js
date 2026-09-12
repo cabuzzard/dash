@@ -24090,10 +24090,11 @@ Portrait Instagram post, ready to publish.`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "4:5", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
         });
-        const xd = await xr.json().catch(() => ({}));
-        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+        const xdRaw = await xr.text();
+        let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || xdRaw.slice(0, 300) || `xAI image error (${xr.status})` }, 502);
         const xUrl = xd.data?.[0]?.url || "";
         if (!xUrl) return json({ error: "xAI returned no image URL" }, 502);
 
