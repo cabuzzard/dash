@@ -17842,6 +17842,35 @@ No other text. No markdown fences.`;
       // the existing per-Method "Generate Titles" flow. Never overwrites a
       // prior run — one product can have several of these over time,
       // browsable via the row's dropdown.
+      // Creates a bare Growth Strategy heading — Strategy Name/Product/
+      // Campaign/Status only, no AI call, no groupings/slots. Per operator
+      // direction: a way to stand up the container in the Strategies tree
+      // (Stack -> Product -> Strategy -> Platform -> Arc -> Slot) without
+      // committing to a generated plan; fill it in later the normal way
+      // (♻️ regenerate on the strip, or attach titles to it directly).
+      if (body.action === "createBlankGrowthStrategy") {
+        const { campaignId, productId, name } = body;
+        if (!campaignId || !productId || !name) return json({ error: "campaignId, productId and name required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr,
+          body: JSON.stringify({
+            parent: { database_id: GROWTH_STRATEGY_DB },
+            properties: {
+              "Strategy Name": { title: [{ text: { content: String(name).slice(0, 200) } }] },
+              "Product": { relation: [{ id: dash(productId) }] },
+              "Campaign": { relation: [{ id: dash(campaignId) }] },
+              "Status": { select: { name: "Draft" } },
+              "Grouping Count": { number: 0 },
+            },
+          }),
+        });
+        const result = await resp.json();
+        if (!resp.ok || !result.id) return json({ error: result.message || "Create failed" }, resp.status || 500);
+        return json({ success: true, id: result.id.replace(/-/g, "") });
+      }
+
       if (body.action === "generateGrowthStrategy") {
         const { campaignId, productId, platformOverride, strategyTitle, researchGuidelines, seedTitleId } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);

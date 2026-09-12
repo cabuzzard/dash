@@ -1055,12 +1055,17 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
         <label class="lm-label">Product</label>
         <select class="modal-ta" id="gsProductSelect" style="height:32px;padding:5px 10px;font-size:12px;width:100%;"></select>
       </div>
-      <label class="lm-label" style="margin-top:10px;">Title <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"</span></label>
+      <label class="lm-label" style="margin-top:10px;">Title <span id="gsTitleHint" style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"</span></label>
       <input class="modal-ta" id="gsTitleInput" type="text" placeholder="e.g. Q3 TikTok Push" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
-      <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
-      <input class="modal-ta" id="gsPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
-      <label class="lm-label" style="margin-top:10px;">Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; steers how this strategy is generated (angle, tone, constraints). Left blank, any standing research guidelines still apply.</span></label>
-      <textarea class="modal-ta" id="gsGuidanceInput" rows="3" style="width:100%;margin-top:4px;resize:vertical;" placeholder="e.g. focus on beginner-friendly angles, avoid discount-driven hooks..."></textarea>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:11px;color:#fff;cursor:pointer;">
+        <input type="checkbox" id="gsBlankToggle" onchange="toggleGsBlankMode(this.checked)"> Just create the heading — no AI generation, no groupings/slots
+      </label>
+      <div id="gsGenFields">
+        <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
+        <input class="modal-ta" id="gsPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+        <label class="lm-label" style="margin-top:10px;">Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; steers how this strategy is generated (angle, tone, constraints). Left blank, any standing research guidelines still apply.</span></label>
+        <textarea class="modal-ta" id="gsGuidanceInput" rows="3" style="width:100%;margin-top:4px;resize:vertical;" placeholder="e.g. focus on beginner-friendly angles, avoid discount-driven hooks..."></textarea>
+      </div>
       <div class="modal-status" id="gsStatus" style="white-space:pre-wrap;"></div>
     </div>
     <div class="modal-foot">
@@ -2513,6 +2518,15 @@ async function dismissClusterProduct(clusterId, productId) {
 // new Product's Keywords field (what generateProductKeywords later refines
 // FROM, staying faithful to this same cluster via its Product Stack) starts
 // seeded from the SEO work instead of blank.
+// Every product created out of this SEO/keyword ideation flow gets a
+// Growth Strategy heading immediately, so it has a Strategy to slot titles
+// under without a separate manual step — per operator direction, all of
+// them named the same fixed heading so they read as one lineage in the
+// Strategies tree (Stack -> Product -> Strategy -> Platform -> Arc -> Slot).
+// Best-effort: never blocks or fails the product creation itself.
+async function attachMainHubSeoStrategy(productId) {
+  try { await w('createBlankGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, name: 'Main Hub SEO Strategy' }); } catch (e) { /* best-effort */ }
+}
 async function addClusterIdeaToProduct(clusterId, productId, btn) {
   const c = (SEO_CLUSTERS.staged || []).find(x => x.id === clusterId);
   const p = c && (c.products || []).find(x => x.id === productId);
@@ -2523,7 +2537,8 @@ async function addClusterIdeaToProduct(clusterId, productId, btn) {
       (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean)
         .concat((p.keywords || '').split(',').map(s => s.trim()).filter(Boolean))
     )).join(', ');
-    await w('createProduct', { title: p.name, description: p.angle, stack: c.name, keywords: mergedKw, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    const r = await w('createProduct', { title: p.name, description: p.angle, stack: c.name, keywords: mergedKw, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    if (r.id) await attachMainHubSeoStrategy(r.id);
     if (typeof loadProducts === 'function') loadProducts();
     btn.textContent = '✓ added';
   } catch (e) {
@@ -2541,7 +2556,8 @@ async function addMainIdeaToProduct(name, desc, btn) {
     // per operator direction, no "No Stack" products. Cluster ideas use
     // the cluster's own name; a Main Stack idea (no single cluster) uses
     // the fixed stack "Main" instead of leaving it blank.
-    await w('createProduct', { title: name, description: desc, keywords: kw, stack: 'Main', campaignId: CAMPAIGN_ID, status: 'In Development' });
+    const r = await w('createProduct', { title: name, description: desc, keywords: kw, stack: 'Main', campaignId: CAMPAIGN_ID, status: 'In Development' });
+    if (r.id) await attachMainHubSeoStrategy(r.id);
     if (typeof loadProducts === 'function') loadProducts();
     btn.textContent = '✓ added';
   } catch (e) {
@@ -9023,6 +9039,17 @@ function gsResetFields() {
   document.getElementById('gsPlatformInput').value = '';
   document.getElementById('gsGuidanceInput').value = '';
   document.getElementById('gsStatus').textContent = '';
+  document.getElementById('gsBlankToggle').checked = false;
+  toggleGsBlankMode(false);
+}
+// Blank mode: skip generateGrowthStrategy entirely — just a Strategy Name/
+// Product/Campaign heading (Status Draft, Grouping Count 0), no AI call, no
+// groupings/slots. Per operator direction: a way to create the container
+// without committing to a generated plan.
+function toggleGsBlankMode(blank) {
+  document.getElementById('gsGenFields').style.display = blank ? 'none' : '';
+  document.getElementById('gsTitleHint').textContent = blank ? '— required in this mode (nothing to auto-name it from)' : '— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"';
+  document.getElementById('gsGenBtn').textContent = blank ? 'Create' : 'Generate';
 }
 function openGrowthStrategyModal(productId, productName) {
   GS_PRODUCT_ID = productId;
@@ -9054,9 +9081,26 @@ async function submitGrowthStrategy() {
   const statusEl = document.getElementById('gsStatus');
   if (!productId) { statusEl.textContent = 'Pick a product first.'; return; }
   const strategyTitle = document.getElementById('gsTitleInput').value.trim();
+  const btn = document.getElementById('gsGenBtn');
+  if (document.getElementById('gsBlankToggle').checked) {
+    if (!strategyTitle) { statusEl.textContent = 'Title is required in this mode.'; return; }
+    btn.disabled = true; statusEl.textContent = 'Creating…';
+    try {
+      await w('createBlankGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, name: strategyTitle });
+      statusEl.textContent = 'Created ✓';
+      bumpLocalProductStatus(productId, 'Active');
+      delete GS_STRATEGY_CACHE[productId];
+      loadCampaignStrategies();
+      setTimeout(closeGrowthStrategyModal, 800);
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e.message;
+    } finally {
+      btn.disabled = false;
+    }
+    return;
+  }
   const platformOverride = document.getElementById('gsPlatformInput').value.trim();
   const guidance = document.getElementById('gsGuidanceInput').value.trim();
-  const btn = document.getElementById('gsGenBtn');
   btn.disabled = true; statusEl.textContent = 'Generating…';
   try {
     const r = await w('generateGrowthStrategy', {
