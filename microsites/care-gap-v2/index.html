@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="robots" content="noindex, nofollow">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<link rel="stylesheet" href="../style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Care Gap — Microsite2 (real)</title>
+<style>
+/* ── tab chrome (each microsite carries its own copy, per convention) ── */
+.tab-nav { display: flex; gap: 4px; padding: 0 20px; border-bottom: 1px solid #161616; overflow-x: auto; }
+.tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: #888; font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 12px 10px; cursor: pointer; white-space: nowrap; }
+.tab-btn:hover { color: #fff; }
+.tab-btn.active { color: #e8ff47; border-bottom-color: #e8ff47; }
+.tab-page { display: none; padding: 20px; max-width: 1100px; margin: 0 auto; }
+.tab-page.active { display: block; }
+
+/* ── this file's own additions on top of the shared dark theme ──────── */
+.kwgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+@media (max-width:720px){.kwgrid{grid-template-columns:1fr;}}
+.kwcol h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#fff;margin:0 0 10px;}
+.kwgroup{border-left:3px solid var(--kwc,#5f5f5f);padding-left:10px;margin-bottom:14px;}
+.kwghd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--kwc,#ccc);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.kwghd .kwbtns{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;}
+.wbtn{font-size:10px;padding:3px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;font-family:'Syne',sans-serif;white-space:nowrap;}
+.wbtn:hover{border-color:#e8ff47;color:#e8ff47;}
+.wbtn:disabled{opacity:.4;cursor:not-allowed;}
+.wbtn.primary{background:#e8ff47;border-color:#e8ff47;color:#080808;font-weight:700;}
+.winput{font-size:11px;padding:4px 8px;border:1px solid #5f5f5f;background:#0f0f0f;color:#fff;border-radius:3px;font-family:'Syne',sans-serif;}
+.kw-pill{display:inline-block;font-size:11px;background:#141414;border:1px solid #333;border-radius:12px;padding:3px 10px;margin:2px 3px 2px 0;color:#eee;}
+.stagedcluster{border-left:3px solid #ffb020;padding-left:10px;margin-bottom:10px;}
+.stagedcluster .schd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ffb020;margin-bottom:5px;}
+.stagedcluster input, .stagedcluster textarea{width:100%;box-sizing:border-box;font-family:'Syne',sans-serif;font-size:12px;color:#fff;background:#0f0f0f;border:1px solid #333;border-radius:4px;padding:5px 8px;margin-bottom:5px;}
+.commitcluster{border-left:3px solid #a78bfa;padding-left:10px;margin-bottom:10px;}
+.commitcluster .cchd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#a78bfa;margin-bottom:4px;}
+.loadnote{font-size:11px;color:#888;padding:6px 0;}
+.errnote{font-size:11px;color:#ff6b6b;padding:6px 0;}
+.stagebanner{border:1px solid #63b3ed;background:rgba(99,179,237,.08);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:11.5px;color:#cfe4fb;line-height:1.6;}
+.stagebanner b{color:#63b3ed;}
+</style>
+</head>
+<body>
+
+<div class="pin-screen" id="pinScreen">
+  <div class="pin-mark">Care Gap <span style="color:#e8ff47">·</span> Admin</div>
+  <div class="pin-label">Access code</div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="d0"></div><div class="pin-dot" id="d1"></div>
+    <div class="pin-dot" id="d2"></div><div class="pin-dot" id="d3"></div>
+    <div class="pin-dot" id="d4"></div><div class="pin-dot" id="d5"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pp('1')">1</button><button class="pin-btn" onclick="pp('2')">2</button><button class="pin-btn" onclick="pp('3')">3</button>
+    <button class="pin-btn" onclick="pp('4')">4</button><button class="pin-btn" onclick="pp('5')">5</button><button class="pin-btn" onclick="pp('6')">6</button>
+    <button class="pin-btn" onclick="pp('7')">7</button><button class="pin-btn" onclick="pp('8')">8</button><button class="pin-btn" onclick="pp('9')">9</button>
+    <button class="pin-btn empty"></button><button class="pin-btn" onclick="pp('0')">0</button><button class="pin-btn del" onclick="pd()">DEL</button>
+  </div>
+  <label class="pin-remember"><input type="checkbox" id="pinRemember"> Remember this device for 30 days</label>
+  <div class="pin-error" id="pinError"></div>
+</div>
+
+<div class="topbar">
+  <div class="topbar-left">Care Gap<span> · Microsite2</span></div>
+  <div class="topbar-right">
+    <div class="topbar-clock" id="clock">—</div>
+    <div class="topbar-refresh" onclick="location.reload()" title="Reload">⟳</div>
+    <div class="topbar-lock" onclick="lockApp()">Lock</div>
+  </div>
+</div>
+
+<div class="tab-nav" id="tabNav">
+  <button class="tab-btn active" data-tab="tab-keywords" onclick="switchTab('tab-keywords')">Keywords</button>
+  <button class="tab-btn" data-tab="tab-method" onclick="switchTab('tab-method')">Method</button>
+  <button class="tab-btn" data-tab="tab-todo" onclick="switchTab('tab-todo')">Not yet wired</button>
+</div>
+
+<div class="tab-page active" id="tab-keywords">
+  <div class="stagebanner">
+    <b>Real, live, wired to the actual worker</b> — this is the first genuinely functioning slice of Microsite2, not a simulation. Loads the real Care Gap Research record on open; every button here writes to the real Notion database. Campaign: <code>Fundraising Caregivers - Stable Home</code>.
+  </div>
+  <div class="kwgrid">
+    <div class="kwcol">
+      <h2>Keywords</h2>
+      <div class="kwgroup open" style="--kwc:#4ade80;">
+        <div class="kwghd" onclick="this.parentElement.classList.toggle('open')">
+          <span id="mainKwArrow">▾</span>Main Keywords
+          <span class="kwbtns">
+            <input type="text" class="winput" id="kwSteerInput" placeholder="steer (optional)" onclick="event.stopPropagation()" style="width:130px;">
+            <button class="wbtn primary" id="kwRegenBtn" onclick="event.stopPropagation();runRegenKeywords()">⟳ regen</button>
+            <button class="wbtn" id="clusterGenBtn" onclick="event.stopPropagation();runGenerateClusters()">↻ generate clusters</button>
+          </span>
+        </div>
+        <div id="mainKwBody" class="kw-list"><div class="loadnote">Loading…</div></div>
+      </div>
+      <div id="r-seoclusters"></div>
+    </div>
+    <div class="kwcol">
+      <h2>Product Ideas</h2>
+      <div class="kwgroup open" style="--kwc:#8ab4f8;">
+        <div class="kwghd" onclick="this.parentElement.classList.toggle('open')">
+          <span>▾</span>Main Stack — off all Main Keywords
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <input type="text" class="winput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:140px;">
+          <button class="wbtn" id="prodIdeasBtn" onclick="runProductIdeas()">⟳ search</button>
+        </div>
+        <div id="r-prodideas"><div class="loadnote">Loading…</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="tab-page" id="tab-method">
+  <div class="stagebanner">
+    <b>Real, live</b> — pulled straight from <code>getHubMethodMatrix</code>, filtered to Care Gap's own methods. Same data source as the dashboard's Hub Method Matrix.
+  </div>
+  <div id="methodList"><div class="loadnote">Loading…</div></div>
+</div>
+
+<div class="tab-page" id="tab-todo">
+  <p style="color:#888;font-size:12px;line-height:1.6;max-width:60ch;">
+    Design, Product Research, Strategy, Title, and Asset tabs from the Master/New Template artifacts aren't wired here yet — this file only proves the pattern end to end for Keywords and Method so far. Next real slice picks up from here.
+  </p>
+</div>
+
+<script>
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807";
+const RESEARCH_ID = "36d1f7d3a4bb81109415ed2639162893";
+// Care Gap's real Methods relation (verified against Notion directly) — used
+// to scope getHubMethodMatrix's all-campaign column list down to this
+// campaign's own methods, since that action has no campaignId filter.
+const CARE_GAP_METHOD_IDS = new Set([
+  "3911f7d3a4bb81dcb27ff738d9418d6f", // inbound (archived)
+  "3cf1f7d3a4bb81b4b5a6eb7821cc462e", // Offer – Content Hub
+  "3d01f7d3a4bb81b88d11ec72ce72e732", // Blog - SEO - News
+  "3d11f7d3a4bb81a2916bf5a4d07d86b6", // Hook Posts (archived)
+  "3ca1f7d3a4bb81ffa775e5f3e0426f8a", // single post - main social media
+  "3d61f7d3a4bb81d59083da4af143c3ec", // Content Hub (shared global method)
+]);
+
+// ── PIN auth — same pattern as every other microsite (hard-grind) ──────
+const REMEMBER_KEY = 'hermes_remember_caregapv2';
+function getRememberedToken() {
+  try {
+    const raw = localStorage.getItem(REMEMBER_KEY);
+    if (!raw) return null;
+    const { token, expires } = JSON.parse(raw);
+    if (!token || !expires || Date.now() > expires) { localStorage.removeItem(REMEMBER_KEY); return null; }
+    return token;
+  } catch (e) { return null; }
+}
+let SESSION_TOKEN = sessionStorage.getItem('caregapv2_token') || getRememberedToken() || null;
+let pin = '';
+const PIN_LENGTH = 6;
+if (SESSION_TOKEN) {
+  sessionStorage.setItem('caregapv2_token', SESSION_TOKEN);
+  document.addEventListener('DOMContentLoaded', () => { document.getElementById('pinScreen').classList.add('hidden'); init(); });
+}
+function pinReset(msg, isErr) {
+  pin = '';
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach(d => d.classList.remove('filled'));
+  if (isErr) dots.forEach(d => d.classList.add('error'));
+  document.getElementById('pinError').textContent = msg;
+  setTimeout(() => { dots.forEach(d => d.classList.remove('error')); document.getElementById('pinError').textContent = ''; }, 900);
+}
+async function pp(d) {
+  if (pin.length >= PIN_LENGTH) return;
+  pin += d;
+  document.getElementById('d' + (pin.length-1)).classList.add('filled');
+  if (pin.length === PIN_LENGTH) {
+    const attemptPin = pin;
+    pin = '';
+    try {
+      const ctrl = new AbortController();
+      const tid = setTimeout(() => ctrl.abort(), 6000);
+      const resp = await fetch(WORKER_URL, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'auth', pin: attemptPin }), signal: ctrl.signal,
+      });
+      clearTimeout(tid);
+      const data = await resp.json();
+      if (data.token) {
+        SESSION_TOKEN = data.token;
+        sessionStorage.setItem('caregapv2_token', SESSION_TOKEN);
+        const remember = document.getElementById('pinRemember');
+        if (remember && remember.checked) {
+          localStorage.setItem(REMEMBER_KEY, JSON.stringify({ token: SESSION_TOKEN, expires: Date.now() + 30*24*60*60*1000 }));
+        }
+        document.getElementById('pinScreen').classList.add('hidden');
+        init();
+      } else { pinReset('incorrect code', true); }
+    } catch(e) { pinReset(e.name === 'AbortError' ? 'timeout — retry' : 'connection error', true); }
+  }
+}
+function pd() {
+  if (!pin.length) return;
+  document.getElementById('d' + (pin.length-1)).classList.remove('filled');
+  pin = pin.slice(0,-1);
+}
+function lockApp() {
+  SESSION_TOKEN = null;
+  sessionStorage.removeItem('caregapv2_token');
+  localStorage.removeItem(REMEMBER_KEY);
+  pin = '';
+  document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
+  document.getElementById('pinError').textContent = '';
+  document.getElementById('pinScreen').classList.remove('hidden');
+}
+function tick() {
+  const n = new Date();
+  document.getElementById('clock').textContent = String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
+}
+setInterval(tick, 1000); tick();
+
+// ── tabs ─────────────────────────────────────────────────────────────
+function switchTab(id) {
+  document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.querySelector(`.tab-btn[data-tab="${id}"]`).classList.add('active');
+}
+
+// ── real worker call helper (same shape as every other microsite) ──────
+async function w(action, extra = {}) {
+  const payload = { action, token: SESSION_TOKEN, ...extra };
+  const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  let d;
+  try { d = await r.json(); }
+  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status})`); }
+  if (r.status === 401) { lockApp(); throw new Error('Session expired — log in again.'); }
+  if (d.error) throw new Error(d.error);
+  return d;
+}
+
+let RAW_KEYWORDS = '';
+
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function renderKeywordPills(kwStr) {
+  const el = document.getElementById('mainKwBody');
+  const kws = (kwStr || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!kws.length) { el.innerHTML = '<span style="color:#888;font-size:11px;">No keywords yet.</span>'; return; }
+  el.innerHTML = kws.map(k => `<span class="kw-pill">${esc(k)}</span>`).join('');
+}
+
+// ── real load: the actual Care Gap Research record ──────────────────
+// getResearch is the only read-only fetch here — it returns the Product
+// Ideas text Notion already has on file, so the Product Ideas column
+// renders from THIS call on load. getProductIdeas (unlike its name) always
+// calls Claude and overwrites that real field, so it only ever fires from
+// the explicit "⟳ search" button, never on page load.
+async function loadResearch() {
+  try {
+    const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
+    const r = data.research;
+    if (!r) {
+      document.getElementById('mainKwBody').innerHTML = '<span style="color:#ff6b6b;">No research record found.</span>';
+      document.getElementById('r-prodideas').innerHTML = '<span style="color:#ff6b6b;">No research record found.</span>';
+      return;
+    }
+    RAW_KEYWORDS = r.keywords || '';
+    renderKeywordPills(RAW_KEYWORDS);
+    renderProductIdeas(r.productIdeas || '');
+  } catch (e) {
+    document.getElementById('mainKwBody').innerHTML = `<span style="color:#ff6b6b;">Load failed: ${esc(e.message)}</span>`;
+    document.getElementById('r-prodideas').innerHTML = `<span style="color:#ff6b6b;">Load failed: ${esc(e.message)}</span>`;
+  }
+}
+
+async function runRegenKeywords() {
+  const btn = document.getElementById('kwRegenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  const steer = (document.getElementById('kwSteerInput').value || '').trim();
+  document.getElementById('mainKwBody').innerHTML = '<div class="loadnote">Researching…</div>';
+  try {
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS });
+    RAW_KEYWORDS = r.keywords || '';
+    renderKeywordPills(RAW_KEYWORDS);
+  } catch (e) {
+    renderKeywordPills(RAW_KEYWORDS);
+    alert('Regen failed: ' + e.message);
+  }
+  btn.disabled = false; btn.textContent = o;
+}
+
+// ── real SEO clusters ────────────────────────────────────────────────
+let SEO_CLUSTERS = { staged: [], committed: [] };
+async function loadClusters() {
+  try {
+    const r = await w('getKeywordClusters', { campaignId: CAMPAIGN_ID });
+    SEO_CLUSTERS = { staged: r.staged || [], committed: r.committed || [] };
+    renderClusters();
+  } catch (e) {
+    document.getElementById('r-seoclusters').innerHTML = `<div class="errnote">Cluster load failed: ${esc(e.message)}</div>`;
+  }
+}
+function renderClusters() {
+  const el = document.getElementById('r-seoclusters');
+  const { staged, committed } = SEO_CLUSTERS;
+  if (!staged.length && !committed.length) { el.innerHTML = '<div class="loadnote">No clusters yet — ↻ generate (needs Main Keywords set above).</div>'; return; }
+  let html = '';
+  committed.forEach(c => {
+    html += `<div class="commitcluster"><div class="cchd">${esc(c.name)} Stack</div><div style="font-size:11px;color:#ccc;">${esc(c.keywords)}</div></div>`;
+  });
+  staged.forEach(c => {
+    html += `<div class="stagedcluster"><div class="schd">${esc(c.name)} Stack — staged</div>
+      <input value="${esc(c.name)}" onchange="editCluster('${esc(c.id)}','name',this.value)">
+      <textarea onchange="editCluster('${esc(c.id)}','keywords',this.value)">${esc(c.keywords)}</textarea>
+      <div style="font-size:10.5px;color:#999;font-style:italic;margin-bottom:6px;">${esc(c.rationale || '')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="wbtn" onclick="regenCluster('${esc(c.id)}', this)">↻ regen</button>
+        <button class="wbtn primary" onclick="commitCluster('${esc(c.id)}', this)">💾 commit</button>
+      </div></div>`;
+  });
+  el.innerHTML = html;
+}
+async function editCluster(clusterId, field, value) {
+  try { const payload = { campaignId: CAMPAIGN_ID, clusterId }; payload[field] = value; const r = await w('updateStagedKeywordCluster', payload); SEO_CLUSTERS.staged = r.staged || []; }
+  catch (e) { alert('Save failed: ' + e.message); }
+}
+async function regenCluster(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try { const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); SEO_CLUSTERS.staged = r.staged || []; SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed; renderClusters(); }
+  catch (e) { alert('Regenerate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function commitCluster(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try { await w('commitKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); await loadClusters(); }
+  catch (e) { alert('Commit failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
+}
+async function runGenerateClusters() {
+  const btn = document.getElementById('clusterGenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'grouping…';
+  try { const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID }); SEO_CLUSTERS.staged = r.staged || []; renderClusters(); }
+  catch (e) { alert('Generate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+
+// ── real Product Ideas ───────────────────────────────────────────────
+function renderProductIdeas(text) {
+  const el = document.getElementById('r-prodideas');
+  const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) { el.innerHTML = '<div class="loadnote">No product ideas yet — ⟳ search above.</div>'; return; }
+  el.innerHTML = lines.map(line => {
+    const m = line.match(/^([^:]+):\s*(.*)$/);
+    const name = m ? m[1] : line, desc = m ? m[2] : '';
+    return `<div class="idea-card"><div class="idea-card-row"><span class="idea-card-title">${esc(name)}</span></div>${desc ? `<div class="idea-card-desc">${esc(desc)}</div>` : ''}</div>`;
+  }).join('');
+}
+async function runProductIdeas() {
+  const btn = document.getElementById('prodIdeasBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  const kwOverride = (document.getElementById('prodIdeasKwInput').value || '').trim() || undefined;
+  document.getElementById('r-prodideas').innerHTML = '<div class="loadnote">Researching…</div>';
+  try { const r = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride }); renderProductIdeas(r.text || ''); }
+  catch (e) { alert('Search failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+
+// ── real Method Matrix, filtered to this campaign's methods ─────────
+async function loadMethods() {
+  const el = document.getElementById('methodList');
+  try {
+    const r = await w('getHubMethodMatrix');
+    const cols = (r.columns || []).filter(c => c.inMasterFlow && CARE_GAP_METHOD_IDS.has(c.id));
+    if (!cols.length) { el.innerHTML = '<div class="loadnote">No methods tagged "In Master Flow" yet — tag them from the dashboard\'s Hub Method Matrix.</div>'; return; }
+    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-card-row"><span class="idea-card-title">${esc(c.name)}</span><span style="font-size:10px;color:#68d391;">${esc(c.status || '')}</span></div>${c.notes ? `<div class="idea-card-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+
+function init() {
+  loadResearch();
+  loadClusters();
+  loadMethods();
+}
+</script>
+</body>
+</html>
