@@ -26473,19 +26473,36 @@ CURRENT PAIN POINTS: "${crt("Pain Points") || '(none set)'}"
 
 Generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent buyer keywords) — AND refine the four positioning fields above so they stay genuinely consistent with what the keywords now emphasize. If the operator guidance above names a new angle or audience, treat it as a real addition to who this campaign speaks to — fold it in alongside what's already there — never silently drop an existing, still-valid audience unless the guidance explicitly says to.
 
-Return ONLY this minified JSON object, nothing before or after:
-{"keywords":"comma-separated list, no numbering","targetAudience":"1-2 sentences naming every real audience segment this campaign now speaks to","campaignGoal":"1-2 sentences, what this campaign is trying to achieve","keyMessage":"the core message — can carry more than one named point if there's more than one audience","painPoints":"the real pain points, across every named audience segment"}`;
+Call the submit_campaign_refresh tool with all five fields filled in — every field is required, none may be left out or empty.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1400, messages: [{ role: "user", content: prompt }] })
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 1400,
+            messages: [{ role: "user", content: prompt }],
+            tools: [{
+              name: "submit_campaign_refresh",
+              description: "Submit the refreshed keywords and the four aligned campaign positioning fields.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  keywords: { type: "string", description: "Comma-separated list of 15-20 keywords, no numbering" },
+                  targetAudience: { type: "string", description: "1-2 sentences naming every real audience segment this campaign now speaks to" },
+                  campaignGoal: { type: "string", description: "1-2 sentences, what this campaign is trying to achieve" },
+                  keyMessage: { type: "string", description: "The core message — can carry more than one named point if there's more than one audience" },
+                  painPoints: { type: "string", description: "The real pain points, across every named audience segment" },
+                },
+                required: ["keywords", "targetAudience", "campaignGoal", "keyMessage", "painPoints"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_campaign_refresh" },
+          })
         });
         const aiData = await aiResp.json();
-        const raw = (aiData.content?.[0]?.text || '').trim();
-        let parsed;
-        try { const s = raw.indexOf("{"), e = raw.lastIndexOf("}"); parsed = JSON.parse(raw.slice(s, e + 1)); }
-        catch (e) { return json({ error: "model did not return the expected JSON object", raw: raw.slice(0, 500) }, 502); }
+        const toolUse = (aiData.content || []).find(c => c.type === "tool_use" && c.name === "submit_campaign_refresh");
+        if (!toolUse) return json({ error: "model did not return the expected tool call", raw: JSON.stringify(aiData).slice(0, 500) }, 502);
+        const parsed = toolUse.input || {};
         const keywords = String(parsed.keywords || "").trim();
 
         // Keywords write goes wherever it always went (Research page if
