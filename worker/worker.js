@@ -8654,7 +8654,9 @@ Return: the logo on a transparent background, plus one preview placed on the sit
         const briefFor = (t) => {
           const p = t.props, c = t.campProps, r = t.resProps;
           if (t.kind === "product") {
+            const kw = body.kwOverride || rtOf(p, "Keywords") || rtOf(c, "Keywords") || rtOf(r, "Keywords") || "";
             return [
+              kw && `MAIN KEYWORDS (the dominant signal — everything below is secondary context; where it conflicts with these keywords, the keywords win): ${kw}`,
               rtOf(p, "Name") && `Product: ${rtOf(p, "Name")}`,
               rtOf(p, "Description") && `What it is: ${rtOf(p, "Description")}`,
               rtOf(p, "Avatar") && `Buyer: ${rtOf(p, "Avatar")}`,
@@ -8666,10 +8668,12 @@ Return: the logo on a transparent background, plus one preview placed on the sit
               rtOf(c, "Name") && `Parent campaign: ${rtOf(c, "Name")}`,
               rtOf(c, "Target Audience") && `Campaign audience: ${rtOf(c, "Target Audience")}`,
               rtOf(r, "Statement") && `Campaign positioning: ${rtOf(r, "Statement").slice(0, 600)}`,
-              `Keywords: ${body.kwOverride || rtOf(p, "Keywords") || rtOf(c, "Keywords") || rtOf(r, "Keywords") || "(none on file)"}`,
+              !kw && `Keywords: (none on file)`,
             ].filter(Boolean).join("\n");
           }
+          const kw = body.kwOverride || rtOf(r, "Keywords") || rtOf(c, "Keywords") || "";
           return [
+            kw && `MAIN KEYWORDS (the dominant signal — this is the operator's own deliberate, most-recent input; everything below is secondary context updated to serve it, not a constraint holding it back): ${kw}`,
             rtOf(r, "Name") && `Campaign: ${rtOf(r, "Name")}`,
             rtOf(c, "Target Audience") && `Audience: ${rtOf(c, "Target Audience")}`,
             rtOf(c, "Pain Points") && `Pain points: ${rtOf(c, "Pain Points")}`,
@@ -8678,7 +8682,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
             rtOf(r, "Unique Opportunity") && `Unique opportunity: ${rtOf(r, "Unique Opportunity")}`,
             rtOf(r, "Content Topics") && `Content topics: ${rtOf(r, "Content Topics").slice(0, 1200)}`,
             rtOf(r, "Trend Intelligence") && `Trends: ${rtOf(r, "Trend Intelligence").slice(0, 1200)}`,
-            `Keywords: ${body.kwOverride || rtOf(r, "Keywords") || rtOf(c, "Keywords") || "(none on file)"}`,
+            !kw && `Keywords: (none on file)`,
           ].filter(Boolean).join("\n");
         };
         const claude = async (parts, maxTok) => {
@@ -8853,7 +8857,7 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
 `You are setting the VISUAL DIRECTION for a content hub — a Stage-1 artifact everything downstream (the hub, the wordless image plates, every offer plate) inherits from. Concrete, specific to this subject; never a generic "editorial / premium / cinematic" default.
 ${hasImg ? `\nA REFERENCE IMAGE IS ATTACHED AND IT IS THE DIRECTION. Derive all three fields FROM THE IMAGE: "register" = the mood / world it projects; "photography" = describe the kind of real images it exemplifies (subjects, settings, light — time of day, quality, colour cast — how colour sits in it, the medium/finish); "avoid" = the looks that would break from this image. The brief below is only secondary context — where it conflicts with the image, the image wins.\n` : ""}
 ${groundBlock}
-${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (honour this — it overrides derived choices where they conflict):\n${opDirection}\n` : ""}${(body.current && (body.current.register || body.current.photography || body.current.avoid) && !hasImg) ? `\nCURRENT STAGED DIRECTION (the operator is iterating — refine and sharpen THIS toward the steer, don't discard it):\nRegister: ${String(body.current.register || "").slice(0, 500)}\nPhotography: ${String(body.current.photography || "").slice(0, 700)}\nAvoid: ${String(body.current.avoid || "").slice(0, 400)}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
+${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (an earlier hand-written brief — honour it alongside MAIN KEYWORDS above, but MAIN KEYWORDS is the newer, more authoritative signal: where this old brief clearly conflicts with where the keywords now point, follow the keywords and note the conflict in your reasoning rather than silently reverting to this old direction):\n${opDirection}\n` : ""}${(body.current && (body.current.register || body.current.photography || body.current.avoid) && !hasImg) ? `\nCURRENT STAGED DIRECTION (the operator is iterating — refine and sharpen THIS toward the steer, don't discard it):\nRegister: ${String(body.current.register || "").slice(0, 500)}\nPhotography: ${String(body.current.photography || "").slice(0, 700)}\nAvoid: ${String(body.current.avoid || "").slice(0, 400)}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
 Return ONLY this minified JSON object, nothing before or after:
 {"register":"1-2 sentences — the overall look and mood. Concrete.","photography":"3-4 sentences — the real images that belong: subjects and settings (concrete nouns), the light, how the palette shows up in a photo, the medium/finish. Say plainly whether people/faces belong or not — do not default to banning them.","avoid":"a semicolon-separated list of the specific AI / stock-photo / cliché looks to reject for THIS niche"}` });
           let out;
