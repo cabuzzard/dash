@@ -24015,6 +24015,119 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ success: true, imageUrl, prompt, hubSlug });
       }
 
+      // -- generateSinglePostFullCreative: ADDITIVE alternative to the
+      // Canva-template-fill flow (does NOT touch it or the existing
+      // per-hub template registry). Sends the asset's own Headline Primary
+      // / Accent / Body copy, verbatim, plus the campaign's full
+      // information flow (assembleImageBrief/writeImageSpec — same shared
+      // spec generateSinglePostBackground and generateOfferImage use) to
+      // Grok's image API with full creative freedom on visual treatment,
+      // constrained only by the brand spec. One generation, no Canva
+      // session. Writes only to "Post Image" — never touches Asset
+      // Status, so the operator reviews before publishing, same as every
+      // other image-generation action in this file.
+      // { assetId, guidance? }
+      if (body.action === "generateSinglePostFullCreative") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+        const { assetId, guidance } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const assetTitle = ap["Asset Title"]?.title?.map(t=>t.plain_text).join("") || "single post";
+        const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+
+        // Single-post assets carry their copy in a fenced JSON code block
+        // in the page body — {"kind":"single-post","fields":{...},...} —
+        // same block buildSinglePostCanvaHandoff already reads.
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+        let fields = null;
+        for (const b of (blocksResp.results || [])) {
+          const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
+          if (b.type === "code" && txt.trim().startsWith("{")) {
+            try { const j = JSON.parse(txt); if (j.kind === "single-post") fields = j.fields || null; } catch (e) {}
+          }
+          if (fields) break;
+        }
+        if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
+
+        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        let spec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { /* best-effort — still usable without it */ } }
+
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives.
+
+WHAT THIS IS: a complete, ready-to-publish Instagram post — not a background plate. Brief the image model to design the WHOLE finished creative around this exact copy, verbatim:
+Headline Primary: "${fields["Headline Primary"] || ""}"
+Headline Accent: "${fields["Headline Accent"] || ""}"
+Body: "${fields["Body"] || ""}"
+
+The model has full creative freedom on visual treatment — photography, illustration, icons, a diagram, or pure typography, whichever earns the most attention for this specific message — constrained only by the brand spec below. The headline/accent/body text above must appear on the image, spelled exactly as given, in whatever layout the model chooses.
+
+Ground every visual choice in this hub's image spec — palette hexes, subjects, tone, the "Never" list:
+${spec || "(no stored spec yet — infer conservatively from brand colors only)"}
+${guidance ? `\nOPERATOR DIRECTION for this post (follow it): ${String(guidance).slice(0, 600)}\n` : ""}
+Portrait Instagram post, ready to publish.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: claudePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "4:5", resolution: "2k" }),
+        });
+        const xd = await xr.json().catch(() => ({}));
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+        const xUrl = xd.data?.[0]?.url || "";
+        if (!xUrl) return json({ error: "xAI returned no image URL" }, 502);
+
+        const renderResp = await fetch(xUrl);
+        if (!renderResp.ok) return json({ error: `couldn't fetch the render (HTTP ${renderResp.status})` }, 502);
+        const bytes = new Uint8Array(await renderResp.arrayBuffer());
+        if (!bytes.length) return json({ error: "empty render" }, 502);
+        let bin = ""; for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        const b64 = btoa(bin);
+
+        const deployPath = await resolveDeployPath(campaignId, hdr, dash).catch(() => "hub");
+        const slugify = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+        const path = `web/${deployPath}/single-posts/full-creative/${slugify(assetTitle) || assetId}.png`;
+        const REPO = "cabuzzard/dash", BRANCH = "main";
+        const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
+        let sha = null;
+        const g = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: gh });
+        if (g.ok) { try { sha = (await g.json()).sha || null; } catch (e) {} }
+        const putBody = { message: `Single post full-creative (Grok): ${assetTitle}`, content: b64, branch: BRANCH };
+        if (sha) putBody.sha = sha;
+        const put = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, { method: "PUT", headers: { ...gh, "Content-Type": "application/json" }, body: JSON.stringify(putBody) });
+        if (!put.ok) { const r = await put.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || put.status}` }, 500); }
+        const imageUrl = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+
+        try { await ensureAssetsDbProperties(hdr, { "Post Image": { type: "url" } }); } catch (e) {}
+        const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Post Image": { url: imageUrl } } }),
+        });
+        if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Post Image" }, 500); }
+
+        return json({ success: true, imageUrl, prompt });
+      }
+
       // -- saveOfferImage (rehost a finished image on GitHub Pages and write
       //    it onto the Offer asset) --------------------------------------
       // Second half of the generateOfferImage flow. Takes EITHER an
