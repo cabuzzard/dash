@@ -118,21 +118,27 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .kwcol h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin:0 0 8px;}
 .kwgroup{border-left:3px solid var(--kwc,var(--border2));padding-left:9px;margin-bottom:12px;}
 .kwghd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--kwc,var(--ink2));margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.kwghd .kwbtns{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;}
+.kwghd .kwbtns{margin-left:auto;display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;}
 .kwghd .kwbtns .btn{font-size:9.5px;padding:2px 7px;}
 .kwgbody{display:none;font-size:12px;color:var(--ink);padding-top:6px;}
 .kwgroup.open .kwgbody{display:block;}
 .kwgroup.open>.kwghd .kwarrow{transform:rotate(0deg);}
-.kwarrow{display:inline-block;font-size:9px;transition:transform .12s;transform:rotate(-90deg);}
-.kwgennew{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px;background:var(--surface2);border:1px dashed var(--border2);border-radius:10px;}
+.kwarrow{display:inline-block;font-size:9px;transition:transform .12s;transform:rotate(-90deg);flex-shrink:0;}
 .kw-pill{display:inline-block;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;margin:2px 3px 2px 0;color:var(--ink);}
-.kwlink{font-size:9.5px;color:var(--ink3);text-decoration:none;margin-left:4px;}
+.kwlink{font-size:9.5px;color:var(--ink3);text-decoration:none;margin-left:4px;flex-shrink:0;}
 .kwlink:hover{color:var(--amber);}
 .clusterideagrp{border-left:3px solid var(--amber);padding-left:9px;margin-bottom:12px;}
 .clusterideagrp .cighd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--amber);margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.clusterideagrp .cibody{display:none;padding-top:4px;}
+.clusterideagrp.open .cibody{display:block;}
+.clusterideagrp.open .cighd .kwarrow{transform:rotate(0deg);}
 .idea-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface2);}
-.idea-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.idea-title{font-weight:600;font-size:12.5px;flex:1;min-width:120px;}
+.idea-row{display:flex;align-items:center;gap:4px;}
+.idea-title{font-weight:600;font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.idea-btns{display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;}
+.iconbtn{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;line-height:1;flex-shrink:0;}
+.iconbtn:hover{border-color:var(--amber);color:var(--amber);}
+.iconbtn.primary{background:var(--amber);border-color:var(--amber);color:#fff;}
 .idea-desc{font-size:11.5px;color:var(--ink2);margin-top:4px;line-height:1.5;}
 .stagedcluster{border-left:3px solid var(--amber);padding-left:10px;margin-bottom:10px;}
 .stagedcluster .schd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--amber);margin-bottom:5px;}
@@ -256,15 +262,23 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <div class="modaloverlay" id="clusterGenModal">
+    <div class="modalbox">
+      <div class="mtitle">New cluster</div>
+      <div class="mfield">Paste keywords or a topic</div>
+      <textarea id="newClusterInput" placeholder="e.g. direct care worker wage advocacy"></textarea>
+      <div style="font-size:11px;color:var(--ink3);margin-top:6px;">Merges this with the Master keyword strategy into one new focused cluster.</div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeClusterGenModal()">Cancel</button>
+        <button class="btn primary" id="newClusterBtn" onclick="runGenerateSingleCluster()">Generate</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
     <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
-    <p class="stage-sub">Master + every SEO cluster, all as one flat, fully-collapsible stack (Master is a cluster like any other). Product Ideas mirrors it on the right: a Main Stack plus one Cluster Ideas group per cluster.</p>
-    <div class="kwgennew">
-      <input type="text" class="finput" id="newClusterInput" placeholder="paste keywords / a topic to build a new cluster around…" style="width:280px;">
-      <button class="btn primary" id="newClusterBtn" onclick="runGenerateSingleCluster()">+ generate cluster</button>
-      <span style="font-size:10.5px;color:var(--ink3);">merges this input with the Main Keywords strategy into one new cluster</span>
-    </div>
+    <p class="stage-sub">Master + every SEO cluster, all as one flat, fully-collapsible stack, collapsed by default (Master is a cluster like any other). Product Ideas mirrors it on the right: a Main Stack plus one Cluster Ideas group per cluster.</p>
     <div class="kwgrid">
       <div class="kwcol">
         <h4>Keywords</h4>
@@ -282,7 +296,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2>Campaign Research</h2><span class="stagetag">stage 1</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-research','Campaign Research tab','research')">📝 Tab note</button></div>
     <p class="stage-sub">Trend and customer research. Positioning + Statement/Unique Opportunity auto-cascade with a Keywords regen; the 13 research modules below are each their own real Notion field.</p>
 
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
       <div class="card-body">
         <p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record and have no button of their own anywhere — they refresh together with the Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>
@@ -292,7 +306,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
     </section>
 
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
       <div class="card-body">
         <div class="field"><div class="frow"><span class="fname">Statement</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-statement">—</div></div><button class="notebtn" onclick="openNoteModal('research-statement','Statement','research')">📝</button></div></div>
@@ -300,7 +314,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
     </section>
 
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">6 have a real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
       <div class="card-body" id="researchModulesBody">
         <div class="loadnote">Loading…</div>
@@ -313,7 +327,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2 style="color:var(--global);">🎨 Design</h2><span class="stagetag" style="color:var(--global);">global constant — not a stage</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-design','Design tab','design')">📝 Tab note</button></div>
     <p class="stage-sub">Everything that governs how this campaign LOOKS. Method and Asset consume this; they don't own it. Loaded from <code>getHubPalette</code>; each card's ⟳ calls the matching <code>generateResearch*</code> action.</p>
 
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
       <div class="card-body">
         <p class="card-desc">One call (<code>generateResearchDesign</code>) rewrites all three together, grounded in Main Keywords as the dominant signal.</p>
@@ -327,14 +341,14 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
     </section>
 
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Palette</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
       <div class="card-body">
         <div class="field"><div class="frow"><span class="fname">Resolved hex</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-palette">—</div><div class="fctrl"><button class="btn" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button><button class="notebtn" onclick="openNoteModal('design-palette','Palette','design')">📝</button></div></div></div></div>
       </div>
     </section>
 
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Fonts</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
       <div class="card-body">
         <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div><div class="fctrl"><button class="btn" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div></div></div>
@@ -347,7 +361,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
     <p class="stage-sub">The 11 🔬 Product Research fields (Customer/Niche/Pain Points/Emotions/Solution/Benefits/Unique Opportunity/Transformation/Offer Structure/Proof Points/Objections) for this campaign's main product, via <code>getCampaignProducts</code> → <code>getProductStrategy</code>.</p>
     <div id="productPicker" style="margin-bottom:12px;"></div>
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3 id="productCardTitle">Product Research</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-product-research','Product Research','product')">📝</button></div>
       <div class="card-body" id="productResearchBody">
         <div class="loadnote">Loading…</div>
@@ -366,7 +380,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="panel" data-panel="title">
     <div class="stage-hd"><h2>Title</h2><span class="stagetag">stage 4</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-title','Title tab','title')">📝 Tab note</button></div>
     <p class="stage-sub">Every Content Strategy title on this campaign, real, via <code>getTitles</code>.</p>
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Titles</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-title-list','Titles','title')">📝</button></div>
       <div class="card-body" id="titleListBody">
         <div class="loadnote">Loading…</div>
@@ -378,7 +392,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="panel" data-panel="method">
     <div class="stage-hd"><h2>Method</h2><span class="stagetag">stage 5 · à la carte</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-method','Method tab','method')">📝 Tab note</button></div>
     <p class="stage-sub">Care Gap's real methods tagged "In Master Flow", via <code>getHubMethodMatrix</code> (scoped client-side to this campaign's own method IDs).</p>
-    <section class="card open">
+    <section class="card">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>In-flow methods</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-method-list','In-flow methods','method')">📝</button></div>
       <div class="card-body" id="methodList">
         <div class="loadnote">Loading…</div>
@@ -542,6 +556,10 @@ function closeNoteModal() { document.getElementById('noteModal').classList.remov
 document.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('noteModal');
   overlay.addEventListener('click', e => { if (e.target === overlay) closeNoteModal(); });
+  const sourcesOverlay = document.getElementById('sourcesModal');
+  sourcesOverlay.addEventListener('click', e => { if (e.target === sourcesOverlay) closeSourcesModal(); });
+  const clusterOverlay = document.getElementById('clusterGenModal');
+  clusterOverlay.addEventListener('click', e => { if (e.target === clusterOverlay) closeClusterGenModal(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -622,13 +640,14 @@ function renderKeywordsAndIdeas() {
   const { staged, committed } = SEO_CLUSTERS;
 
   const masterPills = (RAW_KEYWORDS || '').split(',').map(s => s.trim()).filter(Boolean);
-  let l = `<div class="kwgroup open" style="--kwc:#4ade80;">
+  let l = `<div class="kwgroup" style="--kwc:#4ade80;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
-      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
       <span class="kwbtns">
-        <input type="text" class="finput" id="masterSteerInput" placeholder="steer (optional)" style="width:110px;" onclick="event.stopPropagation()">
-        <button class="btn primary" onclick="event.stopPropagation();runRegenKeywords(this)">⟳ regen</button>
-        <button class="btn" onclick="event.stopPropagation();runGenerateClusters(this)">↻ generate clusters (batch)</button>
+        <input type="text" class="finput" id="masterSteerInput" placeholder="steer (optional)" style="width:100px;" onclick="event.stopPropagation()">
+        <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();runRegenKeywords(this)">⟳</button>
+        <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();runGenerateClusters(this)">🗂️</button>
+        <button class="iconbtn" title="Generate one new cluster from a topic" onclick="event.stopPropagation();openClusterGenModal()">➕</button>
+        <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
       </span>
     </div>
     <div class="kwgbody">${masterPills.length ? masterPills.map(k => `<span class="kw-pill">${esc(k)}</span>`).join('') : '<span style="color:var(--ink3);font-size:11px;">No keywords yet.</span>'}</div>
@@ -637,11 +656,11 @@ function renderKeywordsAndIdeas() {
   staged.forEach(c => {
     l += `<div class="kwgroup" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>
-        <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         <span class="kwbtns">
-          <button class="btn" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻ regen</button>
-          <button class="btn" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">→ create product ideas</button>
-          <button class="btn primary" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾 commit</button>
+          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
+          <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
+          <button class="iconbtn primary" title="Commit this cluster to Notion" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾</button>
+          <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
       </div>
       <div class="kwgbody">
@@ -655,9 +674,11 @@ function renderKeywordsAndIdeas() {
   committed.forEach(c => {
     l += `<div class="kwgroup" style="--kwc:#2f6f6a;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>
-        <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
-        <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
-        <span class="kwbtns"><button class="btn" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻ regen</button></span>
+        <span class="kwbtns">
+          <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
+          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
+          <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
+        </span>
       </div>
       <div class="kwgbody"><div class="fval" style="margin:0;">${esc(c.keywords)}</div></div>
     </div>`;
@@ -665,53 +686,55 @@ function renderKeywordsAndIdeas() {
   left.innerHTML = l;
 
   // ── right: Main Stack + Cluster Ideas (staged clusters only) ──────────
-  let r = `<div class="kwgroup open" style="--kwc:#8ab4f8;">
+  let r = `<div class="kwgroup" style="--kwc:#8ab4f8;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Main Stack <span style="font-weight:400;text-transform:none;color:var(--ink3);">— off Master</span>
-      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
       <span class="kwbtns">
-        <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:120px;" onclick="event.stopPropagation()">
-        <button class="btn" onclick="event.stopPropagation();runProductIdeas(this)">⟳ search</button>
+        <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:110px;" onclick="event.stopPropagation()">
+        <button class="iconbtn" title="Search product ideas" onclick="event.stopPropagation();runProductIdeas(this)">⟳</button>
+        <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
       </span>
     </div>
-    <div class="kwgbody" id="r-prodideas">${renderIdeaLines(MAIN_PRODUCT_IDEAS_TEXT, 'main', null)}</div>
+    <div class="kwgbody" id="r-prodideas">${renderIdeaLines(MAIN_PRODUCT_IDEAS_TEXT)}</div>
   </div>`;
 
   staged.forEach(c => {
     const has = c.products && c.products.length;
     r += `<div class="clusterideagrp">
-      <div class="cighd" onclick="this.nextElementSibling.classList.toggle('open')"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
-        <button class="notebtn" style="font-size:9.5px;padding:2px 7px;margin-left:auto;" onclick="event.stopPropagation();openNoteModal('keywords-clusterideas-${esc(c.id)}','${esc(c.name)} cluster ideas','keywords')">📝</button>
-        <button class="btn" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">↻ propose products</button>
+      <div class="cighd" onclick="this.parentElement.classList.toggle('open')"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
+        <span class="kwbtns">
+          <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
+          <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-clusterideas-${esc(c.id)}','${esc(c.name)} cluster ideas','keywords')">📝</button>
+        </span>
       </div>
-      <div class="kwgroup${has ? '' : ''}" style="margin:0;border:none;padding:0;">
-        <div class="kwgbody" style="display:block;">${has ? renderIdeaCards(c.products, c.id, c.name) : '<div class="loadnote">No product ideas proposed yet — ↻ propose products above.</div>'}</div>
-      </div>
+      <div class="cibody">${has ? renderIdeaCards(c.products, c.id, c.name) : '<div class="loadnote">No product ideas proposed yet — 💡 above.</div>'}</div>
     </div>`;
   });
   right.innerHTML = r;
   refreshNoteMarks();
 }
 
-function renderIdeaLines(text, scope) {
+function renderIdeaLines(text) {
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
   if (!lines.length) return '<div class="loadnote">No product ideas yet — ⟳ search above.</div>';
   return lines.map((line, i) => {
     const m = line.match(/^([^:]+):\s*(.*)$/);
     const name = m ? m[1] : line, desc = m ? m[2] : '';
-    return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(name)}</span>
-      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runViewSources('${esc(name)}','${esc(RAW_KEYWORDS)}')">🔗 sources</button>
-      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master')">+ Product</button>
-      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
-      </div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
+    return `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(name)}">${esc(name)}</span>
+      <span class="idea-btns">
+        <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(name)}','${esc(RAW_KEYWORDS)}')">🔗</button>
+        <button class="iconbtn" title="Create a real Product record from this idea" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master')">➕</button>
+        <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
+      </span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
   }).join('');
 }
 function renderIdeaCards(products, clusterId, clusterName) {
-  return products.map(p => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(p.name)}</span>
-      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runViewSources('${esc(p.name)}','${esc(p.keywords)}')">🔗 sources</button>
-      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runCreateProductFromIdea('${esc(p.name)}','${esc(p.angle)}','${esc(clusterName)}')">+ Product</button>
-      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="dismissClusterIdea('${esc(clusterId)}','${esc(p.id)}', this)">✕</button>
-      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="openNoteModal('keywords-idea-${esc(clusterId)}-${esc(p.id)}','${esc(p.name)}','keywords')">📝</button>
-      </div><div class="idea-desc"><b>${esc(p.platform)} · ${esc(p.type)}</b> — ${esc(p.angle)}</div></div>`).join('');
+  return products.map(p => `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
+      <span class="idea-btns">
+        <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(p.name)}','${esc(p.keywords)}')">🔗</button>
+        <button class="iconbtn" title="Create a real Product record from this idea" onclick="runCreateProductFromIdea('${esc(p.name)}','${esc(p.angle)}','${esc(clusterName)}')">➕</button>
+        <button class="iconbtn" title="Dismiss this proposal" onclick="dismissClusterIdea('${esc(clusterId)}','${esc(p.id)}', this)">✕</button>
+        <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-${esc(clusterId)}-${esc(p.id)}','${esc(p.name)}','keywords')">📝</button>
+      </span></div><div class="idea-desc"><b>${esc(p.platform)} · ${esc(p.type)}</b> — ${esc(p.angle)}</div></div>`).join('');
 }
 
 async function editCluster(clusterId, field, value) {
@@ -728,6 +751,11 @@ async function commitCluster(clusterId, btn) {
   try { await w('commitKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); await loadClusters(); }
   catch (e) { alert('Commit failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
+function openClusterGenModal() {
+  document.getElementById('newClusterInput').value = '';
+  document.getElementById('clusterGenModal').classList.add('open');
+}
+function closeClusterGenModal() { document.getElementById('clusterGenModal').classList.remove('open'); }
 async function runGenerateSingleCluster() {
   const btn = document.getElementById('newClusterBtn');
   const input = document.getElementById('newClusterInput');
@@ -737,7 +765,7 @@ async function runGenerateSingleCluster() {
   try {
     const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords });
     SEO_CLUSTERS.staged = r.staged || [];
-    input.value = '';
+    closeClusterGenModal();
     renderKeywordsAndIdeas();
   } catch (e) { alert('Generate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
@@ -965,7 +993,7 @@ async function loadStrategyTab() {
       const url = res && res.strategy ? res.strategy.url : null;
       const tag = text ? '<span class="tag fresh">has brief</span>' : '<span class="tag stale">no brief yet</span>';
       const link = url ? `<a class="kwlink" href="${esc(url)}" target="_blank" rel="noopener">↗ Notion</a>` : `<a class="kwlink" href="${notionUrl(mid)}" target="_blank" rel="noopener">↗ method in Notion</a>`;
-      return `<section class="card open"><div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}${link}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
+      return `<section class="card"><div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}${link}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
     }).join('');
     refreshNoteMarks();
   } catch (e) {
