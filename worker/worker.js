@@ -26429,29 +26429,87 @@ Rules:
       }
 
       // Î"Ã¶Ã‡Î"Ã¶Ã‡ CAMPAIGN ADMIN: updateCampaignKeywords Î"Ã¶Ã‡Î"Ã¶Ã‡
+      // Regenerating keywords in isolation from the campaign's own Target
+      // Audience/Campaign Goal/Key Message/Pain Points let them drift apart —
+      // keywords could get refreshed toward a new audience while those four
+      // fields (which live on the CAMPAIGN record, never the Research record,
+      // even when this call is made against a Research page's Keywords field)
+      // stayed frozen at whatever they were first written as, with no UI path
+      // to regenerate them at all. Per operator direction: one call now
+      // refreshes all five together, so a keyword regen can't silently
+      // outrun the positioning it's supposed to serve.
       if (body.action === "regenerateKeywords") {
-        const { campaignId, researchId, currentKeywords } = body;
-        const pageId = researchId || campaignId;
+        const { campaignId: bodyCampaignId, researchId, currentKeywords } = body;
+        const pageId = researchId || bodyCampaignId;
         if (!pageId) return json({ error: "researchId required" }, 400);
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a keyword research specialist. Given these existing campaign keywords: "${currentKeywords || 'none provided'}"
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-Research and generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche. Include long-tail variations, related search terms, problem-aware and solution-aware terms, and high-intent buyer keywords.
+        // Resolve the real Campaign record even when this was called against
+        // a Research page's own id.
+        let campaignId = bodyCampaignId || null;
+        if (!campaignId && researchId) {
+          try {
+            const rp = await fetch(`https://api.notion.com/v1/pages/${dash(researchId)}`, { headers: hdr }).then(r => r.json());
+            campaignId = rp.properties?.Campaign?.relation?.[0]?.id?.replace(/-/g,"") || null;
+          } catch (e) {}
+        }
+        let campProps = {};
+        if (campaignId) {
+          try {
+            const cp = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+            campProps = cp.properties || {};
+          } catch (e) {}
+        }
+        const crt = k => (campProps[k]?.rich_text || []).map(t => t.plain_text).join("");
 
-Return ONLY a comma-separated list of keywords, nothing else. No numbering, no explanations, no line breaks. Just: keyword1, keyword2, keyword3`;
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are refreshing a campaign's keywords AND its core positioning together, so they never drift apart — keywords chosen for one audience while the stated positioning still names a different one is exactly the failure mode to avoid.
+
+CURRENT KEYWORDS: "${currentKeywords || 'none provided'}"
+CURRENT TARGET AUDIENCE: "${crt("Target Audience") || '(none set)'}"
+CURRENT CAMPAIGN GOAL: "${crt("Campaign Goal") || '(none set)'}"
+CURRENT KEY MESSAGE: "${crt("Key Message") || '(none set)'}"
+CURRENT PAIN POINTS: "${crt("Pain Points") || '(none set)'}"
+
+Generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent buyer keywords) — AND refine the four positioning fields above so they stay genuinely consistent with what the keywords now emphasize. If the operator guidance above names a new angle or audience, treat it as a real addition to who this campaign speaks to — fold it in alongside what's already there — never silently drop an existing, still-valid audience unless the guidance explicitly says to.
+
+Return ONLY this minified JSON object, nothing before or after:
+{"keywords":"comma-separated list, no numbering","targetAudience":"1-2 sentences naming every real audience segment this campaign now speaks to","campaignGoal":"1-2 sentences, what this campaign is trying to achieve","keyMessage":"the core message — can carry more than one named point if there's more than one audience","painPoints":"the real pain points, across every named audience segment"}`;
+
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 400, messages: [{ role: "user", content: prompt }] })
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1400, messages: [{ role: "user", content: prompt }] })
         });
         const aiData = await aiResp.json();
-        const keywords = (aiData.content?.[0]?.text || '').trim().replace(/\n/g, ', ');
-        const dashed = pageId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
-        await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+        const raw = (aiData.content?.[0]?.text || '').trim();
+        let parsed;
+        try { const s = raw.indexOf("{"), e = raw.lastIndexOf("}"); parsed = JSON.parse(raw.slice(s, e + 1)); }
+        catch (e) { return json({ error: "model did not return the expected JSON object", raw: raw.slice(0, 500) }, 502); }
+        const keywords = String(parsed.keywords || "").trim();
+
+        // Keywords write goes wherever it always went (Research page if
+        // researchId was passed, else the Campaign itself) — unchanged.
+        await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords } }] } } })
-        });
-        return json({ keywords });
+        }).catch(() => {});
+
+        // The four positioning fields ALWAYS live on the Campaign record.
+        if (campaignId) {
+          const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v || "").slice(0, 1990) } }] });
+          await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: {
+              "Target Audience": rt(parsed.targetAudience),
+              "Campaign Goal":   rt(parsed.campaignGoal),
+              "Key Message":     rt(parsed.keyMessage),
+              "Pain Points":     rt(parsed.painPoints),
+            } }),
+          }).catch(() => {});
+        }
+
+        return json({ keywords, targetAudience: parsed.targetAudience, campaignGoal: parsed.campaignGoal, keyMessage: parsed.keyMessage, painPoints: parsed.painPoints });
       }
 
       if (body.action === "linkResearchToCampaign") {
