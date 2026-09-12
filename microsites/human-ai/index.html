@@ -1314,6 +1314,15 @@ async function submitBlankGrouping() {
         <input class="modal-ta" id="pubPlatformTitle" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="No platform title for this asset type" />
         <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPlatformTitle', this)">📋</button>
       </div>
+      <div id="pubSinglePostWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
+        <label class="lm-label" style="margin-bottom:2px;">🖼️ Post Image <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— the finished creative. Open it full-size and post it yourself, same as you'd download from Canva.</span></label>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+          <img id="pubPostImagePreview" src="" alt="" style="display:none;width:56px;height:70px;object-fit:cover;border-radius:4px;border:1px solid #333;flex-shrink:0;" />
+          <input class="modal-ta" id="pubPostImage" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="Not generated yet — use ✨ Generate (Grok) or the Canva handoff on the title row" readonly />
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubPostImage')" title="Open full-size in a new tab">↗</button>
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPostImage', this)">📋</button>
+        </div>
+      </div>
       <div id="pubHubWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
         <label class="lm-label" for="pubContentHub" style="margin-bottom:2px;">📍 Content Hub <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
         <select class="modal-ta" id="pubContentHub" style="height:32px;padding:0 8px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;margin-top:4px;">
@@ -3375,7 +3384,7 @@ async function loadTitles(opts = {}) {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '', contentHub: a.contentHub || '' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', postImage: a.postImage || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '', contentHub: a.contentHub || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 50px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -8346,6 +8355,14 @@ function openPublishAssetModal(btn) {
   if (data.type === 't shirt') { pubLoadTshirtColors(); document.getElementById('pubDallePrompt').value = data.dallePrompt || ''; }
   // Offer – Content Hub: the hub picker. Publishing the asset with a hub
   // selected sends its OFFER CARD to that hub's Products section (getHubProducts).
+  const spWrap2 = document.getElementById('pubSinglePostWrap');
+  const isSinglePostAsset = /single post/i.test(data.type || '');
+  spWrap2.style.display = isSinglePostAsset ? 'block' : 'none';
+  if (isSinglePostAsset) {
+    document.getElementById('pubPostImage').value = data.postImage || '';
+    const ppImg = document.getElementById('pubPostImagePreview');
+    if (data.postImage) { ppImg.src = data.postImage; ppImg.style.display = ''; } else { ppImg.src = ''; ppImg.style.display = 'none'; }
+  }
   const hubWrap = document.getElementById('pubHubWrap');
   const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
   hubWrap.style.display = isHubOffer ? 'block' : 'none';

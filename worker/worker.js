@@ -24199,10 +24199,15 @@ Portrait Instagram post, ready to publish.`;
         if (!put.ok) { const r = await put.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || put.status}` }, 500); }
         const imageUrl = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
 
+        // Same closing move as the Canva path's saveSinglePostImage: this IS
+        // a finished post now, so flip Asset Status to Publish — that status
+        // is what actually puts the asset on a path to publishing (the row's
+        // Publish modal, the publish queue, etc). Leaving it un-flipped was
+        // the original bug here: a real image with no forward path.
         try { await ensureAssetsDbProperties(hdr, { "Post Image": { type: "url" } }); } catch (e) {}
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Post Image": { url: imageUrl } } }),
+          body: JSON.stringify({ properties: { "Post Image": { url: imageUrl }, "Asset Status": { select: { name: "Publish" } } } }),
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Post Image" }, 500); }
 
