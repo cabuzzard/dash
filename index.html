@@ -15389,8 +15389,9 @@ async function matTypeSave() {
     if (c) { c.name = name; c.notes = notes; c.status = status; c.type = type; }
     if (type && HAM_DATA && !(HAM_DATA.allTypes || []).includes(type)) (HAM_DATA.allTypes = HAM_DATA.allTypes || []).push(type);
     renderHubAssetMatrix();
-    document.getElementById('matTypeModal').classList.remove('open');
-  } catch(e) { msg.textContent = 'Error: ' + e.message; }
+    msg.style.color = 'var(--text3)';
+    msg.textContent = 'Saved ✓';
+  } catch(e) { msg.style.color = '#e05252'; msg.textContent = 'Error: ' + e.message; }
   btn.disabled = false; btn.textContent = 'Save';
 }
 async function matTypeDelete() {
