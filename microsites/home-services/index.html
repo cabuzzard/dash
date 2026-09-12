@@ -384,7 +384,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
      instead of a separate tab to check. -->
 <div class="three-col">
   <div class="col">
-    <h2>Strategies <button class="td-add-btn-inline" onclick="openAddStrategyModal()" title="Add strategy">+</button><button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
+    <h2>Strategies <button class="td-add-btn-inline" onclick="openAddStrategyModal()" title="Add strategy">+</button><button class="td-add-btn-inline" onclick="openBlankGroupingModal()" title="Add a blank grouping — no AI generation, just a name and where it sits">+ grouping</button><button class="td-add-btn-inline" onclick="loadCampaignStrategies()" title="Refresh">⟳</button></h2>
     <div class="content">
       <div id="strategies-panel"><div class="loading"><div class="spinner"></div>Loading…</div></div>
     </div>
@@ -1060,10 +1060,6 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
       <label style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:11px;color:#fff;cursor:pointer;">
         <input type="checkbox" id="gsBlankToggle" onchange="toggleGsBlankMode(this.checked)"> Just create the heading — no AI generation, no groupings/slots
       </label>
-      <div id="gsParentWrap" style="display:none;margin-top:10px;">
-        <label class="lm-label">Parent <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— no parent makes this a top-level Strategy; picking one makes it a sub-strategy nested under it (auto-matches that parent's Product)</span></label>
-        <select class="modal-ta" id="gsParentSelect" onchange="onGsParentChange(this)" style="height:32px;padding:5px 10px;font-size:12px;width:100%;"><option value="">— No parent (top-level) —</option></select>
-      </div>
       <div id="gsGenFields">
         <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to let the strategy recommend the best platform(s) itself</span></label>
         <input class="modal-ta" id="gsPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
@@ -1078,6 +1074,134 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
     </div>
   </div>
 </div>
+
+<!-- BLANK GROUPING MODAL — standalone from both Add Strategy and the AI
+     "New Grouping" (addGroupingToStrategy). No generation at all: a name
+     and where it sits (top level / nested under an existing Strategy /
+     nested under a brand-new one, created in the same submit). Every case
+     writes a plain Growth Strategy row via createBlankGrowthStrategy. -->
+<div class="modal-overlay" id="blankGroupingModal" onclick="if(event.target===this)closeBlankGroupingModal()">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head">
+      <div class="modal-title">Add Grouping</div>
+      <button class="modal-close" onclick="closeBlankGroupingModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <label class="lm-label">Name</label>
+      <input class="modal-ta" id="bgNameInput" type="text" placeholder="e.g. Winter Push" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+
+      <label class="lm-label" style="margin-top:12px;">Parent</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#fff;cursor:pointer;"><input type="radio" name="bgParentMode" value="top" checked onchange="onBgParentModeChange()"> Top level (no parent)</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#fff;cursor:pointer;"><input type="radio" name="bgParentMode" value="existing" onchange="onBgParentModeChange()"> Existing parent</label>
+        <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:#fff;cursor:pointer;"><input type="radio" name="bgParentMode" value="new" onchange="onBgParentModeChange()"> Add new parent</label>
+      </div>
+
+      <div id="bgExistingWrap" style="display:none;margin-top:8px;">
+        <select class="modal-ta" id="bgExistingSelect" onchange="onBgExistingChange(this)" style="height:32px;padding:5px 10px;font-size:12px;width:100%;"></select>
+      </div>
+      <div id="bgNewParentWrap" style="display:none;margin-top:8px;">
+        <input class="modal-ta" id="bgNewParentInput" type="text" placeholder="New parent name" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+      </div>
+      <div id="bgProductWrap" style="margin-top:10px;">
+        <label class="lm-label">Product</label>
+        <select class="modal-ta" id="bgProductSelect" style="height:32px;padding:5px 10px;font-size:12px;width:100%;"></select>
+      </div>
+      <div class="modal-status" id="bgStatus" style="white-space:pre-wrap;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeBlankGroupingModal()">Cancel</button>
+      <button class="modal-btn save" id="bgGoBtn" onclick="submitBlankGrouping()">Create</button>
+    </div>
+  </div>
+</div>
+<script>
+function bgAllStrategiesFlat() {
+  const flat = [];
+  (CAMPAIGN_STRATEGIES_CACHE || []).forEach(s => {
+    flat.push(s);
+    (s.children || []).forEach(c => flat.push(c));
+  });
+  return flat;
+}
+function openBlankGroupingModal() {
+  document.getElementById('bgNameInput').value = '';
+  document.getElementById('bgNewParentInput').value = '';
+  document.getElementById('bgStatus').textContent = '';
+  document.querySelector('input[name="bgParentMode"][value="top"]').checked = true;
+  const productSel = document.getElementById('bgProductSelect');
+  productSel.innerHTML = (PRODUCT_ITEMS && PRODUCT_ITEMS.length)
+    ? PRODUCT_ITEMS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')
+    : '<option value="">No products yet — add one first</option>';
+  const existingSel = document.getElementById('bgExistingSelect');
+  const flat = bgAllStrategiesFlat();
+  existingSel.innerHTML = flat.length
+    ? flat.map(s => `<option value="${s.id}" data-productid="${s.productId || ''}">${esc(s.productName || '')} — ${esc(s.name)}</option>`).join('')
+    : '<option value="">No strategies yet</option>';
+  onBgParentModeChange();
+  document.getElementById('blankGroupingModal').classList.add('open');
+}
+function closeBlankGroupingModal() { document.getElementById('blankGroupingModal').classList.remove('open'); }
+function onBgParentModeChange() {
+  const mode = document.querySelector('input[name="bgParentMode"]:checked').value;
+  document.getElementById('bgExistingWrap').style.display = mode === 'existing' ? '' : 'none';
+  document.getElementById('bgNewParentWrap').style.display = mode === 'new' ? '' : 'none';
+  // Existing-parent mode locks the Product to that parent's own product —
+  // nothing to pick separately. Top level / Add new both need one.
+  document.getElementById('bgProductWrap').style.display = mode === 'existing' ? 'none' : '';
+  if (mode === 'existing') onBgExistingChange(document.getElementById('bgExistingSelect'));
+}
+function onBgExistingChange(sel) {
+  const opt = sel.options[sel.selectedIndex];
+  const pid = (opt && opt.getAttribute('data-productid')) || '';
+  if (pid) {
+    const productSel = document.getElementById('bgProductSelect');
+    if (productSel.querySelector(`option[value="${pid}"]`)) productSel.value = pid;
+  }
+}
+async function submitBlankGrouping() {
+  const status = document.getElementById('bgStatus');
+  const name = document.getElementById('bgNameInput').value.trim();
+  if (!name) { status.textContent = 'Name is required.'; return; }
+  const mode = document.querySelector('input[name="bgParentMode"]:checked').value;
+  const btn = document.getElementById('bgGoBtn');
+  btn.disabled = true; status.style.color = '#888';
+
+  try {
+    let parentStrategyId, productId;
+    if (mode === 'existing') {
+      const sel = document.getElementById('bgExistingSelect');
+      parentStrategyId = sel.value || undefined;
+      if (!parentStrategyId) throw new Error('Pick an existing parent.');
+      productId = sel.options[sel.selectedIndex].getAttribute('data-productid') || '';
+      if (!productId) throw new Error('That parent has no product on file.');
+    } else if (mode === 'new') {
+      const newParentName = document.getElementById('bgNewParentInput').value.trim();
+      if (!newParentName) throw new Error('Name the new parent first.');
+      productId = document.getElementById('bgProductSelect').value;
+      if (!productId) throw new Error('Pick a product first.');
+      status.textContent = 'Creating parent…';
+      const parentR = await w('createBlankGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, name: newParentName });
+      if (parentR.error) throw new Error(parentR.error);
+      parentStrategyId = parentR.id;
+    } else {
+      productId = document.getElementById('bgProductSelect').value;
+      if (!productId) throw new Error('Pick a product first.');
+    }
+    status.textContent = 'Creating…';
+    const r = await w('createBlankGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, name, parentStrategyId });
+    if (r.error) throw new Error(r.error);
+    status.style.color = '#68d391'; status.textContent = 'Created ✓';
+    delete GS_STRATEGY_CACHE[productId];
+    loadCampaignStrategies();
+    setTimeout(closeBlankGroupingModal, 800);
+  } catch (e) {
+    status.style.color = '#fc8181'; status.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+</script>
 
 <!-- REGENERATE STRATEGY MODAL (♻️ on a strategy strip) — re-plans every
      unattached slot; the directions/keywords box steers the whole re-plan,
@@ -9038,57 +9162,20 @@ async function promoteAssetDesign(idx) {
 // per-Method Generate Titles flow (which can also pick one of these as
 // grounding — see mgmRefreshStrategyPicker).
 let GS_PRODUCT_ID = null;
-let GS_PARENT_PRODUCT_ID = null;
 function gsResetFields() {
   document.getElementById('gsTitleInput').value = '';
   document.getElementById('gsPlatformInput').value = '';
   document.getElementById('gsGuidanceInput').value = '';
   document.getElementById('gsStatus').textContent = '';
   document.getElementById('gsBlankToggle').checked = false;
-  GS_PARENT_PRODUCT_ID = null;
-  populateGsParentSelect();
   toggleGsBlankMode(false);
-}
-// Every existing Strategy (top-level + their direct children — this schema
-// only renders one level of "Parent Strategy" nesting today) as flat
-// {id, name, productId, productName} options for the Parent picker below.
-function gsAllStrategiesFlat() {
-  const flat = [];
-  (CAMPAIGN_STRATEGIES_CACHE || []).forEach(s => {
-    flat.push(s);
-    (s.children || []).forEach(c => flat.push(c));
-  });
-  return flat;
-}
-function populateGsParentSelect() {
-  const sel = document.getElementById('gsParentSelect');
-  if (!sel) return;
-  const flat = gsAllStrategiesFlat();
-  sel.innerHTML = '<option value="">— No parent (top-level) —</option>'
-    + flat.map(s => `<option value="${s.id}" data-productid="${s.productId || ''}">${esc(s.productName || '')} — ${esc(s.name)}</option>`).join('');
-}
-// Picking a parent auto-matches its Product — a sub-strategy belongs to the
-// same product as its parent, so there's no separate product decision to
-// make once a parent is chosen (works whether the Product field is a live
-// dropdown, from the Strategies-tab "+", or a fixed label from a product
-// row's own "+strategy" button).
-function onGsParentChange(sel) {
-  const opt = sel.options[sel.selectedIndex];
-  const pid = (opt && opt.getAttribute('data-productid')) || '';
-  GS_PARENT_PRODUCT_ID = pid || null;
-  if (pid) {
-    const productSelect = document.getElementById('gsProductSelect');
-    if (productSelect && productSelect.querySelector(`option[value="${pid}"]`)) productSelect.value = pid;
-  }
 }
 // Blank mode: skip generateGrowthStrategy entirely — just a Strategy Name/
 // Product/Campaign heading (Status Draft, Grouping Count 0), no AI call, no
-// groupings/slots, optionally nested under an existing Strategy via Parent.
-// Per operator direction: a way to create sub-strategies or top-level
-// headings purely for organization, without committing to a generated plan.
+// groupings/slots. Per operator direction: a way to create the container
+// without committing to a generated plan.
 function toggleGsBlankMode(blank) {
   document.getElementById('gsGenFields').style.display = blank ? 'none' : '';
-  document.getElementById('gsParentWrap').style.display = blank ? '' : 'none';
   document.getElementById('gsTitleHint').textContent = blank ? '— required in this mode (nothing to auto-name it from)' : '— optional; leave blank to auto-name it "{Product} Growth Strategy — {date}"';
   document.getElementById('gsGenBtn').textContent = blank ? 'Create' : 'Generate';
 }
@@ -9118,20 +9205,16 @@ function closeGrowthStrategyModal() {
   document.getElementById('growthStrategyModal').classList.remove('open');
 }
 async function submitGrowthStrategy() {
+  const productId = GS_PRODUCT_ID || document.getElementById('gsProductSelect').value;
   const statusEl = document.getElementById('gsStatus');
+  if (!productId) { statusEl.textContent = 'Pick a product first.'; return; }
   const strategyTitle = document.getElementById('gsTitleInput').value.trim();
   const btn = document.getElementById('gsGenBtn');
   if (document.getElementById('gsBlankToggle').checked) {
-    const parentStrategyId = document.getElementById('gsParentSelect').value || undefined;
-    // A parent's own Product wins — a sub-strategy always belongs to the
-    // same product as its parent, regardless of what's showing in the
-    // Product field.
-    const productId = GS_PARENT_PRODUCT_ID || GS_PRODUCT_ID || document.getElementById('gsProductSelect').value;
-    if (!productId) { statusEl.textContent = 'Pick a product first.'; return; }
     if (!strategyTitle) { statusEl.textContent = 'Title is required in this mode.'; return; }
     btn.disabled = true; statusEl.textContent = 'Creating…';
     try {
-      await w('createBlankGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, name: strategyTitle, parentStrategyId });
+      await w('createBlankGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, name: strategyTitle });
       statusEl.textContent = 'Created ✓';
       bumpLocalProductStatus(productId, 'Active');
       delete GS_STRATEGY_CACHE[productId];
@@ -9144,8 +9227,6 @@ async function submitGrowthStrategy() {
     }
     return;
   }
-  const productId = GS_PRODUCT_ID || document.getElementById('gsProductSelect').value;
-  if (!productId) { statusEl.textContent = 'Pick a product first.'; return; }
   const platformOverride = document.getElementById('gsPlatformInput').value.trim();
   const guidance = document.getElementById('gsGuidanceInput').value.trim();
   btn.disabled = true; statusEl.textContent = 'Generating…';
