@@ -120,8 +120,16 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .kwghd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--kwc,var(--ink2));margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .kwghd .kwbtns{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;}
 .kwghd .kwbtns .btn{font-size:9.5px;padding:2px 7px;}
-.kwgbody{font-size:12px;color:var(--ink);}
+.kwgbody{display:none;font-size:12px;color:var(--ink);padding-top:6px;}
+.kwgroup.open .kwgbody{display:block;}
+.kwgroup.open>.kwghd .kwarrow{transform:rotate(0deg);}
+.kwarrow{display:inline-block;font-size:9px;transition:transform .12s;transform:rotate(-90deg);}
+.kwgennew{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:10px;background:var(--surface2);border:1px dashed var(--border2);border-radius:10px;}
 .kw-pill{display:inline-block;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;margin:2px 3px 2px 0;color:var(--ink);}
+.kwlink{font-size:9.5px;color:var(--ink3);text-decoration:none;margin-left:4px;}
+.kwlink:hover{color:var(--amber);}
+.clusterideagrp{border-left:3px solid var(--amber);padding-left:9px;margin-bottom:12px;}
+.clusterideagrp .cighd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--amber);margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .idea-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface2);}
 .idea-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .idea-title{font-weight:600;font-size:12.5px;flex:1;min-width:120px;}
@@ -237,42 +245,34 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <div class="modaloverlay" id="sourcesModal">
+    <div class="modalbox">
+      <div class="mtitle">Sources</div>
+      <div class="mfield" id="sourcesModalTitle"></div>
+      <div id="sourcesModalBody" style="font-size:12.5px;line-height:1.7;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeSourcesModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
     <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
-    <p class="stage-sub">The one field nothing else outranks. Loads the real Main Keywords + Product Ideas on open; every other tab either reads this directly or reads something that reads this.</p>
+    <p class="stage-sub">Master + every SEO cluster, all as one flat, fully-collapsible stack (Master is a cluster like any other). Product Ideas mirrors it on the right: a Main Stack plus one Cluster Ideas group per cluster.</p>
+    <div class="kwgennew">
+      <input type="text" class="finput" id="newClusterInput" placeholder="paste keywords / a topic to build a new cluster around…" style="width:280px;">
+      <button class="btn primary" id="newClusterBtn" onclick="runGenerateSingleCluster()">+ generate cluster</button>
+      <span style="font-size:10.5px;color:var(--ink3);">merges this input with the Main Keywords strategy into one new cluster</span>
+    </div>
     <div class="kwgrid">
       <div class="kwcol">
         <h4>Keywords</h4>
-        <div class="kwgroup open" style="--kwc:#4ade80;">
-          <div class="kwghd">
-            <span>▾</span>Main Keywords
-            <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="openNoteModal('keywords-root','Main Keywords','keywords')">📝</button>
-            <span class="kwbtns">
-              <input type="text" class="finput" id="kwSteerInput" placeholder="steer (optional)" style="width:120px;">
-              <button class="btn primary" id="kwRegenBtn" onclick="runRegenKeywords()">⟳ regen</button>
-              <button class="btn" id="clusterGenBtn" onclick="runGenerateClusters()">↻ generate clusters</button>
-            </span>
-          </div>
-          <div id="mainKwBody" class="kwgbody"><div class="loadnote">Loading…</div></div>
-        </div>
-        <div id="r-seoclusters"></div>
+        <div id="kwClusterList"><div class="loadnote">Loading…</div></div>
       </div>
       <div class="kwcol">
         <h4>Product Ideas</h4>
-        <div class="kwgroup open" style="--kwc:#8ab4f8;">
-          <div class="kwghd">
-            <span>▾</span>Main Stack — off all Main Keywords
-            <button class="notebtn" style="font-size:9.5px;padding:2px 7px;margin-left:auto;" onclick="openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
-          </div>
-          <div class="kwgbody">
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
-              <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:140px;">
-              <button class="btn" id="prodIdeasBtn" onclick="runProductIdeas()">⟳ search</button>
-            </div>
-            <div id="r-prodideas"><div class="loadnote">Loading…</div></div>
-          </div>
-        </div>
+        <div id="prodIdeaList"><div class="loadnote">Loading…</div></div>
       </div>
     </div>
   </div>
@@ -286,17 +286,17 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
       <div class="card-body">
         <p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record and have no button of their own anywhere — they refresh together with the Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>
-        <div class="field"><div class="frow"><span class="fname">Campaign Goal</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignGoal">—</div></div></div></div>
-        <div class="field"><div class="frow"><span class="fname">Pain Points</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-painPoints">—</div></div></div></div>
-        <div class="field"><div class="frow"><span class="fname">Key Message</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignKeyMessage">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Campaign Goal</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignGoal">—</div></div><button class="notebtn" onclick="openNoteModal('research-campaignGoal','Campaign Goal','research')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Pain Points</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-painPoints">—</div></div><button class="notebtn" onclick="openNoteModal('research-painPoints','Pain Points','research')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Key Message</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignKeyMessage">—</div></div><button class="notebtn" onclick="openNoteModal('research-keyMessage','Key Message','research')">📝</button></div></div>
       </div>
     </section>
 
     <section class="card open">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
       <div class="card-body">
-        <div class="field"><div class="frow"><span class="fname">Statement</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-statement">—</div></div></div></div>
-        <div class="field"><div class="frow"><span class="fname">Unique Opportunity</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-uniqueOpportunity">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Statement</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-statement">—</div></div><button class="notebtn" onclick="openNoteModal('research-statement','Statement','research')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Unique Opportunity</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-uniqueOpportunity">—</div></div><button class="notebtn" onclick="openNoteModal('research-uniqueOpportunity','Unique Opportunity','research')">📝</button></div></div>
       </div>
     </section>
 
@@ -321,23 +321,23 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <input type="text" class="finput" id="designSteerInput" placeholder="steer (optional)" style="width:200px;">
           <button class="btn primary" id="designRegenBtn" onclick="runRegenDesign()">⟳ regenerate direction</button>
         </div>
-        <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div></div></div>
-        <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div></div></div>
-        <div class="field"><div class="frow"><span class="fname">Visual Avoid</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualAvoid">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualRegister','Visual Register','design')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div><button class="notebtn" onclick="openNoteModal('design-photographyDirection','Photography Direction','design')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Visual Avoid</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualAvoid">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualAvoid','Visual Avoid','design')">📝</button></div></div>
       </div>
     </section>
 
     <section class="card open">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Palette</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
       <div class="card-body">
-        <div class="field"><div class="frow"><span class="fname">Resolved hex</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-palette">—</div><div class="fctrl"><button class="btn" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button></div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Resolved hex</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-palette">—</div><div class="fctrl"><button class="btn" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button><button class="notebtn" onclick="openNoteModal('design-palette','Palette','design')">📝</button></div></div></div></div>
       </div>
     </section>
 
     <section class="card open">
       <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Fonts</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
       <div class="card-body">
-        <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div><div class="fctrl"><button class="btn" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button></div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div><div class="fctrl"><button class="btn" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div></div></div>
       </div>
     </section>
   </div>
@@ -571,118 +571,228 @@ function submitNotes() {
   alert('Notes are already saved. Tell Claude: "I submitted my notes on the Care Gap Template."');
 }
 
-// ══════════════════════ KEYWORDS TAB ══════════════════════
+// ══════════════════════ KEYWORDS TAB — unified nested keywords/ideas ══════
+function notionUrl(id) { return `https://www.notion.so/${String(id || '').replace(/-/g,'')}`; }
 let RAW_KEYWORDS = '';
-function renderKeywordPills(kwStr) {
-  const el = document.getElementById('mainKwBody');
-  const kws = (kwStr || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!kws.length) { el.innerHTML = '<span style="color:var(--ink3);font-size:11px;">No keywords yet.</span>'; return; }
-  el.innerHTML = kws.map(k => `<span class="kw-pill">${esc(k)}</span>`).join('');
-}
+let MAIN_PRODUCT_IDEAS_TEXT = '';
+let SEO_CLUSTERS = { staged: [], committed: [] };
+
 async function loadResearch() {
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
     const r = data.research;
-    if (!r) {
-      document.getElementById('mainKwBody').innerHTML = '<span style="color:var(--stale);">No research record found.</span>';
-      document.getElementById('r-prodideas').innerHTML = '<span style="color:var(--stale);">No research record found.</span>';
-      return;
-    }
+    if (!r) { document.getElementById('kwClusterList').innerHTML = '<span style="color:var(--stale);">No research record found.</span>'; return; }
     window.RESEARCH_RECORD = r;
     RAW_KEYWORDS = r.keywords || '';
-    renderKeywordPills(RAW_KEYWORDS);
-    renderProductIdeas(r.productIdeas || '');
+    MAIN_PRODUCT_IDEAS_TEXT = r.productIdeas || '';
+    renderKeywordsAndIdeas();
   } catch (e) {
-    document.getElementById('mainKwBody').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
-    document.getElementById('r-prodideas').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
+    document.getElementById('kwClusterList').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
   }
 }
-async function runRegenKeywords() {
-  const btn = document.getElementById('kwRegenBtn');
+async function runRegenKeywords(btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  const steer = (document.getElementById('kwSteerInput').value || '').trim();
-  document.getElementById('mainKwBody').innerHTML = '<div class="loadnote">Researching…</div>';
+  const input = document.getElementById('masterSteerInput');
+  const steer = input ? (input.value || '').trim() : '';
   try {
     const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS });
     RAW_KEYWORDS = r.keywords || '';
-    renderKeywordPills(RAW_KEYWORDS);
-  } catch (e) {
-    renderKeywordPills(RAW_KEYWORDS);
-    alert('Regen failed: ' + e.message);
-  }
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Regen failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
-let SEO_CLUSTERS = { staged: [], committed: [] };
 async function loadClusters() {
   try {
     const r = await w('getKeywordClusters', { campaignId: CAMPAIGN_ID });
     SEO_CLUSTERS = { staged: r.staged || [], committed: r.committed || [] };
-    renderClusters();
+    renderKeywordsAndIdeas();
   } catch (e) {
-    document.getElementById('r-seoclusters').innerHTML = `<div class="errnote">Cluster load failed: ${esc(e.message)}</div>`;
+    document.getElementById('kwClusterList').innerHTML = `<div class="errnote">Cluster load failed: ${esc(e.message)}</div>`;
   }
 }
-function renderClusters() {
-  const el = document.getElementById('r-seoclusters');
+function toggleGrp(el) { el.classList.toggle('open'); }
+
+// ── unified renderer: left = flat collapsible stack (Master + every
+// cluster, same level, per operator direction "Master is a cluster");
+// right = Main Stack + one Cluster Ideas group per STAGED cluster (only
+// staged clusters support generateClusterProductStacks server-side).
+function renderKeywordsAndIdeas() {
+  const left = document.getElementById('kwClusterList');
+  const right = document.getElementById('prodIdeaList');
   const { staged, committed } = SEO_CLUSTERS;
-  if (!staged.length && !committed.length) { el.innerHTML = '<div class="loadnote">No clusters yet — ↻ generate (needs Main Keywords set above).</div>'; return; }
-  let html = '';
-  committed.forEach(c => {
-    html += `<div class="commitcluster"><div class="cchd">${esc(c.name)} Stack</div><div style="font-size:11px;color:var(--ink2);">${esc(c.keywords)}</div></div>`;
-  });
+
+  const masterPills = (RAW_KEYWORDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  let l = `<div class="kwgroup open" style="--kwc:#4ade80;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
+      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
+      <span class="kwbtns">
+        <input type="text" class="finput" id="masterSteerInput" placeholder="steer (optional)" style="width:110px;" onclick="event.stopPropagation()">
+        <button class="btn primary" onclick="event.stopPropagation();runRegenKeywords(this)">⟳ regen</button>
+        <button class="btn" onclick="event.stopPropagation();runGenerateClusters(this)">↻ generate clusters (batch)</button>
+      </span>
+    </div>
+    <div class="kwgbody">${masterPills.length ? masterPills.map(k => `<span class="kw-pill">${esc(k)}</span>`).join('') : '<span style="color:var(--ink3);font-size:11px;">No keywords yet.</span>'}</div>
+  </div>`;
+
   staged.forEach(c => {
-    html += `<div class="stagedcluster"><div class="schd">${esc(c.name)} Stack — staged</div>
-      <input value="${esc(c.name)}" onchange="editCluster('${esc(c.id)}','name',this.value)">
-      <textarea onchange="editCluster('${esc(c.id)}','keywords',this.value)">${esc(c.keywords)}</textarea>
-      <div style="font-size:10.5px;color:var(--ink3);font-style:italic;margin-bottom:6px;">${esc(c.rationale || '')}</div>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn" onclick="regenCluster('${esc(c.id)}', this)">↻ regen</button>
-        <button class="btn primary" onclick="commitCluster('${esc(c.id)}', this)">💾 commit</button>
-      </div></div>`;
+    l += `<div class="kwgroup" style="--kwc:#c9860f;">
+      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>
+        <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
+        <span class="kwbtns">
+          <button class="btn" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻ regen</button>
+          <button class="btn" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">→ create product ideas</button>
+          <button class="btn primary" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾 commit</button>
+        </span>
+      </div>
+      <div class="kwgbody">
+        <input value="${esc(c.name)}" onchange="editCluster('${esc(c.id)}','name',this.value)" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);margin-bottom:5px;">
+        <textarea onchange="editCluster('${esc(c.id)}','keywords',this.value)" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);min-height:60px;margin-bottom:5px;">${esc(c.keywords)}</textarea>
+        <div style="font-size:10.5px;color:var(--ink3);font-style:italic;">${esc(c.rationale || '')}</div>
+      </div>
+    </div>`;
   });
-  el.innerHTML = html;
+
+  committed.forEach(c => {
+    l += `<div class="kwgroup" style="--kwc:#2f6f6a;">
+      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>
+        <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
+        <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
+        <span class="kwbtns"><button class="btn" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻ regen</button></span>
+      </div>
+      <div class="kwgbody"><div class="fval" style="margin:0;">${esc(c.keywords)}</div></div>
+    </div>`;
+  });
+  left.innerHTML = l;
+
+  // ── right: Main Stack + Cluster Ideas (staged clusters only) ──────────
+  let r = `<div class="kwgroup open" style="--kwc:#8ab4f8;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Main Stack <span style="font-weight:400;text-transform:none;color:var(--ink3);">— off Master</span>
+      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
+      <span class="kwbtns">
+        <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:120px;" onclick="event.stopPropagation()">
+        <button class="btn" onclick="event.stopPropagation();runProductIdeas(this)">⟳ search</button>
+      </span>
+    </div>
+    <div class="kwgbody" id="r-prodideas">${renderIdeaLines(MAIN_PRODUCT_IDEAS_TEXT, 'main', null)}</div>
+  </div>`;
+
+  staged.forEach(c => {
+    const has = c.products && c.products.length;
+    r += `<div class="clusterideagrp">
+      <div class="cighd" onclick="this.nextElementSibling.classList.toggle('open')"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
+        <button class="notebtn" style="font-size:9.5px;padding:2px 7px;margin-left:auto;" onclick="event.stopPropagation();openNoteModal('keywords-clusterideas-${esc(c.id)}','${esc(c.name)} cluster ideas','keywords')">📝</button>
+        <button class="btn" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">↻ propose products</button>
+      </div>
+      <div class="kwgroup${has ? '' : ''}" style="margin:0;border:none;padding:0;">
+        <div class="kwgbody" style="display:block;">${has ? renderIdeaCards(c.products, c.id, c.name) : '<div class="loadnote">No product ideas proposed yet — ↻ propose products above.</div>'}</div>
+      </div>
+    </div>`;
+  });
+  right.innerHTML = r;
+  refreshNoteMarks();
 }
+
+function renderIdeaLines(text, scope) {
+  const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return '<div class="loadnote">No product ideas yet — ⟳ search above.</div>';
+  return lines.map((line, i) => {
+    const m = line.match(/^([^:]+):\s*(.*)$/);
+    const name = m ? m[1] : line, desc = m ? m[2] : '';
+    return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(name)}</span>
+      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runViewSources('${esc(name)}','${esc(RAW_KEYWORDS)}')">🔗 sources</button>
+      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master')">+ Product</button>
+      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
+      </div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
+  }).join('');
+}
+function renderIdeaCards(products, clusterId, clusterName) {
+  return products.map(p => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(p.name)}</span>
+      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runViewSources('${esc(p.name)}','${esc(p.keywords)}')">🔗 sources</button>
+      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="runCreateProductFromIdea('${esc(p.name)}','${esc(p.angle)}','${esc(clusterName)}')">+ Product</button>
+      <button class="btn" style="font-size:9.5px;padding:2px 8px;" onclick="dismissClusterIdea('${esc(clusterId)}','${esc(p.id)}', this)">✕</button>
+      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="openNoteModal('keywords-idea-${esc(clusterId)}-${esc(p.id)}','${esc(p.name)}','keywords')">📝</button>
+      </div><div class="idea-desc"><b>${esc(p.platform)} · ${esc(p.type)}</b> — ${esc(p.angle)}</div></div>`).join('');
+}
+
 async function editCluster(clusterId, field, value) {
   try { const payload = { campaignId: CAMPAIGN_ID, clusterId }; payload[field] = value; const r = await w('updateStagedKeywordCluster', payload); SEO_CLUSTERS.staged = r.staged || []; }
   catch (e) { alert('Save failed: ' + e.message); }
 }
 async function regenCluster(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try { const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); SEO_CLUSTERS.staged = r.staged || []; SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed; renderClusters(); }
-  catch (e) { alert('Regenerate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+  try { const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); SEO_CLUSTERS.staged = r.staged || []; SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed; renderKeywordsAndIdeas(); }
+  catch (e) { alert('Regenerate failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function commitCluster(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
   try { await w('commitKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); await loadClusters(); }
   catch (e) { alert('Commit failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
-async function runGenerateClusters() {
-  const btn = document.getElementById('clusterGenBtn');
+async function runGenerateSingleCluster() {
+  const btn = document.getElementById('newClusterBtn');
+  const input = document.getElementById('newClusterInput');
+  const pastedKeywords = (input.value || '').trim();
+  if (!pastedKeywords) { alert('Enter a topic or keywords to build the new cluster around first.'); return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'building…';
+  try {
+    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords });
+    SEO_CLUSTERS.staged = r.staged || [];
+    input.value = '';
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Generate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function runGenerateClusters(btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'grouping…';
-  try { const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID }); SEO_CLUSTERS.staged = r.staged || []; renderClusters(); }
+  try { const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
   catch (e) { alert('Generate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
-function renderProductIdeas(text) {
-  const el = document.getElementById('r-prodideas');
-  const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
-  if (!lines.length) { el.innerHTML = '<div class="loadnote">No product ideas yet — ⟳ search above.</div>'; return; }
-  el.innerHTML = lines.map(line => {
-    const m = line.match(/^([^:]+):\s*(.*)$/);
-    const name = m ? m[1] : line, desc = m ? m[2] : '';
-    return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(name)}</span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
-  }).join('');
+async function runProposeClusterProducts(clusterId, btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
+  try {
+    const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId });
+    SEO_CLUSTERS.staged = r.staged || [];
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Propose failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
 }
-async function runProductIdeas() {
-  const btn = document.getElementById('prodIdeasBtn');
+async function dismissClusterIdea(clusterId, productId, btn) {
+  btn.disabled = true;
+  try { const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
+  catch (e) { alert('Dismiss failed: ' + e.message); btn.disabled = false; }
+}
+async function runProductIdeas(btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
   const kwOverride = (document.getElementById('prodIdeasKwInput').value || '').trim() || undefined;
-  document.getElementById('r-prodideas').innerHTML = '<div class="loadnote">Researching…</div>';
-  try { const r = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride }); renderProductIdeas(r.text || ''); }
+  try { const r = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride }); MAIN_PRODUCT_IDEAS_TEXT = r.text || ''; renderKeywordsAndIdeas(); }
   catch (e) { alert('Search failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
+async function runCreateProductFromIdea(name, description, stack) {
+  if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack}) in the Care Gap campaign?`)) return;
+  try {
+    const r = await w('createProduct', { title: name, description, stack, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    alert(`Created — ${r.name}. Opening it in Notion.`);
+    window.open(notionUrl(r.id), '_blank', 'noopener');
+    CAMPAIGN_PRODUCTS = [];
+  } catch (e) { alert('Create failed: ' + e.message); }
+}
+async function runViewSources(query, keywords) {
+  document.getElementById('sourcesModalTitle').textContent = query;
+  document.getElementById('sourcesModalBody').innerHTML = '<div class="loadnote">Searching…</div>';
+  document.getElementById('sourcesModal').classList.add('open');
+  try {
+    const r = await w('getSourceLinks', { query, keywords });
+    const sources = r.sources || [];
+    document.getElementById('sourcesModalBody').innerHTML = sources.length
+      ? sources.map(s => `<div style="margin-bottom:8px;"><a href="${esc(s.url)}" target="_blank" rel="noopener" style="color:var(--amber);">${esc(s.title)}</a></div>`).join('')
+      : '<div class="loadnote">No sources found.</div>';
+  } catch (e) {
+    document.getElementById('sourcesModalBody').innerHTML = `<div class="errnote">${esc(e.message)}</div>`;
+  }
+}
+function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('open'); }
 
 // ══════════════════════ CAMPAIGN RESEARCH TAB ══════════════════════
 // 6 of the 13 modules have a confirmed, self-contained real regen action;
@@ -720,11 +830,10 @@ async function loadResearchTab() {
     body.innerHTML = RESEARCH_MODULES.map(m => {
       const val = esc(r[m.key] || '(none on file)');
       const badge = m.kind === 'readonly' ? '<span class="fbadge stale">read-only</span>' : '<span class="fbadge manual">real regen</span>';
-      const ctrl = m.kind === 'readonly'
-        ? ''
-        : `<div class="fctrl"><button class="btn" id="mod-${m.key}-btn" onclick="runResearchModule('${m.key}', this)">⟳ regenerate</button></div>`;
+      const ctrl = `<div class="fctrl">${m.kind === 'readonly' ? '' : `<button class="btn" id="mod-${m.key}-btn" onclick="runResearchModule('${m.key}', this)">⟳ regenerate</button>`}<button class="notebtn" onclick="openNoteModal('research-module-${m.key}','${esc(m.label)}','research')">📝</button></div>`;
       return `<div class="field"><div class="frow"><span class="fname">${esc(m.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>${ctrl}</div></div></div>`;
     }).join('');
+    refreshNoteMarks();
   } catch (e) {
     document.getElementById('researchModulesBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
@@ -806,9 +915,9 @@ async function loadProductTab() {
     const picker = document.getElementById('productPicker');
     if (!CAMPAIGN_PRODUCTS.length) { picker.innerHTML = ''; document.getElementById('productResearchBody').innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
     if (CAMPAIGN_PRODUCTS.length > 1) {
-      picker.innerHTML = `<label style="font-family:var(--mono);font-size:11px;color:var(--ink2);">Product: <select id="productSelect" class="finput" style="width:auto;display:inline-block;" onchange="switchProduct(this.value)">${CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>`;
+      picker.innerHTML = `<label style="font-family:var(--mono);font-size:11px;color:var(--ink2);">Product: <select id="productSelect" class="finput" style="width:auto;display:inline-block;" onchange="switchProduct(this.value)">${CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label> <a class="kwlink" id="productNotionLink" href="${notionUrl(CAMPAIGN_PRODUCTS[0].id)}" target="_blank" rel="noopener">↗ Notion</a>`;
     } else {
-      picker.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--ink2);">Product: <b>${esc(CAMPAIGN_PRODUCTS[0].name)}</b></div>`;
+      picker.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--ink2);">Product: <b>${esc(CAMPAIGN_PRODUCTS[0].name)}</b> <a class="kwlink" href="${notionUrl(CAMPAIGN_PRODUCTS[0].id)}" target="_blank" rel="noopener">↗ Notion</a></div>`;
     }
     ACTIVE_PRODUCT_ID = CAMPAIGN_PRODUCTS[0].id;
     await loadProductResearch(ACTIVE_PRODUCT_ID);
@@ -816,7 +925,12 @@ async function loadProductTab() {
     document.getElementById('productResearchBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
-function switchProduct(id) { ACTIVE_PRODUCT_ID = id; loadProductResearch(id); }
+function switchProduct(id) {
+  ACTIVE_PRODUCT_ID = id;
+  const link = document.getElementById('productNotionLink');
+  if (link) link.href = notionUrl(id);
+  loadProductResearch(id);
+}
 async function loadProductResearch(productId) {
   const body = document.getElementById('productResearchBody');
   body.innerHTML = '<div class="loadnote">Loading…</div>';
@@ -826,7 +940,9 @@ async function loadProductResearch(productId) {
     document.getElementById('productCardTitle').textContent = prod ? `Product Research — ${prod.name}` : 'Product Research';
     if (!r.strategy) { body.innerHTML = '<div class="loadnote">No Product Research record on file for this product yet.</div>'; return; }
     const fields = r.strategy.fields || {};
-    body.innerHTML = STRATEGY_FIELDS.map(f => `<div class="field"><div class="frow"><span class="fname">${esc(f)}</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval">${esc(fields[f] || '(none on file)')}</div></div></div></div>`).join('');
+    const recLink = r.strategy.url ? `<a class="kwlink" href="${esc(r.strategy.url)}" target="_blank" rel="noopener" style="display:block;margin-bottom:10px;">↗ open Product Research record in Notion</a>` : '';
+    body.innerHTML = recLink + STRATEGY_FIELDS.map(f => `<div class="field"><div class="frow"><span class="fname">${esc(f)}</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval">${esc(fields[f] || '(none on file)')}</div></div><button class="notebtn" onclick="openNoteModal('product-${esc(f)}','${esc(f)}','product')">📝</button></div></div>`).join('');
+    refreshNoteMarks();
   } catch (e) {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
@@ -846,8 +962,10 @@ async function loadStrategyTab() {
       const res = results[i];
       const name = METHOD_NAMES[mid] || mid;
       const text = res && res.strategy ? res.strategy.text : null;
+      const url = res && res.strategy ? res.strategy.url : null;
       const tag = text ? '<span class="tag fresh">has brief</span>' : '<span class="tag stale">no brief yet</span>';
-      return `<section class="card open"><div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
+      const link = url ? `<a class="kwlink" href="${esc(url)}" target="_blank" rel="noopener">↗ Notion</a>` : `<a class="kwlink" href="${notionUrl(mid)}" target="_blank" rel="noopener">↗ method in Notion</a>`;
+      return `<section class="card open"><div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}${link}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
     }).join('');
     refreshNoteMarks();
   } catch (e) {
@@ -866,8 +984,9 @@ async function loadTitleTab() {
     if (!CAMPAIGN_TITLES.length) { body.innerHTML = '<div class="loadnote">No titles on this campaign yet.</div>'; return; }
     body.innerHTML = CAMPAIGN_TITLES.map(t => {
       const statusClass = ['Publish','Published'].includes(t.stage) ? 's-live' : (t.stage === 'Planning' ? 's-dev' : 's-pub');
-      return `<div class="field"><div class="frow"><span class="fname" style="min-width:auto;flex:2;">${esc(t.title)}</span><span class="rstatus ${statusClass}">${esc(t.stage)}</span><div class="fmeta" style="flex:1;min-width:160px;"><div style="font-size:11px;color:var(--ink2);">${esc(t.productName || '')} · ${esc(t.methodName || '')} ${t.assetIds && t.assetIds.length ? `· ${t.assetIds.length} asset(s)` : ''}</div></div></div></div>`;
+      return `<div class="field"><div class="frow"><span class="fname" style="min-width:auto;flex:2;">${esc(t.title)}</span><span class="rstatus ${statusClass}">${esc(t.stage)}</span><div class="fmeta" style="flex:1;min-width:160px;"><div style="font-size:11px;color:var(--ink2);">${esc(t.productName || '')} · ${esc(t.methodName || '')} ${t.assetIds && t.assetIds.length ? `· ${t.assetIds.length} asset(s)` : ''} · <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">↗ Notion</a></div></div><button class="notebtn" onclick="openNoteModal('title-${esc(t.id)}','${esc(t.title)}','title')">📝</button></div></div>`;
     }).join('');
+    refreshNoteMarks();
   } catch (e) {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
@@ -880,7 +999,8 @@ async function loadMethods() {
     const r = await w('getHubMethodMatrix');
     const cols = (r.columns || []).filter(c => c.inMasterFlow && CARE_GAP_METHOD_IDS.has(c.id));
     if (!cols.length) { el.innerHTML = '<div class="loadnote">No methods tagged "In Master Flow" yet — tag them from the dashboard\'s Hub Method Matrix.</div>'; return; }
-    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(c.name)}</span><span style="font-size:10px;color:var(--fresh);">${esc(c.status || '')}</span></div>${c.notes ? `<div class="idea-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
+    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(c.name)}</span><span style="font-size:10px;color:var(--fresh);">${esc(c.status || '')}</span><a class="kwlink" href="${esc(c.url || notionUrl(c.id))}" target="_blank" rel="noopener">↗ Notion</a><button class="notebtn" onclick="openNoteModal('method-${esc(c.id)}','${esc(c.name)}','method')">📝</button></div>${c.notes ? `<div class="idea-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
+    refreshNoteMarks();
   } catch (e) {
     el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
@@ -899,10 +1019,11 @@ async function loadAssetTab() {
       const res = results[i];
       const assets = (res && res.assets) || [];
       const body = assets.length
-        ? assets.map(a => `<div class="rasset">${esc(a.assetTitle || a.title)} — <span style="color:var(--ink2);">${esc(a.type)} · ${esc(a.platform)} · ${esc(a.status)}</span></div>`).join('')
+        ? assets.map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${esc(a.assetTitle || a.title)} — <span style="color:var(--ink2);">${esc(a.type)} · ${esc(a.platform)} · ${esc(a.status)}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')
         : `<div class="loadnote">${res && res.error ? 'Load failed: ' + esc(res.error) : 'No assets resolved.'}</div>`;
-      return `<div class="rnode" onclick="this.classList.toggle('open')"><div class="rhd"><span class="rchev">▶</span><span class="rtype">Title</span><span class="rname">${esc(t.title)}</span><span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span></div><div class="rbody">${body}</div></div>`;
+      return `<div class="rnode"><div class="rhd" onclick="this.parentElement.classList.toggle('open')"><span class="rchev">▶</span><span class="rtype">Title</span><span class="rname">${esc(t.title)}</span><span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span><a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button></div><div class="rbody">${body}</div></div>`;
     }).join('');
+    refreshNoteMarks();
   } catch (e) {
     el.innerHTML = `<div class="errnote" style="padding:14px;">Load failed: ${esc(e.message)}</div>`;
   }
