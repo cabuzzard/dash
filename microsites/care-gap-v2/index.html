@@ -5,41 +5,155 @@
 <meta name="robots" content="noindex, nofollow">
 <meta http-equiv="X-Frame-Options" content="DENY">
 <link rel="stylesheet" href="../style.css">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Care Gap — Microsite2 (real)</title>
+<title>Care Gap Template</title>
 <style>
-/* ── tab chrome (each microsite carries its own copy, per convention) ── */
-.tab-nav { display: flex; gap: 4px; padding: 0 20px; border-bottom: 1px solid #161616; overflow-x: auto; }
-.tab-btn { background: none; border: none; border-bottom: 2px solid transparent; color: #888; font-family: 'Syne', sans-serif; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; padding: 12px 10px; cursor: pointer; white-space: nowrap; }
-.tab-btn:hover { color: #fff; }
-.tab-btn.active { color: #e8ff47; border-bottom-color: #e8ff47; }
-.tab-page { display: none; padding: 20px; max-width: 1100px; margin: 0 auto; }
-.tab-page.active { display: block; }
-
-/* ── this file's own additions on top of the shared dark theme ──────── */
-.kwgrid{display:grid;grid-template-columns:1fr 1fr;gap:20px;align-items:start;}
+:root{
+  --bg:#f3f0ea; --surface:#ffffff; --surface2:#faf8f4;
+  --ink:#221d17; --ink2:#6b6055; --ink3:#a79c8f;
+  --border:#e4ddd0; --border2:#d3c9b8;
+  --amber:#a7680c; --amber-bg:#faf1e0;
+  --fresh:#3f7d5c; --fresh-bg:#e9f3ee;
+  --stale:#b0432f; --stale-bg:#fbeae6;
+  --manual:#3a5f8a; --manual-bg:#e9eff6;
+  --global:#2f6f6a; --global-bg:#e6f0ee;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+  --sans: "IBM Plex Sans", system-ui, sans-serif;
+}
+*{box-sizing:border-box;}
+html,body{background:var(--bg);}
+body{margin:0;color:var(--ink);font-family:var(--sans);padding:0 18px 80px;padding-block:0 80px;}
+.wrap{max-width:1000px;margin:0 auto;}
+.hdr{padding:20px 0 14px;}
+.hdrtop{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:8px;}
+.eyebrow{font-family:var(--mono);font-size:10.5px;letter-spacing:.10em;text-transform:uppercase;color:var(--amber);margin:0;}
+.hdrctrls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.artnav{position:relative;font-family:var(--mono);font-size:11px;}
+.artnav summary{list-style:none;cursor:pointer;padding:6px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);}
+.artnav summary::-webkit-details-marker{display:none;}
+.artnav summary:hover{border-color:var(--amber);color:var(--amber);}
+.artnav[open] summary{border-color:var(--amber);color:var(--amber);}
+.artnav-menu{position:absolute;top:calc(100% + 4px);right:0;background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:4px;min-width:210px;box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:50;display:flex;flex-direction:column;gap:2px;}
+.artnav-menu a{display:block;padding:6px 10px;border-radius:6px;color:var(--ink);text-decoration:none;white-space:nowrap;font-size:11px;}
+.artnav-menu a:hover{background:var(--surface2);color:var(--amber);}
+.lockbtn{font-family:var(--mono);font-size:10px;padding:6px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;}
+.lockbtn:hover{border-color:var(--stale);color:var(--stale);}
+h1{font-size:24px;font-weight:700;margin:0 0 6px;letter-spacing:-0.01em;text-wrap:balance;}
+.sub{font-size:13.5px;color:var(--ink2);max-width:70ch;line-height:1.55;margin:0 0 18px;}
+.tabbar{position:sticky;top:0;z-index:20;display:flex;gap:6px 0;flex-wrap:wrap;row-gap:6px;background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:6px;margin-bottom:8px;}
+.tab{font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--ink3);padding:8px 13px;border-radius:8px;white-space:nowrap;flex-shrink:0;cursor:pointer;border:1px solid transparent;background:none;font-weight:600;display:flex;align-items:center;gap:6px;}
+.tab .n{font-size:9px;opacity:.7;}
+.tab:hover{color:var(--ink);background:var(--surface2);}
+.tab.active{background:var(--amber);color:#fff;}
+.tab.active .n{opacity:.85;}
+.tab.tab-design{color:var(--global);border-color:var(--global);}
+.tab.tab-design:hover{background:var(--global-bg);}
+.tab.tab-design.active{background:var(--global);color:#fff;border-color:var(--global);}
+.tarrow{color:var(--border2);flex-shrink:0;padding:0 1px;font-size:11px;align-self:center;}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:16px 0 22px;padding:12px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:10px;}
+.lkey{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--ink2);}
+.dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.dot.fresh{background:var(--fresh);} .dot.manual{background:var(--manual);} .dot.stale{background:var(--stale);} .dot.amber{background:var(--amber);}
+.livebanner{border:1px solid var(--fresh);background:var(--fresh-bg);border-radius:10px;padding:13px 15px;margin-bottom:22px;font-size:12.5px;color:var(--ink);line-height:1.6;}
+.livebanner b{color:var(--fresh);}
+.panel{display:none;}
+.panel.active{display:block;}
+.stage-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:4px;}
+.stage-hd h2{font-size:19px;margin:0;font-weight:700;flex:1;}
+.stage-hd .stagetag{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);}
+.stage-sub{font-size:13px;color:var(--ink2);line-height:1.55;max-width:72ch;margin:6px 0 20px;}
+section.card{border:1px solid var(--border);background:var(--surface);border-radius:14px;margin-bottom:16px;overflow:hidden;}
+.card-hd{display:flex;align-items:center;gap:10px;padding:13px 17px;cursor:pointer;user-select:none;flex-wrap:wrap;}
+.card-hd h3{font-size:14.5px;margin:0;font-weight:700;flex:1;min-width:150px;}
+.card-hd .tag{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;padding:3px 9px;border-radius:99px;font-weight:600;white-space:nowrap;}
+.tag.fresh{background:var(--fresh-bg);color:var(--fresh);}
+.tag.manual{background:var(--manual-bg);color:var(--manual);}
+.tag.stale{background:var(--stale-bg);color:var(--stale);}
+.tag.amber{background:var(--amber-bg);color:var(--amber);}
+.chev{font-size:11px;color:var(--ink3);transition:transform .15s;flex-shrink:0;}
+.card.open .chev{transform:rotate(90deg);}
+.card-body{padding:0 17px 17px;display:none;}
+.card.open .card-body{display:block;}
+.card-desc{font-size:12.5px;color:var(--ink2);line-height:1.6;margin:0 0 13px;max-width:72ch;}
+.field{border-top:1px solid var(--border);padding:11px 0;}
+.field:first-child{border-top:none;}
+.frow{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;}
+.fname{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--ink);min-width:170px;flex-shrink:0;padding-top:1px;}
+.fbadge{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:99px;flex-shrink:0;white-space:nowrap;}
+.fbadge.fresh{background:var(--fresh-bg);color:var(--fresh);}
+.fbadge.manual{background:var(--manual-bg);color:var(--manual);}
+.fbadge.stale{background:var(--stale-bg);color:var(--stale);}
+.fmeta{flex:1;min-width:220px;}
+.fpurpose{font-size:12px;color:var(--ink2);line-height:1.5;margin-bottom:6px;}
+.fval{font-size:12.5px;color:var(--ink);line-height:1.55;background:var(--surface2);border:1px solid var(--border);border-radius:8px;padding:9px 11px;white-space:pre-wrap;}
+.fval.mono{font-family:var(--mono);font-size:11.5px;}
+.fctrl{display:flex;gap:6px;flex-shrink:0;margin-left:auto;padding-top:1px;flex-wrap:wrap;}
+.btn{font-family:var(--mono);font-size:10px;padding:4px 10px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;white-space:nowrap;}
+.btn:hover{border-color:var(--amber);color:var(--amber);}
+.btn.primary{background:var(--amber);border-color:var(--amber);color:#fff;}
+.btn.primary:hover{opacity:.9;color:#fff;}
+.btn[disabled]{opacity:.5;cursor:not-allowed;}
+.finput{font-family:var(--mono);font-size:10.5px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink);width:150px;flex:1;min-width:110px;}
+.finput::placeholder{color:var(--ink3);}
+.notebtn{font-family:var(--mono);font-size:10px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;white-space:nowrap;}
+.notebtn:hover{border-color:var(--global);color:var(--global);}
+.notebtn.has-note{border-color:var(--global);color:var(--global);background:var(--global-bg);font-weight:600;}
+.tabnotebtn{margin-left:auto;align-self:center;font-size:10.5px;padding:5px 11px;}
+.notebar{display:flex;align-items:center;gap:10px;background:var(--global-bg);border:1px solid var(--global);border-radius:10px;padding:9px 13px;margin-bottom:16px;font-size:12px;color:var(--global);flex-wrap:wrap;}
+.notebar b{font-weight:700;}
+.notebar .btn{border-color:var(--global);color:var(--global);}
+.notebar .btn:hover{background:var(--global);color:#fff;}
+.modaloverlay{position:fixed;inset:0;background:rgba(20,16,10,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;}
+.modaloverlay.open{display:flex;}
+.modalbox{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+.modalbox .mtitle{font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--global);font-weight:700;margin-bottom:4px;}
+.modalbox .mfield{font-size:15px;font-weight:700;margin-bottom:12px;line-height:1.35;}
+.modalbox textarea{width:100%;min-height:130px;font-family:var(--sans);font-size:13px;line-height:1.5;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;resize:vertical;outline:none;box-sizing:border-box;}
+.modalbox textarea:focus{border-color:var(--global);}
+.modalrow{display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}
+.modalrow .btn{font-size:12px;padding:7px 16px;}
+.kwgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
 @media (max-width:720px){.kwgrid{grid-template-columns:1fr;}}
-.kwcol h2{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:#fff;margin:0 0 10px;}
-.kwgroup{border-left:3px solid var(--kwc,#5f5f5f);padding-left:10px;margin-bottom:14px;}
-.kwghd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--kwc,#ccc);margin-bottom:6px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
-.kwghd .kwbtns{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;}
-.wbtn{font-size:10px;padding:3px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;font-family:'Syne',sans-serif;white-space:nowrap;}
-.wbtn:hover{border-color:#e8ff47;color:#e8ff47;}
-.wbtn:disabled{opacity:.4;cursor:not-allowed;}
-.wbtn.primary{background:#e8ff47;border-color:#e8ff47;color:#080808;font-weight:700;}
-.winput{font-size:11px;padding:4px 8px;border:1px solid #5f5f5f;background:#0f0f0f;color:#fff;border-radius:3px;font-family:'Syne',sans-serif;}
-.kw-pill{display:inline-block;font-size:11px;background:#141414;border:1px solid #333;border-radius:12px;padding:3px 10px;margin:2px 3px 2px 0;color:#eee;}
-.stagedcluster{border-left:3px solid #ffb020;padding-left:10px;margin-bottom:10px;}
-.stagedcluster .schd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#ffb020;margin-bottom:5px;}
-.stagedcluster input, .stagedcluster textarea{width:100%;box-sizing:border-box;font-family:'Syne',sans-serif;font-size:12px;color:#fff;background:#0f0f0f;border:1px solid #333;border-radius:4px;padding:5px 8px;margin-bottom:5px;}
-.commitcluster{border-left:3px solid #a78bfa;padding-left:10px;margin-bottom:10px;}
-.commitcluster .cchd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#a78bfa;margin-bottom:4px;}
-.loadnote{font-size:11px;color:#888;padding:6px 0;}
-.errnote{font-size:11px;color:#ff6b6b;padding:6px 0;}
-.stagebanner{border:1px solid #63b3ed;background:rgba(99,179,237,.08);border-radius:6px;padding:10px 14px;margin-bottom:18px;font-size:11.5px;color:#cfe4fb;line-height:1.6;}
-.stagebanner b{color:#63b3ed;}
+.kwcol h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin:0 0 8px;}
+.kwgroup{border-left:3px solid var(--kwc,var(--border2));padding-left:9px;margin-bottom:12px;}
+.kwghd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--kwc,var(--ink2));margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.kwghd .kwbtns{margin-left:auto;display:flex;gap:5px;flex-wrap:wrap;}
+.kwghd .kwbtns .btn{font-size:9.5px;padding:2px 7px;}
+.kwgbody{font-size:12px;color:var(--ink);}
+.kw-pill{display:inline-block;font-size:11px;background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:3px 10px;margin:2px 3px 2px 0;color:var(--ink);}
+.idea-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface2);}
+.idea-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.idea-title{font-weight:600;font-size:12.5px;flex:1;min-width:120px;}
+.idea-desc{font-size:11.5px;color:var(--ink2);margin-top:4px;line-height:1.5;}
+.stagedcluster{border-left:3px solid var(--amber);padding-left:10px;margin-bottom:10px;}
+.stagedcluster .schd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--amber);margin-bottom:5px;}
+.stagedcluster input,.stagedcluster textarea{width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;margin-bottom:5px;}
+.commitcluster{border-left:3px solid var(--global);padding-left:10px;margin-bottom:10px;}
+.commitcluster .cchd{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--global);margin-bottom:4px;}
+.loadnote{font-size:11.5px;color:var(--ink3);padding:6px 0;}
+.errnote{font-size:11.5px;color:var(--stale);padding:6px 0;}
+.recordtree{border:1px solid var(--border);background:var(--surface);border-radius:14px;padding:6px;}
+.rnode{border-radius:10px;margin:4px;background:var(--surface2);border:1px solid var(--border);}
+.rhd{display:flex;align-items:center;gap:9px;padding:11px 13px;cursor:pointer;user-select:none;flex-wrap:wrap;}
+.rchev{font-size:10px;color:var(--ink3);transition:transform .15s;flex-shrink:0;}
+.rnode.open>.rhd>.rchev{transform:rotate(90deg);}
+.rtype{font-family:var(--mono);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);flex-shrink:0;}
+.rname{font-weight:600;font-size:13px;flex:1;min-width:160px;}
+.rstatus{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:99px;flex-shrink:0;white-space:nowrap;}
+.s-dev{background:var(--manual-bg);color:var(--manual);}
+.s-pub{background:var(--amber-bg);color:var(--amber);}
+.s-live{background:var(--fresh-bg);color:var(--fresh);}
+.rbody{display:none;padding:0 13px 13px 30px;}
+.rnode.open>.rbody{display:block;}
+.rasset{font-size:12.5px;color:var(--ink);padding:5px 0 5px 8px;border-left:2px solid var(--border2);margin:4px 0;}
+footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--ink3);text-align:center;}
+@media (max-width:640px){
+  .fname{min-width:100%;}
+  .fctrl{margin-left:0;}
+  .tabbar .tarrow{display:none;}
+  .tabbar .tab{flex:1 1 auto;justify-content:center;}
+}
 </style>
 </head>
 <body>
@@ -62,68 +176,226 @@
   <div class="pin-error" id="pinError"></div>
 </div>
 
-<div class="topbar">
-  <div class="topbar-left">Care Gap<span> · Microsite2</span></div>
-  <div class="topbar-right">
-    <div class="topbar-clock" id="clock">—</div>
-    <div class="topbar-refresh" onclick="location.reload()" title="Reload">⟳</div>
-    <div class="topbar-lock" onclick="lockApp()">Lock</div>
-  </div>
-</div>
-
-<div class="tab-nav" id="tabNav">
-  <button class="tab-btn active" data-tab="tab-keywords" onclick="switchTab('tab-keywords')">Keywords</button>
-  <button class="tab-btn" data-tab="tab-method" onclick="switchTab('tab-method')">Method</button>
-  <button class="tab-btn" data-tab="tab-todo" onclick="switchTab('tab-todo')">Not yet wired</button>
-</div>
-
-<div class="tab-page active" id="tab-keywords">
-  <div class="stagebanner">
-    <b>Real, live, wired to the actual worker</b> — this is the first genuinely functioning slice of Microsite2, not a simulation. Loads the real Care Gap Research record on open; every button here writes to the real Notion database. Campaign: <code>Fundraising Caregivers - Stable Home</code>.
-  </div>
-  <div class="kwgrid">
-    <div class="kwcol">
-      <h2>Keywords</h2>
-      <div class="kwgroup open" style="--kwc:#4ade80;">
-        <div class="kwghd" onclick="this.parentElement.classList.toggle('open')">
-          <span id="mainKwArrow">▾</span>Main Keywords
-          <span class="kwbtns">
-            <input type="text" class="winput" id="kwSteerInput" placeholder="steer (optional)" onclick="event.stopPropagation()" style="width:130px;">
-            <button class="wbtn primary" id="kwRegenBtn" onclick="event.stopPropagation();runRegenKeywords()">⟳ regen</button>
-            <button class="wbtn" id="clusterGenBtn" onclick="event.stopPropagation();runGenerateClusters()">↻ generate clusters</button>
-          </span>
-        </div>
-        <div id="mainKwBody" class="kw-list"><div class="loadnote">Loading…</div></div>
-      </div>
-      <div id="r-seoclusters"></div>
-    </div>
-    <div class="kwcol">
-      <h2>Product Ideas</h2>
-      <div class="kwgroup open" style="--kwc:#8ab4f8;">
-        <div class="kwghd" onclick="this.parentElement.classList.toggle('open')">
-          <span>▾</span>Main Stack — off all Main Keywords
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-          <input type="text" class="winput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:140px;">
-          <button class="wbtn" id="prodIdeasBtn" onclick="runProductIdeas()">⟳ search</button>
-        </div>
-        <div id="r-prodideas"><div class="loadnote">Loading…</div></div>
+<div class="wrap">
+  <div class="hdr">
+    <div class="hdrtop">
+      <div class="eyebrow">Care Gap Template · real, live-wired successor to New Template</div>
+      <div class="hdrctrls">
+        <details class="artnav">
+          <summary>📂 Jump to…</summary>
+          <div class="artnav-menu">
+            <span class="current" style="padding:6px 10px;color:var(--ink3);font-style:italic;display:block;">— this page —</span>
+            <a href="https://claude.ai/code/artifact/b8376849-0ba0-4c52-9ace-9cdf053a73ce" target="_blank" rel="noopener">🗺️ Master (spec) ↗</a>
+            <a href="https://claude.ai/code/artifact/08c30349-852f-4497-9083-cdd6147b4c2f" target="_blank" rel="noopener">🗂️ New Template (archived) ↗</a>
+            <a href="https://claude.ai/code/artifact/97120115-6a94-4744-aab5-7f9d0b6bbe9a" target="_blank" rel="noopener">🛠️ Method Pipeline Grid ↗</a>
+          </div>
+        </details>
+        <button class="notebtn" data-noteid="page-overall" onclick="openNoteModal('page-overall','Whole page','page')">📝 Page note</button>
+        <button class="lockbtn" onclick="lockApp()">🔒 Lock</button>
       </div>
     </div>
-  </div>
-</div>
+    <h1>Care Gap Template</h1>
+    <p class="sub">Same tabbed cascade as the Master/New Template artifacts, but real: real PIN auth, real worker calls, real Notion writes against the live Care Gap campaign — no simulated buttons. Notes still work the same way: click 📝 on any card or tab, jot a thought, then tell Claude "I submitted my notes."</p>
 
-<div class="tab-page" id="tab-method">
-  <div class="stagebanner">
-    <b>Real, live</b> — pulled straight from <code>getHubMethodMatrix</code>, filtered to Care Gap's own methods. Same data source as the dashboard's Hub Method Matrix.
+    <div class="tabbar" id="tabbar">
+      <button class="tab active" data-tab="keywords" onclick="switchTo('keywords')">Keywords</button><span class="tarrow">→</span>
+      <button class="tab" data-tab="research" onclick="switchTo('research')">Campaign Research <span class="n">(13)</span></button><span class="tarrow">→</span>
+      <button class="tab tab-design" data-tab="design" onclick="switchTo('design')">🎨 Design <span class="n">constant</span></button><span class="tarrow">→</span>
+      <button class="tab" data-tab="product" onclick="switchTo('product')">Product Research <span class="n">(11)</span></button><span class="tarrow">→</span>
+      <button class="tab" data-tab="strategy" onclick="switchTo('strategy')">Strategy</button><span class="tarrow">→</span>
+      <button class="tab" data-tab="title" onclick="switchTo('title')">Title</button><span class="tarrow">→</span>
+      <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button><span class="tarrow">→</span>
+      <button class="tab" data-tab="asset" onclick="switchTo('asset')">Asset <span class="n">real records</span></button>
+    </div>
   </div>
-  <div id="methodList"><div class="loadnote">Loading…</div></div>
-</div>
 
-<div class="tab-page" id="tab-todo">
-  <p style="color:#888;font-size:12px;line-height:1.6;max-width:60ch;">
-    Design, Product Research, Strategy, Title, and Asset tabs from the Master/New Template artifacts aren't wired here yet — this file only proves the pattern end to end for Keywords and Method so far. Next real slice picks up from here.
-  </p>
+  <div class="livebanner">
+    <b>Real, live, wired to the actual worker.</b> Every field below loads from the real Care Gap Notion records; every ⟳/↻ button calls a real worker action that writes back to Notion. Where a field has no dedicated regenerate action yet, it's shown read-only rather than faked.
+  </div>
+
+  <div class="legend">
+    <div class="lkey"><span class="dot fresh"></span> live from Notion</div>
+    <div class="lkey"><span class="dot manual"></span> has a real ⟳ regenerate control</div>
+    <div class="lkey"><span class="dot stale"></span> read-only — no dedicated regen action wired</div>
+  </div>
+
+  <div class="notebar" id="notebar">
+    <span>📝 <b><span id="noteCount">0</span> field note(s)</b> saved</span>
+    <button class="btn" onclick="submitNotes()">Submit notes</button>
+    <span style="opacity:.8;">— saved instantly to the worker as you write; Submit is just your cue to tell Claude.</span>
+  </div>
+
+  <div class="modaloverlay" id="noteModal">
+    <div class="modalbox">
+      <div class="mtitle" id="noteModalTab"></div>
+      <div class="mfield" id="noteModalField"></div>
+      <textarea id="noteModalText" placeholder="Your thoughts on this…"></textarea>
+      <div class="modalrow">
+        <button class="btn" onclick="closeNoteModal()">Cancel</button>
+        <button class="btn primary" onclick="saveNote()">Save note</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
+  <div class="panel active" data-panel="keywords">
+    <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
+    <p class="stage-sub">The one field nothing else outranks. Loads the real Main Keywords + Product Ideas on open; every other tab either reads this directly or reads something that reads this.</p>
+    <div class="kwgrid">
+      <div class="kwcol">
+        <h4>Keywords</h4>
+        <div class="kwgroup open" style="--kwc:#4ade80;">
+          <div class="kwghd">
+            <span>▾</span>Main Keywords
+            <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="openNoteModal('keywords-root','Main Keywords','keywords')">📝</button>
+            <span class="kwbtns">
+              <input type="text" class="finput" id="kwSteerInput" placeholder="steer (optional)" style="width:120px;">
+              <button class="btn primary" id="kwRegenBtn" onclick="runRegenKeywords()">⟳ regen</button>
+              <button class="btn" id="clusterGenBtn" onclick="runGenerateClusters()">↻ generate clusters</button>
+            </span>
+          </div>
+          <div id="mainKwBody" class="kwgbody"><div class="loadnote">Loading…</div></div>
+        </div>
+        <div id="r-seoclusters"></div>
+      </div>
+      <div class="kwcol">
+        <h4>Product Ideas</h4>
+        <div class="kwgroup open" style="--kwc:#8ab4f8;">
+          <div class="kwghd">
+            <span>▾</span>Main Stack — off all Main Keywords
+            <button class="notebtn" style="font-size:9.5px;padding:2px 7px;margin-left:auto;" onclick="openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
+          </div>
+          <div class="kwgbody">
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
+              <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:140px;">
+              <button class="btn" id="prodIdeasBtn" onclick="runProductIdeas()">⟳ search</button>
+            </div>
+            <div id="r-prodideas"><div class="loadnote">Loading…</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════ TAB: CAMPAIGN RESEARCH ══════════════════════ -->
+  <div class="panel" data-panel="research">
+    <div class="stage-hd"><h2>Campaign Research</h2><span class="stagetag">stage 1</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-research','Campaign Research tab','research')">📝 Tab note</button></div>
+    <p class="stage-sub">Trend and customer research. Positioning + Statement/Unique Opportunity auto-cascade with a Keywords regen; the 13 research modules below are each their own real Notion field.</p>
+
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
+      <div class="card-body">
+        <p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record and have no button of their own anywhere — they refresh together with the Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>
+        <div class="field"><div class="frow"><span class="fname">Campaign Goal</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignGoal">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Pain Points</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-painPoints">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Key Message</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignKeyMessage">—</div></div></div></div>
+      </div>
+    </section>
+
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
+      <div class="card-body">
+        <div class="field"><div class="frow"><span class="fname">Statement</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-statement">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Unique Opportunity</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-uniqueOpportunity">—</div></div></div></div>
+      </div>
+    </section>
+
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">6 have a real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
+      <div class="card-body" id="researchModulesBody">
+        <div class="loadnote">Loading…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════ TAB: DESIGN ══════════════════════ -->
+  <div class="panel" data-panel="design">
+    <div class="stage-hd"><h2 style="color:var(--global);">🎨 Design</h2><span class="stagetag" style="color:var(--global);">global constant — not a stage</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-design','Design tab','design')">📝 Tab note</button></div>
+    <p class="stage-sub">Everything that governs how this campaign LOOKS. Method and Asset consume this; they don't own it. Loaded from <code>getHubPalette</code>; each card's ⟳ calls the matching <code>generateResearch*</code> action.</p>
+
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
+      <div class="card-body">
+        <p class="card-desc">One call (<code>generateResearchDesign</code>) rewrites all three together, grounded in Main Keywords as the dominant signal.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+          <input type="text" class="finput" id="designSteerInput" placeholder="steer (optional)" style="width:200px;">
+          <button class="btn primary" id="designRegenBtn" onclick="runRegenDesign()">⟳ regenerate direction</button>
+        </div>
+        <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div></div></div>
+        <div class="field"><div class="frow"><span class="fname">Visual Avoid</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualAvoid">—</div></div></div></div>
+      </div>
+    </section>
+
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Palette</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
+      <div class="card-body">
+        <div class="field"><div class="frow"><span class="fname">Resolved hex</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-palette">—</div><div class="fctrl"><button class="btn" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button></div></div></div></div>
+      </div>
+    </section>
+
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Fonts</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
+      <div class="card-body">
+        <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div><div class="fctrl"><button class="btn" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button></div></div></div></div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════ TAB: PRODUCT RESEARCH ══════════════════════ -->
+  <div class="panel" data-panel="product">
+    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
+    <p class="stage-sub">The 11 🔬 Product Research fields (Customer/Niche/Pain Points/Emotions/Solution/Benefits/Unique Opportunity/Transformation/Offer Structure/Proof Points/Objections) for this campaign's main product, via <code>getCampaignProducts</code> → <code>getProductStrategy</code>.</p>
+    <div id="productPicker" style="margin-bottom:12px;"></div>
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3 id="productCardTitle">Product Research</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-product-research','Product Research','product')">📝</button></div>
+      <div class="card-body" id="productResearchBody">
+        <div class="loadnote">Loading…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════ TAB: STRATEGY ══════════════════════ -->
+  <div class="panel" data-panel="strategy">
+    <div class="stage-hd"><h2>Strategy</h2><span class="stagetag">stage 3 · per method</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
+    <p class="stage-sub">Per-method Strategy Briefs (📄 Strategy DB, Method relation set) for the main product, one card per In-Master-Flow method — <code>getMethodStrategy</code>.</p>
+    <div id="strategyBody"><div class="loadnote">Loading…</div></div>
+  </div>
+
+  <!-- ══════════════════════ TAB: TITLE ══════════════════════ -->
+  <div class="panel" data-panel="title">
+    <div class="stage-hd"><h2>Title</h2><span class="stagetag">stage 4</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-title','Title tab','title')">📝 Tab note</button></div>
+    <p class="stage-sub">Every Content Strategy title on this campaign, real, via <code>getTitles</code>.</p>
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Titles</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-title-list','Titles','title')">📝</button></div>
+      <div class="card-body" id="titleListBody">
+        <div class="loadnote">Loading…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════ TAB: METHOD ══════════════════════ -->
+  <div class="panel" data-panel="method">
+    <div class="stage-hd"><h2>Method</h2><span class="stagetag">stage 5 · à la carte</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-method','Method tab','method')">📝 Tab note</button></div>
+    <p class="stage-sub">Care Gap's real methods tagged "In Master Flow", via <code>getHubMethodMatrix</code> (scoped client-side to this campaign's own method IDs).</p>
+    <section class="card open">
+      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>In-flow methods</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-method-list','In-flow methods','method')">📝</button></div>
+      <div class="card-body" id="methodList">
+        <div class="loadnote">Loading…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ══════════════════════ TAB: ASSET ══════════════════════ -->
+  <div class="panel" data-panel="asset">
+    <div class="stage-hd"><h2>Asset <span style="font-weight:400;color:var(--ink3);font-size:14px;">— real records</span></h2><span class="stagetag">stage 6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-asset','Asset tab','asset')">📝 Tab note</button></div>
+    <p class="stage-sub">Real Title → Asset nesting for every title that has generated assets — <code>getTitleAssets</code> per title from the Title tab's list.</p>
+    <div class="recordtree" id="assetTree">
+      <div class="loadnote" style="padding:14px;">Loading…</div>
+    </div>
+  </div>
+
+  <footer>Care Gap Template — real microsite, live data. Notes saved to the worker as you go.</footer>
 </div>
 
 <script>
@@ -141,6 +413,18 @@ const CARE_GAP_METHOD_IDS = new Set([
   "3ca1f7d3a4bb81ffa775e5f3e0426f8a", // single post - main social media
   "3d61f7d3a4bb81d59083da4af143c3ec", // Content Hub (shared global method)
 ]);
+const IN_FLOW_METHOD_IDS = new Set([
+  "3cf1f7d3a4bb81b4b5a6eb7821cc462e", // Offer – Content Hub
+  "3d01f7d3a4bb81b88d11ec72ce72e732", // Blog - SEO - News
+  "3ca1f7d3a4bb81ffa775e5f3e0426f8a", // single post - main social media
+  "3d61f7d3a4bb81d59083da4af143c3ec", // Content Hub
+]);
+const METHOD_NAMES = {
+  "3cf1f7d3a4bb81b4b5a6eb7821cc462e": "Offer – Content Hub",
+  "3d01f7d3a4bb81b88d11ec72ce72e732": "Blog - SEO - News",
+  "3ca1f7d3a4bb81ffa775e5f3e0426f8a": "single post - main social media",
+  "3d61f7d3a4bb81d59083da4af143c3ec": "Content Hub",
+};
 
 // ── PIN auth — same pattern as every other microsite (hard-grind) ──────
 const REMEMBER_KEY = 'hermes_remember_caregapv2';
@@ -211,18 +495,23 @@ function lockApp() {
   document.getElementById('pinError').textContent = '';
   document.getElementById('pinScreen').classList.remove('hidden');
 }
-function tick() {
-  const n = new Date();
-  document.getElementById('clock').textContent = String(n.getHours()).padStart(2,'0') + ':' + String(n.getMinutes()).padStart(2,'0') + ':' + String(n.getSeconds()).padStart(2,'0');
-}
-setInterval(tick, 1000); tick();
 
 // ── tabs ─────────────────────────────────────────────────────────────
-function switchTab(id) {
-  document.querySelectorAll('.tab-page').forEach(el => el.classList.remove('active'));
-  document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-  document.querySelector(`.tab-btn[data-tab="${id}"]`).classList.add('active');
+const TAB_LOADERS = {
+  research: () => loadResearchTab(),
+  design: () => loadDesignTab(),
+  product: () => loadProductTab(),
+  strategy: () => loadStrategyTab(),
+  title: () => loadTitleTab(),
+  asset: () => loadAssetTab(),
+};
+const TAB_LOADED = {};
+function switchTo(key) {
+  document.querySelectorAll('.panel').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.querySelector(`.panel[data-panel="${key}"]`).classList.add('active');
+  document.querySelector(`.tab[data-tab="${key}"]`).classList.add('active');
+  if (!TAB_LOADED[key] && TAB_LOADERS[key]) { TAB_LOADED[key] = true; TAB_LOADERS[key](); }
 }
 
 // ── real worker call helper (same shape as every other microsite) ──────
@@ -236,42 +525,78 @@ async function w(action, extra = {}) {
   if (d.error) throw new Error(d.error);
   return d;
 }
-
-let RAW_KEYWORDS = '';
-
 function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
+// ── notes system — real KV backend (saveMicrositeNote/getMicrositeNotes) ──
+let NOTE_ACTIVE = null;
+let NOTES_CACHE = [];
+function openNoteModal(fieldId, label, tab) {
+  NOTE_ACTIVE = { fieldId, label, tab };
+  document.getElementById('noteModalTab').textContent = tab || '';
+  document.getElementById('noteModalField').textContent = label;
+  const existing = NOTES_CACHE.find(n => n.fieldId === fieldId);
+  document.getElementById('noteModalText').value = existing ? existing.note : '';
+  document.getElementById('noteModal').classList.add('open');
+}
+function closeNoteModal() { document.getElementById('noteModal').classList.remove('open'); NOTE_ACTIVE = null; }
+document.addEventListener('DOMContentLoaded', () => {
+  const overlay = document.getElementById('noteModal');
+  overlay.addEventListener('click', e => { if (e.target === overlay) closeNoteModal(); });
+});
+async function saveNote() {
+  if (!NOTE_ACTIVE) return;
+  const note = document.getElementById('noteModalText').value;
+  try {
+    const r = await w('saveMicrositeNote', { campaignId: CAMPAIGN_ID, fieldId: NOTE_ACTIVE.fieldId, label: NOTE_ACTIVE.label, tab: NOTE_ACTIVE.tab, note });
+    NOTES_CACHE = r.notes || NOTES_CACHE;
+    refreshNoteMarks();
+    closeNoteModal();
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+function refreshNoteMarks() {
+  document.getElementById('noteCount').textContent = NOTES_CACHE.filter(n => (n.note || '').trim()).length;
+  document.querySelectorAll('.notebtn').forEach(btn => {
+    const m = (btn.getAttribute('onclick') || '').match(/openNoteModal\('([^']+)'/);
+    const fieldId = btn.dataset.noteid || (m && m[1]);
+    if (!fieldId) return;
+    const has = NOTES_CACHE.some(n => n.fieldId === fieldId && (n.note || '').trim());
+    btn.classList.toggle('has-note', has);
+  });
+}
+async function loadNotes() {
+  try { const r = await w('getMicrositeNotes', { campaignId: CAMPAIGN_ID }); NOTES_CACHE = r.notes || []; refreshNoteMarks(); }
+  catch (e) {}
+}
+function submitNotes() {
+  alert('Notes are already saved. Tell Claude: "I submitted my notes on the Care Gap Template."');
+}
+
+// ══════════════════════ KEYWORDS TAB ══════════════════════
+let RAW_KEYWORDS = '';
 function renderKeywordPills(kwStr) {
   const el = document.getElementById('mainKwBody');
   const kws = (kwStr || '').split(',').map(s => s.trim()).filter(Boolean);
-  if (!kws.length) { el.innerHTML = '<span style="color:#888;font-size:11px;">No keywords yet.</span>'; return; }
+  if (!kws.length) { el.innerHTML = '<span style="color:var(--ink3);font-size:11px;">No keywords yet.</span>'; return; }
   el.innerHTML = kws.map(k => `<span class="kw-pill">${esc(k)}</span>`).join('');
 }
-
-// ── real load: the actual Care Gap Research record ──────────────────
-// getResearch is the only read-only fetch here — it returns the Product
-// Ideas text Notion already has on file, so the Product Ideas column
-// renders from THIS call on load. getProductIdeas (unlike its name) always
-// calls Claude and overwrites that real field, so it only ever fires from
-// the explicit "⟳ search" button, never on page load.
 async function loadResearch() {
   try {
     const data = await w('getResearch', { campaignId: CAMPAIGN_ID });
     const r = data.research;
     if (!r) {
-      document.getElementById('mainKwBody').innerHTML = '<span style="color:#ff6b6b;">No research record found.</span>';
-      document.getElementById('r-prodideas').innerHTML = '<span style="color:#ff6b6b;">No research record found.</span>';
+      document.getElementById('mainKwBody').innerHTML = '<span style="color:var(--stale);">No research record found.</span>';
+      document.getElementById('r-prodideas').innerHTML = '<span style="color:var(--stale);">No research record found.</span>';
       return;
     }
+    window.RESEARCH_RECORD = r;
     RAW_KEYWORDS = r.keywords || '';
     renderKeywordPills(RAW_KEYWORDS);
     renderProductIdeas(r.productIdeas || '');
   } catch (e) {
-    document.getElementById('mainKwBody').innerHTML = `<span style="color:#ff6b6b;">Load failed: ${esc(e.message)}</span>`;
-    document.getElementById('r-prodideas').innerHTML = `<span style="color:#ff6b6b;">Load failed: ${esc(e.message)}</span>`;
+    document.getElementById('mainKwBody').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
+    document.getElementById('r-prodideas').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
   }
 }
-
 async function runRegenKeywords() {
   const btn = document.getElementById('kwRegenBtn');
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
@@ -287,8 +612,6 @@ async function runRegenKeywords() {
   }
   btn.disabled = false; btn.textContent = o;
 }
-
-// ── real SEO clusters ────────────────────────────────────────────────
 let SEO_CLUSTERS = { staged: [], committed: [] };
 async function loadClusters() {
   try {
@@ -305,16 +628,16 @@ function renderClusters() {
   if (!staged.length && !committed.length) { el.innerHTML = '<div class="loadnote">No clusters yet — ↻ generate (needs Main Keywords set above).</div>'; return; }
   let html = '';
   committed.forEach(c => {
-    html += `<div class="commitcluster"><div class="cchd">${esc(c.name)} Stack</div><div style="font-size:11px;color:#ccc;">${esc(c.keywords)}</div></div>`;
+    html += `<div class="commitcluster"><div class="cchd">${esc(c.name)} Stack</div><div style="font-size:11px;color:var(--ink2);">${esc(c.keywords)}</div></div>`;
   });
   staged.forEach(c => {
     html += `<div class="stagedcluster"><div class="schd">${esc(c.name)} Stack — staged</div>
       <input value="${esc(c.name)}" onchange="editCluster('${esc(c.id)}','name',this.value)">
       <textarea onchange="editCluster('${esc(c.id)}','keywords',this.value)">${esc(c.keywords)}</textarea>
-      <div style="font-size:10.5px;color:#999;font-style:italic;margin-bottom:6px;">${esc(c.rationale || '')}</div>
+      <div style="font-size:10.5px;color:var(--ink3);font-style:italic;margin-bottom:6px;">${esc(c.rationale || '')}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="wbtn" onclick="regenCluster('${esc(c.id)}', this)">↻ regen</button>
-        <button class="wbtn primary" onclick="commitCluster('${esc(c.id)}', this)">💾 commit</button>
+        <button class="btn" onclick="regenCluster('${esc(c.id)}', this)">↻ regen</button>
+        <button class="btn primary" onclick="commitCluster('${esc(c.id)}', this)">💾 commit</button>
       </div></div>`;
   });
   el.innerHTML = html;
@@ -341,8 +664,6 @@ async function runGenerateClusters() {
   catch (e) { alert('Generate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
-
-// ── real Product Ideas ───────────────────────────────────────────────
 function renderProductIdeas(text) {
   const el = document.getElementById('r-prodideas');
   const lines = (text || '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -350,7 +671,7 @@ function renderProductIdeas(text) {
   el.innerHTML = lines.map(line => {
     const m = line.match(/^([^:]+):\s*(.*)$/);
     const name = m ? m[1] : line, desc = m ? m[2] : '';
-    return `<div class="idea-card"><div class="idea-card-row"><span class="idea-card-title">${esc(name)}</span></div>${desc ? `<div class="idea-card-desc">${esc(desc)}</div>` : ''}</div>`;
+    return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(name)}</span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
   }).join('');
 }
 async function runProductIdeas() {
@@ -363,16 +684,227 @@ async function runProductIdeas() {
   btn.disabled = false; btn.textContent = o;
 }
 
-// ── real Method Matrix, filtered to this campaign's methods ─────────
+// ══════════════════════ CAMPAIGN RESEARCH TAB ══════════════════════
+// 6 of the 13 modules have a confirmed, self-contained real regen action;
+// the rest (News Feed / Thoughts / Platforms & Methods) regen via the
+// generic sendPrompt + updateResearch pair, same pattern hard-grind uses
+// for its Statement/Unique Opportunity/News Feed "field research" modal.
+// Influencer Intelligence and Trend Round-Up depend on a YouTube-channel
+// chain this page doesn't build (getTopYoutubeChannels → Influencer
+// Intelligence → getChannelTopicsDigest → Trend Round-Up) — shown read-only.
+const RESEARCH_MODULES = [
+  { key: 'newsFeed', label: 'News Feed', kind: 'prompt', prompt: kw => `Based on these campaign keywords: ${kw}\n\nGenerate a "News Feed" of 5-8 current news items, trends, or insights relevant to this campaign. Format each entry as:\nHEADLINE: brief context (max 25 words)\n\nOutput only the entries, no preamble.` },
+  { key: 'thoughts', label: 'Thoughts', kind: 'readonly' },
+  { key: 'platforms', label: 'Platforms & Methods', kind: 'readonly' },
+  { key: 'tikTokShopProducts', label: 'TikTok Shop Products', kind: 'action', action: 'getTikTokShopProducts' },
+  { key: 'kdpBestSellers', label: 'KDP Best Sellers', kind: 'readonly' },
+  { key: 'jobBoardListings', label: 'Job Board Listings', kind: 'action', action: 'getJobBoardListings' },
+  { key: 'tiktokTrends', label: 'TikTok Trends', kind: 'readonly' },
+  { key: 'trendIntelligence', label: 'Trend Intelligence', kind: 'action', action: 'getSMTrends' },
+  { key: 'etsyProducts', label: 'Etsy Products', kind: 'action', action: 'getEtsyProducts' },
+  { key: 'youtubeOutliers', label: 'YouTube Outliers', kind: 'action', action: 'getTopYoutubeChannels' },
+  { key: 'seedChannels', label: 'Seed Channels', kind: 'action', action: 'getSeedChannels' },
+  { key: 'influencerIntelligence', label: 'Influencer Intelligence', kind: 'readonly' },
+  { key: 'trendRoundUp', label: 'Trend Round-Up', kind: 'readonly' },
+];
+async function loadResearchTab() {
+  try {
+    const r = window.RESEARCH_RECORD || (await w('getResearch', { campaignId: CAMPAIGN_ID })).research;
+    if (!r) return;
+    document.getElementById('f-campaignGoal').textContent = r.campaignGoal || '(none on file)';
+    document.getElementById('f-painPoints').textContent = r.painPoints || '(none on file)';
+    document.getElementById('f-campaignKeyMessage').textContent = r.campaignKeyMessage || '(none on file)';
+    document.getElementById('f-statement').textContent = r.statement || '(none on file)';
+    document.getElementById('f-uniqueOpportunity').textContent = r.uniqueOpportunity || '(none on file)';
+    const body = document.getElementById('researchModulesBody');
+    body.innerHTML = RESEARCH_MODULES.map(m => {
+      const val = esc(r[m.key] || '(none on file)');
+      const badge = m.kind === 'readonly' ? '<span class="fbadge stale">read-only</span>' : '<span class="fbadge manual">real regen</span>';
+      const ctrl = m.kind === 'readonly'
+        ? ''
+        : `<div class="fctrl"><button class="btn" id="mod-${m.key}-btn" onclick="runResearchModule('${m.key}', this)">⟳ regenerate</button></div>`;
+      return `<div class="field"><div class="frow"><span class="fname">${esc(m.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>${ctrl}</div></div></div>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('researchModulesBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+async function runResearchModule(key, btn) {
+  const mod = RESEARCH_MODULES.find(m => m.key === key);
+  if (!mod) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const kw = (window.RESEARCH_RECORD && window.RESEARCH_RECORD.keywords) || RAW_KEYWORDS || '';
+    if (mod.kind === 'action') {
+      await w(mod.action, { researchId: RESEARCH_ID, campaignId: CAMPAIGN_ID });
+    } else if (mod.kind === 'prompt') {
+      const res = await w('sendPrompt', { prompt: mod.prompt(kw) });
+      await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: (res.text || '').trim() });
+    }
+    window.RESEARCH_RECORD = null;
+    await loadResearchTab();
+  } catch (e) {
+    alert('Regenerate failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+
+// ══════════════════════ DESIGN TAB ══════════════════════
+async function loadDesignTab() {
+  try {
+    const r = await w('getHubPalette', { campaignId: CAMPAIGN_ID });
+    document.getElementById('f-visualRegister').textContent = (r.design && r.design.register) || '(none on file)';
+    document.getElementById('f-photographyDirection').textContent = (r.design && r.design.photography) || '(none on file)';
+    document.getElementById('f-visualAvoid').textContent = (r.design && r.design.avoid) || '(none on file)';
+    document.getElementById('f-palette').textContent = r.palette ? Object.entries(r.palette).map(([k,v]) => `${k} ${v}`).join(' · ') : '(none on file)';
+    document.getElementById('f-fonts').textContent = r.fonts ? `${r.fonts.display} / ${r.fonts.body} / ${r.fonts.mono}` : '(none on file)';
+  } catch (e) {
+    ['f-visualRegister','f-photographyDirection','f-visualAvoid','f-palette','f-fonts'].forEach(id => {
+      document.getElementById(id).textContent = 'Load failed: ' + e.message;
+    });
+  }
+}
+async function runRegenDesign() {
+  const btn = document.getElementById('designRegenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  const instructions = (document.getElementById('designSteerInput').value || '').trim() || undefined;
+  try {
+    const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions });
+    document.getElementById('f-visualRegister').textContent = r.design.register;
+    document.getElementById('f-photographyDirection').textContent = r.design.photography;
+    document.getElementById('f-visualAvoid').textContent = r.design.avoid;
+  } catch (e) { alert('Regenerate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function runRegenPalette() {
+  const btn = document.getElementById('paletteRegenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
+  try {
+    const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID });
+    document.getElementById('f-palette').textContent = Object.entries(r.palette).map(([k,v]) => `${k} ${v}`).join(' · ');
+  } catch (e) { alert('Regenerate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+async function runRegenFonts() {
+  const btn = document.getElementById('fontsRegenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
+  try {
+    const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID });
+    document.getElementById('f-fonts').textContent = `${r.fonts.display} / ${r.fonts.body} / ${r.fonts.mono}`;
+  } catch (e) { alert('Regenerate failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+
+// ══════════════════════ PRODUCT RESEARCH TAB ══════════════════════
+let CAMPAIGN_PRODUCTS = [];
+let ACTIVE_PRODUCT_ID = null;
+const STRATEGY_FIELDS = ["Customer","Niche","Pain Points","Emotions","Solution","Benefits","Unique Opportunity","Transformation","Offer Structure","Proof Points","Objections"];
+async function loadProductTab() {
+  try {
+    const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID });
+    CAMPAIGN_PRODUCTS = r.products || [];
+    const picker = document.getElementById('productPicker');
+    if (!CAMPAIGN_PRODUCTS.length) { picker.innerHTML = ''; document.getElementById('productResearchBody').innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
+    if (CAMPAIGN_PRODUCTS.length > 1) {
+      picker.innerHTML = `<label style="font-family:var(--mono);font-size:11px;color:var(--ink2);">Product: <select id="productSelect" class="finput" style="width:auto;display:inline-block;" onchange="switchProduct(this.value)">${CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>`;
+    } else {
+      picker.innerHTML = `<div style="font-family:var(--mono);font-size:11px;color:var(--ink2);">Product: <b>${esc(CAMPAIGN_PRODUCTS[0].name)}</b></div>`;
+    }
+    ACTIVE_PRODUCT_ID = CAMPAIGN_PRODUCTS[0].id;
+    await loadProductResearch(ACTIVE_PRODUCT_ID);
+  } catch (e) {
+    document.getElementById('productResearchBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+function switchProduct(id) { ACTIVE_PRODUCT_ID = id; loadProductResearch(id); }
+async function loadProductResearch(productId) {
+  const body = document.getElementById('productResearchBody');
+  body.innerHTML = '<div class="loadnote">Loading…</div>';
+  try {
+    const r = await w('getProductStrategy', { productId });
+    const prod = CAMPAIGN_PRODUCTS.find(p => p.id === productId);
+    document.getElementById('productCardTitle').textContent = prod ? `Product Research — ${prod.name}` : 'Product Research';
+    if (!r.strategy) { body.innerHTML = '<div class="loadnote">No Product Research record on file for this product yet.</div>'; return; }
+    const fields = r.strategy.fields || {};
+    body.innerHTML = STRATEGY_FIELDS.map(f => `<div class="field"><div class="frow"><span class="fname">${esc(f)}</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval">${esc(fields[f] || '(none on file)')}</div></div></div></div>`).join('');
+  } catch (e) {
+    body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════ STRATEGY TAB ══════════════════════
+async function loadStrategyTab() {
+  const body = document.getElementById('strategyBody');
+  body.innerHTML = '<div class="loadnote">Loading…</div>';
+  try {
+    if (!CAMPAIGN_PRODUCTS.length) { const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = r.products || []; }
+    const productId = CAMPAIGN_PRODUCTS[0] && CAMPAIGN_PRODUCTS[0].id;
+    if (!productId) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
+    const methodIds = [...IN_FLOW_METHOD_IDS];
+    const results = await Promise.all(methodIds.map(mid => w('getMethodStrategy', { productId, methodId: mid }).catch(e => ({ error: e.message }))));
+    body.innerHTML = methodIds.map((mid, i) => {
+      const res = results[i];
+      const name = METHOD_NAMES[mid] || mid;
+      const text = res && res.strategy ? res.strategy.text : null;
+      const tag = text ? '<span class="tag fresh">has brief</span>' : '<span class="tag stale">no brief yet</span>';
+      return `<section class="card open"><div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
+    }).join('');
+    refreshNoteMarks();
+  } catch (e) {
+    body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════ TITLE TAB ══════════════════════
+let CAMPAIGN_TITLES = [];
+async function loadTitleTab() {
+  const body = document.getElementById('titleListBody');
+  body.innerHTML = '<div class="loadnote">Loading…</div>';
+  try {
+    const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: ["Planning","Development","Writing","Review","Approved","Explode","Publish","Published"] });
+    CAMPAIGN_TITLES = r.titles || [];
+    if (!CAMPAIGN_TITLES.length) { body.innerHTML = '<div class="loadnote">No titles on this campaign yet.</div>'; return; }
+    body.innerHTML = CAMPAIGN_TITLES.map(t => {
+      const statusClass = ['Publish','Published'].includes(t.stage) ? 's-live' : (t.stage === 'Planning' ? 's-dev' : 's-pub');
+      return `<div class="field"><div class="frow"><span class="fname" style="min-width:auto;flex:2;">${esc(t.title)}</span><span class="rstatus ${statusClass}">${esc(t.stage)}</span><div class="fmeta" style="flex:1;min-width:160px;"><div style="font-size:11px;color:var(--ink2);">${esc(t.productName || '')} · ${esc(t.methodName || '')} ${t.assetIds && t.assetIds.length ? `· ${t.assetIds.length} asset(s)` : ''}</div></div></div></div>`;
+    }).join('');
+  } catch (e) {
+    body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════ METHOD TAB ══════════════════════
 async function loadMethods() {
   const el = document.getElementById('methodList');
   try {
     const r = await w('getHubMethodMatrix');
     const cols = (r.columns || []).filter(c => c.inMasterFlow && CARE_GAP_METHOD_IDS.has(c.id));
     if (!cols.length) { el.innerHTML = '<div class="loadnote">No methods tagged "In Master Flow" yet — tag them from the dashboard\'s Hub Method Matrix.</div>'; return; }
-    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-card-row"><span class="idea-card-title">${esc(c.name)}</span><span style="font-size:10px;color:#68d391;">${esc(c.status || '')}</span></div>${c.notes ? `<div class="idea-card-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
+    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(c.name)}</span><span style="font-size:10px;color:var(--fresh);">${esc(c.status || '')}</span></div>${c.notes ? `<div class="idea-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
   } catch (e) {
     el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+  }
+}
+
+// ══════════════════════ ASSET TAB — real Title → Asset nesting ══════════════════════
+async function loadAssetTab() {
+  const el = document.getElementById('assetTree');
+  el.innerHTML = '<div class="loadnote" style="padding:14px;">Loading…</div>';
+  try {
+    if (!CAMPAIGN_TITLES.length) { const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: ["Planning","Development","Writing","Review","Approved","Explode","Publish","Published"] }); CAMPAIGN_TITLES = r.titles || []; }
+    const withAssets = CAMPAIGN_TITLES.filter(t => t.assetIds && t.assetIds.length);
+    if (!withAssets.length) { el.innerHTML = '<div class="loadnote" style="padding:14px;">No titles with generated assets yet.</div>'; return; }
+    const results = await Promise.all(withAssets.map(t => w('getTitleAssets', { titleId: t.id }).catch(e => ({ error: e.message }))));
+    el.innerHTML = withAssets.map((t, i) => {
+      const res = results[i];
+      const assets = (res && res.assets) || [];
+      const body = assets.length
+        ? assets.map(a => `<div class="rasset">${esc(a.assetTitle || a.title)} — <span style="color:var(--ink2);">${esc(a.type)} · ${esc(a.platform)} · ${esc(a.status)}</span></div>`).join('')
+        : `<div class="loadnote">${res && res.error ? 'Load failed: ' + esc(res.error) : 'No assets resolved.'}</div>`;
+      return `<div class="rnode" onclick="this.classList.toggle('open')"><div class="rhd"><span class="rchev">▶</span><span class="rtype">Title</span><span class="rname">${esc(t.title)}</span><span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span></div><div class="rbody">${body}</div></div>`;
+    }).join('');
+  } catch (e) {
+    el.innerHTML = `<div class="errnote" style="padding:14px;">Load failed: ${esc(e.message)}</div>`;
   }
 }
 
@@ -380,6 +912,7 @@ function init() {
   loadResearch();
   loadClusters();
   loadMethods();
+  loadNotes();
 }
 </script>
 </body>
