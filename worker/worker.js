@@ -17848,23 +17848,27 @@ No other text. No markdown fences.`;
       // (Stack -> Product -> Strategy -> Platform -> Arc -> Slot) without
       // committing to a generated plan; fill it in later the normal way
       // (♻️ regenerate on the strip, or attach titles to it directly).
+      // Optional parentStrategyId nests it under an existing Strategy via
+      // "Parent Strategy" -- the same relation getCampaignGrowthStrategies
+      // already reads to nest children (previously only ever set by the
+      // now-retired AI "divergence" path); this is the manual/organizational
+      // use of that same field, for sub-strategies pure and simple.
       if (body.action === "createBlankGrowthStrategy") {
-        const { campaignId, productId, name } = body;
+        const { campaignId, productId, name, parentStrategyId } = body;
         if (!campaignId || !productId || !name) return json({ error: "campaignId, productId and name required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const props = {
+          "Strategy Name": { title: [{ text: { content: String(name).slice(0, 200) } }] },
+          "Product": { relation: [{ id: dash(productId) }] },
+          "Campaign": { relation: [{ id: dash(campaignId) }] },
+          "Status": { select: { name: "Draft" } },
+          "Grouping Count": { number: 0 },
+        };
+        if (parentStrategyId) props["Parent Strategy"] = { relation: [{ id: dash(parentStrategyId) }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: hdr,
-          body: JSON.stringify({
-            parent: { database_id: GROWTH_STRATEGY_DB },
-            properties: {
-              "Strategy Name": { title: [{ text: { content: String(name).slice(0, 200) } }] },
-              "Product": { relation: [{ id: dash(productId) }] },
-              "Campaign": { relation: [{ id: dash(campaignId) }] },
-              "Status": { select: { name: "Draft" } },
-              "Grouping Count": { number: 0 },
-            },
-          }),
+          body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: props }),
         });
         const result = await resp.json();
         if (!resp.ok || !result.id) return json({ error: result.message || "Create failed" }, resp.status || 500);
