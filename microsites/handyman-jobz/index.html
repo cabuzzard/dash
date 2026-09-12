@@ -7536,15 +7536,38 @@ async function gaBuildNewTemplate(btn) {
       methodId: GA_METHOD_ID || undefined, methodName: GA_METHOD_NAME || 'single post',
     });
     if (r.error) throw new Error(r.error);
-    await navigator.clipboard.writeText(r.handoff);
-    msg.style.color = '#68d391';
-    msg.innerHTML = '✓ Canva build prompt copied — paste into a Claude Code chat with the Canva connector. It builds + registers the template; or paste the finished link below and ＋ Add. Background: <a href="' + esc(bg.imageUrl) + '" target="_blank" rel="noopener" style="color:#8be9fd;">preview ↗</a>';
-    btn.textContent = '✓ Prompt copied';
-    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 5000);
+    const previewLink = ' Background: <a href="' + esc(bg.imageUrl) + '" target="_blank" rel="noopener" style="color:#8be9fd;">preview ↗</a>';
+    let copied = false;
+    try { await navigator.clipboard.writeText(r.handoff); copied = true; } catch (e) {}
+    if (copied) {
+      msg.style.color = '#68d391';
+      msg.innerHTML = '✓ Canva build prompt copied — paste into a Claude Code chat with the Canva connector. It builds + registers the template; or paste the finished link below and ＋ Add.' + previewLink;
+      btn.textContent = '✓ Prompt copied';
+      setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 5000);
+    } else {
+      // Clipboard writes need the tab focused — a ~20s Grok render is long
+      // enough that the operator often tabs away, which makes writeText
+      // throw "Document is not focused" instead of silently losing the
+      // prompt. Fall back to a manual copy button (a real click always has
+      // focus, so this retry works every time).
+      GA_NT_LAST_HANDOFF = r.handoff;
+      msg.style.color = '#f6ad55';
+      msg.innerHTML = 'Built, but this tab needs focus to auto-copy. <button type="button" onclick="gaCopyLastHandoff(this)" style="font-size:11px;font-weight:600;background:none;border:1px solid #3a4557;border-radius:5px;color:#8be9fd;padding:2px 8px;cursor:pointer;">⧉ Copy prompt</button>' + previewLink;
+      btn.textContent = o; btn.disabled = false;
+    }
   } catch (e) {
     msg.style.color = '#fc8181'; msg.textContent = e.message;
     btn.textContent = o; btn.disabled = false;
   }
+}
+let GA_NT_LAST_HANDOFF = '';
+async function gaCopyLastHandoff(btn) {
+  if (!GA_NT_LAST_HANDOFF) return;
+  try {
+    await navigator.clipboard.writeText(GA_NT_LAST_HANDOFF);
+    btn.textContent = '✓ copied';
+    setTimeout(() => { btn.textContent = '⧉ Copy prompt'; }, 1800);
+  } catch (e) { alert(GA_NT_LAST_HANDOFF); }
 }
 async function gaSaveNewTemplate(btn) {
   const name = (document.getElementById('gaNtName').value || '').trim();
@@ -8193,15 +8216,38 @@ async function copyLinkedInBannerPrompt(btn) {
 // field values live in the Notion json block, not this asset object.
 async function copySinglePostCanvaHandoff(btn) {
   const titleId = btn.dataset.titleid;
-  const orig = btn.textContent;
+  const orig = btn.dataset.origLabel || btn.textContent;
+  btn.dataset.origLabel = orig;
+  // A previous attempt cached the prompt on this button after auto-copy
+  // failed — this click is the retry. A real click always has document
+  // focus, so just copy from cache instead of rebuilding the handoff.
+  if (btn.dataset.pendingHandoff) {
+    const text = btn.dataset.pendingHandoff;
+    try {
+      await navigator.clipboard.writeText(text);
+      delete btn.dataset.pendingHandoff;
+      btn.textContent = 'Copied ✓';
+      setTimeout(() => { btn.textContent = orig; }, 2200);
+    } catch (e) { alert(text); }
+    return;
+  }
   btn.disabled = true; btn.textContent = 'Building…';
   try {
     const r = await w('buildSinglePostCanvaHandoff', { titleId });
     if (r.error) throw new Error(r.error);
     if (!r.handoffPrompt) { btn.textContent = r.note || 'Nothing pending'; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2500); return; }
-    await navigator.clipboard.writeText(r.handoffPrompt);
-    btn.textContent = `Copied ✓ (${r.assetCount})`;
-    setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2200);
+    try {
+      await navigator.clipboard.writeText(r.handoffPrompt);
+      btn.textContent = `Copied ✓ (${r.assetCount})`;
+      setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 2200);
+    } catch (e) {
+      // "Document is not focused" — the tab lost focus during the fetch,
+      // which the Clipboard API requires for writeText. Cache the prompt on
+      // the button itself so clicking it again just retries the copy.
+      btn.dataset.pendingHandoff = r.handoffPrompt;
+      btn.disabled = false;
+      btn.textContent = '⧉ Click to copy';
+    }
   } catch (e) {
     btn.textContent = orig; btn.disabled = false;
     alert('Could not build the handoff: ' + e.message);
