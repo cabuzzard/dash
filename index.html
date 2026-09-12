@@ -1895,6 +1895,12 @@
       </div>
     </div>
     <div class="modal-field">
+      <label class="modal-label" style="display:flex;align-items:center;gap:6px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer;">
+        <input type="checkbox" id="mtInMasterFlow" style="width:auto;">
+        🗺️ In Master Flow <span style="color:var(--text3);">— gets its own card in the Master flow artifact / New Template</span>
+      </label>
+    </div>
+    <div class="modal-field">
       <label class="modal-label" style="display:flex;align-items:center;gap:8px;">
         Notes <span style="color:var(--text3);font-weight:400;">— what this method does &amp; how it's achieved; paste into code chats</span>
         <button type="button" onclick="mtCopyNotes(this)" style="margin-left:auto;font-size:10px;font-weight:600;background:none;border:1px solid var(--border2);border-radius:5px;color:var(--text3);padding:2px 8px;cursor:pointer;white-space:nowrap;">⧉ Copy</button>
@@ -15258,7 +15264,7 @@ function renderHubAssetMatrix() {
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline='';hamColDragEnd()" ondrop="this.style.outline='';hamColDrop(${id})"`
     + ` style="padding:4px 2px;border-left:1px solid var(--border);border-top:2px solid ${ts.fg || 'transparent'};background:${ts.bg || 'transparent'};vertical-align:bottom;cursor:pointer;position:relative;overflow:hidden;">`
-    + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${ts.fg || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}</span>`
+    + `<span style="display:block;font-size:8.5px;line-height:1.12;font-weight:600;color:${ts.fg || 'var(--text2)'};white-space:normal;overflow-wrap:anywhere;text-align:center;">${esc(c.name)}${c.notes ? ' <span style="color:var(--accent);">📝</span>' : ''}${c.inMasterFlow ? ' <span title="In Master Flow" style="color:var(--accent);">🗺️</span>' : ''}</span>`
     + `<span draggable="false" title="Drag to resize this column" onmousedown="hamColResizeStart(${id},event)" onclick="event.stopPropagation()" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='transparent'" style="position:absolute;top:0;right:0;bottom:0;width:6px;cursor:col-resize;z-index:5;"></span>`
     + `</th>`;
   }).join('');
@@ -15310,6 +15316,7 @@ async function openMatTypeModal(methodId) {
   document.getElementById('mtStatus').value = ['Development', 'Live', 'Migrate', 'Delete'].includes(c.status) ? c.status : 'Development';
   mtFillTypeSelect(c.type || '');
   document.getElementById('mtNotes').value = c.notes || '';
+  document.getElementById('mtInMasterFlow').checked = !!c.inMasterFlow;
   const link = document.getElementById('mtNotionLink');
   link.href = c.url || ('https://www.notion.so/' + c.id);
   document.getElementById('mtMsg').textContent = 'Name / status / type / notes save to the Method record. Archive removes the column (title counts unaffected; restore from the Notion trash).';
@@ -15382,13 +15389,14 @@ async function matTypeSave() {
   let type = document.getElementById('mtType').value;
   if (type === '__new__') type = '';
   const notes = document.getElementById('mtNotes').value.replace(/\s+$/, '');
+  const inMasterFlow = document.getElementById('mtInMasterFlow').checked;
   if (!name) { msg.textContent = 'Name required'; return; }
   btn.disabled = true; btn.textContent = 'Saving…';
   try {
-    const r = await call('updateMethod', { methodId: matEditingId, name, status, type, notes });
+    const r = await call('updateMethod', { methodId: matEditingId, name, status, type, notes, inMasterFlow });
     if (r.error) throw new Error(r.error);
     const c = (HAM_DATA && HAM_DATA.columns || []).find(x => x.id === matEditingId);
-    if (c) { c.name = name; c.notes = notes; c.status = status; c.type = type; }
+    if (c) { c.name = name; c.notes = notes; c.status = status; c.type = type; c.inMasterFlow = inMasterFlow; }
     if (type && HAM_DATA && !(HAM_DATA.allTypes || []).includes(type)) (HAM_DATA.allTypes = HAM_DATA.allTypes || []).push(type);
     renderHubAssetMatrix();
     msg.style.color = 'var(--text3)';

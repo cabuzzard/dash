@@ -11550,11 +11550,26 @@ ${bodyText.slice(0, 6000)}`;
       }
 
       if (body.action === "updateMethod") {
-        const { methodId, name, status, platform, category, template, notes, bodyText, type } = body;
+        const { methodId, name, status, platform, category, template, notes, bodyText, type, inMasterFlow } = body;
         if (!methodId) return json({ error: "methodId required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dashedId = dash(methodId);
+
+        // "In Master Flow" — a checkbox tagging which methods get their own
+        // card in the Master flow artifact (operator direction 2026-09-12:
+        // dash needed a way to do this from the Hub Method Matrix instead of
+        // it being implicit/manual). Ensure the property exists before the
+        // first write, same pattern as other on-demand Methods DB fields.
+        if (inMasterFlow !== undefined) {
+          try {
+            const db = await fetch(`https://api.notion.com/v1/databases/${METHODS_DB}`, { headers: hdr }).then(r => r.json());
+            if (!db.properties?.["In Master Flow"]) await fetch(`https://api.notion.com/v1/databases/${METHODS_DB}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "In Master Flow": { checkbox: {} } } }),
+            });
+          } catch (e) { /* best-effort */ }
+        }
 
         const props = {};
         if (name !== undefined && String(name).trim()) props["Name"] = { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] };
@@ -11567,6 +11582,7 @@ ${bodyText.slice(0, 6000)}`;
         if (category !== undefined) props["Category"] = { multi_select: (Array.isArray(category) ? category : []).map(name => ({ name })) };
         if (template !== undefined) props["Template"] = { url: template || null };
         if (notes !== undefined) props["Notes"] = { rich_text: notes ? [{ type: "text", text: { content: String(notes).slice(0, 1990) } }] : [] };
+        if (inMasterFlow !== undefined) props["In Master Flow"] = { checkbox: !!inMasterFlow };
         if (Object.keys(props).length) {
           const propResp = await fetch(`https://api.notion.com/v1/pages/${dashedId}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
@@ -11956,6 +11972,7 @@ ${bodyText.slice(0, 6000)}`;
           notes: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
           status: r.properties?.Status?.select?.name || "",
           type: r.properties?.Type?.select?.name || "",
+          inMasterFlow: !!r.properties?.["In Master Flow"]?.checkbox,
           url: r.url || `https://www.notion.so/${norm(r.id)}`,
         })).filter(c => c.name).sort((a, b) => a.name.localeCompare(b.name));
         // every distinct Type currently in use — feeds the modal's Type picker
