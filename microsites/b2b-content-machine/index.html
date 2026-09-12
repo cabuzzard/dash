@@ -3394,6 +3394,7 @@ async function loadTitles(opts = {}) {
         + (hookImg ? `<a href="${esc(hookImg)}" target="_blank" rel="noopener" title="Finished post image" style="flex-shrink:0;line-height:0;"><img src="${esc(hookImg)}" alt="" style="width:26px;height:32px;object-fit:cover;border-radius:3px;border:1px solid #444;vertical-align:middle;"></a>` : (/\b(single|hook) post\b/i.test(a.type || '') ? `<span style="font-size:9px;color:#f0b429;flex-shrink:0;">⏳ Canva</span>` : ''))
         + (a.canvaTemplate ? `<a href="${esc(a.canvaTemplate)}" target="_blank" rel="noopener" title="Open the Canva template this post is built from" style="font-size:10px;color:#8be9fd;text-decoration:none;flex-shrink:0;">Canva</a>` : '')
         + (/\bsingle post\b/i.test(a.type || '') && !a.postImage ? `<button data-titleid="${titleId}" onclick="copySinglePostCanvaHandoff(this)" title="Copy a batch handoff for every single-post asset under this title that still needs its Canva design — paste into a Claude Code chat with the Canva connector." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva handoff</button>` : '')
+        + (/\bsingle post\b/i.test(a.type || '') && !a.postImage ? `<button data-assetid="${a.id}" onclick="runSinglePostFullCreative(this)" title="Alternative to the Canva handoff — sends this post's own headline/accent/body copy plus the hub's image spec straight to Grok's image API for a full finished creative (photography/icons/layout, its own call), no Canva session needed. Writes to Post Image; review before publishing." style="font-size:10px;padding:1px 7px;border:1px solid #7ed321;background:transparent;color:#7ed321;border-radius:9px;cursor:pointer;flex-shrink:0;">✨ Generate (Grok)</button>` : '')
         + (viewLink ? `<a href="${esc(viewLink)}" target="_blank" rel="noopener" title="${a.assemblyReviewPage ? 'Open the assembled review page' : 'Open the Design Link (final media)'}" style="font-size:10px;color:#68d391;text-decoration:none;flex-shrink:0;">↗ View</a>` : '')
         + (a.canvaLink && !/linkedin post/i.test(a.type || '') ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyCanvaPortPrompt(this)" title="Copy a ready-to-paste prompt for porting this asset's table content into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the table." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
         + (a.canvaLink && /linkedin post/i.test(a.type || '') ? `<button class="td-copy-canva-prompt" data-assetid="${a.id}" data-titleid="${titleId}" data-canvalink="${esc(a.canvaLink)}" onclick="copyLinkedInBannerPrompt(this)" title="Copy a ready-to-paste prompt for porting this article's banner copy into its linked Canva template (${esc(a.canvaLink)}) — copy the template first, never edit the original, then populate the copy from the article." style="font-size:10px;padding:1px 7px;border:1px solid #b8f106;background:transparent;color:#b8f106;border-radius:9px;cursor:pointer;flex-shrink:0;">📋 Copy Canva prompt</button>` : '')
@@ -8251,6 +8252,26 @@ async function copySinglePostCanvaHandoff(btn) {
   } catch (e) {
     btn.textContent = orig; btn.disabled = false;
     alert('Could not build the handoff: ' + e.message);
+  }
+}
+
+// "single post" method — alternative to the Canva handoff. Sends this
+// asset's own Headline Primary/Accent/Body copy + the hub's Image Plate
+// Spec straight to Grok's image API for one full finished creative, no
+// Canva session. Writes to Post Image server-side (generateSinglePostFullCreative);
+// this just triggers it and refreshes the row so the thumbnail shows up.
+async function runSinglePostFullCreative(btn) {
+  const assetId = btn.dataset.assetid;
+  const orig = btn.textContent;
+  btn.disabled = true; btn.textContent = '✨ Generating… (~20s)';
+  try {
+    const r = await w('generateSinglePostFullCreative', { assetId });
+    if (r.error) throw new Error(r.error);
+    btn.textContent = '✓ Generated';
+    if (typeof loadTitles === 'function') await loadTitles();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = orig;
+    alert('Could not generate: ' + e.message);
   }
 }
 
