@@ -26471,7 +26471,9 @@ CURRENT CAMPAIGN GOAL: "${crt("Campaign Goal") || '(none set)'}"
 CURRENT KEY MESSAGE: "${crt("Key Message") || '(none set)'}"
 CURRENT PAIN POINTS: "${crt("Pain Points") || '(none set)'}"
 
-Generate an expanded, optimized list of 15-20 highly relevant keywords for this campaign niche (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent buyer keywords) — AND refine the four positioning fields above so they stay genuinely consistent with what the keywords now emphasize. If the operator guidance above names a new angle or audience, treat it as a real addition to who this campaign speaks to — fold it in alongside what's already there — never silently drop an existing, still-valid audience unless the guidance explicitly says to.
+CURRENT KEYWORDS is the dominant signal: it is the operator's own deliberate, most-recent input, not just one input among five. If it points at a different subject, tone, or audience than the CURRENT fields above, treat that as a real, deliberate pivot — let the keywords redefine the four fields rather than blending the new direction back toward the old one. Only carry forward parts of the old fields that don't conflict with where the keywords now point. If the operator guidance above adds anything further on top of that, fold it in too.
+
+Generate an expanded, optimized list of 15-20 keywords in that same subject/tone/audience (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent terms) — AND rewrite the four positioning fields so they genuinely follow it.
 
 Call the submit_campaign_refresh tool with all five fields filled in — every field is required, none may be left out or empty.`;
 
