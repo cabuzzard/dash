@@ -23940,6 +23940,86 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ imageUrl, prompt, spec, kind, model: "grok-imagine-image-2.0", sync: true });
       }
 
+      // -- generateBlogPostThumbnail: same "assemble spec → Claude writes the
+      // Grok prompt → xAI render" path as generateOfferImage's blog-thumbnail
+      // kind, but grounded in a REAL "Blog - SEO - News" article's own
+      // headline/opening instead of an OFFER CARD block (this asset type has
+      // no card — it's a real published article). Returns the same
+      // { imageUrl, prompt, kind: "blog-thumbnail", sync: true } shape
+      // generateOfferImage does, so the EXISTING saveOfferImage action
+      // commits it (hosts on GitHub Pages, writes the Assets DB "Thumbnail"
+      // property) with no new save/host code needed — that action was
+      // already generic across asset types, only the generation half was
+      // offer-specific. Same xAI/Grok connection as generateSinglePostBackground
+      // and generateSinglePostFullCreative. { assetId }
+      if (body.action === "generateBlogPostThumbnail") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const assetTitle    = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+        const platformTitle = rtp(ap, "Platform Title") || assetTitle;
+        const excerpt       = rtp(ap, "Body");
+        const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+
+        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        let spec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
+
+WHAT IT IS: a SQUARE 1:1 wordless blog-thumbnail plate (a headline gets laid over it separately on the hub page afterward — never baked into the image). Keep the top ~45% calm and near-empty. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+
+Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
+${spec}
+
+THE ARTICLE THIS THUMBNAIL IS FOR (pick a real scene from the spec's world that fits what this article is actually about — do NOT put its words in the image):
+Headline: ${platformTitle}
+Opening: ${excerpt}
+
+End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "1:1", resolution: "2k" }),
+        });
+        const xdRaw = await xr.text();
+        let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || xdRaw.slice(0, 300) || `xAI image error (${xr.status})` }, 502);
+        const imageUrl = xd.data?.[0]?.url || "";
+        if (!imageUrl) return json({ error: "xAI returned no image URL: " + xdRaw.slice(0, 300) }, 502);
+
+        try {
+          await ensureAssetsDbProperties(hdr, { "Image Prompt (Blog Thumbnail)": { type: "rich_text" } });
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Image Prompt (Blog Thumbnail)": { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } } }),
+          });
+        } catch (e) { /* best-effort */ }
+
+        return json({ imageUrl, prompt, spec, kind: "blog-thumbnail", model: "grok-imagine-image-2.0", sync: true });
+      }
+
       // -- generateSinglePostBackground: a wordless 3:4 (1080x1440) plate for a
       // hub's single-post Canva template, grounded in the hub's GLOBAL Image
       // Spec. Same "assemble spec → Claude writes the Grok prompt → xAI render"
