@@ -25161,6 +25161,47 @@ Call submit_keyword_cluster with your result.`;
         return json({ success: true, staged });
       }
 
+      // ── Microsite field notes (real backend for the artifact-era notes
+      // system, ported so a real microsite page — no claude.ai `db`
+      // capability available to it — can still let the operator annotate
+      // any field/card/tab/page and have Claude read them back). KV-backed,
+      // one array per campaign, upserted by fieldId so re-saving a note
+      // replaces it instead of duplicating.
+      if (body.action === "saveMicrositeNote") {
+        const { campaignId, fieldId, label, tab, note } = body;
+        if (!campaignId || !fieldId) return json({ error: "campaignId and fieldId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const key = `micronotes:${norm(campaignId)}`;
+        let notes = [];
+        try { notes = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+        const idx = notes.findIndex(n => n.fieldId === fieldId);
+        const entry = { fieldId, label: label || fieldId, tab: tab || "", note: String(note || ""), ts: Date.now() };
+        if (idx >= 0) notes[idx] = entry; else notes.push(entry);
+        await env.TRADES.put(key, JSON.stringify(notes));
+        return json({ success: true, notes });
+      }
+
+      if (body.action === "getMicrositeNotes") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let notes = [];
+        try { notes = (await env.TRADES.get(`micronotes:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        return json({ notes });
+      }
+
+      if (body.action === "clearMicrositeNotes") {
+        const { campaignId, fieldIds } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const key = `micronotes:${norm(campaignId)}`;
+        let notes = [];
+        try { notes = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+        notes = Array.isArray(fieldIds) && fieldIds.length ? notes.filter(n => !fieldIds.includes(n.fieldId)) : [];
+        await env.TRADES.put(key, JSON.stringify(notes));
+        return json({ success: true, notes });
+      }
+
       if (body.action === "commitKeywordCluster") {
         const { campaignId, clusterId } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
