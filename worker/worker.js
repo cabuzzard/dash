@@ -311,13 +311,14 @@ Specific: time of day, quality, colour cast — consistent with the palette temp
 - Instagram background — 4:5: keep the top 40% + vertical centre calm and near-empty. Subject low or to one side.
 - Blog / social thumbnail — 1:1: keep the top ~45% calm. Subject in the lower half.
 - Hero / OG — 16:9: keep the left ~45% calm. Subject right / lower band.
+- Video B-roll plate — 9:16: reserve one full third of the frame (top, centre, or bottom — pick whichever the scene actually supports) as genuinely calm and empty, nothing crossing into it; that zone is for word-by-word kinetic captions burned in afterward, not a static headline. One clear subject or scene only — no multi-element/collage composition — since this plate is also animated with a slow pan/zoom and has to hold together as motion, not just as a still.
 One off-centre focal element, generous negative space, horizon never dead-centre. No collage.
 ## Never
 The hub's "deliberately avoided" list verbatim, then: any text, letters, numbers, logos, watermarks, UI or signage; a face as the subject (distant incidental silhouettes only); stock-photo clichés (handshakes, lightbulbs, growth arrows, piggy banks, glowing globes, a lone tree, sunrise-over-hills); gradient decoration, lens flare, heavy bokeh, tilt-shift, fisheye, HDR.
 ## Prompt skeleton
 One fill-in-the-blanks line with the palette hexes baked in, ending: No people, no text, no letters, no logos, no watermarks.
 ## Filled examples
-Two — one 4:5 Instagram background, one 1:1 thumbnail — REAL scenes from the customer's world (not placeholders), palette hexes baked in, each ending: No people, no text, no letters, no logos, no watermarks.
+Three — one 4:5 Instagram background, one 1:1 thumbnail, one 9:16 video B-roll plate — REAL scenes from the customer's world (not placeholders), palette hexes baked in, each ending: No people, no text, no letters, no logos, no watermarks.
 
 OPERATOR GUIDANCE (follow this; it overrides the derived choices where they conflict):
 ${brief.guidance || "(none)"}
