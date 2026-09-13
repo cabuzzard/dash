@@ -25324,17 +25324,40 @@ Call submit_keyword_cluster with your result.`;
       // tab/field — simpler to reason about than a strict "only flows
       // downstream" model, and re-typing an omission because it didn't carry
       // over is the failure this exists to prevent.
+      // Lives as a real "Omit Keywords" field on the Research record itself
+      // (same DB as Keywords/Statement/etc.) rather than hidden KV state, so
+      // it's visible and editable directly in Notion too — created on the
+      // database the first time it's saved.
       if (body.action === "getOmitList") {
-        const { campaignId } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const { researchId } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         let omit = "";
-        try { omit = (await env.TRADES.get(`omitlist:${campaignId.replace(/-/g,"")}`)) || ""; } catch (e) {}
+        try {
+          const rp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, { headers: hdr }).then(r => r.json());
+          omit = (rp.properties?.["Omit Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+        } catch (e) {}
         return json({ success: true, omit });
       }
       if (body.action === "saveOmitList") {
-        const { campaignId, omit } = body;
-        if (!campaignId) return json({ error: "campaignId required" }, 400);
-        try { await env.TRADES.put(`omitlist:${campaignId.replace(/-/g,"")}`, String(omit || "").slice(0, 4000)); } catch (e) {}
+        const { researchId, omit } = body;
+        if (!researchId) return json({ error: "researchId required" }, 400);
+        const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+          if (!db.properties?.["Omit Keywords"]) {
+            await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Omit Keywords": { rich_text: {} } } }),
+            });
+          }
+        } catch (e) {}
+        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Omit Keywords": { rich_text: [{ type: "text", text: { content: String(omit || "").slice(0, 1990) } }] } } }),
+        }).catch(() => {});
         return json({ success: true });
       }
 
