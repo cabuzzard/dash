@@ -26688,8 +26688,14 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
           body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords } }] } } })
         }).catch(() => {});
 
-        // The four positioning fields ALWAYS live on the Campaign record.
-        if (campaignId) {
+        // The four positioning fields ALWAYS live on the Campaign record —
+        // unless the caller opts out (skipPositioningCascade). Added for
+        // the Care Gap microsite, which now regenerates positioning
+        // manually on its own Campaign Research tab instead of via this
+        // auto-cascade; every other caller (hard-grind and every other
+        // campaign microsite) doesn't pass the flag, so their existing
+        // one-call-does-both behavior is unchanged.
+        if (campaignId && !body.skipPositioningCascade) {
           const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v || "").slice(0, 1990) } }] });
           await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
@@ -26703,6 +26709,51 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
         }
 
         return json({ keywords, targetAudience: parsed.targetAudience, campaignGoal: parsed.campaignGoal, keyMessage: parsed.keyMessage, painPoints: parsed.painPoints });
+      }
+
+      // ── regeneratePositioningField ──
+      // Per-field counterpart to regenerateKeywords' bundled positioning
+      // cascade — regenerates ONE of the three Campaign positioning fields
+      // (Campaign Goal / Pain Points / Key Message) grounded in whatever
+      // Keywords already are on file (never touches Keywords itself).
+      // Staged only — the client commits via the existing
+      // updateCampaignField action once reviewed. Built for the Care Gap
+      // microsite's manual "regen at this page, not as a keywords
+      // side-effect" flow.
+      if (body.action === "regeneratePositioningField") {
+        const { campaignId, field, instructions } = body;
+        const FIELD_MAP = { campaignGoal: "Campaign Goal", painPoints: "Pain Points", keyMessage: "Key Message" };
+        const notionField = FIELD_MAP[field];
+        if (!campaignId || !notionField) return json({ error: "campaignId and a valid field (campaignGoal/painPoints/keyMessage) required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const cp = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+        const campProps = cp?.properties || {};
+        const crt = k => (campProps[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const keywords = crt("Keywords") || crt("keywords");
+        const resRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
+        const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const research = resRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+        const mainKeywords = rtx(research, "Keywords") || keywords;
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are refreshing ONE field of a campaign's core positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
+
+MAIN KEYWORDS (dominant signal): "${mainKeywords || '(none set)'}"
+CURRENT ${notionField}: "${crt(notionField) || '(none set)'}"
+${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}
+Rewrite ${notionField} (1-2 sentences) so it genuinely follows the keywords above — don't just restate the old value. Output ONLY the field's text, no preamble, no field name, no markdown.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude error" }, 502);
+        const text = (aiData.content?.[0]?.text || "").trim();
+        if (!text) return json({ error: "Empty response — try again" }, 502);
+        return json({ success: true, field, text });
       }
 
       if (body.action === "linkResearchToCampaign") {
