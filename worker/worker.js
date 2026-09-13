@@ -8887,9 +8887,13 @@ Return ONLY this minified JSON object, nothing before or after:
 
         // ---- saveResearchDesignField : hand-edit one Design-section field ----
         // Direct from the Content Hubs card. field ∈ Visual Register /
-        // Photography Direction / Visual Avoid / Design Notes.
+        // Photography Direction / Visual Avoid / Design Notes. Also doubles as
+        // the generic "commit exactly this reviewed text" endpoint for a
+        // staged Palette/Fonts candidate (stage:true regen → review → this
+        // call writes verbatim, no re-generation) — same string format
+        // generateResearchPalette/Fonts already produce.
         if (body.action === "saveResearchDesignField") {
-          const FIELD_OK = ["Visual Register", "Photography Direction", "Visual Avoid", "Design Notes"];
+          const FIELD_OK = ["Visual Register", "Photography Direction", "Visual Avoid", "Design Notes", "Palette", "Fonts"];
           if (!FIELD_OK.includes(body.field)) return json({ error: "invalid field" }, 400);
           const t = await resolveTarget();
           if (!t.pageId) return json({ error: "no Research record for this campaign" }, 400);
@@ -25583,16 +25587,15 @@ Call submit_product_stack_proposals with your result.`;
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
         // Resolve keywords — use override if provided, else pull from Research record
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         // Ask Claude Haiku for 15 underserved short-form video niches
@@ -25619,17 +25622,20 @@ Rules:
         if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
-        // Write to Notion Research DB → Trend Intelligence field
-        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: 'PATCH',
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Trend Intelligence": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        });
-        if (!patch.ok) {
-          const pe = await patch.json();
-          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        // Write to Notion Research DB → Trend Intelligence field — skipped
+        // when staging (regen-before-save): return the candidate only.
+        if (!body.stage) {
+          const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: 'PATCH',
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Trend Intelligence": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          });
+          if (!patch.ok) {
+            const pe = await patch.json();
+            return json({ error: pe.message || "Notion write failed" }, patch.status);
+          }
         }
-        return json({ success: true, text: result });
+        return json({ success: true, text: result, staged: !!body.stage });
       }
 
       // ── getKDPBestSellers ──
@@ -25640,16 +25646,15 @@ Rules:
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
 
         const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -25679,16 +25684,18 @@ Rules:
         const result = (claudeData.content?.[0]?.text || "").trim();
         if (!result) return json({ error: "No results — try again" }, 500);
 
-        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "KDP Best Sellers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        });
-        if (!patch.ok) {
-          const pe = await patch.json();
-          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        if (!body.stage) {
+          const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "KDP Best Sellers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          });
+          if (!patch.ok) {
+            const pe = await patch.json();
+            return json({ error: pe.message || "Notion write failed" }, patch.status);
+          }
         }
-        return json({ success: true, text: result });
+        return json({ success: true, text: result, staged: !!body.stage });
       }
 
       // ── getJobBoardListings ──
@@ -25709,16 +25716,15 @@ Rules:
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const searchTerms = Array.from(new Set(
@@ -25745,16 +25751,18 @@ Rules:
           return `${p.title}: ${meta} — ${p.url}`;
         }).join('\n');
 
-        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Job Board Listings": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        });
-        if (!patch.ok) {
-          const pe = await patch.json();
-          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        if (!body.stage) {
+          const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Job Board Listings": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          });
+          if (!patch.ok) {
+            const pe = await patch.json();
+            return json({ error: pe.message || "Notion write failed" }, patch.status);
+          }
         }
-        return json({ success: true, text: result, count: ranked.length });
+        return json({ success: true, text: result, count: ranked.length, staged: !!body.stage });
       }
 
       // ── getTikTokShopProducts ──
@@ -25765,16 +25773,15 @@ Rules:
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -25800,16 +25807,18 @@ Rules:
         if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
-        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: 'PATCH',
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "TikTok Shop Products": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        });
-        if (!patch.ok) {
-          const pe = await patch.json();
-          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        if (!body.stage) {
+          const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: 'PATCH',
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "TikTok Shop Products": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          });
+          if (!patch.ok) {
+            const pe = await patch.json();
+            return json({ error: pe.message || "Notion write failed" }, patch.status);
+          }
         }
-        return json({ success: true, text: result });
+        return json({ success: true, text: result, staged: !!body.stage });
       }
 
       // ── getProductIdeas ──
@@ -25820,16 +25829,15 @@ Rules:
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -25875,16 +25883,15 @@ Rules:
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -25912,16 +25919,18 @@ Rules:
         if (!claudeResp.ok) return json({ error: claudeData.error?.message || 'Claude error', type: claudeData.error?.type, status: claudeResp.status }, 502);
         const result = (claudeData.content?.[0]?.text || '').trim();
 
-        const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: 'PATCH',
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Etsy Products": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        });
-        if (!patch.ok) {
-          const pe = await patch.json();
-          return json({ error: pe.message || "Notion write failed" }, patch.status);
+        if (!body.stage) {
+          const patch = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: 'PATCH',
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Etsy Products": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          });
+          if (!patch.ok) {
+            const pe = await patch.json();
+            return json({ error: pe.message || "Notion write failed" }, patch.status);
+          }
         }
-        return json({ success: true, text: result });
+        return json({ success: true, text: result, staged: !!body.stage });
       }
 
       // ── getSeedChannels ──
@@ -25944,15 +25953,14 @@ Rules:
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
         if (!YT_KEY) return json({ error: "YOUTUBE_API_KEY secret not set on worker" }, 500);
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            }).then(r => r.json());
-            keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          }).then(r => r.json());
+          keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 5);
@@ -26032,12 +26040,14 @@ Rules:
           tiktoks.length ? "TikTok:" : `TikTok: ${tkNote}`,
           ...tkLines,
         ].filter(Boolean).join("\n");
-        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Seed Channels": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
-        }).catch(() => {});
-        return json({ success: true, text, videos, tiktoks, tiktokNote: tkNote || undefined });
+        if (!body.stage) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Seed Channels": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
+          }).catch(() => {});
+        }
+        return json({ success: true, text, videos, tiktoks, tiktokNote: tkNote || undefined, staged: !!body.stage });
       }
 
       // ── getYouTubeOutliers ──
@@ -26051,16 +26061,15 @@ Rules:
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
         if (!YT_KEY) return json({ error: "YOUTUBE_API_KEY secret not set on worker" }, 500);
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            });
-            const resData = await resResp.json();
-            keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const resResp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          });
+          const resData = await resResp.json();
+          keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
 
         const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
@@ -26151,12 +26160,14 @@ Rules:
         const result = (claudeData.content?.[0]?.text || "").trim();
 
         // 6. Save to Notion (best-effort — don't block on failure)
-        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "YouTube Outliers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        }).catch(() => {});
-        return json({ success: true, text: result });
+        if (!body.stage) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "YouTube Outliers": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          }).catch(() => {});
+        }
+        return json({ success: true, text: result, staged: !!body.stage });
       }
 
       // ── getTopYoutubeChannels ──
@@ -26177,15 +26188,14 @@ Rules:
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
         if (!YT_KEY) return json({ error: "YOUTUBE_API_KEY secret not set on worker" }, 500);
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) {
-          try {
-            const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
-            }).then(r => r.json());
-            keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
-          } catch {}
-        }
+        let keywords = "";
+        try {
+          const rr = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }
+          }).then(r => r.json());
+          keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        } catch {}
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 6);
@@ -26235,12 +26245,14 @@ Rules:
           `${c.title}: ${fmt(c.subs)} subs · ${c.videoCount} videos${c.hits > 1 ? ` · in ${c.hits}/${terms.length} keyword searches` : ""} — ${c.url}`
         ).join("\n");
 
-        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Influencer Intelligence": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
-        }).catch(() => {});
-        return json({ success: true, text, channels });
+        if (!body.stage) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Influencer Intelligence": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }),
+          }).catch(() => {});
+        }
+        return json({ success: true, text, channels, staged: !!body.stage });
       }
 
       // ── getChannelTopicsDigest ──
@@ -26274,8 +26286,8 @@ Rules:
         const uniqueIds = [...new Set(channelIds)].slice(0, 12);
         if (!uniqueIds.length) return json({ error: "No top channels yet — run 'Top Channels' first to build the list this digest reads from" }, 400);
 
-        let keywords = (kwOverride || "").trim();
-        if (!keywords) keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        let keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
+        if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
         const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
 
         // Latest uploads per channel — search.list(channelId, order=date)
@@ -26365,53 +26377,55 @@ Rules:
         const digestText = (splitIdx === -1 ? result : result.slice(0, splitIdx)).replace(/^DIGEST\s*$/im, '').trim();
         const suggestionsText = splitIdx === -1 ? '' : result.slice(splitIdx).replace(/^SUGGESTIONS\s*$/im, '').trim();
 
-        await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
-          method: "PATCH",
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Trend Round-Up": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
-        }).catch(() => {});
-
-        // Also write this run as its own Development title, Grouping="Digest"
-        // — every digest run gets its own dated title instead of overwriting
-        // a single field, and they all cluster under one "Digest" bucket in
-        // the Development list (same Grouping mechanism every other title
-        // section uses). No product/method attached — a digest isn't tied to
-        // one. Best-effort: the Trend Round-Up save above already succeeded,
-        // so a failure here shouldn't surface as an overall action error.
         let digestTitleId;
-        try {
-          const dateLabel = new Date().toISOString().slice(0, 10);
-          const titleProps = {
-            Title: { title: [{ type: "text", text: { content: `Niche Digest — ${dateLabel}` } }] },
-            Status: { select: { name: "Development" } },
-            Grouping: { rich_text: [{ type: "text", text: { content: "Digest" } }] },
-          };
-          if (campaignId) titleProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
-          const createResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST",
+        if (!body.stage) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+            method: "PATCH",
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
-          });
-          const createData = await createResp.json();
-          if (createResp.ok) {
-            digestTitleId = createData.id.replace(/-/g, "");
-            const heading3 = t => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: t } }] } });
-            const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: t.slice(0, 1990) } }] } });
-            const children = [
-              heading3("Digest"),
-              ...digestText.split("\n").filter(Boolean).map(para),
-              heading3("Suggestions"),
-              ...(suggestionsText ? suggestionsText.split("\n").filter(Boolean).map(para) : [para("(none generated this run)")]),
-            ];
-            await fetch(`https://api.notion.com/v1/blocks/${dashId(digestTitleId)}/children`, {
-              method: "PATCH",
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-              body: JSON.stringify({ children }),
-            }).catch(() => {});
-          }
-        } catch (e) { /* best-effort, see comment above */ }
+            body: JSON.stringify({ properties: { "Trend Round-Up": { rich_text: [{ type: "text", text: { content: result.slice(0, 2000) } }] } } })
+          }).catch(() => {});
 
-        return json({ success: true, text: result, digest: digestText, suggestions: suggestionsText, digestTitleId });
+          // Also write this run as its own Development title, Grouping="Digest"
+          // — every digest run gets its own dated title instead of overwriting
+          // a single field, and they all cluster under one "Digest" bucket in
+          // the Development list (same Grouping mechanism every other title
+          // section uses). No product/method attached — a digest isn't tied to
+          // one. Best-effort: the Trend Round-Up save above already succeeded,
+          // so a failure here shouldn't surface as an overall action error.
+          try {
+            const dateLabel = new Date().toISOString().slice(0, 10);
+            const titleProps = {
+              Title: { title: [{ type: "text", text: { content: `Niche Digest — ${dateLabel}` } }] },
+              Status: { select: { name: "Development" } },
+              Grouping: { rich_text: [{ type: "text", text: { content: "Digest" } }] },
+            };
+            if (campaignId) titleProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
+            const createResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST",
+              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+            });
+            const createData = await createResp.json();
+            if (createResp.ok) {
+              digestTitleId = createData.id.replace(/-/g, "");
+              const heading3 = t => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: t } }] } });
+              const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: t.slice(0, 1990) } }] } });
+              const children = [
+                heading3("Digest"),
+                ...digestText.split("\n").filter(Boolean).map(para),
+                heading3("Suggestions"),
+                ...(suggestionsText ? suggestionsText.split("\n").filter(Boolean).map(para) : [para("(none generated this run)")]),
+              ];
+              await fetch(`https://api.notion.com/v1/blocks/${dashId(digestTitleId)}/children`, {
+                method: "PATCH",
+                headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+                body: JSON.stringify({ children }),
+              }).catch(() => {});
+            }
+          } catch (e) { /* best-effort, see comment above */ }
+        }
+
+        return json({ success: true, text: result, digest: digestText, suggestions: suggestionsText, digestTitleId, staged: !!body.stage });
       }
 
       // ── addCreatorToDigest ──
@@ -28803,18 +28817,20 @@ Output the script text only. No preamble, no labels.`;
           `- "${(v.title || '').slice(0, 80)}" | views: ${v.viewCount || 0} | ${v.channelName || v.channelTitle || ''}`
         ).join('\n') || '(no YouTube data)';
         const rawSummary = `KEYWORDS: ${kws.join(', ')}\n\nTIKTOK TRENDING:\n${fmtTTsummary}\n\nYOUTUBE TRENDING:\n${fmtYTsummary}`;
-        try {
-          const resRows = await notionQuery(RESEARCH_DB, {
-            filter: { property: "Campaign", relation: { contains: dash(campaignId) } }
-          });
-          if (resRows.length) {
-            await fetch(`https://api.notion.com/v1/pages/${resRows[0].id}`, {
-              method: 'PATCH',
-              headers: { 'Authorization': `Bearer ${NOTION_TOKEN}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ properties: { "TikTok Trends": { rich_text: [{ type: "text", text: { content: rawSummary.slice(0, 2000) } }] } } })
+        if (!body.stage) {
+          try {
+            const resRows = await notionQuery(RESEARCH_DB, {
+              filter: { property: "Campaign", relation: { contains: dash(campaignId) } }
             });
-          }
-        } catch(e) { /* non-fatal  -  proceed without writing */ }
+            if (resRows.length) {
+              await fetch(`https://api.notion.com/v1/pages/${resRows[0].id}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `Bearer ${NOTION_TOKEN}`, 'Notion-Version': NOTION_VERSION, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ properties: { "TikTok Trends": { rich_text: [{ type: "text", text: { content: rawSummary.slice(0, 2000) } }] } } })
+              });
+            }
+          } catch(e) { /* non-fatal  -  proceed without writing */ }
+        }
 
         const claudePrompt = `You are a social media content strategist. Based on trending content for the keywords "${kws.join(', ')}", generate exactly 5 short-form script ideas.
 
