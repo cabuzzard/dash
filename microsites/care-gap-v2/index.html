@@ -367,15 +367,18 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: CAMPAIGN RESEARCH ══════════════════════ -->
   <div class="panel" data-panel="research">
     <div class="stage-hd"><h2>Campaign Research</h2><span class="stagetag">stage 1</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-research','Campaign Research tab','research')">📝 Tab note</button></div>
-    <p class="stage-sub">Trend and customer research. Positioning + Statement/Unique Opportunity auto-cascade with a Keywords regen; every one of the 13 research modules below has a real ⟳ regen with an optional override that merges with Main Keywords — <b>staged for review</b>, nothing writes to Notion until you hit 💾 Save.</p>
+    <p class="stage-sub">Trend and customer research, all grounded in Main Keywords. Keywords regen no longer auto-touches anything below — everything on this tab is regenerated manually, here. Positioning fields each have their own ⟳ regen; every one of the 13 research modules has a real ⟳ regen with an optional override that merges with Main Keywords — <b>staged for review</b>, nothing writes to Notion until you hit 💾 Save.</p>
+
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
+      <button class="btn primary" id="fullRegenBtn" onclick="runFullCampaignRegen(this)">⟳⟳ Full regen — all fields off current Main Keywords</button>
+      <span style="font-size:11.5px;color:var(--ink3);">Runs Campaign Goal, Pain Points, Key Message, and all 13 research modules — stages every result, saves nothing until you review and hit 💾 Save on each.</span>
+    </div>
 
     <section class="card" data-ckey="card-research-positioning">
-      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
-      <div class="card-body">
-        <p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record and have no button of their own anywhere — they refresh together with the Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>
-        <div class="field"><div class="frow"><span class="fname">Campaign Goal</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignGoal">—</div></div><button class="notebtn" onclick="openNoteModal('research-campaignGoal','Campaign Goal','research')">📝</button></div></div>
-        <div class="field"><div class="frow"><span class="fname">Pain Points</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-painPoints">—</div></div><button class="notebtn" onclick="openNoteModal('research-painPoints','Pain Points','research')">📝</button></div></div>
-        <div class="field"><div class="frow"><span class="fname">Key Message</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignKeyMessage">—</div></div><button class="notebtn" onclick="openNoteModal('research-keyMessage','Key Message','research')">📝</button></div></div>
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Positioning</h3><span class="tag manual">real regen, staged</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
+      <div class="card-body" id="positioningFieldsBody">
+        <p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record. Each regenerates on its own, grounded in the current Main Keywords (which stay unchanged) — no more silent cascade from a Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>
+        <div class="loadnote">Loading…</div>
       </div>
     </section>
 
@@ -700,7 +703,7 @@ async function runRegenKeywords(btn) {
   const input = document.getElementById('masterSteerInput');
   const steer = input ? (input.value || '').trim() : '';
   try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS });
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS, skipPositioningCascade: true });
     RAW_KEYWORDS = r.keywords || '';
     renderKeywordsAndIdeas();
   } catch (e) { alert('Regen failed: ' + e.message); }
@@ -1016,6 +1019,86 @@ const RESEARCH_MODULES = [
   { key: 'influencerIntelligence', label: 'Influencer Intelligence', kind: 'action', action: 'getTopYoutubeChannels' },
   { key: 'trendRoundUp', label: 'Trend Round-Up', kind: 'action', action: 'getChannelTopicsDigest', dependsOn: 'influencerIntelligence', dependsLabel: 'Influencer Intelligence' },
 ];
+// ── Positioning fields (Campaign Goal / Pain Points / Key Message) ──
+// Each regenerates independently via regeneratePositioningField, grounded
+// in whatever Keywords already are on file — Keywords itself is never
+// touched here. Same stage/save discipline as RESEARCH_MODULES; commits
+// via the pre-existing updateCampaignField action.
+const POSITIONING_FIELDS = [
+  { key: 'campaignGoal', label: 'Campaign Goal' },
+  { key: 'painPoints', label: 'Pain Points' },
+  { key: 'campaignKeyMessage', label: 'Key Message', serverField: 'keyMessage' },
+];
+let POSITIONING_STAGE = {};
+function renderPositioningFields() {
+  const r = window.RESEARCH_RECORD;
+  if (!r) return;
+  const body = document.getElementById('positioningFieldsBody');
+  body.innerHTML = `<p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record. Each regenerates on its own, grounded in the current Main Keywords (which stay unchanged) — no more silent cascade from a Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>` +
+    POSITIONING_FIELDS.map(f => {
+      const staged = POSITIONING_STAGE[f.key] != null;
+      const val = esc(staged ? POSITIONING_STAGE[f.key] : (r[f.key] || '(none on file)'));
+      const badge = staged ? '<span class="fbadge stale">staged — unsaved</span>' : '<span class="fbadge fresh">live</span>';
+      return `<div class="field"><div class="frow"><span class="fname">${esc(f.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+          <input type="text" class="finput" id="posSteer-${f.key}" placeholder="steer (optional)" style="min-width:180px;">
+          <button class="btn primary" id="posRegen-${f.key}-btn" onclick="runPositioningField('${f.key}', this)">⟳ regen</button>
+          <button class="btn" id="posSave-${f.key}-btn" ${staged ? '' : 'disabled'} onclick="savePositioningField('${f.key}', this)">💾 Save</button>
+        </div></div><button class="notebtn" onclick="openNoteModal('research-${f.key}','${esc(f.label)}','research')">📝</button></div></div>`;
+    }).join('');
+  refreshNoteMarks();
+}
+async function runPositioningField(key, btn) {
+  const f = POSITIONING_FIELDS.find(x => x.key === key);
+  if (!f) return;
+  const steerEl = document.getElementById('posSteer-' + key);
+  const instructions = steerEl ? (steerEl.value || '').trim() : '';
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await w('regeneratePositioningField', { campaignId: CAMPAIGN_ID, field: f.serverField || f.key, instructions: instructions || undefined });
+    POSITIONING_STAGE[key] = r.text || '';
+    renderPositioningFields();
+  } catch (e) {
+    alert('Regenerate failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+async function savePositioningField(key, btn) {
+  if (POSITIONING_STAGE[key] == null) return;
+  const f = POSITIONING_FIELDS.find(x => x.key === key);
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: f.serverField || f.key, value: POSITIONING_STAGE[key] });
+    window.RESEARCH_RECORD[key] = POSITIONING_STAGE[key];
+    delete POSITIONING_STAGE[key];
+    renderPositioningFields();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+async function runFullCampaignRegen(btn) {
+  const o = btn.textContent; btn.disabled = true;
+  try {
+    for (const f of POSITIONING_FIELDS) {
+      btn.textContent = '⟳ ' + f.label + '…';
+      const b = document.getElementById('posRegen-' + f.key + '-btn');
+      if (b) await runPositioningField(f.key, b);
+    }
+    for (const m of RESEARCH_MODULES) {
+      const b = document.getElementById('mod-' + m.key + '-btn');
+      if (b && !b.disabled) {
+        btn.textContent = '⟳ ' + m.label + '…';
+        await runResearchModule(m.key, b);
+      }
+    }
+    btn.textContent = '✓ done — review & save below';
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 3000);
+  } catch (e) {
+    alert('Full regen failed partway through: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
 let RESEARCH_STAGE = {};
 function renderResearchModules() {
   const r = window.RESEARCH_RECORD;
@@ -1041,11 +1124,9 @@ async function loadResearchTab() {
     const r = window.RESEARCH_RECORD || (await w('getResearch', { campaignId: CAMPAIGN_ID })).research;
     if (!r) return;
     window.RESEARCH_RECORD = r;
-    document.getElementById('f-campaignGoal').textContent = r.campaignGoal || '(none on file)';
-    document.getElementById('f-painPoints').textContent = r.painPoints || '(none on file)';
-    document.getElementById('f-campaignKeyMessage').textContent = r.campaignKeyMessage || '(none on file)';
     document.getElementById('f-statement').textContent = r.statement || '(none on file)';
     document.getElementById('f-uniqueOpportunity').textContent = r.uniqueOpportunity || '(none on file)';
+    renderPositioningFields();
     renderResearchModules();
   } catch (e) {
     document.getElementById('researchModulesBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
