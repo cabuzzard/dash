@@ -348,6 +348,25 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Generic regen modal — every ⟳/↻ regen control across the whole
+       microsite opens this instead of an inline steer input. Two fields:
+       a positive steer/override, and an omit / negative-keywords field
+       so the operator can explicitly exclude terms or topics. -->
+  <div class="modaloverlay" id="regenModal">
+    <div class="modalbox">
+      <div class="mtitle" id="regenModalTitle">Regenerate</div>
+      <div class="mfield" id="regenModalSubtitle" style="font-size:12px;font-weight:400;color:var(--ink3);margin-bottom:14px;"></div>
+      <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:5px;">Steer (optional)</label>
+      <textarea id="regenModalSteer" placeholder="Add direction for this regen…" style="min-height:70px;margin-bottom:14px;"></textarea>
+      <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--stale);margin-bottom:5px;">Omit — negative keywords (optional)</label>
+      <textarea id="regenModalOmit" placeholder="Comma-separated terms or topics to exclude…" style="min-height:50px;"></textarea>
+      <div class="modalrow">
+        <button class="btn" onclick="closeRegenModal()">Cancel</button>
+        <button class="btn primary" id="regenModalRunBtn" onclick="runRegenModalConfirm()">⟳ Regenerate</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
     <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
@@ -408,8 +427,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="card-body">
         <p class="card-desc">One call (<code>generateResearchDesign</code>) drafts all three together, grounded in Main Keywords. <b>Staged for review</b> — nothing writes to Notion until you hit 💾 Save.</p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-          <input type="text" class="finput" id="designSteerInput" placeholder="steer (optional)" style="width:200px;">
-          <button class="btn primary" id="designRegenBtn" onclick="runRegenDesign()">⟳ regenerate direction</button>
+          <button class="btn primary" id="designRegenBtn" onclick="openRegenModal('Regenerate Visual Direction', 'Drafts Visual Register / Photography Direction / Visual Avoid together, grounded in Main Keywords.', (steer, omit) => runRegenDesign(steer, omit))">⟳ regenerate direction</button>
           <button class="btn" id="designSaveBtn" onclick="saveStagedDesign()" disabled>💾 Save to Notion</button>
         </div>
         <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh" id="badge-visualRegister">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualRegister','Visual Register','design')">📝</button></div></div>
@@ -429,8 +447,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
           <label class="btn" style="cursor:pointer;">🖼 generate from picture<input type="file" accept="image/*" id="paletteImgInput" style="display:none;" onchange="setPaletteImage(this)"></label>
-          <input type="text" class="finput" id="paletteSteerInput" placeholder="steer (optional)" style="width:160px;">
-          <button class="btn primary" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button>
+          <button class="btn primary" id="paletteRegenBtn" onclick="openRegenModal('Regenerate Palette', 'Researched from campaign + product research, or the attached reference image if one is held.', (steer, omit) => runRegenPalette(steer, omit))">↻ regenerate palette</button>
           <button class="btn" id="paletteSaveBtn" onclick="saveStagedPalette()" disabled>💾 Save to Notion</button>
         </div>
         <div id="paletteSwatchStrip" style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:8px;"></div>
@@ -443,8 +460,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="card-body">
         <p class="card-desc"><b>Staged for review</b> — nothing writes to Notion until you hit 💾 Save.</p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
-          <input type="text" class="finput" id="fontsSteerInput" placeholder="steer (optional)" style="width:200px;">
-          <button class="btn primary" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button>
+          <button class="btn primary" id="fontsRegenBtn" onclick="openRegenModal('Regenerate Fonts', 'Picks display / body / mono Google Fonts grounded in the research brief.', (steer, omit) => runRegenFonts(steer, omit))">↻ regenerate fonts</button>
           <button class="btn" id="fontsSaveBtn" onclick="saveStagedFonts()" disabled>💾 Save to Notion</button>
         </div>
         <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh" id="badge-fonts">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div></div><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div>
@@ -698,16 +714,10 @@ async function loadResearch() {
     document.getElementById('kwClusterList').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
   }
 }
-async function runRegenKeywords(btn) {
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  const input = document.getElementById('masterSteerInput');
-  const steer = input ? (input.value || '').trim() : '';
-  try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS, skipPositioningCascade: true });
-    RAW_KEYWORDS = r.keywords || '';
-    renderKeywordsAndIdeas();
-  } catch (e) { alert('Regen failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runRegenKeywords(steer, omit) {
+  const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS, omitKeywords: omit || undefined, skipPositioningCascade: true });
+  RAW_KEYWORDS = r.keywords || '';
+  renderKeywordsAndIdeas();
 }
 async function loadClusters() {
   try {
@@ -754,8 +764,7 @@ function renderKeywordsAndIdeas() {
   let l = `<div class="kwgroup" data-ckey="kw-master" style="--kwc:#4ade80;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
       <span class="kwbtns">
-        <input type="text" class="finput" id="masterSteerInput" placeholder="steer (optional)" style="width:100px;" onclick="event.stopPropagation()">
-        <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();runRegenKeywords(this)">⟳</button>
+        <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Steer replaces the current keyword seed entirely; leave blank to refresh in place.', (steer, omit) => runRegenKeywords(steer, omit))">⟳</button>
         <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();runGenerateClusters(this)">🗂️</button>
         <button class="iconbtn" title="Generate one new cluster from a topic" onclick="event.stopPropagation();openClusterGenModal()">➕</button>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
@@ -768,8 +777,7 @@ function renderKeywordsAndIdeas() {
     l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>
         <span class="kwbtns">
-          <input type="text" class="finput" id="clusterSteer-${esc(c.id)}" placeholder="steer (optional)" style="width:90px;" onclick="event.stopPropagation()">
-          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
+          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit) => regenCluster('${esc(c.id)}', steer, omit))">↻</button>
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           <button class="iconbtn primary" title="Commit this cluster to Notion" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾</button>
           <button class="iconbtn" title="Discard this staged cluster" onclick="event.stopPropagation();deleteStagedCluster('${esc(c.id)}', this)">✕</button>
@@ -789,8 +797,7 @@ function renderKeywordsAndIdeas() {
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>
         <span class="kwbtns">
           <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
-          <input type="text" class="finput" id="clusterSteer-${esc(c.id)}" placeholder="steer (optional)" style="width:90px;" onclick="event.stopPropagation()">
-          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
+          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit) => regenCluster('${esc(c.id)}', steer, omit))">↻</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
       </div>
@@ -803,8 +810,7 @@ function renderKeywordsAndIdeas() {
   let r = `<div class="kwgroup" data-ckey="pi-main" style="--kwc:#8ab4f8;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Main Stack <span style="font-weight:400;text-transform:none;color:var(--ink3);">— off Master</span>
       <span class="kwbtns">
-        <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:110px;" onclick="event.stopPropagation()">
-        <button class="iconbtn" title="Search product ideas" onclick="event.stopPropagation();runProductIdeas(this)">⟳</button>
+        <button class="iconbtn" title="Search product ideas" onclick="event.stopPropagation();openRegenModal('Search Product Ideas — Main Stack', 'Steer merges with Master keywords; omit excludes topics from the results.', (steer, omit) => runProductIdeas(steer, omit))">⟳</button>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
       </span>
     </div>
@@ -859,17 +865,50 @@ async function editCluster(clusterId, field, value) {
   try { const payload = { campaignId: CAMPAIGN_ID, clusterId }; payload[field] = value; const r = await w('updateStagedKeywordCluster', payload); SEO_CLUSTERS.staged = r.staged || []; }
   catch (e) { alert('Save failed: ' + e.message); }
 }
-async function regenCluster(clusterId, btn) {
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  const steerEl = document.getElementById('clusterSteer-' + clusterId);
-  const guidance = steerEl ? (steerEl.value || '').trim() || undefined : undefined;
-  try { const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance }); SEO_CLUSTERS.staged = r.staged || []; SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed; renderKeywordsAndIdeas(); }
-  catch (e) { alert('Regenerate failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
+async function regenCluster(clusterId, guidance, omit) {
+  const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined });
+  SEO_CLUSTERS.staged = r.staged || [];
+  SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed;
+  renderKeywordsAndIdeas();
 }
 async function commitCluster(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
   try { await w('commitKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); await loadClusters(); }
   catch (e) { alert('Commit failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
+}
+// ── generic regen modal ──
+// Every ⟳/↻ regen control site-wide opens this instead of an inline steer
+// input next to the button. onRun(steer, omit) is whatever that call site
+// needs to do with the two values — it throws to signal failure (modal
+// stays open, error shown) or resolves to close and let the underlying
+// render function reflect the new staged/live state.
+let REGEN_MODAL_CTX = null;
+function openRegenModal(title, subtitle, onRun) {
+  REGEN_MODAL_CTX = { onRun };
+  document.getElementById('regenModalTitle').textContent = title;
+  document.getElementById('regenModalSubtitle').textContent = subtitle || '';
+  document.getElementById('regenModalSteer').value = '';
+  document.getElementById('regenModalOmit').value = '';
+  document.getElementById('regenModal').classList.add('open');
+}
+function closeRegenModal() {
+  document.getElementById('regenModal').classList.remove('open');
+  REGEN_MODAL_CTX = null;
+}
+async function runRegenModalConfirm() {
+  if (!REGEN_MODAL_CTX) return;
+  const steer = (document.getElementById('regenModalSteer').value || '').trim();
+  const omit = (document.getElementById('regenModalOmit').value || '').trim();
+  const btn = document.getElementById('regenModalRunBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
+  try {
+    await REGEN_MODAL_CTX.onRun(steer, omit);
+    closeRegenModal();
+  } catch (e) {
+    alert('Regenerate failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
 }
 function openClusterGenModal() {
   document.getElementById('newClusterInput').value = '';
@@ -946,12 +985,10 @@ async function deleteMainStackIdea(index, btn) {
     renderKeywordsAndIdeas();
   } catch (e) { alert('Delete failed: ' + e.message); btn.disabled = false; }
 }
-async function runProductIdeas(btn) {
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  const kwOverride = (document.getElementById('prodIdeasKwInput').value || '').trim() || undefined;
-  try { const r = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride }); MAIN_PRODUCT_IDEAS_TEXT = r.text || ''; renderKeywordsAndIdeas(); }
-  catch (e) { alert('Search failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runProductIdeas(steer, omit) {
+  const r = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride: steer || undefined, kwOmit: omit || undefined });
+  MAIN_PRODUCT_IDEAS_TEXT = r.text || '';
+  renderKeywordsAndIdeas();
 }
 // kind/a/b identify the source idea so it can be removed from the ideas
 // list once it's a real product — 'main' (a = line index in the flat
@@ -1041,27 +1078,18 @@ function renderPositioningFields() {
       const badge = staged ? '<span class="fbadge stale">staged — unsaved</span>' : '<span class="fbadge fresh">live</span>';
       return `<div class="field"><div class="frow"><span class="fname">${esc(f.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-          <input type="text" class="finput" id="posSteer-${f.key}" placeholder="steer (optional)" style="min-width:180px;">
-          <button class="btn primary" id="posRegen-${f.key}-btn" onclick="runPositioningField('${f.key}', this)">⟳ regen</button>
+          <button class="btn primary" onclick="openRegenModal('Regenerate — ${esc(f.label)}', 'Grounded in the current Main Keywords, which stay unchanged.', (steer, omit) => runPositioningField('${f.key}', steer, omit))">⟳ regen</button>
           <button class="btn" id="posSave-${f.key}-btn" ${staged ? '' : 'disabled'} onclick="savePositioningField('${f.key}', this)">💾 Save</button>
         </div></div><button class="notebtn" onclick="openNoteModal('research-${f.key}','${esc(f.label)}','research')">📝</button></div></div>`;
     }).join('');
   refreshNoteMarks();
 }
-async function runPositioningField(key, btn) {
+async function runPositioningField(key, steer, omit) {
   const f = POSITIONING_FIELDS.find(x => x.key === key);
   if (!f) return;
-  const steerEl = document.getElementById('posSteer-' + key);
-  const instructions = steerEl ? (steerEl.value || '').trim() : '';
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try {
-    const r = await w('regeneratePositioningField', { campaignId: CAMPAIGN_ID, field: f.serverField || f.key, instructions: instructions || undefined });
-    POSITIONING_STAGE[key] = r.text || '';
-    renderPositioningFields();
-  } catch (e) {
-    alert('Regenerate failed: ' + e.message);
-    btn.disabled = false; btn.textContent = o;
-  }
+  const r = await w('regeneratePositioningField', { campaignId: CAMPAIGN_ID, field: f.serverField || f.key, instructions: steer || undefined, omit: omit || undefined });
+  POSITIONING_STAGE[key] = r.text || '';
+  renderPositioningFields();
 }
 async function savePositioningField(key, btn) {
   if (POSITIONING_STAGE[key] == null) return;
@@ -1077,20 +1105,21 @@ async function savePositioningField(key, btn) {
     btn.disabled = false; btn.textContent = o;
   }
 }
+function researchModuleBlocked(m) {
+  const r = window.RESEARCH_RECORD;
+  return !!(m.dependsOn && r && !r[m.dependsOn] && RESEARCH_STAGE[m.dependsOn] == null);
+}
 async function runFullCampaignRegen(btn) {
   const o = btn.textContent; btn.disabled = true;
   try {
     for (const f of POSITIONING_FIELDS) {
       btn.textContent = '⟳ ' + f.label + '…';
-      const b = document.getElementById('posRegen-' + f.key + '-btn');
-      if (b) await runPositioningField(f.key, b);
+      await runPositioningField(f.key, '', '');
     }
     for (const m of RESEARCH_MODULES) {
-      const b = document.getElementById('mod-' + m.key + '-btn');
-      if (b && !b.disabled) {
-        btn.textContent = '⟳ ' + m.label + '…';
-        await runResearchModule(m.key, b);
-      }
+      if (researchModuleBlocked(m)) continue;
+      btn.textContent = '⟳ ' + m.label + '…';
+      await runResearchModule(m.key, '', '');
     }
     btn.textContent = '✓ done — review & save below';
     setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 3000);
@@ -1108,12 +1137,11 @@ function renderResearchModules() {
     const staged = RESEARCH_STAGE[m.key] != null;
     const val = esc(staged ? RESEARCH_STAGE[m.key] : (r[m.key] || '(none on file)'));
     const badge = staged ? '<span class="fbadge stale">staged — unsaved</span>' : '<span class="fbadge fresh">live</span>';
-    const blocked = m.dependsOn && !r[m.dependsOn] && !RESEARCH_STAGE[m.dependsOn];
+    const blocked = researchModuleBlocked(m);
     const dep = blocked ? `<div style="font-size:10.5px;color:var(--stale);margin-top:4px;">needs ${esc(m.dependsLabel)} regenerated + saved first</div>` : '';
     return `<div class="field"><div class="frow"><span class="fname">${esc(m.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>${dep}
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-        <input type="text" class="finput" id="modOverride-${m.key}" placeholder="steer (optional, merges with Main Keywords)" style="min-width:180px;">
-        <button class="btn primary" id="mod-${m.key}-btn" ${blocked ? 'disabled' : ''} onclick="runResearchModule('${m.key}', this)">⟳ regen</button>
+        <button class="btn primary" ${blocked ? 'disabled' : ''} onclick="openRegenModal('Regenerate — ${esc(m.label)}', 'Steer merges with Main Keywords; omit excludes topics from the result.', (steer, omit) => runResearchModule('${m.key}', steer, omit))">⟳ regen</button>
         <button class="btn" id="modSave-${m.key}-btn" ${staged ? '' : 'disabled'} onclick="saveResearchModule('${m.key}', this)">💾 Save</button>
       </div></div><button class="notebtn" onclick="openNoteModal('research-module-${m.key}','${esc(m.label)}','research')">📝</button></div></div>`;
   }).join('');
@@ -1132,28 +1160,21 @@ async function loadResearchTab() {
     document.getElementById('researchModulesBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
-async function runResearchModule(key, btn) {
+async function runResearchModule(key, override, omit) {
   const mod = RESEARCH_MODULES.find(m => m.key === key);
   if (!mod) return;
-  const overrideEl = document.getElementById('modOverride-' + key);
-  const override = overrideEl ? (overrideEl.value || '').trim() : '';
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try {
-    const kw = (window.RESEARCH_RECORD && window.RESEARCH_RECORD.keywords) || RAW_KEYWORDS || '';
-    let text;
-    if (mod.kind === 'action') {
-      const r = await w(mod.action, { researchId: RESEARCH_ID, campaignId: CAMPAIGN_ID, kwOverride: override || undefined, stage: true });
-      text = r.text || '';
-    } else {
-      const res = await w('sendPrompt', { prompt: mod.prompt(override ? `${kw}, with additional focus: ${override}` : kw) });
-      text = (res.text || '').trim();
-    }
-    RESEARCH_STAGE[key] = text;
-    renderResearchModules();
-  } catch (e) {
-    alert('Regenerate failed: ' + e.message);
-    btn.disabled = false; btn.textContent = o;
+  const kw = (window.RESEARCH_RECORD && window.RESEARCH_RECORD.keywords) || RAW_KEYWORDS || '';
+  let text;
+  if (mod.kind === 'action') {
+    const r = await w(mod.action, { researchId: RESEARCH_ID, campaignId: CAMPAIGN_ID, kwOverride: override || undefined, kwOmit: omit || undefined, stage: true });
+    text = r.text || '';
+  } else {
+    const omitLine = omit ? `\n\nDo NOT include or reference anything related to: ${omit}` : '';
+    const res = await w('sendPrompt', { prompt: mod.prompt(override ? `${kw}, with additional focus: ${override}` : kw) + omitLine });
+    text = (res.text || '').trim();
   }
+  RESEARCH_STAGE[key] = text;
+  renderResearchModules();
 }
 async function saveResearchModule(key, btn) {
   if (RESEARCH_STAGE[key] == null) return;
@@ -1232,18 +1253,12 @@ async function loadDesignTab() {
     ['f-visualRegister','f-photographyDirection','f-visualAvoid'].forEach(id => { document.getElementById(id).textContent = 'Load failed: ' + e.message; });
   }
 }
-async function runRegenDesign() {
-  const btn = document.getElementById('designRegenBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  const instructions = (document.getElementById('designSteerInput').value || '').trim() || undefined;
-  try {
-    const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions, stage: true, slug: 'care-gap' });
-    DESIGN_STAGE.register = r.design.register;
-    DESIGN_STAGE.photography = r.design.photography;
-    DESIGN_STAGE.avoid = r.design.avoid;
-    renderDesignDirection();
-  } catch (e) { alert('Regenerate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runRegenDesign(steer, omit) {
+  const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: 'care-gap' });
+  DESIGN_STAGE.register = r.design.register;
+  DESIGN_STAGE.photography = r.design.photography;
+  DESIGN_STAGE.avoid = r.design.avoid;
+  renderDesignDirection();
 }
 async function saveStagedDesign() {
   const btn = document.getElementById('designSaveBtn');
@@ -1273,16 +1288,10 @@ function clearPaletteImage() {
   document.getElementById('paletteImgHold').style.display = 'none';
   const input = document.getElementById('paletteImgInput'); if (input) input.value = '';
 }
-async function runRegenPalette() {
-  const btn = document.getElementById('paletteRegenBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
-  const instructions = (document.getElementById('paletteSteerInput').value || '').trim() || undefined;
-  try {
-    const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID, instructions, image: PALETTE_IMAGE || undefined, stage: true, slug: 'care-gap' });
-    DESIGN_STAGE.palette = r.palette;
-    renderDesignPalette();
-  } catch (e) { alert('Regenerate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runRegenPalette(steer, omit) {
+  const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, image: PALETTE_IMAGE || undefined, stage: true, slug: 'care-gap' });
+  DESIGN_STAGE.palette = r.palette;
+  renderDesignPalette();
 }
 async function saveStagedPalette() {
   const btn = document.getElementById('paletteSaveBtn');
@@ -1295,16 +1304,10 @@ async function saveStagedPalette() {
     renderDesignPalette();
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
-async function runRegenFonts() {
-  const btn = document.getElementById('fontsRegenBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
-  const instructions = (document.getElementById('fontsSteerInput').value || '').trim() || undefined;
-  try {
-    const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID, instructions, stage: true, slug: 'care-gap' });
-    DESIGN_STAGE.fonts = r.fonts;
-    renderDesignFonts();
-  } catch (e) { alert('Regenerate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runRegenFonts(steer, omit) {
+  const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: 'care-gap' });
+  DESIGN_STAGE.fonts = r.fonts;
+  renderDesignFonts();
 }
 async function saveStagedFonts() {
   const btn = document.getElementById('fontsSaveBtn');
@@ -1511,25 +1514,16 @@ function renderProductModalFields() {
     const badge = staged ? '<span class="fbadge stale">staged — unsaved</span>' : '<span class="fbadge fresh">live</span>';
     return `<div class="field"><div class="frow"><span class="fname">${esc(f)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
-        <input type="text" class="finput" id="prodFieldSteer-${esc(f)}" placeholder="steer (optional)" style="min-width:150px;">
-        <button class="btn primary" onclick="runRegenProductField('${esc(f)}', this)">⟳ regen</button>
+        <button class="btn primary" onclick="openRegenModal('Regenerate — ${esc(f)}', 'Grounded in this product + campaign research.', (steer, omit) => runRegenProductField('${esc(f)}', steer, omit))">⟳ regen</button>
         <button class="btn" ${staged ? '' : 'disabled'} onclick="saveProductField('${esc(f)}', this)">💾 Save</button>
       </div></div><button class="notebtn" onclick="openNoteModal('product-${esc(f)}','${esc(f)}','product')">📝</button></div></div>`;
   }).join('');
   refreshNoteMarks();
 }
-async function runRegenProductField(field, btn) {
-  const steerEl = document.getElementById('prodFieldSteer-' + field);
-  const instructions = steerEl ? (steerEl.value || '').trim() || undefined : undefined;
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try {
-    const r = await w('regenerateStrategyField', { productId: PRODUCT_MODAL_ID, campaignId: CAMPAIGN_ID, field, instructions });
-    PRODUCT_STAGE[field] = r.text;
-    renderProductModalFields();
-  } catch (e) {
-    alert('Regenerate failed: ' + e.message);
-    btn.disabled = false; btn.textContent = o;
-  }
+async function runRegenProductField(field, steer, omit) {
+  const r = await w('regenerateStrategyField', { productId: PRODUCT_MODAL_ID, campaignId: CAMPAIGN_ID, field, instructions: steer || undefined, omit: omit || undefined });
+  PRODUCT_STAGE[field] = r.text;
+  renderProductModalFields();
 }
 async function saveProductField(field, btn) {
   if (PRODUCT_STAGE[field] == null) return;

@@ -2390,6 +2390,28 @@ const researchGuidelinesBlock = g => {
   return `OPERATOR RESEARCH GUIDELINES (standing routing recommendations from the user — apply them when choosing sources, angles, framing, and routing; where they conflict with the default approach below, the guidelines win):\n${t.slice(0, 1500)}\n\n`;
 };
 
+// ── omit / negative-keyword support ──
+// Shared across every regen action: an operator-supplied "do not touch
+// this" list. omitBlock() drops a hard instruction into any free-form
+// prompt; applyKwOmit() additionally strips matching terms straight out
+// of a keyword string BEFORE it's used as search/generation input, so
+// omission works even for the non-AI, real-search modules (job boards,
+// YouTube/TikTok lookups) that never see a prompt to instruct.
+const omitBlock = omit => {
+  const t = (omit == null ? "" : String(omit)).trim();
+  if (!t) return "";
+  return `\n\nDo NOT use, suggest, or reference anything related to the following — the operator has explicitly excluded them: ${t.slice(0, 500)}\n`;
+};
+const applyKwOmit = (keywords, omit) => {
+  const t = (omit == null ? "" : String(omit)).trim();
+  if (!t || !keywords) return keywords;
+  const omitTerms = t.split(/[,\n]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+  if (!omitTerms.length) return keywords;
+  const kept = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean)
+    .filter(k => !omitTerms.some(o => k.toLowerCase().includes(o)));
+  return kept.join(", ");
+};
+
 // ── Viral hook library ──
 // A global, curated set of proven short-form (Instagram/Reels/TikTok-style)
 // hook patterns for the Viral Generator — the ⚡ modal on a Strategy Slot.
@@ -8763,7 +8785,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
 `You are researching the COLOUR PALETTE for a ${scopeWord(t)}, from its research below. Treat it as research: the keywords and audience point to a colour world; pick the one that fits, with a real point of view.
 
 ${briefFor(t)}
-${parts.length ? "\nA reference image is attached — pull the palette from its dominant colours, adapted to the audience.\n" : ""}${(body.current && body.current.bg && !parts.length) ? `\nCURRENT STAGED PALETTE (the operator is iterating — nudge THIS toward the steer, keep what works): ${JSON.stringify(body.current)}\n` : ""}${body.instructions ? `\nOverride: ${body.instructions}\n` : ""}
+${parts.length ? "\nA reference image is attached — pull the palette from its dominant colours, adapted to the audience.\n" : ""}${(body.current && body.current.bg && !parts.length) ? `\nCURRENT STAGED PALETTE (the operator is iterating — nudge THIS toward the steer, keep what works): ${JSON.stringify(body.current)}\n` : ""}${body.instructions ? `\nOverride: ${body.instructions}\n` : ""}${omitBlock(body.omit)}
 Roles: bg = page background; surface = raised card; ink = body text; ink-head = headings; ink-soft = muted text; line = hairlines; sea = primary (links, eyebrows, focus); deep = the one dark band; deep-ink = text on it; accent = the CTA button (white label on it).
 Constraints: ink >= 7:1 on bg; ink-head & sea >= 4.5:1 on bg; deep-ink >= 7:1 on deep; white >= 4.4:1 on accent. One committed ground (light or dark). One primary. Accent used once. Avoid the AI-default looks (cream+serif+terracotta / near-black+acid / broadsheet hairlines).
 
@@ -8800,7 +8822,7 @@ Output: 2-3 sentences on the choice and why it fits, then a blank line, then ONE
 `You are researching the TYPE PAIRING for a ${scopeWord(t)}, from its research below.
 
 ${briefFor(t)}
-${body.instructions ? `\nSteer (follow this): ${body.instructions}\n` : ""}
+${body.instructions ? `\nSteer (follow this): ${body.instructions}\n` : ""}${omitBlock(body.omit)}
 Pick three Google Fonts: display (headings + wordmark — the characterful face), body (everything else — legible, quiet), mono (eyebrows, nav, labels, button text, dates).
 Reuse from this list if one fits: ${known}. Only pick outside it if nothing fits.
 
@@ -8878,7 +8900,7 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
 `You are setting the VISUAL DIRECTION for a content hub — a Stage-1 artifact everything downstream (the hub, the wordless image plates, every offer plate) inherits from. Concrete, specific to this subject; never a generic "editorial / premium / cinematic" default.
 ${hasImg ? `\nA REFERENCE IMAGE IS ATTACHED AND IT IS THE DIRECTION. Derive all three fields FROM THE IMAGE: "register" = the mood / world it projects; "photography" = describe the kind of real images it exemplifies (subjects, settings, light — time of day, quality, colour cast — how colour sits in it, the medium/finish); "avoid" = the looks that would break from this image. The brief below is only secondary context — where it conflicts with the image, the image wins.\n` : ""}
 ${groundBlock}
-${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (an earlier hand-written brief — honour it alongside MAIN KEYWORDS above, but MAIN KEYWORDS is the newer, more authoritative signal: where this old brief clearly conflicts with where the keywords now point, follow the keywords and note the conflict in your reasoning rather than silently reverting to this old direction):\n${opDirection}\n` : ""}${(body.current && (body.current.register || body.current.photography || body.current.avoid) && !hasImg) ? `\nCURRENT STAGED DIRECTION (the operator is iterating — refine and sharpen THIS toward the steer, don't discard it):\nRegister: ${String(body.current.register || "").slice(0, 500)}\nPhotography: ${String(body.current.photography || "").slice(0, 700)}\nAvoid: ${String(body.current.avoid || "").slice(0, 400)}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}
+${prodBrief && !kw ? `\nPRODUCT RESEARCH (the buyer's world):\n${prodBrief}\n` : ""}${opDirection ? `\nOPERATOR'S STANDING DIRECTION (an earlier hand-written brief — honour it alongside MAIN KEYWORDS above, but MAIN KEYWORDS is the newer, more authoritative signal: where this old brief clearly conflicts with where the keywords now point, follow the keywords and note the conflict in your reasoning rather than silently reverting to this old direction):\n${opDirection}\n` : ""}${(body.current && (body.current.register || body.current.photography || body.current.avoid) && !hasImg) ? `\nCURRENT STAGED DIRECTION (the operator is iterating — refine and sharpen THIS toward the steer, don't discard it):\nRegister: ${String(body.current.register || "").slice(0, 500)}\nPhotography: ${String(body.current.photography || "").slice(0, 700)}\nAvoid: ${String(body.current.avoid || "").slice(0, 400)}\n` : ""}${body.instructions ? `\nONE-OFF STEER FOR THIS RUN: ${body.instructions}\n` : ""}${omitBlock(body.omit)}
 Return ONLY this minified JSON object, nothing before or after:
 {"register":"1-2 sentences — the overall look and mood. Concrete.","photography":"3-4 sentences — the real images that belong: subjects and settings (concrete nouns), the light, how the palette shows up in a photo, the medium/finish. Say plainly whether people/faces belong or not — do not default to banning them.","avoid":"a semicolon-separated list of the specific AI / stock-photo / cliché looks to reject for THIS niche"}` });
           let out;
@@ -16366,7 +16388,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       // microsite's regen-before-save flow reviews the result, then calls
       // updateProductStrategyField (below) to commit it verbatim.
       if (body.action === "regenerateStrategyField") {
-        const { productId, campaignId, field, instructions } = body;
+        const { productId, campaignId, field, instructions, omit } = body;
         if (!productId || !field) return json({ error: "productId and field required" }, 400);
         if (!STRATEGY_FIELDS.includes(field)) return json({ error: "Unknown field: " + field }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -16409,7 +16431,7 @@ DESCRIPTION: ${productDesc || "(none)"}
 KEYWORDS: ${productKeywords || "(none)"}
 ${researchBlock}
 FIELD TO WRITE: ${field} — ${STRATEGY_FIELD_HINTS[field]}
-${currentVal ? `\nCURRENT VALUE (refine or rework it, don't just restate):\n${currentVal}\n` : ""}${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}
+${currentVal ? `\nCURRENT VALUE (refine or rework it, don't just restate):\n${currentVal}\n` : ""}${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
 Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections, Benefits, Proof Points). Output ONLY the field's text — no field name, no preamble, no markdown fences.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -25139,7 +25161,7 @@ Call submit_keyword_cluster with your result.`;
       // and passed to Claude as already-spoken-for; this one can also reach
       // into any still-unclaimed keywords from the Main Keywords pool.
       if (body.action === "regenerateKeywordCluster") {
-        const { campaignId, clusterId, guidance } = body;
+        const { campaignId, clusterId, guidance, omitKeywords } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
@@ -25183,7 +25205,7 @@ CLUSTER TO REGENERATE (current version — improve it, or rework it):
 - Keywords: ${target.keywords}
 - Rationale: ${target.rationale}
 
-${guidance ? `OPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+${guidance ? `OPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${omitBlock(omitKeywords)}
 You may pull in currently-unclaimed keywords from the pool if it makes this cluster tighter or more complete. Give: a name that is this cluster's single top/most representative keyword, EXACTLY as it appears in the pool (not an invented phrase); the exact keywords (from the pool) that belong, including that top keyword; and a one-sentence rationale.
 
 Call submit_keyword_cluster with your result.`;
@@ -25214,7 +25236,7 @@ Call submit_keyword_cluster with your result.`;
         const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_cluster");
         if (!toolUse) return json({ error: "Claude did not return a cluster — try again" }, 502);
         const name = String(toolUse.input.name || "").slice(0, 100);
-        const newKeywords = String(toolUse.input.keywords || "").slice(0, 1900);
+        const newKeywords = applyKwOmit(String(toolUse.input.keywords || "").slice(0, 1900), omitKeywords);
         const rationale = String(toolUse.input.rationale || "").slice(0, 500);
 
         if (isStaged) {
@@ -25679,7 +25701,7 @@ Call submit_product_stack_proposals with your result.`;
       // ── getSMTrends ──
       if (body.action === "getSMTrends") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -25694,6 +25716,7 @@ Call submit_product_stack_proposals with your result.`;
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         // Ask Claude Haiku for 15 underserved short-form video niches
@@ -25713,7 +25736,7 @@ Rules:
 - Description is max 15 words, specific and actionable
 - No bullets, no numbering, no markdown, no preamble or closing remarks
 - Output only the 15 lines, nothing else`,
-            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}${omitBlock(kwOmit)}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -25739,7 +25762,7 @@ Rules:
       // ── getKDPBestSellers ──
       if (body.action === "getKDPBestSellers") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -25753,6 +25776,7 @@ Rules:
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
 
         const claudeResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -25774,7 +25798,7 @@ Rules:
 - Mix sub-niches: how-to guides, workbooks, planners, inspirational, reference
 - No bullets, no numbering, no markdown, no preamble
 - Output only the 15 lines, nothing else`,
-            messages: [{ role: "user", content: `Find top KDP Kindle ebook opportunities for these campaign keywords: ${keywords}` }]
+            messages: [{ role: "user", content: `Find top KDP Kindle ebook opportunities for these campaign keywords: ${keywords}${omitBlock(kwOmit)}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -25809,7 +25833,7 @@ Rules:
       // the real posting.
       if (body.action === "getJobBoardListings") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -25823,6 +25847,7 @@ Rules:
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const searchTerms = Array.from(new Set(
@@ -25832,14 +25857,16 @@ Rules:
 
         const rawPostings = await searchJobBoardsFor(env, searchTerms);
         const lowerTerms = searchTerms.map(t => t.toLowerCase());
+        const omitTerms = (kwOmit || "").split(/[,\n]+/).map(t => t.trim().toLowerCase()).filter(Boolean);
         const seen = new Set();
         const ranked = rawPostings
           .filter(p => p.url && !seen.has(p.url) && (seen.add(p.url), true))
           .map(p => {
             const hay = `${p.title} ${p.tags || ''} ${p.description || ''}`.toLowerCase();
             const score = lowerTerms.reduce((n, t) => n + (t && hay.includes(t) ? 1 : 0), 0);
-            return { ...p, score };
+            return { ...p, hay, score };
           })
+          .filter(p => !omitTerms.some(o => p.hay.includes(o)))
           .sort((a, b) => b.score - a.score)
           .slice(0, 15);
         if (!ranked.length) return json({ error: `No live listings matched "${searchTerms.join(', ')}" across the active Job Boards — try different keywords, or add more boards.` }, 404);
@@ -25866,7 +25893,7 @@ Rules:
       // ── getTikTokShopProducts ──
       if (body.action === "getTikTokShopProducts") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -25880,6 +25907,7 @@ Rules:
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -25898,7 +25926,7 @@ Rules:
 - After the colon: price range (e.g. $12–$35) then · then a max-12-word reason it's trending
 - No bullets, no numbering, no markdown, no preamble or closing remarks
 - Output only the 15 lines, nothing else`,
-            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}${omitBlock(kwOmit)}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -25922,7 +25950,7 @@ Rules:
       // ── getProductIdeas ──
       if (body.action === "getProductIdeas") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -25936,6 +25964,7 @@ Rules:
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -25954,7 +25983,7 @@ Rules:
 - Description is max 15 words, specific and monetizable
 - No bullets, no numbering, no markdown, no preamble or closing remarks
 - Output only the 15 lines, nothing else`,
-            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}${omitBlock(kwOmit)}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -25976,7 +26005,7 @@ Rules:
       // ── getEtsyProducts ──
       if (body.action === "getEtsyProducts") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -25990,6 +26019,7 @@ Rules:
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const claudeResp = await fetch('https://api.anthropic.com/v1/messages', {
@@ -26010,7 +26040,7 @@ Rules:
 - Mix digital downloads and physical/handmade where relevant to the niche
 - No bullets, no numbering, no markdown, no preamble or closing remarks
 - Output only the 15 lines, nothing else`,
-            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}` }]
+            messages: [{ role: 'user', content: `Campaign keywords: ${keywords}${omitBlock(kwOmit)}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -26045,7 +26075,7 @@ Rules:
       // then size.
       if (body.action === "getSeedChannels") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
@@ -26059,9 +26089,11 @@ Rules:
           keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 5);
+        const omitTerms = (kwOmit || "").split(/[,\n]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
         const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "k" : String(n);
         const age = iso => {
           if (!iso) return "";
@@ -26097,6 +26129,7 @@ Rules:
           hits:    vidHits.get(v.id) || 0,
           url:     `https://youtube.com/watch?v=${v.id}`,
         }))
+        .filter(v => !omitTerms.some(o => v.title.toLowerCase().includes(o) || v.channel.toLowerCase().includes(o)))
         .sort((a, b) => b.hits - a.hits || b.views - a.views)
         .slice(0, 12);
         if (!videos.length) return json({ error: "No videos found for these keywords — try broader/different keywords" }, 404);
@@ -26120,7 +26153,7 @@ Rules:
                 url:     it.webVideoUrl || it.url || (a.name && it.id ? `https://tiktok.com/@${a.name}/video/${it.id}` : ""),
               };
             })
-            .filter(t => t.url)
+            .filter(t => t.url && !omitTerms.some(o => t.caption.toLowerCase().includes(o)))
             .sort((a, b) => b.plays - a.plays)
             .slice(0, 8);
             if (!tiktoks.length) tkNote = "no TikTok videos matched these keywords";
@@ -26151,7 +26184,7 @@ Rules:
       // ── getYouTubeOutliers ──
       if (body.action === "getYouTubeOutliers") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
 
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
@@ -26168,6 +26201,7 @@ Rules:
           keywords = resData.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords or enter them manually" }, 400);
 
         const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
@@ -26250,7 +26284,7 @@ Rules:
 - After the colon: channel name · view count (use k/M) · ratio (e.g. 12x) then em dash then max-10-word insight on the winning angle
 - No bullets, no numbering, no markdown, no preamble
 - Output only the formatted lines, nothing else`,
-            messages: [{ role: "user", content: `YouTube outlier videos for "${searchTerm}":\n\n${raw}` }]
+            messages: [{ role: "user", content: `YouTube outlier videos for "${searchTerm}":\n\n${raw}${omitBlock(kwOmit)}` }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -26280,7 +26314,7 @@ Rules:
       // saved text — no separate hidden field needed for that handoff.
       if (body.action === "getTopYoutubeChannels") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, kwOverride } = body;
+        const { researchId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
@@ -26294,9 +26328,11 @@ Rules:
           keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         } catch {}
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         if (!keywords) return json({ error: "No keywords found — add keywords to the Research record or enter them manually" }, 400);
 
         const terms = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 6);
+        const omitTerms = (kwOmit || "").split(/[,\n]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
         const fmt = n => n >= 1e6 ? (n/1e6).toFixed(1) + "M" : n >= 1e3 ? Math.round(n/1e3) + "k" : String(n);
 
         // Search videos per keyword, tally which channels keep appearing —
@@ -26334,7 +26370,7 @@ Rules:
             hits: chanHits.get(c.id) || 0,
             url: `https://youtube.com/channel/${c.id}`,
           }))
-          .filter(c => c.subs >= MIN_SUBS && c.subs <= MAX_SUBS)
+          .filter(c => c.subs >= MIN_SUBS && c.subs <= MAX_SUBS && !omitTerms.some(o => c.title.toLowerCase().includes(o)))
           .sort((a, b) => b.hits - a.hits || b.subs - a.subs)
           .slice(0, 20);
         if (!channels.length) return json({ error: "No channels in the 5K–3M subscriber range found for these keywords — try broader/different keywords" }, 404);
@@ -26370,7 +26406,7 @@ Rules:
       // they want a fresh read.
       if (body.action === "getChannelTopicsDigest") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const { researchId, campaignId, kwOverride } = body;
+        const { researchId, campaignId, kwOverride, kwOmit } = body;
         if (!researchId) return json({ error: "researchId required" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
@@ -26386,6 +26422,7 @@ Rules:
 
         let keywords = rr.properties?.Keywords?.rich_text?.map(t => t.plain_text).join("") || "";
         if ((kwOverride || "").trim()) keywords = keywords ? `${keywords}, ${kwOverride.trim()}` : kwOverride.trim();
+        keywords = applyKwOmit(keywords, kwOmit);
         const searchTerm = keywords.split(/[,\n]+/).map(s => s.trim()).filter(Boolean).slice(0, 3).join(" ");
 
         // Latest uploads per channel — search.list(channelId, order=date)
@@ -26461,7 +26498,7 @@ Line format for both sections: LABEL (max 8 words): one-sentence detail — (sou
 Rules:
 - No bullets, no numbering, no markdown, no preamble, no text before "DIGEST" or between the two sections other than the lines themselves
 - Output only: DIGEST, its lines, a blank line, SUGGESTIONS, its lines — nothing else`,
-            messages: [{ role: "user", content: userContent }]
+            messages: [{ role: "user", content: userContent + omitBlock(kwOmit) }]
           })
         });
         const claudeData = await claudeResp.json();
@@ -26613,7 +26650,7 @@ Rules:
       // refreshes all five together, so a keyword regen can't silently
       // outrun the positioning it's supposed to serve.
       if (body.action === "regenerateKeywords") {
-        const { campaignId: bodyCampaignId, researchId, currentKeywords } = body;
+        const { campaignId: bodyCampaignId, researchId, currentKeywords, omitKeywords } = body;
         const pageId = researchId || bodyCampaignId;
         if (!pageId) return json({ error: "researchId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
@@ -26648,7 +26685,7 @@ CURRENT PAIN POINTS: "${crt("Pain Points") || '(none set)'}"
 CURRENT KEYWORDS is the dominant signal: it is the operator's own deliberate, most-recent input, not just one input among five. If it points at a different subject, tone, or audience than the CURRENT fields above, treat that as a real, deliberate pivot — let the keywords redefine the four fields rather than blending the new direction back toward the old one. Only carry forward parts of the old fields that don't conflict with where the keywords now point. If the operator guidance above adds anything further on top of that, fold it in too.
 
 Generate an expanded, optimized list of 15-20 keywords in that same subject/tone/audience (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent terms) — AND rewrite the four positioning fields so they genuinely follow it.
-
+${omitBlock(omitKeywords)}
 Call the submit_campaign_refresh tool with all five fields filled in — every field is required, none may be left out or empty.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -26679,7 +26716,7 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
         const toolUse = (aiData.content || []).find(c => c.type === "tool_use" && c.name === "submit_campaign_refresh");
         if (!toolUse) return json({ error: "model did not return the expected tool call", raw: JSON.stringify(aiData).slice(0, 500) }, 502);
         const parsed = toolUse.input || {};
-        const keywords = String(parsed.keywords || "").trim();
+        const keywords = applyKwOmit(String(parsed.keywords || "").trim(), omitKeywords);
 
         // Keywords write goes wherever it always went (Research page if
         // researchId was passed, else the Campaign itself) — unchanged.
@@ -26721,7 +26758,7 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
       // microsite's manual "regen at this page, not as a keywords
       // side-effect" flow.
       if (body.action === "regeneratePositioningField") {
-        const { campaignId, field, instructions } = body;
+        const { campaignId, field, instructions, omit } = body;
         const FIELD_MAP = { campaignGoal: "Campaign Goal", painPoints: "Pain Points", keyMessage: "Key Message" };
         const notionField = FIELD_MAP[field];
         if (!campaignId || !notionField) return json({ error: "campaignId and a valid field (campaignGoal/painPoints/keyMessage) required" }, 400);
@@ -26741,7 +26778,7 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
 
 MAIN KEYWORDS (dominant signal): "${mainKeywords || '(none set)'}"
 CURRENT ${notionField}: "${crt(notionField) || '(none set)'}"
-${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}
+${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
 Rewrite ${notionField} (1-2 sentences) so it genuinely follows the keywords above — don't just restate the old value. Output ONLY the field's text, no preamble, no field name, no markdown.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
