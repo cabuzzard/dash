@@ -296,8 +296,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2>Campaign Research</h2><span class="stagetag">stage 1</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-research','Campaign Research tab','research')">📝 Tab note</button></div>
     <p class="stage-sub">Trend and customer research. Positioning + Statement/Unique Opportunity auto-cascade with a Keywords regen; the 13 research modules below are each their own real Notion field.</p>
 
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
+    <section class="card" data-ckey="card-research-positioning">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
       <div class="card-body">
         <p class="card-desc">Campaign Goal / Pain Points / Key Message live on the Campaign record and have no button of their own anywhere — they refresh together with the Keywords regen. Target Audience isn't returned by <code>getResearch</code>, so it isn't shown here.</p>
         <div class="field"><div class="frow"><span class="fname">Campaign Goal</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-campaignGoal">—</div></div><button class="notebtn" onclick="openNoteModal('research-campaignGoal','Campaign Goal','research')">📝</button></div></div>
@@ -306,16 +306,16 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
+    <section class="card" data-ckey="card-research-statement">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
       <div class="card-body">
         <div class="field"><div class="frow"><span class="fname">Statement</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-statement">—</div></div><button class="notebtn" onclick="openNoteModal('research-statement','Statement','research')">📝</button></div></div>
         <div class="field"><div class="frow"><span class="fname">Unique Opportunity</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-uniqueOpportunity">—</div></div><button class="notebtn" onclick="openNoteModal('research-uniqueOpportunity','Unique Opportunity','research')">📝</button></div></div>
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">6 have a real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
+    <section class="card" data-ckey="card-research-modules">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">6 have a real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
       <div class="card-body" id="researchModulesBody">
         <div class="loadnote">Loading…</div>
       </div>
@@ -327,8 +327,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2 style="color:var(--global);">🎨 Design</h2><span class="stagetag" style="color:var(--global);">global constant — not a stage</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-design','Design tab','design')">📝 Tab note</button></div>
     <p class="stage-sub">Everything that governs how this campaign LOOKS. Method and Asset consume this; they don't own it. Loaded from <code>getHubPalette</code>; each card's ⟳ calls the matching <code>generateResearch*</code> action.</p>
 
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
+    <section class="card" data-ckey="card-design-direction">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
       <div class="card-body">
         <p class="card-desc">One call (<code>generateResearchDesign</code>) rewrites all three together, grounded in Main Keywords as the dominant signal.</p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
@@ -341,15 +341,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Palette</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
+    <section class="card" data-ckey="card-design-palette">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Palette</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
       <div class="card-body">
         <div class="field"><div class="frow"><span class="fname">Resolved hex</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-palette">—</div><div class="fctrl"><button class="btn" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button><button class="notebtn" onclick="openNoteModal('design-palette','Palette','design')">📝</button></div></div></div></div>
       </div>
     </section>
 
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Fonts</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
+    <section class="card" data-ckey="card-design-fonts">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Fonts</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
       <div class="card-body">
         <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div><div class="fctrl"><button class="btn" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div></div></div>
       </div>
@@ -361,8 +361,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
     <p class="stage-sub">The 11 🔬 Product Research fields (Customer/Niche/Pain Points/Emotions/Solution/Benefits/Unique Opportunity/Transformation/Offer Structure/Proof Points/Objections) for this campaign's main product, via <code>getCampaignProducts</code> → <code>getProductStrategy</code>.</p>
     <div id="productPicker" style="margin-bottom:12px;"></div>
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3 id="productCardTitle">Product Research</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-product-research','Product Research','product')">📝</button></div>
+    <section class="card" data-ckey="card-product-research">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3 id="productCardTitle">Product Research</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-product-research','Product Research','product')">📝</button></div>
       <div class="card-body" id="productResearchBody">
         <div class="loadnote">Loading…</div>
       </div>
@@ -380,8 +380,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="panel" data-panel="title">
     <div class="stage-hd"><h2>Title</h2><span class="stagetag">stage 4</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-title','Title tab','title')">📝 Tab note</button></div>
     <p class="stage-sub">Every Content Strategy title on this campaign, real, via <code>getTitles</code>.</p>
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>Titles</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-title-list','Titles','title')">📝</button></div>
+    <section class="card" data-ckey="card-title-list">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Titles</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-title-list','Titles','title')">📝</button></div>
       <div class="card-body" id="titleListBody">
         <div class="loadnote">Loading…</div>
       </div>
@@ -392,8 +392,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="panel" data-panel="method">
     <div class="stage-hd"><h2>Method</h2><span class="stagetag">stage 5 · à la carte</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-method','Method tab','method')">📝 Tab note</button></div>
     <p class="stage-sub">Care Gap's real methods tagged "In Master Flow", via <code>getHubMethodMatrix</code> (scoped client-side to this campaign's own method IDs).</p>
-    <section class="card">
-      <div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>In-flow methods</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-method-list','In-flow methods','method')">📝</button></div>
+    <section class="card" data-ckey="card-method-list">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>In-flow methods</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-method-list','In-flow methods','method')">📝</button></div>
       <div class="card-body" id="methodList">
         <div class="loadnote">Loading…</div>
       </div>
@@ -628,7 +628,28 @@ async function loadClusters() {
     document.getElementById('kwClusterList').innerHTML = `<div class="errnote">Cluster load failed: ${esc(e.message)}</div>`;
   }
 }
-function toggleGrp(el) { el.classList.toggle('open'); }
+// ── collapse state ────────────────────────────────────────────────────
+// Same convention hard-grind uses (titleGroupsOpen / COLLAPSED_STACKS):
+// everything renders collapsed by default, and the operator's own
+// expand/collapse clicks persist per campaign in localStorage. Anything
+// collapsible carries data-ckey; toggleGrp records it, applyCollapseState
+// re-applies it after every render.
+const COLLAPSE_KEY = 'caregapv2_open_' + CAMPAIGN_ID;
+let GROUPS_OPEN = {};
+try { GROUPS_OPEN = JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}'); } catch (e) {}
+function toggleGrp(el) {
+  const open = el.classList.toggle('open');
+  const k = el.dataset.ckey;
+  if (k) {
+    if (open) GROUPS_OPEN[k] = 1; else delete GROUPS_OPEN[k];
+    try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(GROUPS_OPEN)); } catch (e) {}
+  }
+}
+function applyCollapseState(root) {
+  (root || document).querySelectorAll('[data-ckey]').forEach(el => {
+    el.classList.toggle('open', !!GROUPS_OPEN[el.dataset.ckey]);
+  });
+}
 
 // ── unified renderer: left = flat collapsible stack (Master + every
 // cluster, same level, per operator direction "Master is a cluster");
@@ -640,7 +661,7 @@ function renderKeywordsAndIdeas() {
   const { staged, committed } = SEO_CLUSTERS;
 
   const masterPills = (RAW_KEYWORDS || '').split(',').map(s => s.trim()).filter(Boolean);
-  let l = `<div class="kwgroup" style="--kwc:#4ade80;">
+  let l = `<div class="kwgroup" data-ckey="kw-master" style="--kwc:#4ade80;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
       <span class="kwbtns">
         <input type="text" class="finput" id="masterSteerInput" placeholder="steer (optional)" style="width:100px;" onclick="event.stopPropagation()">
@@ -654,7 +675,7 @@ function renderKeywordsAndIdeas() {
   </div>`;
 
   staged.forEach(c => {
-    l += `<div class="kwgroup" style="--kwc:#c9860f;">
+    l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>
         <span class="kwbtns">
           <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
@@ -672,7 +693,7 @@ function renderKeywordsAndIdeas() {
   });
 
   committed.forEach(c => {
-    l += `<div class="kwgroup" style="--kwc:#2f6f6a;">
+    l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#2f6f6a;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>
         <span class="kwbtns">
           <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
@@ -686,7 +707,7 @@ function renderKeywordsAndIdeas() {
   left.innerHTML = l;
 
   // ── right: Main Stack + Cluster Ideas (staged clusters only) ──────────
-  let r = `<div class="kwgroup" style="--kwc:#8ab4f8;">
+  let r = `<div class="kwgroup" data-ckey="pi-main" style="--kwc:#8ab4f8;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Main Stack <span style="font-weight:400;text-transform:none;color:var(--ink3);">— off Master</span>
       <span class="kwbtns">
         <input type="text" class="finput" id="prodIdeasKwInput" placeholder="override keywords…" style="width:110px;" onclick="event.stopPropagation()">
@@ -699,8 +720,8 @@ function renderKeywordsAndIdeas() {
 
   staged.forEach(c => {
     const has = c.products && c.products.length;
-    r += `<div class="clusterideagrp">
-      <div class="cighd" onclick="this.parentElement.classList.toggle('open')"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
+    r += `<div class="clusterideagrp" data-ckey="pi-${esc(c.id)}">
+      <div class="cighd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
         <span class="kwbtns">
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-clusterideas-${esc(c.id)}','${esc(c.name)} cluster ideas','keywords')">📝</button>
@@ -710,6 +731,8 @@ function renderKeywordsAndIdeas() {
     </div>`;
   });
   right.innerHTML = r;
+  applyCollapseState(left);
+  applyCollapseState(right);
   refreshNoteMarks();
 }
 
@@ -993,8 +1016,9 @@ async function loadStrategyTab() {
       const url = res && res.strategy ? res.strategy.url : null;
       const tag = text ? '<span class="tag fresh">has brief</span>' : '<span class="tag stale">no brief yet</span>';
       const link = url ? `<a class="kwlink" href="${esc(url)}" target="_blank" rel="noopener">↗ Notion</a>` : `<a class="kwlink" href="${notionUrl(mid)}" target="_blank" rel="noopener">↗ method in Notion</a>`;
-      return `<section class="card"><div class="card-hd" onclick="this.parentElement.classList.toggle('open')"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}${link}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
+      return `<section class="card" data-ckey="card-strategy-${esc(mid)}"><div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>${esc(name)}</h3>${tag}${link}<button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-strategy-${esc(mid)}','${esc(name)} strategy','strategy')">📝</button></div><div class="card-body"><div class="fval" style="white-space:pre-wrap;">${esc(text || '(no Strategy Brief on file for this method yet)')}</div></div></section>`;
     }).join('');
+    applyCollapseState(body);
     refreshNoteMarks();
   } catch (e) {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
@@ -1049,8 +1073,9 @@ async function loadAssetTab() {
       const body = assets.length
         ? assets.map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${esc(a.assetTitle || a.title)} — <span style="color:var(--ink2);">${esc(a.type)} · ${esc(a.platform)} · ${esc(a.status)}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')
         : `<div class="loadnote">${res && res.error ? 'Load failed: ' + esc(res.error) : 'No assets resolved.'}</div>`;
-      return `<div class="rnode"><div class="rhd" onclick="this.parentElement.classList.toggle('open')"><span class="rchev">▶</span><span class="rtype">Title</span><span class="rname">${esc(t.title)}</span><span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span><a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button></div><div class="rbody">${body}</div></div>`;
+      return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rtype">Title</span><span class="rname">${esc(t.title)}</span><span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span><a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button></div><div class="rbody">${body}</div></div>`;
     }).join('');
+    applyCollapseState(el);
     refreshNoteMarks();
   } catch (e) {
     el.innerHTML = `<div class="errnote" style="padding:14px;">Load failed: ${esc(e.message)}</div>`;
@@ -1058,6 +1083,7 @@ async function loadAssetTab() {
 }
 
 function init() {
+  applyCollapseState();
   loadResearch();
   loadClusters();
   loadMethods();
