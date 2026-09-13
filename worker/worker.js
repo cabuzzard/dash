@@ -25333,11 +25333,35 @@ Call submit_keyword_cluster with your result.`;
         if (!researchId) return json({ error: "researchId required" }, 400);
         const dashId = i => { const s=i.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        let omit = "";
+        let omit = "", campaignId = null;
         try {
           const rp = await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, { headers: hdr }).then(r => r.json());
           omit = (rp.properties?.["Omit Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+          campaignId = rp.properties?.Campaign?.relation?.[0]?.id?.replace(/-/g,"") || null;
         } catch (e) {}
+        // One-time migration: this list briefly lived in KV (keyed by
+        // campaignId) before moving onto this real Notion field — if the
+        // field is still empty, recover whatever's in the old KV key so a
+        // list an operator already built up doesn't just vanish.
+        if (!omit && campaignId) {
+          try {
+            const legacy = await env.TRADES.get(`omitlist:${campaignId}`);
+            if (legacy) {
+              omit = legacy;
+              const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+              if (!db.properties?.["Omit Keywords"]) {
+                await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+                  method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                  body: JSON.stringify({ properties: { "Omit Keywords": { rich_text: {} } } }),
+                }).catch(() => {});
+              }
+              await fetch(`https://api.notion.com/v1/pages/${dashId(researchId)}`, {
+                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Omit Keywords": { rich_text: [{ type: "text", text: { content: legacy.slice(0, 1990) } }] } } }),
+              }).catch(() => {});
+            }
+          } catch (e) {}
+        }
         return json({ success: true, omit });
       }
       if (body.action === "saveOmitList") {
