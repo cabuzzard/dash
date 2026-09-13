@@ -136,7 +136,8 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .idea-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface2);}
 .idea-row{display:flex;align-items:center;gap:4px;}
 .idea-title{font-weight:600;font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.idea-btns{display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;}
+.idea-btns{display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;margin-left:auto;}
+.idea-row{flex-wrap:nowrap;}
 .iconbtn{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;line-height:1;flex-shrink:0;}
 .iconbtn:hover{border-color:var(--amber);color:var(--amber);}
 .iconbtn.primary{background:var(--amber);border-color:var(--amber);color:#fff;}
@@ -736,6 +737,7 @@ function renderKeywordsAndIdeas() {
           <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           <button class="iconbtn primary" title="Commit this cluster to Notion" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾</button>
+          <button class="iconbtn" title="Discard this staged cluster" onclick="event.stopPropagation();deleteStagedCluster('${esc(c.id)}', this)">✕</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
       </div>
@@ -801,6 +803,7 @@ function renderIdeaLines(text) {
       <span class="idea-btns">
         <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(name)}','${esc(RAW_KEYWORDS)}')">🔗</button>
         <button class="iconbtn" title="Create a real Product record from this idea" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master')">➕</button>
+        <button class="iconbtn" title="Dismiss this idea" onclick="deleteMainStackIdea(${i}, this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
       </span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
   }).join('');
@@ -867,6 +870,25 @@ async function dismissClusterIdea(clusterId, productId, btn) {
   btn.disabled = true;
   try { const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
   catch (e) { alert('Dismiss failed: ' + e.message); btn.disabled = false; }
+}
+async function deleteStagedCluster(clusterId, btn) {
+  btn.disabled = true;
+  try { const r = await w('removeStagedKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
+  catch (e) { alert('Delete failed: ' + e.message); btn.disabled = false; }
+}
+// Main Stack ideas are one flat text field (Research.productIdeas), not
+// discrete records — "delete" means removing that line and saving the
+// trimmed text back. Real write, same field runProductIdeas already owns.
+async function deleteMainStackIdea(index, btn) {
+  btn.disabled = true;
+  const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
+  lines.splice(index, 1);
+  const newText = lines.join('\n');
+  try {
+    await w('updateResearch', { researchId: RESEARCH_ID, field: 'productIdeas', value: newText });
+    MAIN_PRODUCT_IDEAS_TEXT = newText;
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Delete failed: ' + e.message); btn.disabled = false; }
 }
 async function runProductIdeas(btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
@@ -1172,12 +1194,26 @@ async function loadProductTab() {
           <span class="idea-btns">
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
+            <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">🗑</button>
           </span></div></div>`).join('')}</div>
       </div>`).join('');
     applyCollapseState(body);
   } catch (e) {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
+}
+// Never hard-delete — same "archive via Status, keep as raw material"
+// convention the app already uses for Methods. updateProductStatus
+// already exists and is used elsewhere for this exact transition.
+async function archiveProduct(productId, btn) {
+  const prod = CAMPAIGN_PRODUCTS.find(p => p.id === productId);
+  if (!confirm(`Archive "${prod ? prod.name : productId}"? It stays in Notion (Status → Archived), just removed from this list.`)) return;
+  btn.disabled = true;
+  try {
+    await w('updateProductStatus', { productId, status: 'Archived' });
+    CAMPAIGN_PRODUCTS = CAMPAIGN_PRODUCTS.filter(p => p.id !== productId);
+    loadProductTab();
+  } catch (e) { alert('Archive failed: ' + e.message); btn.disabled = false; }
 }
 let PRODUCT_MODAL_ID = null;
 let PRODUCT_STAGE = {};
