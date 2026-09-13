@@ -60,6 +60,7 @@ All secrets are set via `wrangler secret put` and never hardcoded:
 - `GITHUB_TOKEN` — commits to `cabuzzard/dash` (thumbnails, offer images, hub/blog pages)
 - `KIE_API_KEY` — Kie.ai (Nano Banana / Flux images, Kie video)
 - `XAI_API_KEY` — Grok: `grok-4.6` trending grounding **and** `grok-imagine-image-2.0` offer images (needs image access on the plan)
+- `NOTES_POLL_SECRET` — machine-to-machine read-only auth for `getMicrositeNotes` (`body.pollSecret`), checked *before* the normal session-token gate. Lets an automated watcher (e.g. a Claude Code session background-polling for newly-submitted microsite field notes) read notes without the operator's PIN. Read-only, one action only — never a write path.
 
 **PowerShell pipe caveat:** always `.trim()` secrets read from `env.*` — PowerShell pipes add a trailing newline.
 

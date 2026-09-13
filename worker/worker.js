@@ -7891,6 +7891,27 @@ export default {
       return json({ defaults, overrides });
     }
 
+    // Machine-to-machine read-only poll path for getMicrositeNotes — lets an
+    // automated watcher (e.g. a Claude Code session polling in the
+    // background) check for newly-submitted microsite notes without the
+    // human operator's PIN/session token. Gated on its own fixed secret
+    // (NOTES_POLL_SECRET, set via `wrangler secret put`, distinct from PIN),
+    // read-only, and gives back only what getMicrositeNotes itself would —
+    // never a write path. Deliberately checked BEFORE the session-token
+    // gate below, since this request carries no session token at all.
+    if (body.action === "getMicrositeNotes" && body.pollSecret) {
+      const POLL_SECRET = (env.NOTES_POLL_SECRET || "").trim();
+      if (POLL_SECRET && body.pollSecret === POLL_SECRET) {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let notes = [];
+        try { notes = (await env.TRADES.get(`micronotes:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        return json({ notes });
+      }
+      return json({ error: "Unauthorized" }, 401);
+    }
+
     // â"€â"€ All other actions require a valid session token â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
