@@ -836,7 +836,7 @@ function renderIdeaLines(text) {
     return `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(name)}">${esc(name)}</span>
       <span class="idea-btns">
         <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(name)}','${esc(RAW_KEYWORDS)}')">🔗</button>
-        <button class="iconbtn" title="Create a real Product record from this idea" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master')">➕</button>
+        <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master','main',${i})">➕</button>
         <button class="iconbtn" title="Dismiss this idea" onclick="deleteMainStackIdea(${i}, this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
       </span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
@@ -846,7 +846,7 @@ function renderIdeaCards(products, clusterId, clusterName) {
   return products.map(p => `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
       <span class="idea-btns">
         <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(p.name)}','${esc(p.keywords)}')">🔗</button>
-        <button class="iconbtn" title="Create a real Product record from this idea" onclick="runCreateProductFromIdea('${esc(p.name)}','${esc(p.angle)}','${esc(clusterName)}')">➕</button>
+        <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="runCreateProductFromIdea('${esc(p.name)}','${esc(p.angle)}','${esc(clusterName)}','cluster','${esc(clusterId)}','${esc(p.id)}')">➕</button>
         <button class="iconbtn" title="Dismiss this proposal" onclick="dismissClusterIdea('${esc(clusterId)}','${esc(p.id)}', this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-${esc(clusterId)}-${esc(p.id)}','${esc(p.name)}','keywords')">📝</button>
       </span></div><div class="idea-desc"><b>${esc(p.platform)} · ${esc(p.type)}</b> — ${esc(p.angle)}</div></div>`).join('');
@@ -950,13 +950,28 @@ async function runProductIdeas(btn) {
   catch (e) { alert('Search failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
-async function runCreateProductFromIdea(name, description, stack) {
+// kind/a/b identify the source idea so it can be removed from the ideas
+// list once it's a real product — 'main' (a = line index in the flat
+// Main Stack text) or 'cluster' (a = clusterId, b = the idea's own id).
+async function runCreateProductFromIdea(name, description, stack, kind, a, b) {
   if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack}) in the Care Gap campaign?`)) return;
   try {
     const r = await w('createProduct', { title: name, description, stack, campaignId: CAMPAIGN_ID, status: 'In Development' });
     alert(`Created — ${r.name}. Opening it in Notion.`);
     window.open(notionUrl(r.id), '_blank', 'noopener');
     CAMPAIGN_PRODUCTS = [];
+    if (kind === 'main') {
+      const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
+      lines.splice(a, 1);
+      const newText = lines.join('\n');
+      await w('updateResearch', { researchId: RESEARCH_ID, field: 'productIdeas', value: newText }).catch(() => {});
+      MAIN_PRODUCT_IDEAS_TEXT = newText;
+      renderKeywordsAndIdeas();
+    } else if (kind === 'cluster') {
+      const rr = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId: a, productId: b }).catch(() => null);
+      if (rr) SEO_CLUSTERS.staged = rr.staged || SEO_CLUSTERS.staged;
+      renderKeywordsAndIdeas();
+    }
   } catch (e) { alert('Create failed: ' + e.message); }
 }
 async function runViewSources(query, keywords) {
