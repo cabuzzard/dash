@@ -274,6 +274,37 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <div class="modaloverlay" id="createAssetModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Create Asset</div>
+      <div class="mfield" id="caModalTitle"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Method
+          <select id="caMethod" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="caOnMethodChange()"></select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Platform
+          <select id="caPlatform" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+        </label>
+        <label id="caContentTypeRow" style="font-size:11px;color:var(--ink2);display:none;">Content type <span style="color:var(--ink3);">(single post)</span>
+          <select id="caContentType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+            <option>Hook</option><option>Pain Point</option><option>Benefit</option><option>Informational</option><option>Customer Focus</option><option>Proof</option><option>Objection</option><option>Contrarian</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Count
+          <input type="number" id="caCount" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" min="1" max="12" value="4">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Override / notes <span style="color:var(--ink3);">(optional)</span>
+          <textarea id="caOverride" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;min-height:60px;"></textarea>
+        </label>
+      </div>
+      <div id="caResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeCreateAssetModal()">Cancel</button>
+        <button class="btn primary" id="caGenBtn" onclick="runCreateAsset()">⟳ Generate</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modaloverlay" id="clusterGenModal">
     <div class="modalbox">
       <div class="mtitle">New cluster</div>
@@ -582,6 +613,8 @@ document.addEventListener('DOMContentLoaded', () => {
   clusterOverlay.addEventListener('click', e => { if (e.target === clusterOverlay) closeClusterGenModal(); });
   const productOverlay = document.getElementById('productModal');
   productOverlay.addEventListener('click', e => { if (e.target === productOverlay) closeProductModal(); });
+  const caOverlay = document.getElementById('createAssetModal');
+  caOverlay.addEventListener('click', e => { if (e.target === caOverlay) closeCreateAssetModal(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -1324,9 +1357,87 @@ function renderTitleRow(t) {
   return `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
+      <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
       <button class="notebtn" title="Note" onclick="openNoteModal('title-${esc(t.id)}','${esc(t.title)}','title')">📝</button>
     </span></div><div class="idea-desc">${esc(t.methodName || '')}${t.assetIds && t.assetIds.length ? ` · ${t.assetIds.length} asset(s)` : ''}</div></div>`;
+}
+
+// ── Create Asset modal — real generateTitleAssets call, per docs/methods-titles-assets.md.
+// Care Gap's 4 in-flow methods each hit their own dedicated branch server-
+// side (Offer/Content Hub need the title's own product, which we pass
+// through automatically; single post needs contentType+count; the rest
+// just need method+platform+override). No template picker — the server
+// auto-cycles a hub's registered Canva templates for single post.
+let CA_TITLE = null;
+let CA_PLATFORMS_CACHE = null;
+async function openCreateAssetModal(titleId) {
+  const t = CAMPAIGN_TITLES.find(x => x.id === titleId);
+  if (!t) return;
+  CA_TITLE = t;
+  document.getElementById('caModalTitle').textContent = t.title;
+  document.getElementById('caResult').textContent = '';
+  document.getElementById('caOverride').value = '';
+  const methodSel = document.getElementById('caMethod');
+  methodSel.innerHTML = [...IN_FLOW_METHOD_IDS].map(id => `<option value="${esc(id)}" ${t.methodId === id ? 'selected' : ''}>${esc(METHOD_NAMES[id] || id)}</option>`).join('');
+  if (t.methodId && t.methodId !== '__none__' && !IN_FLOW_METHOD_IDS.has(t.methodId)) {
+    methodSel.insertAdjacentHTML('afterbegin', `<option value="${esc(t.methodId)}" selected>${esc(t.methodName || t.methodId)} (not in-flow)</option>`);
+  }
+  caOnMethodChange();
+  document.getElementById('createAssetModal').classList.add('open');
+  const platSel = document.getElementById('caPlatform');
+  platSel.innerHTML = '<option>Loading…</option>';
+  try {
+    if (!CA_PLATFORMS_CACHE) { const r = await w('getPlatforms'); CA_PLATFORMS_CACHE = r.platforms || []; }
+    platSel.innerHTML = CA_PLATFORMS_CACHE.length ? CA_PLATFORMS_CACHE.map(p => `<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('') : '<option value="">(none configured)</option>';
+  } catch (e) {
+    platSel.innerHTML = '<option value="">(load failed)</option>';
+  }
+}
+function caOnMethodChange() {
+  const sel = document.getElementById('caMethod');
+  const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const isSinglePost = /single post/i.test(name);
+  document.getElementById('caContentTypeRow').style.display = isSinglePost ? 'block' : 'none';
+  const countEl = document.getElementById('caCount');
+  countEl.value = isSinglePost ? 6 : 4;
+  countEl.max = isSinglePost ? 12 : 8;
+}
+function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
+async function runCreateAsset() {
+  if (!CA_TITLE) return;
+  const btn = document.getElementById('caGenBtn');
+  const resEl = document.getElementById('caResult');
+  const methodSel = document.getElementById('caMethod');
+  const methodId = methodSel.value;
+  const methodName = methodSel.options[methodSel.selectedIndex].textContent.replace(/\s*\(not in-flow\)$/, '');
+  const platSel = document.getElementById('caPlatform');
+  const platformId = platSel.value || undefined;
+  const platformName = (platSel.options[platSel.selectedIndex] && platSel.options[platSel.selectedIndex].dataset.name) || undefined;
+  const count = parseInt(document.getElementById('caCount').value) || 4;
+  const override = (document.getElementById('caOverride').value || '').trim() || undefined;
+  const isSinglePost = /single post/i.test(methodName);
+  const contentType = isSinglePost ? document.getElementById('caContentType').value : undefined;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Generating…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Generating — this can take a bit…';
+  try {
+    const payload = {
+      titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId, assetType: methodName,
+      title: CA_TITLE.title, platformId, platformName, count, researchInstructions: override,
+    };
+    if (contentType) payload.contentType = contentType;
+    if (CA_TITLE.productId && CA_TITLE.productId !== '__none__') payload.productId = CA_TITLE.productId;
+    const r = await w('generateTitleAssets', payload);
+    const n = (typeof r.created === 'number') ? r.created : (Array.isArray(r.assets) ? r.assets.length : (typeof r.count === 'number' ? r.count : null));
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = '✓ Done' + (n != null ? ` — ${n} asset(s).` : '.') + ' Refreshing…';
+    await loadTitleAndAssetTab();
+    setTimeout(closeCreateAssetModal, 900);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)';
+    resEl.textContent = 'Failed: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = o;
 }
 
 // ══════════════════════ METHOD TAB ══════════════════════
@@ -1358,6 +1469,7 @@ function renderAssetTitleNode(t, data) {
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
       <span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span>
       <span style="font-size:10px;color:var(--ink3);">${assets.length} asset(s)</span>
+      <button class="iconbtn" title="Create asset" onclick="event.stopPropagation();openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>
       <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button>
     </span></div><div class="rbody">${body}</div></div>`;
