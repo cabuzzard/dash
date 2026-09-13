@@ -217,9 +217,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <button class="tab tab-design" data-tab="design" onclick="switchTo('design')">🎨 Design <span class="n">constant</span></button><span class="tarrow">→</span>
       <button class="tab" data-tab="product" onclick="switchTo('product')">Product Research <span class="n">(11)</span></button><span class="tarrow">→</span>
       <button class="tab" data-tab="strategy" onclick="switchTo('strategy')">Strategy</button><span class="tarrow">→</span>
-      <button class="tab" data-tab="title" onclick="switchTo('title')">Title</button><span class="tarrow">→</span>
-      <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button><span class="tarrow">→</span>
-      <button class="tab" data-tab="asset" onclick="switchTo('asset')">Asset <span class="n">real records</span></button>
+      <button class="tab" data-tab="title" onclick="switchTo('title')">Title + Asset</button><span class="tarrow">→</span>
+      <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button>
     </div>
   </div>
 
@@ -402,11 +401,20 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div id="strategyBody"><div class="loadnote">Loading…</div></div>
   </div>
 
-  <!-- ══════════════════════ TAB: TITLE ══════════════════════ -->
+  <!-- ══════════════════════ TAB: TITLE + ASSET ══════════════════════ -->
   <div class="panel" data-panel="title">
-    <div class="stage-hd"><h2>Title</h2><span class="stagetag">stage 4</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-title','Title tab','title')">📝 Tab note</button></div>
-    <p class="stage-sub">Every Content Strategy title on this campaign, nested by Product Stack — <code>getTitles</code>.</p>
-    <div id="titleListBody"><div class="loadnote">Loading…</div></div>
+    <div class="stage-hd"><h2>Title + Asset</h2><span class="stagetag">stage 4-6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-title','Title tab','title')">📝 Tab note</button></div>
+    <p class="stage-sub">Titles (left) and their Assets (right), both nested Product Stack → Product → Strategy — <code>getTitles</code> + <code>getTitleAssets</code>. Assets sub-group by Platform, the one level titles themselves don't carry.</p>
+    <div class="kwgrid">
+      <div class="kwcol">
+        <h4>Titles</h4>
+        <div id="titleListBody"><div class="loadnote">Loading…</div></div>
+      </div>
+      <div class="kwcol">
+        <h4>Assets</h4>
+        <div id="assetTree"><div class="loadnote">Loading…</div></div>
+      </div>
+    </div>
   </div>
 
   <!-- ══════════════════════ TAB: METHOD ══════════════════════ -->
@@ -419,15 +427,6 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div class="loadnote">Loading…</div>
       </div>
     </section>
-  </div>
-
-  <!-- ══════════════════════ TAB: ASSET ══════════════════════ -->
-  <div class="panel" data-panel="asset">
-    <div class="stage-hd"><h2>Asset <span style="font-weight:400;color:var(--ink3);font-size:14px;">— real records</span></h2><span class="stagetag">stage 6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-asset','Asset tab','asset')">📝 Tab note</button></div>
-    <p class="stage-sub">Real Title → Asset nesting for every title that has generated assets — <code>getTitleAssets</code> per title from the Title tab's list.</p>
-    <div class="recordtree" id="assetTree">
-      <div class="loadnote" style="padding:14px;">Loading…</div>
-    </div>
   </div>
 
   <footer>Care Gap Template — real microsite, live data. Notes saved to the worker as you go.</footer>
@@ -537,8 +536,7 @@ const TAB_LOADERS = {
   design: () => loadDesignTab(),
   product: () => loadProductTab(),
   strategy: () => loadStrategyTab(),
-  title: () => loadTitleTab(),
-  asset: () => loadAssetTab(),
+  title: () => loadTitleAndAssetTab(),
 };
 const TAB_LOADED = {};
 function switchTo(key) {
@@ -1244,33 +1242,90 @@ function renderStrategyGrouping(stratId, g) {
   </div>`;
 }
 
-// ══════════════════════ TITLE TAB — nested by Product Stack ══════════════════════
+// ══════════════════════ TITLE + ASSET TAB — Product Stack → Product → Strategy, two columns ══════════════════════
+// Titles carry Product + Growth Strategy directly, but never a Platform —
+// that only exists on their Assets. So both columns share the same
+// Stack → Product → Strategy nesting (what titles actually have), and
+// Platform appears only as the final split on the Asset side, where it's
+// real.
 let CAMPAIGN_TITLES = [];
 const TITLE_STAGES = ["Planning","Development","Writing","Review","Approved","Explode","Publish","Published"];
-async function loadTitleTab() {
-  const body = document.getElementById('titleListBody');
-  body.innerHTML = '<div class="loadnote">Loading…</div>';
+function buildTitleTree(titles) {
+  const stackByProductId = {}; CAMPAIGN_PRODUCTS.forEach(p => { stackByProductId[p.id] = p.stack || 'No Stack'; });
+  const { groups: byStack, order: stackOrder } = groupByStack(titles, t => (t.productId && t.productId !== '__none__') ? stackByProductId[t.productId] : 'No Stack');
+  return stackOrder.map(stack => {
+    const { groups: byProduct, order: productOrder } = groupByStack(byStack[stack], t => t.productName && t.productName !== '?' ? t.productName : 'No Product');
+    return {
+      name: stack,
+      count: byStack[stack].length,
+      products: productOrder.map(prodName => {
+        const { groups: byStrategy, order: strategyOrder } = groupByStack(byProduct[prodName], t => (t.strategyName && t.strategyName !== '?') ? t.strategyName : 'No Strategy');
+        return { name: prodName, strategies: strategyOrder.map(s => ({ name: s, titles: byStrategy[s] })) };
+      }),
+    };
+  });
+}
+async function loadTitleAndAssetTab() {
+  const titleBody = document.getElementById('titleListBody');
+  const assetBody = document.getElementById('assetTree');
+  titleBody.innerHTML = '<div class="loadnote">Loading…</div>';
+  assetBody.innerHTML = '<div class="loadnote">Loading…</div>';
   try {
     if (!CAMPAIGN_PRODUCTS.length) { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; }
     const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES });
     CAMPAIGN_TITLES = r.titles || [];
-    if (!CAMPAIGN_TITLES.length) { body.innerHTML = '<div class="loadnote">No titles on this campaign yet.</div>'; return; }
-    const stackByProductId = {}; CAMPAIGN_PRODUCTS.forEach(p => { stackByProductId[p.id] = p.stack || 'No Stack'; });
-    const { groups, order } = groupByStack(CAMPAIGN_TITLES, t => (t.productId && t.productId !== '__none__') ? stackByProductId[t.productId] : 'No Stack');
-    body.innerHTML = order.map(stack => `
-      <div class="kwgroup" data-ckey="titlestack-${esc(stack)}" style="--kwc:#4ade80;">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span></div>
-        <div class="kwgbody">${groups[stack].map(renderTitleRow).join('')}</div>
+    if (!CAMPAIGN_TITLES.length) { titleBody.innerHTML = assetBody.innerHTML = '<div class="loadnote">No titles on this campaign yet.</div>'; return; }
+    const tree = buildTitleTree(CAMPAIGN_TITLES);
+
+    titleBody.innerHTML = tree.map(stack => `
+      <div class="kwgroup" data-ckey="titlestack-${esc(stack.name)}" style="--kwc:#4ade80;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
+        <div class="kwgbody">${stack.products.map(prod => `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
+            ${prod.strategies.map(strat => `
+              <div style="margin:0 0 6px 8px;">
+                ${strat.name !== 'No Strategy' ? `<div style="font-size:10px;color:var(--ink3);font-style:italic;margin-bottom:3px;">${esc(strat.name)}</div>` : ''}
+                ${strat.titles.map(renderTitleRow).join('')}
+              </div>`).join('')}
+          </div>`).join('')}</div>
       </div>`).join('');
-    applyCollapseState(body);
+    applyCollapseState(titleBody);
+    refreshNoteMarks();
+
+    const withAssets = CAMPAIGN_TITLES.filter(t => t.assetIds && t.assetIds.length);
+    if (!withAssets.length) { assetBody.innerHTML = '<div class="loadnote">No titles with generated assets yet.</div>'; return; }
+    const results = await Promise.all(withAssets.map(t => w('getTitleAssets', { titleId: t.id }).catch(e => ({ error: e.message }))));
+    const assetsByTitleId = {}; withAssets.forEach((t, i) => { assetsByTitleId[t.id] = { assets: (results[i] && results[i].assets) || [], error: results[i] && results[i].error }; });
+    const assetTree = buildTitleTree(withAssets);
+
+    assetBody.innerHTML = assetTree.map(stack => `
+      <div class="kwgroup" data-ckey="assetstack-${esc(stack.name)}" style="--kwc:#8ab4f8;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
+        <div class="kwgbody">${stack.products.map(prod => `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
+            ${prod.strategies.map(strat => `
+              <div style="margin:0 0 6px 8px;">
+                ${strat.name !== 'No Strategy' ? `<div style="font-size:10px;color:var(--ink3);font-style:italic;margin-bottom:3px;">${esc(strat.name)}</div>` : ''}
+                ${strat.titles.map(t => renderAssetTitleNode(t, assetsByTitleId[t.id])).join('')}
+              </div>`).join('')}
+          </div>`).join('')}</div>
+      </div>`).join('');
+    applyCollapseState(assetBody);
     refreshNoteMarks();
   } catch (e) {
-    body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
+    titleBody.innerHTML = assetBody.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
 function renderTitleRow(t) {
   const statusClass = ['Publish','Published'].includes(t.stage) ? 's-live' : (t.stage === 'Planning' ? 's-dev' : 's-pub');
-  return `<div class="field"><div class="frow"><span class="fname" style="min-width:auto;flex:2;">${esc(t.title)}</span><span class="rstatus ${statusClass}">${esc(t.stage)}</span><div class="fmeta" style="flex:1;min-width:160px;"><div style="font-size:11px;color:var(--ink2);">${esc(t.methodName || '')} ${t.assetIds && t.assetIds.length ? `· ${t.assetIds.length} asset(s)` : ''} · <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">↗ Notion</a></div></div><button class="notebtn" onclick="openNoteModal('title-${esc(t.id)}','${esc(t.title)}','title')">📝</button></div></div>`;
+  return `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
+    <span class="idea-btns">
+      <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
+      <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
+      <button class="notebtn" title="Note" onclick="openNoteModal('title-${esc(t.id)}','${esc(t.title)}','title')">📝</button>
+    </span></div><div class="idea-desc">${esc(t.methodName || '')}${t.assetIds && t.assetIds.length ? ` · ${t.assetIds.length} asset(s)` : ''}</div></div>`;
 }
 
 // ══════════════════════ METHOD TAB ══════════════════════
@@ -1280,44 +1335,31 @@ async function loadMethods() {
     const r = await w('getHubMethodMatrix');
     const cols = (r.columns || []).filter(c => c.inMasterFlow && CARE_GAP_METHOD_IDS.has(c.id));
     if (!cols.length) { el.innerHTML = '<div class="loadnote">No methods tagged "In Master Flow" yet — tag them from the dashboard\'s Hub Method Matrix.</div>'; return; }
-    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(c.name)}</span><span style="font-size:10px;color:var(--fresh);">${esc(c.status || '')}</span><a class="kwlink" href="${esc(c.url || notionUrl(c.id))}" target="_blank" rel="noopener">↗ Notion</a><button class="notebtn" onclick="openNoteModal('method-${esc(c.id)}','${esc(c.name)}','method')">📝</button></div>${c.notes ? `<div class="idea-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
+    el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(c.name)}">${esc(c.name)}</span>
+      <span class="idea-btns">
+        <span style="font-size:10px;color:var(--fresh);">${esc(c.status || '')}</span>
+        <a class="kwlink" href="${esc(c.url || notionUrl(c.id))}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
+        <button class="notebtn" title="Note" onclick="openNoteModal('method-${esc(c.id)}','${esc(c.name)}','method')">📝</button>
+      </span></div>${c.notes ? `<div class="idea-desc">${esc(c.notes.slice(0,200))}</div>` : ''}</div>`).join('');
     refreshNoteMarks();
   } catch (e) {
     el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
 
-// ══════════════════════ ASSET TAB — Product Stack → Title (with counts) → Platform ══════════════════════
-async function loadAssetTab() {
-  const el = document.getElementById('assetTree');
-  el.innerHTML = '<div class="loadnote" style="padding:14px;">Loading…</div>';
-  try {
-    if (!CAMPAIGN_PRODUCTS.length) { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; }
-    if (!CAMPAIGN_TITLES.length) { const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES }); CAMPAIGN_TITLES = r.titles || []; }
-    const withAssets = CAMPAIGN_TITLES.filter(t => t.assetIds && t.assetIds.length);
-    if (!withAssets.length) { el.innerHTML = '<div class="loadnote" style="padding:14px;">No titles with generated assets yet.</div>'; return; }
-    const results = await Promise.all(withAssets.map(t => w('getTitleAssets', { titleId: t.id }).catch(e => ({ error: e.message }))));
-    const stackByProductId = {}; CAMPAIGN_PRODUCTS.forEach(p => { stackByProductId[p.id] = p.stack || 'No Stack'; });
-    const rows = withAssets.map((t, i) => ({ title: t, assets: (results[i] && results[i].assets) || [], error: results[i] && results[i].error }));
-    const { groups, order } = groupByStack(rows, row => (row.title.productId && row.title.productId !== '__none__') ? stackByProductId[row.title.productId] : 'No Stack');
-    el.innerHTML = order.map(stack => `
-      <div class="kwgroup" data-ckey="assetstack-${esc(stack)}" style="--kwc:#8ab4f8;">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span></div>
-        <div class="kwgbody">${groups[stack].map(renderAssetTitleNode).join('')}</div>
-      </div>`).join('');
-    applyCollapseState(el);
-    refreshNoteMarks();
-  } catch (e) {
-    el.innerHTML = `<div class="errnote" style="padding:14px;">Load failed: ${esc(e.message)}</div>`;
-  }
-}
-function renderAssetTitleNode(row) {
-  const t = row.title, assets = row.assets;
+function renderAssetTitleNode(t, data) {
+  const assets = (data && data.assets) || [];
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">${esc(a.assetTitle || a.title)} — <span style="color:var(--ink2);">${esc(a.type)} · ${esc(a.status)}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
-    : `<div class="loadnote">${row.error ? 'Load failed: ' + esc(row.error) : 'No assets resolved.'}</div>`;
-  return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rtype">Title</span><span class="rname">${esc(t.title)}</span><span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span><span style="font-size:10px;color:var(--ink3);">${assets.length} asset(s)</span><a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button></div><div class="rbody">${body}</div></div>`;
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)} · ${esc(a.status)}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
+  return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
+    <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+      <span class="rstatus ${['Publish','Published'].includes(t.stage) ? 's-live' : 's-pub'}">${esc(t.stage)}</span>
+      <span style="font-size:10px;color:var(--ink3);">${assets.length} asset(s)</span>
+      <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>
+      <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button>
+    </span></div><div class="rbody">${body}</div></div>`;
 }
 
 function init() {
