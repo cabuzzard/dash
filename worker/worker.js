@@ -25314,6 +25314,30 @@ Call submit_keyword_cluster with your result.`;
         return json({ success: true, notes });
       }
 
+      // ── getOmitList / saveOmitList ──
+      // One persistent, cumulative negative-keyword list per campaign — every
+      // regen modal across the microsite pre-fills from this and merges its
+      // own additions back into it, so an omission entered anywhere (Master
+      // Keywords, Positioning, a research module, Design, Product Research)
+      // stays in force for every later regen down the chain, without the
+      // operator re-typing it. Deliberately one flat list, not scoped per
+      // tab/field — simpler to reason about than a strict "only flows
+      // downstream" model, and re-typing an omission because it didn't carry
+      // over is the failure this exists to prevent.
+      if (body.action === "getOmitList") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        let omit = "";
+        try { omit = (await env.TRADES.get(`omitlist:${campaignId.replace(/-/g,"")}`)) || ""; } catch (e) {}
+        return json({ success: true, omit });
+      }
+      if (body.action === "saveOmitList") {
+        const { campaignId, omit } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        try { await env.TRADES.put(`omitlist:${campaignId.replace(/-/g,"")}`, String(omit || "").slice(0, 4000)); } catch (e) {}
+        return json({ success: true });
+      }
+
       if (body.action === "commitKeywordCluster") {
         const { campaignId, clusterId } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);

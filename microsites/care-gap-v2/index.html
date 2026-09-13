@@ -882,13 +882,34 @@ async function commitCluster(clusterId, btn) {
 // needs to do with the two values — it throws to signal failure (modal
 // stays open, error shown) or resolves to close and let the underlying
 // render function reflect the new staged/live state.
+//
+// GLOBAL_OMIT is one persistent, cumulative negative-keyword list for the
+// whole campaign (worker-backed via getOmitList/saveOmitList, so it
+// survives reloads) — every modal opens pre-filled with it, and whatever
+// the operator adds on top merges back in before the regen call fires.
+// That's the whole mechanism for "omissions flow down the chain, not up":
+// nothing ever regenerates automatically just because the list grew, so
+// an omission made on a downstream tab has no way to reach back and touch
+// something already generated upstream — it only ever shows up as a
+// pre-filled default the next time ANY regen modal opens after it.
+let GLOBAL_OMIT = '';
+async function loadOmitList() {
+  try { const r = await w('getOmitList', { campaignId: CAMPAIGN_ID }); GLOBAL_OMIT = r.omit || ''; } catch (e) {}
+}
+function mergeOmit(base, added) {
+  const terms = [...(base || '').split(/[,\n]+/), ...(added || '').split(/[,\n]+/)]
+    .map(s => s.trim()).filter(Boolean);
+  const seen = new Set(), out = [];
+  for (const t of terms) { const k = t.toLowerCase(); if (!seen.has(k)) { seen.add(k); out.push(t); } }
+  return out.join(', ');
+}
 let REGEN_MODAL_CTX = null;
 function openRegenModal(title, subtitle, onRun) {
   REGEN_MODAL_CTX = { onRun };
   document.getElementById('regenModalTitle').textContent = title;
   document.getElementById('regenModalSubtitle').textContent = subtitle || '';
   document.getElementById('regenModalSteer').value = '';
-  document.getElementById('regenModalOmit').value = '';
+  document.getElementById('regenModalOmit').value = GLOBAL_OMIT;
   document.getElementById('regenModal').classList.add('open');
 }
 function closeRegenModal() {
@@ -903,6 +924,10 @@ async function runRegenModalConfirm() {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
   try {
     await REGEN_MODAL_CTX.onRun(steer, omit);
+    if (omit && omit !== GLOBAL_OMIT) {
+      GLOBAL_OMIT = mergeOmit(GLOBAL_OMIT, omit);
+      w('saveOmitList', { campaignId: CAMPAIGN_ID, omit: GLOBAL_OMIT }).catch(() => {});
+    }
     closeRegenModal();
   } catch (e) {
     alert('Regenerate failed: ' + e.message);
@@ -1114,12 +1139,12 @@ async function runFullCampaignRegen(btn) {
   try {
     for (const f of POSITIONING_FIELDS) {
       btn.textContent = '⟳ ' + f.label + '…';
-      await runPositioningField(f.key, '', '');
+      await runPositioningField(f.key, '', GLOBAL_OMIT);
     }
     for (const m of RESEARCH_MODULES) {
       if (researchModuleBlocked(m)) continue;
       btn.textContent = '⟳ ' + m.label + '…';
-      await runResearchModule(m.key, '', '');
+      await runResearchModule(m.key, '', GLOBAL_OMIT);
     }
     btn.textContent = '✓ done — review & save below';
     setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 3000);
@@ -1783,6 +1808,7 @@ function renderAssetTitleNode(t, data) {
 
 function init() {
   applyCollapseState();
+  loadOmitList();
   loadResearch();
   loadClusters();
   loadMethods();
