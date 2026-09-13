@@ -294,7 +294,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: CAMPAIGN RESEARCH ══════════════════════ -->
   <div class="panel" data-panel="research">
     <div class="stage-hd"><h2>Campaign Research</h2><span class="stagetag">stage 1</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-research','Campaign Research tab','research')">📝 Tab note</button></div>
-    <p class="stage-sub">Trend and customer research. Positioning + Statement/Unique Opportunity auto-cascade with a Keywords regen; the 13 research modules below are each their own real Notion field.</p>
+    <p class="stage-sub">Trend and customer research. Positioning + Statement/Unique Opportunity auto-cascade with a Keywords regen; every one of the 13 research modules below has a real ⟳ regen with an optional override that merges with Main Keywords — <b>staged for review</b>, nothing writes to Notion until you hit 💾 Save.</p>
 
     <section class="card" data-ckey="card-research-positioning">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Positioning</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-positioning','Positioning','research')">📝</button></div>
@@ -315,7 +315,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </section>
 
     <section class="card" data-ckey="card-research-modules">
-      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">6 have a real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">all 13 have a real regen, staged</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
       <div class="card-body" id="researchModulesBody">
         <div class="loadnote">Loading…</div>
       </div>
@@ -328,30 +328,50 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <p class="stage-sub">Everything that governs how this campaign LOOKS. Method and Asset consume this; they don't own it. Loaded from <code>getHubPalette</code>; each card's ⟳ calls the matching <code>generateResearch*</code> action.</p>
 
     <section class="card" data-ckey="card-design-direction">
-      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span id="direction-badge" class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
       <div class="card-body">
-        <p class="card-desc">One call (<code>generateResearchDesign</code>) rewrites all three together, grounded in Main Keywords as the dominant signal.</p>
+        <p class="card-desc">One call (<code>generateResearchDesign</code>) drafts all three together, grounded in Main Keywords. <b>Staged for review</b> — nothing writes to Notion until you hit 💾 Save.</p>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
           <input type="text" class="finput" id="designSteerInput" placeholder="steer (optional)" style="width:200px;">
           <button class="btn primary" id="designRegenBtn" onclick="runRegenDesign()">⟳ regenerate direction</button>
+          <button class="btn" id="designSaveBtn" onclick="saveStagedDesign()" disabled>💾 Save to Notion</button>
         </div>
-        <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualRegister','Visual Register','design')">📝</button></div></div>
-        <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div><button class="notebtn" onclick="openNoteModal('design-photographyDirection','Photography Direction','design')">📝</button></div></div>
-        <div class="field"><div class="frow"><span class="fname">Visual Avoid</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-visualAvoid">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualAvoid','Visual Avoid','design')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh" id="badge-visualRegister">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualRegister','Visual Register','design')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh" id="badge-photographyDirection">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div><button class="notebtn" onclick="openNoteModal('design-photographyDirection','Photography Direction','design')">📝</button></div></div>
+        <div class="field"><div class="frow"><span class="fname">Visual Avoid</span><span class="fbadge fresh" id="badge-visualAvoid">live</span><div class="fmeta"><div class="fval" id="f-visualAvoid">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualAvoid','Visual Avoid','design')">📝</button></div></div>
       </div>
     </section>
 
     <section class="card" data-ckey="card-design-palette">
-      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Palette</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Palette</h3><span id="palette-badge" class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-palette','Palette','design')">📝</button></div>
       <div class="card-body">
-        <div class="field"><div class="frow"><span class="fname">Resolved hex</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-palette">—</div><div class="fctrl"><button class="btn" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button><button class="notebtn" onclick="openNoteModal('design-palette','Palette','design')">📝</button></div></div></div></div>
+        <p class="card-desc">Researched from campaign + product research, or seeded from an uploaded reference image. <b>Staged for review</b> — nothing writes to Notion until you hit 💾 Save.</p>
+        <div id="paletteImgHold" style="display:none;align-items:center;gap:8px;margin-bottom:8px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);">
+          <img id="paletteImgThumb" src="" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;flex-shrink:0;">
+          <span style="flex:1;min-width:0;font-size:10.5px;color:var(--ink2);">Reference image held — steers ⟳ regenerate palette.</span>
+          <button class="btn" onclick="clearPaletteImage()" style="flex-shrink:0;">✕</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+          <label class="btn" style="cursor:pointer;">🖼 generate from picture<input type="file" accept="image/*" id="paletteImgInput" style="display:none;" onchange="setPaletteImage(this)"></label>
+          <input type="text" class="finput" id="paletteSteerInput" placeholder="steer (optional)" style="width:160px;">
+          <button class="btn primary" id="paletteRegenBtn" onclick="runRegenPalette()">↻ regenerate palette</button>
+          <button class="btn" id="paletteSaveBtn" onclick="saveStagedPalette()" disabled>💾 Save to Notion</button>
+        </div>
+        <div id="paletteSwatchStrip" style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;margin-bottom:8px;"></div>
+        <div id="paletteSwatchDetail" style="max-width:420px;"></div>
       </div>
     </section>
 
     <section class="card" data-ckey="card-design-fonts">
-      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Fonts</h3><span class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Fonts</h3><span id="fonts-badge" class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-fonts','Fonts','design')">📝</button></div>
       <div class="card-body">
-        <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div><div class="fctrl"><button class="btn" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div></div></div>
+        <p class="card-desc"><b>Staged for review</b> — nothing writes to Notion until you hit 💾 Save.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
+          <input type="text" class="finput" id="fontsSteerInput" placeholder="steer (optional)" style="width:200px;">
+          <button class="btn primary" id="fontsRegenBtn" onclick="runRegenFonts()">↻ regenerate fonts</button>
+          <button class="btn" id="fontsSaveBtn" onclick="saveStagedFonts()" disabled>💾 Save to Notion</button>
+        </div>
+        <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh" id="badge-fonts">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div></div><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div>
       </div>
     </section>
   </div>
@@ -846,45 +866,62 @@ async function runViewSources(query, keywords) {
 function closeSourcesModal() { document.getElementById('sourcesModal').classList.remove('open'); }
 
 // ══════════════════════ CAMPAIGN RESEARCH TAB ══════════════════════
-// 6 of the 13 modules have a confirmed, self-contained real regen action;
-// the rest (News Feed / Thoughts / Platforms & Methods) regen via the
-// generic sendPrompt + updateResearch pair, same pattern hard-grind uses
-// for its Statement/Unique Opportunity/News Feed "field research" modal.
-// Influencer Intelligence and Trend Round-Up depend on a YouTube-channel
-// chain this page doesn't build (getTopYoutubeChannels → Influencer
-// Intelligence → getChannelTopicsDigest → Trend Round-Up) — shown read-only.
+// Every module has a real regen: 10 call their own grounded worker action
+// (kwOverride now MERGES with Main Keywords server-side, never replaces
+// it); 3 (Thoughts / Platforms & Methods / TikTok Trends) have no
+// dedicated action so they use the generic sendPrompt + commit pair, same
+// pattern hard-grind's News Feed always used. Every regen runs with
+// stage:true (or, for the prompt-based ones, simply doesn't write) — the
+// result lands in RESEARCH_STAGE for review, and nothing reaches Notion
+// until 💾 Save calls updateResearch. Trend Round-Up depends on
+// Influencer Intelligence already existing (getChannelTopicsDigest reads
+// channel IDs back out of it) — flagged inline, not hidden.
 const RESEARCH_MODULES = [
   { key: 'newsFeed', label: 'News Feed', kind: 'prompt', prompt: kw => `Based on these campaign keywords: ${kw}\n\nGenerate a "News Feed" of 5-8 current news items, trends, or insights relevant to this campaign. Format each entry as:\nHEADLINE: brief context (max 25 words)\n\nOutput only the entries, no preamble.` },
-  { key: 'thoughts', label: 'Thoughts', kind: 'readonly' },
-  { key: 'platforms', label: 'Platforms & Methods', kind: 'readonly' },
+  { key: 'thoughts', label: 'Thoughts', kind: 'prompt', prompt: kw => `Based on these campaign keywords: ${kw}\n\nDraft 5-8 open strategic thoughts/questions an operator running this campaign should be considering right now — angles worth exploring, risks, or opportunities. One per line, no preamble, no numbering.` },
+  { key: 'platforms', label: 'Platforms & Methods', kind: 'prompt', prompt: kw => `Based on these campaign keywords: ${kw}\n\nRecommend 4-6 platform + content-method combinations best suited to reaching this audience (e.g. "TikTok — short-form educational"). One per line: PLATFORM — METHOD: one-line reason. No preamble, no numbering.` },
   { key: 'tikTokShopProducts', label: 'TikTok Shop Products', kind: 'action', action: 'getTikTokShopProducts' },
-  { key: 'kdpBestSellers', label: 'KDP Best Sellers', kind: 'readonly' },
+  { key: 'kdpBestSellers', label: 'KDP Best Sellers', kind: 'action', action: 'getKDPBestSellers' },
   { key: 'jobBoardListings', label: 'Job Board Listings', kind: 'action', action: 'getJobBoardListings' },
-  { key: 'tiktokTrends', label: 'TikTok Trends', kind: 'readonly' },
+  { key: 'tiktokTrends', label: 'TikTok Trends', kind: 'prompt', prompt: kw => `Based on these campaign keywords: ${kw}\n\nIdentify 8-10 current TikTok trends (sounds, formats, hashtag challenges) this campaign could ride. One per line: TREND NAME: one-line description of the trend and the angle for this audience. No preamble, no numbering.` },
   { key: 'trendIntelligence', label: 'Trend Intelligence', kind: 'action', action: 'getSMTrends' },
   { key: 'etsyProducts', label: 'Etsy Products', kind: 'action', action: 'getEtsyProducts' },
-  { key: 'youtubeOutliers', label: 'YouTube Outliers', kind: 'action', action: 'getTopYoutubeChannels' },
+  { key: 'youtubeOutliers', label: 'YouTube Outliers', kind: 'action', action: 'getYouTubeOutliers' },
   { key: 'seedChannels', label: 'Seed Channels', kind: 'action', action: 'getSeedChannels' },
-  { key: 'influencerIntelligence', label: 'Influencer Intelligence', kind: 'readonly' },
-  { key: 'trendRoundUp', label: 'Trend Round-Up', kind: 'readonly' },
+  { key: 'influencerIntelligence', label: 'Influencer Intelligence', kind: 'action', action: 'getTopYoutubeChannels' },
+  { key: 'trendRoundUp', label: 'Trend Round-Up', kind: 'action', action: 'getChannelTopicsDigest', dependsOn: 'influencerIntelligence', dependsLabel: 'Influencer Intelligence' },
 ];
+let RESEARCH_STAGE = {};
+function renderResearchModules() {
+  const r = window.RESEARCH_RECORD;
+  if (!r) return;
+  const body = document.getElementById('researchModulesBody');
+  body.innerHTML = RESEARCH_MODULES.map(m => {
+    const staged = RESEARCH_STAGE[m.key] != null;
+    const val = esc(staged ? RESEARCH_STAGE[m.key] : (r[m.key] || '(none on file)'));
+    const badge = staged ? '<span class="fbadge stale">staged — unsaved</span>' : '<span class="fbadge fresh">live</span>';
+    const blocked = m.dependsOn && !r[m.dependsOn] && !RESEARCH_STAGE[m.dependsOn];
+    const dep = blocked ? `<div style="font-size:10.5px;color:var(--stale);margin-top:4px;">needs ${esc(m.dependsLabel)} regenerated + saved first</div>` : '';
+    return `<div class="field"><div class="frow"><span class="fname">${esc(m.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>${dep}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+        <input type="text" class="finput" id="modOverride-${m.key}" placeholder="steer (optional, merges with Main Keywords)" style="min-width:180px;">
+        <button class="btn primary" id="mod-${m.key}-btn" ${blocked ? 'disabled' : ''} onclick="runResearchModule('${m.key}', this)">⟳ regen</button>
+        <button class="btn" id="modSave-${m.key}-btn" ${staged ? '' : 'disabled'} onclick="saveResearchModule('${m.key}', this)">💾 Save</button>
+      </div></div><button class="notebtn" onclick="openNoteModal('research-module-${m.key}','${esc(m.label)}','research')">📝</button></div></div>`;
+  }).join('');
+  refreshNoteMarks();
+}
 async function loadResearchTab() {
   try {
     const r = window.RESEARCH_RECORD || (await w('getResearch', { campaignId: CAMPAIGN_ID })).research;
     if (!r) return;
+    window.RESEARCH_RECORD = r;
     document.getElementById('f-campaignGoal').textContent = r.campaignGoal || '(none on file)';
     document.getElementById('f-painPoints').textContent = r.painPoints || '(none on file)';
     document.getElementById('f-campaignKeyMessage').textContent = r.campaignKeyMessage || '(none on file)';
     document.getElementById('f-statement').textContent = r.statement || '(none on file)';
     document.getElementById('f-uniqueOpportunity').textContent = r.uniqueOpportunity || '(none on file)';
-    const body = document.getElementById('researchModulesBody');
-    body.innerHTML = RESEARCH_MODULES.map(m => {
-      const val = esc(r[m.key] || '(none on file)');
-      const badge = m.kind === 'readonly' ? '<span class="fbadge stale">read-only</span>' : '<span class="fbadge manual">real regen</span>';
-      const ctrl = `<div class="fctrl">${m.kind === 'readonly' ? '' : `<button class="btn" id="mod-${m.key}-btn" onclick="runResearchModule('${m.key}', this)">⟳ regenerate</button>`}<button class="notebtn" onclick="openNoteModal('research-module-${m.key}','${esc(m.label)}','research')">📝</button></div>`;
-      return `<div class="field"><div class="frow"><span class="fname">${esc(m.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>${ctrl}</div></div></div>`;
-    }).join('');
-    refreshNoteMarks();
+    renderResearchModules();
   } catch (e) {
     document.getElementById('researchModulesBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
@@ -892,36 +929,101 @@ async function loadResearchTab() {
 async function runResearchModule(key, btn) {
   const mod = RESEARCH_MODULES.find(m => m.key === key);
   if (!mod) return;
+  const overrideEl = document.getElementById('modOverride-' + key);
+  const override = overrideEl ? (overrideEl.value || '').trim() : '';
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
   try {
     const kw = (window.RESEARCH_RECORD && window.RESEARCH_RECORD.keywords) || RAW_KEYWORDS || '';
+    let text;
     if (mod.kind === 'action') {
-      await w(mod.action, { researchId: RESEARCH_ID, campaignId: CAMPAIGN_ID });
-    } else if (mod.kind === 'prompt') {
-      const res = await w('sendPrompt', { prompt: mod.prompt(kw) });
-      await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: (res.text || '').trim() });
+      const r = await w(mod.action, { researchId: RESEARCH_ID, campaignId: CAMPAIGN_ID, kwOverride: override || undefined, stage: true });
+      text = r.text || '';
+    } else {
+      const res = await w('sendPrompt', { prompt: mod.prompt(override ? `${kw}, with additional focus: ${override}` : kw) });
+      text = (res.text || '').trim();
     }
-    window.RESEARCH_RECORD = null;
-    await loadResearchTab();
+    RESEARCH_STAGE[key] = text;
+    renderResearchModules();
   } catch (e) {
     alert('Regenerate failed: ' + e.message);
     btn.disabled = false; btn.textContent = o;
   }
 }
+async function saveResearchModule(key, btn) {
+  if (RESEARCH_STAGE[key] == null) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: RESEARCH_STAGE[key] });
+    window.RESEARCH_RECORD[key] = RESEARCH_STAGE[key];
+    delete RESEARCH_STAGE[key];
+    renderResearchModules();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
 
 // ══════════════════════ DESIGN TAB ══════════════════════
+// Palette/Fonts/Direction all regen with stage:true (already the pattern
+// the real Content Hubs card uses) — reviewed here, committed verbatim via
+// saveResearchDesignField only when the operator hits Save. "generate from
+// picture" holds an uploaded reference image client-side and passes it as
+// generateResearchPalette's existing `image` param.
+let DESIGN_LIVE = { register:'', photography:'', avoid:'', palette:null, fonts:null };
+let DESIGN_STAGE = { register:null, photography:null, avoid:null, palette:null, fonts:null };
+let PALETTE_IMAGE = null;
+const HP_ROLES = [['bg','Background'],['surface','Card'],['ink','Body text'],['ink-head','Headings'],['ink-soft','Muted text'],['line','Outlines'],['sea','Primary / links'],['deep','Dark band'],['deep-ink','Text on dark'],['accent','Accent / button']];
+
+function renderDesignDirection() {
+  const dirty = DESIGN_STAGE.register != null;
+  document.getElementById('f-visualRegister').textContent = dirty ? DESIGN_STAGE.register : (DESIGN_LIVE.register || '(none on file)');
+  document.getElementById('f-photographyDirection').textContent = dirty ? DESIGN_STAGE.photography : (DESIGN_LIVE.photography || '(none on file)');
+  document.getElementById('f-visualAvoid').textContent = dirty ? DESIGN_STAGE.avoid : (DESIGN_LIVE.avoid || '(none on file)');
+  ['badge-visualRegister','badge-photographyDirection','badge-visualAvoid'].forEach(id => {
+    const el = document.getElementById(id);
+    el.textContent = dirty ? 'staged — unsaved' : 'live';
+    el.className = dirty ? 'fbadge stale' : 'fbadge fresh';
+  });
+  document.getElementById('direction-badge').textContent = dirty ? 'staged — unsaved' : 'real regen';
+  document.getElementById('designSaveBtn').disabled = !dirty;
+}
+function renderDesignPalette() {
+  const pal = DESIGN_STAGE.palette || DESIGN_LIVE.palette;
+  const dirty = DESIGN_STAGE.palette != null;
+  const strip = document.getElementById('paletteSwatchStrip');
+  const detail = document.getElementById('paletteSwatchDetail');
+  if (pal) {
+    strip.innerHTML = HP_ROLES.map(([k]) => `<span style="width:18px;height:26px;display:inline-block;background:${esc(pal[k] || '#888')};"></span>`).join('');
+    detail.innerHTML = HP_ROLES.map(([k,label]) => `<span style="display:inline-flex;align-items:center;gap:5px;font-size:10.5px;color:var(--ink2);margin:2px 8px 2px 0;"><span style="width:12px;height:12px;border-radius:3px;border:1px solid var(--border2);background:${esc(pal[k] || '#888')};"></span>${label} <span style="opacity:.75;">${esc(pal[k] || '')}</span></span>`).join('');
+  } else {
+    strip.innerHTML = '';
+    detail.innerHTML = '<span class="loadnote">No palette on file — ↻ regenerate.</span>';
+  }
+  document.getElementById('palette-badge').textContent = dirty ? 'staged — unsaved' : 'real regen';
+  document.getElementById('paletteSaveBtn').disabled = !dirty;
+}
+function renderDesignFonts() {
+  const f = DESIGN_STAGE.fonts || DESIGN_LIVE.fonts;
+  const dirty = DESIGN_STAGE.fonts != null;
+  document.getElementById('f-fonts').textContent = f ? `${f.display} / ${f.body} / ${f.mono}` : '(none on file)';
+  document.getElementById('badge-fonts').textContent = dirty ? 'staged — unsaved' : 'live';
+  document.getElementById('badge-fonts').className = dirty ? 'fbadge stale' : 'fbadge fresh';
+  document.getElementById('fonts-badge').textContent = dirty ? 'staged — unsaved' : 'real regen';
+  document.getElementById('fontsSaveBtn').disabled = !dirty;
+}
 async function loadDesignTab() {
   try {
     const r = await w('getHubPalette', { campaignId: CAMPAIGN_ID });
-    document.getElementById('f-visualRegister').textContent = (r.design && r.design.register) || '(none on file)';
-    document.getElementById('f-photographyDirection').textContent = (r.design && r.design.photography) || '(none on file)';
-    document.getElementById('f-visualAvoid').textContent = (r.design && r.design.avoid) || '(none on file)';
-    document.getElementById('f-palette').textContent = r.palette ? Object.entries(r.palette).map(([k,v]) => `${k} ${v}`).join(' · ') : '(none on file)';
-    document.getElementById('f-fonts').textContent = r.fonts ? `${r.fonts.display} / ${r.fonts.body} / ${r.fonts.mono}` : '(none on file)';
+    DESIGN_LIVE = {
+      register: (r.design && r.design.register) || '',
+      photography: (r.design && r.design.photography) || '',
+      avoid: (r.design && r.design.avoid) || '',
+      palette: r.palette || null,
+      fonts: r.fonts || null,
+    };
+    renderDesignDirection(); renderDesignPalette(); renderDesignFonts();
   } catch (e) {
-    ['f-visualRegister','f-photographyDirection','f-visualAvoid','f-palette','f-fonts'].forEach(id => {
-      document.getElementById(id).textContent = 'Load failed: ' + e.message;
-    });
+    ['f-visualRegister','f-photographyDirection','f-visualAvoid'].forEach(id => { document.getElementById(id).textContent = 'Load failed: ' + e.message; });
   }
 }
 async function runRegenDesign() {
@@ -929,30 +1031,85 @@ async function runRegenDesign() {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
   const instructions = (document.getElementById('designSteerInput').value || '').trim() || undefined;
   try {
-    const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions });
-    document.getElementById('f-visualRegister').textContent = r.design.register;
-    document.getElementById('f-photographyDirection').textContent = r.design.photography;
-    document.getElementById('f-visualAvoid').textContent = r.design.avoid;
+    const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions, stage: true, slug: 'care-gap' });
+    DESIGN_STAGE.register = r.design.register;
+    DESIGN_STAGE.photography = r.design.photography;
+    DESIGN_STAGE.avoid = r.design.avoid;
+    renderDesignDirection();
   } catch (e) { alert('Regenerate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
+}
+async function saveStagedDesign() {
+  const btn = document.getElementById('designSaveBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Visual Register', text: DESIGN_STAGE.register });
+    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Photography Direction', text: DESIGN_STAGE.photography });
+    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Visual Avoid', text: DESIGN_STAGE.avoid });
+    DESIGN_LIVE.register = DESIGN_STAGE.register; DESIGN_LIVE.photography = DESIGN_STAGE.photography; DESIGN_LIVE.avoid = DESIGN_STAGE.avoid;
+    DESIGN_STAGE.register = DESIGN_STAGE.photography = DESIGN_STAGE.avoid = null;
+    renderDesignDirection();
+  } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
+}
+function setPaletteImage(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  if (f.size > 4000000) { alert('Keep the image under 4 MB.'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    PALETTE_IMAGE = reader.result;
+    document.getElementById('paletteImgThumb').src = PALETTE_IMAGE;
+    document.getElementById('paletteImgHold').style.display = 'flex';
+  };
+  reader.readAsDataURL(f);
+}
+function clearPaletteImage() {
+  PALETTE_IMAGE = null;
+  document.getElementById('paletteImgHold').style.display = 'none';
+  const input = document.getElementById('paletteImgInput'); if (input) input.value = '';
 }
 async function runRegenPalette() {
   const btn = document.getElementById('paletteRegenBtn');
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
+  const instructions = (document.getElementById('paletteSteerInput').value || '').trim() || undefined;
   try {
-    const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID });
-    document.getElementById('f-palette').textContent = Object.entries(r.palette).map(([k,v]) => `${k} ${v}`).join(' · ');
+    const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID, instructions, image: PALETTE_IMAGE || undefined, stage: true, slug: 'care-gap' });
+    DESIGN_STAGE.palette = r.palette;
+    renderDesignPalette();
   } catch (e) { alert('Regenerate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
+}
+async function saveStagedPalette() {
+  const btn = document.getElementById('paletteSaveBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    const strip = Object.entries(DESIGN_STAGE.palette).map(([k,v]) => `${k} ${v}`).join(' · ');
+    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Palette', text: `${strip}\n\n${JSON.stringify(DESIGN_STAGE.palette)}` });
+    DESIGN_LIVE.palette = DESIGN_STAGE.palette;
+    DESIGN_STAGE.palette = null;
+    renderDesignPalette();
+  } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function runRegenFonts() {
   const btn = document.getElementById('fontsRegenBtn');
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
+  const instructions = (document.getElementById('fontsSteerInput').value || '').trim() || undefined;
   try {
-    const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID });
-    document.getElementById('f-fonts').textContent = `${r.fonts.display} / ${r.fonts.body} / ${r.fonts.mono}`;
+    const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID, instructions, stage: true, slug: 'care-gap' });
+    DESIGN_STAGE.fonts = r.fonts;
+    renderDesignFonts();
   } catch (e) { alert('Regenerate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
+}
+async function saveStagedFonts() {
+  const btn = document.getElementById('fontsSaveBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    const f = DESIGN_STAGE.fonts;
+    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Fonts', text: `${f.display} / ${f.body} / ${f.mono}\n\n${JSON.stringify(f)}` });
+    DESIGN_LIVE.fonts = DESIGN_STAGE.fonts;
+    DESIGN_STAGE.fonts = null;
+    renderDesignFonts();
+  } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 
 // ══════════════════════ PRODUCT RESEARCH TAB ══════════════════════

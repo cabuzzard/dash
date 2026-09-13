@@ -25483,6 +25483,18 @@ Call submit_product_stack_proposals with your result.`;
           statement:         "Statement",
           palette:           "Palette",
           fonts:             "Fonts",
+          // Added for the microsite's regen-before-save research-module
+          // flow (stage:true regen → review → this commits verbatim) —
+          // these fields already exist on the Research DB, just weren't
+          // reachable through this generic action before.
+          tikTokShopProducts:     "TikTok Shop Products",
+          kdpBestSellers:         "KDP Best Sellers",
+          jobBoardListings:       "Job Board Listings",
+          etsyProducts:           "Etsy Products",
+          youtubeOutliers:        "YouTube Outliers",
+          seedChannels:           "Seed Channels",
+          influencerIntelligence:"Influencer Intelligence",
+          trendRoundUp:           "Trend Round-Up",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
