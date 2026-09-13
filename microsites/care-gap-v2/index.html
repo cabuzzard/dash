@@ -765,6 +765,7 @@ function renderKeywordsAndIdeas() {
     l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>
         <span class="kwbtns">
+          <input type="text" class="finput" id="clusterSteer-${esc(c.id)}" placeholder="steer (optional)" style="width:90px;" onclick="event.stopPropagation()">
           <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           <button class="iconbtn primary" title="Commit this cluster to Notion" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾</button>
@@ -785,6 +786,7 @@ function renderKeywordsAndIdeas() {
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>
         <span class="kwbtns">
           <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
+          <input type="text" class="finput" id="clusterSteer-${esc(c.id)}" placeholder="steer (optional)" style="width:90px;" onclick="event.stopPropagation()">
           <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();regenCluster('${esc(c.id)}', this)">↻</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
@@ -856,7 +858,9 @@ async function editCluster(clusterId, field, value) {
 }
 async function regenCluster(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try { const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId }); SEO_CLUSTERS.staged = r.staged || []; SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed; renderKeywordsAndIdeas(); }
+  const steerEl = document.getElementById('clusterSteer-' + clusterId);
+  const guidance = steerEl ? (steerEl.value || '').trim() || undefined : undefined;
+  try { const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance }); SEO_CLUSTERS.staged = r.staged || []; SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed; renderKeywordsAndIdeas(); }
   catch (e) { alert('Regenerate failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function commitCluster(clusterId, btn) {
