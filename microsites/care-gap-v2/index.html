@@ -781,6 +781,7 @@ function renderKeywordsAndIdeas() {
       <div class="cighd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
         <span class="kwbtns">
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
+          ${has ? `<button class="iconbtn" title="Clear all proposed ideas for this cluster" onclick="event.stopPropagation();clearClusterIdeas('${esc(c.id)}', this)">✕</button>` : ''}
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-clusterideas-${esc(c.id)}','${esc(c.name)} cluster ideas','keywords')">📝</button>
         </span>
       </div>
@@ -870,6 +871,23 @@ async function dismissClusterIdea(clusterId, productId, btn) {
   btn.disabled = true;
   try { const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
   catch (e) { alert('Dismiss failed: ' + e.message); btn.disabled = false; }
+}
+// Clear every proposed product idea for one cluster at once — the
+// section-level counterpart to dismissClusterIdea (which drops just one).
+// No bulk server action exists, so this dismisses each in turn against
+// the same real removeClusterProductStack call.
+async function clearClusterIdeas(clusterId, btn) {
+  const c = SEO_CLUSTERS.staged.find(x => x.id === clusterId);
+  if (!c || !c.products || !c.products.length) return;
+  if (!confirm(`Clear all ${c.products.length} proposed product idea(s) for "${c.name}"?`)) return;
+  btn.disabled = true;
+  try {
+    for (const p of c.products.slice()) {
+      const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId: p.id });
+      SEO_CLUSTERS.staged = r.staged || SEO_CLUSTERS.staged;
+    }
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Clear failed: ' + e.message); btn.disabled = false; }
 }
 async function deleteStagedCluster(clusterId, btn) {
   btn.disabled = true;
