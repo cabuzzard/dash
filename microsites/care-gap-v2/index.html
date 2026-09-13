@@ -410,8 +410,14 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
     <section class="card" data-ckey="card-research-modules">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Research modules <span style="font-weight:400;color:var(--ink3);">(13)</span></h3><span class="tag manual">all 13 have a real regen, staged</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-modules','Research modules','research')">📝</button></div>
-      <div class="card-body" id="researchModulesBody">
-        <div class="loadnote">Loading…</div>
+      <div class="card-body">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+          <button class="btn primary" onclick="openRegenModal('Run All Research Modules', 'Same steer + omit applied to all 13 — stages every result, saves nothing until you hit Save all.', (steer, omit) => runAllResearchModules(steer, omit))">⟳ run all</button>
+          <button class="btn" id="modSaveAllBtn" onclick="saveAllResearchModules(this)" disabled>💾 Save all</button>
+        </div>
+        <div id="researchModulesBody">
+          <div class="loadnote">Loading…</div>
+        </div>
       </div>
     </section>
   </div>
@@ -1217,7 +1223,32 @@ function renderResearchModules() {
         <button class="btn" id="modSave-${m.key}-btn" ${staged ? '' : 'disabled'} onclick="saveResearchModule('${m.key}', this)">💾 Save</button>
       </div></div><button class="notebtn" onclick="openNoteModal('research-module-${m.key}','${esc(m.label)}','research')">📝</button></div></div>`;
   }).join('');
+  const saveAllBtn = document.getElementById('modSaveAllBtn');
+  if (saveAllBtn) saveAllBtn.disabled = !Object.keys(RESEARCH_STAGE).length;
   refreshNoteMarks();
+}
+async function runAllResearchModules(steer, omit) {
+  for (const m of RESEARCH_MODULES) {
+    if (researchModuleBlocked(m)) continue;
+    await runResearchModule(m.key, steer, omit);
+  }
+}
+async function saveAllResearchModules(btn) {
+  const keys = Object.keys(RESEARCH_STAGE);
+  if (!keys.length) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    for (const key of keys) {
+      await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: RESEARCH_STAGE[key] });
+      window.RESEARCH_RECORD[key] = RESEARCH_STAGE[key];
+      delete RESEARCH_STAGE[key];
+    }
+  } catch (e) {
+    alert('Save all failed partway through: ' + e.message);
+  } finally {
+    btn.textContent = o;
+    renderResearchModules();
+  }
 }
 async function loadResearchTab() {
   try {
