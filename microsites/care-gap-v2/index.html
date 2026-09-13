@@ -268,9 +268,38 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mtitle">Product Research</div>
       <div class="mfield" id="productModalTitle"></div>
       <div id="productModalLink" style="margin-bottom:10px;"></div>
+      <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin-bottom:6px;">Stack</div>
+        <div id="productModalStackRow"></div>
+      </div>
+      <div style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--border);">
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin-bottom:6px;">Methods</div>
+        <div id="productModalMethodsRow"></div>
+      </div>
       <div id="productModalBody"></div>
       <div class="modalrow">
         <button class="btn" onclick="closeProductModal()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modaloverlay" id="addProductModal">
+    <div class="modalbox">
+      <div class="mtitle">Add Product</div>
+      <div class="mfield">New Product record</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Title
+          <input type="text" id="apTitle" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Product name">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Stack
+          <select id="apStack" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="apOnStackChange()"></select>
+        </label>
+        <input type="text" id="apNewStack" class="finput" style="width:100%;box-sizing:border-box;display:none;" placeholder="New stack name">
+      </div>
+      <div id="apResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeAddProductModal()">Cancel</button>
+        <button class="btn primary" id="apCreateBtn" onclick="runAddProduct()">+ Create</button>
       </div>
     </div>
   </div>
@@ -422,7 +451,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: PRODUCT RESEARCH ══════════════════════ -->
   <div class="panel" data-panel="product">
-    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
+    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="btn primary" style="margin-left:auto;" onclick="openAddProductModal()">+ Add Product</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
     <p class="stage-sub">Every product on this campaign, nested by Product Stack. Click a product to open its 11 🔬 Product Research fields, each with its own regen — staged for review before Save.</p>
     <div id="productListBody"><div class="loadnote">Loading…</div></div>
   </div>
@@ -616,6 +645,8 @@ document.addEventListener('DOMContentLoaded', () => {
   productOverlay.addEventListener('click', e => { if (e.target === productOverlay) closeProductModal(); });
   const caOverlay = document.getElementById('createAssetModal');
   caOverlay.addEventListener('click', e => { if (e.target === caOverlay) closeCreateAssetModal(); });
+  const apOverlay = document.getElementById('addProductModal');
+  apOverlay.addEventListener('click', e => { if (e.target === apOverlay) closeAddProductModal(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -1235,6 +1266,8 @@ async function archiveProduct(productId, btn) {
 }
 let PRODUCT_MODAL_ID = null;
 let PRODUCT_STAGE = {};
+let PRODUCT_MODAL_METHODS = [];
+let ALL_METHODS_CACHE = null;
 async function openProductModal(productId) {
   PRODUCT_MODAL_ID = productId;
   PRODUCT_STAGE = {};
@@ -1243,16 +1276,132 @@ async function openProductModal(productId) {
   document.getElementById('productModalTitle').textContent = prod ? prod.name : 'Product';
   document.getElementById('productModalLink').innerHTML = `<a class="kwlink" href="${notionUrl(productId)}" target="_blank" rel="noopener">↗ open product in Notion</a>`;
   document.getElementById('productModalBody').innerHTML = '<div class="loadnote">Loading…</div>';
+  document.getElementById('productModalStackRow').innerHTML = '<div class="loadnote">Loading…</div>';
+  document.getElementById('productModalMethodsRow').innerHTML = '<div class="loadnote">Loading…</div>';
+  renderProductModalStack();
   try {
-    const r = await w('getProductStrategy', { productId });
-    window.PRODUCT_STRATEGY_URL = r.strategy ? r.strategy.url : null;
-    window.PRODUCT_STRATEGY_FIELDS = (r.strategy && r.strategy.fields) || {};
+    const [strat, research] = await Promise.all([
+      w('getProductStrategy', { productId }),
+      w('getProductResearch', { productId }).catch(() => ({ product: { methods: [] } })),
+    ]);
+    window.PRODUCT_STRATEGY_URL = strat.strategy ? strat.strategy.url : null;
+    window.PRODUCT_STRATEGY_FIELDS = (strat.strategy && strat.strategy.fields) || {};
+    PRODUCT_MODAL_METHODS = (research.product && research.product.methods) || [];
     renderProductModalFields();
+    renderProductModalMethods();
   } catch (e) {
     document.getElementById('productModalBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
 function closeProductModal() { document.getElementById('productModal').classList.remove('open'); }
+function stackOptions(selected) {
+  const stacks = [...new Set(CAMPAIGN_PRODUCTS.map(p => p.stack).filter(Boolean))].sort();
+  return `<option value="__none__" ${!selected ? 'selected' : ''}>— No Stack —</option>` +
+    stacks.map(s => `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`).join('') +
+    `<option value="__new__">+ New stack…</option>`;
+}
+function renderProductModalStack() {
+  const prod = CAMPAIGN_PRODUCTS.find(p => p.id === PRODUCT_MODAL_ID);
+  const current = prod ? prod.stack : null;
+  document.getElementById('productModalStackRow').innerHTML = `
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <select class="finput" id="productModalStackSelect" style="width:auto;" onchange="pmOnStackSelectChange()">${stackOptions(current)}</select>
+      <input type="text" id="productModalNewStack" class="finput" style="width:140px;display:none;" placeholder="New stack name">
+      <button class="btn primary" onclick="savePmStack()">💾 Save</button>
+    </div>`;
+}
+function pmOnStackSelectChange() {
+  const sel = document.getElementById('productModalStackSelect');
+  document.getElementById('productModalNewStack').style.display = sel.value === '__new__' ? 'inline-block' : 'none';
+}
+async function savePmStack() {
+  const sel = document.getElementById('productModalStackSelect');
+  let stack = sel.value;
+  if (stack === '__new__') stack = (document.getElementById('productModalNewStack').value || '').trim();
+  if (stack === '__none__') stack = '';
+  try {
+    await w('setProductStack', { productId: PRODUCT_MODAL_ID, stack: stack || 'No Stack' });
+    const prod = CAMPAIGN_PRODUCTS.find(p => p.id === PRODUCT_MODAL_ID);
+    if (prod) prod.stack = stack || null;
+    renderProductModalStack();
+    loadProductTab();
+  } catch (e) { alert('Save failed: ' + e.message); }
+}
+function renderProductModalMethods() {
+  const row = document.getElementById('productModalMethodsRow');
+  const chips = PRODUCT_MODAL_METHODS.map(m => `<span class="kw-pill" style="display:inline-flex;align-items:center;gap:6px;">${esc(m.name)}<button class="iconbtn" style="padding:0 4px;font-size:9px;" title="Remove this method" onclick="removePmMethod('${esc(m.id)}')">✕</button></span>`).join(' ');
+  row.innerHTML = `
+    <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">${chips || '<span style="color:var(--ink3);font-size:11px;">No methods attached.</span>'}</div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+      <select class="finput" id="productModalMethodSelect" style="width:auto;min-width:180px;"><option value="">Loading…</option></select>
+      <button class="btn primary" onclick="addPmMethod()">+ Add</button>
+    </div>`;
+  loadAllMethodsForPicker();
+}
+async function loadAllMethodsForPicker() {
+  const sel = document.getElementById('productModalMethodSelect');
+  if (!sel) return;
+  try {
+    if (!ALL_METHODS_CACHE) { const r = await w('searchMethods', { query: '' }); ALL_METHODS_CACHE = r.methods || []; }
+    const attached = new Set(PRODUCT_MODAL_METHODS.map(m => m.id));
+    const opts = ALL_METHODS_CACHE.filter(m => !attached.has(m.id));
+    sel.innerHTML = opts.length ? opts.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('') : '<option value="">(none left to add)</option>';
+  } catch (e) {
+    sel.innerHTML = '<option value="">(load failed)</option>';
+  }
+}
+async function addPmMethod() {
+  const sel = document.getElementById('productModalMethodSelect');
+  const methodId = sel.value;
+  if (!methodId) return;
+  try {
+    await w('addProductMethod', { productId: PRODUCT_MODAL_ID, methodId });
+    const r = await w('getProductResearch', { productId: PRODUCT_MODAL_ID });
+    PRODUCT_MODAL_METHODS = (r.product && r.product.methods) || [];
+    renderProductModalMethods();
+  } catch (e) { alert('Add method failed: ' + e.message); }
+}
+async function removePmMethod(methodId) {
+  try {
+    await w('removeProductMethod', { productId: PRODUCT_MODAL_ID, methodId });
+    PRODUCT_MODAL_METHODS = PRODUCT_MODAL_METHODS.filter(m => m.id !== methodId);
+    renderProductModalMethods();
+  } catch (e) { alert('Remove method failed: ' + e.message); }
+}
+// ── Add Product modal ──────────────────────────────────────────────
+function openAddProductModal() {
+  document.getElementById('apTitle').value = '';
+  document.getElementById('apNewStack').value = '';
+  document.getElementById('apNewStack').style.display = 'none';
+  document.getElementById('apStack').innerHTML = stackOptions(null);
+  document.getElementById('apResult').textContent = '';
+  document.getElementById('addProductModal').classList.add('open');
+}
+function closeAddProductModal() { document.getElementById('addProductModal').classList.remove('open'); }
+function apOnStackChange() {
+  document.getElementById('apNewStack').style.display = document.getElementById('apStack').value === '__new__' ? 'inline-block' : 'none';
+}
+async function runAddProduct() {
+  const title = (document.getElementById('apTitle').value || '').trim();
+  const resEl = document.getElementById('apResult');
+  if (!title) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Title required.'; return; }
+  let stack = document.getElementById('apStack').value;
+  if (stack === '__new__') stack = (document.getElementById('apNewStack').value || '').trim();
+  if (stack === '__none__') stack = '';
+  const btn = document.getElementById('apCreateBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Creating…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Creating…';
+  try {
+    const r = await w('createProduct', { title, stack: stack || undefined, campaignId: CAMPAIGN_ID, status: 'In Development' });
+    CAMPAIGN_PRODUCTS = [];
+    await loadProductTab();
+    resEl.style.color = 'var(--fresh)'; resEl.textContent = `✓ Created "${r.name}".`;
+    setTimeout(closeAddProductModal, 800);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Failed: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = o;
+}
 function renderProductModalFields() {
   const fields = window.PRODUCT_STRATEGY_FIELDS || {};
   const recLink = window.PRODUCT_STRATEGY_URL ? `<a class="kwlink" href="${esc(window.PRODUCT_STRATEGY_URL)}" target="_blank" rel="noopener" style="display:block;margin-bottom:10px;">↗ open Product Research record in Notion</a>` : '';
