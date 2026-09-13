@@ -16338,6 +16338,71 @@ Return ONLY this JSON object, no other text, no markdown fences:
         return json({ success: true, strategyId, url: strategyUrl, fields });
       }
 
+      // ── regenerateStrategyField ──
+      // Per-field counterpart to regenerateAllStrategyFields — regenerates
+      // ONE 🔬 Product Research field with an optional steer, grounded in
+      // the same product + campaign research brief. Never writes: the
+      // microsite's regen-before-save flow reviews the result, then calls
+      // updateProductStrategyField (below) to commit it verbatim.
+      if (body.action === "regenerateStrategyField") {
+        const { productId, campaignId, field, instructions } = body;
+        if (!productId || !field) return json({ error: "productId and field required" }, 400);
+        if (!STRATEGY_FIELDS.includes(field)) return json({ error: "Unknown field: " + field }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const pp = productPage.properties || {};
+        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+
+        let researchBlock = '';
+        if (campaignId) {
+          const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+          }).then(r => r.json()).catch(() => ({ results: [] }));
+          const rp = (researchRows.results || [])[0]?.properties;
+          if (rp) {
+            const rtR = key => (rp[key]?.rich_text || []).map(t => t.plain_text).join("");
+            const lines = [
+              rtR("Statement") && `Statement: ${rtR("Statement")}`,
+              rtR("Unique Opportunity") && `Unique Opportunity: ${rtR("Unique Opportunity")}`,
+              rtR("Key Message") && `Key Message: ${rtR("Key Message")}`,
+              rtR("Campaign Goal") && `Campaign Goal: ${rtR("Campaign Goal")}`,
+              rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
+            ].filter(Boolean);
+            if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+          }
+        }
+
+        const existing = await findBestProductResearchRecord(hdr, productId);
+        const currentVal = existing ? (existing.properties?.[field]?.rich_text || []).map(t => t.plain_text).join("") : "";
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist refining ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through.
+
+PRODUCT: ${productName}
+DESCRIPTION: ${productDesc || "(none)"}
+KEYWORDS: ${productKeywords || "(none)"}
+${researchBlock}
+FIELD TO WRITE: ${field} — ${STRATEGY_FIELD_HINTS[field]}
+${currentVal ? `\nCURRENT VALUE (refine or rework it, don't just restate):\n${currentVal}\n` : ""}${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}
+Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections, Benefits, Proof Points). Output ONLY the field's text — no field name, no preamble, no markdown fences.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
+        const text = (aiData.content?.[0]?.text || "").trim();
+        if (!text) return json({ error: "Empty response — try again" }, 502);
+        return json({ success: true, field, text });
+      }
+
       // ── updateProductStrategyField ──
       // Hand-edit / manual entry for one Strategy field — same upsert as
       // generateStrategyField but writes a caller-supplied value directly.
