@@ -1459,11 +1459,20 @@ async function loadMethods() {
   }
 }
 
+// Asset Status (Development/Publish/Published) — same s-live/s-pub/s-dev
+// badge convention already used for title stage: Published = actually
+// live (green), Publish = queued to go live (amber), everything else
+// still in Development (blue).
+function assetStatusClass(status) {
+  if (status === 'Published') return 's-live';
+  if (status === 'Publish') return 's-pub';
+  return 's-dev';
+}
 function renderAssetTitleNode(t, data) {
   const assets = (data && data.assets) || [];
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)} · ${esc(a.status)}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
