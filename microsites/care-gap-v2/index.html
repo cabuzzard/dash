@@ -390,7 +390,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
       <button class="btn primary" id="fullRegenBtn" onclick="runFullCampaignRegen(this)">⟳⟳ Full regen — all fields off current Main Keywords</button>
-      <span style="font-size:11.5px;color:var(--ink3);">Runs Campaign Goal, Pain Points, Key Message, and all 13 research modules — stages every result, saves nothing until you review and hit 💾 Save on each.</span>
+      <span style="font-size:11.5px;color:var(--ink3);">Runs Campaign Goal, Pain Points, Key Message, Statement, Unique Opportunity, and all 13 research modules — stages every result, saves nothing until you review and hit 💾 Save on each.</span>
     </div>
 
     <section class="card" data-ckey="card-research-positioning">
@@ -402,10 +402,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </section>
 
     <section class="card" data-ckey="card-research-statement">
-      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
-      <div class="card-body">
-        <div class="field"><div class="frow"><span class="fname">Statement</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-statement">—</div></div><button class="notebtn" onclick="openNoteModal('research-statement','Statement','research')">📝</button></div></div>
-        <div class="field"><div class="frow"><span class="fname">Unique Opportunity</span><span class="fbadge fresh">live</span><div class="fmeta"><div class="fval" id="f-uniqueOpportunity">—</div></div><button class="notebtn" onclick="openNoteModal('research-uniqueOpportunity','Unique Opportunity','research')">📝</button></div></div>
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Statement &amp; Unique Opportunity</h3><span class="tag manual">real regen, staged</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-research-statement','Statement &amp; Unique Opportunity','research')">📝</button></div>
+      <div class="card-body" id="statementFieldsBody">
+        <div class="loadnote">Loading…</div>
       </div>
     </section>
 
@@ -1130,6 +1129,50 @@ async function savePositioningField(key, btn) {
     btn.disabled = false; btn.textContent = o;
   }
 }
+// ── Statement / Unique Opportunity — same regen-before-save discipline as
+// Positioning, but these two live on the RESEARCH record, not the Campaign,
+// so they commit via updateResearch instead of updateCampaignField.
+const STATEMENT_FIELDS = [
+  { key: 'statement', label: 'Statement' },
+  { key: 'uniqueOpportunity', label: 'Unique Opportunity' },
+];
+let STATEMENT_STAGE = {};
+function renderStatementFields() {
+  const r = window.RESEARCH_RECORD;
+  if (!r) return;
+  const body = document.getElementById('statementFieldsBody');
+  body.innerHTML = STATEMENT_FIELDS.map(f => {
+    const staged = STATEMENT_STAGE[f.key] != null;
+    const val = esc(staged ? STATEMENT_STAGE[f.key] : (r[f.key] || '(none on file)'));
+    const badge = staged ? '<span class="fbadge stale">staged — unsaved</span>' : '<span class="fbadge fresh">live</span>';
+    return `<div class="field"><div class="frow"><span class="fname">${esc(f.label)}</span>${badge}<div class="fmeta"><div class="fval">${val}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">
+        <button class="btn primary" onclick="openRegenModal('Regenerate — ${esc(f.label)}', 'Grounded in the current Main Keywords, which stay unchanged.', (steer, omit) => runStatementField('${f.key}', steer, omit))">⟳ regen</button>
+        <button class="btn" id="stmtSave-${f.key}-btn" ${staged ? '' : 'disabled'} onclick="saveStatementField('${f.key}', this)">💾 Save</button>
+      </div></div><button class="notebtn" onclick="openNoteModal('research-${f.key}','${esc(f.label)}','research')">📝</button></div></div>`;
+  }).join('');
+  refreshNoteMarks();
+}
+async function runStatementField(key, steer, omit) {
+  const f = STATEMENT_FIELDS.find(x => x.key === key);
+  if (!f) return;
+  const r = await w('regenerateStatementField', { researchId: RESEARCH_ID, field: key, instructions: steer || undefined, omit: omit || undefined });
+  STATEMENT_STAGE[key] = r.text || '';
+  renderStatementFields();
+}
+async function saveStatementField(key, btn) {
+  if (STATEMENT_STAGE[key] == null) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: STATEMENT_STAGE[key] });
+    window.RESEARCH_RECORD[key] = STATEMENT_STAGE[key];
+    delete STATEMENT_STAGE[key];
+    renderStatementFields();
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+    btn.disabled = false; btn.textContent = o;
+  }
+}
 function researchModuleBlocked(m) {
   const r = window.RESEARCH_RECORD;
   return !!(m.dependsOn && r && !r[m.dependsOn] && RESEARCH_STAGE[m.dependsOn] == null);
@@ -1140,6 +1183,10 @@ async function runFullCampaignRegen(btn) {
     for (const f of POSITIONING_FIELDS) {
       btn.textContent = '⟳ ' + f.label + '…';
       await runPositioningField(f.key, '', GLOBAL_OMIT);
+    }
+    for (const f of STATEMENT_FIELDS) {
+      btn.textContent = '⟳ ' + f.label + '…';
+      await runStatementField(f.key, '', GLOBAL_OMIT);
     }
     for (const m of RESEARCH_MODULES) {
       if (researchModuleBlocked(m)) continue;
@@ -1177,9 +1224,8 @@ async function loadResearchTab() {
     const r = window.RESEARCH_RECORD || (await w('getResearch', { campaignId: CAMPAIGN_ID })).research;
     if (!r) return;
     window.RESEARCH_RECORD = r;
-    document.getElementById('f-statement').textContent = r.statement || '(none on file)';
-    document.getElementById('f-uniqueOpportunity').textContent = r.uniqueOpportunity || '(none on file)';
     renderPositioningFields();
+    renderStatementFields();
     renderResearchModules();
   } catch (e) {
     document.getElementById('researchModulesBody').innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;

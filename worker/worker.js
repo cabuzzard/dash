@@ -26817,6 +26817,46 @@ Rewrite ${notionField} (1-2 sentences) so it genuinely follows the keywords abov
         return json({ success: true, field, text });
       }
 
+      // ── regenerateStatementField ──
+      // Same idea as regeneratePositioningField, but for the two fields that
+      // live on the Research record itself rather than the Campaign — Statement
+      // (the positioning statement) and Unique Opportunity (the differentiator).
+      // Grounded in the Research record's own Keywords (never touched here).
+      // Staged only — the client commits via the existing updateResearch action.
+      if (body.action === "regenerateStatementField") {
+        const { researchId, field, instructions, omit } = body;
+        const FIELD_MAP = { statement: "Statement", uniqueOpportunity: "Unique Opportunity" };
+        const notionField = FIELD_MAP[field];
+        if (!researchId || !notionField) return json({ error: "researchId and a valid field (statement/uniqueOpportunity) required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rp = await fetch(`https://api.notion.com/v1/pages/${dash(researchId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+        const rProps = rp?.properties || {};
+        const rrt = k => (rProps[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const keywords = rrt("Keywords");
+        const otherField = field === "statement" ? "Unique Opportunity" : "Statement";
+        const otherVal = rrt(otherField);
+
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are refreshing ONE field of a campaign's core research positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
+
+MAIN KEYWORDS (dominant signal): "${keywords || '(none set)'}"
+CURRENT ${notionField}: "${rrt(notionField) || '(none set)'}"
+${otherField} (context — don't restate it, just stay consistent with it): "${otherVal || '(none set)'}"
+${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
+${field === "statement" ? "Write the positioning statement — 2-3 sentences naming who this is for and what it does for them." : "Write the unique opportunity — 2-3 sentences on why this beats every alternative, the differentiator no one else can say."} Rewrite it so it genuinely follows the keywords above — don't just restate the old value. Output ONLY the field's text, no preamble, no field name, no markdown.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData2 = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData2.error?.message || "Claude error" }, 502);
+        const text2 = (aiData2.content?.[0]?.text || "").trim();
+        if (!text2) return json({ error: "Empty response — try again" }, 502);
+        return json({ success: true, field, text: text2 });
+      }
+
       if (body.action === "linkResearchToCampaign") {
         const { researchId, campaignId } = body;
         const dashId = id => { const s=id.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
