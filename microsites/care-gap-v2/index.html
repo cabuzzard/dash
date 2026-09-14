@@ -515,7 +515,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: STRATEGY ══════════════════════ -->
   <div class="panel" data-panel="strategy">
     <div class="stage-hd"><h2>Strategy</h2><span class="stagetag">stage 3</span><button class="btn primary" style="margin-left:auto;" onclick="openGenStrategyModal()">+ Generate new strategy</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
-    <p class="stage-sub">Real 🚀 Growth Strategies for this campaign, nested Strategy → Grouping → Platform — <code>getCampaignGrowthStrategies</code>.</p>
+    <p class="stage-sub">Real 🚀 Growth Strategies for this campaign, nested Product Stack → Product → Platform → Arc — <code>getCampaignGrowthStrategies</code>. An arc whose slots span platforms appears once under each platform it touches.</p>
     <div id="strategyBody"><div class="loadnote">Loading…</div></div>
   </div>
 
@@ -1696,7 +1696,13 @@ async function saveAllProductFields(btn) {
   }
 }
 
-// ══════════════════════ STRATEGY TAB — Strategy → Grouping → Platform ══════════════════════
+// ══════════════════════ STRATEGY TAB — Product Stack → Product → Platform → Arc ══════════════════════
+// Platform is the primary split an operator actually works from (e.g.
+// "everything on Instagram this week"), not a sub-detail of one arc — so
+// it sits above Arc in the nesting. An arc's own slots can still span
+// several platforms (the whole point of the cross-platform-arc
+// convention); when they do, that same arc just appears once under each
+// platform it touches, showing only the slots that live there.
 async function loadStrategyTab() {
   const body = document.getElementById('strategyBody');
   body.innerHTML = '<div class="loadnote">Loading…</div>';
@@ -1704,12 +1710,91 @@ async function loadStrategyTab() {
     const r = await w('getCampaignGrowthStrategies', { campaignId: CAMPAIGN_ID });
     const strategies = r.strategies || [];
     if (!strategies.length) { body.innerHTML = '<div class="loadnote">No Growth Strategies on this campaign yet.</div>'; return; }
-    body.innerHTML = strategies.map(renderStrategyCard).join('');
+    const tree = buildStrategyTree(strategies);
+    body.innerHTML = tree.map(renderStrategyStackGroup).join('');
     applyCollapseState(body);
     refreshNoteMarks();
   } catch (e) {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
+}
+function buildStrategyTree(strategies) {
+  const rows = [];
+  strategies.forEach(s => {
+    (s.groupings || []).forEach(g => {
+      (g.slots || []).forEach(slot => {
+        const plats = (slot.platforms && slot.platforms.length) ? slot.platforms.map(p => p.name).filter(Boolean) : (slot.platform ? [slot.platform] : []);
+        rows.push({
+          stack: s.productStack || 'No Stack',
+          product: s.productName || 'No Product',
+          platform: plats.length ? plats.join(' + ') : 'No platform',
+          groupingName: g.name || 'Untitled',
+          groupingMeta: `${g.filledCount}/${g.totalCount} filled`,
+          strategyId: s.id, strategyName: s.name, strategyStatus: s.status,
+          slot,
+        });
+      });
+    });
+  });
+  const { groups: byStack, order: stackOrder } = groupByStack(rows, r => r.stack);
+  return stackOrder.map(stack => {
+    const { groups: byProduct, order: productOrder } = groupByStack(byStack[stack], r => r.product);
+    return {
+      name: stack,
+      count: byStack[stack].length,
+      products: productOrder.map(product => {
+        const { groups: byPlatform, order: platformOrder } = groupByStack(byProduct[product], r => r.platform);
+        return {
+          name: product,
+          platforms: platformOrder.map(platform => {
+            const { groups: byArc, order: arcOrder } = groupByStack(byPlatform[platform], r => `${r.strategyId}::${r.groupingName}`);
+            return {
+              name: platform,
+              arcs: arcOrder.map(key => {
+                const arcRows = byArc[key];
+                const first = arcRows[0];
+                return { name: first.groupingName, meta: first.groupingMeta, strategyId: first.strategyId, strategyName: first.strategyName, strategyStatus: first.strategyStatus, rows: arcRows };
+              }),
+            };
+          }),
+        };
+      }),
+    };
+  });
+}
+function renderStrategyStackGroup(stack) {
+  return `<div class="kwgroup" data-ckey="stratstack-${esc(stack.name)}" style="--kwc:#8ab4f8;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
+    <div class="kwgbody">${stack.products.map(renderStrategyProductGroup).join('')}</div>
+  </div>`;
+}
+function renderStrategyProductGroup(prod) {
+  return `<div style="margin-bottom:10px;">
+    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
+    ${prod.platforms.map(renderStrategyPlatformGroup).join('')}
+  </div>`;
+}
+function renderStrategyPlatformGroup(plat) {
+  return `<div style="margin:0 0 8px 8px;">
+    <div style="font-size:10.5px;font-weight:700;color:#c9860f;margin-bottom:4px;">${esc(plat.name)}</div>
+    ${plat.arcs.map(renderStrategyArc).join('')}
+  </div>`;
+}
+function renderStrategyArc(arc) {
+  return `<div style="margin:0 0 8px 8px;padding-left:8px;border-left:2px solid var(--border2);">
+    <div style="font-size:10px;color:var(--ink3);display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
+      <span style="font-style:italic;">${esc(arc.name)}</span>
+      <span>(${esc(arc.meta)})</span>
+      <span class="tag ${arc.strategyStatus === 'Approved' ? 'fresh' : 'manual'}" style="font-size:9px;">${esc(arc.strategyStatus)}</span>
+      <a class="kwlink" href="${notionUrl(arc.strategyId)}" target="_blank" rel="noopener">↗ Notion</a>
+      <button class="iconbtn" title="Delete this strategy" onclick="deleteStrategy('${esc(arc.strategyId)}','${esc(arc.strategyName)}')">✕</button>
+      <button class="notebtn" onclick="openNoteModal('strategy-${esc(arc.strategyId)}','${esc(arc.strategyName)}','strategy')">📝</button>
+    </div>
+    ${arc.rows.map(row => renderStrategySlot(row.slot)).join('')}
+  </div>`;
+}
+function renderStrategySlot(slot) {
+  return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(slot.name)}</span><span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`;
 }
 // Real Notion archive (strategy + any divergent children + their slots,
 // unlinking any titles that pointed at them) — deleteGrowthStrategy
@@ -1765,27 +1850,6 @@ async function runGenerateStrategy() {
   } finally {
     btn.disabled = false; btn.textContent = o;
   }
-}
-function renderStrategyCard(s) {
-  const groupings = s.groupings || [];
-  return `<section class="card" data-ckey="strat-${esc(s.id)}">
-    <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>${esc(s.name)}</h3><span class="tag ${s.status === 'Approved' ? 'fresh' : 'manual'}">${esc(s.status)}</span>${s.productName ? `<span style="font-size:10.5px;color:var(--ink3);">${esc(s.productStack || 'No Stack')} · ${esc(s.productName)}</span>` : ''}<a class="kwlink" href="${notionUrl(s.id)}" target="_blank" rel="noopener">↗ Notion</a><button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(s.id)}','${esc(s.name)}')">✕</button><button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(s.id)}','${esc(s.name)}','strategy')">📝</button></div>
-    <div class="card-body">${groupings.length ? groupings.map(g => renderStrategyGrouping(s.id, g)).join('') : '<div class="loadnote">No slots yet.</div>'}</div>
-  </section>`;
-}
-function renderStrategyGrouping(stratId, g) {
-  const { groups, order } = groupByStack(g.slots, slot => {
-    const plats = (slot.platforms && slot.platforms.length) ? slot.platforms.map(p => p.name).filter(Boolean) : (slot.platform ? [slot.platform] : []);
-    return plats.length ? plats.join(' + ') : 'No platform';
-  });
-  return `<div class="kwgroup" data-ckey="stratgrp-${esc(stratId)}-${esc(g.name)}" style="--kwc:#c9860f;">
-    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(g.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${g.filledCount}/${g.totalCount} filled)</span></div>
-    <div class="kwgbody">${order.map(plat => `
-      <div style="margin-bottom:8px;">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(plat)}</div>
-        ${groups[plat].map(slot => `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(slot.name)}</span><span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`).join('')}
-      </div>`).join('')}</div>
-  </div>`;
 }
 
 // ══════════════════════ TITLE + ASSET TAB — Product Stack → Product → Strategy, two columns ══════════════════════
