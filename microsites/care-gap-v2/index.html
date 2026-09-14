@@ -2861,6 +2861,31 @@ function assetStatusClass(status) {
   if (status === 'Publish') return 's-pub';
   return 's-dev';
 }
+// Same name pattern used everywhere else (isBlogType in openPublishAssetModal,
+// isSeoPost in worker.js's generateTitleAssets) — matches "Blog - SEO - News"
+// and "SEO Post".
+function isBlogAssetType(type) {
+  return /\bseo post\b/i.test(type || '') || (/\bblog\b/i.test(type || '') && /\bseo\b|\bnews\b/i.test(type || ''));
+}
+// "🔄 Push from Pillar" — regenerates this asset's article from the title's
+// CURRENT Pillar Content and republishes it to the SAME live URL (matched
+// server-side by assetId), so a Rewrite Pillar earlier actually reaches the
+// live post instead of sitting unused on the title. Rewriting in place
+// rather than deleting/recreating preserves the URL's accumulated SEO value.
+async function pushAssetFromPillar(assetId, title) {
+  if (!confirm(`Push the current Pillar Content out to "${title}"?\n\nThis rewrites the asset's article in place (its live page updates at the SAME url, if it's published) — the old article text is replaced, not kept alongside the new one.`)) return;
+  try {
+    const r = await w('refreshBlogAssetFromPillar', { assetId });
+    let msg = '✓ Pushed.';
+    if (r.published && r.liveUrl) msg += ` Live page updated: ${r.liveUrl}`;
+    else if (r.publishError) msg += ` (Notion content updated, but the live page publish failed: ${r.publishError})`;
+    else msg += ' (Notion content updated; this asset has no campaign hub to publish to.)';
+    alert(msg);
+    loadTitleAndAssetTab();
+  } catch (e) {
+    alert('Push failed: ' + e.message);
+  }
+}
 // Publish modal's data source, keyed by asset id — populated as each asset
 // row renders (below) so opening the modal needs no extra round trip; `a`
 // here is already the full shape getTitles's buildAssetRow returns.
@@ -2870,7 +2895,7 @@ function renderAssetTitleNode(t, data) {
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   assets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc(a.assetTitle || a.title).replace(/'/g,"\\'")}')">🔄 Push from Pillar</button>` : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">

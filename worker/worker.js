@@ -10671,6 +10671,120 @@ Return ONLY this JSON, no other text, no markdown fences:
         return json({ success: true, wordCount: result?.wordCount, newStatus });
       }
 
+      // ── refreshBlogAssetFromPillar ──
+      // The "🔄 Push from Pillar" button on a Blog/SEO Post asset row — an
+      // on-demand, single-asset counterpart to the rebuild-all-hubs batch
+      // job's "blank asset" rebuild path (same format-pillar-into-article
+      // prompt, same block-replace mechanism), except this one ALWAYS
+      // refreshes (not just when the asset page is blank) and reuses the
+      // asset's EXISTING live slug — rewriting a published post in place is
+      // better for SEO than deleting and re-publishing under a new URL
+      // (loses accumulated indexing/backlinks), so this is the intended way
+      // to push a title's rewritten Pillar Content out to an asset that was
+      // already generated from the old pillar. { assetId }
+      if (body.action === "refreshBlogAssetFromPillar") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const assetType = ap["Asset Type"]?.select?.name || "";
+        if (!(/\bseo post\b/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType)))) {
+          return json({ error: `Push-from-pillar is only wired for Blog/SEO Post assets right now (this one is "${assetType || "unset"}").` }, 400);
+        }
+        const titleId = (ap["Content Strategy"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        if (!titleId) return json({ error: "Asset has no linked title (Content Strategy relation)" }, 400);
+        const campaignId = (ap["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+        const workingTitle = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
+
+        const pillar = await extractPillarContent(hdr, dashId(titleId)).catch(() => "");
+        if (!pillar) return json({ error: "This title has no Pillar Content to push from — write or rewrite the pillar first" }, 400);
+
+        const genPrompt = `You are an SEO content editor. FORMAT the pillar piece below into a complete, publish-ready blog post — a structuring/polishing pass, not inventing new substance. Preserve its claims and examples; no generic filler.
+
+TITLE: ${workingTitle}
+PILLAR CONTENT:
+${pillar.slice(0, 12000)}
+
+Requirements:
+- 3 to 6 H2 sections, each a natural division of the pillar (specific headings, never "Introduction"/"Conclusion" alone). Roughly 250-550 words per section.
+- A 2-3 sentence intro before the first H2 and a short concluding paragraph after the last section.
+- No meta-commentary.
+
+Also write "seoTitle": the title-tag/headline this should publish under.
+
+Return ONLY this JSON, no other text, no fences:
+{ "intro": "...", "sections": [ { "heading": "...", "body": "..." } ], "conclusion": "...", "seoTitle": "..." }`;
+
+        const gr = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 7000, messages: [{ role: "user", content: genPrompt }] }),
+        }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
+        if (gr.error) return json({ error: "Push failed: " + (gr.error.message || "Claude error") }, 502);
+        let gp;
+        try {
+          const rawg = gr.content?.[0]?.text || "";
+          gp = JSON.parse(sanitizeJsonControlChars(rawg.slice(rawg.indexOf("{"), rawg.lastIndexOf("}") + 1)));
+        } catch (e) { return json({ error: "Parse failed: " + e.message }, 502); }
+        const sections = (Array.isArray(gp.sections) ? gp.sections : []).filter(s => s && s.heading);
+        if (!sections.length) return json({ error: "Push produced no sections" }, 502);
+        const intro = String(gp.intro || "").trim();
+        const conclusion = String(gp.conclusion || "").trim();
+        const seoTitle = gp.seoTitle ? String(gp.seoTitle).trim().slice(0, 200) : workingTitle;
+
+        // Replace the asset's existing body blocks entirely — this asset's
+        // page IS the deliverable, so a refresh means the old article is
+        // actually gone, not appended alongside the new one.
+        const existing = await fetch(`https://api.notion.com/v1/blocks/${dashId(assetId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+        for (const b of (existing.results || [])) {
+          await fetch(`https://api.notion.com/v1/blocks/${b.id}`, { method: "DELETE", headers: hdr }).catch(() => {});
+        }
+        const rtB = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1990), link: null } }] : [];
+        const kid = [];
+        const pushParas = txt => String(txt || "").split(/\n{2,}/).forEach(pp => { const t = pp.trim(); if (!t) return; for (let i = 0; i < t.length; i += 1900) kid.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtB(t.slice(i, i + 1900)) } }); });
+        pushParas(intro);
+        sections.forEach(s => { kid.push({ object: "block", type: "heading_2", heading_2: { rich_text: rtB(s.heading) } }); pushParas(s.body); });
+        pushParas(conclusion);
+        let wrote = true;
+        for (let i = 0; i < kid.length; i += 100) {
+          const wr = await fetch(`https://api.notion.com/v1/blocks/${dashId(assetId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: kid.slice(i, i + 100) }),
+          }).catch(() => ({ ok: false }));
+          if (!wr.ok) wrote = false;
+        }
+        if (!wrote) return json({ error: "Wrote the new article but the block write failed partway through" }, 502);
+
+        await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: intro.slice(0, 2000) } }] }, "Platform Title": { rich_text: [{ text: { content: seoTitle } }] } } }),
+        }).catch(() => {});
+
+        // Push the refreshed content to the SAME live URL (publishSeoPostToLiveSite
+        // matches this asset's existing slug by assetId) — rewriting the
+        // live page in place, not minting a new one.
+        let siteResult = { published: false };
+        if (campaignId) {
+          siteResult = await publishSeoPostToLiveSite({
+            env, hdr, dash: dashId, campaignId, spec: null,
+            seoTitle, workingTitle, intro, sections, conclusion, assetId,
+            thumbnail: (ap["Thumbnail"]?.url || "").trim(),
+          }).catch(e => ({ published: false, error: e.message }));
+          if (siteResult.published && siteResult.liveUrl) {
+            await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, {
+              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
+            }).catch(() => {});
+          }
+        }
+        return json({ success: true, published: !!siteResult.published, liveUrl: siteResult.liveUrl || null, publishError: siteResult.error || null });
+      }
+
       if (body.action === "renameTodoItem") {
         const { itemId, title } = body;
         if (!itemId || !title?.trim()) return json({ error: "itemId and title required" }, 400);
