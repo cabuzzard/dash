@@ -1765,19 +1765,19 @@ function buildStrategyTree(strategies) {
 function renderStrategyStackGroup(stack) {
   return `<div class="kwgroup" data-ckey="stratstack-${esc(stack.name)}" style="--kwc:#8ab4f8;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
-    <div class="kwgbody">${stack.products.map(renderStrategyProductGroup).join('')}</div>
+    <div class="kwgbody">${stack.products.map(prod => renderStrategyProductGroup(stack.name, prod)).join('')}</div>
   </div>`;
 }
-function renderStrategyProductGroup(prod) {
+function renderStrategyProductGroup(stackName, prod) {
   return `<div style="margin-bottom:10px;">
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
-    ${prod.platforms.map(renderStrategyPlatformGroup).join('')}
+    ${prod.platforms.map(plat => renderStrategyPlatformGroup(stackName, prod.name, plat)).join('')}
   </div>`;
 }
-function renderStrategyPlatformGroup(plat) {
-  return `<div style="margin:0 0 8px 8px;">
-    <div style="font-size:10.5px;font-weight:700;color:#c9860f;margin-bottom:4px;">${esc(plat.name)}</div>
-    ${plat.arcs.map(renderStrategyArc).join('')}
+function renderStrategyPlatformGroup(stackName, prodName, plat) {
+  return `<div class="kwgroup" data-ckey="stratplat-${esc(stackName)}-${esc(prodName)}-${esc(plat.name)}" style="--kwc:#c9860f;margin:0 0 6px 8px;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(plat.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${plat.arcs.length})</span></div>
+    <div class="kwgbody">${plat.arcs.map(renderStrategyArc).join('')}</div>
   </div>`;
 }
 function renderStrategyArc(arc) {
