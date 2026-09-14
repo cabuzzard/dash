@@ -336,6 +336,32 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Create Title From Slot — generateTitleFromSlot already writes the
+       title AND its pillar content into the Development pipeline in one
+       call (Planning → Development once the pillar lands), and marks the
+       slot Filled. This modal just adds the operator's two optional
+       inputs on top of that: an exact title override, or freeform
+       guidance for the AI-written one. -->
+  <div class="modaloverlay" id="makeTitleModal">
+    <div class="modalbox">
+      <div class="mtitle">Create Title From Slot</div>
+      <div class="mfield" id="mtSlotAngle" style="font-size:12px;font-weight:400;color:var(--ink3);"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Title override (optional)
+          <input type="text" id="mtTitleOverride" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Leave blank to let AI sharpen the angle above">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Guidance (optional)
+          <textarea id="mtGuidance" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;min-height:60px;" placeholder="Steer the title + pillar content"></textarea>
+        </label>
+      </div>
+      <div id="mtResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeMakeTitleModal()">Cancel</button>
+        <button class="btn primary" id="mtCreateBtn" onclick="runMakeTitleFromSlot()">+ Create</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modaloverlay" id="createAssetModal">
     <div class="modalbox" style="max-width:560px;">
       <div class="mtitle">Create Asset</div>
@@ -1718,11 +1744,14 @@ async function loadStrategyTab() {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
+let STRATEGY_SLOTS_BY_ID = {};
 function buildStrategyTree(strategies) {
+  STRATEGY_SLOTS_BY_ID = {};
   const rows = [];
   strategies.forEach(s => {
     (s.groupings || []).forEach(g => {
       (g.slots || []).forEach(slot => {
+        STRATEGY_SLOTS_BY_ID[slot.id] = slot;
         const plats = (slot.platforms && slot.platforms.length) ? slot.platforms.map(p => p.name).filter(Boolean) : (slot.platform ? [slot.platform] : []);
         rows.push({
           stack: s.productStack || 'No Stack',
@@ -1794,7 +1823,50 @@ function renderStrategyArc(arc) {
   </div>`;
 }
 function renderStrategySlot(slot) {
-  return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(slot.name)}</span><span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`;
+  return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(slot.name)}</span>
+    <span class="idea-btns">
+      <button class="iconbtn" title="Create a title from this slot — writes its pillar content straight into Development" onclick="openMakeTitleModal('${esc(slot.id)}')">+ Title</button>
+      <span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span>
+    </span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`;
+}
+// ── Create Title From Slot ──
+// generateTitleFromSlot already does the whole job in one call: writes
+// the title, writes its pillar content grounded in the slot's own
+// angle/platform/content-type + the full parent Growth Strategy, marks
+// the slot Filled, and promotes the title straight to Development once
+// the pillar lands — this modal only adds the operator's two optional
+// inputs (an exact title, or freeform guidance) on top.
+let MT_SLOT_ID = null;
+function openMakeTitleModal(slotId) {
+  MT_SLOT_ID = slotId;
+  const slot = STRATEGY_SLOTS_BY_ID[slotId];
+  document.getElementById('mtSlotAngle').textContent = (slot && (slot.angle || slot.name)) || '';
+  document.getElementById('mtTitleOverride').value = '';
+  document.getElementById('mtGuidance').value = '';
+  document.getElementById('mtResult').textContent = '';
+  document.getElementById('makeTitleModal').classList.add('open');
+}
+function closeMakeTitleModal() {
+  document.getElementById('makeTitleModal').classList.remove('open');
+  MT_SLOT_ID = null;
+}
+async function runMakeTitleFromSlot() {
+  if (!MT_SLOT_ID) return;
+  const titleOverride = (document.getElementById('mtTitleOverride').value || '').trim() || undefined;
+  const guidance = (document.getElementById('mtGuidance').value || '').trim() || undefined;
+  const btn = document.getElementById('mtCreateBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'creating…';
+  document.getElementById('mtResult').textContent = 'Writing the title + pillar content — this can take up to a minute…';
+  try {
+    const r = await w('generateTitleFromSlot', { slotId: MT_SLOT_ID, titleOverride, guidance });
+    closeMakeTitleModal();
+    loadStrategyTab();
+    if (r.pillarWarning) alert(r.pillarWarning);
+  } catch (e) {
+    document.getElementById('mtResult').textContent = 'Failed: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
 }
 // Real Notion archive (strategy + any divergent children + their slots,
 // unlinking any titles that pointed at them) — deleteGrowthStrategy
