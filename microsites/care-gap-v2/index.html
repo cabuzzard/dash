@@ -1454,7 +1454,7 @@ async function loadProductTab() {
           <span class="idea-btns">
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
-            <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">🗑</button>
+            <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">✕</button>
           </span></div></div>`).join('')}</div>
       </div>`).join('');
     applyCollapseState(body);
