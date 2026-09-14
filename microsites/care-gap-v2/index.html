@@ -397,6 +397,131 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Publish modal — click an asset's status badge to open. Furnishes every
+       copyable "sub-asset" field the asset actually carries so it can be
+       delivered to whatever platform it's geared toward; sections below
+       Platform Title are conditional on the asset's own type, since a
+       Single Post's post image, an Offer's hub/image fields, and a plain
+       social/blog asset's caption have nothing to do with each other. -->
+  <div class="modaloverlay" id="publishAssetModal">
+    <div class="modalbox" style="max-width:620px;">
+      <div class="mtitle">Publish</div>
+      <div class="mfield" id="pubAssetTitle">Publish</div>
+      <div style="display:flex;flex-direction:column;gap:10px;max-height:70vh;overflow-y:auto;padding-right:2px;">
+        <label style="font-size:11px;color:var(--ink2);">Status
+          <select id="pubStatus" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+            <option value="Publish">Publish</option>
+            <option value="Published">Published</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Title
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <input class="finput" id="pubTitle" type="text" autocomplete="off">
+            <button class="iconbtn" onclick="copyPublishField('pubTitle', this)">📋</button>
+          </div>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Platform Title <span style="color:var(--ink3);">(the platform's own title field — YouTube/SEO/listing title. Only set when the method calls for one.)</span>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <input class="finput" id="pubPlatformTitle" type="text" autocomplete="off" placeholder="No platform title for this asset type">
+            <button class="iconbtn" onclick="copyPublishField('pubPlatformTitle', this)">📋</button>
+          </div>
+        </label>
+
+        <div id="pubSinglePostWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <label style="font-size:11px;color:var(--ink2);">🖼️ Post Image <span style="color:var(--ink3);">— the finished creative. Open it full-size and post it yourself.</span></label>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+            <img id="pubPostImagePreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <input class="finput" id="pubPostImage" type="text" autocomplete="off" placeholder="Not generated yet — use the Canva handoff or ✨ Generate on the title row" readonly>
+            <button class="iconbtn" onclick="openPublishFieldLink('pubPostImage')" title="Open full-size">↗</button>
+            <button class="iconbtn" onclick="copyPublishField('pubPostImage', this)">📋</button>
+          </div>
+        </div>
+
+        <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <label style="font-size:11px;color:var(--ink2);">📍 Content Hub <span style="color:var(--ink3);">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
+          <select id="pubContentHub" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+            <option value="">— none (won't show on any hub) —</option>
+          </select>
+          <div id="pubContentHubStatus" style="font-size:10.5px;margin-top:4px;"></div>
+        </div>
+
+        <div id="pubOfferImagesWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:6px;">🖼️ Offer images <span style="color:var(--ink3);">— wordless plates from Grok Imagine, grounded in the hub's image spec. Add the headline afterward in Remotion/Canva. Regenerate copies the prompt to your clipboard.</span></label>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <img id="pubIgBgPreview" src="" alt="" style="display:none;width:48px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4</span></div>
+              <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
+                <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
+                <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
+                <button class="iconbtn" id="pubIgBgOpenBtn" onclick="openPublishFieldLink('pubIgBgUrl')" style="display:none;">↗</button>
+                <span id="pubIgBgStatus" style="font-size:10.5px;"></span>
+              </div>
+              <input type="hidden" id="pubIgBgUrl">
+              <textarea id="pubIgBgPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);align-items:flex-start;">
+            <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:60px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— square 1:1</span></div>
+              <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
+                <button class="btn" id="pubBlogThumbGenBtn" onclick="genOfferImage('blog-thumbnail')">✨ Generate</button>
+                <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenOfferImage('blog-thumbnail')" style="display:none;">🔄 Regenerate</button>
+                <span id="pubBlogThumbStatus" style="font-size:10.5px;"></span>
+              </div>
+              <textarea id="pubBlogThumbPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
+            </div>
+          </div>
+        </div>
+
+        <label style="font-size:11px;color:var(--ink2);">Design Link <span style="color:var(--ink3);">(the finished, populated design — not the source Canva template)</span>
+          <div style="display:flex;gap:6px;margin-top:4px;">
+            <input class="finput" id="pubDesignLink" type="text" autocomplete="off" placeholder="https://…">
+            <button class="iconbtn" onclick="openPublishFieldLink('pubDesignLink')">↗</button>
+            <button class="iconbtn" onclick="copyPublishField('pubDesignLink', this)">📋</button>
+          </div>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Thumbnail
+          <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
+            <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <input class="finput" id="pubThumbnail" type="text" autocomplete="off" placeholder="No thumbnail uploaded yet" readonly>
+            <button class="iconbtn" onclick="openPublishFieldLink('pubThumbnail')">↗</button>
+            <button class="iconbtn" onclick="copyPublishField('pubThumbnail', this)">📋</button>
+          </div>
+        </label>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()">
+          <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
+          <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
+        </div>
+        <label style="font-size:11px;color:var(--ink2);">Hashtags
+          <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+            <textarea id="pubHashtags" rows="2" style="flex:1;" placeholder="#…"></textarea>
+            <button class="iconbtn" onclick="copyPublishField('pubHashtags', this)">📋</button>
+          </div>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Caption
+          <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+            <textarea id="pubCaption" rows="6" style="flex:1;"></textarea>
+            <button class="iconbtn" onclick="copyPublishField('pubCaption', this)">📋</button>
+          </div>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Post Body <span style="color:var(--ink3);">(the full written post/article from this asset's page content — blank if this asset has none)</span>
+          <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
+            <textarea id="pubPostBody" rows="6" readonly style="flex:1;opacity:.85;"></textarea>
+            <button class="iconbtn" onclick="copyPublishField('pubPostBody', this)">📋</button>
+          </div>
+        </label>
+      </div>
+      <div id="pubAssetStatus" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closePublishAssetModal()">Cancel</button>
+        <button class="btn primary" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Bulk actions on the Titles list — Change Product / Choose Method both
        reuse the existing updateTitleStrategy action (already accepts
        productId/methodId independently, send-only-if-set), applied in a
@@ -811,6 +936,8 @@ document.addEventListener('DOMContentLoaded', () => {
   caOverlay.addEventListener('click', e => { if (e.target === caOverlay) closeCreateAssetModal(); });
   const apOverlay = document.getElementById('addProductModal');
   apOverlay.addEventListener('click', e => { if (e.target === apOverlay) closeAddProductModal(); });
+  const pubOverlay = document.getElementById('publishAssetModal');
+  pubOverlay.addEventListener('click', e => { if (e.target === pubOverlay) closePublishAssetModal(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -2073,10 +2200,13 @@ async function loadTitleAndAssetTab() {
     applyCollapseState(titleBody);
     refreshNoteMarks();
 
-    const withAssets = CAMPAIGN_TITLES.filter(t => t.assetIds && t.assetIds.length);
+    // getTitles (above) already embeds each title's full asset shape
+    // (hashtags/caption/thumbnail/platformTitle/contentHub/offer images/
+    // post image/etc — everything the Publish modal needs), so no separate
+    // per-title getTitleAssets round trip is needed here anymore.
+    const withAssets = CAMPAIGN_TITLES.filter(t => t.assets && t.assets.length);
     if (!withAssets.length) { assetBody.innerHTML = '<div class="loadnote">No titles with generated assets yet.</div>'; return; }
-    const results = await Promise.all(withAssets.map(t => w('getTitleAssets', { titleId: t.id }).catch(e => ({ error: e.message }))));
-    const assetsByTitleId = {}; withAssets.forEach((t, i) => { assetsByTitleId[t.id] = { assets: (results[i] && results[i].assets) || [], error: results[i] && results[i].error }; });
+    const assetsByTitleId = {}; withAssets.forEach(t => { assetsByTitleId[t.id] = { assets: t.assets || [] }; });
     const assetTree = buildTitleTree(withAssets);
 
     assetBody.innerHTML = assetTree.map(stack => `
@@ -2454,11 +2584,16 @@ function assetStatusClass(status) {
   if (status === 'Publish') return 's-pub';
   return 's-dev';
 }
+// Publish modal's data source, keyed by asset id — populated as each asset
+// row renders (below) so opening the modal needs no extra round trip; `a`
+// here is already the full shape getTitles's buildAssetRow returns.
+let PUB_ASSET_CACHE = {};
 function renderAssetTitleNode(t, data) {
   const assets = (data && data.assets) || [];
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
+  assets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
@@ -2469,6 +2604,238 @@ function renderAssetTitleNode(t, data) {
       <button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this title" onclick="event.stopPropagation();deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
       <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button>
     </span></div><div class="rbody">${body}</div></div>`;
+}
+
+// ── Publish modal ──────────────────────────────────────────────────────
+// Furnishes every copyable field an asset actually carries, conditional on
+// its own type — a Single Post's image, an Offer's hub/image blocks, and a
+// plain post's caption have nothing to do with each other. Ported from the
+// hard-grind template's Publish modal, trimmed to the sections Care Gap's
+// own methods produce (no Etsy/Printify/t-shirt/listing — not used here).
+let pubAssetId = null;
+let PUB_OPEN_TOKEN = 0;
+function openPublishAssetModal(assetId) {
+  pubAssetId = assetId;
+  const myToken = ++PUB_OPEN_TOKEN;
+  const data = PUB_ASSET_CACHE[assetId] || {};
+  document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
+  document.getElementById('pubStatus').value = (data.status === 'Published') ? 'Published' : 'Publish';
+  document.getElementById('pubTitle').value = data.assetTitle || data.title || '';
+  document.getElementById('pubPlatformTitle').value = data.platformTitle || '';
+  document.getElementById('pubDesignLink').value = data.designLink || '';
+
+  const spWrap = document.getElementById('pubSinglePostWrap');
+  const isSinglePostAsset = /single post/i.test(data.type || '');
+  spWrap.style.display = isSinglePostAsset ? 'block' : 'none';
+  if (isSinglePostAsset) {
+    document.getElementById('pubPostImage').value = data.postImage || '';
+    const ppImg = document.getElementById('pubPostImagePreview');
+    if (data.postImage) { ppImg.src = data.postImage; ppImg.style.display = ''; } else { ppImg.src = ''; ppImg.style.display = 'none'; }
+  }
+
+  const hubWrap = document.getElementById('pubHubWrap');
+  const isHubOffer = /offer\b.*content hub/i.test(data.type || '');
+  hubWrap.style.display = isHubOffer ? 'block' : 'none';
+  if (isHubOffer) { document.getElementById('pubContentHubStatus').textContent = ''; pubLoadContentHubs(data.contentHub || ''); }
+
+  const isOffer = /\boffer\b/i.test(data.type || '');
+  document.getElementById('pubOfferImagesWrap').style.display = isOffer ? 'block' : 'none';
+  _offerImgReset();
+  if (isOffer) {
+    if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
+    if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
+  }
+
+  document.getElementById('pubThumbnail').value = data.thumbnail || '';
+  renderPubThumbnailPreview(data.thumbnail || '');
+  document.getElementById('pubThumbnailStatus').textContent = '';
+  document.getElementById('pubHashtags').value = data.hashtags || '';
+  document.getElementById('pubCaption').value = data.postCaption || '';
+  const status = document.getElementById('pubAssetStatus');
+  status.textContent = ''; status.style.color = '';
+  document.getElementById('publishAssetModal').classList.add('open');
+
+  // Body property is only ever a short preview; the real finished long-form
+  // content lives in the page's own blocks — fetch it fresh every open.
+  document.getElementById('pubPostBody').value = data.body || 'Loading full post…';
+  w('getAssetFullText', { assetId }).then(d => {
+    if (myToken !== PUB_OPEN_TOKEN) return;
+    if (d.text) document.getElementById('pubPostBody').value = d.text;
+    else if (!data.body) document.getElementById('pubPostBody').value = '';
+  }).catch(() => { if (myToken === PUB_OPEN_TOKEN && !data.body) document.getElementById('pubPostBody').value = ''; });
+}
+function closePublishAssetModal() {
+  document.getElementById('publishAssetModal').classList.remove('open');
+  pubAssetId = null;
+  _offerImgReset();
+}
+async function copyPublishField(fieldId, btn) {
+  const text = document.getElementById(fieldId).value;
+  if (!text) { alert('Nothing to copy — this field is empty.'); return; }
+  try {
+    await navigator.clipboard.writeText(text);
+    const orig = btn.textContent; btn.textContent = '✓';
+    setTimeout(() => { btn.textContent = orig; }, 1400);
+  } catch (e) { alert(text); }
+}
+function openPublishFieldLink(fieldId) {
+  const url = document.getElementById(fieldId).value.trim();
+  if (!url) { alert('Nothing to open — this field is empty.'); return; }
+  window.open(url, '_blank', 'noopener');
+}
+async function savePublishAssetFields() {
+  const btn = document.getElementById('pubAssetSaveBtn');
+  const status = document.getElementById('pubAssetStatus');
+  const fields = {
+    status: document.getElementById('pubStatus').value,
+    title: document.getElementById('pubTitle').value.trim(),
+    platformTitle: document.getElementById('pubPlatformTitle').value.trim(),
+    designLink: document.getElementById('pubDesignLink').value.trim(),
+    hashtags: document.getElementById('pubHashtags').value.trim(),
+    postCaption: document.getElementById('pubCaption').value.trim(),
+  };
+  // Only send contentHub for an Offer – Content Hub asset — otherwise every
+  // save would blank the Content Hub on unrelated asset types.
+  if (document.getElementById('pubHubWrap').style.display !== 'none') {
+    fields.contentHub = document.getElementById('pubContentHub').value;
+  }
+  btn.disabled = true;
+  status.style.color = 'var(--ink3)'; status.textContent = 'Saving…';
+  try {
+    await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    Object.assign(PUB_ASSET_CACHE[pubAssetId] || (PUB_ASSET_CACHE[pubAssetId] = {}), fields, { assetTitle: fields.title });
+    status.style.color = 'var(--fresh)'; status.textContent = '✓ Saved.';
+    loadTitleAndAssetTab();
+  } catch (e) {
+    status.style.color = 'var(--stale)'; status.textContent = 'Save failed: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+// Content Hub picker (Offer – Content Hub assets). getContentHubs is public
+// and campaign-agnostic — filtered here to this campaign's own hub(s).
+let PUB_CONTENT_HUBS = null;
+async function pubLoadContentHubs(current) {
+  const sel = document.getElementById('pubContentHub');
+  const norm = s => String(s || '').replace(/-/g, '');
+  try {
+    if (!PUB_CONTENT_HUBS) { const r = await w('getContentHubs', {}); PUB_CONTENT_HUBS = r.hubs || []; }
+    const mine = PUB_CONTENT_HUBS.filter(h => norm(h.campaignId) === norm(CAMPAIGN_ID));
+    const list = mine.length ? mine : PUB_CONTENT_HUBS;
+    sel.innerHTML = `<option value="">— none (won't show on any hub) —</option>` + list.map(h => `<option value="${esc(h.slug)}">${esc(h.name)} (${esc(h.slug)})</option>`).join('');
+    sel.value = current || (mine.length === 1 ? mine[0].slug : '');
+  } catch (e) {
+    document.getElementById('pubContentHubStatus').textContent = 'Could not load hubs: ' + e.message;
+  }
+}
+function renderPubThumbnailPreview(url) {
+  const img = document.getElementById('pubThumbnailPreview');
+  if (url) { img.src = url; img.style.display = ''; } else { img.src = ''; img.style.display = 'none'; }
+}
+async function uploadPubThumbnail() {
+  const file = document.getElementById('pubThumbnailFile').files[0];
+  if (!file || !pubAssetId) return;
+  const statusEl = document.getElementById('pubThumbnailStatus');
+  if (file.size > 8 * 1024 * 1024) {
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Image too large (max 8MB).';
+    document.getElementById('pubThumbnailFile').value = '';
+    return;
+  }
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Uploading…';
+  try {
+    const reader = new FileReader();
+    const b64 = await new Promise((res, rej) => { reader.onload = e => res(e.target.result.split(',')[1]); reader.onerror = rej; reader.readAsDataURL(file); });
+    const data = await w('uploadAssetThumbnail', { assetId: pubAssetId, fileName: file.name, contentType: file.type || 'image/png', fileData: b64 });
+    if (data.error) throw new Error(data.error);
+    document.getElementById('pubThumbnail').value = data.thumbnailUrl;
+    renderPubThumbnailPreview(data.thumbnailUrl);
+    if (PUB_ASSET_CACHE[pubAssetId]) PUB_ASSET_CACHE[pubAssetId].thumbnail = data.thumbnailUrl;
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Uploaded ✓';
+    setTimeout(() => { statusEl.textContent = ''; }, 1500);
+  } catch (e) {
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  } finally {
+    document.getElementById('pubThumbnailFile').value = '';
+  }
+}
+// ── Offer image generation (Offer asset types) — two wordless plates from
+// xAI Grok Imagine, grounded in the hub's image spec. Regenerate copies the
+// prompt to the clipboard, then reruns.
+const OFFER_IMG = {
+  'ig-background':  { btn:'pubIgBgGenBtn',      regen:'pubIgBgRegenBtn',      status:'pubIgBgStatus',      prev:'pubIgBgPreview',      promptEl:'pubIgBgPrompt',      urlEl:'pubIgBgUrl', open:'pubIgBgOpenBtn' },
+  'blog-thumbnail': { btn:'pubBlogThumbGenBtn', regen:'pubBlogThumbRegenBtn', status:'pubBlogThumbStatus', prev:'pubBlogThumbPreview', promptEl:'pubBlogThumbPrompt', urlEl:null,        open:null },
+};
+let _offerImgPrompt = { 'ig-background':'', 'blog-thumbnail':'' };
+function _offerImgReset() {
+  Object.keys(OFFER_IMG).forEach(kind => {
+    const c = OFFER_IMG[kind];
+    _offerImgPrompt[kind] = '';
+    const g = document.getElementById(c.btn); if (g) { g.disabled = false; g.textContent = '✨ Generate'; }
+    const rg = document.getElementById(c.regen); if (rg) rg.style.display = 'none';
+    const st = document.getElementById(c.status); if (st) { st.textContent = ''; st.style.color = ''; }
+    const pv = document.getElementById(c.prev); if (pv) { pv.src = ''; pv.style.display = 'none'; }
+    const pr = document.getElementById(c.promptEl); if (pr) { pr.value = ''; pr.style.display = 'none'; }
+    if (c.urlEl) { const u = document.getElementById(c.urlEl); if (u) u.value = ''; }
+    if (c.open) { const o = document.getElementById(c.open); if (o) o.style.display = 'none'; }
+  });
+}
+function _offerImgShow(kind, url, prompt) {
+  const c = OFFER_IMG[kind];
+  if (url) {
+    const pv = document.getElementById(c.prev); pv.src = url; pv.style.display = '';
+    if (c.urlEl) document.getElementById(c.urlEl).value = url;
+    if (c.open) document.getElementById(c.open).style.display = '';
+  }
+  if (prompt) {
+    _offerImgPrompt[kind] = prompt;
+    const pr = document.getElementById(c.promptEl); pr.value = prompt; pr.style.display = '';
+  }
+  document.getElementById(c.regen).style.display = _offerImgPrompt[kind] ? '' : 'none';
+}
+async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl) {
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Saving to Notion…';
+  try {
+    const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl, prompt });
+    _offerImgShow(kind, s.url, prompt);
+    if (kind === 'blog-thumbnail') {
+      document.getElementById('pubThumbnail').value = s.url;
+      renderPubThumbnailPreview(s.url);
+      if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
+    } else if (PUB_ASSET_CACHE[myAsset]) {
+      PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+    }
+    genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
+    setTimeout(() => { if (statusEl.textContent === 'Saved ✓') statusEl.textContent = ''; }, 1800);
+  } catch (se) {
+    genBtn.disabled = false; genBtn.textContent = '✨ Retry';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Rendered OK but saving failed: ' + se.message;
+  }
+}
+async function genOfferImage(kind) {
+  if (!pubAssetId) return;
+  const c = OFFER_IMG[kind];
+  const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
+  genBtn.disabled = true; genBtn.textContent = '✨ Working…';
+  document.getElementById(c.regen).style.display = 'none';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
+  const myAsset = pubAssetId;
+  try {
+    const r = await w('generateOfferImage', { assetId: myAsset, kind });
+    if (!r.imageUrl) throw new Error(r.error || 'No image returned');
+    _offerImgShow(kind, null, r.prompt);
+    await _offerImgFinish(kind, myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
+  } catch (e) {
+    genBtn.disabled = false; genBtn.textContent = '✨ Generate';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+async function regenOfferImage(kind) {
+  const p = _offerImgPrompt[kind];
+  if (p) { try { await navigator.clipboard.writeText(p); } catch (e) {} }
+  const statusEl = document.getElementById(OFFER_IMG[kind].status);
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
+  genOfferImage(kind);
 }
 
 function init() {
