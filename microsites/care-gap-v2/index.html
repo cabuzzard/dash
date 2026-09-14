@@ -441,6 +441,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <button class="btn" id="pubPostImageTextBtn" onclick="compositeTextOnPostImage()" style="display:none;">🔤 Add headline text</button>
             <span id="pubPostImageStatus" style="font-size:10.5px;"></span>
           </div>
+          <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
+            <label>Headline size <input type="number" id="pubPostHeadSizePct" value="6.2" step="0.2" min="2" max="14" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
+            <label>Calm zone <input type="number" id="pubPostZoneWPct" value="62" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% w ×
+            <input type="number" id="pubPostZoneHPct" value="58" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% h</label>
+          </div>
         </div>
 
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
@@ -452,7 +457,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </div>
 
         <div id="pubOfferImagesWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
-          <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:6px;">🖼️ Images <span style="color:var(--ink3);">— wordless plates from Grok Imagine, grounded in the hub's image spec (which is itself fed by the campaign's SEO/Research information flow). Add the headline afterward in Remotion/Canva. Regenerate copies the prompt to your clipboard.</span></label>
+          <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:6px;">🖼️ Images <span style="color:var(--ink3);">— wordless plates from Grok Imagine, grounded in the hub's image spec (which is itself fed by the campaign's SEO/Research information flow). The Instagram background stays wordless for a Remotion/Canva pass afterward; the thumbnail gets its title text rendered right here (🔤 below, in the hub's own font). Regenerate copies the prompt to your clipboard.</span></label>
           <div id="pubIgBgRow" style="display:none;align-items:flex-start;gap:10px;">
             <img id="pubIgBgPreview" src="" alt="" style="display:none;width:48px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('instagramBackground')">
             <div style="flex:1;min-width:0;">
@@ -503,6 +508,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
           <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
           <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:2px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
+          <label>Title size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
+          <label>Calm zone <input type="number" id="pubThumbZonePct" value="48" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% of height</label>
         </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -3024,6 +3033,51 @@ function loadImageCORS(url) {
     img.src = url;
   });
 }
+// ── Hub brand for compositing — the real fonts/colors from hubs.design.json
+// (the same file every live hub page themes off), NOT this admin dashboard's
+// own --ink/--amber tokens (a different, tool-only palette). Resolved once
+// via getContentHubs (campaignId -> slug, since hubs.design.json's own
+// per-hub campaignId is often unset) then cached.
+let HUB_DESIGN_CACHE = null;
+async function resolveHubDesign() {
+  if (HUB_DESIGN_CACHE) return HUB_DESIGN_CACHE;
+  const fallback = { slug: '', fonts: { display: 'IBM Plex Sans', body: 'IBM Plex Sans' }, tokens: { ink: '#221d17', accent: '#a7680c' } };
+  try {
+    const norm = s => String(s || '').replace(/-/g, '');
+    const r = await w('getContentHubs', {});
+    const mine = (r.hubs || []).find(h => norm(h.campaignId) === norm(CAMPAIGN_ID));
+    if (!mine) { HUB_DESIGN_CACHE = fallback; return fallback; }
+    const dj = await fetch('https://cabuzzard.github.io/dash/web/hub/hubs.design.json').then(res => res.json());
+    const hub = (dj.hubs || {})[mine.slug];
+    if (!hub) { HUB_DESIGN_CACHE = fallback; return fallback; }
+    HUB_DESIGN_CACHE = {
+      slug: mine.slug,
+      fonts: { display: hub.fonts?.display || fallback.fonts.display, body: hub.fonts?.body || fallback.fonts.body },
+      tokens: { ink: hub.tokens?.ink || fallback.tokens.ink, accent: hub.tokens?.accent || fallback.tokens.accent },
+    };
+    return HUB_DESIGN_CACHE;
+  } catch (e) {
+    HUB_DESIGN_CACHE = fallback;
+    return fallback;
+  }
+}
+// Injects the hub's Google Font (if not already loaded) and waits for the
+// specific weight/size combos to actually be ready — ctx.font silently
+// falls back to a default typeface if the face isn't loaded yet, which is
+// why setting the right font-family string alone isn't enough here.
+const LOADED_FONT_FAMILIES = new Set();
+async function ensureFontLoaded(family, weights) {
+  if (!LOADED_FONT_FAMILIES.has(family)) {
+    LOADED_FONT_FAMILIES.add(family);
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}:wght@${weights.join(';')}&display=swap`;
+    document.head.appendChild(link);
+    await new Promise(res => { link.onload = res; link.onerror = res; setTimeout(res, 1500); });
+  }
+  await Promise.all(weights.map(w2 => document.fonts.load(`${w2} 16px "${family}"`)));
+  await document.fonts.ready;
+}
 // Greedy word-wrap for canvas text (no native wrapping) — returns the lines
 // it drew and the total block height, so callers can vertically place/shrink.
 function wrapCanvasLines(ctx, text, maxWidth) {
@@ -3042,6 +3096,10 @@ function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
   lines.forEach((line, i) => ctx.fillText(line, x, y + i * lineHeight));
   return lines.length * lineHeight;
 }
+function hexToRgb(hex) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || '').trim());
+  return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : { r: 10, g: 8, b: 4 };
+}
 async function compositeTitleOnThumbnail() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubThumbnailTextBtn');
@@ -3051,29 +3109,39 @@ async function compositeTitleOnThumbnail() {
   const title = (data.platformTitle || data.assetTitle || data.title || '').trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
+  // Editable dimensions — the number inputs right next to this button;
+  // there's no spec-card field for these (the campaign's Image Spec covers
+  // the PHOTO's composition, not overlaid-type sizing), so they live here.
+  const sizePct = parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5;
+  const zonePct = parseFloat(document.getElementById('pubThumbZonePct').value) || 48;
   btn.disabled = true; btn.textContent = '🔤 Working…';
-  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Rendering title text…';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
   const myAsset = pubAssetId;
   try {
+    const hub = await resolveHubDesign();
+    await ensureFontLoaded(hub.fonts.display, [700, 800]);
+    statusEl.textContent = 'Rendering title text…';
     const img = await loadImageCORS(bgUrl);
     const canvas = document.createElement('canvas');
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0);
     // Spec's own rule for this format: "keep the top ~45% calm" — that's
-    // exactly the zone the title goes in.
-    const zoneH = canvas.height * 0.48;
+    // exactly the zone the title goes in. Scrim tinted with the hub's own
+    // ink color, not a generic black, so it reads as this hub's, not any hub's.
+    const zoneH = canvas.height * (zonePct / 100);
+    const ink = hexToRgb(hub.tokens.ink);
     const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
-    grad.addColorStop(0, 'rgba(10,8,4,.72)'); grad.addColorStop(1, 'rgba(10,8,4,0)');
+    grad.addColorStop(0, `rgba(${ink.r},${ink.g},${ink.b},.72)`); grad.addColorStop(1, `rgba(${ink.r},${ink.g},${ink.b},0)`);
     ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, zoneH);
     const pad = canvas.width * 0.07;
     const maxWidth = canvas.width - pad * 2;
     ctx.textBaseline = 'top';
     ctx.fillStyle = '#fff';
-    let fontSize = Math.round(canvas.width * 0.075);
+    let fontSize = Math.round(canvas.width * (sizePct / 100));
     let lineHeight, lines;
     do {
-      ctx.font = `700 ${fontSize}px "IBM Plex Sans", system-ui, sans-serif`;
+      ctx.font = `700 ${fontSize}px "${hub.fonts.display}", "${hub.fonts.body}", sans-serif`;
       lineHeight = fontSize * 1.18;
       lines = wrapCanvasLines(ctx, title, maxWidth);
       fontSize -= 2;
@@ -3101,6 +3169,11 @@ async function compositeTextOnPostImage() {
   const statusEl = document.getElementById('pubPostImageStatus');
   const bgUrl = document.getElementById('pubPostImage').value;
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
+  // Editable dimensions — see the note on compositeTitleOnThumbnail; no
+  // spec-card field for these, they live as number inputs next to this button.
+  const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
+  const zoneWPct = parseFloat(document.getElementById('pubPostZoneWPct').value) || 62;
+  const zoneHPct = parseFloat(document.getElementById('pubPostZoneHPct').value) || 58;
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Fetching this post\'s copy…';
   const myAsset = pubAssetId;
@@ -3111,6 +3184,10 @@ async function compositeTextOnPostImage() {
     const accent = (fields['Headline Accent'] || '').trim();
     const bodyText = (fields['Body'] || '').trim();
     if (!primary && !accent) throw new Error('No Headline Primary/Accent found on this asset.');
+    statusEl.textContent = 'Loading hub fonts…';
+    const hub = await resolveHubDesign();
+    await ensureFontLoaded(hub.fonts.display, [700, 800]);
+    if (hub.fonts.body !== hub.fonts.display) await ensureFontLoaded(hub.fonts.body, [500]);
     statusEl.textContent = 'Rendering headline text…';
     const img = await loadImageCORS(bgUrl);
     const canvas = document.createElement('canvas');
@@ -3121,24 +3198,24 @@ async function compositeTextOnPostImage() {
     // "keep the entire LEFT HALF and the TOP 55%... calm" — that's the zone
     // the headline block goes in, upper-left, per the single-post layout
     // convention (Headline Primary dark, Headline Accent in the accent hue).
-    const zoneW = canvas.width * 0.62, zoneH = canvas.height * 0.58;
+    const zoneW = canvas.width * (zoneWPct / 100), zoneH = canvas.height * (zoneHPct / 100);
     const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
     grad.addColorStop(0, 'rgba(255,255,255,.88)'); grad.addColorStop(1, 'rgba(255,255,255,.35)');
     ctx.fillStyle = grad; ctx.fillRect(0, 0, zoneW, zoneH);
     const pad = canvas.width * 0.06;
     const maxWidth = zoneW - pad * 2;
     ctx.textBaseline = 'top';
-    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--amber').trim() || '#a7680c';
-    const inkColor = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#221d17';
+    const accentColor = hub.tokens.accent;
+    const inkColor = hub.tokens.ink;
     let y = pad;
-    const headFontSize = Math.round(canvas.width * 0.062), headLineHeight = headFontSize * 1.16;
-    ctx.font = `800 ${headFontSize}px "IBM Plex Sans", system-ui, sans-serif`;
+    const headFontSize = Math.round(canvas.width * (headSizePct / 100)), headLineHeight = headFontSize * 1.16;
+    ctx.font = `800 ${headFontSize}px "${hub.fonts.display}", "${hub.fonts.body}", sans-serif`;
     if (primary) { ctx.fillStyle = inkColor; y += drawWrappedText(ctx, primary, pad, y, maxWidth, headLineHeight); }
     if (accent) { ctx.fillStyle = accentColor; y += drawWrappedText(ctx, accent, pad, y, maxWidth, headLineHeight); }
     if (bodyText) {
       y += headFontSize * 0.3;
       const bodyFontSize = Math.round(canvas.width * 0.03), bodyLineHeight = bodyFontSize * 1.35;
-      ctx.font = `500 ${bodyFontSize}px "IBM Plex Sans", system-ui, sans-serif`;
+      ctx.font = `500 ${bodyFontSize}px "${hub.fonts.body}", sans-serif`;
       ctx.fillStyle = inkColor;
       drawWrappedText(ctx, bodyText, pad, y, maxWidth, bodyLineHeight);
     }
