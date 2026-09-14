@@ -2019,8 +2019,25 @@ function renderTitleRow(t) {
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
+      <button class="iconbtn" title="Delete this title" onclick="deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
       <button class="notebtn" title="Note" onclick="openNoteModal('title-${esc(t.id)}','${esc(t.title)}','title')">📝</button>
     </span></div><div class="idea-desc">${esc(t.methodName || '')}${t.assetIds && t.assetIds.length ? ` · ${t.assetIds.length} asset(s)` : ''}</div></div>`;
+}
+// Real Notion archive — deleteTitle already exists server-side.
+async function deleteTitleRow(id, title) {
+  if (!confirm(`Delete "${title}"? This archives it in Notion.`)) return;
+  try {
+    await w('deleteTitle', { titleId: id });
+    loadTitleAndAssetTab();
+  } catch (e) { alert('Delete failed: ' + e.message); }
+}
+// Real Notion archive — deleteAsset already exists server-side.
+async function deleteAssetRow(id, name) {
+  if (!confirm(`Delete asset "${name}"? This archives it in Notion.`)) return;
+  try {
+    await w('deleteAsset', { assetId: id });
+    loadTitleAndAssetTab();
+  } catch (e) { alert('Delete failed: ' + e.message); }
 }
 
 // ── Create Asset modal — real generateTitleAssets call, per docs/methods-titles-assets.md.
@@ -2132,7 +2149,7 @@ function renderAssetTitleNode(t, data) {
   const assets = (data && data.assets) || [];
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
@@ -2140,6 +2157,7 @@ function renderAssetTitleNode(t, data) {
       <span style="font-size:10px;color:var(--ink3);">${assets.length} asset(s)</span>
       <button class="iconbtn" title="Create asset" onclick="event.stopPropagation();openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>
+      <button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this title" onclick="event.stopPropagation();deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
       <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button>
     </span></div><div class="rbody">${body}</div></div>`;
 }
