@@ -27570,7 +27570,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
@@ -27602,6 +27602,24 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Instagram Background": { type: "url" }, "Instagram Background Source": { type: "url" } });
           props["Instagram Background"] = { url: instagramBackground || null };
           props["Instagram Background Source"] = { url: instagramBackground || null };
+        }
+        // Source-only writes — the "choose from previous backgrounds" picker.
+        // Unlike the coupled writes above, these touch ONLY the Source
+        // property, deliberately leaving the main (possibly texted) value
+        // alone: picking an older background is choosing what "re-render
+        // title text" recomposites from next, not replacing what's
+        // currently on display.
+        if (thumbnailSource !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Thumbnail Source": { type: "url" } });
+          props["Thumbnail Source"] = { url: thumbnailSource || null };
+        }
+        if (postImageSource !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Post Image Source": { type: "url" } });
+          props["Post Image Source"] = { url: postImageSource || null };
+        }
+        if (instagramBackgroundSource !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Instagram Background Source": { type: "url" } });
+          props["Instagram Background Source"] = { url: instagramBackgroundSource || null };
         }
         if (productLink !== undefined) {
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Product Link": { type: "url" } });

@@ -458,6 +458,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
             <button class="iconbtn" onclick="openPublishFieldLink('pubPostImageSource')" title="Open the wordless background">↗</button>
             <button class="iconbtn" onclick="copyPublishField('pubPostImageSource', this)" title="Copy the wordless background link">📋</button>
+            <button class="iconbtn" onclick="openBackgroundPicker('postImage')" title="Choose a previously saved background">🖼️ Choose</button>
             <input type="hidden" id="pubPostImageSource">
           </div>
         </div>
@@ -502,6 +503,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
                 <button class="iconbtn" onclick="openPublishFieldLink('pubIgBgSource')" title="Open the wordless background">↗</button>
                 <button class="iconbtn" onclick="copyPublishField('pubIgBgSource', this)" title="Copy the wordless background link">📋</button>
+                <button class="iconbtn" onclick="openBackgroundPicker('instagramBackground')" title="Choose a previously saved background">🖼️ Choose</button>
                 <input type="hidden" id="pubIgBgSource">
               </div>
               <input type="hidden" id="pubIgBgUrl">
@@ -536,6 +538,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <span style="color:var(--ink3);flex-shrink:0;margin-left:8px;">Background (before text):</span>
                 <button class="iconbtn" onclick="openPublishFieldLink('pubThumbBgSource')" title="Open the wordless background">↗</button>
                 <button class="iconbtn" onclick="copyPublishField('pubThumbBgSource', this)" title="Copy the wordless background link">📋</button>
+                <button class="iconbtn" onclick="openBackgroundPicker('thumbnail')" title="Choose a previously saved background">🖼️ Choose</button>
                 <input type="hidden" id="pubThumbBgSource">
               </div>
               <textarea id="pubBlogThumbPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
@@ -600,7 +603,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="modaloverlay" id="imagePickerModal">
     <div class="modalbox" style="max-width:460px;">
       <div class="mtitle">Choose image</div>
-      <div class="mfield">Attach an existing image to this field</div>
+      <div class="mfield" id="imagePickerSubtitle">Attach an existing image to this field</div>
       <div id="imagePickerGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
       <div class="modalrow">
         <button class="btn" onclick="closeImagePicker()">Cancel</button>
@@ -2768,7 +2771,13 @@ function openPublishAssetModal(assetId) {
     document.getElementById('pubPostImageEditBtn').style.display = data.postImage ? '' : 'none';
     document.getElementById('pubPostImageGenBtn').textContent = data.postImage ? '✨ Regenerate background (Grok)' : '✨ Generate background (Grok)';
     document.getElementById('pubPostImageStatus').textContent = '';
-    document.getElementById('pubPostImageSource').value = data.postImageSource || data.postImage || '';
+    // No fallback to the main value here on purpose: if this asset predates
+    // Source tracking (or Source was never stamped for some other reason),
+    // the main value may already be a texted render — silently treating it
+    // as a clean background would recomposite text on top of text. Leaving
+    // this blank surfaces the gap honestly; ⭐ Choose background (history)
+    // or ✨ Generate fixes it explicitly.
+    document.getElementById('pubPostImageSource').value = data.postImageSource || '';
   }
 
   const hubWrap = document.getElementById('pubHubWrap');
@@ -2795,11 +2804,14 @@ function openPublishAssetModal(assetId) {
     if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
     if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
     // The wordless background, separate from the (possibly texted) values
-    // above — falls back to the main value for assets generated before this
-    // property existed, so the link is never blank on an asset that
-    // genuinely has an image, just possibly stale if text was since added.
-    document.getElementById('pubIgBgSource').value = data.instagramBackgroundSource || data.instagramBackground || '';
-    document.getElementById('pubThumbBgSource').value = data.thumbnailSource || data.thumbnail || '';
+    // above. Deliberately NO fallback to the main value: an asset that
+    // predates Source tracking may already have a TEXTED image as its main
+    // value, and silently treating that as "the clean background" would
+    // recomposite text on top of text on the next render. Blank here is
+    // honest about the gap — ⭐ Choose background (history) or ✨ Generate
+    // fixes it explicitly, once.
+    document.getElementById('pubIgBgSource').value = data.instagramBackgroundSource || '';
+    document.getElementById('pubThumbBgSource').value = data.thumbnailSource || '';
   }
   const igTextBtn = document.getElementById('pubIgBgTextBtn');
   igTextBtn.style.display = (isOffer && data.instagramBackground) ? '' : 'none';
@@ -3106,23 +3118,26 @@ async function genSinglePostImage() {
 // 🖼️ button was clicked. No re-hosting: it's the same file, just a second
 // property pointing at it, via updatePublishFields' plain url PATCH.
 let IMG_PICKER_TARGET = null;
+let IMG_PICKER_MODE = 'attach'; // 'attach' (sets the main field, from openImagePicker) or 'background' (sets ONLY the Source field, from openBackgroundPicker)
 const IMG_PICKER_SLOTS = {
-  thumbnail:           { label: 'Thumbnail',            fieldId: 'pubThumbnail',   previewId: 'pubThumbnailPreview',  historyKind: 'blog-thumbnail' },
-  postImage:           { label: 'Post Image',            fieldId: 'pubPostImage',   previewId: 'pubPostImagePreview', historyKind: 'post-image' },
-  instagramBackground: { label: 'Instagram Background',  fieldId: null,             previewId: 'pubIgBgPreview',       historyKind: 'ig-background' },
+  thumbnail:           { label: 'Thumbnail',            fieldId: 'pubThumbnail',   previewId: 'pubThumbnailPreview',  historyKind: 'blog-thumbnail', srcField: 'thumbnailSource',           srcHiddenId: 'pubThumbBgSource' },
+  postImage:           { label: 'Post Image',            fieldId: 'pubPostImage',   previewId: 'pubPostImagePreview', historyKind: 'post-image',      srcField: 'postImageSource',           srcHiddenId: 'pubPostImageSource' },
+  instagramBackground: { label: 'Instagram Background',  fieldId: null,             previewId: 'pubIgBgPreview',       historyKind: 'ig-background',   srcField: 'instagramBackgroundSource', srcHiddenId: 'pubIgBgSource' },
 };
+const imgPickerRow = (url, label, onclickFn) => `<div style="display:flex;align-items:center;gap:10px;padding:6px;border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="${onclickFn}('${esc(url)}')"><img src="${esc(url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;"><span style="font-size:12px;flex:1;">${label}</span></div>`;
 async function openImagePicker(targetField) {
   if (!pubAssetId) return;
   IMG_PICKER_TARGET = targetField;
+  IMG_PICKER_MODE = 'attach';
+  document.getElementById('imagePickerSubtitle').textContent = 'Attach an existing image to this field';
   const myAsset = pubAssetId;
   const data = PUB_ASSET_CACHE[myAsset] || {};
   const candidates = Object.keys(IMG_PICKER_SLOTS)
     .map(key => ({ key, url: data[key], label: IMG_PICKER_SLOTS[key].label }))
     .filter(c => c.url);
   const grid = document.getElementById('imagePickerGrid');
-  const renderRow = (url, label) => `<div style="display:flex;align-items:center;gap:10px;padding:6px;border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="pickImageForTarget('${esc(url)}')"><img src="${esc(url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;"><span style="font-size:12px;flex:1;">${label}</span></div>`;
   grid.innerHTML = candidates.length
-    ? candidates.map(c => renderRow(c.url, esc(c.label) + (c.key === targetField ? ' <span style="color:var(--ink3);">(current)</span>' : ''))).join('')
+    ? candidates.map(c => imgPickerRow(c.url, esc(c.label) + (c.key === targetField ? ' <span style="color:var(--ink3);">(current)</span>' : ''), 'pickImageForTarget')).join('')
     : `<div class="loadnote">No images generated on this asset yet — generate one above first.</div>`;
   document.getElementById('imagePickerModal').classList.add('open');
   // History — every past render for this slot (saveOfferImage appends one
@@ -3131,15 +3146,58 @@ async function openImagePicker(targetField) {
   const historyKind = IMG_PICKER_SLOTS[targetField].historyKind;
   try {
     const r = await w('getImageHistory', { assetId: myAsset, kind: historyKind });
-    if (IMG_PICKER_TARGET !== targetField) return; // picker closed/reopened for a different field meanwhile
+    if (IMG_PICKER_TARGET !== targetField || IMG_PICKER_MODE !== 'attach') return; // picker closed/reopened meanwhile
     const hist = (r.history || []).filter(h => !candidates.some(c => c.url === h.url));
     if (hist.length) {
       grid.innerHTML += `<div style="font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 2px;">History</div>`
-        + hist.map(h => renderRow(h.url, new Date(h.timestamp).toLocaleString() + (h.background ? ' <span style="color:var(--ink3);">(background)</span>' : ' <span style="color:var(--ink3);">(with text)</span>'))).join('');
+        + hist.map(h => imgPickerRow(h.url, new Date(h.timestamp).toLocaleString() + (h.background ? ' <span style="color:var(--ink3);">(background)</span>' : ' <span style="color:var(--ink3);">(with text)</span>'), 'pickImageForTarget')).join('');
+    }
+  } catch (e) { /* history is best-effort */ }
+}
+// The "Background (before text)" picker — sets ONLY the Source property for
+// this slot, never the main (possibly texted) value. Shows the current
+// Source (if any) plus every past render for this slot, so a background lost
+// to a legacy asset (no Source ever tracked) or an accidental overwrite can
+// be recovered without generating a brand new one.
+async function openBackgroundPicker(targetField) {
+  if (!pubAssetId) return;
+  IMG_PICKER_TARGET = targetField;
+  IMG_PICKER_MODE = 'background';
+  document.getElementById('imagePickerSubtitle').textContent = 'Choose the wordless background this slot composites text onto';
+  const myAsset = pubAssetId;
+  const slot = IMG_PICKER_SLOTS[targetField];
+  const data = PUB_ASSET_CACHE[myAsset] || {};
+  const currentSource = data[slot.srcField] || '';
+  const grid = document.getElementById('imagePickerGrid');
+  grid.innerHTML = currentSource ? imgPickerRow(currentSource, 'Current background', 'pickBackgroundForTarget') : '';
+  document.getElementById('imagePickerModal').classList.add('open');
+  try {
+    const r = await w('getImageHistory', { assetId: myAsset, kind: slot.historyKind });
+    if (IMG_PICKER_TARGET !== targetField || IMG_PICKER_MODE !== 'background') return;
+    const hist = (r.history || []).filter(h => h.url !== currentSource);
+    if (hist.length) {
+      grid.innerHTML += `<div style="font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 2px;">History</div>`
+        + hist.map(h => imgPickerRow(h.url, new Date(h.timestamp).toLocaleString() + (h.background ? ' <span style="color:var(--ink3);">(background)</span>' : ' <span style="color:var(--stale);">(has text — not recommended)</span>'), 'pickBackgroundForTarget')).join('');
+    } else if (!currentSource) {
+      grid.innerHTML = `<div class="loadnote">No saved renders yet — click ✨ Generate first.</div>`;
     }
   } catch (e) { /* history is best-effort */ }
 }
 function closeImagePicker() { document.getElementById('imagePickerModal').classList.remove('open'); IMG_PICKER_TARGET = null; }
+async function pickBackgroundForTarget(url) {
+  const target = IMG_PICKER_TARGET;
+  if (!target || !pubAssetId) return;
+  const slot = IMG_PICKER_SLOTS[target];
+  const myAsset = pubAssetId;
+  closeImagePicker();
+  try {
+    await w('updatePublishFields', { assetId: myAsset, [slot.srcField]: url });
+    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset][slot.srcField] = url;
+    document.getElementById(slot.srcHiddenId).value = url;
+  } catch (e) {
+    alert('Could not set that background: ' + e.message);
+  }
+}
 async function pickImageForTarget(url) {
   const target = IMG_PICKER_TARGET;
   if (!target || !pubAssetId) return;
@@ -3428,10 +3486,13 @@ async function compositeTitleOnThumbnail(overrideTitle) {
   const btn = document.getElementById('pubThumbnailTextBtn');
   const statusEl = document.getElementById('pubBlogThumbStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
-  // Composite from the SAVED WORDLESS BACKGROUND, never from the main field
-  // (which may already carry a previous text render) — otherwise
-  // "re-render" would draw new text on top of already-texted pixels.
-  const bgUrl = document.getElementById('pubThumbBgSource').value || document.getElementById('pubThumbnail').value;
+  // Composite from the SAVED WORDLESS BACKGROUND ONLY — never fall back to
+  // the main field, which may already carry a previous text render;
+  // otherwise "re-render" draws new text on top of already-texted pixels.
+  // No Source tracked yet (a legacy asset, or one whose Source got lost)?
+  // The alert below tells the operator to Generate fresh or pick one from
+  // ⭐ Choose background, rather than silently guessing wrong.
+  const bgUrl = document.getElementById('pubThumbBgSource').value;
   let title = (overrideTitle != null ? overrideTitle : (data.platformTitle || data.assetTitle || data.title || '')).trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
@@ -3479,7 +3540,8 @@ async function compositeTitleOnIgBackground(overrideTitle) {
   const btn = document.getElementById('pubIgBgTextBtn');
   const statusEl = document.getElementById('pubIgBgStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
-  const bgUrl = document.getElementById('pubIgBgSource').value || document.getElementById('pubIgBgUrl').value;
+  // No fallback to the main field — see compositeTitleOnThumbnail's note.
+  const bgUrl = document.getElementById('pubIgBgSource').value;
   let title = (overrideTitle != null ? overrideTitle : (data.platformTitle || data.assetTitle || data.title || '')).trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
@@ -3520,7 +3582,8 @@ async function compositeTextOnPostImage(overrideFields) {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageTextBtn');
   const statusEl = document.getElementById('pubPostImageStatus');
-  const bgUrl = document.getElementById('pubPostImageSource').value || document.getElementById('pubPostImage').value;
+  // No fallback to the main field — see compositeTitleOnThumbnail's note.
+  const bgUrl = document.getElementById('pubPostImageSource').value;
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   // Editable dimensions — see the note on compositeTitleOnThumbnail; no
   // spec-card field for these, they live as number inputs (or the 🎯
@@ -3597,8 +3660,8 @@ async function openTextEditor(mode) {
   const slot = TEXT_EDITOR_SLOTS[mode];
   // Preview/edit the CLEAN background, same reasoning as every composite
   // function — never the main field, which may already carry text.
-  const bgUrl = document.getElementById(slot.srcField).value || document.getElementById(slot.urlField).value;
-  if (!bgUrl) { alert('Generate or attach a background first.'); return; }
+  const bgUrl = document.getElementById(slot.srcField).value;
+  if (!bgUrl) { alert('Generate a background, or use 🖼️ Choose background, first.'); return; }
   const modal = document.getElementById('textEditorModal');
   const statusEl = document.getElementById('textEditorStatus');
   document.getElementById('textEditorTitle').textContent = slot.title;
