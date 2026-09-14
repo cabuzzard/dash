@@ -24540,7 +24540,31 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || `Failed to save the ${SLOT[kind].prop} property` }, 500); }
 
+        // Every save (background or composited) also gets appended to a
+        // small per-asset-per-kind history in KV, newest first, capped —
+        // the Notion property only ever holds the CURRENT value, so without
+        // this a past render is gone the moment a new one is saved. Best-
+        // effort: a KV hiccup here should never fail the save itself.
+        try {
+          const histKey = `imghist:${assetId}:${kind}`;
+          let hist = (await env.TRADES.get(histKey, "json")) || [];
+          if (!Array.isArray(hist)) hist = [];
+          hist.unshift({ url, timestamp: Date.now(), background: !!body.background });
+          await env.TRADES.put(histKey, JSON.stringify(hist.slice(0, 12)));
+        } catch (e) {}
+
         return json({ success: true, url, prop: SLOT[kind].prop });
+      }
+
+      // ── getImageHistory: every past render for one asset+kind, newest
+      // first (see the history-append above saveOfferImage's return).
+      // { assetId, kind }
+      if (body.action === "getImageHistory") {
+        const { assetId, kind } = body;
+        if (!assetId || !kind) return json({ error: "assetId and kind required" }, 400);
+        let hist = [];
+        try { hist = (await env.TRADES.get(`imghist:${assetId}:${kind}`, "json")) || []; } catch (e) {}
+        return json({ history: Array.isArray(hist) ? hist : [] });
       }
 
       // ── single-post methods: per-hub Canva template registry + Stage-2 port ──

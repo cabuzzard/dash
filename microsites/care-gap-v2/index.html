@@ -451,6 +451,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <label title="Panel's top edge, % of image height">Y <input type="number" id="pubPostBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel width, % of image width">W <input type="number" id="pubPostBoxW" value="62" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel height, % of image height">H <input type="number" id="pubPostBoxH" value="58" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel fill color">Color <input type="color" id="pubPostBoxColor" value="#ffffff" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+            <label title="Panel opacity at its strongest edge">Opacity <input type="number" id="pubPostBoxOpacity" value="88" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
           </div>
           <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
             <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
@@ -493,6 +495,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Dark zone top edge, % of height">Y <input type="number" id="pubIgBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone width, % of width">W <input type="number" id="pubIgBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubIgBoxH" value="40" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone fill color">Color <input type="color" id="pubIgBoxColor" value="#191b1f" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+                <label title="Dark zone opacity at its darkest edge">Opacity <input type="number" id="pubIgBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
                 <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
@@ -522,6 +526,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Dark zone top edge, % of height">Y <input type="number" id="pubThumbBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone width, % of width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone fill color">Color <input type="color" id="pubThumbBoxColor" value="#191b1f" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+                <label title="Dark zone opacity at its darkest edge">Opacity <input type="number" id="pubThumbBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
                 <span style="color:var(--ink3);flex-shrink:0;">Image:</span>
@@ -614,6 +620,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <canvas id="textEditorCanvas" style="width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--border2);touch-action:none;cursor:grab;" onpointerdown="textEditorPointerDown(event)" onpointermove="textEditorPointerMove(event)" onpointerup="textEditorPointerUp(event)" onpointerleave="textEditorPointerUp(event)"></canvas>
         </div>
         <div id="textEditorHint" style="font-size:10.5px;color:var(--ink3);text-align:center;"></div>
+        <div id="textEditorTextFields" style="display:flex;flex-direction:column;gap:6px;"></div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
           <label style="display:flex;align-items:center;gap:6px;">Font size
             <input type="range" id="textEditorFontSize" min="2" max="15" step="0.2" oninput="textEditorFontSizeChange()" style="width:110px;">
@@ -628,6 +635,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <label style="display:flex;align-items:center;gap:4px;">Y <input type="number" id="textEditorBoxY" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
           <label style="display:flex;align-items:center;gap:4px;">W <input type="number" id="textEditorBoxW" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
           <label style="display:flex;align-items:center;gap:4px;">H <input type="number" id="textEditorBoxH" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
+          <label style="display:flex;align-items:center;gap:6px;">Box color <input type="color" id="textEditorBoxColor" oninput="textEditorBoxStyleChange()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+          <label style="display:flex;align-items:center;gap:6px;">Opacity <input type="number" id="textEditorBoxOpacity" min="0" max="100" step="5" oninput="textEditorBoxStyleChange()" class="finput" style="width:44px;">%</label>
         </div>
         <div id="textEditorStatus" style="font-size:11.5px;min-height:14px;text-align:center;"></div>
       </div>
@@ -3096,22 +3107,37 @@ async function genSinglePostImage() {
 // property pointing at it, via updatePublishFields' plain url PATCH.
 let IMG_PICKER_TARGET = null;
 const IMG_PICKER_SLOTS = {
-  thumbnail:           { label: 'Thumbnail',            fieldId: 'pubThumbnail',   previewId: 'pubThumbnailPreview' },
-  postImage:           { label: 'Post Image',            fieldId: 'pubPostImage',   previewId: 'pubPostImagePreview' },
-  instagramBackground: { label: 'Instagram Background',  fieldId: null,             previewId: 'pubIgBgPreview' },
+  thumbnail:           { label: 'Thumbnail',            fieldId: 'pubThumbnail',   previewId: 'pubThumbnailPreview',  historyKind: 'blog-thumbnail' },
+  postImage:           { label: 'Post Image',            fieldId: 'pubPostImage',   previewId: 'pubPostImagePreview', historyKind: 'post-image' },
+  instagramBackground: { label: 'Instagram Background',  fieldId: null,             previewId: 'pubIgBgPreview',       historyKind: 'ig-background' },
 };
-function openImagePicker(targetField) {
+async function openImagePicker(targetField) {
   if (!pubAssetId) return;
   IMG_PICKER_TARGET = targetField;
-  const data = PUB_ASSET_CACHE[pubAssetId] || {};
+  const myAsset = pubAssetId;
+  const data = PUB_ASSET_CACHE[myAsset] || {};
   const candidates = Object.keys(IMG_PICKER_SLOTS)
     .map(key => ({ key, url: data[key], label: IMG_PICKER_SLOTS[key].label }))
     .filter(c => c.url);
   const grid = document.getElementById('imagePickerGrid');
+  const renderRow = (url, label) => `<div style="display:flex;align-items:center;gap:10px;padding:6px;border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="pickImageForTarget('${esc(url)}')"><img src="${esc(url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;"><span style="font-size:12px;flex:1;">${label}</span></div>`;
   grid.innerHTML = candidates.length
-    ? candidates.map(c => `<div style="display:flex;align-items:center;gap:10px;padding:6px;border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="pickImageForTarget('${esc(c.url)}')"><img src="${esc(c.url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;"><span style="font-size:12px;flex:1;">${esc(c.label)}${c.key === targetField ? ' <span style="color:var(--ink3);">(current)</span>' : ''}</span></div>`).join('')
+    ? candidates.map(c => renderRow(c.url, esc(c.label) + (c.key === targetField ? ' <span style="color:var(--ink3);">(current)</span>' : ''))).join('')
     : `<div class="loadnote">No images generated on this asset yet — generate one above first.</div>`;
   document.getElementById('imagePickerModal').classList.add('open');
+  // History — every past render for this slot (saveOfferImage appends one
+  // entry per save, background or composited), so an earlier version is
+  // still recoverable after a regenerate or a new text render.
+  const historyKind = IMG_PICKER_SLOTS[targetField].historyKind;
+  try {
+    const r = await w('getImageHistory', { assetId: myAsset, kind: historyKind });
+    if (IMG_PICKER_TARGET !== targetField) return; // picker closed/reopened for a different field meanwhile
+    const hist = (r.history || []).filter(h => !candidates.some(c => c.url === h.url));
+    if (hist.length) {
+      grid.innerHTML += `<div style="font-size:10px;color:var(--ink3);text-transform:uppercase;letter-spacing:.05em;margin:6px 0 2px;">History</div>`
+        + hist.map(h => renderRow(h.url, new Date(h.timestamp).toLocaleString() + (h.background ? ' <span style="color:var(--ink3);">(background)</span>' : ' <span style="color:var(--ink3);">(with text)</span>'))).join('');
+    }
+  } catch (e) { /* history is best-effort */ }
 }
 function closeImagePicker() { document.getElementById('imagePickerModal').classList.remove('open'); IMG_PICKER_TARGET = null; }
 async function pickImageForTarget(url) {
@@ -3328,6 +3354,14 @@ function readBoxParams(prefix, defaults) {
   const v = (suffix, d) => { const el = document.getElementById(prefix + suffix); const n = el ? parseFloat(el.value) : NaN; return isNaN(n) ? d : n; };
   return { xPct: v('X', defaults.xPct), yPct: v('Y', defaults.yPct), wPct: v('W', defaults.wPct), hPct: v('H', defaults.hPct) };
 }
+// Reads the matching Color/Opacity inputs (e.g. "pubThumbBox" ->
+// pubThumbBoxColor/pubThumbBoxOpacity) into {boxColor, boxOpacity}.
+function readBoxStyle(prefix, defaults) {
+  const colorEl = document.getElementById(prefix + 'Color');
+  const opacityEl = document.getElementById(prefix + 'Opacity');
+  const opacity = opacityEl ? parseFloat(opacityEl.value) : NaN;
+  return { boxColor: (colorEl && colorEl.value) || defaults.boxColor, boxOpacity: isNaN(opacity) ? defaults.boxOpacity : opacity };
+}
 function boxRect(w, h, opts) {
   return { x: w * (opts.xPct / 100), y: h * (opts.yPct / 100), w: w * (opts.wPct / 100), h: h * (opts.hPct / 100) };
 }
@@ -3339,13 +3373,14 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
   // everywhere outside the box, which a wider/taller box then covers more
   // of, looking exactly like "the background image resized" as W/H grow.
   const box = boxRect(w, h, opts);
-  // Scrim tinted with the hub's own dark-band pairing ("deep"/"deep-ink" —
-  // a designated dark-background + legible-foreground pair, distinct from
-  // "ink" which is body text color on a light page), so it's genuinely this
-  // hub's contrast pair rather than a generic black-and-white overlay.
-  const deep = hexToRgb(hub.tokens.deep);
+  // Scrim color/opacity are operator-editable (Color/Opacity fields); default
+  // to the hub's own dark-band pairing ("deep"/"deep-ink" — a designated
+  // dark-background + legible-foreground pair, distinct from "ink" which is
+  // body text color on a light page) so it reads as this hub's by default.
+  const scrim = hexToRgb(opts.boxColor || hub.tokens.deep);
+  const peakAlpha = (opts.boxOpacity != null ? opts.boxOpacity : 72) / 100;
   const grad = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
-  grad.addColorStop(0, `rgba(${deep.r},${deep.g},${deep.b},.72)`); grad.addColorStop(1, `rgba(${deep.r},${deep.g},${deep.b},0)`);
+  grad.addColorStop(0, `rgba(${scrim.r},${scrim.g},${scrim.b},${peakAlpha})`); grad.addColorStop(1, `rgba(${scrim.r},${scrim.g},${scrim.b},0)`);
   ctx.fillStyle = grad; ctx.fillRect(box.x, box.y, box.w, box.h);
   const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top'; ctx.fillStyle = hub.tokens.deepInk;
@@ -3364,11 +3399,13 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
 }
 function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
   const box = boxRect(w, h, opts);
-  // Panel tinted with the hub's own light "surface" token, not a generic
-  // white, so the light side of the contrast pair matches this hub too.
-  const surface = hexToRgb(hub.tokens.surface);
+  // Panel color/opacity are operator-editable; default to the hub's own
+  // light "surface" token, not a generic white, so it matches this hub
+  // by default.
+  const panel = hexToRgb(opts.boxColor || hub.tokens.surface);
+  const peakAlpha = (opts.boxOpacity != null ? opts.boxOpacity : 88) / 100;
   const grad = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
-  grad.addColorStop(0, `rgba(${surface.r},${surface.g},${surface.b},.88)`); grad.addColorStop(1, `rgba(${surface.r},${surface.g},${surface.b},.35)`);
+  grad.addColorStop(0, `rgba(${panel.r},${panel.g},${panel.b},${peakAlpha})`); grad.addColorStop(1, `rgba(${panel.r},${panel.g},${panel.b},${Math.min(peakAlpha, 0.35)})`);
   ctx.fillStyle = grad; ctx.fillRect(box.x, box.y, box.w, box.h);
   const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top';
@@ -3386,7 +3423,7 @@ function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
   }
   return box;
 }
-async function compositeTitleOnThumbnail() {
+async function compositeTitleOnThumbnail(overrideTitle) {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubThumbnailTextBtn');
   const statusEl = document.getElementById('pubBlogThumbStatus');
@@ -3395,7 +3432,7 @@ async function compositeTitleOnThumbnail() {
   // (which may already carry a previous text render) — otherwise
   // "re-render" would draw new text on top of already-texted pixels.
   const bgUrl = document.getElementById('pubThumbBgSource').value || document.getElementById('pubThumbnail').value;
-  let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
+  let title = (overrideTitle != null ? overrideTitle : (data.platformTitle || data.assetTitle || data.title || '')).trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
   // Editable dimensions — the number inputs right next to this button (or
@@ -3405,6 +3442,7 @@ async function compositeTitleOnThumbnail() {
   const sizePct = parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5;
   const maxChars = parseInt(document.getElementById('pubThumbMaxChars').value) || 90;
   const box = readBoxParams('pubThumbBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 48 });
+  const style = readBoxStyle('pubThumbBox', { boxColor: '#191b1f', boxOpacity: 72 });
   title = truncateToChars(title, maxChars);
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
@@ -3417,7 +3455,7 @@ async function compositeTitleOnThumbnail() {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box });
+    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box, ...style });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'blog-thumbnail', fileData: dataUrl });
@@ -3436,18 +3474,19 @@ async function compositeTitleOnThumbnail() {
 // Same job as compositeTitleOnThumbnail (title over a scrim, drawThumbnailComposite)
 // but for the Instagram background slot — a different image (vertical, its
 // own saved background) and a different Notion property (ig-background kind).
-async function compositeTitleOnIgBackground() {
+async function compositeTitleOnIgBackground(overrideTitle) {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubIgBgTextBtn');
   const statusEl = document.getElementById('pubIgBgStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
   const bgUrl = document.getElementById('pubIgBgSource').value || document.getElementById('pubIgBgUrl').value;
-  let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
+  let title = (overrideTitle != null ? overrideTitle : (data.platformTitle || data.assetTitle || data.title || '')).trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
   const sizePct = parseFloat(document.getElementById('pubIgTextSizePct').value) || 8;
   const maxChars = parseInt(document.getElementById('pubIgMaxChars').value) || 70;
   const box = readBoxParams('pubIgBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 40 });
+  const style = readBoxStyle('pubIgBox', { boxColor: '#191b1f', boxOpacity: 72 });
   title = truncateToChars(title, maxChars);
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
@@ -3460,7 +3499,7 @@ async function compositeTitleOnIgBackground() {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box });
+    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box, ...style });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'ig-background', fileData: dataUrl });
@@ -3477,7 +3516,7 @@ async function compositeTitleOnIgBackground() {
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
-async function compositeTextOnPostImage() {
+async function compositeTextOnPostImage(overrideFields) {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageTextBtn');
   const statusEl = document.getElementById('pubPostImageStatus');
@@ -3489,15 +3528,15 @@ async function compositeTextOnPostImage() {
   const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
   const maxChars = parseInt(document.getElementById('pubPostMaxChars').value) || 40;
   const box = readBoxParams('pubPostBox', { xPct: 0, yPct: 0, wPct: 62, hPct: 58 });
+  const style = readBoxStyle('pubPostBox', { boxColor: '#ffffff', boxOpacity: 88 });
   btn.disabled = true; btn.textContent = '🔤 Working…';
-  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Fetching this post\'s copy…';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = overrideFields ? 'Rendering headline text…' : 'Fetching this post\'s copy…';
   const myAsset = pubAssetId;
   try {
-    const fr = await w('getSinglePostFields', { assetId: myAsset });
-    const fields = fr.fields || {};
-    const primary = truncateToChars((fields['Headline Primary'] || '').trim(), maxChars);
-    const accent = truncateToChars((fields['Headline Accent'] || '').trim(), maxChars);
-    const bodyText = (fields['Body'] || '').trim();
+    const fields = overrideFields || (await w('getSinglePostFields', { assetId: myAsset })).fields || {};
+    const primary = truncateToChars((fields['Headline Primary'] ?? fields.primary ?? '').trim(), maxChars);
+    const accent = truncateToChars((fields['Headline Accent'] ?? fields.accent ?? '').trim(), maxChars);
+    const bodyText = (fields['Body'] ?? fields.body ?? '').trim();
     if (!primary && !accent) throw new Error('No Headline Primary/Accent found on this asset.');
     statusEl.textContent = 'Loading hub fonts…';
     const hub = await ensureHubFontsLoaded(await resolveHubDesign());
@@ -3507,7 +3546,7 @@ async function compositeTextOnPostImage() {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, hub, { sizePct: headSizePct, ...box });
+    drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, hub, { sizePct: headSizePct, ...box, ...style });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', fileData: dataUrl });
@@ -3534,19 +3573,22 @@ const TEXT_EDITOR_SLOTS = {
     title: 'Thumbnail — title placement', urlField: 'pubThumbnail', srcField: 'pubThumbBgSource', draw: 'title',
     sizeId: 'pubThumbTextSizePct', maxCharsId: 'pubThumbMaxChars', boxPrefix: 'pubThumbBox',
     sizeDefault: 7.5, sizeMax: 15, maxCharsDefault: 90, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 48 },
-    save: () => compositeTitleOnThumbnail(),
+    styleDefaults: { boxColor: '#191b1f', boxOpacity: 72 },
+    save: (text) => compositeTitleOnThumbnail(text.title),
   },
   igBackground: {
     title: 'Instagram background — title placement', urlField: 'pubIgBgUrl', srcField: 'pubIgBgSource', draw: 'title',
     sizeId: 'pubIgTextSizePct', maxCharsId: 'pubIgMaxChars', boxPrefix: 'pubIgBox',
     sizeDefault: 8, sizeMax: 15, maxCharsDefault: 70, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 40 },
-    save: () => compositeTitleOnIgBackground(),
+    styleDefaults: { boxColor: '#191b1f', boxOpacity: 72 },
+    save: (text) => compositeTitleOnIgBackground(text.title),
   },
   postImage: {
     title: 'Post image — headline placement', urlField: 'pubPostImage', srcField: 'pubPostImageSource', draw: 'post',
     sizeId: 'pubPostHeadSizePct', maxCharsId: 'pubPostMaxChars', boxPrefix: 'pubPostBox',
     sizeDefault: 6.2, sizeMax: 14, maxCharsDefault: 40, boxDefaults: { xPct: 0, yPct: 0, wPct: 62, hPct: 58 },
-    save: () => compositeTextOnPostImage(),
+    styleDefaults: { boxColor: '#ffffff', boxOpacity: 88 },
+    save: (text) => compositeTextOnPostImage({ primary: text.primary, accent: text.accent, body: text.body }),
   },
 };
 let TEXT_EDITOR = null;
@@ -3582,12 +3624,16 @@ async function openTextEditor(mode) {
       sizePct: parseFloat(document.getElementById(slot.sizeId).value) || slot.sizeDefault,
       maxChars: parseInt(document.getElementById(slot.maxCharsId).value) || slot.maxCharsDefault,
       ...readBoxParams(slot.boxPrefix, slot.boxDefaults),
+      ...readBoxStyle(slot.boxPrefix, slot.styleDefaults),
     };
     TEXT_EDITOR = { mode, slot, canvas, ctx: canvas.getContext('2d'), img, hub, text, params, dragging: null };
     const sizeInput = document.getElementById('textEditorFontSize');
     sizeInput.max = slot.sizeMax; sizeInput.value = params.sizePct;
     document.getElementById('textEditorFontSizeVal').textContent = params.sizePct;
     document.getElementById('textEditorMaxChars').value = params.maxChars;
+    document.getElementById('textEditorBoxColor').value = params.boxColor;
+    document.getElementById('textEditorBoxOpacity').value = params.boxOpacity;
+    renderTextEditorTextFields();
     statusEl.textContent = '';
     redrawTextEditor();
   } catch (e) {
@@ -3595,6 +3641,52 @@ async function openTextEditor(mode) {
   }
 }
 function closeTextEditor() { document.getElementById('textEditorModal').classList.remove('open'); TEXT_EDITOR = null; }
+// Builds the editable text field(s) for whichever slot is open — one
+// textarea for a title slot, three inputs (Primary/Accent/Body) for the
+// post slot — wired straight to TEXT_EDITOR.text so edits redraw live and
+// flow through to the save call, instead of always re-deriving from the
+// asset's own stored copy.
+function renderTextEditorTextFields() {
+  const t = TEXT_EDITOR;
+  const wrap = document.getElementById('textEditorTextFields');
+  if (t.slot.draw === 'title') {
+    wrap.innerHTML = `<label style="font-size:11px;color:var(--ink2);">Title text
+      <textarea id="textEditorTitleText" rows="2" style="width:100%;margin-top:4px;font-size:12px;" oninput="textEditorTextChange()"></textarea>
+    </label>`;
+    document.getElementById('textEditorTitleText').value = t.text.title || '';
+  } else {
+    wrap.innerHTML = `
+      <label style="font-size:11px;color:var(--ink2);">Headline Primary
+        <input type="text" id="textEditorPrimaryText" class="finput" style="width:100%;margin-top:4px;box-sizing:border-box;" oninput="textEditorTextChange()">
+      </label>
+      <label style="font-size:11px;color:var(--ink2);">Headline Accent
+        <input type="text" id="textEditorAccentText" class="finput" style="width:100%;margin-top:4px;box-sizing:border-box;" oninput="textEditorTextChange()">
+      </label>
+      <label style="font-size:11px;color:var(--ink2);">Body
+        <input type="text" id="textEditorBodyText" class="finput" style="width:100%;margin-top:4px;box-sizing:border-box;" oninput="textEditorTextChange()">
+      </label>`;
+    document.getElementById('textEditorPrimaryText').value = t.text.primary || '';
+    document.getElementById('textEditorAccentText').value = t.text.accent || '';
+    document.getElementById('textEditorBodyText').value = t.text.body || '';
+  }
+}
+function textEditorTextChange() {
+  const t = TEXT_EDITOR; if (!t) return;
+  if (t.slot.draw === 'title') {
+    t.text.title = document.getElementById('textEditorTitleText').value;
+  } else {
+    t.text.primary = document.getElementById('textEditorPrimaryText').value;
+    t.text.accent = document.getElementById('textEditorAccentText').value;
+    t.text.body = document.getElementById('textEditorBodyText').value;
+  }
+  redrawTextEditor();
+}
+function textEditorBoxStyleChange() {
+  const t = TEXT_EDITOR; if (!t) return;
+  t.params.boxColor = document.getElementById('textEditorBoxColor').value;
+  t.params.boxOpacity = parseFloat(document.getElementById('textEditorBoxOpacity').value);
+  redrawTextEditor();
+}
 // Keeps the four X/Y/W/H number fields showing whatever the current params
 // are — called after every drag AND every direct edit of those fields, so
 // dragging and typing stay in sync with each other.
@@ -3680,9 +3772,11 @@ function applyTextEditorAndSave() {
   document.getElementById(slot.boxPrefix + 'H').value = Math.round(t.params.hPct);
   document.getElementById(slot.maxCharsId).value = t.params.maxChars;
   document.getElementById(slot.sizeId).value = t.params.sizePct;
-  const save = slot.save;
+  document.getElementById(slot.boxPrefix + 'Color').value = t.params.boxColor;
+  document.getElementById(slot.boxPrefix + 'Opacity').value = t.params.boxOpacity;
+  const save = slot.save, text = t.text;
   closeTextEditor();
-  save();
+  save(text);
 }
 
 function init() {
