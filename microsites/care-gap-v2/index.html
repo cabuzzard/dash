@@ -444,9 +444,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           </div>
           <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
             <label title="Starting font size for Headline Primary/Accent, as a % of the image's width">Font size <input type="number" id="pubPostHeadSizePct" value="6.2" step="0.2" min="2" max="14" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
-            <label title="How big the light headline panel in the upper-left is — width % × height %, both of the full image">Panel size <input type="number" id="pubPostZoneWPct" value="62" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% w ×
-            <input type="number" id="pubPostZoneHPct" value="58" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% h</label>
             <label title="Headline Primary or Accent longer than this (each checked separately) gets cut short with '…' before rendering">Max chars/line <input type="number" id="pubPostMaxChars" value="40" step="5" min="10" max="150" class="finput" style="width:46px;padding:2px 4px;min-width:0;"></label>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
+            <label title="Panel's left edge, % of image width">Box X <input type="number" id="pubPostBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel's top edge, % of image height">Y <input type="number" id="pubPostBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel width, % of image width">W <input type="number" id="pubPostBoxW" value="62" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel height, % of image height">H <input type="number" id="pubPostBoxH" value="58" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
           </div>
         </div>
 
@@ -514,8 +518,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </div>
         <div style="display:flex;gap:10px;margin-top:2px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
           <label title="Starting font size, as a % of the image's width — e.g. 7.5 on a 2048px-wide image starts at ~154px tall">Font size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
-          <label title="How much of the top of the image gets darkened for the title to sit on, as a % of the image's height">Dark zone <input type="number" id="pubThumbZonePct" value="48" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% of height</label>
           <label title="Titles longer than this get cut short with '…' before rendering, instead of shrinking indefinitely to fit">Max chars <input type="number" id="pubThumbMaxChars" value="90" step="5" min="20" max="300" class="finput" style="width:46px;padding:2px 4px;min-width:0;"></label>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
+          <label title="Dark zone's left edge, % of image width">Box X <input type="number" id="pubThumbBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+          <label title="Dark zone's top edge, % of image height">Y <input type="number" id="pubThumbBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+          <label title="Dark zone width, % of image width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+          <label title="Dark zone height, % of image height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
         </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -3223,18 +3232,27 @@ function truncateToChars(text, maxChars) {
 // what gets saved (everything's expressed as a fraction of w/h, so it scales
 // cleanly to any canvas size). Each returns its zone rect for the editor's
 // handle to grab onto.
+// Reads the 4 Box X/Y/W/H number inputs sharing a prefix (e.g. "pubThumbBox"
+// -> pubThumbBoxX/Y/W/H) into a {xPct,yPct,wPct,hPct} params object.
+function readBoxParams(prefix, defaults) {
+  const v = (suffix, d) => { const el = document.getElementById(prefix + suffix); const n = el ? parseFloat(el.value) : NaN; return isNaN(n) ? d : n; };
+  return { xPct: v('X', defaults.xPct), yPct: v('Y', defaults.yPct), wPct: v('W', defaults.wPct), hPct: v('H', defaults.hPct) };
+}
+function boxRect(w, h, opts) {
+  return { x: w * (opts.xPct / 100), y: h * (opts.yPct / 100), w: w * (opts.wPct / 100), h: h * (opts.hPct / 100) };
+}
 function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
   ctx.clearRect(0, 0, w, h);
-  const zoneH = h * (opts.zonePct / 100);
+  const box = boxRect(w, h, opts);
   // Scrim tinted with the hub's own dark-band pairing ("deep"/"deep-ink" —
   // a designated dark-background + legible-foreground pair, distinct from
   // "ink" which is body text color on a light page), so it's genuinely this
   // hub's contrast pair rather than a generic black-and-white overlay.
   const deep = hexToRgb(hub.tokens.deep);
-  const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
+  const grad = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
   grad.addColorStop(0, `rgba(${deep.r},${deep.g},${deep.b},.72)`); grad.addColorStop(1, `rgba(${deep.r},${deep.g},${deep.b},0)`);
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, w, zoneH);
-  const pad = w * 0.07, maxWidth = w - pad * 2;
+  ctx.fillStyle = grad; ctx.fillRect(box.x, box.y, box.w, box.h);
+  const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top'; ctx.fillStyle = hub.tokens.deepInk;
   let fontSize = Math.round(w * (opts.sizePct / 100));
   let lineHeight, lines;
@@ -3243,36 +3261,36 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
     lineHeight = fontSize * 1.18;
     lines = wrapCanvasLines(ctx, title, maxWidth);
     fontSize -= Math.max(1, Math.round(w * 0.001));
-  } while (lines.length * lineHeight > zoneH * 0.82 && fontSize > 10);
+  } while (lines.length * lineHeight > box.h * 0.82 && fontSize > 10);
   const blockH = lines.length * lineHeight;
-  const startY = Math.max(pad * 0.6, (zoneH - blockH) / 2);
-  lines.forEach((line, i) => ctx.fillText(line, pad, startY + i * lineHeight));
-  return { zoneH };
+  const startY = box.y + Math.max(pad * 0.6, (box.h - blockH) / 2);
+  lines.forEach((line, i) => ctx.fillText(line, box.x + pad, startY + i * lineHeight));
+  return box;
 }
 function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
   ctx.clearRect(0, 0, w, h);
-  const zoneW = w * (opts.zoneWPct / 100), zoneH = h * (opts.zoneHPct / 100);
+  const box = boxRect(w, h, opts);
   // Panel tinted with the hub's own light "surface" token, not a generic
   // white, so the light side of the contrast pair matches this hub too.
   const surface = hexToRgb(hub.tokens.surface);
-  const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
+  const grad = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
   grad.addColorStop(0, `rgba(${surface.r},${surface.g},${surface.b},.88)`); grad.addColorStop(1, `rgba(${surface.r},${surface.g},${surface.b},.35)`);
-  ctx.fillStyle = grad; ctx.fillRect(0, 0, zoneW, zoneH);
-  const pad = w * 0.06, maxWidth = zoneW - pad * 2;
+  ctx.fillStyle = grad; ctx.fillRect(box.x, box.y, box.w, box.h);
+  const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top';
-  let y = pad;
+  let y = box.y + pad;
   const headFontSize = Math.max(8, Math.round(w * (opts.sizePct / 100))), headLineHeight = headFontSize * 1.16;
   ctx.font = `${hub.display.bold} ${headFontSize}px "${hub.display.family}", ${hub.display.fallback}`;
-  if (primary) { ctx.fillStyle = hub.tokens.ink; y += drawWrappedText(ctx, primary, pad, y, maxWidth, headLineHeight); }
-  if (accent) { ctx.fillStyle = hub.tokens.accent; y += drawWrappedText(ctx, accent, pad, y, maxWidth, headLineHeight); }
+  if (primary) { ctx.fillStyle = hub.tokens.ink; y += drawWrappedText(ctx, primary, box.x + pad, y, maxWidth, headLineHeight); }
+  if (accent) { ctx.fillStyle = hub.tokens.accent; y += drawWrappedText(ctx, accent, box.x + pad, y, maxWidth, headLineHeight); }
   if (bodyText) {
     y += headFontSize * 0.3;
     const bodyFontSize = Math.max(6, Math.round(w * 0.03)), bodyLineHeight = bodyFontSize * 1.35;
     ctx.font = `${hub.body.regular} ${bodyFontSize}px "${hub.body.family}", ${hub.body.fallback}`;
     ctx.fillStyle = hub.tokens.ink;
-    drawWrappedText(ctx, bodyText, pad, y, maxWidth, bodyLineHeight);
+    drawWrappedText(ctx, bodyText, box.x + pad, y, maxWidth, bodyLineHeight);
   }
-  return { zoneW, zoneH };
+  return box;
 }
 async function compositeTitleOnThumbnail() {
   if (!pubAssetId) return;
@@ -3288,8 +3306,8 @@ async function compositeTitleOnThumbnail() {
   // campaign's Image Spec covers the PHOTO's composition, not overlaid-type
   // sizing), so they live here.
   const sizePct = parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5;
-  const zonePct = parseFloat(document.getElementById('pubThumbZonePct').value) || 48;
   const maxChars = parseInt(document.getElementById('pubThumbMaxChars').value) || 90;
+  const box = readBoxParams('pubThumbBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 48 });
   title = truncateToChars(title, maxChars);
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
@@ -3302,7 +3320,7 @@ async function compositeTitleOnThumbnail() {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, zonePct });
+    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'blog-thumbnail', fileData: dataUrl });
@@ -3327,9 +3345,8 @@ async function compositeTextOnPostImage() {
   // spec-card field for these, they live as number inputs (or the 🎯
   // Preview & Edit drag-editor) next to this button.
   const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
-  const zoneWPct = parseFloat(document.getElementById('pubPostZoneWPct').value) || 62;
-  const zoneHPct = parseFloat(document.getElementById('pubPostZoneHPct').value) || 58;
   const maxChars = parseInt(document.getElementById('pubPostMaxChars').value) || 40;
+  const box = readBoxParams('pubPostBox', { xPct: 0, yPct: 0, wPct: 62, hPct: 58 });
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Fetching this post\'s copy…';
   const myAsset = pubAssetId;
@@ -3348,7 +3365,7 @@ async function compositeTextOnPostImage() {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, hub, { sizePct: headSizePct, zoneWPct, zoneHPct });
+    drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, hub, { sizePct: headSizePct, ...box });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', fileData: dataUrl });
@@ -3375,9 +3392,7 @@ async function openTextEditor(mode) {
   const modal = document.getElementById('textEditorModal');
   const statusEl = document.getElementById('textEditorStatus');
   document.getElementById('textEditorTitle').textContent = mode === 'thumbnail' ? 'Thumbnail — title placement' : 'Post image — headline placement';
-  document.getElementById('textEditorHint').textContent = mode === 'thumbnail'
-    ? 'Drag the white bar to resize the dark zone. Drag the slider to resize the text.'
-    : 'Drag the corner handle to resize the panel. Drag the slider to resize the text.';
+  document.getElementById('textEditorHint').textContent = 'Drag inside the box to move it, or its corner handle to resize. Drag the slider to resize the text.';
   modal.classList.add('open');
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading…';
   try {
@@ -3396,8 +3411,8 @@ async function openTextEditor(mode) {
     const dispW = 460, dispH = Math.round(dispW * img.naturalHeight / img.naturalWidth);
     canvas.width = dispW; canvas.height = dispH;
     const params = mode === 'thumbnail'
-      ? { sizePct: parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5, zonePct: parseFloat(document.getElementById('pubThumbZonePct').value) || 48, maxChars: parseInt(document.getElementById('pubThumbMaxChars').value) || 90 }
-      : { sizePct: parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2, zoneWPct: parseFloat(document.getElementById('pubPostZoneWPct').value) || 62, zoneHPct: parseFloat(document.getElementById('pubPostZoneHPct').value) || 58, maxChars: parseInt(document.getElementById('pubPostMaxChars').value) || 40 };
+      ? { sizePct: parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5, maxChars: parseInt(document.getElementById('pubThumbMaxChars').value) || 90, ...readBoxParams('pubThumbBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 48 }) }
+      : { sizePct: parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2, maxChars: parseInt(document.getElementById('pubPostMaxChars').value) || 40, ...readBoxParams('pubPostBox', { xPct: 0, yPct: 0, wPct: 62, hPct: 58 }) };
     TEXT_EDITOR = { mode, canvas, ctx: canvas.getContext('2d'), img, hub, text, params, dragging: null };
     const sizeInput = document.getElementById('textEditorFontSize');
     sizeInput.min = 2; sizeInput.max = mode === 'thumbnail' ? 15 : 14; sizeInput.value = params.sizePct;
@@ -3415,21 +3430,16 @@ function redrawTextEditor() {
   const { ctx, canvas, img, hub, text, params, mode } = t;
   const w2 = canvas.width, h2 = canvas.height;
   ctx.drawImage(img, 0, 0, w2, h2);
-  if (mode === 'thumbnail') {
-    const title = truncateToChars(text.title, params.maxChars);
-    const { zoneH } = drawThumbnailComposite(ctx, w2, h2, title, hub, params);
-    t._handle = { type: 'edge', y: zoneH };
-    ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, zoneH); ctx.lineTo(w2, zoneH); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fillRect(w2 / 2 - 16, zoneH - 3, 32, 6);
-  } else {
-    const primary = truncateToChars(text.primary, params.maxChars);
-    const accent = truncateToChars(text.accent, params.maxChars);
-    const { zoneW, zoneH } = drawPostComposite(ctx, w2, h2, primary, accent, text.body, hub, params);
-    t._handle = { type: 'corner', x: zoneW, y: zoneH };
-    ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, zoneW - 2, zoneH - 2);
-    ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(zoneW - 12, zoneH - 12, 14, 14);
-  }
+  const box = mode === 'thumbnail'
+    ? drawThumbnailComposite(ctx, w2, h2, truncateToChars(text.title, params.maxChars), hub, params)
+    : drawPostComposite(ctx, w2, h2, truncateToChars(text.primary, params.maxChars), truncateToChars(text.accent, params.maxChars), text.body, hub, params);
+  t._box = box;
+  const lineColor = mode === 'thumbnail' ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.55)';
+  ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
+  ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
+  // Corner resize handle, bottom-right of the box.
+  ctx.fillStyle = lineColor;
+  ctx.fillRect(box.x + box.w - 14, box.y + box.h - 14, 14, 14);
 }
 function textEditorCanvasPos(e) {
   const t = TEXT_EDITOR;
@@ -3437,18 +3447,25 @@ function textEditorCanvasPos(e) {
   return { x: (e.clientX - rect.left) * (t.canvas.width / rect.width), y: (e.clientY - rect.top) * (t.canvas.height / rect.height) };
 }
 function textEditorPointerDown(e) {
-  const t = TEXT_EDITOR; if (!t || !t._handle) return;
+  const t = TEXT_EDITOR; if (!t || !t._box) return;
   const p = textEditorCanvasPos(e);
-  if (t._handle.type === 'edge' && Math.abs(p.y - t._handle.y) < 16) { t.dragging = 'edge'; e.preventDefault(); }
-  else if (t._handle.type === 'corner' && Math.abs(p.x - t._handle.x) < 20 && Math.abs(p.y - t._handle.y) < 20) { t.dragging = 'corner'; e.preventDefault(); }
+  const b = t._box;
+  if (Math.abs(p.x - (b.x + b.w)) < 20 && Math.abs(p.y - (b.y + b.h)) < 20) {
+    t.dragging = 'resize'; e.preventDefault();
+  } else if (p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h) {
+    t.dragging = 'move'; t._grabOffset = { x: p.x - b.x, y: p.y - b.y }; e.preventDefault();
+  }
 }
 function textEditorPointerMove(e) {
   const t = TEXT_EDITOR; if (!t || !t.dragging) return;
   const p = textEditorCanvasPos(e);
-  if (t.dragging === 'edge') t.params.zonePct = Math.min(90, Math.max(20, (p.y / t.canvas.height) * 100));
-  else if (t.dragging === 'corner') {
-    t.params.zoneWPct = Math.min(90, Math.max(20, (p.x / t.canvas.width) * 100));
-    t.params.zoneHPct = Math.min(90, Math.max(20, (p.y / t.canvas.height) * 100));
+  const w2 = t.canvas.width, h2 = t.canvas.height;
+  if (t.dragging === 'move') {
+    t.params.xPct = Math.min(100 - t.params.wPct, Math.max(0, ((p.x - t._grabOffset.x) / w2) * 100));
+    t.params.yPct = Math.min(100 - t.params.hPct, Math.max(0, ((p.y - t._grabOffset.y) / h2) * 100));
+  } else if (t.dragging === 'resize') {
+    t.params.wPct = Math.min(100 - t.params.xPct, Math.max(15, ((p.x / w2) * 100) - t.params.xPct));
+    t.params.hPct = Math.min(100 - t.params.yPct, Math.max(15, ((p.y / h2) * 100) - t.params.yPct));
   }
   redrawTextEditor();
 }
@@ -3466,17 +3483,18 @@ function textEditorMaxCharsChange() {
 }
 function applyTextEditorAndSave() {
   const t = TEXT_EDITOR; if (!t) return;
+  const prefix = t.mode === 'thumbnail' ? 'pubThumbBox' : 'pubPostBox';
+  document.getElementById(prefix + 'X').value = Math.round(t.params.xPct);
+  document.getElementById(prefix + 'Y').value = Math.round(t.params.yPct);
+  document.getElementById(prefix + 'W').value = Math.round(t.params.wPct);
+  document.getElementById(prefix + 'H').value = Math.round(t.params.hPct);
+  document.getElementById(t.mode === 'thumbnail' ? 'pubThumbMaxChars' : 'pubPostMaxChars').value = t.params.maxChars;
   if (t.mode === 'thumbnail') {
     document.getElementById('pubThumbTextSizePct').value = t.params.sizePct;
-    document.getElementById('pubThumbZonePct').value = Math.round(t.params.zonePct);
-    document.getElementById('pubThumbMaxChars').value = t.params.maxChars;
     closeTextEditor();
     compositeTitleOnThumbnail();
   } else {
     document.getElementById('pubPostHeadSizePct').value = t.params.sizePct;
-    document.getElementById('pubPostZoneWPct').value = Math.round(t.params.zoneWPct);
-    document.getElementById('pubPostZoneHPct').value = Math.round(t.params.zoneHPct);
-    document.getElementById('pubPostMaxChars').value = t.params.maxChars;
     closeTextEditor();
     compositeTextOnPostImage();
   }
