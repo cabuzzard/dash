@@ -492,13 +492,23 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             </div>
           </div>
           <div id="pubBlogThumbRow" style="display:none;align-items:flex-start;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
-            <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:60px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:80px;height:45px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— square 1:1, spec's blog/social-thumbnail safe-area rules</span></div>
+              <div style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— wide 16:9 banner, this method's actual thumbnail (not a social-media square)</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
                 <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()">✨ Generate</button>
                 <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
+                <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
+                <button class="btn" id="pubThumbnailEditBtn" onclick="openTextEditor('thumbnail')" style="display:none;">🎯 Preview &amp; Edit</button>
                 <span id="pubBlogThumbStatus" style="font-size:10.5px;"></span>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
+                <label title="Starting font size, as a % of the image's width">Font size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:44px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Titles longer than this get cut short with '…'">Max chars <input type="number" id="pubThumbMaxChars" value="90" step="5" min="20" max="300" class="finput" style="width:44px;padding:2px 4px;min-width:0;"></label>
+                <label title="Dark zone left edge, % of width">X <input type="number" id="pubThumbBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone top edge, % of height">Y <input type="number" id="pubThumbBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone width, % of width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone height, % of height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <textarea id="pubBlogThumbPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
             </div>
@@ -512,31 +522,21 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <button class="iconbtn" onclick="copyPublishField('pubDesignLink', this)">📋</button>
           </div>
         </label>
-        <label style="font-size:11px;color:var(--ink2);">Thumbnail
-          <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
-            <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('thumbnail')">
-            <input class="finput" id="pubThumbnail" type="text" autocomplete="off" placeholder="No thumbnail uploaded yet" readonly>
-            <button class="iconbtn" onclick="openImagePicker('thumbnail')" title="Choose from this asset's other images">🖼️</button>
-            <button class="iconbtn" onclick="openPublishFieldLink('pubThumbnail')">↗</button>
-            <button class="iconbtn" onclick="copyPublishField('pubThumbnail', this)">📋</button>
+        <div id="pubThumbnailFieldWrap">
+          <label style="font-size:11px;color:var(--ink2);">Thumbnail
+            <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
+              <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('thumbnail')">
+              <input class="finput" id="pubThumbnail" type="text" autocomplete="off" placeholder="No thumbnail uploaded yet" readonly>
+              <button class="iconbtn" onclick="openImagePicker('thumbnail')" title="Choose from this asset's other images">🖼️</button>
+              <button class="iconbtn" onclick="openPublishFieldLink('pubThumbnail')">↗</button>
+              <button class="iconbtn" onclick="copyPublishField('pubThumbnail', this)">📋</button>
+            </div>
+          </label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()">
+            <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
+            <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
           </div>
-        </label>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-          <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()">
-          <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
-          <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
-          <button class="btn" id="pubThumbnailEditBtn" onclick="openTextEditor('thumbnail')" style="display:none;">🎯 Preview &amp; Edit</button>
-          <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:2px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
-          <label title="Starting font size, as a % of the image's width — e.g. 7.5 on a 2048px-wide image starts at ~154px tall">Font size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
-          <label title="Titles longer than this get cut short with '…' before rendering, instead of shrinking indefinitely to fit">Max chars <input type="number" id="pubThumbMaxChars" value="90" step="5" min="20" max="300" class="finput" style="width:46px;padding:2px 4px;min-width:0;"></label>
-        </div>
-        <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
-          <label title="Dark zone's left edge, % of image width">Box X <input type="number" id="pubThumbBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
-          <label title="Dark zone's top edge, % of image height">Y <input type="number" id="pubThumbBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
-          <label title="Dark zone width, % of image width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
-          <label title="Dark zone height, % of image height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
         </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -2766,9 +2766,15 @@ function openPublishAssetModal(assetId) {
   igTextBtn.textContent = '🔤 Add title text';
   document.getElementById('pubIgBgEditBtn').style.display = (isOffer && data.instagramBackground) ? '' : 'none';
 
+  // The generic Thumbnail field is redundant once the Images section covers
+  // it (Offer/Blog types) — that section's own Blog thumbnail row is THE
+  // thumbnail for those methods, with full editing; showing both was
+  // confusing (two displays of the same value, only one with an editor).
+  document.getElementById('pubThumbnailFieldWrap').style.display = (isOffer || isBlogType) ? 'none' : 'block';
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
+  document.getElementById('pubBlogThumbStatus').textContent = '';
   const thumbTextBtn = document.getElementById('pubThumbnailTextBtn');
   thumbTextBtn.style.display = data.thumbnail ? '' : 'none';
   thumbTextBtn.textContent = '🔤 Add title text';
@@ -3087,7 +3093,12 @@ async function pickImageForTarget(url) {
       document.getElementById('pubIgBgTextBtn').style.display = '';
       document.getElementById('pubIgBgEditBtn').style.display = '';
     }
-    if (target === 'thumbnail') { renderPubThumbnailPreview(url); document.getElementById('pubThumbnailTextBtn').style.display = ''; document.getElementById('pubThumbnailEditBtn').style.display = ''; }
+    if (target === 'thumbnail') {
+      renderPubThumbnailPreview(url);
+      const blogPrev = document.getElementById('pubBlogThumbPreview'); blogPrev.src = url; blogPrev.style.display = '';
+      document.getElementById('pubThumbnailTextBtn').style.display = '';
+      document.getElementById('pubThumbnailEditBtn').style.display = '';
+    }
     if (target === 'postImage') { document.getElementById('pubPostImageTextBtn').style.display = ''; document.getElementById('pubPostImageEditBtn').style.display = ''; }
   } catch (e) {
     alert('Could not attach that image: ' + e.message);
@@ -3323,7 +3334,7 @@ function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
 async function compositeTitleOnThumbnail() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubThumbnailTextBtn');
-  const statusEl = document.getElementById('pubThumbnailStatus');
+  const statusEl = document.getElementById('pubBlogThumbStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
   const bgUrl = document.getElementById('pubThumbnail').value;
   let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
@@ -3354,6 +3365,7 @@ async function compositeTitleOnThumbnail() {
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'blog-thumbnail', fileData: dataUrl });
     document.getElementById('pubThumbnail').value = s.url;
     renderPubThumbnailPreview(s.url);
+    const blogPrev = document.getElementById('pubBlogThumbPreview'); blogPrev.src = s.url; blogPrev.style.display = '';
     if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
     btn.disabled = false; btn.textContent = '🔤 Re-render title text';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';

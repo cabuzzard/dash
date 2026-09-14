@@ -24118,7 +24118,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
 
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
 
-WHAT IT IS: a SQUARE 1:1 wordless blog-thumbnail plate (a headline gets laid over it separately on the hub page afterward — never baked into the image). Keep the top ~45% calm and near-empty. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+WHAT IT IS: a WIDE 16:9 banner — this hub's blog post header image (a headline gets laid over it separately on the hub page afterward — never baked into the image). Keep the top ~45% calm and near-empty so type reads cleanly across the full width. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
 
 Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
 ${spec}
@@ -24142,7 +24142,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "1:1", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
