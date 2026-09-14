@@ -475,6 +475,18 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="iconbtn" id="pubIgBgOpenBtn" onclick="openPublishFieldLink('pubIgBgUrl')" style="display:none;">↗</button>
                 <span id="pubIgBgStatus" style="font-size:10.5px;"></span>
               </div>
+              <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+                <button class="btn" id="pubIgBgTextBtn" onclick="compositeTitleOnIgBackground()" style="display:none;">🔤 Add title text</button>
+                <button class="btn" id="pubIgBgEditBtn" onclick="openTextEditor('igBackground')" style="display:none;">🎯 Preview &amp; Edit</button>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
+                <label title="Starting font size, as a % of the image's width">Font size <input type="number" id="pubIgTextSizePct" value="8" step="0.5" min="2" max="15" class="finput" style="width:44px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Titles longer than this get cut short with '…'">Max chars <input type="number" id="pubIgMaxChars" value="70" step="5" min="20" max="300" class="finput" style="width:44px;padding:2px 4px;min-width:0;"></label>
+                <label title="Dark zone left edge, % of width">X <input type="number" id="pubIgBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone top edge, % of height">Y <input type="number" id="pubIgBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone width, % of width">W <input type="number" id="pubIgBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone height, % of height">H <input type="number" id="pubIgBoxH" value="40" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+              </div>
               <input type="hidden" id="pubIgBgUrl">
               <textarea id="pubIgBgPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
             </div>
@@ -588,6 +600,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <label style="display:flex;align-items:center;gap:6px;">Max chars
             <input type="number" id="textEditorMaxChars" class="finput" oninput="textEditorMaxCharsChange()" style="width:50px;">
           </label>
+        </div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
+          <label style="display:flex;align-items:center;gap:4px;">X <input type="number" id="textEditorBoxX" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
+          <label style="display:flex;align-items:center;gap:4px;">Y <input type="number" id="textEditorBoxY" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
+          <label style="display:flex;align-items:center;gap:4px;">W <input type="number" id="textEditorBoxW" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
+          <label style="display:flex;align-items:center;gap:4px;">H <input type="number" id="textEditorBoxH" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
         </div>
         <div id="textEditorStatus" style="font-size:11.5px;min-height:14px;text-align:center;"></div>
       </div>
@@ -2743,6 +2761,10 @@ function openPublishAssetModal(assetId) {
     if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
     if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
   }
+  const igTextBtn = document.getElementById('pubIgBgTextBtn');
+  igTextBtn.style.display = (isOffer && data.instagramBackground) ? '' : 'none';
+  igTextBtn.textContent = '🔤 Add title text';
+  document.getElementById('pubIgBgEditBtn').style.display = (isOffer && data.instagramBackground) ? '' : 'none';
 
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
@@ -2903,8 +2925,12 @@ async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl
       document.getElementById('pubThumbnail').value = s.url;
       renderPubThumbnailPreview(s.url);
       if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
-    } else if (PUB_ASSET_CACHE[myAsset]) {
-      PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+      document.getElementById('pubThumbnailTextBtn').style.display = '';
+      document.getElementById('pubThumbnailEditBtn').style.display = '';
+    } else {
+      if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+      document.getElementById('pubIgBgTextBtn').style.display = '';
+      document.getElementById('pubIgBgEditBtn').style.display = '';
     }
     genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
@@ -3058,8 +3084,10 @@ async function pickImageForTarget(url) {
     if (target === 'instagramBackground') {
       document.getElementById('pubIgBgUrl').value = url;
       document.getElementById('pubIgBgOpenBtn').style.display = '';
+      document.getElementById('pubIgBgTextBtn').style.display = '';
+      document.getElementById('pubIgBgEditBtn').style.display = '';
     }
-    if (target === 'thumbnail') { renderPubThumbnailPreview(url); document.getElementById('pubThumbnailEditBtn').style.display = ''; }
+    if (target === 'thumbnail') { renderPubThumbnailPreview(url); document.getElementById('pubThumbnailTextBtn').style.display = ''; document.getElementById('pubThumbnailEditBtn').style.display = ''; }
     if (target === 'postImage') { document.getElementById('pubPostImageTextBtn').style.display = ''; document.getElementById('pubPostImageEditBtn').style.display = ''; }
   } catch (e) {
     alert('Could not attach that image: ' + e.message);
@@ -3335,6 +3363,49 @@ async function compositeTitleOnThumbnail() {
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
+// Same job as compositeTitleOnThumbnail (title over a scrim, drawThumbnailComposite)
+// but for the Instagram background slot — a different image (vertical, its
+// own saved background) and a different Notion property (ig-background kind).
+async function compositeTitleOnIgBackground() {
+  if (!pubAssetId) return;
+  const btn = document.getElementById('pubIgBgTextBtn');
+  const statusEl = document.getElementById('pubIgBgStatus');
+  const data = PUB_ASSET_CACHE[pubAssetId] || {};
+  const bgUrl = document.getElementById('pubIgBgUrl').value;
+  let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
+  if (!bgUrl) { alert('Generate or attach a background first.'); return; }
+  if (!title) { alert('This asset has no title to render.'); return; }
+  const sizePct = parseFloat(document.getElementById('pubIgTextSizePct').value) || 8;
+  const maxChars = parseInt(document.getElementById('pubIgMaxChars').value) || 70;
+  const box = readBoxParams('pubIgBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 40 });
+  title = truncateToChars(title, maxChars);
+  btn.disabled = true; btn.textContent = '🔤 Working…';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
+  const myAsset = pubAssetId;
+  try {
+    const hub = await ensureHubFontsLoaded(await resolveHubDesign());
+    statusEl.textContent = 'Rendering title text…';
+    const img = await loadImageCORS(bgUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box });
+    const dataUrl = canvas.toDataURL('image/png');
+    statusEl.textContent = 'Saving…';
+    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'ig-background', fileData: dataUrl });
+    document.getElementById('pubIgBgUrl').value = s.url;
+    const prev = document.getElementById('pubIgBgPreview'); prev.src = s.url; prev.style.display = '';
+    document.getElementById('pubIgBgOpenBtn').style.display = '';
+    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+    btn.disabled = false; btn.textContent = '🔤 Re-render title text';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
+    setTimeout(() => { if (statusEl.textContent === 'Saved ✓') statusEl.textContent = ''; }, 1800);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '🔤 Add title text';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
 async function compositeTextOnPostImage() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageTextBtn');
@@ -3381,18 +3452,42 @@ async function compositeTextOnPostImage() {
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
-// ── Preview & Edit — a live drag-editor. Same drawThumbnailComposite/
-// drawPostComposite as the final save, just on a smaller canvas, so
-// dragging a handle shows the actual result, not an approximation.
+// ── Preview & Edit — a live drag-editor, driven by one config per image
+// slot so adding a new slot (a third one, igBackground, added alongside
+// the original thumbnail/postImage) means adding a config entry, not new
+// branching logic. Same drawThumbnailComposite/drawPostComposite as the
+// final save, just on a smaller canvas, so dragging a handle shows the
+// actual result, not an approximation.
+const TEXT_EDITOR_SLOTS = {
+  thumbnail: {
+    title: 'Thumbnail — title placement', urlField: 'pubThumbnail', draw: 'title',
+    sizeId: 'pubThumbTextSizePct', maxCharsId: 'pubThumbMaxChars', boxPrefix: 'pubThumbBox',
+    sizeDefault: 7.5, sizeMax: 15, maxCharsDefault: 90, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 48 },
+    save: () => compositeTitleOnThumbnail(),
+  },
+  igBackground: {
+    title: 'Instagram background — title placement', urlField: 'pubIgBgUrl', draw: 'title',
+    sizeId: 'pubIgTextSizePct', maxCharsId: 'pubIgMaxChars', boxPrefix: 'pubIgBox',
+    sizeDefault: 8, sizeMax: 15, maxCharsDefault: 70, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 40 },
+    save: () => compositeTitleOnIgBackground(),
+  },
+  postImage: {
+    title: 'Post image — headline placement', urlField: 'pubPostImage', draw: 'post',
+    sizeId: 'pubPostHeadSizePct', maxCharsId: 'pubPostMaxChars', boxPrefix: 'pubPostBox',
+    sizeDefault: 6.2, sizeMax: 14, maxCharsDefault: 40, boxDefaults: { xPct: 0, yPct: 0, wPct: 62, hPct: 58 },
+    save: () => compositeTextOnPostImage(),
+  },
+};
 let TEXT_EDITOR = null;
 async function openTextEditor(mode) {
   if (!pubAssetId) return;
-  const bgUrl = document.getElementById(mode === 'thumbnail' ? 'pubThumbnail' : 'pubPostImage').value;
+  const slot = TEXT_EDITOR_SLOTS[mode];
+  const bgUrl = document.getElementById(slot.urlField).value;
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   const modal = document.getElementById('textEditorModal');
   const statusEl = document.getElementById('textEditorStatus');
-  document.getElementById('textEditorTitle').textContent = mode === 'thumbnail' ? 'Thumbnail — title placement' : 'Post image — headline placement';
-  document.getElementById('textEditorHint').textContent = 'Drag inside the box to move it, or its corner handle to resize. Drag the slider to resize the text.';
+  document.getElementById('textEditorTitle').textContent = slot.title;
+  document.getElementById('textEditorHint').textContent = 'Drag inside the box to move it, or its corner handle to resize — or type exact numbers below.';
   modal.classList.add('open');
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading…';
   try {
@@ -3400,7 +3495,7 @@ async function openTextEditor(mode) {
     const hub = await ensureHubFontsLoaded(await resolveHubDesign());
     const img = await loadImageCORS(bgUrl);
     let text;
-    if (mode === 'thumbnail') {
+    if (slot.draw === 'title') {
       text = { title: (data.platformTitle || data.assetTitle || data.title || '').trim() };
     } else {
       const fr = await w('getSinglePostFields', { assetId: pubAssetId });
@@ -3410,12 +3505,14 @@ async function openTextEditor(mode) {
     const canvas = document.getElementById('textEditorCanvas');
     const dispW = 460, dispH = Math.round(dispW * img.naturalHeight / img.naturalWidth);
     canvas.width = dispW; canvas.height = dispH;
-    const params = mode === 'thumbnail'
-      ? { sizePct: parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5, maxChars: parseInt(document.getElementById('pubThumbMaxChars').value) || 90, ...readBoxParams('pubThumbBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 48 }) }
-      : { sizePct: parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2, maxChars: parseInt(document.getElementById('pubPostMaxChars').value) || 40, ...readBoxParams('pubPostBox', { xPct: 0, yPct: 0, wPct: 62, hPct: 58 }) };
-    TEXT_EDITOR = { mode, canvas, ctx: canvas.getContext('2d'), img, hub, text, params, dragging: null };
+    const params = {
+      sizePct: parseFloat(document.getElementById(slot.sizeId).value) || slot.sizeDefault,
+      maxChars: parseInt(document.getElementById(slot.maxCharsId).value) || slot.maxCharsDefault,
+      ...readBoxParams(slot.boxPrefix, slot.boxDefaults),
+    };
+    TEXT_EDITOR = { mode, slot, canvas, ctx: canvas.getContext('2d'), img, hub, text, params, dragging: null };
     const sizeInput = document.getElementById('textEditorFontSize');
-    sizeInput.min = 2; sizeInput.max = mode === 'thumbnail' ? 15 : 14; sizeInput.value = params.sizePct;
+    sizeInput.max = slot.sizeMax; sizeInput.value = params.sizePct;
     document.getElementById('textEditorFontSizeVal').textContent = params.sizePct;
     document.getElementById('textEditorMaxChars').value = params.maxChars;
     statusEl.textContent = '';
@@ -3425,21 +3522,32 @@ async function openTextEditor(mode) {
   }
 }
 function closeTextEditor() { document.getElementById('textEditorModal').classList.remove('open'); TEXT_EDITOR = null; }
+// Keeps the four X/Y/W/H number fields showing whatever the current params
+// are — called after every drag AND every direct edit of those fields, so
+// dragging and typing stay in sync with each other.
+function syncTextEditorBoxInputs() {
+  const p = TEXT_EDITOR.params;
+  document.getElementById('textEditorBoxX').value = Math.round(p.xPct);
+  document.getElementById('textEditorBoxY').value = Math.round(p.yPct);
+  document.getElementById('textEditorBoxW').value = Math.round(p.wPct);
+  document.getElementById('textEditorBoxH').value = Math.round(p.hPct);
+}
 function redrawTextEditor() {
   const t = TEXT_EDITOR; if (!t) return;
-  const { ctx, canvas, img, hub, text, params, mode } = t;
+  const { ctx, canvas, img, hub, text, params, slot } = t;
   const w2 = canvas.width, h2 = canvas.height;
   ctx.drawImage(img, 0, 0, w2, h2);
-  const box = mode === 'thumbnail'
+  const box = slot.draw === 'title'
     ? drawThumbnailComposite(ctx, w2, h2, truncateToChars(text.title, params.maxChars), hub, params)
     : drawPostComposite(ctx, w2, h2, truncateToChars(text.primary, params.maxChars), truncateToChars(text.accent, params.maxChars), text.body, hub, params);
   t._box = box;
-  const lineColor = mode === 'thumbnail' ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.55)';
+  const lineColor = slot.draw === 'title' ? 'rgba(255,255,255,.95)' : 'rgba(0,0,0,.55)';
   ctx.strokeStyle = lineColor; ctx.lineWidth = 2;
   ctx.strokeRect(box.x + 1, box.y + 1, box.w - 2, box.h - 2);
   // Corner resize handle, bottom-right of the box.
   ctx.fillStyle = lineColor;
   ctx.fillRect(box.x + box.w - 14, box.y + box.h - 14, 14, 14);
+  syncTextEditorBoxInputs();
 }
 function textEditorCanvasPos(e) {
   const t = TEXT_EDITOR;
@@ -3481,23 +3589,27 @@ function textEditorMaxCharsChange() {
   TEXT_EDITOR.params.maxChars = parseInt(document.getElementById('textEditorMaxChars').value) || TEXT_EDITOR.params.maxChars;
   redrawTextEditor();
 }
+// Typing directly into the X/Y/W/H fields — the counterpart to dragging.
+function textEditorBoxChange() {
+  const t = TEXT_EDITOR; if (!t) return;
+  t.params.xPct = parseFloat(document.getElementById('textEditorBoxX').value) || 0;
+  t.params.yPct = parseFloat(document.getElementById('textEditorBoxY').value) || 0;
+  t.params.wPct = parseFloat(document.getElementById('textEditorBoxW').value) || t.params.wPct;
+  t.params.hPct = parseFloat(document.getElementById('textEditorBoxH').value) || t.params.hPct;
+  redrawTextEditor();
+}
 function applyTextEditorAndSave() {
   const t = TEXT_EDITOR; if (!t) return;
-  const prefix = t.mode === 'thumbnail' ? 'pubThumbBox' : 'pubPostBox';
-  document.getElementById(prefix + 'X').value = Math.round(t.params.xPct);
-  document.getElementById(prefix + 'Y').value = Math.round(t.params.yPct);
-  document.getElementById(prefix + 'W').value = Math.round(t.params.wPct);
-  document.getElementById(prefix + 'H').value = Math.round(t.params.hPct);
-  document.getElementById(t.mode === 'thumbnail' ? 'pubThumbMaxChars' : 'pubPostMaxChars').value = t.params.maxChars;
-  if (t.mode === 'thumbnail') {
-    document.getElementById('pubThumbTextSizePct').value = t.params.sizePct;
-    closeTextEditor();
-    compositeTitleOnThumbnail();
-  } else {
-    document.getElementById('pubPostHeadSizePct').value = t.params.sizePct;
-    closeTextEditor();
-    compositeTextOnPostImage();
-  }
+  const slot = t.slot;
+  document.getElementById(slot.boxPrefix + 'X').value = Math.round(t.params.xPct);
+  document.getElementById(slot.boxPrefix + 'Y').value = Math.round(t.params.yPct);
+  document.getElementById(slot.boxPrefix + 'W').value = Math.round(t.params.wPct);
+  document.getElementById(slot.boxPrefix + 'H').value = Math.round(t.params.hPct);
+  document.getElementById(slot.maxCharsId).value = t.params.maxChars;
+  document.getElementById(slot.sizeId).value = t.params.sizePct;
+  const save = slot.save;
+  closeTextEditor();
+  save();
 }
 
 function init() {
