@@ -891,8 +891,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <h4>Assets</h4>
         <div id="assetBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
           <span id="assetBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
+          <button class="btn" id="bulkBgBtn" onclick="bulkGenerateBackgrounds()" title="Generates a fresh wordless background for each selected asset — Blog thumbnail for blog-type assets, both images for Offer, the social background for Single Post. Skips any asset type with no image slot.">🎨 Generate Backgrounds</button>
           <button class="btn" style="color:var(--stale);" onclick="bulkDeleteAssets()">✕ Delete</button>
           <button class="btn" onclick="clearAssetSelection()">Clear</button>
+          <span id="assetBulkStatus" style="font-size:10.5px;color:var(--ink3);"></span>
         </div>
         <div id="assetTree"><div class="loadnote">Loading…</div></div>
       </div>
@@ -2582,6 +2584,67 @@ async function bulkDeleteAssets() {
   for (const id of ids) { try { await w('deleteAsset', { assetId: id }); } catch (e) {} }
   clearAssetSelection();
   loadTitleAndAssetTab();
+}
+// Generates ONE wordless background from scratch for one asset+kind — the
+// same two-step "generate (temp url) -> saveOfferImage (rehost + persist,
+// background:true so Source gets stamped)" pattern the Publish modal's own
+// Generate buttons use, just driven here without opening the modal. The
+// generation action differs by kind/asset type (an Offer's blog-thumbnail
+// reads its OFFER CARD via generateOfferImage; a plain blog post has none,
+// so generateBlogPostThumbnail grounds itself in the article text instead);
+// the save step is identical either way.
+async function generateBackgroundForKind(assetId, isOffer, kind) {
+  let r;
+  if (kind === 'blog-thumbnail') r = isOffer ? await w('generateOfferImage', { assetId, kind: 'blog-thumbnail' }) : await w('generateBlogPostThumbnail', { assetId });
+  else if (kind === 'ig-background') r = await w('generateOfferImage', { assetId, kind: 'ig-background' });
+  else if (kind === 'post-image') r = await w('generateSocialBackgroundForAsset', { assetId });
+  else throw new Error('Unknown kind: ' + kind);
+  if (!r || !r.imageUrl) throw new Error((r && r.error) || 'No image returned');
+  const s = await w('saveOfferImage', { assetId, kind, imageUrl: r.imageUrl, prompt: r.prompt, background: true });
+  return s.url;
+}
+// Bulk "from scratch" — replaces each selected asset's CURRENT background
+// (Source) with a brand new wordless render; any existing text render on
+// the main value is left alone until the operator re-renders text onto the
+// fresh background (same as a single-asset ✨ Generate/Regenerate). Runs
+// sequentially, not in parallel — each render is its own spec-assembly +
+// Claude prompt + xAI call, so a big selection can take a while; the status
+// line tracks progress instead of one long silent wait.
+async function bulkGenerateBackgrounds() {
+  const ids = [...SELECTED_ASSET_IDS];
+  if (!ids.length) return;
+  if (!confirm(`Generate a fresh wordless background for ${ids.length} asset(s)?\n\nThis replaces each one's CURRENT background (any existing text render stays on the asset until you re-render text onto the new background). Assets with no image slot (Carousel, Content Hub, etc.) are skipped.`)) return;
+  const btn = document.getElementById('bulkBgBtn');
+  const statusEl = document.getElementById('assetBulkStatus');
+  btn.disabled = true;
+  let ok = 0; const skipped = []; const failed = [];
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    const data = PUB_ASSET_CACHE[id] || {};
+    const label = data.assetTitle || data.title || id;
+    statusEl.textContent = `Generating ${i + 1}/${ids.length}: ${label}…`;
+    const type = data.type || '';
+    const isOffer = /\boffer\b/i.test(type);
+    const isBlogType = /\bseo post\b/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type));
+    const isSinglePost = /single post/i.test(type);
+    try {
+      if (isOffer) { await generateBackgroundForKind(id, true, 'blog-thumbnail'); await generateBackgroundForKind(id, true, 'ig-background'); }
+      else if (isBlogType) { await generateBackgroundForKind(id, false, 'blog-thumbnail'); }
+      else if (isSinglePost) { await generateBackgroundForKind(id, false, 'post-image'); }
+      else { skipped.push(label); continue; }
+      ok++;
+    } catch (e) {
+      failed.push(`${label}: ${e.message}`);
+    }
+  }
+  btn.disabled = false;
+  statusEl.textContent = '';
+  clearAssetSelection();
+  loadTitleAndAssetTab();
+  let msg = `Generated backgrounds for ${ok}/${ids.length} asset(s).`;
+  if (skipped.length) msg += `\n\nSkipped (no image slot):\n${skipped.join('\n')}`;
+  if (failed.length) msg += `\n\nFailed:\n${failed.join('\n')}`;
+  alert(msg);
 }
 
 // ── Create Asset modal — real generateTitleAssets call, per docs/methods-titles-assets.md.
