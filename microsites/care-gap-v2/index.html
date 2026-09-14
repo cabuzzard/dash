@@ -800,6 +800,18 @@ async function loadClusters() {
 const COLLAPSE_KEY = 'caregapv2_open_' + CAMPAIGN_ID;
 let GROUPS_OPEN = {};
 try { GROUPS_OPEN = JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '{}'); } catch (e) {}
+// One-time cleanup: a CSS bug (.kwgroup.open .kwgbody was a descendant
+// selector, so a nested platform group's body stayed visible regardless
+// of its own .open state) made toggling a Strategy-tab platform heading
+// look like a no-op — but the click still recorded "open" in storage.
+// Anyone who clicked one during that window is stuck with it
+// permanently expanded even after the CSS fix, since that's not a
+// deliberate choice worth preserving. Strip it once.
+try {
+  let changed = false;
+  Object.keys(GROUPS_OPEN).forEach(k => { if (k.startsWith('stratplat-')) { delete GROUPS_OPEN[k]; changed = true; } });
+  if (changed) localStorage.setItem(COLLAPSE_KEY, JSON.stringify(GROUPS_OPEN));
+} catch (e) {}
 function toggleGrp(el) {
   const open = el.classList.toggle('open');
   const k = el.dataset.ckey;
