@@ -397,6 +397,37 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Rewrite Pillar — Development-stage titles only. Rewrites the title's
+       existing Pillar Content section in place (writeTitlePillar/
+       writePillarContent already replace it, same mechanism a Planning-
+       stage "Write Pillar" would use) with a different style/angle, an
+       optional new title, and keywords to work in or avoid. -->
+  <div class="modaloverlay" id="rewritePillarModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Rewrite Pillar</div>
+      <div class="mfield" id="rpTitleLabel"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Guidance <span style="color:var(--ink3);">— the style, angle, or take you want this rewrite to follow</span>
+          <textarea id="rpGuidance" rows="4" style="width:100%;margin-top:4px;" placeholder="e.g. Rewrite this as a skeptical, data-first take instead of an emotional appeal. Lead with the counterintuitive claim."></textarea>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Change title <span style="color:var(--ink3);">(optional — leave blank to keep the current title)</span>
+          <input type="text" id="rpNewTitle" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="New title for this piece">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Add keywords <span style="color:var(--ink3);">(comma-separated — worked in naturally, not forced)</span>
+          <input type="text" id="rpAddKeywords" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="e.g. respite care, caregiver burnout">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Omit keywords <span style="color:var(--ink3);">(comma-separated — kept out of the piece entirely)</span>
+          <input type="text" id="rpOmitKeywords" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="e.g. burnout, exhaustion">
+        </label>
+      </div>
+      <div id="rpResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeRewritePillarModal()">Cancel</button>
+        <button class="btn primary" id="rpRunBtn" onclick="runRewritePillar()">🔄 Rewrite</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Publish modal — click an asset's status badge to open. Furnishes every
        copyable "sub-asset" field the asset actually carries so it can be
        delivered to whatever platform it's geared toward; sections below
@@ -1074,6 +1105,8 @@ document.addEventListener('DOMContentLoaded', () => {
   pickerOverlay.addEventListener('click', e => { if (e.target === pickerOverlay) closeImagePicker(); });
   const editorOverlay = document.getElementById('textEditorModal');
   editorOverlay.addEventListener('click', e => { if (e.target === editorOverlay) closeTextEditor(); });
+  const rpOverlay = document.getElementById('rewritePillarModal');
+  rpOverlay.addEventListener('click', e => { if (e.target === rpOverlay) closeRewritePillarModal(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -2369,6 +2402,7 @@ function renderTitleRow(t) {
   return `<div class="idea-card"><div class="idea-row"><input type="checkbox" class="title-select-cb" data-id="${esc(t.id)}" onclick="event.stopPropagation();toggleTitleSelect('${esc(t.id)}',this.checked)" style="margin-right:2px;flex-shrink:0;"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
+      ${t.stage === 'Development' ? `<button class="iconbtn" title="Rewrite this title's Pillar Content — different style/angle, optional new title, keywords to add or avoid" onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}')">🔄 Rewrite Pillar</button>` : ''}
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
       <button class="iconbtn" title="Delete this title" onclick="deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
@@ -2393,6 +2427,52 @@ async function deleteTitleRow(id, title) {
     await w('deleteTitle', { titleId: id });
     loadTitleAndAssetTab();
   } catch (e) { alert('Delete failed: ' + e.message); }
+}
+// ── Rewrite Pillar (Development-stage titles) — reuses writeTitlePillar/
+// writePillarContent server-side (the same mechanism a Planning-stage
+// "Write Pillar" would use), which already replaces the existing Pillar
+// Content section rather than appending a second one. A Development title
+// keeps its stage untouched (only Planning ever promotes on this call).
+let RP_TITLE_ID = null;
+function openRewritePillarModal(titleId, title) {
+  RP_TITLE_ID = titleId;
+  document.getElementById('rpTitleLabel').textContent = title;
+  document.getElementById('rpGuidance').value = '';
+  document.getElementById('rpNewTitle').value = '';
+  document.getElementById('rpAddKeywords').value = '';
+  document.getElementById('rpOmitKeywords').value = '';
+  document.getElementById('rpResult').textContent = '';
+  document.getElementById('rewritePillarModal').classList.add('open');
+}
+function closeRewritePillarModal() { document.getElementById('rewritePillarModal').classList.remove('open'); RP_TITLE_ID = null; }
+async function runRewritePillar() {
+  if (!RP_TITLE_ID) return;
+  const btn = document.getElementById('rpRunBtn');
+  const resEl = document.getElementById('rpResult');
+  const guidance = document.getElementById('rpGuidance').value.trim();
+  const newTitle = document.getElementById('rpNewTitle').value.trim();
+  const addKeywords = document.getElementById('rpAddKeywords').value.trim();
+  const omitKeywords = document.getElementById('rpOmitKeywords').value.trim();
+  if (!guidance && !newTitle && !addKeywords && !omitKeywords) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Give it at least a guidance note, a new title, or keywords to work with.'; return; }
+  const titleId = RP_TITLE_ID;
+  btn.disabled = true;
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Rewriting…';
+  try {
+    await w('writeTitlePillar', {
+      titleId,
+      researchOverride: guidance || undefined,
+      newTitle: newTitle || undefined,
+      addKeywords: addKeywords || undefined,
+      omitKeywords: omitKeywords || undefined,
+    });
+    resEl.style.color = 'var(--fresh)'; resEl.textContent = '✓ Rewritten.';
+    closeRewritePillarModal();
+    loadTitleAndAssetTab();
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false;
+  }
 }
 // Real Notion archive — deleteAsset already exists server-side.
 async function deleteAssetRow(id, name) {

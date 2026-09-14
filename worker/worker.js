@@ -1754,7 +1754,7 @@ async function clearExistingPillarSection(hdr, titleId) {
     }
   } catch (e) { /* best-effort — worst case the new section appends after a stale one */ }
 }
-async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext }) {
+async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext, addKeywords, omitKeywords }) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no ANTHROPIC_API_KEY" };
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const rt = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -1836,6 +1836,8 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
   if (extraContext) parts.push(String(extraContext).slice(0, 4000));
   if (guidance) parts.push(`OPERATOR GUIDANCE (follow this): ${guidance}`);
   if (styleGuidance) parts.push(`WRITING STYLE (match this tone/voice/structure): ${styleGuidance}`);
+  if (addKeywords) parts.push(`WORK THESE KEYWORDS IN NATURALLY (don't force or list them, weave them into real sentences): ${addKeywords}`);
+  if (omitKeywords) parts.push(`DO NOT USE these words/phrases anywhere in the piece: ${omitKeywords}`);
 
   const groundingBlock = parts.join("\n\n");
   if (!groundingBlock.trim()) return { skipped: true, reason: "no grounding available yet for this title" };
@@ -10613,14 +10615,21 @@ Return ONLY this JSON, no other text, no markdown fences:
       // already past Planning (e.g. re-running this for a refresh) keeps its
       // current status untouched.
       if (body.action === "writeTitlePillar") {
-        const { titleId, useGrounding, researchOverride, styleGuidance } = body;
+        const { titleId, useGrounding, researchOverride, styleGuidance, newTitle, addKeywords, omitKeywords } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const page = await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
         if (!page?.properties) return json({ error: "Could not load that title" }, 404);
         const p = page.properties;
-        const titleText = p.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+        const currentTitleText = p.Title?.title?.map(t => t.plain_text).join("") || "Untitled";
+        // A "Rewrite Pillar" call (Development-tab button) can carry its own
+        // new title — used as the piece's actual TITLE grounding (so the
+        // rewrite really follows the new angle, not the old one), and
+        // written back onto the title record itself once generation
+        // succeeds, never before (a failed rewrite must never retitle a
+        // title whose pillar didn't actually change).
+        const titleText = (newTitle && newTitle.trim()) || currentTitleText;
         const currentStatus = p.Status?.select?.name || "";
         const campaignId = (p.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || undefined;
         const productId  = (p.product?.relation  || [])[0]?.id?.replace(/-/g,"") || undefined;
@@ -10638,9 +10647,18 @@ Return ONLY this JSON, no other text, no markdown fences:
           guidance: researchOverride || notes || undefined,
           styleGuidance: styleGuidance || undefined,
           useGrounding: grounded,
+          addKeywords: addKeywords || undefined,
+          omitKeywords: omitKeywords || undefined,
         }).catch(e => ({ error: e.message }));
         if (result?.error) return json({ error: result.error }, 502);
         if (result?.skipped) return json({ error: result.reason || "Skipped — no grounding available yet for this title" }, 400);
+
+        if (newTitle && newTitle.trim() && newTitle.trim() !== currentTitleText) {
+          await fetch(`https://api.notion.com/v1/pages/${dashId(titleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Title": { title: [{ text: { content: newTitle.trim().slice(0, 200) } }] } } }),
+          }).catch(() => {});
+        }
 
         let newStatus = currentStatus;
         if (currentStatus === "Planning") {
