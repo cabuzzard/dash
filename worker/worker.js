@@ -1363,7 +1363,7 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
   return { gh, getFile, putFile, basePath, campName, s, hub };
 }
 
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId }) {
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail }) {
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub: 'blog' });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
@@ -1411,6 +1411,7 @@ body { margin:0; background:var(--bg); color:var(--ink); font-family:${bodyStack
 header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
 header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
 header.site .back { font-size:0.85rem; color:var(--accent); }
+.hero { width:100%; aspect-ratio:16/9; object-fit:cover; border-radius:10px; margin:0 0 28px; display:block; }
 h1, h2 { font-family:${headlineStack}; color:var(--ink); line-height:1.25; }
 h1 { font-size:2.1rem; margin:0 0 8px; }
 h2 { font-size:1.4rem; margin:40px 0 14px; color:var(--accent); }
@@ -1436,7 +1437,8 @@ ${bodyHtml}
 </body>
 </html>`;
 
-  const postBody = `<h1>${esc(displayTitle)}</h1>
+  const postBody = `${thumbnail ? `<img class="hero" src="${esc(thumbnail)}" alt="${esc(displayTitle)}">` : ''}
+<h1>${esc(displayTitle)}</h1>
 <div class="meta">${esc(today)}</div>
 ${intro ? `<p>${esc(intro)}</p>` : ''}
 ${(sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}`).join('\n')}
@@ -8071,6 +8073,7 @@ Return ONLY this JSON, no other text, no fences:
             const site = await publishSeoPostToLiveSite({
               env, hdr, dash: dashId, campaignId: h.campaignId, spec: null,
               seoTitle, workingTitle, intro, sections, conclusion, sources, assetId: aid,
+              thumbnail: (p["Thumbnail"]?.url || "").trim(),
             }).catch(e => ({ published: false, error: e.message }));
             if (site.published && site.liveUrl) {
               await fetch(`https://api.notion.com/v1/pages/${dashId(aid)}`, {
