@@ -431,9 +431,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <label style="font-size:11px;color:var(--ink2);">🖼️ Post Image <span style="color:var(--ink3);">— the finished creative. Open it full-size and post it yourself.</span></label>
           <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
             <img id="pubPostImagePreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
-            <input class="finput" id="pubPostImage" type="text" autocomplete="off" placeholder="Not generated yet — use the Canva handoff or ✨ Generate on the title row" readonly>
+            <input class="finput" id="pubPostImage" type="text" autocomplete="off" placeholder="Not generated yet — use the Canva handoff or ✨ Generate below" readonly>
             <button class="iconbtn" onclick="openPublishFieldLink('pubPostImage')" title="Open full-size">↗</button>
             <button class="iconbtn" onclick="copyPublishField('pubPostImage', this)">📋</button>
+          </div>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
+            <button class="btn" id="pubPostImageGenBtn" onclick="genSinglePostImage()">✨ Generate social background (Grok)</button>
+            <span id="pubPostImageStatus" style="font-size:10.5px;"></span>
           </div>
         </div>
 
@@ -446,11 +450,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </div>
 
         <div id="pubOfferImagesWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
-          <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:6px;">🖼️ Offer images <span style="color:var(--ink3);">— wordless plates from Grok Imagine, grounded in the hub's image spec. Add the headline afterward in Remotion/Canva. Regenerate copies the prompt to your clipboard.</span></label>
-          <div style="display:flex;gap:10px;align-items:flex-start;">
+          <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:6px;">🖼️ Images <span style="color:var(--ink3);">— wordless plates from Grok Imagine, grounded in the hub's image spec (which is itself fed by the campaign's SEO/Research information flow). Add the headline afterward in Remotion/Canva. Regenerate copies the prompt to your clipboard.</span></label>
+          <div id="pubIgBgRow" style="display:none;align-items:flex-start;gap:10px;">
             <img id="pubIgBgPreview" src="" alt="" style="display:none;width:48px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4</span></div>
+              <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4, spec's Instagram-background safe-area rules</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
                 <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
                 <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
@@ -461,13 +465,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <textarea id="pubIgBgPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
             </div>
           </div>
-          <div style="display:flex;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);align-items:flex-start;">
+          <div id="pubBlogThumbRow" style="display:none;align-items:flex-start;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
             <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:60px;height:34px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— square 1:1</span></div>
+              <div style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— square 1:1, spec's blog/social-thumbnail safe-area rules</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
-                <button class="btn" id="pubBlogThumbGenBtn" onclick="genOfferImage('blog-thumbnail')">✨ Generate</button>
-                <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenOfferImage('blog-thumbnail')" style="display:none;">🔄 Regenerate</button>
+                <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()">✨ Generate</button>
+                <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
                 <span id="pubBlogThumbStatus" style="font-size:10.5px;"></span>
               </div>
               <textarea id="pubBlogThumbPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
@@ -2638,10 +2642,22 @@ function openPublishAssetModal(assetId) {
   hubWrap.style.display = isHubOffer ? 'block' : 'none';
   if (isHubOffer) { document.getElementById('pubContentHubStatus').textContent = ''; pubLoadContentHubs(data.contentHub || ''); }
 
+  // Blog-related asset types get a thumbnail; Offer types get both a thumbnail
+  // and an Instagram background; a bare social/single-post asset's own image is
+  // handled above in pubSinglePostWrap (a full creative, not a background plate).
+  // isBlogType reuses the same name pattern generateTitleAssets' shared SEO-post
+  // generation path matches on (see isSeoPost in worker.js), so anything routed
+  // through that path also gets offered a thumbnail here.
   const isOffer = /\boffer\b/i.test(data.type || '');
-  document.getElementById('pubOfferImagesWrap').style.display = isOffer ? 'block' : 'none';
+  const isBlogType = /\bseo post\b/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || ''));
+  document.getElementById('pubOfferImagesWrap').style.display = (isOffer || isBlogType) ? 'block' : 'none';
+  document.getElementById('pubIgBgRow').style.display = isOffer ? 'flex' : 'none';
+  document.getElementById('pubBlogThumbRow').style.display = (isOffer || isBlogType) ? 'flex' : 'none';
+  document.getElementById('pubBlogThumbRow').style.marginTop = isOffer ? '10px' : '0';
+  document.getElementById('pubBlogThumbRow').style.borderTop = isOffer ? '1px solid var(--border)' : 'none';
+  document.getElementById('pubBlogThumbRow').style.paddingTop = isOffer ? '10px' : '0';
   _offerImgReset();
-  if (isOffer) {
+  if (isOffer || isBlogType) {
     if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
     if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
   }
@@ -2836,6 +2852,76 @@ async function regenOfferImage(kind) {
   const statusEl = document.getElementById(OFFER_IMG[kind].status);
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
   genOfferImage(kind);
+}
+// The Blog thumbnail row's button dispatches by asset type: an Offer asset
+// already has a full spec-aware two-step flow (generateOfferImage ->
+// saveOfferImage, shared with its Instagram background row); a plain
+// Blog-type asset (no OFFER CARD to read) uses generateBlogPostThumbnail
+// instead — same shared hub image spec, self-contained (renders, hosts, and
+// writes the Thumbnail property in one call), grounded in the article's own
+// headline/excerpt rather than an offer's card fields.
+function genThumbnail() {
+  const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
+  return isOffer ? genOfferImage('blog-thumbnail') : genBlogThumbnail();
+}
+async function regenThumbnail() {
+  const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
+  if (isOffer) return regenOfferImage('blog-thumbnail');
+  const p = _offerImgPrompt['blog-thumbnail'];
+  if (p) { try { await navigator.clipboard.writeText(p); } catch (e) {} }
+  const statusEl = document.getElementById(OFFER_IMG['blog-thumbnail'].status);
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
+  genBlogThumbnail();
+}
+async function genBlogThumbnail() {
+  if (!pubAssetId) return;
+  const c = OFFER_IMG['blog-thumbnail'];
+  const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
+  genBtn.disabled = true; genBtn.textContent = '✨ Working…';
+  document.getElementById(c.regen).style.display = 'none';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
+  const myAsset = pubAssetId;
+  try {
+    const r = await w('generateBlogPostThumbnail', { assetId: myAsset });
+    _offerImgShow('blog-thumbnail', r.imageUrl, r.prompt);
+    document.getElementById('pubThumbnail').value = r.imageUrl;
+    renderPubThumbnailPreview(r.imageUrl);
+    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = r.imageUrl;
+    genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
+    setTimeout(() => { if (statusEl.textContent === 'Saved ✓') statusEl.textContent = ''; }, 1800);
+  } catch (e) {
+    genBtn.disabled = false; genBtn.textContent = '✨ Retry';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+// Social/single-post asset's own image — a complete, ready-to-publish
+// creative (copy baked in by the model), not a wordless background plate;
+// same shared hub image spec as everything above. Self-contained: renders,
+// hosts on GitHub Pages, writes Post Image, and flips Asset Status to
+// Publish in one call — refresh the row list after so the status badge
+// (and its click target) reflect the new status immediately.
+async function genSinglePostImage() {
+  if (!pubAssetId) return;
+  const btn = document.getElementById('pubPostImageGenBtn');
+  const statusEl = document.getElementById('pubPostImageStatus');
+  btn.disabled = true; btn.textContent = '✨ Working…';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
+  const myAsset = pubAssetId;
+  try {
+    const r = await w('generateSinglePostFullCreative', { assetId: myAsset });
+    document.getElementById('pubPostImage').value = r.imageUrl;
+    const ppImg = document.getElementById('pubPostImagePreview');
+    ppImg.src = r.imageUrl; ppImg.style.display = '';
+    document.getElementById('pubStatus').value = 'Publish';
+    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = r.imageUrl; PUB_ASSET_CACHE[myAsset].status = 'Publish'; }
+    btn.disabled = false; btn.textContent = '✨ Regenerate social background (Grok)';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Generated ✓ — status set to Publish.';
+    loadTitleAndAssetTab();
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '✨ Generate social background (Grok)';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
 }
 
 function init() {
