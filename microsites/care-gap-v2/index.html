@@ -3078,6 +3078,25 @@ async function ensureFontLoaded(family, weights) {
   await Promise.all(weights.map(w2 => document.fonts.load(`${w2} 16px "${family}"`)));
   await document.fonts.ready;
 }
+// document.fonts.ready is unreliable specifically for <canvas> text — it can
+// resolve before the face is actually usable by fillText, silently falling
+// back to the next name in the font stack (this was the actual cause of a
+// bug report: the right font-family string still drew in the wrong
+// typeface). Classic FontFaceObserver-style check instead: measure a
+// distinctive string against a bare monospace baseline — once the real
+// font is active for canvas, the measured width diverges from monospace's.
+async function waitForCanvasFont(family, weight) {
+  const probe = document.createElement('canvas').getContext('2d');
+  const testText = 'giItT1WQy@!-/#';
+  probe.font = `${weight} 72px monospace`;
+  const baseline = probe.measureText(testText).width;
+  probe.font = `${weight} 72px "${family}", monospace`;
+  for (let i = 0; i < 40; i++) {
+    if (probe.measureText(testText).width !== baseline) return true;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return false;
+}
 // Greedy word-wrap for canvas text (no native wrapping) — returns the lines
 // it drew and the total block height, so callers can vertically place/shrink.
 function wrapCanvasLines(ctx, text, maxWidth) {
@@ -3120,6 +3139,7 @@ async function compositeTitleOnThumbnail() {
   try {
     const hub = await resolveHubDesign();
     await ensureFontLoaded(hub.fonts.display, [700, 800]);
+    if (!(await waitForCanvasFont(hub.fonts.display, 700))) hub.fonts.display = hub.fonts.body;
     statusEl.textContent = 'Rendering title text…';
     const img = await loadImageCORS(bgUrl);
     const canvas = document.createElement('canvas');
@@ -3188,6 +3208,8 @@ async function compositeTextOnPostImage() {
     const hub = await resolveHubDesign();
     await ensureFontLoaded(hub.fonts.display, [700, 800]);
     if (hub.fonts.body !== hub.fonts.display) await ensureFontLoaded(hub.fonts.body, [500]);
+    if (!(await waitForCanvasFont(hub.fonts.display, 800))) hub.fonts.display = hub.fonts.body;
+    if (hub.fonts.body !== hub.fonts.display && !(await waitForCanvasFont(hub.fonts.body, 500))) hub.fonts.body = 'sans-serif';
     statusEl.textContent = 'Rendering headline text…';
     const img = await loadImageCORS(bgUrl);
     const canvas = document.createElement('canvas');
