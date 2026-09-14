@@ -2882,14 +2882,17 @@ async function genBlogThumbnail() {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
+    // generateBlogPostThumbnail only renders and returns a TEMPORARY xAI CDN
+    // url + the prompt — same shape generateOfferImage returns, by design
+    // (see the worker.js comment above that action), so the rehost-and-
+    // persist step is the same shared _offerImgFinish -> saveOfferImage
+    // every other image kind here uses. Skipping this step is the bug to
+    // watch for: the field would show a url that 404s once xAI's temp CDN
+    // link expires, and nothing would actually be saved to Notion.
     const r = await w('generateBlogPostThumbnail', { assetId: myAsset });
-    _offerImgShow('blog-thumbnail', r.imageUrl, r.prompt);
-    document.getElementById('pubThumbnail').value = r.imageUrl;
-    renderPubThumbnailPreview(r.imageUrl);
-    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = r.imageUrl;
-    genBtn.disabled = false; genBtn.textContent = '✨ Regenerate from scratch';
-    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
-    setTimeout(() => { if (statusEl.textContent === 'Saved ✓') statusEl.textContent = ''; }, 1800);
+    if (!r.imageUrl) throw new Error(r.error || 'No image returned');
+    _offerImgShow('blog-thumbnail', null, r.prompt);
+    await _offerImgFinish('blog-thumbnail', myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
   } catch (e) {
     genBtn.disabled = false; genBtn.textContent = '✨ Retry';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
