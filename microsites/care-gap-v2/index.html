@@ -442,9 +442,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <span id="pubPostImageStatus" style="font-size:10.5px;"></span>
           </div>
           <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
-            <label>Headline size <input type="number" id="pubPostHeadSizePct" value="6.2" step="0.2" min="2" max="14" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
-            <label>Calm zone <input type="number" id="pubPostZoneWPct" value="62" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% w ×
+            <label title="Starting font size for Headline Primary/Accent, as a % of the image's width">Font size <input type="number" id="pubPostHeadSizePct" value="6.2" step="0.2" min="2" max="14" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
+            <label title="How big the light headline panel in the upper-left is — width % × height %, both of the full image">Panel size <input type="number" id="pubPostZoneWPct" value="62" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% w ×
             <input type="number" id="pubPostZoneHPct" value="58" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% h</label>
+            <label title="Headline Primary or Accent longer than this (each checked separately) gets cut short with '…' before rendering">Max chars/line <input type="number" id="pubPostMaxChars" value="40" step="5" min="10" max="150" class="finput" style="width:46px;padding:2px 4px;min-width:0;"></label>
           </div>
         </div>
 
@@ -510,8 +511,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
         </div>
         <div style="display:flex;gap:10px;margin-top:2px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
-          <label>Title size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
-          <label>Calm zone <input type="number" id="pubThumbZonePct" value="48" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% of height</label>
+          <label title="Starting font size, as a % of the image's width — e.g. 7.5 on a 2048px-wide image starts at ~154px tall">Font size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:46px;padding:2px 4px;min-width:0;">% of width</label>
+          <label title="How much of the top of the image gets darkened for the title to sit on, as a % of the image's height">Dark zone <input type="number" id="pubThumbZonePct" value="48" step="1" min="20" max="90" class="finput" style="width:42px;padding:2px 4px;min-width:0;">% of height</label>
+          <label title="Titles longer than this get cut short with '…' before rendering, instead of shrinking indefinitely to fit">Max chars <input type="number" id="pubThumbMaxChars" value="90" step="5" min="20" max="300" class="finput" style="width:46px;padding:2px 4px;min-width:0;"></label>
         </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -3119,13 +3121,21 @@ function hexToRgb(hex) {
   const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || '').trim());
   return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : { r: 10, g: 8, b: 4 };
 }
+// Cuts text to a whole word before maxChars, so a too-long title/headline
+// gets shortened once, up front, instead of the auto-shrink loop below
+// silently shrinking the font smaller and smaller to cram it all in.
+function truncateToChars(text, maxChars) {
+  const s = String(text || '');
+  if (!maxChars || s.length <= maxChars) return s;
+  return s.slice(0, maxChars).replace(/\s+\S*$/, '') + '…';
+}
 async function compositeTitleOnThumbnail() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubThumbnailTextBtn');
   const statusEl = document.getElementById('pubThumbnailStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
   const bgUrl = document.getElementById('pubThumbnail').value;
-  const title = (data.platformTitle || data.assetTitle || data.title || '').trim();
+  let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
   // Editable dimensions — the number inputs right next to this button;
@@ -3133,6 +3143,8 @@ async function compositeTitleOnThumbnail() {
   // the PHOTO's composition, not overlaid-type sizing), so they live here.
   const sizePct = parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5;
   const zonePct = parseFloat(document.getElementById('pubThumbZonePct').value) || 48;
+  const maxChars = parseInt(document.getElementById('pubThumbMaxChars').value) || 90;
+  title = truncateToChars(title, maxChars);
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
   const myAsset = pubAssetId;
@@ -3194,14 +3206,15 @@ async function compositeTextOnPostImage() {
   const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
   const zoneWPct = parseFloat(document.getElementById('pubPostZoneWPct').value) || 62;
   const zoneHPct = parseFloat(document.getElementById('pubPostZoneHPct').value) || 58;
+  const maxChars = parseInt(document.getElementById('pubPostMaxChars').value) || 40;
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Fetching this post\'s copy…';
   const myAsset = pubAssetId;
   try {
     const fr = await w('getSinglePostFields', { assetId: myAsset });
     const fields = fr.fields || {};
-    const primary = (fields['Headline Primary'] || '').trim();
-    const accent = (fields['Headline Accent'] || '').trim();
+    const primary = truncateToChars((fields['Headline Primary'] || '').trim(), maxChars);
+    const accent = truncateToChars((fields['Headline Accent'] || '').trim(), maxChars);
     const bodyText = (fields['Body'] || '').trim();
     if (!primary && !accent) throw new Error('No Headline Primary/Accent found on this asset.');
     statusEl.textContent = 'Loading hub fonts…';
