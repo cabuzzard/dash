@@ -276,6 +276,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div style="font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin-bottom:6px;">Methods</div>
         <div id="productModalMethodsRow"></div>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+        <button class="btn primary" onclick="openRegenModal('Run All Strategy Fields', 'Same steer + omit applied to all 11 — stages every result, saves nothing until you hit Save all.', (steer, omit) => runAllProductFields(steer, omit))">⟳ run all</button>
+        <button class="btn" id="prodSaveAllBtn" onclick="saveAllProductFields(this)" disabled>💾 Save all</button>
+      </div>
       <div id="productModalBody"></div>
       <div class="modalrow">
         <button class="btn" onclick="closeProductModal()">Close</button>
@@ -1622,6 +1626,8 @@ function renderProductModalFields() {
         <button class="btn" ${staged ? '' : 'disabled'} onclick="saveProductField('${esc(f)}', this)">💾 Save</button>
       </div></div><button class="notebtn" onclick="openNoteModal('product-${esc(f)}','${esc(f)}','product')">📝</button></div></div>`;
   }).join('');
+  const saveAllBtn = document.getElementById('prodSaveAllBtn');
+  if (saveAllBtn) saveAllBtn.disabled = !Object.keys(PRODUCT_STAGE).length;
   refreshNoteMarks();
 }
 async function runRegenProductField(field, steer, omit) {
@@ -1638,6 +1644,28 @@ async function saveProductField(field, btn) {
     delete PRODUCT_STAGE[field];
     renderProductModalFields();
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
+}
+async function runAllProductFields(steer, omit) {
+  for (const f of STRATEGY_FIELDS) {
+    await runRegenProductField(f, steer, omit);
+  }
+}
+async function saveAllProductFields(btn) {
+  const keys = Object.keys(PRODUCT_STAGE);
+  if (!keys.length) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    for (const field of keys) {
+      await w('updateProductStrategyField', { productId: PRODUCT_MODAL_ID, field, value: PRODUCT_STAGE[field] });
+      window.PRODUCT_STRATEGY_FIELDS[field] = PRODUCT_STAGE[field];
+      delete PRODUCT_STAGE[field];
+    }
+  } catch (e) {
+    alert('Save all failed partway through: ' + e.message);
+  } finally {
+    btn.textContent = o;
+    renderProductModalFields();
+  }
 }
 
 // ══════════════════════ STRATEGY TAB — Strategy → Grouping → Platform ══════════════════════
