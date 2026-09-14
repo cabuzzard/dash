@@ -369,8 +369,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mtitle">Create Asset</div>
       <div class="mfield" id="caModalTitle"></div>
       <div style="display:flex;flex-direction:column;gap:10px;">
-        <label style="font-size:11px;color:var(--ink2);">Method
-          <select id="caMethod" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="caOnMethodChange()"></select>
+        <label style="font-size:11px;color:var(--ink2);position:relative;">Method
+          <input type="text" id="caMethodInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Search all methods…" autocomplete="off" oninput="caMethodSearch()" onfocus="caMethodSearch()" onblur="caMethodBlur()">
+          <input type="hidden" id="caMethod">
+          <div id="caMethodOptions" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:2px;max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.18);"></div>
         </label>
         <label style="font-size:11px;color:var(--ink2);">Platform
           <select id="caPlatform" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
@@ -2326,6 +2328,37 @@ async function bulkDeleteAssets() {
 // auto-cycles a hub's registered Canva templates for single post.
 let CA_TITLE = null;
 let CA_PLATFORMS_CACHE = null;
+async function ensureAllMethodsCache() {
+  if (!ALL_METHODS_CACHE) { const r = await w('searchMethods', { query: '' }); ALL_METHODS_CACHE = r.methods || []; }
+  return ALL_METHODS_CACHE;
+}
+function caSetMethod(id, name) {
+  const hidden = document.getElementById('caMethod');
+  hidden.value = id || '';
+  hidden.dataset.name = name || '';
+  document.getElementById('caMethodInput').value = name || '';
+  caOnMethodChange();
+}
+async function caMethodSearch() {
+  const input = document.getElementById('caMethodInput');
+  const hidden = document.getElementById('caMethod');
+  if (input.value !== hidden.dataset.name) { hidden.value = ''; hidden.dataset.name = ''; caOnMethodChange(); }
+  const box = document.getElementById('caMethodOptions');
+  const q = input.value.trim().toLowerCase();
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Loading…</div>';
+  let methods;
+  try { methods = await ensureAllMethodsCache(); } catch (e) { box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Load failed.</div>'; return; }
+  const filtered = (q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods).slice(0, 40);
+  box.innerHTML = filtered.length ? filtered.map(m => `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="caPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
+}
+function caPickMethod(el) {
+  caSetMethod(el.dataset.id, el.dataset.name);
+  document.getElementById('caMethodOptions').style.display = 'none';
+}
+function caMethodBlur() {
+  setTimeout(() => { document.getElementById('caMethodOptions').style.display = 'none'; }, 150);
+}
 async function openCreateAssetModal(titleId) {
   const t = CAMPAIGN_TITLES.find(x => x.id === titleId);
   if (!t) return;
@@ -2333,13 +2366,11 @@ async function openCreateAssetModal(titleId) {
   document.getElementById('caModalTitle').textContent = t.title;
   document.getElementById('caResult').textContent = '';
   document.getElementById('caOverride').value = '';
-  const methodSel = document.getElementById('caMethod');
-  methodSel.innerHTML = [...IN_FLOW_METHOD_IDS].map(id => `<option value="${esc(id)}" ${t.methodId === id ? 'selected' : ''}>${esc(METHOD_NAMES[id] || id)}</option>`).join('');
-  if (t.methodId && t.methodId !== '__none__' && !IN_FLOW_METHOD_IDS.has(t.methodId)) {
-    methodSel.insertAdjacentHTML('afterbegin', `<option value="${esc(t.methodId)}" selected>${esc(t.methodName || t.methodId)} (not in-flow)</option>`);
-  }
-  caOnMethodChange();
+  document.getElementById('caMethodOptions').style.display = 'none';
+  const hasMethod = t.methodId && t.methodId !== '__none__';
+  caSetMethod(hasMethod ? t.methodId : '', hasMethod ? (t.methodName || t.methodId) : '');
   document.getElementById('createAssetModal').classList.add('open');
+  ensureAllMethodsCache();
   const platSel = document.getElementById('caPlatform');
   platSel.innerHTML = '<option>Loading…</option>';
   try {
@@ -2350,8 +2381,7 @@ async function openCreateAssetModal(titleId) {
   }
 }
 function caOnMethodChange() {
-  const sel = document.getElementById('caMethod');
-  const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const name = document.getElementById('caMethod').dataset.name || '';
   const isSinglePost = /single post/i.test(name);
   document.getElementById('caContentTypeRow').style.display = isSinglePost ? 'block' : 'none';
   const countEl = document.getElementById('caCount');
@@ -2363,9 +2393,10 @@ async function runCreateAsset() {
   if (!CA_TITLE) return;
   const btn = document.getElementById('caGenBtn');
   const resEl = document.getElementById('caResult');
-  const methodSel = document.getElementById('caMethod');
-  const methodId = methodSel.value;
-  const methodName = methodSel.options[methodSel.selectedIndex].textContent.replace(/\s*\(not in-flow\)$/, '');
+  const methodHidden = document.getElementById('caMethod');
+  const methodId = methodHidden.value;
+  const methodName = methodHidden.dataset.name || '';
+  if (!methodId) { resEl.style.color = 'var(--danger)'; resEl.textContent = 'Pick a method first.'; return; }
   const platSel = document.getElementById('caPlatform');
   const platformId = platSel.value || undefined;
   const platformName = (platSel.options[platSel.selectedIndex] && platSel.options[platSel.selectedIndex].dataset.name) || undefined;
