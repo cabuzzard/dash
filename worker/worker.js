@@ -17639,6 +17639,14 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // and the Canva template it was built from.
             postImage: p["Post Image"]?.url || "",
             canvaTemplate: p["Canva Template"]?.url || "",
+            // The WORDLESS background stored separately from thumbnail/
+            // instagramBackground/postImage above (those can be the
+            // text-composited result) — saveOfferImage's srcProp, set only
+            // when a fresh background is generated/attached, never when
+            // compositing text onto it.
+            thumbnailSource: p["Thumbnail Source"]?.url || "",
+            instagramBackgroundSource: p["Instagram Background Source"]?.url || "",
+            postImageSource: p["Post Image Source"]?.url || "",
           };
         };
         titleList.forEach(t => { t.assets = []; });
@@ -24463,15 +24471,17 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         // fileData (base64) is the alternative to imageUrl — the local
         // scripts/grok-image.py path hands raw bytes instead of a URL.
         const fileData = body.fileData ? String(body.fileData).split(",").pop() : "";
+        // srcProp holds the WORDLESS background separately from prop (the
+        // main, possibly-texted display value) — set only when body.background
+        // is true (a fresh generation or a freshly-attached image), never
+        // when compositing text onto it. This is what lets "re-render title
+        // text" always start from the real clean background instead of
+        // compositing text on top of an already-texted image, and gives the
+        // operator a link to the plate before any type was added.
         const SLOT = {
-          "ig-background":  { prop: "Instagram Background", suffix: "ig-background",  promptProp: "Image Prompt (IG Background)" },
-          "blog-thumbnail": { prop: "Thumbnail",           suffix: "blog-thumbnail", promptProp: "Image Prompt (Blog Thumbnail)" },
-          // Single-post/social wordless background (Publish modal) — no prompt
-          // property, since the finished creative is composited client-side
-          // (text overlay drawn in-browser, not written by the image model),
-          // and this same kind/property is reused to save that composited
-          // result too, overwriting the plain background.
-          "post-image":     { prop: "Post Image",           suffix: "post-image",     promptProp: null },
+          "ig-background":  { prop: "Instagram Background", suffix: "ig-background",  promptProp: "Image Prompt (IG Background)", srcProp: "Instagram Background Source" },
+          "blog-thumbnail": { prop: "Thumbnail",           suffix: "blog-thumbnail", promptProp: "Image Prompt (Blog Thumbnail)", srcProp: "Thumbnail Source" },
+          "post-image":     { prop: "Post Image",           suffix: "post-image",     promptProp: null, srcProp: "Post Image Source" },
         };
         if (!assetId || !SLOT[kind] || (!imageUrl && !fileData)) return json({ error: "assetId, a valid kind, and imageUrl or fileData required" }, 400);
         if (imageUrl && !/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
@@ -24521,6 +24531,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
         const props = { [SLOT[kind].prop]: { url } };
         const ensureProps = { [SLOT[kind].prop]: { type: "url" } };
+        if (body.background && SLOT[kind].srcProp) { props[SLOT[kind].srcProp] = { url }; ensureProps[SLOT[kind].srcProp] = { type: "url" }; }
         if (prompt && SLOT[kind].promptProp) { props[SLOT[kind].promptProp] = { rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] }; ensureProps[SLOT[kind].promptProp] = { type: "rich_text" }; }
         try { await ensureAssetsDbProperties(hdr, ensureProps); } catch (e) {}
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -27544,14 +27555,26 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         // no re-fetch/re-host needed, just point the property at it. Distinct
         // from saveOfferImage, which is for a NEWLY rendered image that still
         // needs hosting.
-        if (thumbnail !== undefined) props["Thumbnail"] = { url: thumbnail || null };
+        // Attaching an image via the picker also stamps the matching
+        // "* Source" property to the same url — same reasoning as
+        // saveOfferImage's body.background flag: a freshly-attached image
+        // is a new clean background for that slot, same as a fresh
+        // generation, so "re-render title text" has a real plate to
+        // recomposite from rather than the previous slot's stale source.
+        if (thumbnail !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Thumbnail Source": { type: "url" } });
+          props["Thumbnail"] = { url: thumbnail || null };
+          props["Thumbnail Source"] = { url: thumbnail || null };
+        }
         if (postImage !== undefined) {
-          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Post Image": { type: "url" } });
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Post Image": { type: "url" }, "Post Image Source": { type: "url" } });
           props["Post Image"] = { url: postImage || null };
+          props["Post Image Source"] = { url: postImage || null };
         }
         if (instagramBackground !== undefined) {
-          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Instagram Background": { type: "url" } });
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Instagram Background": { type: "url" }, "Instagram Background Source": { type: "url" } });
           props["Instagram Background"] = { url: instagramBackground || null };
+          props["Instagram Background Source"] = { url: instagramBackground || null };
         }
         if (productLink !== undefined) {
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Product Link": { type: "url" } });

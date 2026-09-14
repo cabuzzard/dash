@@ -452,6 +452,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <label title="Panel width, % of image width">W <input type="number" id="pubPostBoxW" value="62" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel height, % of image height">H <input type="number" id="pubPostBoxH" value="58" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
           </div>
+          <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
+            <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
+            <button class="iconbtn" onclick="openPublishFieldLink('pubPostImageSource')" title="Open the wordless background">↗</button>
+            <button class="iconbtn" onclick="copyPublishField('pubPostImageSource', this)" title="Copy the wordless background link">📋</button>
+            <input type="hidden" id="pubPostImageSource">
+          </div>
         </div>
 
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
@@ -473,6 +479,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
                 <button class="iconbtn" onclick="openImagePicker('instagramBackground')" title="Choose from this asset's other images">🖼️</button>
                 <button class="iconbtn" id="pubIgBgOpenBtn" onclick="openPublishFieldLink('pubIgBgUrl')" style="display:none;">↗</button>
+                <button class="iconbtn" id="pubIgBgCopyBtn" onclick="copyPublishField('pubIgBgUrl', this)" style="display:none;">📋</button>
                 <span id="pubIgBgStatus" style="font-size:10.5px;"></span>
               </div>
               <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
@@ -486,6 +493,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Dark zone top edge, % of height">Y <input type="number" id="pubIgBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone width, % of width">W <input type="number" id="pubIgBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubIgBoxH" value="40" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
+                <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
+                <button class="iconbtn" onclick="openPublishFieldLink('pubIgBgSource')" title="Open the wordless background">↗</button>
+                <button class="iconbtn" onclick="copyPublishField('pubIgBgSource', this)" title="Copy the wordless background link">📋</button>
+                <input type="hidden" id="pubIgBgSource">
               </div>
               <input type="hidden" id="pubIgBgUrl">
               <textarea id="pubIgBgPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
@@ -509,6 +522,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Dark zone top edge, % of height">Y <input type="number" id="pubThumbBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone width, % of width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+              </div>
+              <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
+                <span style="color:var(--ink3);flex-shrink:0;">Image:</span>
+                <button class="iconbtn" onclick="openPublishFieldLink('pubThumbnail')" title="Open the current image">↗</button>
+                <button class="iconbtn" onclick="copyPublishField('pubThumbnail', this)" title="Copy the current image link">📋</button>
+                <span style="color:var(--ink3);flex-shrink:0;margin-left:8px;">Background (before text):</span>
+                <button class="iconbtn" onclick="openPublishFieldLink('pubThumbBgSource')" title="Open the wordless background">↗</button>
+                <button class="iconbtn" onclick="copyPublishField('pubThumbBgSource', this)" title="Copy the wordless background link">📋</button>
+                <input type="hidden" id="pubThumbBgSource">
               </div>
               <textarea id="pubBlogThumbPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
             </div>
@@ -2735,6 +2757,7 @@ function openPublishAssetModal(assetId) {
     document.getElementById('pubPostImageEditBtn').style.display = data.postImage ? '' : 'none';
     document.getElementById('pubPostImageGenBtn').textContent = data.postImage ? '✨ Regenerate background (Grok)' : '✨ Generate background (Grok)';
     document.getElementById('pubPostImageStatus').textContent = '';
+    document.getElementById('pubPostImageSource').value = data.postImageSource || data.postImage || '';
   }
 
   const hubWrap = document.getElementById('pubHubWrap');
@@ -2760,6 +2783,12 @@ function openPublishAssetModal(assetId) {
   if (isOffer || isBlogType) {
     if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
     if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
+    // The wordless background, separate from the (possibly texted) values
+    // above — falls back to the main value for assets generated before this
+    // property existed, so the link is never blank on an asset that
+    // genuinely has an image, just possibly stale if text was since added.
+    document.getElementById('pubIgBgSource').value = data.instagramBackgroundSource || data.instagramBackground || '';
+    document.getElementById('pubThumbBgSource').value = data.thumbnailSource || data.thumbnail || '';
   }
   const igTextBtn = document.getElementById('pubIgBgTextBtn');
   igTextBtn.style.display = (isOffer && data.instagramBackground) ? '' : 'none';
@@ -2892,8 +2921,8 @@ async function uploadPubThumbnail() {
 // xAI Grok Imagine, grounded in the hub's image spec. Regenerate copies the
 // prompt to the clipboard, then reruns.
 const OFFER_IMG = {
-  'ig-background':  { btn:'pubIgBgGenBtn',      regen:'pubIgBgRegenBtn',      status:'pubIgBgStatus',      prev:'pubIgBgPreview',      promptEl:'pubIgBgPrompt',      urlEl:'pubIgBgUrl', open:'pubIgBgOpenBtn' },
-  'blog-thumbnail': { btn:'pubBlogThumbGenBtn', regen:'pubBlogThumbRegenBtn', status:'pubBlogThumbStatus', prev:'pubBlogThumbPreview', promptEl:'pubBlogThumbPrompt', urlEl:null,        open:null },
+  'ig-background':  { btn:'pubIgBgGenBtn',      regen:'pubIgBgRegenBtn',      status:'pubIgBgStatus',      prev:'pubIgBgPreview',      promptEl:'pubIgBgPrompt',      urlEl:'pubIgBgUrl', open:'pubIgBgOpenBtn', copy:'pubIgBgCopyBtn', srcEl:'pubIgBgSource' },
+  'blog-thumbnail': { btn:'pubBlogThumbGenBtn', regen:'pubBlogThumbRegenBtn', status:'pubBlogThumbStatus', prev:'pubBlogThumbPreview', promptEl:'pubBlogThumbPrompt', urlEl:null,        open:null,              copy:null,              srcEl:'pubThumbBgSource' },
 };
 let _offerImgPrompt = { 'ig-background':'', 'blog-thumbnail':'' };
 function _offerImgReset() {
@@ -2907,6 +2936,8 @@ function _offerImgReset() {
     const pr = document.getElementById(c.promptEl); if (pr) { pr.value = ''; pr.style.display = 'none'; }
     if (c.urlEl) { const u = document.getElementById(c.urlEl); if (u) u.value = ''; }
     if (c.open) { const o = document.getElementById(c.open); if (o) o.style.display = 'none'; }
+    if (c.copy) { const cp = document.getElementById(c.copy); if (cp) cp.style.display = 'none'; }
+    if (c.srcEl) { const se = document.getElementById(c.srcEl); if (se) se.value = ''; }
   });
 }
 function _offerImgShow(kind, url, prompt) {
@@ -2915,6 +2946,7 @@ function _offerImgShow(kind, url, prompt) {
     const pv = document.getElementById(c.prev); pv.src = url; pv.style.display = '';
     if (c.urlEl) document.getElementById(c.urlEl).value = url;
     if (c.open) document.getElementById(c.open).style.display = '';
+    if (c.copy) document.getElementById(c.copy).style.display = '';
   }
   if (prompt) {
     _offerImgPrompt[kind] = prompt;
@@ -2925,16 +2957,22 @@ function _offerImgShow(kind, url, prompt) {
 async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Saving to Notion…';
   try {
-    const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl, prompt });
+    // background:true — this path is always a FRESH wordless render (never
+    // a text-composite save, those call saveOfferImage directly), so it
+    // also stamps the "* Source" property, giving "Add title text" a clean
+    // plate to composite onto later instead of the just-generated value.
+    const s = await w('saveOfferImage', { assetId: myAsset, kind, imageUrl, prompt, background: true });
     _offerImgShow(kind, s.url, prompt);
     if (kind === 'blog-thumbnail') {
       document.getElementById('pubThumbnail').value = s.url;
+      document.getElementById('pubThumbBgSource').value = s.url;
       renderPubThumbnailPreview(s.url);
-      if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
+      if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].thumbnail = s.url; PUB_ASSET_CACHE[myAsset].thumbnailSource = s.url; }
       document.getElementById('pubThumbnailTextBtn').style.display = '';
       document.getElementById('pubThumbnailEditBtn').style.display = '';
     } else {
-      if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
+      document.getElementById('pubIgBgSource').value = s.url;
+      if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].instagramBackground = s.url; PUB_ASSET_CACHE[myAsset].instagramBackgroundSource = s.url; }
       document.getElementById('pubIgBgTextBtn').style.display = '';
       document.getElementById('pubIgBgEditBtn').style.display = '';
     }
@@ -3036,13 +3074,14 @@ async function genSinglePostImage() {
     const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     statusEl.textContent = 'Saving to Notion…';
-    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl });
+    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl, background: true });
     document.getElementById('pubPostImage').value = s.url;
+    document.getElementById('pubPostImageSource').value = s.url;
     const ppImg = document.getElementById('pubPostImagePreview');
     ppImg.src = s.url; ppImg.style.display = '';
     document.getElementById('pubPostImageTextBtn').style.display = '';
     document.getElementById('pubPostImageEditBtn').style.display = '';
-    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].postImage = s.url;
+    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = s.url; PUB_ASSET_CACHE[myAsset].postImageSource = s.url; }
     btn.disabled = false; btn.textContent = '✨ Regenerate background (Grok)';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Background saved ✓ — now add the headline text below.';
   } catch (e) {
@@ -3082,24 +3121,36 @@ async function pickImageForTarget(url) {
   const myAsset = pubAssetId;
   closeImagePicker();
   try {
+    // Attaching a picked image also resets it as the slot's clean background
+    // (updatePublishFields stamps the matching "* Source" property too) —
+    // same reasoning as a fresh generation: this is a new plate to composite
+    // text onto, not the old one with old text baked in.
     await w('updatePublishFields', { assetId: myAsset, [target]: url });
-    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset][target] = url;
+    const sourceField = { thumbnail: 'thumbnailSource', postImage: 'postImageSource', instagramBackground: 'instagramBackgroundSource' }[target];
+    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset][target] = url; PUB_ASSET_CACHE[myAsset][sourceField] = url; }
     if (slot.fieldId) document.getElementById(slot.fieldId).value = url;
     const prev = document.getElementById(slot.previewId);
     if (prev) { prev.src = url; prev.style.display = ''; }
     if (target === 'instagramBackground') {
       document.getElementById('pubIgBgUrl').value = url;
+      document.getElementById('pubIgBgSource').value = url;
       document.getElementById('pubIgBgOpenBtn').style.display = '';
+      document.getElementById('pubIgBgCopyBtn').style.display = '';
       document.getElementById('pubIgBgTextBtn').style.display = '';
       document.getElementById('pubIgBgEditBtn').style.display = '';
     }
     if (target === 'thumbnail') {
       renderPubThumbnailPreview(url);
+      document.getElementById('pubThumbBgSource').value = url;
       const blogPrev = document.getElementById('pubBlogThumbPreview'); blogPrev.src = url; blogPrev.style.display = '';
       document.getElementById('pubThumbnailTextBtn').style.display = '';
       document.getElementById('pubThumbnailEditBtn').style.display = '';
     }
-    if (target === 'postImage') { document.getElementById('pubPostImageTextBtn').style.display = ''; document.getElementById('pubPostImageEditBtn').style.display = ''; }
+    if (target === 'postImage') {
+      document.getElementById('pubPostImageSource').value = url;
+      document.getElementById('pubPostImageTextBtn').style.display = '';
+      document.getElementById('pubPostImageEditBtn').style.display = '';
+    }
   } catch (e) {
     alert('Could not attach that image: ' + e.message);
   }
@@ -3336,7 +3387,10 @@ async function compositeTitleOnThumbnail() {
   const btn = document.getElementById('pubThumbnailTextBtn');
   const statusEl = document.getElementById('pubBlogThumbStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
-  const bgUrl = document.getElementById('pubThumbnail').value;
+  // Composite from the SAVED WORDLESS BACKGROUND, never from the main field
+  // (which may already carry a previous text render) — otherwise
+  // "re-render" would draw new text on top of already-texted pixels.
+  const bgUrl = document.getElementById('pubThumbBgSource').value || document.getElementById('pubThumbnail').value;
   let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
@@ -3383,7 +3437,7 @@ async function compositeTitleOnIgBackground() {
   const btn = document.getElementById('pubIgBgTextBtn');
   const statusEl = document.getElementById('pubIgBgStatus');
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
-  const bgUrl = document.getElementById('pubIgBgUrl').value;
+  const bgUrl = document.getElementById('pubIgBgSource').value || document.getElementById('pubIgBgUrl').value;
   let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
@@ -3409,6 +3463,7 @@ async function compositeTitleOnIgBackground() {
     document.getElementById('pubIgBgUrl').value = s.url;
     const prev = document.getElementById('pubIgBgPreview'); prev.src = s.url; prev.style.display = '';
     document.getElementById('pubIgBgOpenBtn').style.display = '';
+    document.getElementById('pubIgBgCopyBtn').style.display = '';
     if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].instagramBackground = s.url;
     btn.disabled = false; btn.textContent = '🔤 Re-render title text';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
@@ -3422,7 +3477,7 @@ async function compositeTextOnPostImage() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageTextBtn');
   const statusEl = document.getElementById('pubPostImageStatus');
-  const bgUrl = document.getElementById('pubPostImage').value;
+  const bgUrl = document.getElementById('pubPostImageSource').value || document.getElementById('pubPostImage').value;
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   // Editable dimensions — see the note on compositeTitleOnThumbnail; no
   // spec-card field for these, they live as number inputs (or the 🎯
@@ -3472,19 +3527,19 @@ async function compositeTextOnPostImage() {
 // actual result, not an approximation.
 const TEXT_EDITOR_SLOTS = {
   thumbnail: {
-    title: 'Thumbnail — title placement', urlField: 'pubThumbnail', draw: 'title',
+    title: 'Thumbnail — title placement', urlField: 'pubThumbnail', srcField: 'pubThumbBgSource', draw: 'title',
     sizeId: 'pubThumbTextSizePct', maxCharsId: 'pubThumbMaxChars', boxPrefix: 'pubThumbBox',
     sizeDefault: 7.5, sizeMax: 15, maxCharsDefault: 90, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 48 },
     save: () => compositeTitleOnThumbnail(),
   },
   igBackground: {
-    title: 'Instagram background — title placement', urlField: 'pubIgBgUrl', draw: 'title',
+    title: 'Instagram background — title placement', urlField: 'pubIgBgUrl', srcField: 'pubIgBgSource', draw: 'title',
     sizeId: 'pubIgTextSizePct', maxCharsId: 'pubIgMaxChars', boxPrefix: 'pubIgBox',
     sizeDefault: 8, sizeMax: 15, maxCharsDefault: 70, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 40 },
     save: () => compositeTitleOnIgBackground(),
   },
   postImage: {
-    title: 'Post image — headline placement', urlField: 'pubPostImage', draw: 'post',
+    title: 'Post image — headline placement', urlField: 'pubPostImage', srcField: 'pubPostImageSource', draw: 'post',
     sizeId: 'pubPostHeadSizePct', maxCharsId: 'pubPostMaxChars', boxPrefix: 'pubPostBox',
     sizeDefault: 6.2, sizeMax: 14, maxCharsDefault: 40, boxDefaults: { xPct: 0, yPct: 0, wPct: 62, hPct: 58 },
     save: () => compositeTextOnPostImage(),
@@ -3494,7 +3549,9 @@ let TEXT_EDITOR = null;
 async function openTextEditor(mode) {
   if (!pubAssetId) return;
   const slot = TEXT_EDITOR_SLOTS[mode];
-  const bgUrl = document.getElementById(slot.urlField).value;
+  // Preview/edit the CLEAN background, same reasoning as every composite
+  // function — never the main field, which may already carry text.
+  const bgUrl = document.getElementById(slot.srcField).value || document.getElementById(slot.urlField).value;
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   const modal = document.getElementById('textEditorModal');
   const statusEl = document.getElementById('textEditorStatus');
