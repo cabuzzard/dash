@@ -393,6 +393,75 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Bulk actions on the Titles list — Change Product / Choose Method both
+       reuse the existing updateTitleStrategy action (already accepts
+       productId/methodId independently, send-only-if-set), applied in a
+       loop across every checked title. -->
+  <div class="modaloverlay" id="bulkProductModal">
+    <div class="modalbox">
+      <div class="mtitle">Bulk Change Product</div>
+      <div class="mfield" id="bpCount"></div>
+      <label style="font-size:11px;color:var(--ink2);">Product
+        <select id="bpProduct" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+      </label>
+      <div id="bpResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeBulkProductModal()">Cancel</button>
+        <button class="btn primary" id="bpApplyBtn" onclick="runBulkChangeProduct()">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modaloverlay" id="bulkMethodModal">
+    <div class="modalbox">
+      <div class="mtitle">Bulk Choose Method</div>
+      <div class="mfield" id="bmCount"></div>
+      <label style="font-size:11px;color:var(--ink2);">Method
+        <select id="bmMethod" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+      </label>
+      <div id="bmResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeBulkMethodModal()">Cancel</button>
+        <button class="btn primary" id="bmApplyBtn" onclick="runBulkChooseMethod()">Apply</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bulk Create Asset — same fields as the single-title Create Asset
+       modal; runs generateTitleAssets once per checked title with the
+       same method/platform/count/override, sequentially so progress is
+       visible and one failure doesn't abort the rest. -->
+  <div class="modaloverlay" id="bulkCreateAssetModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Bulk Create Asset</div>
+      <div class="mfield" id="bcaCount"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Method
+          <select id="bcaMethod" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="bcaOnMethodChange()"></select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Platform
+          <select id="bcaPlatform" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+        </label>
+        <label id="bcaContentTypeRow" style="font-size:11px;color:var(--ink2);display:none;">Content type <span style="color:var(--ink3);">(single post)</span>
+          <select id="bcaContentType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+            <option>Hook</option><option>Pain Point</option><option>Benefit</option><option>Informational</option><option>Customer Focus</option><option>Proof</option><option>Objection</option><option>Contrarian</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Count <span style="color:var(--ink3);">(per title)</span>
+          <input type="number" id="bcaCountInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" min="1" max="12" value="4">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Override / notes <span style="color:var(--ink3);">(optional, applied to every title)</span>
+          <textarea id="bcaOverride" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;min-height:60px;"></textarea>
+        </label>
+      </div>
+      <div id="bcaResult" style="font-size:11.5px;margin-top:10px;min-height:40px;white-space:pre-line;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeBulkCreateAssetModal()">Cancel</button>
+        <button class="btn primary" id="bcaGenBtn" onclick="runBulkCreateAsset()">⟳ Generate</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modaloverlay" id="clusterGenModal">
     <div class="modalbox">
       <div class="mtitle">New cluster</div>
@@ -552,10 +621,23 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="kwgrid">
       <div class="kwcol">
         <h4>Titles</h4>
+        <div id="titleBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+          <span id="titleBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
+          <button class="btn" onclick="openBulkProductModal()">Change Product</button>
+          <button class="btn" onclick="openBulkMethodModal()">Choose Method</button>
+          <button class="btn primary" onclick="openBulkCreateAssetModal()">➕ Create Asset</button>
+          <button class="btn" style="color:var(--stale);" onclick="bulkDeleteTitles()">✕ Delete</button>
+          <button class="btn" onclick="clearTitleSelection()">Clear</button>
+        </div>
         <div id="titleListBody"><div class="loadnote">Loading…</div></div>
       </div>
       <div class="kwcol">
         <h4>Assets</h4>
+        <div id="assetBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+          <span id="assetBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
+          <button class="btn" style="color:var(--stale);" onclick="bulkDeleteAssets()">✕ Delete</button>
+          <button class="btn" onclick="clearAssetSelection()">Clear</button>
+        </div>
         <div id="assetTree"><div class="loadnote">Loading…</div></div>
       </div>
     </div>
@@ -1964,6 +2046,9 @@ async function loadTitleAndAssetTab() {
   const assetBody = document.getElementById('assetTree');
   titleBody.innerHTML = '<div class="loadnote">Loading…</div>';
   assetBody.innerHTML = '<div class="loadnote">Loading…</div>';
+  SELECTED_TITLE_IDS.clear(); SELECTED_ASSET_IDS.clear();
+  document.getElementById('titleBulkBar').style.display = 'none';
+  document.getElementById('assetBulkBar').style.display = 'none';
   try {
     if (!CAMPAIGN_PRODUCTS.length) { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; }
     const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES });
@@ -2014,7 +2099,7 @@ async function loadTitleAndAssetTab() {
 }
 function renderTitleRow(t) {
   const statusClass = ['Publish','Published'].includes(t.stage) ? 's-live' : (t.stage === 'Planning' ? 's-dev' : 's-pub');
-  return `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
+  return `<div class="idea-card"><div class="idea-row"><input type="checkbox" class="title-select-cb" data-id="${esc(t.id)}" onclick="event.stopPropagation();toggleTitleSelect('${esc(t.id)}',this.checked)" style="margin-right:2px;flex-shrink:0;"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
@@ -2038,6 +2123,185 @@ async function deleteAssetRow(id, name) {
     await w('deleteAsset', { assetId: id });
     loadTitleAndAssetTab();
   } catch (e) { alert('Delete failed: ' + e.message); }
+}
+
+// ── Bulk title selection ──
+let SELECTED_TITLE_IDS = new Set();
+function toggleTitleSelect(id, checked) {
+  if (checked) SELECTED_TITLE_IDS.add(id); else SELECTED_TITLE_IDS.delete(id);
+  updateTitleBulkBar();
+}
+function updateTitleBulkBar() {
+  const bar = document.getElementById('titleBulkBar');
+  const n = SELECTED_TITLE_IDS.size;
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('titleBulkCount').textContent = `${n} selected`;
+}
+function clearTitleSelection() {
+  SELECTED_TITLE_IDS.clear();
+  document.querySelectorAll('.title-select-cb').forEach(cb => cb.checked = false);
+  updateTitleBulkBar();
+}
+async function bulkDeleteTitles() {
+  const ids = [...SELECTED_TITLE_IDS];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} title(s)? This archives them in Notion.`)) return;
+  for (const id of ids) { try { await w('deleteTitle', { titleId: id }); } catch (e) {} }
+  clearTitleSelection();
+  loadTitleAndAssetTab();
+}
+// ── Bulk Change Product ──
+function openBulkProductModal() {
+  if (!SELECTED_TITLE_IDS.size) return;
+  document.getElementById('bpCount').textContent = `${SELECTED_TITLE_IDS.size} title(s)`;
+  document.getElementById('bpResult').textContent = '';
+  const sel = document.getElementById('bpProduct');
+  sel.innerHTML = '<option value="__none__">(no product)</option>' +
+    CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`).join('');
+  document.getElementById('bulkProductModal').classList.add('open');
+}
+function closeBulkProductModal() { document.getElementById('bulkProductModal').classList.remove('open'); }
+async function runBulkChangeProduct() {
+  const productId = document.getElementById('bpProduct').value;
+  const ids = [...SELECTED_TITLE_IDS];
+  const btn = document.getElementById('bpApplyBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Applying…';
+  const resEl = document.getElementById('bpResult');
+  let failed = 0;
+  for (const id of ids) {
+    try { await w('updateTitleStrategy', { titleId: id, productId }); }
+    catch (e) { failed++; }
+  }
+  resEl.style.color = failed ? 'var(--stale)' : 'var(--fresh)';
+  resEl.textContent = failed ? `${failed} of ${ids.length} failed.` : `✓ Updated ${ids.length} title(s).`;
+  btn.disabled = false; btn.textContent = o;
+  clearTitleSelection();
+  await loadTitleAndAssetTab();
+  setTimeout(closeBulkProductModal, 900);
+}
+// ── Bulk Choose Method ──
+function openBulkMethodModal() {
+  if (!SELECTED_TITLE_IDS.size) return;
+  document.getElementById('bmCount').textContent = `${SELECTED_TITLE_IDS.size} title(s)`;
+  document.getElementById('bmResult').textContent = '';
+  document.getElementById('bmMethod').innerHTML = [...IN_FLOW_METHOD_IDS].map(id => `<option value="${esc(id)}">${esc(METHOD_NAMES[id] || id)}</option>`).join('');
+  document.getElementById('bulkMethodModal').classList.add('open');
+}
+function closeBulkMethodModal() { document.getElementById('bulkMethodModal').classList.remove('open'); }
+async function runBulkChooseMethod() {
+  const methodId = document.getElementById('bmMethod').value;
+  const ids = [...SELECTED_TITLE_IDS];
+  const btn = document.getElementById('bmApplyBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Applying…';
+  const resEl = document.getElementById('bmResult');
+  let failed = 0;
+  for (const id of ids) {
+    try { await w('updateTitleStrategy', { titleId: id, methodId }); }
+    catch (e) { failed++; }
+  }
+  resEl.style.color = failed ? 'var(--stale)' : 'var(--fresh)';
+  resEl.textContent = failed ? `${failed} of ${ids.length} failed.` : `✓ Updated ${ids.length} title(s).`;
+  btn.disabled = false; btn.textContent = o;
+  clearTitleSelection();
+  await loadTitleAndAssetTab();
+  setTimeout(closeBulkMethodModal, 900);
+}
+// ── Bulk Create Asset ──
+// Same fields/payload shape as the single-title Create Asset modal
+// (runCreateAsset) — just runs generateTitleAssets once per checked
+// title, sequentially, so progress is visible and one title's failure
+// doesn't abort the rest.
+async function openBulkCreateAssetModal() {
+  if (!SELECTED_TITLE_IDS.size) return;
+  document.getElementById('bcaCount').textContent = `${SELECTED_TITLE_IDS.size} title(s)`;
+  document.getElementById('bcaResult').textContent = '';
+  document.getElementById('bcaOverride').value = '';
+  const methodSel = document.getElementById('bcaMethod');
+  methodSel.innerHTML = [...IN_FLOW_METHOD_IDS].map(id => `<option value="${esc(id)}">${esc(METHOD_NAMES[id] || id)}</option>`).join('');
+  bcaOnMethodChange();
+  document.getElementById('bulkCreateAssetModal').classList.add('open');
+  const platSel = document.getElementById('bcaPlatform');
+  platSel.innerHTML = '<option>Loading…</option>';
+  try {
+    if (!CA_PLATFORMS_CACHE) { const r = await w('getPlatforms'); CA_PLATFORMS_CACHE = r.platforms || []; }
+    platSel.innerHTML = CA_PLATFORMS_CACHE.length ? CA_PLATFORMS_CACHE.map(p => `<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('') : '<option value="">(none configured)</option>';
+  } catch (e) {
+    platSel.innerHTML = '<option value="">(load failed)</option>';
+  }
+}
+function bcaOnMethodChange() {
+  const sel = document.getElementById('bcaMethod');
+  const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
+  const isSinglePost = /single post/i.test(name);
+  document.getElementById('bcaContentTypeRow').style.display = isSinglePost ? 'block' : 'none';
+  const countEl = document.getElementById('bcaCountInput');
+  countEl.value = isSinglePost ? 6 : 4;
+  countEl.max = isSinglePost ? 12 : 8;
+}
+function closeBulkCreateAssetModal() { document.getElementById('bulkCreateAssetModal').classList.remove('open'); }
+async function runBulkCreateAsset() {
+  const ids = [...SELECTED_TITLE_IDS];
+  if (!ids.length) return;
+  const methodSel = document.getElementById('bcaMethod');
+  const methodId = methodSel.value;
+  const methodName = methodSel.options[methodSel.selectedIndex].textContent;
+  const platSel = document.getElementById('bcaPlatform');
+  const platformId = platSel.value || undefined;
+  const platformName = (platSel.options[platSel.selectedIndex] && platSel.options[platSel.selectedIndex].dataset.name) || undefined;
+  const count = parseInt(document.getElementById('bcaCountInput').value) || 4;
+  const override = (document.getElementById('bcaOverride').value || '').trim() || undefined;
+  const isSinglePost = /single post/i.test(methodName);
+  const contentType = isSinglePost ? document.getElementById('bcaContentType').value : undefined;
+  const btn = document.getElementById('bcaGenBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Generating…';
+  const resEl = document.getElementById('bcaResult');
+  let done = 0, failed = 0;
+  for (const id of ids) {
+    const t = CAMPAIGN_TITLES.find(x => x.id === id);
+    resEl.textContent = `Generating ${done + failed + 1}/${ids.length} — ${t ? t.title : id}…`;
+    try {
+      const payload = {
+        titleId: id, campaignId: CAMPAIGN_ID, methodId, assetType: methodName,
+        title: t ? t.title : undefined, platformId, platformName, count, researchInstructions: override,
+      };
+      if (contentType) payload.contentType = contentType;
+      if (t && t.productId && t.productId !== '__none__') payload.productId = t.productId;
+      await w('generateTitleAssets', payload);
+      done++;
+    } catch (e) { failed++; }
+  }
+  resEl.style.color = failed ? 'var(--stale)' : 'var(--fresh)';
+  resEl.textContent = `✓ Done — ${done} title(s) generated${failed ? `, ${failed} failed` : ''}.`;
+  btn.disabled = false; btn.textContent = o;
+  clearTitleSelection();
+  await loadTitleAndAssetTab();
+  setTimeout(closeBulkCreateAssetModal, 1200);
+}
+
+// ── Bulk asset selection ──
+let SELECTED_ASSET_IDS = new Set();
+function toggleAssetSelect(id, checked) {
+  if (checked) SELECTED_ASSET_IDS.add(id); else SELECTED_ASSET_IDS.delete(id);
+  updateAssetBulkBar();
+}
+function updateAssetBulkBar() {
+  const bar = document.getElementById('assetBulkBar');
+  const n = SELECTED_ASSET_IDS.size;
+  bar.style.display = n ? 'flex' : 'none';
+  document.getElementById('assetBulkCount').textContent = `${n} selected`;
+}
+function clearAssetSelection() {
+  SELECTED_ASSET_IDS.clear();
+  document.querySelectorAll('.asset-select-cb').forEach(cb => cb.checked = false);
+  updateAssetBulkBar();
+}
+async function bulkDeleteAssets() {
+  const ids = [...SELECTED_ASSET_IDS];
+  if (!ids.length) return;
+  if (!confirm(`Delete ${ids.length} asset(s)? This archives them in Notion.`)) return;
+  for (const id of ids) { try { await w('deleteAsset', { assetId: id }); } catch (e) {} }
+  clearAssetSelection();
+  loadTitleAndAssetTab();
 }
 
 // ── Create Asset modal — real generateTitleAssets call, per docs/methods-titles-assets.md.
@@ -2149,7 +2413,7 @@ function renderAssetTitleNode(t, data) {
   const assets = (data && data.assets) || [];
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
