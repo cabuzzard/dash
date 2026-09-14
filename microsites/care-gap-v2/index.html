@@ -439,6 +439,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
             <button class="btn" id="pubPostImageGenBtn" onclick="genSinglePostImage()">✨ Generate background (Grok)</button>
             <button class="btn" id="pubPostImageTextBtn" onclick="compositeTextOnPostImage()" style="display:none;">🔤 Add headline text</button>
+            <button class="btn" id="pubPostImageEditBtn" onclick="openTextEditor('postImage')" style="display:none;">🎯 Preview &amp; Edit</button>
             <span id="pubPostImageStatus" style="font-size:10.5px;"></span>
           </div>
           <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
@@ -508,6 +509,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()">
           <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
           <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
+          <button class="btn" id="pubThumbnailEditBtn" onclick="openTextEditor('thumbnail')" style="display:none;">🎯 Preview &amp; Edit</button>
           <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
         </div>
         <div style="display:flex;gap:10px;margin-top:2px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
@@ -553,6 +555,36 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div id="imagePickerGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
       <div class="modalrow">
         <button class="btn" onclick="closeImagePicker()">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preview & Edit — live drag-editor for the text overlay. Same
+       draw*Composite functions as the real save, on a smaller canvas, so
+       dragging the handle shows the actual result. -->
+  <div class="modaloverlay" id="textEditorModal">
+    <div class="modalbox" style="max-width:520px;">
+      <div class="mtitle">Preview &amp; Edit</div>
+      <div class="mfield" id="textEditorTitle">Text placement</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <div style="width:100%;max-width:460px;margin:0 auto;">
+          <canvas id="textEditorCanvas" style="width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--border2);touch-action:none;cursor:grab;" onpointerdown="textEditorPointerDown(event)" onpointermove="textEditorPointerMove(event)" onpointerup="textEditorPointerUp(event)" onpointerleave="textEditorPointerUp(event)"></canvas>
+        </div>
+        <div id="textEditorHint" style="font-size:10.5px;color:var(--ink3);text-align:center;"></div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
+          <label style="display:flex;align-items:center;gap:6px;">Font size
+            <input type="range" id="textEditorFontSize" min="2" max="15" step="0.2" oninput="textEditorFontSizeChange()" style="width:110px;">
+            <span id="textEditorFontSizeVal" style="font-family:var(--mono);width:28px;display:inline-block;"></span>%
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;">Max chars
+            <input type="number" id="textEditorMaxChars" class="finput" oninput="textEditorMaxCharsChange()" style="width:50px;">
+          </label>
+        </div>
+        <div id="textEditorStatus" style="font-size:11.5px;min-height:14px;text-align:center;"></div>
+      </div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeTextEditor()">Cancel</button>
+        <button class="btn primary" onclick="applyTextEditorAndSave()">✓ Render &amp; Save</button>
       </div>
     </div>
   </div>
@@ -975,6 +1007,8 @@ document.addEventListener('DOMContentLoaded', () => {
   pubOverlay.addEventListener('click', e => { if (e.target === pubOverlay) closePublishAssetModal(); });
   const pickerOverlay = document.getElementById('imagePickerModal');
   pickerOverlay.addEventListener('click', e => { if (e.target === pickerOverlay) closeImagePicker(); });
+  const editorOverlay = document.getElementById('textEditorModal');
+  editorOverlay.addEventListener('click', e => { if (e.target === editorOverlay) closeTextEditor(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -2671,6 +2705,7 @@ function openPublishAssetModal(assetId) {
     const postTextBtn = document.getElementById('pubPostImageTextBtn');
     postTextBtn.style.display = data.postImage ? '' : 'none';
     postTextBtn.textContent = '🔤 Add headline text';
+    document.getElementById('pubPostImageEditBtn').style.display = data.postImage ? '' : 'none';
     document.getElementById('pubPostImageGenBtn').textContent = data.postImage ? '✨ Regenerate background (Grok)' : '✨ Generate background (Grok)';
     document.getElementById('pubPostImageStatus').textContent = '';
   }
@@ -2706,6 +2741,7 @@ function openPublishAssetModal(assetId) {
   const thumbTextBtn = document.getElementById('pubThumbnailTextBtn');
   thumbTextBtn.style.display = data.thumbnail ? '' : 'none';
   thumbTextBtn.textContent = '🔤 Add title text';
+  document.getElementById('pubThumbnailEditBtn').style.display = data.thumbnail ? '' : 'none';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
   const status = document.getElementById('pubAssetStatus');
@@ -2964,6 +3000,7 @@ async function genSinglePostImage() {
     const ppImg = document.getElementById('pubPostImagePreview');
     ppImg.src = s.url; ppImg.style.display = '';
     document.getElementById('pubPostImageTextBtn').style.display = '';
+    document.getElementById('pubPostImageEditBtn').style.display = '';
     if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].postImage = s.url;
     btn.disabled = false; btn.textContent = '✨ Regenerate background (Grok)';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Background saved ✓ — now add the headline text below.';
@@ -3013,8 +3050,8 @@ async function pickImageForTarget(url) {
       document.getElementById('pubIgBgUrl').value = url;
       document.getElementById('pubIgBgOpenBtn').style.display = '';
     }
-    if (target === 'thumbnail') renderPubThumbnailPreview(url);
-    if (target === 'postImage') document.getElementById('pubPostImageTextBtn').style.display = '';
+    if (target === 'thumbnail') { renderPubThumbnailPreview(url); document.getElementById('pubThumbnailEditBtn').style.display = ''; }
+    if (target === 'postImage') { document.getElementById('pubPostImageTextBtn').style.display = ''; document.getElementById('pubPostImageEditBtn').style.display = ''; }
   } catch (e) {
     alert('Could not attach that image: ' + e.message);
   }
@@ -3040,10 +3077,34 @@ function loadImageCORS(url) {
 // own --ink/--amber tokens (a different, tool-only palette). Resolved once
 // via getContentHubs (campaignId -> slug, since hubs.design.json's own
 // per-hub campaignId is often unset) then cached.
+//
+// Critically, this also reads hubs.design.json's own "fontRegistry" — the
+// SAME lookup build-hubs.mjs uses to write each real hub page's <link> tag
+// — instead of guessing a Google Fonts query and weight ourselves. A prior
+// version requested "Newsreader:wght@700;800", which isn't how Newsreader
+// is actually registered (it's a variable font requiring the optical-size
+// axis alongside weight: "Newsreader:opsz,wght@6..72,500;6..72,600" — only
+// 500/600 exist at all); asking for weights the font was never loaded at is
+// exactly the kind of mismatch that makes a browser fall back to a
+// synthetic/faux-bold render (a real cause of a double-stroke "ghosting"
+// look, distinct from the wrong-typeface bug this was first built to fix).
 let HUB_DESIGN_CACHE = null;
+function parseFontWeights(query) {
+  const at = String(query || '').indexOf('@');
+  if (at === -1) return { regular: 400, bold: 700 };
+  const weights = query.slice(at + 1).split(';')
+    .map(seg => parseInt(seg.split(',').pop(), 10))
+    .filter(n => !isNaN(n));
+  if (!weights.length) return { regular: 400, bold: 700 };
+  return { regular: Math.min(...weights), bold: Math.max(...weights) };
+}
 async function resolveHubDesign() {
   if (HUB_DESIGN_CACHE) return HUB_DESIGN_CACHE;
-  const fallback = { slug: '', fonts: { display: 'IBM Plex Sans', body: 'IBM Plex Sans' }, tokens: { ink: '#221d17', accent: '#a7680c' } };
+  const fallback = {
+    slug: '', tokens: { ink: '#221d17', accent: '#a7680c', deep: '#221d17', deepInk: '#ffffff', surface: '#ffffff' },
+    display: { family: 'IBM Plex Sans', fallback: 'system-ui, sans-serif', query: 'IBM+Plex+Sans:wght@400;700', regular: 400, bold: 700 },
+    body:    { family: 'IBM Plex Sans', fallback: 'system-ui, sans-serif', query: 'IBM+Plex+Sans:wght@400;500', regular: 400, bold: 500 },
+  };
   try {
     const norm = s => String(s || '').replace(/-/g, '');
     const r = await w('getContentHubs', {});
@@ -3051,11 +3112,31 @@ async function resolveHubDesign() {
     if (!mine) { HUB_DESIGN_CACHE = fallback; return fallback; }
     const dj = await fetch('https://cabuzzard.github.io/dash/web/hub/hubs.design.json').then(res => res.json());
     const hub = (dj.hubs || {})[mine.slug];
+    const registry = dj.fontRegistry || {};
     if (!hub) { HUB_DESIGN_CACHE = fallback; return fallback; }
+    const roleInfo = role => {
+      const family = hub.fonts?.[role];
+      const reg = registry[family];
+      if (!family || !reg) return fallback[role];
+      const weights = parseFontWeights(reg.query);
+      return { family, fallback: reg.fallback || 'sans-serif', query: reg.query, regular: weights.regular, bold: weights.bold };
+    };
     HUB_DESIGN_CACHE = {
       slug: mine.slug,
-      fonts: { display: hub.fonts?.display || fallback.fonts.display, body: hub.fonts?.body || fallback.fonts.body },
-      tokens: { ink: hub.tokens?.ink || fallback.tokens.ink, accent: hub.tokens?.accent || fallback.tokens.accent },
+      // "deep"/"deep-ink" are the hub's own designated dark-band pairing
+      // (a dark background with its own legible foreground token) — exactly
+      // the semantic this scrim-and-light-text treatment needs, distinct
+      // from "ink" (body text color) and "surface" (the hub's light page
+      // background, used for the single-post panel's tint).
+      tokens: {
+        ink: hub.tokens?.ink || fallback.tokens.ink,
+        accent: hub.tokens?.accent || fallback.tokens.accent,
+        deep: hub.tokens?.deep || hub.tokens?.ink || fallback.tokens.deep,
+        deepInk: hub.tokens?.['deep-ink'] || '#ffffff',
+        surface: hub.tokens?.surface || hub.tokens?.paper || fallback.tokens.surface,
+      },
+      display: roleInfo('display'),
+      body: roleInfo('body'),
     };
     return HUB_DESIGN_CACHE;
   } catch (e) {
@@ -3063,30 +3144,38 @@ async function resolveHubDesign() {
     return fallback;
   }
 }
-// Injects the hub's Google Font (if not already loaded) and waits for the
-// specific weight/size combos to actually be ready — ctx.font silently
-// falls back to a default typeface if the face isn't loaded yet, which is
-// why setting the right font-family string alone isn't enough here.
-const LOADED_FONT_FAMILIES = new Set();
-async function ensureFontLoaded(family, weights) {
-  if (!LOADED_FONT_FAMILIES.has(family)) {
-    LOADED_FONT_FAMILIES.add(family);
+// Injects ONE combined Google Fonts stylesheet for both roles, built from
+// their exact registry queries — the same "family=X&family=Y" shape
+// build-hubs.mjs writes into every real hub page — then waits for the
+// faces to actually be usable.
+let HUB_FONTS_LINK_INJECTED = false;
+async function ensureHubFontsLoaded(hub) {
+  if (!HUB_FONTS_LINK_INJECTED) {
+    HUB_FONTS_LINK_INJECTED = true;
+    const families = [...new Set([hub.display.query, hub.body.query])];
     const link = document.createElement('link');
     link.rel = 'stylesheet';
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family).replace(/%20/g, '+')}:wght@${weights.join(';')}&display=swap`;
+    link.href = `https://fonts.googleapis.com/css2?${families.map(q => 'family=' + q).join('&')}&display=swap`;
     document.head.appendChild(link);
     await new Promise(res => { link.onload = res; link.onerror = res; setTimeout(res, 1500); });
   }
-  await Promise.all(weights.map(w2 => document.fonts.load(`${w2} 16px "${family}"`)));
+  await Promise.all([
+    document.fonts.load(`${hub.display.bold} 16px "${hub.display.family}"`),
+    document.fonts.load(`${hub.body.regular} 16px "${hub.body.family}"`),
+  ]);
   await document.fonts.ready;
+  // document.fonts.ready is unreliable specifically for <canvas> text — it
+  // can resolve before a face is actually usable by fillText, silently
+  // falling back to the next name in the stack. Verify with a
+  // FontFaceObserver-style check (measure a distinctive string against a
+  // bare monospace baseline; once the real font is active for canvas the
+  // measured width diverges) and fall back a role at a time if it never
+  // becomes ready within ~2s, rather than silently drawing in whatever the
+  // browser happened to pick.
+  if (!(await waitForCanvasFont(hub.display.family, hub.display.bold))) hub.display = hub.body;
+  if (hub.body.family !== hub.display.family && !(await waitForCanvasFont(hub.body.family, hub.body.regular))) hub.body = { family: 'sans-serif', fallback: 'sans-serif', regular: 400, bold: 700 };
+  return hub;
 }
-// document.fonts.ready is unreliable specifically for <canvas> text — it can
-// resolve before the face is actually usable by fillText, silently falling
-// back to the next name in the font stack (this was the actual cause of a
-// bug report: the right font-family string still drew in the wrong
-// typeface). Classic FontFaceObserver-style check instead: measure a
-// distinctive string against a bare monospace baseline — once the real
-// font is active for canvas, the measured width diverges from monospace's.
 async function waitForCanvasFont(family, weight) {
   const probe = document.createElement('canvas').getContext('2d');
   const testText = 'giItT1WQy@!-/#';
@@ -3129,6 +3218,62 @@ function truncateToChars(text, maxChars) {
   if (!maxChars || s.length <= maxChars) return s;
   return s.slice(0, maxChars).replace(/\s+\S*$/, '') + '…';
 }
+// ── Shared draw routines — used for BOTH the small live drag-editor preview
+// and the final full-resolution render, so what you see while dragging IS
+// what gets saved (everything's expressed as a fraction of w/h, so it scales
+// cleanly to any canvas size). Each returns its zone rect for the editor's
+// handle to grab onto.
+function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
+  ctx.clearRect(0, 0, w, h);
+  const zoneH = h * (opts.zonePct / 100);
+  // Scrim tinted with the hub's own dark-band pairing ("deep"/"deep-ink" —
+  // a designated dark-background + legible-foreground pair, distinct from
+  // "ink" which is body text color on a light page), so it's genuinely this
+  // hub's contrast pair rather than a generic black-and-white overlay.
+  const deep = hexToRgb(hub.tokens.deep);
+  const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
+  grad.addColorStop(0, `rgba(${deep.r},${deep.g},${deep.b},.72)`); grad.addColorStop(1, `rgba(${deep.r},${deep.g},${deep.b},0)`);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, w, zoneH);
+  const pad = w * 0.07, maxWidth = w - pad * 2;
+  ctx.textBaseline = 'top'; ctx.fillStyle = hub.tokens.deepInk;
+  let fontSize = Math.round(w * (opts.sizePct / 100));
+  let lineHeight, lines;
+  do {
+    ctx.font = `${hub.display.bold} ${fontSize}px "${hub.display.family}", ${hub.display.fallback}`;
+    lineHeight = fontSize * 1.18;
+    lines = wrapCanvasLines(ctx, title, maxWidth);
+    fontSize -= Math.max(1, Math.round(w * 0.001));
+  } while (lines.length * lineHeight > zoneH * 0.82 && fontSize > 10);
+  const blockH = lines.length * lineHeight;
+  const startY = Math.max(pad * 0.6, (zoneH - blockH) / 2);
+  lines.forEach((line, i) => ctx.fillText(line, pad, startY + i * lineHeight));
+  return { zoneH };
+}
+function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
+  ctx.clearRect(0, 0, w, h);
+  const zoneW = w * (opts.zoneWPct / 100), zoneH = h * (opts.zoneHPct / 100);
+  // Panel tinted with the hub's own light "surface" token, not a generic
+  // white, so the light side of the contrast pair matches this hub too.
+  const surface = hexToRgb(hub.tokens.surface);
+  const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
+  grad.addColorStop(0, `rgba(${surface.r},${surface.g},${surface.b},.88)`); grad.addColorStop(1, `rgba(${surface.r},${surface.g},${surface.b},.35)`);
+  ctx.fillStyle = grad; ctx.fillRect(0, 0, zoneW, zoneH);
+  const pad = w * 0.06, maxWidth = zoneW - pad * 2;
+  ctx.textBaseline = 'top';
+  let y = pad;
+  const headFontSize = Math.max(8, Math.round(w * (opts.sizePct / 100))), headLineHeight = headFontSize * 1.16;
+  ctx.font = `${hub.display.bold} ${headFontSize}px "${hub.display.family}", ${hub.display.fallback}`;
+  if (primary) { ctx.fillStyle = hub.tokens.ink; y += drawWrappedText(ctx, primary, pad, y, maxWidth, headLineHeight); }
+  if (accent) { ctx.fillStyle = hub.tokens.accent; y += drawWrappedText(ctx, accent, pad, y, maxWidth, headLineHeight); }
+  if (bodyText) {
+    y += headFontSize * 0.3;
+    const bodyFontSize = Math.max(6, Math.round(w * 0.03)), bodyLineHeight = bodyFontSize * 1.35;
+    ctx.font = `${hub.body.regular} ${bodyFontSize}px "${hub.body.family}", ${hub.body.fallback}`;
+    ctx.fillStyle = hub.tokens.ink;
+    drawWrappedText(ctx, bodyText, pad, y, maxWidth, bodyLineHeight);
+  }
+  return { zoneW, zoneH };
+}
 async function compositeTitleOnThumbnail() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubThumbnailTextBtn');
@@ -3138,9 +3283,10 @@ async function compositeTitleOnThumbnail() {
   let title = (data.platformTitle || data.assetTitle || data.title || '').trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
-  // Editable dimensions — the number inputs right next to this button;
-  // there's no spec-card field for these (the campaign's Image Spec covers
-  // the PHOTO's composition, not overlaid-type sizing), so they live here.
+  // Editable dimensions — the number inputs right next to this button (or
+  // the 🎯 Preview & Edit drag-editor); no spec-card field for these (the
+  // campaign's Image Spec covers the PHOTO's composition, not overlaid-type
+  // sizing), so they live here.
   const sizePct = parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5;
   const zonePct = parseFloat(document.getElementById('pubThumbZonePct').value) || 48;
   const maxChars = parseInt(document.getElementById('pubThumbMaxChars').value) || 90;
@@ -3149,38 +3295,14 @@ async function compositeTitleOnThumbnail() {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
   const myAsset = pubAssetId;
   try {
-    const hub = await resolveHubDesign();
-    await ensureFontLoaded(hub.fonts.display, [700, 800]);
-    if (!(await waitForCanvasFont(hub.fonts.display, 700))) hub.fonts.display = hub.fonts.body;
+    const hub = await ensureHubFontsLoaded(await resolveHubDesign());
     statusEl.textContent = 'Rendering title text…';
     const img = await loadImageCORS(bgUrl);
     const canvas = document.createElement('canvas');
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    // Spec's own rule for this format: "keep the top ~45% calm" — that's
-    // exactly the zone the title goes in. Scrim tinted with the hub's own
-    // ink color, not a generic black, so it reads as this hub's, not any hub's.
-    const zoneH = canvas.height * (zonePct / 100);
-    const ink = hexToRgb(hub.tokens.ink);
-    const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
-    grad.addColorStop(0, `rgba(${ink.r},${ink.g},${ink.b},.72)`); grad.addColorStop(1, `rgba(${ink.r},${ink.g},${ink.b},0)`);
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, zoneH);
-    const pad = canvas.width * 0.07;
-    const maxWidth = canvas.width - pad * 2;
-    ctx.textBaseline = 'top';
-    ctx.fillStyle = '#fff';
-    let fontSize = Math.round(canvas.width * (sizePct / 100));
-    let lineHeight, lines;
-    do {
-      ctx.font = `700 ${fontSize}px "${hub.fonts.display}", "${hub.fonts.body}", sans-serif`;
-      lineHeight = fontSize * 1.18;
-      lines = wrapCanvasLines(ctx, title, maxWidth);
-      fontSize -= 2;
-    } while (lines.length * lineHeight > zoneH * 0.82 && fontSize > 18);
-    const blockH = lines.length * lineHeight;
-    const startY = Math.max(pad * 0.6, (zoneH - blockH) / 2);
-    lines.forEach((line, i) => ctx.fillText(line, pad, startY + i * lineHeight));
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, zonePct });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'blog-thumbnail', fileData: dataUrl });
@@ -3202,7 +3324,8 @@ async function compositeTextOnPostImage() {
   const bgUrl = document.getElementById('pubPostImage').value;
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   // Editable dimensions — see the note on compositeTitleOnThumbnail; no
-  // spec-card field for these, they live as number inputs next to this button.
+  // spec-card field for these, they live as number inputs (or the 🎯
+  // Preview & Edit drag-editor) next to this button.
   const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
   const zoneWPct = parseFloat(document.getElementById('pubPostZoneWPct').value) || 62;
   const zoneHPct = parseFloat(document.getElementById('pubPostZoneHPct').value) || 58;
@@ -3218,42 +3341,14 @@ async function compositeTextOnPostImage() {
     const bodyText = (fields['Body'] || '').trim();
     if (!primary && !accent) throw new Error('No Headline Primary/Accent found on this asset.');
     statusEl.textContent = 'Loading hub fonts…';
-    const hub = await resolveHubDesign();
-    await ensureFontLoaded(hub.fonts.display, [700, 800]);
-    if (hub.fonts.body !== hub.fonts.display) await ensureFontLoaded(hub.fonts.body, [500]);
-    if (!(await waitForCanvasFont(hub.fonts.display, 800))) hub.fonts.display = hub.fonts.body;
-    if (hub.fonts.body !== hub.fonts.display && !(await waitForCanvasFont(hub.fonts.body, 500))) hub.fonts.body = 'sans-serif';
+    const hub = await ensureHubFontsLoaded(await resolveHubDesign());
     statusEl.textContent = 'Rendering headline text…';
     const img = await loadImageCORS(bgUrl);
     const canvas = document.createElement('canvas');
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
-    // Matches generateSocialBackgroundForAsset's own composition brief:
-    // "keep the entire LEFT HALF and the TOP 55%... calm" — that's the zone
-    // the headline block goes in, upper-left, per the single-post layout
-    // convention (Headline Primary dark, Headline Accent in the accent hue).
-    const zoneW = canvas.width * (zoneWPct / 100), zoneH = canvas.height * (zoneHPct / 100);
-    const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
-    grad.addColorStop(0, 'rgba(255,255,255,.88)'); grad.addColorStop(1, 'rgba(255,255,255,.35)');
-    ctx.fillStyle = grad; ctx.fillRect(0, 0, zoneW, zoneH);
-    const pad = canvas.width * 0.06;
-    const maxWidth = zoneW - pad * 2;
-    ctx.textBaseline = 'top';
-    const accentColor = hub.tokens.accent;
-    const inkColor = hub.tokens.ink;
-    let y = pad;
-    const headFontSize = Math.round(canvas.width * (headSizePct / 100)), headLineHeight = headFontSize * 1.16;
-    ctx.font = `800 ${headFontSize}px "${hub.fonts.display}", "${hub.fonts.body}", sans-serif`;
-    if (primary) { ctx.fillStyle = inkColor; y += drawWrappedText(ctx, primary, pad, y, maxWidth, headLineHeight); }
-    if (accent) { ctx.fillStyle = accentColor; y += drawWrappedText(ctx, accent, pad, y, maxWidth, headLineHeight); }
-    if (bodyText) {
-      y += headFontSize * 0.3;
-      const bodyFontSize = Math.round(canvas.width * 0.03), bodyLineHeight = bodyFontSize * 1.35;
-      ctx.font = `500 ${bodyFontSize}px "${hub.fonts.body}", sans-serif`;
-      ctx.fillStyle = inkColor;
-      drawWrappedText(ctx, bodyText, pad, y, maxWidth, bodyLineHeight);
-    }
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, hub, { sizePct: headSizePct, zoneWPct, zoneHPct });
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', fileData: dataUrl });
@@ -3267,6 +3362,123 @@ async function compositeTextOnPostImage() {
   } catch (e) {
     btn.disabled = false; btn.textContent = '🔤 Add headline text';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+// ── Preview & Edit — a live drag-editor. Same drawThumbnailComposite/
+// drawPostComposite as the final save, just on a smaller canvas, so
+// dragging a handle shows the actual result, not an approximation.
+let TEXT_EDITOR = null;
+async function openTextEditor(mode) {
+  if (!pubAssetId) return;
+  const bgUrl = document.getElementById(mode === 'thumbnail' ? 'pubThumbnail' : 'pubPostImage').value;
+  if (!bgUrl) { alert('Generate or attach a background first.'); return; }
+  const modal = document.getElementById('textEditorModal');
+  const statusEl = document.getElementById('textEditorStatus');
+  document.getElementById('textEditorTitle').textContent = mode === 'thumbnail' ? 'Thumbnail — title placement' : 'Post image — headline placement';
+  document.getElementById('textEditorHint').textContent = mode === 'thumbnail'
+    ? 'Drag the white bar to resize the dark zone. Drag the slider to resize the text.'
+    : 'Drag the corner handle to resize the panel. Drag the slider to resize the text.';
+  modal.classList.add('open');
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading…';
+  try {
+    const data = PUB_ASSET_CACHE[pubAssetId] || {};
+    const hub = await ensureHubFontsLoaded(await resolveHubDesign());
+    const img = await loadImageCORS(bgUrl);
+    let text;
+    if (mode === 'thumbnail') {
+      text = { title: (data.platformTitle || data.assetTitle || data.title || '').trim() };
+    } else {
+      const fr = await w('getSinglePostFields', { assetId: pubAssetId });
+      const fields = fr.fields || {};
+      text = { primary: (fields['Headline Primary'] || '').trim(), accent: (fields['Headline Accent'] || '').trim(), body: (fields['Body'] || '').trim() };
+    }
+    const canvas = document.getElementById('textEditorCanvas');
+    const dispW = 460, dispH = Math.round(dispW * img.naturalHeight / img.naturalWidth);
+    canvas.width = dispW; canvas.height = dispH;
+    const params = mode === 'thumbnail'
+      ? { sizePct: parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5, zonePct: parseFloat(document.getElementById('pubThumbZonePct').value) || 48, maxChars: parseInt(document.getElementById('pubThumbMaxChars').value) || 90 }
+      : { sizePct: parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2, zoneWPct: parseFloat(document.getElementById('pubPostZoneWPct').value) || 62, zoneHPct: parseFloat(document.getElementById('pubPostZoneHPct').value) || 58, maxChars: parseInt(document.getElementById('pubPostMaxChars').value) || 40 };
+    TEXT_EDITOR = { mode, canvas, ctx: canvas.getContext('2d'), img, hub, text, params, dragging: null };
+    const sizeInput = document.getElementById('textEditorFontSize');
+    sizeInput.min = 2; sizeInput.max = mode === 'thumbnail' ? 15 : 14; sizeInput.value = params.sizePct;
+    document.getElementById('textEditorFontSizeVal').textContent = params.sizePct;
+    document.getElementById('textEditorMaxChars').value = params.maxChars;
+    statusEl.textContent = '';
+    redrawTextEditor();
+  } catch (e) {
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+function closeTextEditor() { document.getElementById('textEditorModal').classList.remove('open'); TEXT_EDITOR = null; }
+function redrawTextEditor() {
+  const t = TEXT_EDITOR; if (!t) return;
+  const { ctx, canvas, img, hub, text, params, mode } = t;
+  const w2 = canvas.width, h2 = canvas.height;
+  ctx.drawImage(img, 0, 0, w2, h2);
+  if (mode === 'thumbnail') {
+    const title = truncateToChars(text.title, params.maxChars);
+    const { zoneH } = drawThumbnailComposite(ctx, w2, h2, title, hub, params);
+    t._handle = { type: 'edge', y: zoneH };
+    ctx.strokeStyle = 'rgba(255,255,255,.95)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, zoneH); ctx.lineTo(w2, zoneH); ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,.95)'; ctx.fillRect(w2 / 2 - 16, zoneH - 3, 32, 6);
+  } else {
+    const primary = truncateToChars(text.primary, params.maxChars);
+    const accent = truncateToChars(text.accent, params.maxChars);
+    const { zoneW, zoneH } = drawPostComposite(ctx, w2, h2, primary, accent, text.body, hub, params);
+    t._handle = { type: 'corner', x: zoneW, y: zoneH };
+    ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 2; ctx.strokeRect(1, 1, zoneW - 2, zoneH - 2);
+    ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(zoneW - 12, zoneH - 12, 14, 14);
+  }
+}
+function textEditorCanvasPos(e) {
+  const t = TEXT_EDITOR;
+  const rect = t.canvas.getBoundingClientRect();
+  return { x: (e.clientX - rect.left) * (t.canvas.width / rect.width), y: (e.clientY - rect.top) * (t.canvas.height / rect.height) };
+}
+function textEditorPointerDown(e) {
+  const t = TEXT_EDITOR; if (!t || !t._handle) return;
+  const p = textEditorCanvasPos(e);
+  if (t._handle.type === 'edge' && Math.abs(p.y - t._handle.y) < 16) { t.dragging = 'edge'; e.preventDefault(); }
+  else if (t._handle.type === 'corner' && Math.abs(p.x - t._handle.x) < 20 && Math.abs(p.y - t._handle.y) < 20) { t.dragging = 'corner'; e.preventDefault(); }
+}
+function textEditorPointerMove(e) {
+  const t = TEXT_EDITOR; if (!t || !t.dragging) return;
+  const p = textEditorCanvasPos(e);
+  if (t.dragging === 'edge') t.params.zonePct = Math.min(90, Math.max(20, (p.y / t.canvas.height) * 100));
+  else if (t.dragging === 'corner') {
+    t.params.zoneWPct = Math.min(90, Math.max(20, (p.x / t.canvas.width) * 100));
+    t.params.zoneHPct = Math.min(90, Math.max(20, (p.y / t.canvas.height) * 100));
+  }
+  redrawTextEditor();
+}
+function textEditorPointerUp() { if (TEXT_EDITOR) TEXT_EDITOR.dragging = null; }
+function textEditorFontSizeChange() {
+  if (!TEXT_EDITOR) return;
+  TEXT_EDITOR.params.sizePct = parseFloat(document.getElementById('textEditorFontSize').value);
+  document.getElementById('textEditorFontSizeVal').textContent = TEXT_EDITOR.params.sizePct;
+  redrawTextEditor();
+}
+function textEditorMaxCharsChange() {
+  if (!TEXT_EDITOR) return;
+  TEXT_EDITOR.params.maxChars = parseInt(document.getElementById('textEditorMaxChars').value) || TEXT_EDITOR.params.maxChars;
+  redrawTextEditor();
+}
+function applyTextEditorAndSave() {
+  const t = TEXT_EDITOR; if (!t) return;
+  if (t.mode === 'thumbnail') {
+    document.getElementById('pubThumbTextSizePct').value = t.params.sizePct;
+    document.getElementById('pubThumbZonePct').value = Math.round(t.params.zonePct);
+    document.getElementById('pubThumbMaxChars').value = t.params.maxChars;
+    closeTextEditor();
+    compositeTitleOnThumbnail();
+  } else {
+    document.getElementById('pubPostHeadSizePct').value = t.params.sizePct;
+    document.getElementById('pubPostZoneWPct').value = Math.round(t.params.zoneWPct);
+    document.getElementById('pubPostZoneHPct').value = Math.round(t.params.zoneHPct);
+    document.getElementById('pubPostMaxChars').value = t.params.maxChars;
+    closeTextEditor();
+    compositeTextOnPostImage();
   }
 }
 
