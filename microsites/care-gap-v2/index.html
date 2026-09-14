@@ -919,7 +919,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="titleListBody"><div class="loadnote">Loading…</div></div>
       </div>
       <div class="kwcol">
-        <h4>Assets</h4>
+        <h4>Assets <button class="iconbtn" id="republishHubBtn" style="font-size:9.5px;padding:2px 7px;font-weight:400;text-transform:none;letter-spacing:normal;" onclick="republishHubContent()" title="Re-publishes every already-published Blog/Offer asset on this campaign's hub — pushes each one's CURRENT Notion content and Thumbnail to its live page (no rewrite, no Claude call), just what the batch 'Rebuild blog + offers' does. Use this after adding/changing a Thumbnail so the live post's banner image actually updates.">🖼️ Republish to Hub</button></h4>
         <div id="assetBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
           <span id="assetBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
           <button class="btn" id="bulkBgBtn" onclick="bulkGenerateBackgrounds()" title="Generates a fresh wordless background for each selected asset — Blog thumbnail for blog-type assets, both images for Offer, the social background for Single Post. Skips any asset type with no image slot.">🎨 Generate Backgrounds</button>
@@ -2884,6 +2884,32 @@ async function pushAssetFromPillar(assetId, title) {
     loadTitleAndAssetTab();
   } catch (e) {
     alert('Push failed: ' + e.message);
+  }
+}
+// "🖼️ Republish to Hub" — the lighter counterpart to Push from Pillar: no
+// Claude call, no rewrite. backfillHubBlog re-reads each already-published
+// Blog/Offer asset's CURRENT Notion content and CURRENT Thumbnail straight
+// from its own blocks/properties and pushes them to the live page — exactly
+// what's needed after adding or changing a Thumbnail on an asset whose text
+// is already right, without forcing a fresh article rewrite just to get the
+// banner image to show up live. Same action the main dashboard's Content
+// Hubs card "⟳ Rebuild blog + offers" button uses, scoped to this campaign.
+async function republishHubContent() {
+  if (!confirm(`Re-publish every already-published Blog/Offer asset on this campaign's hub?\n\nThis pushes each one's CURRENT Notion content and Thumbnail to its live page — no rewrite, no Claude call. Use this to get a newly-added Thumbnail showing on posts whose text you don't want to change.`)) return;
+  const btn = document.getElementById('republishHubBtn');
+  btn.disabled = true; const orig = btn.textContent; btn.textContent = '🖼️ Republishing…';
+  try {
+    const r = await w('backfillHubBlog', { campaignId: CAMPAIGN_ID, force: true });
+    const results = r.results || [];
+    const ok = results.filter(x => x.published).length;
+    const failed = results.filter(x => x.error);
+    let msg = `Republished ${ok}/${results.length} item(s).`;
+    if (failed.length) msg += `\n\nFailed:\n${failed.map(f => `${f.title || f.asset}: ${f.error}`).join('\n')}`;
+    alert(msg || 'No published Blog/Offer assets found on this hub yet.');
+  } catch (e) {
+    alert('Republish failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = orig;
   }
 }
 // Publish modal's data source, keyed by asset id — populated as each asset
