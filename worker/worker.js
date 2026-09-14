@@ -24355,6 +24355,95 @@ Portrait Instagram post, ready to publish.`;
         return json({ success: true, imageUrl, prompt });
       }
 
+      // -- getSinglePostFields: reads a single-post asset's own copy (the
+      // fenced {"kind":"single-post","fields":{...}} block generateSinglePostFullCreative
+      // already reads) so the Publish modal can composite that exact text
+      // onto a background client-side, without duplicating the field-write
+      // path server-side. { assetId }
+      if (body.action === "getSinglePostFields") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+        let fields = null;
+        for (const b of (blocksResp.results || [])) {
+          const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
+          if (b.type === "code" && txt.trim().startsWith("{")) {
+            try { const j = JSON.parse(txt); if (j.kind === "single-post") fields = j.fields || null; } catch (e) {}
+          }
+          if (fields) break;
+        }
+        if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
+        return json({ fields });
+      }
+
+      // -- generateSocialBackgroundForAsset: a WORDLESS vertical (3:4) plate
+      // for ONE single-post/social asset, grounded in the same shared hub
+      // image spec as everything else here — unlike generateSinglePostFullCreative
+      // (which briefs the model to bake the exact headline/accent/body text
+      // into the pixels itself, unreliable for legible type), this asks for
+      // a picture only. The Publish modal composites the real copy on top
+      // afterward with real fonts (compositeTextOnPostImage), then re-saves
+      // through saveOfferImage's "post-image" kind. Returns a TEMPORARY xAI
+      // url + prompt — same shape generateBlogPostThumbnail returns, for the
+      // same reason: saveOfferImage does the actual rehost-and-persist step.
+      // { assetId }
+      if (body.action === "generateSocialBackgroundForAsset") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+
+        const assetPage = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const assetTitle = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "social post";
+        const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+
+        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        let spec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
+
+WHAT IT IS: a VERTICAL 3:4 wordless BACKGROUND for a social post — real type gets set over it separately afterward in real fonts, so keep the entire LEFT HALF and the TOP 55% of the frame calm, open and near-empty (a flat wash, soft gradient, or quiet out-of-focus area, no subject or busy detail there). Any subject, object, or texture belongs low and to the right. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+
+Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
+${spec}
+
+THIS POST IS ABOUT (pick a real scene from the spec's world that fits — do NOT put its words in the image): ${assetTitle}
+
+End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+        });
+        const xdRaw = await xr.text();
+        let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || xdRaw.slice(0, 300) || `xAI image error (${xr.status})` }, 502);
+        const imageUrl = xd.data?.[0]?.url || "";
+        if (!imageUrl) return json({ error: "xAI returned no image URL: " + xdRaw.slice(0, 300) }, 502);
+
+        return json({ imageUrl, prompt, kind: "post-image", model: "grok-imagine-image-2.0", sync: true });
+      }
+
       // -- saveOfferImage (rehost a finished image on GitHub Pages and write
       //    it onto the Offer asset) --------------------------------------
       // Second half of the generateOfferImage flow. Takes EITHER an
@@ -24377,6 +24466,12 @@ Portrait Instagram post, ready to publish.`;
         const SLOT = {
           "ig-background":  { prop: "Instagram Background", suffix: "ig-background",  promptProp: "Image Prompt (IG Background)" },
           "blog-thumbnail": { prop: "Thumbnail",           suffix: "blog-thumbnail", promptProp: "Image Prompt (Blog Thumbnail)" },
+          // Single-post/social wordless background (Publish modal) — no prompt
+          // property, since the finished creative is composited client-side
+          // (text overlay drawn in-browser, not written by the image model),
+          // and this same kind/property is reused to save that composited
+          // result too, overwriting the plain background.
+          "post-image":     { prop: "Post Image",           suffix: "post-image",     promptProp: null },
         };
         if (!assetId || !SLOT[kind] || (!imageUrl && !fileData)) return json({ error: "assetId, a valid kind, and imageUrl or fileData required" }, 400);
         if (imageUrl && !/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
@@ -24425,8 +24520,9 @@ Portrait Instagram post, ready to publish.`;
 
         const url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
         const props = { [SLOT[kind].prop]: { url } };
-        if (prompt) props[SLOT[kind].promptProp] = { rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] };
-        try { await ensureAssetsDbProperties(hdr, { [SLOT[kind].prop]: { type: "url" }, [SLOT[kind].promptProp]: { type: "rich_text" } }); } catch (e) {}
+        const ensureProps = { [SLOT[kind].prop]: { type: "url" } };
+        if (prompt && SLOT[kind].promptProp) { props[SLOT[kind].promptProp] = { rich_text: [{ text: { content: String(prompt).slice(0, 1990) } }] }; ensureProps[SLOT[kind].promptProp] = { type: "rich_text" }; }
+        try { await ensureAssetsDbProperties(hdr, ensureProps); } catch (e) {}
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: props }),
@@ -27436,13 +27532,27 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
-        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
         const props = {};
         if (title !== undefined && title !== "") props["Asset Title"] = { title: [{ text: { content: title } }] };
         if (designLink !== undefined) props["Design Link"] = { url: designLink || null };
+        // Re-pointing an image property at an url that's already hosted (the
+        // Publish modal's "choose from this asset's other images" picker) —
+        // no re-fetch/re-host needed, just point the property at it. Distinct
+        // from saveOfferImage, which is for a NEWLY rendered image that still
+        // needs hosting.
+        if (thumbnail !== undefined) props["Thumbnail"] = { url: thumbnail || null };
+        if (postImage !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Post Image": { type: "url" } });
+          props["Post Image"] = { url: postImage || null };
+        }
+        if (instagramBackground !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Instagram Background": { type: "url" } });
+          props["Instagram Background"] = { url: instagramBackground || null };
+        }
         if (productLink !== undefined) {
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Product Link": { type: "url" } });
           props["Product Link"] = { url: productLink || null };

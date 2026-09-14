@@ -430,13 +430,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="pubSinglePostWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <label style="font-size:11px;color:var(--ink2);">🖼️ Post Image <span style="color:var(--ink3);">— the finished creative. Open it full-size and post it yourself.</span></label>
           <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
-            <img id="pubPostImagePreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <img id="pubPostImagePreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('postImage')">
             <input class="finput" id="pubPostImage" type="text" autocomplete="off" placeholder="Not generated yet — use the Canva handoff or ✨ Generate below" readonly>
+            <button class="iconbtn" onclick="openImagePicker('postImage')" title="Choose from this asset's other images">🖼️</button>
             <button class="iconbtn" onclick="openPublishFieldLink('pubPostImage')" title="Open full-size">↗</button>
             <button class="iconbtn" onclick="copyPublishField('pubPostImage', this)">📋</button>
           </div>
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
-            <button class="btn" id="pubPostImageGenBtn" onclick="genSinglePostImage()">✨ Generate social background (Grok)</button>
+            <button class="btn" id="pubPostImageGenBtn" onclick="genSinglePostImage()">✨ Generate background (Grok)</button>
+            <button class="btn" id="pubPostImageTextBtn" onclick="compositeTextOnPostImage()" style="display:none;">🔤 Add headline text</button>
             <span id="pubPostImageStatus" style="font-size:10.5px;"></span>
           </div>
         </div>
@@ -452,12 +454,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="pubOfferImagesWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:6px;">🖼️ Images <span style="color:var(--ink3);">— wordless plates from Grok Imagine, grounded in the hub's image spec (which is itself fed by the campaign's SEO/Research information flow). Add the headline afterward in Remotion/Canva. Regenerate copies the prompt to your clipboard.</span></label>
           <div id="pubIgBgRow" style="display:none;align-items:flex-start;gap:10px;">
-            <img id="pubIgBgPreview" src="" alt="" style="display:none;width:48px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <img id="pubIgBgPreview" src="" alt="" style="display:none;width:48px;height:60px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('instagramBackground')">
             <div style="flex:1;min-width:0;">
               <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4, spec's Instagram-background safe-area rules</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
                 <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
                 <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
+                <button class="iconbtn" onclick="openImagePicker('instagramBackground')" title="Choose from this asset's other images">🖼️</button>
                 <button class="iconbtn" id="pubIgBgOpenBtn" onclick="openPublishFieldLink('pubIgBgUrl')" style="display:none;">↗</button>
                 <span id="pubIgBgStatus" style="font-size:10.5px;"></span>
               </div>
@@ -488,8 +491,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </label>
         <label style="font-size:11px;color:var(--ink2);">Thumbnail
           <div style="display:flex;gap:6px;margin-top:4px;align-items:center;">
-            <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
+            <img id="pubThumbnailPreview" src="" alt="" style="display:none;width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('thumbnail')">
             <input class="finput" id="pubThumbnail" type="text" autocomplete="off" placeholder="No thumbnail uploaded yet" readonly>
+            <button class="iconbtn" onclick="openImagePicker('thumbnail')" title="Choose from this asset's other images">🖼️</button>
             <button class="iconbtn" onclick="openPublishFieldLink('pubThumbnail')">↗</button>
             <button class="iconbtn" onclick="copyPublishField('pubThumbnail', this)">📋</button>
           </div>
@@ -497,6 +501,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <input type="file" id="pubThumbnailFile" accept="image/*" style="display:none;" onchange="uploadPubThumbnail()">
           <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
+          <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
           <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
         </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
@@ -522,6 +527,21 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="modalrow">
         <button class="btn" onclick="closePublishAssetModal()">Cancel</button>
         <button class="btn primary" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Image picker — opened from any image preview/🖼️ button in the Publish
+       modal. Lists whatever images already exist on THIS asset across its
+       own slots (Thumbnail / Instagram Background / Post Image) so one can
+       be reused for another slot without a fresh render. -->
+  <div class="modaloverlay" id="imagePickerModal">
+    <div class="modalbox" style="max-width:460px;">
+      <div class="mtitle">Choose image</div>
+      <div class="mfield">Attach an existing image to this field</div>
+      <div id="imagePickerGrid" style="display:flex;flex-direction:column;gap:8px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeImagePicker()">Cancel</button>
       </div>
     </div>
   </div>
@@ -942,6 +962,8 @@ document.addEventListener('DOMContentLoaded', () => {
   apOverlay.addEventListener('click', e => { if (e.target === apOverlay) closeAddProductModal(); });
   const pubOverlay = document.getElementById('publishAssetModal');
   pubOverlay.addEventListener('click', e => { if (e.target === pubOverlay) closePublishAssetModal(); });
+  const pickerOverlay = document.getElementById('imagePickerModal');
+  pickerOverlay.addEventListener('click', e => { if (e.target === pickerOverlay) closeImagePicker(); });
 });
 async function saveNote() {
   if (!NOTE_ACTIVE) return;
@@ -2635,6 +2657,11 @@ function openPublishAssetModal(assetId) {
     document.getElementById('pubPostImage').value = data.postImage || '';
     const ppImg = document.getElementById('pubPostImagePreview');
     if (data.postImage) { ppImg.src = data.postImage; ppImg.style.display = ''; } else { ppImg.src = ''; ppImg.style.display = 'none'; }
+    const postTextBtn = document.getElementById('pubPostImageTextBtn');
+    postTextBtn.style.display = data.postImage ? '' : 'none';
+    postTextBtn.textContent = '🔤 Add headline text';
+    document.getElementById('pubPostImageGenBtn').textContent = data.postImage ? '✨ Regenerate background (Grok)' : '✨ Generate background (Grok)';
+    document.getElementById('pubPostImageStatus').textContent = '';
   }
 
   const hubWrap = document.getElementById('pubHubWrap');
@@ -2643,8 +2670,8 @@ function openPublishAssetModal(assetId) {
   if (isHubOffer) { document.getElementById('pubContentHubStatus').textContent = ''; pubLoadContentHubs(data.contentHub || ''); }
 
   // Blog-related asset types get a thumbnail; Offer types get both a thumbnail
-  // and an Instagram background; a bare social/single-post asset's own image is
-  // handled above in pubSinglePostWrap (a full creative, not a background plate).
+  // and an Instagram background; a bare social/single-post asset's own
+  // wordless background + text overlay is handled above in pubSinglePostWrap.
   // isBlogType reuses the same name pattern generateTitleAssets' shared SEO-post
   // generation path matches on (see isSeoPost in worker.js), so anything routed
   // through that path also gets offered a thumbnail here.
@@ -2665,6 +2692,9 @@ function openPublishAssetModal(assetId) {
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
+  const thumbTextBtn = document.getElementById('pubThumbnailTextBtn');
+  thumbTextBtn.style.display = data.thumbnail ? '' : 'none';
+  thumbTextBtn.textContent = '🔤 Add title text';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
   const status = document.getElementById('pubAssetStatus');
@@ -2898,12 +2928,15 @@ async function genBlogThumbnail() {
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
-// Social/single-post asset's own image — a complete, ready-to-publish
-// creative (copy baked in by the model), not a wordless background plate;
-// same shared hub image spec as everything above. Self-contained: renders,
-// hosts on GitHub Pages, writes Post Image, and flips Asset Status to
-// Publish in one call — refresh the row list after so the status badge
-// (and its click target) reflect the new status immediately.
+// Social/single-post asset's own background — WORDLESS on purpose (an image
+// model asked to bake in exact legible copy is unreliable). generateSocialBackgroundForAsset
+// returns a temporary xAI url + prompt (no save yet, same pattern as
+// genBlogThumbnail); saveOfferImage's "post-image" kind does the actual
+// rehost-and-persist. The real headline/accent/body text goes on top
+// afterward via compositeTextOnPostImage, drawn in real fonts client-side —
+// that's the step that makes this a finished, publishable creative, so
+// Asset Status is left alone here (compositeTextOnPostImage flips it once
+// there's real text on the image, not before).
 async function genSinglePostImage() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageGenBtn');
@@ -2912,17 +2945,215 @@ async function genSinglePostImage() {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateSinglePostFullCreative', { assetId: myAsset });
-    document.getElementById('pubPostImage').value = r.imageUrl;
+    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset });
+    if (!r.imageUrl) throw new Error(r.error || 'No image returned');
+    statusEl.textContent = 'Saving to Notion…';
+    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl });
+    document.getElementById('pubPostImage').value = s.url;
     const ppImg = document.getElementById('pubPostImagePreview');
-    ppImg.src = r.imageUrl; ppImg.style.display = '';
+    ppImg.src = s.url; ppImg.style.display = '';
+    document.getElementById('pubPostImageTextBtn').style.display = '';
+    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].postImage = s.url;
+    btn.disabled = false; btn.textContent = '✨ Regenerate background (Grok)';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Background saved ✓ — now add the headline text below.';
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '✨ Generate background (Grok)';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+
+// ── Image picker — reuse an image already sitting on this asset's OTHER
+// slots (Thumbnail / Instagram Background / Post Image) for the field whose
+// 🖼️ button was clicked. No re-hosting: it's the same file, just a second
+// property pointing at it, via updatePublishFields' plain url PATCH.
+let IMG_PICKER_TARGET = null;
+const IMG_PICKER_SLOTS = {
+  thumbnail:           { label: 'Thumbnail',            fieldId: 'pubThumbnail',   previewId: 'pubThumbnailPreview' },
+  postImage:           { label: 'Post Image',            fieldId: 'pubPostImage',   previewId: 'pubPostImagePreview' },
+  instagramBackground: { label: 'Instagram Background',  fieldId: null,             previewId: 'pubIgBgPreview' },
+};
+function openImagePicker(targetField) {
+  if (!pubAssetId) return;
+  IMG_PICKER_TARGET = targetField;
+  const data = PUB_ASSET_CACHE[pubAssetId] || {};
+  const candidates = Object.keys(IMG_PICKER_SLOTS)
+    .map(key => ({ key, url: data[key], label: IMG_PICKER_SLOTS[key].label }))
+    .filter(c => c.url);
+  const grid = document.getElementById('imagePickerGrid');
+  grid.innerHTML = candidates.length
+    ? candidates.map(c => `<div style="display:flex;align-items:center;gap:10px;padding:6px;border:1px solid var(--border);border-radius:8px;cursor:pointer;" onclick="pickImageForTarget('${esc(c.url)}')"><img src="${esc(c.url)}" alt="" style="width:48px;height:48px;object-fit:cover;border-radius:6px;flex-shrink:0;"><span style="font-size:12px;flex:1;">${esc(c.label)}${c.key === targetField ? ' <span style="color:var(--ink3);">(current)</span>' : ''}</span></div>`).join('')
+    : `<div class="loadnote">No images generated on this asset yet — generate one above first.</div>`;
+  document.getElementById('imagePickerModal').classList.add('open');
+}
+function closeImagePicker() { document.getElementById('imagePickerModal').classList.remove('open'); IMG_PICKER_TARGET = null; }
+async function pickImageForTarget(url) {
+  const target = IMG_PICKER_TARGET;
+  if (!target || !pubAssetId) return;
+  const slot = IMG_PICKER_SLOTS[target];
+  const myAsset = pubAssetId;
+  closeImagePicker();
+  try {
+    await w('updatePublishFields', { assetId: myAsset, [target]: url });
+    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset][target] = url;
+    if (slot.fieldId) document.getElementById(slot.fieldId).value = url;
+    const prev = document.getElementById(slot.previewId);
+    if (prev) { prev.src = url; prev.style.display = ''; }
+    if (target === 'instagramBackground') {
+      document.getElementById('pubIgBgUrl').value = url;
+      document.getElementById('pubIgBgOpenBtn').style.display = '';
+    }
+    if (target === 'thumbnail') renderPubThumbnailPreview(url);
+    if (target === 'postImage') document.getElementById('pubPostImageTextBtn').style.display = '';
+  } catch (e) {
+    alert('Could not attach that image: ' + e.message);
+  }
+}
+
+// ── Text compositing — draws real copy over a wordless background in the
+// browser (Canvas), then re-saves the composited PNG. GitHub Pages serves
+// with permissive CORS so the already-hosted background loads cleanly for
+// canvas export; a fresh xAI temp url would NOT (untested, and expires
+// quickly), which is why every path here composites onto an ALREADY-SAVED
+// background, never a temporary render url straight from xAI.
+function loadImageCORS(url) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error('Could not load the image (CORS or network).'));
+    img.src = url;
+  });
+}
+// Greedy word-wrap for canvas text (no native wrapping) — returns the lines
+// it drew and the total block height, so callers can vertically place/shrink.
+function wrapCanvasLines(ctx, text, maxWidth) {
+  const words = String(text || '').split(/\s+/).filter(Boolean);
+  const lines = []; let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) { lines.push(line); line = word; }
+    else line = test;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+function drawWrappedText(ctx, text, x, y, maxWidth, lineHeight) {
+  const lines = wrapCanvasLines(ctx, text, maxWidth);
+  lines.forEach((line, i) => ctx.fillText(line, x, y + i * lineHeight));
+  return lines.length * lineHeight;
+}
+async function compositeTitleOnThumbnail() {
+  if (!pubAssetId) return;
+  const btn = document.getElementById('pubThumbnailTextBtn');
+  const statusEl = document.getElementById('pubThumbnailStatus');
+  const data = PUB_ASSET_CACHE[pubAssetId] || {};
+  const bgUrl = document.getElementById('pubThumbnail').value;
+  const title = (data.platformTitle || data.assetTitle || data.title || '').trim();
+  if (!bgUrl) { alert('Generate or attach a background first.'); return; }
+  if (!title) { alert('This asset has no title to render.'); return; }
+  btn.disabled = true; btn.textContent = '🔤 Working…';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Rendering title text…';
+  const myAsset = pubAssetId;
+  try {
+    const img = await loadImageCORS(bgUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    // Spec's own rule for this format: "keep the top ~45% calm" — that's
+    // exactly the zone the title goes in.
+    const zoneH = canvas.height * 0.48;
+    const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
+    grad.addColorStop(0, 'rgba(10,8,4,.72)'); grad.addColorStop(1, 'rgba(10,8,4,0)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, canvas.width, zoneH);
+    const pad = canvas.width * 0.07;
+    const maxWidth = canvas.width - pad * 2;
+    ctx.textBaseline = 'top';
+    ctx.fillStyle = '#fff';
+    let fontSize = Math.round(canvas.width * 0.075);
+    let lineHeight, lines;
+    do {
+      ctx.font = `700 ${fontSize}px "IBM Plex Sans", system-ui, sans-serif`;
+      lineHeight = fontSize * 1.18;
+      lines = wrapCanvasLines(ctx, title, maxWidth);
+      fontSize -= 2;
+    } while (lines.length * lineHeight > zoneH * 0.82 && fontSize > 18);
+    const blockH = lines.length * lineHeight;
+    const startY = Math.max(pad * 0.6, (zoneH - blockH) / 2);
+    lines.forEach((line, i) => ctx.fillText(line, pad, startY + i * lineHeight));
+    const dataUrl = canvas.toDataURL('image/png');
+    statusEl.textContent = 'Saving…';
+    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'blog-thumbnail', fileData: dataUrl });
+    document.getElementById('pubThumbnail').value = s.url;
+    renderPubThumbnailPreview(s.url);
+    if (PUB_ASSET_CACHE[myAsset]) PUB_ASSET_CACHE[myAsset].thumbnail = s.url;
+    btn.disabled = false; btn.textContent = '🔤 Re-render title text';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓';
+    setTimeout(() => { if (statusEl.textContent === 'Saved ✓') statusEl.textContent = ''; }, 1800);
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '🔤 Add title text';
+    statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
+  }
+}
+async function compositeTextOnPostImage() {
+  if (!pubAssetId) return;
+  const btn = document.getElementById('pubPostImageTextBtn');
+  const statusEl = document.getElementById('pubPostImageStatus');
+  const bgUrl = document.getElementById('pubPostImage').value;
+  if (!bgUrl) { alert('Generate or attach a background first.'); return; }
+  btn.disabled = true; btn.textContent = '🔤 Working…';
+  statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Fetching this post\'s copy…';
+  const myAsset = pubAssetId;
+  try {
+    const fr = await w('getSinglePostFields', { assetId: myAsset });
+    const fields = fr.fields || {};
+    const primary = (fields['Headline Primary'] || '').trim();
+    const accent = (fields['Headline Accent'] || '').trim();
+    const bodyText = (fields['Body'] || '').trim();
+    if (!primary && !accent) throw new Error('No Headline Primary/Accent found on this asset.');
+    statusEl.textContent = 'Rendering headline text…';
+    const img = await loadImageCORS(bgUrl);
+    const canvas = document.createElement('canvas');
+    canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    // Matches generateSocialBackgroundForAsset's own composition brief:
+    // "keep the entire LEFT HALF and the TOP 55%... calm" — that's the zone
+    // the headline block goes in, upper-left, per the single-post layout
+    // convention (Headline Primary dark, Headline Accent in the accent hue).
+    const zoneW = canvas.width * 0.62, zoneH = canvas.height * 0.58;
+    const grad = ctx.createLinearGradient(0, 0, 0, zoneH);
+    grad.addColorStop(0, 'rgba(255,255,255,.88)'); grad.addColorStop(1, 'rgba(255,255,255,.35)');
+    ctx.fillStyle = grad; ctx.fillRect(0, 0, zoneW, zoneH);
+    const pad = canvas.width * 0.06;
+    const maxWidth = zoneW - pad * 2;
+    ctx.textBaseline = 'top';
+    const accentColor = getComputedStyle(document.documentElement).getPropertyValue('--amber').trim() || '#a7680c';
+    const inkColor = getComputedStyle(document.documentElement).getPropertyValue('--ink').trim() || '#221d17';
+    let y = pad;
+    const headFontSize = Math.round(canvas.width * 0.062), headLineHeight = headFontSize * 1.16;
+    ctx.font = `800 ${headFontSize}px "IBM Plex Sans", system-ui, sans-serif`;
+    if (primary) { ctx.fillStyle = inkColor; y += drawWrappedText(ctx, primary, pad, y, maxWidth, headLineHeight); }
+    if (accent) { ctx.fillStyle = accentColor; y += drawWrappedText(ctx, accent, pad, y, maxWidth, headLineHeight); }
+    if (bodyText) {
+      y += headFontSize * 0.3;
+      const bodyFontSize = Math.round(canvas.width * 0.03), bodyLineHeight = bodyFontSize * 1.35;
+      ctx.font = `500 ${bodyFontSize}px "IBM Plex Sans", system-ui, sans-serif`;
+      ctx.fillStyle = inkColor;
+      drawWrappedText(ctx, bodyText, pad, y, maxWidth, bodyLineHeight);
+    }
+    const dataUrl = canvas.toDataURL('image/png');
+    statusEl.textContent = 'Saving…';
+    const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', fileData: dataUrl });
+    document.getElementById('pubPostImage').value = s.url;
+    const ppImg = document.getElementById('pubPostImagePreview'); ppImg.src = s.url; ppImg.style.display = '';
     document.getElementById('pubStatus').value = 'Publish';
-    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = r.imageUrl; PUB_ASSET_CACHE[myAsset].status = 'Publish'; }
-    btn.disabled = false; btn.textContent = '✨ Regenerate social background (Grok)';
-    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Generated ✓ — status set to Publish.';
+    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = s.url; PUB_ASSET_CACHE[myAsset].status = 'Publish'; }
+    btn.disabled = false; btn.textContent = '🔤 Re-render headline text';
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓ — status set to Publish.';
     loadTitleAndAssetTab();
   } catch (e) {
-    btn.disabled = false; btn.textContent = '✨ Generate social background (Grok)';
+    btn.disabled = false; btn.textContent = '🔤 Add headline text';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
   }
 }
