@@ -2110,7 +2110,18 @@ function renderTitleRow(t) {
 }
 // Real Notion archive — deleteTitle already exists server-side.
 async function deleteTitleRow(id, title) {
-  if (!confirm(`Delete "${title}"? This archives it in Notion.`)) return;
+  // Archiving the title never touches its own assets — but getTitleAssets
+  // only ever fetches an asset through its (still-live) parent title's own
+  // Assets relation, and getTitles is a real database query that Notion
+  // automatically excludes archived pages from. So once this title is
+  // archived, any assets it owns simply stop being reachable from this UI
+  // — they're not deleted, just orphaned from view. Warn with the count so
+  // that isn't a surprise; restoring the title from Notion's trash brings
+  // them right back.
+  const t = CAMPAIGN_TITLES.find(x => x.id === id);
+  const n = (t && t.assetIds) ? t.assetIds.length : 0;
+  const warn = n ? `\n\nIt has ${n} asset(s) attached — they will NOT be deleted, but will stop showing here since this view only lists assets under a still-live parent title. Restore this title from Notion's trash to bring them back.` : '';
+  if (!confirm(`Delete "${title}"? This archives it in Notion.${warn}`)) return;
   try {
     await w('deleteTitle', { titleId: id });
     loadTitleAndAssetTab();
@@ -2145,7 +2156,11 @@ function clearTitleSelection() {
 async function bulkDeleteTitles() {
   const ids = [...SELECTED_TITLE_IDS];
   if (!ids.length) return;
-  if (!confirm(`Delete ${ids.length} title(s)? This archives them in Notion.`)) return;
+  // See the comment in deleteTitleRow — archiving a title orphans (never
+  // deletes) any assets it owns from this view. Sum them up here too.
+  const assetTotal = ids.reduce((n, id) => { const t = CAMPAIGN_TITLES.find(x => x.id === id); return n + ((t && t.assetIds) ? t.assetIds.length : 0); }, 0);
+  const warn = assetTotal ? `\n\nTogether they have ${assetTotal} asset(s) attached — those will NOT be deleted, but will stop showing here since this view only lists assets under a still-live parent title.` : '';
+  if (!confirm(`Delete ${ids.length} title(s)? This archives them in Notion.${warn}`)) return;
   for (const id of ids) { try { await w('deleteTitle', { titleId: id }); } catch (e) {} }
   clearTitleSelection();
   loadTitleAndAssetTab();
