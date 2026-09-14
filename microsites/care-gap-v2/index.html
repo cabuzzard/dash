@@ -115,6 +115,9 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .modalrow .btn{font-size:12px;padding:7px 16px;}
 .kwgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;}
 @media (max-width:720px){.kwgrid{grid-template-columns:1fr;}}
+.kwgrid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;align-items:start;}
+@media (max-width:1100px){.kwgrid3{grid-template-columns:1fr 1fr;}}
+@media (max-width:720px){.kwgrid3{grid-template-columns:1fr;}}
 .kwcol{min-width:0;}
 .kwcol h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin:0 0 8px;}
 .kwgroup{border-left:3px solid var(--kwc,var(--border2));padding-left:9px;margin-bottom:12px;}
@@ -218,8 +221,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <button class="tab" data-tab="research" onclick="switchTo('research')">Campaign Research <span class="n">(13)</span></button><span class="tarrow">→</span>
       <button class="tab tab-design" data-tab="design" onclick="switchTo('design')">🎨 Design <span class="n">constant</span></button><span class="tarrow">→</span>
       <button class="tab" data-tab="product" onclick="switchTo('product')">Product Research <span class="n">(11)</span></button><span class="tarrow">→</span>
-      <button class="tab" data-tab="strategy" onclick="switchTo('strategy')">Strategy</button><span class="tarrow">→</span>
-      <button class="tab" data-tab="title" onclick="switchTo('title')">Title + Asset</button><span class="tarrow">→</span>
+      <button class="tab" data-tab="strategy" onclick="switchTo('strategy')">Strategy · Titles · Assets</button><span class="tarrow">→</span>
       <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button>
     </div>
   </div>
@@ -607,18 +609,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div id="productListBody"><div class="loadnote">Loading…</div></div>
   </div>
 
-  <!-- ══════════════════════ TAB: STRATEGY ══════════════════════ -->
+  <!-- ══════════════════════ TAB: STRATEGY · TITLES · ASSETS ══════════════════════ -->
   <div class="panel" data-panel="strategy">
-    <div class="stage-hd"><h2>Strategy</h2><span class="stagetag">stage 3</span><button class="btn primary" style="margin-left:auto;" onclick="openGenStrategyModal()">+ Generate new strategy</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
-    <p class="stage-sub">Real 🚀 Growth Strategies for this campaign, nested Product Stack → Product → Platform → Arc — <code>getCampaignGrowthStrategies</code>. An arc whose slots span platforms appears once under each platform it touches.</p>
-    <div id="strategyBody"><div class="loadnote">Loading…</div></div>
-  </div>
-
-  <!-- ══════════════════════ TAB: TITLE + ASSET ══════════════════════ -->
-  <div class="panel" data-panel="title">
-    <div class="stage-hd"><h2>Title + Asset</h2><span class="stagetag">stage 4-6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-title','Title tab','title')">📝 Tab note</button></div>
-    <p class="stage-sub">Titles (left) and their Assets (right), both nested Product Stack → Product → Strategy — <code>getTitles</code> + <code>getTitleAssets</code>. Assets sub-group by Platform, the one level titles themselves don't carry.</p>
-    <div class="kwgrid">
+    <div class="stage-hd"><h2>Strategy · Titles · Assets</h2><span class="stagetag">stage 3-6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
+    <p class="stage-sub">Real 🚀 Growth Strategies (left) — nested Product Stack → Product → Platform → Arc — their Titles (middle), and Titles' Assets (right), all on one page. Titles/Assets nest Product Stack → Product → Strategy; Assets sub-group by Platform, the one level Titles don't carry.</p>
+    <div class="kwgrid3">
+      <div class="kwcol">
+        <h4>Strategy <button class="btn primary" style="margin-left:8px;font-size:9.5px;padding:2px 8px;" onclick="openGenStrategyModal()">+ Generate new</button></h4>
+        <div id="strategyBody"><div class="loadnote">Loading…</div></div>
+      </div>
       <div class="kwcol">
         <h4>Titles</h4>
         <div id="titleBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
@@ -761,8 +760,7 @@ const TAB_LOADERS = {
   research: () => loadResearchTab(),
   design: () => loadDesignTab(),
   product: () => loadProductTab(),
-  strategy: () => loadStrategyTab(),
-  title: () => loadTitleAndAssetTab(),
+  strategy: () => { loadStrategyTab(); loadTitleAndAssetTab(); },
 };
 const TAB_LOADED = {};
 function switchTo(key) {
@@ -1955,6 +1953,7 @@ async function runMakeTitleFromSlot() {
     const r = await w('generateTitleFromSlot', { slotId: MT_SLOT_ID, titleOverride, guidance });
     closeMakeTitleModal();
     loadStrategyTab();
+    loadTitleAndAssetTab(); // the new title now shows in the same page's Titles column
     if (r.pillarWarning) alert(r.pillarWarning);
   } catch (e) {
     document.getElementById('mtResult').textContent = 'Failed: ' + e.message;
