@@ -12634,7 +12634,15 @@ ${bodyText.slice(0, 6000)}`;
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
           }).then(res => res.json())
         ));
-        const products = productPages.map(p => ({
+        const products = productPages
+          // Archiving a product only ever changed its own Status — it never
+          // touched the Campaign's "Products" relation this query reads, so
+          // an archived product kept coming back on every re-fetch (new
+          // product added, page reload, etc). Filter it out here instead of
+          // trying to keep the relation itself in sync from every archive
+          // call site.
+          .filter(p => (p.properties?.Status?.select?.name || "") !== "Archived")
+          .map(p => ({
           id:     p.id.replace(/-/g,""),
           name:   p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
           status: p.properties?.Status?.select?.name || "In Development",
