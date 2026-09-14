@@ -308,6 +308,34 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Generate New Strategy — grounds off Main Keywords + Product Research
+       and picks the best platforms per arc by default; the override field
+       and platform-focus dropdown are optional operator steers on top. -->
+  <div class="modaloverlay" id="genStrategyModal">
+    <div class="modalbox">
+      <div class="mtitle">Generate New Strategy</div>
+      <div class="mfield">New 🚀 Growth Strategy</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Product
+          <select id="gsProduct" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Platform focus (optional)
+          <select id="gsPlatform" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+            <option value="">Auto — best platform per arc</option>
+          </select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Override (optional)
+          <textarea id="gsOverride" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;min-height:70px;" placeholder="Steer the strategy — otherwise it's grounded in Main Keywords + Product Research and picks the best platforms per arc"></textarea>
+        </label>
+      </div>
+      <div id="gsResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeGenStrategyModal()">Cancel</button>
+        <button class="btn primary" id="gsGenerateBtn" onclick="runGenerateStrategy()">⟳ Generate</button>
+      </div>
+    </div>
+  </div>
+
   <div class="modaloverlay" id="createAssetModal">
     <div class="modalbox" style="max-width:560px;">
       <div class="mtitle">Create Asset</div>
@@ -486,7 +514,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: STRATEGY ══════════════════════ -->
   <div class="panel" data-panel="strategy">
-    <div class="stage-hd"><h2>Strategy</h2><span class="stagetag">stage 3</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
+    <div class="stage-hd"><h2>Strategy</h2><span class="stagetag">stage 3</span><button class="btn primary" style="margin-left:auto;" onclick="openGenStrategyModal()">+ Generate new strategy</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
     <p class="stage-sub">Real 🚀 Growth Strategies for this campaign, nested Strategy → Grouping → Platform — <code>getCampaignGrowthStrategies</code>.</p>
     <div id="strategyBody"><div class="loadnote">Loading…</div></div>
   </div>
@@ -1683,10 +1711,65 @@ async function loadStrategyTab() {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
 }
+// Real Notion archive (strategy + any divergent children + their slots,
+// unlinking any titles that pointed at them) — deleteGrowthStrategy
+// already exists server-side and does the full cascade in one call.
+async function deleteStrategy(id, name) {
+  if (!confirm(`Delete "${name}"? This archives the strategy and its slots in Notion, and unlinks any titles from them.`)) return;
+  try {
+    await w('deleteGrowthStrategy', { growthStrategyId: id });
+    loadStrategyTab();
+  } catch (e) { alert('Delete failed: ' + e.message); }
+}
+// ── Generate New Strategy modal ──
+// generateGrowthStrategy already grounds off Main Keywords + Product
+// Research and picks the best platform per arc on its own — this modal
+// only adds the optional operator controls on top: which product, an
+// optional single-platform focus (forces every slot onto it), and a
+// freeform override (researchGuidelines) that steers the plan when the
+// defaults aren't what's wanted.
+let PLATFORMS_CACHE = null;
+async function openGenStrategyModal() {
+  document.getElementById('gsResult').textContent = '';
+  document.getElementById('gsOverride').value = '';
+  if (!CAMPAIGN_PRODUCTS.length) {
+    try { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; } catch (e) {}
+  }
+  const prodSel = document.getElementById('gsProduct');
+  prodSel.innerHTML = CAMPAIGN_PRODUCTS.length
+    ? CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`).join('')
+    : '<option value="">No products on this campaign yet</option>';
+  const platSel = document.getElementById('gsPlatform');
+  if (!PLATFORMS_CACHE) {
+    try { const r = await w('getPlatforms', {}); PLATFORMS_CACHE = r.platforms || []; } catch (e) { PLATFORMS_CACHE = []; }
+  }
+  platSel.innerHTML = '<option value="">Auto — best platform per arc</option>' +
+    PLATFORMS_CACHE.map(p => `<option value="${esc(p.name)}">${esc(p.name)}</option>`).join('');
+  document.getElementById('genStrategyModal').classList.add('open');
+}
+function closeGenStrategyModal() { document.getElementById('genStrategyModal').classList.remove('open'); }
+async function runGenerateStrategy() {
+  const productId = document.getElementById('gsProduct').value;
+  if (!productId) { alert('Pick a product first — every strategy is generated for one specific product.'); return; }
+  const platformOverride = document.getElementById('gsPlatform').value || undefined;
+  const researchGuidelines = (document.getElementById('gsOverride').value || '').trim() || undefined;
+  const btn = document.getElementById('gsGenerateBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'generating…';
+  document.getElementById('gsResult').textContent = 'Generating — this can take up to a minute…';
+  try {
+    await w('generateGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, platformOverride, researchGuidelines });
+    closeGenStrategyModal();
+    loadStrategyTab();
+  } catch (e) {
+    document.getElementById('gsResult').textContent = 'Failed: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
+}
 function renderStrategyCard(s) {
   const groupings = s.groupings || [];
   return `<section class="card" data-ckey="strat-${esc(s.id)}">
-    <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>${esc(s.name)}</h3><span class="tag ${s.status === 'Approved' ? 'fresh' : 'manual'}">${esc(s.status)}</span>${s.productName ? `<span style="font-size:10.5px;color:var(--ink3);">${esc(s.productStack || 'No Stack')} · ${esc(s.productName)}</span>` : ''}<a class="kwlink" href="${notionUrl(s.id)}" target="_blank" rel="noopener">↗ Notion</a><button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(s.id)}','${esc(s.name)}','strategy')">📝</button></div>
+    <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>${esc(s.name)}</h3><span class="tag ${s.status === 'Approved' ? 'fresh' : 'manual'}">${esc(s.status)}</span>${s.productName ? `<span style="font-size:10.5px;color:var(--ink3);">${esc(s.productStack || 'No Stack')} · ${esc(s.productName)}</span>` : ''}<a class="kwlink" href="${notionUrl(s.id)}" target="_blank" rel="noopener">↗ Notion</a><button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(s.id)}','${esc(s.name)}')">✕</button><button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(s.id)}','${esc(s.name)}','strategy')">📝</button></div>
     <div class="card-body">${groupings.length ? groupings.map(g => renderStrategyGrouping(s.id, g)).join('') : '<div class="loadnote">No slots yet.</div>'}</div>
   </section>`;
 }
