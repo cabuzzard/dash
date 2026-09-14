@@ -3332,7 +3332,12 @@ function boxRect(w, h, opts) {
   return { x: w * (opts.xPct / 100), y: h * (opts.yPct / 100), w: w * (opts.wPct / 100), h: h * (opts.hPct / 100) };
 }
 function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
-  ctx.clearRect(0, 0, w, h);
+  // No clearRect here: every caller (the final save AND the live editor's
+  // redraw loop) always does a full-canvas ctx.drawImage of the background
+  // immediately before calling this, which already overwrites every pixel —
+  // clearing afterward just wipes that fresh image draw back to transparent
+  // everywhere outside the box, which a wider/taller box then covers more
+  // of, looking exactly like "the background image resized" as W/H grow.
   const box = boxRect(w, h, opts);
   // Scrim tinted with the hub's own dark-band pairing ("deep"/"deep-ink" —
   // a designated dark-background + legible-foreground pair, distinct from
@@ -3358,7 +3363,6 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
   return box;
 }
 function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
-  ctx.clearRect(0, 0, w, h);
   const box = boxRect(w, h, opts);
   // Panel tinted with the hub's own light "surface" token, not a generic
   // white, so the light side of the contrast pair matches this hub too.
