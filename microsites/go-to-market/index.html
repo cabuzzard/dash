@@ -4817,10 +4817,18 @@ function makeProductRow(p) {
   // This replaced the old standalone "site"/"+ site" product-site link —
   // product pages/sites are retired; research now lives entirely in the
   // Strategy record behind this modal, positioned where that link used to
-  // be. Dot colour reflects Status when a Strategy record already exists
-  // (Current=green, Stale=yellow, Draft/none=grey).
-  const stratColor = p.strategyStatus === 'Current' ? '#68d391' : (p.strategyStatus === 'Stale' ? '#f0b429' : '#555');
-  const researchLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="Product Research" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">research</button>`;
+  // be. Dot colour reflects researchState (from getCampaignStrategies,
+  // compared against the campaign's Main Keywords "Keywords Version"
+  // counter — see bumpKeywordsVersion/getCampaignKeywordsVersion in the
+  // worker): 'updated' = green (this product's research is generated/edited
+  // against the current main keywords), 'off-main' = amber (main keywords
+  // changed since — the operator hand-saved or regenerated main keywords
+  // and this product's research hasn't caught up yet), 'empty'/none = grey
+  // (no Product Research record at all yet).
+  const researchStateLabel = { updated: 'research updated', 'off-main': 'research off main — main keywords changed since this was last generated', empty: 'research empty — none generated yet' };
+  const stratColor = p.researchState === 'updated' ? '#68d391' : (p.researchState === 'off-main' ? '#f0b429' : '#555');
+  const researchTitle = researchStateLabel[p.researchState] || 'Product Research';
+  const researchLink = `<button class="td-add-btn-inline" onclick="openStrategyModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="${researchTitle}" style="${psStyle};background:none;cursor:pointer;color:${stratColor};">research</button>`;
   // Stack edit — set/change which Product Stack this product belongs to
   // (Campaign → Product Stack → Product is the universal grouping now used
   // across Development/Products/Publish). Methods, Growth Strategy
@@ -4968,10 +4976,11 @@ async function loadProducts() {
     PRODUCT_ITEMS = campData.products || [];
     ALL_PRODUCTS  = allData.products || [];
     const stratByProduct = {};
-    (stratData.products || []).forEach(p => { stratByProduct[p.productId] = p.strategy || null; });
+    (stratData.products || []).forEach(p => { stratByProduct[p.productId] = p; });
     PRODUCT_ITEMS.forEach(p => {
       const s = stratByProduct[p.id];
-      p.strategyStatus = s ? (s.status || 'Draft') : '';
+      p.strategyStatus = s && s.strategy ? (s.strategy.status || 'Draft') : '';
+      p.researchState = s ? (s.researchState || 'empty') : 'empty';
     });
     renderProducts();
   } catch(e) {
@@ -6500,7 +6509,7 @@ async function saveSmKeywords() {
     renderSmFields();
     if (status) { status.textContent = '✓ Keywords saved and research re-run.'; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
-    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; PRODUCT_ITEMS[idx].researchState = 'updated'; renderProducts(); }
     bumpLocalProductStatus(SM_PRODUCT_ID, 'Planning');   // worker promotes the product on research generation
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
@@ -6615,7 +6624,7 @@ async function genSmField(field) {
     renderSmFields();
     if (status) { status.textContent = `✓ "${field}" generated.`; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
-    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; PRODUCT_ITEMS[idx].researchState = 'updated'; renderProducts(); }
     bumpLocalProductStatus(SM_PRODUCT_ID, 'Planning');   // worker promotes the product on research generation
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
@@ -6636,7 +6645,7 @@ async function regenerateAllSmFields() {
     renderSmFields();
     if (status) { status.textContent = '✓ All fields regenerated.'; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
-    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    if (idx !== -1) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; PRODUCT_ITEMS[idx].researchState = 'updated'; renderProducts(); }
     bumpLocalProductStatus(SM_PRODUCT_ID, 'Planning');   // worker promotes the product on research generation
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
@@ -6657,7 +6666,7 @@ async function saveSmField(field) {
     SM_STRATEGY.url = r.url;
     if (status) { status.textContent = `✓ "${field}" saved.`; status.style.color = '#68d391'; }
     const idx = PRODUCT_ITEMS.findIndex(p => p.id === SM_PRODUCT_ID);
-    if (idx !== -1 && !PRODUCT_ITEMS[idx].strategyStatus) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; renderProducts(); }
+    if (idx !== -1 && !PRODUCT_ITEMS[idx].strategyStatus) { PRODUCT_ITEMS[idx].strategyStatus = 'Current'; PRODUCT_ITEMS[idx].researchState = 'updated'; renderProducts(); }
   } catch(e) {
     if (status) { status.textContent = 'Error: ' + e.message; status.style.color = '#fc8181'; }
   }

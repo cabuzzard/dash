@@ -148,6 +148,52 @@ async function findBestProductResearchRecord(hdr, productId) {
   return results.reduce((best, r) => filledCount(r) > filledCount(best) ? r : best, results[0]);
 }
 
+// ── Keywords Version: main-campaign-keywords sync tracking ─────────────
+// The campaign Research record's "Keywords Version" (Number) is bumped every
+// time Main Keywords actually change (updateResearch field:'keywords', or an
+// AI regen via regenerateKeywords). Every 🔬 Product Research record stamps
+// the version it was generated/edited against (see ensureProductStrategy,
+// generateStrategyField, regenerateAllStrategyFields, updateProductStrategyField)
+// so getCampaignStrategies can tell a product's own research apart from
+// research that's now "off main" — i.e. main keywords moved since this
+// product's research was last touched. A product whose stamp is missing or
+// behind the campaign's current number is off main; caught up or ahead is
+// current; no Product Research record at all is empty. Both properties
+// self-heal onto their databases (ensureNumberProperty) the first time
+// they're needed, same pattern as every other self-healing schema check in
+// this file.
+async function ensureNumberProperty(hdr, dbId, propName) {
+  try {
+    const db = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers: hdr }).then(r => r.json());
+    if (!db.properties?.[propName]) await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { [propName]: { number: {} } } }),
+    });
+  } catch (e) { /* best-effort — a failed self-heal just means the property gets created on next attempt */ }
+}
+async function getCampaignKeywordsVersion(hdr, campaignId) {
+  if (!campaignId) return 0;
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  try {
+    const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } });
+    const score = r => ["Statement","Unique Opportunity","Content Topics","Trend Intelligence","Keywords"].reduce((n, k) => n + ((r.properties?.[k]?.rich_text || []).length ? 1 : 0), 0);
+    const best = rows.slice().sort((a, b) => score(b) - score(a))[0];
+    return best?.properties?.["Keywords Version"]?.number || 0;
+  } catch (e) { return 0; }
+}
+async function bumpKeywordsVersion(hdr, researchPageId) {
+  if (!researchPageId) return;
+  try {
+    await ensureNumberProperty(hdr, RESEARCH_DB, "Keywords Version");
+    const page = await fetch(`https://api.notion.com/v1/pages/${researchPageId}`, { headers: hdr }).then(r => r.json());
+    const next = (page?.properties?.["Keywords Version"]?.number || 0) + 1;
+    await fetch(`https://api.notion.com/v1/pages/${researchPageId}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { "Keywords Version": { number: next } } }),
+    });
+  } catch (e) { /* best-effort — a failed bump only means downstream products aren't flagged this cycle */ }
+}
+
 // ── Image art-direction: assemble + write ──────────────────────────────
 // assembleImageBrief gathers the GROUNDED context for a hub's images. The
 // authoritative visual direction is the **Design section of the Campaign
@@ -2022,6 +2068,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
     }
 
     let researchBlock = "";
+    let campaignKwVersion = 0;
     if (campaignId) {
       const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
         method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -2036,6 +2083,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           rtR("Unique Opportunity") && `Unique Opportunity: ${rtR("Unique Opportunity")}`,
         ].filter(Boolean);
         if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+        campaignKwVersion = rp["Keywords Version"]?.number || 0;
       }
     }
 
@@ -2068,11 +2116,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
       Name: { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] },
       Product: { relation: [{ id: dash(productId) }] },
       Status: { select: { name: "Current" } },
+      "Keywords Version": { number: campaignKwVersion },
     };
     STRATEGY_FIELDS.forEach(f => {
       const val = String(fields[f] || "").trim();
       if (val) props[f] = { rich_text: [{ type: "text", text: { content: val.slice(0, 1990) } }] };
     });
+    await ensureNumberProperty(hdr, PRODUCT_RESEARCH_DB, "Keywords Version");
     await fetch("https://api.notion.com/v1/pages", {
       method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
       body: JSON.stringify({ parent: { database_id: PRODUCT_RESEARCH_DB }, properties: props }),
@@ -16251,9 +16301,10 @@ Return ONLY a JSON object, no other text, no markdown fences:
         // Current PRODUCT_RESEARCH_DB record. Positioning = PRODUCT_RESEARCH_DB
         // (one per product, deduped by most-fields-filled); Method Briefs =
         // STRATEGY_DB (Method relation set).
-        const [researchRows, briefRows] = await Promise.all([
+        const [researchRows, briefRows, campaignKwVersion] = await Promise.all([
           notionQuery(PRODUCT_RESEARCH_DB, {}).catch(e => { console.error('getCampaignStrategies research:', e.message); return []; }),
           notionQuery(STRATEGY_DB, {}).catch(e => { console.error('getCampaignStrategies briefs:', e.message); return []; }),
+          getCampaignKeywordsVersion(hdr, campaignId),
         ]);
         const filledCount = r => STRATEGY_FIELDS.reduce((n, f) => n + ((r.properties?.[f]?.rich_text || []).length ? 1 : 0), 0);
         const bestResearch = {};
@@ -16293,9 +16344,15 @@ Return ONLY a JSON object, no other text, no markdown fences:
             const mId = undash((r.properties?.Method?.relation || [])[0]?.id || "");
             return { id: undash(r.id), url: r.url, methodName: methodNameById[mId] || "Method", status: r.properties?.Status?.select?.name || "" };
           });
+          // researchState: no 🔬 Product Research record at all -> 'empty';
+          // has one but its stamped Keywords Version is behind the campaign's
+          // current one (main keywords moved since this was last generated
+          // or edited) -> 'off-main'; caught up -> 'updated'.
+          const researchState = !sr ? 'empty' : ((sr.properties?.["Keywords Version"]?.number || 0) < campaignKwVersion ? 'off-main' : 'updated');
           return {
             productId, productName,
             strategy: sr ? { id: undash(sr.id), url: sr.url, status: sr.properties?.Status?.select?.name || "" } : null,
+            researchState,
             briefs,
           };
         });
@@ -16329,6 +16386,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         // action, so per-field regeneration only ever had the product's own
         // thin Description/Keywords to work from.
         let researchBlock = '';
+        let campaignKwVersion = 0;
         if (campaignId) {
           const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -16345,6 +16403,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
               rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
             ].filter(Boolean);
             if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+            campaignKwVersion = rp["Keywords Version"]?.number || 0;
           }
         }
 
@@ -16397,12 +16456,13 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const rtChunks = [];
         for (let i = 0; i < Math.max(text.length, 1); i += 2000) rtChunks.push({ type: "text", text: { content: text.slice(i, i + 2000) } });
 
+        await ensureNumberProperty(hdr, PRODUCT_RESEARCH_DB, "Keywords Version");
         let strategyId, strategyUrl;
         if (existing) {
           strategyId = existing.id.replace(/-/g,""); strategyUrl = existing.url;
           await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks }, Status: { select: { name: "Current" } } } }),
+            body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks }, Status: { select: { name: "Current" } }, "Keywords Version": { number: campaignKwVersion } } }),
           });
         } else {
           const createResp = await fetch("https://api.notion.com/v1/pages", {
@@ -16413,6 +16473,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
                 Name: { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] },
                 Product: { relation: [{ id: dash(productId) }] },
                 Status: { select: { name: "Current" } },
+                "Keywords Version": { number: campaignKwVersion },
                 [field]: { rich_text: rtChunks },
               },
             }),
@@ -16448,6 +16509,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
         let researchBlock = '';
+        let campaignKwVersion = 0;
         if (campaignId) {
           const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -16464,6 +16526,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
               rtR("Pain Points") && `Pain Points: ${rtR("Pain Points")}`,
             ].filter(Boolean);
             if (lines.length) researchBlock = `\nCAMPAIGN RESEARCH:\n${lines.join("\n")}\n`;
+            campaignKwVersion = rp["Keywords Version"]?.number || 0;
           }
         }
 
@@ -16494,12 +16557,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
         try { fields = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))); }
         catch (e) { return json({ error: "Failed to parse strategy JSON: " + e.message }, 502); }
 
-        const props = { Status: { select: { name: "Current" } } };
+        const props = { Status: { select: { name: "Current" } }, "Keywords Version": { number: campaignKwVersion } };
         STRATEGY_FIELDS.forEach(f => {
           const val = String(fields[f] || "").trim();
           if (val) props[f] = { rich_text: [{ type: "text", text: { content: val.slice(0, 1990) } }] };
         });
 
+        await ensureNumberProperty(hdr, PRODUCT_RESEARCH_DB, "Keywords Version");
         const existing = await findBestProductResearchRecord(hdr, productId);
         let strategyId, strategyUrl;
         if (existing) {
@@ -16602,17 +16666,26 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
         const rtChunks = [];
         for (let i = 0; i < Math.max(rtStr.length, 1); i += 2000) rtChunks.push({ type: "text", text: { content: rtStr.slice(i, i + 2000) } });
 
+        // An operator saving a field by hand counts as "caught up" for the
+        // research-off-main indicator too, same as a regenerated field —
+        // stamp the campaign's current Keywords Version here as well, so a
+        // Product Research modal that's only ever hand-edited (never
+        // regenerated) doesn't stay flagged forever.
+        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
+        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
+        const campaignKwVersion = await getCampaignKeywordsVersion(hdr, campaignId);
+        await ensureNumberProperty(hdr, PRODUCT_RESEARCH_DB, "Keywords Version");
+
         const existing = await findBestProductResearchRecord(hdr, productId);
         if (existing) {
           const strategyId = existing.id.replace(/-/g,"");
           await fetch(`https://api.notion.com/v1/pages/${dash(strategyId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks } } }),
+            body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks }, "Keywords Version": { number: campaignKwVersion } } }),
           });
           return json({ success: true, strategyId, url: existing.url });
         }
-        const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
-        const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const createResp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -16621,6 +16694,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
               Name: { title: [{ type: "text", text: { content: `${productName} — Research`.slice(0, 200) } }] },
               Product: { relation: [{ id: dash(productId) }] },
               Status: { select: { name: "Current" } },
+              "Keywords Version": { number: campaignKwVersion },
               [field]: { rich_text: rtChunks },
             },
           }),
@@ -25965,6 +26039,12 @@ Call submit_product_stack_proposals with your result.`;
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        // Main Keywords changed — bump the sync counter every downstream
+        // Product Research record is compared against (see getCampaignStrategies).
+        if (notionField === "Keywords") {
+          const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          await bumpKeywordsVersion(hdr, dashed);
+        }
         return json({ success: true });
       }
 
@@ -27069,6 +27149,9 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords } }] } } })
         }).catch(() => {});
+        // Main Keywords changed — bump the sync counter every downstream
+        // Product Research record is compared against (see getCampaignStrategies).
+        await bumpKeywordsVersion(hdr, dash(pageId));
 
         // The four positioning fields ALWAYS live on the Campaign record —
         // unless the caller opts out (skipPositioningCascade). Added for
