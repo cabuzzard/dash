@@ -1503,6 +1503,72 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
   return { published: true, liveUrl: `https://cabuzzard.github.io/dash/${basePath}/${slug}/` };
 }
 
+// Re-publishes ONE already-live Blog/SEO Post asset's live page as-is (no
+// Claude call — reads the EXISTING Notion blocks back into intro/sections/
+// conclusion/sources, same parse backfillHubBlog's per-asset loop does) but
+// with whatever the asset's CURRENT "Thumbnail" property is right now.
+// Exists so generating/changing a blog thumbnail (saveOfferImage) can push
+// it straight to the already-live page automatically — before this, the
+// only way to get a freshly-generated thumbnail onto an ALREADY-published
+// post was the bulk "🖼️ Republish to Hub" (backfillHubBlog force:true)
+// sweep, which reprocesses every Blog/Offer asset on the hub and can time
+// out on a hub with many published posts. Single-asset, so it's always
+// fast. Best-effort: called fire-and-forget, never blocks or fails the
+// thumbnail save itself.
+async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
+  const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+  try {
+    const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
+    const p = assetPage.properties || {};
+    const assetType = p["Asset Type"]?.select?.name || "";
+    const isBlog = /seo post/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
+    if (!isBlog) return { skipped: "not a blog asset" };
+    const existingUrl = (p["Content URL"]?.url || "").trim();
+    if (!existingUrl) return { skipped: "not published yet — nothing live to update" };
+    const campaignId = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null;
+    if (!campaignId) return { skipped: "asset has no Campaign relation" };
+    const workingTitle = (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled";
+    const seoTitle = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || workingTitle;
+
+    const kids = await fetch(`https://api.notion.com/v1/blocks/${dashId(assetId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+    const blocks = kids.results || [];
+    const btxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
+    let intro = "", conclusion = "";
+    const sections = [], sources = [];
+    let inSources = false;
+    for (const b of blocks) {
+      if (b.type === "heading_2") {
+        if (/^\s*sources\s*$/i.test(btxt(b))) { inSources = true; continue; }
+        inSources = false;
+        sections.push({ heading: btxt(b), body: "" });
+      } else if (b.type === "bulleted_list_item" && inSources) {
+        const rt0 = (b.bulleted_list_item?.rich_text || [])[0];
+        const u = rt0?.href || rt0?.text?.link?.url || (btxt(b).match(/https?:\/\/\S+/) || [])[0];
+        if (u) sources.push({ label: btxt(b) || u, url: u });
+      } else if (b.type === "paragraph") {
+        const t = btxt(b);
+        if (!t) continue;
+        if (!sections.length) intro = intro ? intro + "\n\n" + t : t;
+        else { const s = sections[sections.length - 1]; s.body = s.body ? s.body + "\n\n" + t : t; }
+      }
+    }
+    if (!sections.length) return { skipped: "no sections parsed from the existing page — leave it to a manual Republish to Hub" };
+
+    const site = await publishSeoPostToLiveSite({
+      env, hdr, dash: dashId, campaignId, spec: null,
+      seoTitle, workingTitle, intro, sections, conclusion, sources, assetId,
+      thumbnail: (p["Thumbnail"]?.url || "").trim(),
+    });
+    if (site.published && site.liveUrl) {
+      await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Content URL": { url: site.liveUrl } } }),
+      }).catch(() => {});
+    }
+    return site;
+  } catch (e) { return { error: e.message }; }
+}
+
 // Publishes one Offer as a real hub sub-page — web/hub/{slug}/offers/{slug}/ —
 // styled from the hub's own tokens/fonts, exactly like publishSeoPostToLiveSite
 // does for blog posts. The offer page carries the full pitch PLUS a
@@ -24825,7 +24891,18 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
           await env.TRADES.put(histKey, JSON.stringify(hist.slice(0, 12)));
         } catch (e) {}
 
-        return json({ success: true, url, prop: SLOT[kind].prop });
+        // A fresh blog thumbnail on an asset that's ALREADY live gets pushed
+        // straight to the live page — without this, a newly-generated
+        // thumbnail only ever landed in the Notion "Thumbnail" property,
+        // invisible until someone remembered to run the bulk "Republish to
+        // Hub" sweep (which reprocesses every asset on the hub and can time
+        // out). Single-asset and best-effort: never fails the thumbnail save.
+        let republish = null;
+        if (kind === "blog-thumbnail") {
+          republish = await republishBlogThumbnailToLiveSite(env, hdr, assetId).catch(e => ({ error: e.message }));
+        }
+
+        return json({ success: true, url, prop: SLOT[kind].prop, republish });
       }
 
       // ── getImageHistory: every past render for one asset+kind, newest
