@@ -3081,6 +3081,24 @@ async function pushAssetFromPillar(assetId, title) {
     alert('Push failed: ' + e.message);
   }
 }
+// "📤 Push to Hub" — single-asset counterpart to the bulk "🖼️ Republish to
+// Hub" below (which reprocesses every Blog/Offer asset on the hub and can
+// time out — confirmed live on this campaign). No Claude call, no rewrite:
+// re-reads THIS ONE asset's existing Notion blocks + its CURRENT Thumbnail
+// and pushes them to its live page (same mechanism saveOfferImage now runs
+// automatically right after a thumbnail save — this is the manual version,
+// for when you want to push without generating a new image, or to fix a
+// post that predates that auto-push). Always fast, single asset.
+async function pushAssetToHub(assetId, title) {
+  try {
+    const r = await w('republishBlogThumbnail', { assetId });
+    if (r.skipped) { alert(`Not pushed: ${r.skipped}`); return; }
+    alert(r.published && r.liveUrl ? `✓ Pushed. Live page updated: ${r.liveUrl}` : `Push failed: ${r.error || 'unknown error'}`);
+    loadTitleAndAssetTab();
+  } catch (e) {
+    alert('Push failed: ' + e.message);
+  }
+}
 // "🖼️ Republish to Hub" — the lighter counterpart to Push from Pillar: no
 // Claude call, no rewrite. backfillHubBlog re-reads each already-published
 // Blog/Offer asset's CURRENT Notion content and CURRENT Thumbnail straight
@@ -3116,7 +3134,7 @@ function renderAssetTitleNode(t, data) {
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   assets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc(a.assetTitle || a.title).replace(/'/g,"\\'")}')">🔄 Push from Pillar</button>` : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc(a.assetTitle || a.title).replace(/'/g,"\\'")}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc(a.assetTitle || a.title).replace(/'/g,"\\'")}')">📤 Push to Hub</button>` : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
