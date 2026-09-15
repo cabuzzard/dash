@@ -315,6 +315,36 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Add Title — a plain manual title (createDevTitles with a single name),
+       no AI generation: just a name, an optional Product attach, and an
+       optional Intended Method tag (pure tag, per
+       feedback_dash_methods_pull_not_add — this never pulls a method's
+       framework in, same as the root dashboard's bulk Add Titles modal).
+       Lands at Status Development, empty — write pillar content later from
+       the 🔄 button on the row, same as every other quick-added title. -->
+  <div class="modaloverlay" id="addTitleModal">
+    <div class="modalbox">
+      <div class="mtitle">Add Title</div>
+      <div class="mfield">New Content Strategy title</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Title
+          <input type="text" id="atTitle" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Title text">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Product <span style="color:var(--ink3);font-weight:400;">(optional)</span>
+          <select id="atProduct" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Intended Method <span style="color:var(--ink3);font-weight:400;">(optional — just tags it)</span>
+          <select id="atMethod" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
+        </label>
+      </div>
+      <div id="atResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeAddTitleModal()">Cancel</button>
+        <button class="btn primary" id="atCreateBtn" onclick="runAddTitle()">+ Create</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Generate New Strategy — grounds off Main Keywords + Product Research
        and picks the best platforms per arc by default; the override field
        and platform-focus dropdown are optional operator steers on top. -->
@@ -960,7 +990,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="strategyBody"><div class="loadnote">Loading…</div></div>
       </div>
       <div class="kwcol">
-        <h4>Titles</h4>
+        <h4>Titles <button class="btn primary" style="margin-left:8px;font-size:9.5px;padding:2px 8px;" onclick="openAddTitleModal()">+ Add Title</button></h4>
         <div id="titleBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
           <span id="titleBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
           <button class="btn" onclick="openBulkProductModal()">Change Product</button>
@@ -1223,6 +1253,8 @@ document.addEventListener('DOMContentLoaded', () => {
   caOverlay.addEventListener('click', e => { if (e.target === caOverlay) closeCreateAssetModal(); });
   const apOverlay = document.getElementById('addProductModal');
   apOverlay.addEventListener('click', e => { if (e.target === apOverlay) closeAddProductModal(); });
+  const atOverlay = document.getElementById('addTitleModal');
+  atOverlay.addEventListener('click', e => { if (e.target === atOverlay) closeAddTitleModal(); });
   const pubOverlay = document.getElementById('publishAssetModal');
   pubOverlay.addEventListener('click', e => { if (e.target === pubOverlay) closePublishAssetModal(); });
   const pickerOverlay = document.getElementById('imagePickerModal');
@@ -2200,6 +2232,45 @@ async function runAddProduct() {
   }
   btn.disabled = false; btn.textContent = o;
 }
+// ── Add Title modal — a plain manual title, no AI generation: name +
+// optional Product + optional Intended Method tag. Same createDevTitles
+// action the root dashboard's bulk "Add Development Titles" modal uses,
+// called here with a single title. Lands at Status Development, empty —
+// write pillar content later via the row's own 🔄 button.
+async function openAddTitleModal() {
+  document.getElementById('atTitle').value = '';
+  document.getElementById('atResult').textContent = '';
+  if (!CAMPAIGN_PRODUCTS.length) { try { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; } catch (e) {} }
+  const prodSel = document.getElementById('atProduct');
+  prodSel.innerHTML = '<option value="">— none —</option>' + CAMPAIGN_PRODUCTS.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+  const methodSel = document.getElementById('atMethod');
+  methodSel.innerHTML = '<option value="">— none —</option>';
+  try {
+    await ensureAllMethodsCache();
+    methodSel.innerHTML += ALL_METHODS_CACHE.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('');
+  } catch (e) {}
+  document.getElementById('addTitleModal').classList.add('open');
+}
+function closeAddTitleModal() { document.getElementById('addTitleModal').classList.remove('open'); }
+async function runAddTitle() {
+  const title = (document.getElementById('atTitle').value || '').trim();
+  const resEl = document.getElementById('atResult');
+  if (!title) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Title required.'; return; }
+  const productId = document.getElementById('atProduct').value || undefined;
+  const methodId = document.getElementById('atMethod').value || undefined;
+  const btn = document.getElementById('atCreateBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Creating…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Creating…';
+  try {
+    await w('createDevTitles', { titles: [title], campaignId: CAMPAIGN_ID, productId, methodId, status: 'Development' });
+    resEl.style.color = 'var(--fresh)'; resEl.textContent = `✓ Created "${title}".`;
+    loadTitleAndAssetTab();
+    setTimeout(closeAddTitleModal, 800);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Failed: ' + e.message;
+  }
+  btn.disabled = false; btn.textContent = o;
+}
 function renderProductModalFields() {
   const fields = window.PRODUCT_STRATEGY_FIELDS || {};
   const recLink = window.PRODUCT_STRATEGY_URL ? `<a class="kwlink" href="${esc(window.PRODUCT_STRATEGY_URL)}" target="_blank" rel="noopener" style="display:block;margin-bottom:10px;">↗ open Product Research record in Notion</a>` : '';
@@ -2366,7 +2437,7 @@ function renderStrategyArc(stackName, prodName, platName, arc) {
 function renderStrategySlot(slot) {
   return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(slot.name)}</span>
     <span class="idea-btns">
-      <button class="iconbtn" title="Create a title from this slot — writes its pillar content straight into Development" onclick="openMakeTitleModal('${esc(slot.id)}')">+ Title</button>
+      ${slotTitleBtnHTML(slot)}
       <span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span>
     </span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`;
 }
@@ -2377,8 +2448,25 @@ function renderStrategySlot(slot) {
 // the slot Filled, and promotes the title straight to Development once
 // the pillar lands — this modal only adds the operator's two optional
 // inputs (an exact title, or freeform guidance) on top.
+//
+// This can take up to a minute server-side, and the operator wants to
+// queue it for several slots without waiting — so submitting no longer
+// blocks the modal open: the modal closes immediately on Create, and
+// the generation runs in the background tracked per-slot (SLOT_GENERATING),
+// with that slot's own "+ Title" button (not a shared modal button) showing
+// "creating…" until it resolves. Previously the modal, its Create button,
+// and MT_SLOT_ID were all single shared state — closing early and opening
+// a new slot while the first request was still in flight left the shared
+// Create button stuck disabled from the first run, so a second one
+// couldn't be started at all.
 let MT_SLOT_ID = null;
+let SLOT_GENERATING = new Set();
+function slotTitleBtnHTML(slot) {
+  const busy = SLOT_GENERATING.has(slot.id);
+  return `<button class="iconbtn" id="slotbtn-${esc(slot.id)}" ${busy ? 'disabled' : ''} title="Create a title from this slot — writes its pillar content straight into Development" onclick="openMakeTitleModal('${esc(slot.id)}')">${busy ? 'creating…' : '+ Title'}</button>`;
+}
 function openMakeTitleModal(slotId) {
+  if (SLOT_GENERATING.has(slotId)) return; // already running — button is disabled, but guard anyway
   MT_SLOT_ID = slotId;
   const slot = STRATEGY_SLOTS_BY_ID[slotId];
   document.getElementById('mtSlotAngle').textContent = (slot && (slot.angle || slot.name)) || '';
@@ -2393,21 +2481,22 @@ function closeMakeTitleModal() {
 }
 async function runMakeTitleFromSlot() {
   if (!MT_SLOT_ID) return;
+  const slotId = MT_SLOT_ID;
   const titleOverride = (document.getElementById('mtTitleOverride').value || '').trim() || undefined;
   const guidance = (document.getElementById('mtGuidance').value || '').trim() || undefined;
-  const btn = document.getElementById('mtCreateBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'creating…';
-  document.getElementById('mtResult').textContent = 'Writing the title + pillar content — this can take up to a minute…';
+  closeMakeTitleModal(); // free the modal immediately — this slot's own button carries the "in progress" state instead
+  SLOT_GENERATING.add(slotId);
+  const btn = document.getElementById('slotbtn-' + slotId);
+  if (btn) { btn.disabled = true; btn.textContent = 'creating…'; }
   try {
-    const r = await w('generateTitleFromSlot', { slotId: MT_SLOT_ID, titleOverride, guidance });
-    closeMakeTitleModal();
-    loadStrategyTab();
-    loadTitleAndAssetTab(); // the new title now shows in the same page's Titles column
+    const r = await w('generateTitleFromSlot', { slotId, titleOverride, guidance });
     if (r.pillarWarning) alert(r.pillarWarning);
   } catch (e) {
-    document.getElementById('mtResult').textContent = 'Failed: ' + e.message;
+    alert('Create title failed: ' + e.message);
   } finally {
-    btn.disabled = false; btn.textContent = o;
+    SLOT_GENERATING.delete(slotId);
+    loadStrategyTab();
+    loadTitleAndAssetTab(); // the new title now shows in the same page's Titles column
   }
 }
 // Real Notion archive (strategy + any divergent children + their slots,
