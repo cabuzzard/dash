@@ -137,10 +137,14 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .clusterideagrp.open .cibody{display:block;}
 .clusterideagrp.open .cighd .kwarrow{transform:rotate(0deg);}
 .idea-card{border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;background:var(--surface2);}
-.idea-row{display:flex;align-items:center;gap:4px;}
-.idea-title{font-weight:600;font-size:12.5px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.idea-btns{display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;margin-left:auto;}
-.idea-row{flex-wrap:nowrap;}
+.idea-row{display:flex;align-items:center;gap:4px;flex-wrap:wrap;}
+/* min-width is a real floor (not 0) so a row with enough buttons to
+   outgrow its width wraps the button cluster onto its own line instead of
+   squeezing the title flex item down toward zero width, where its text is
+   still in the DOM but visually invisible — the "blank title" bug seen
+   once several buttons had accumulated on this row. */
+.idea-title{font-weight:600;font-size:12.5px;flex:1 1 160px;min-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.idea-btns{display:flex;gap:4px;flex-wrap:wrap;flex-shrink:0;margin-left:auto;}
 .iconbtn{font-size:11px;padding:3px 6px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink2);cursor:pointer;line-height:1;flex-shrink:0;}
 .iconbtn:hover{border-color:var(--amber);color:var(--amber);}
 .iconbtn.primary{background:var(--amber);border-color:var(--amber);color:#fff;}
