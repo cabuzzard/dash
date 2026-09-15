@@ -1,14 +1,5 @@
 [
   {
-    "slug": "house-a-caregiver",
-    "name": "House a Caregiver",
-    "kicker": "Charitable donation · any amount, one-time or recurring",
-    "promise": "Your gift covers the exact housing shortfall standing between a caregiver and losing their home — so they can stay housed and keep showing up for the person who needs them.",
-    "ctaUrl": "",
-    "date": "2026-09-15",
-    "assetId": "3dc1f7d3a4bb813dac69cddd1fb5c702"
-  },
-  {
     "slug": "caregiver-relief-investor-call",
     "name": "Caregiver Relief Investor Call",
     "kicker": "60-min discovery call · paid or qualifying charitable contribution",
@@ -16,6 +7,15 @@
     "ctaUrl": "",
     "date": "2026-09-15",
     "assetId": "3dc1f7d3a4bb81358d40e262f6bb02e0"
+  },
+  {
+    "slug": "house-a-caregiver",
+    "name": "House a Caregiver",
+    "kicker": "Charitable donation · any amount, one-time or recurring",
+    "promise": "Your gift covers the exact housing shortfall standing between a caregiver and losing their home — so they can stay housed and keep showing up for the person who needs them.",
+    "ctaUrl": "",
+    "date": "2026-09-15",
+    "assetId": "3dc1f7d3a4bb813dac69cddd1fb5c702"
   },
   {
     "slug": "your-self-care-strategy-session",
