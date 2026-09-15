@@ -689,7 +689,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
        loop across every checked title. -->
   <div class="modaloverlay" id="bulkProductModal">
     <div class="modalbox">
-      <div class="mtitle">Bulk Change Product</div>
+      <div class="mtitle" id="bpModalTitle">Bulk Change Product</div>
       <div class="mfield" id="bpCount"></div>
       <label style="font-size:11px;color:var(--ink2);">Product
         <select id="bpProduct" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"></select>
@@ -2402,7 +2402,8 @@ function renderTitleRow(t) {
   return `<div class="idea-card"><div class="idea-row"><input type="checkbox" class="title-select-cb" data-id="${esc(t.id)}" onclick="event.stopPropagation();toggleTitleSelect('${esc(t.id)}',this.checked)" style="margin-right:2px;flex-shrink:0;"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
-      ${t.stage === 'Development' ? `<button class="iconbtn" title="Rewrite this title's Pillar Content — different style/angle, optional new title, keywords to add or avoid" onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}')">🔄 Rewrite Pillar</button>` : ''}
+      ${t.stage === 'Development' ? `<button class="iconbtn" title="Rewrite this title's Pillar Content — different style/angle, optional new title, keywords to add or avoid" onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}')">🔄</button>` : ''}
+      <button class="iconbtn" title="Change which product this title is attached to" onclick="openChangeProductModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}','${esc(t.productId || '')}')">🔀</button>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
       <button class="iconbtn" title="Delete this title" onclick="deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
@@ -2439,6 +2440,10 @@ function openRewritePillarModal(titleId, title) {
   document.getElementById('rpTitleLabel').textContent = title;
   document.getElementById('rpGuidance').value = '';
   document.getElementById('rpNewTitle').value = '';
+  // Show the existing title as a placeholder (not a value) — visible for
+  // context without counting as an edit; runRewritePillar already treats a
+  // blank field as "keep the current title" (newTitle undefined).
+  document.getElementById('rpNewTitle').placeholder = title || 'New title for this piece';
   document.getElementById('rpAddKeywords').value = '';
   document.getElementById('rpOmitKeywords').value = '';
   document.getElementById('rpResult').textContent = '';
@@ -2513,8 +2518,15 @@ async function bulkDeleteTitles() {
   loadTitleAndAssetTab();
 }
 // ── Bulk Change Product ──
+// CP_SINGLE_TITLE is non-null when the modal was opened from one title
+// row's own "change product" button (openChangeProductModal) rather than
+// the bulk action bar — same modal + same updateTitleStrategy call,
+// applied to just that one title instead of looping SELECTED_TITLE_IDS.
+let CP_SINGLE_TITLE = null;
 function openBulkProductModal() {
   if (!SELECTED_TITLE_IDS.size) return;
+  CP_SINGLE_TITLE = null;
+  document.getElementById('bpModalTitle').textContent = 'Bulk Change Product';
   document.getElementById('bpCount').textContent = `${SELECTED_TITLE_IDS.size} title(s)`;
   document.getElementById('bpResult').textContent = '';
   const sel = document.getElementById('bpProduct');
@@ -2522,10 +2534,22 @@ function openBulkProductModal() {
     CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`).join('');
   document.getElementById('bulkProductModal').classList.add('open');
 }
-function closeBulkProductModal() { document.getElementById('bulkProductModal').classList.remove('open'); }
+// Per-row counterpart — the "change product" button on a single title.
+function openChangeProductModal(titleId, titleName, currentProductId) {
+  CP_SINGLE_TITLE = titleId;
+  document.getElementById('bpModalTitle').textContent = 'Change Product';
+  document.getElementById('bpCount').textContent = titleName;
+  document.getElementById('bpResult').textContent = '';
+  const sel = document.getElementById('bpProduct');
+  sel.innerHTML = '<option value="__none__">(no product)</option>' +
+    CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`).join('');
+  sel.value = currentProductId || '__none__';
+  document.getElementById('bulkProductModal').classList.add('open');
+}
+function closeBulkProductModal() { document.getElementById('bulkProductModal').classList.remove('open'); CP_SINGLE_TITLE = null; }
 async function runBulkChangeProduct() {
   const productId = document.getElementById('bpProduct').value;
-  const ids = [...SELECTED_TITLE_IDS];
+  const ids = CP_SINGLE_TITLE ? [CP_SINGLE_TITLE] : [...SELECTED_TITLE_IDS];
   const btn = document.getElementById('bpApplyBtn');
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Applying…';
   const resEl = document.getElementById('bpResult');
@@ -2537,7 +2561,7 @@ async function runBulkChangeProduct() {
   resEl.style.color = failed ? 'var(--stale)' : 'var(--fresh)';
   resEl.textContent = failed ? `${failed} of ${ids.length} failed.` : `✓ Updated ${ids.length} title(s).`;
   btn.disabled = false; btn.textContent = o;
-  clearTitleSelection();
+  if (!CP_SINGLE_TITLE) clearTitleSelection();
   await loadTitleAndAssetTab();
   setTimeout(closeBulkProductModal, 900);
 }

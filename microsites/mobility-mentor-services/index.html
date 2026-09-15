@@ -1203,25 +1203,34 @@ async function submitBlankGrouping() {
 }
 </script>
 
-<!-- REGENERATE STRATEGY MODAL (♻️ on a strategy strip) — re-plans every
-     unattached slot; the directions/keywords box steers the whole re-plan,
-     changing every regenerated slot angle downstream. -->
+<!-- REGENERATE STRATEGY MODAL (♻️ on a strategy strip) — a "rerun": same
+     input fields as the "new strategy" modal (Title / Platform Focus /
+     Guidance), pre-filled from this strategy's current values, but rewrites
+     THIS EXISTING strategy in place — fresh summary + arcs, re-grounded
+     against the product's current 🔬 Product Research and the campaign's
+     current Main Keywords — instead of creating a new record. Every slot
+     WITHOUT an attached title/asset is archived and replaced with fresh
+     arcs; slots with published content are kept. -->
 <div class="modal-overlay" id="regenStrategyModal">
   <div class="modal" style="max-width:520px;">
     <div class="modal-head">
-      <div class="modal-title">Regenerate Strategy</div>
+      <div class="modal-title">Rerun Strategy</div>
       <button class="modal-close" onclick="closeRegenStrategyModal()">✕</button>
     </div>
     <div class="modal-body">
       <div class="modal-hint" id="regenStratLabel" style="margin-bottom:8px;"></div>
-      <div class="modal-hint" style="color:#f6ad55;margin-bottom:10px;">Every slot WITHOUT an attached title/asset is archived and replaced with fresh arcs. Slots with published content are kept. The page body is rewritten. Can't be undone.</div>
-      <label class="lm-label">Directions / keywords <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— steers the whole re-plan; every regenerated slot angle follows this</span></label>
+      <div class="modal-hint" style="color:#f6ad55;margin-bottom:10px;">Re-grounds this strategy against the product's current research and the campaign's current Main Keywords. Every slot WITHOUT an attached title/asset is archived and replaced with fresh arcs. Slots with published content are kept. The page body is rewritten. Can't be undone.</div>
+      <label class="lm-label">Title <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave as-is to keep the current name</span></label>
+      <input class="modal-ta" id="regenTitleInput" type="text" placeholder="e.g. Q3 TikTok Push" style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+      <label class="lm-label" style="margin-top:10px;">Platform Focus <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional; leave blank to spread across platforms, clearing any prior focus</span></label>
+      <input class="modal-ta" id="regenPlatformInput" type="text" placeholder="e.g. TikTok, LinkedIn..." style="height:32px;padding:5px 10px;font-size:12px;" autocomplete="off" />
+      <label class="lm-label" style="margin-top:10px;">Directions / keywords <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— steers the whole re-plan; every regenerated slot angle follows this</span></label>
       <textarea class="modal-ta" id="regenGuidance" rows="5" style="width:100%;margin-top:4px;resize:vertical;" placeholder="e.g. lean hard on the aquarium-care angle; target owners of vacation rentals specifically; keywords: coastal, low-maintenance, vetted, insured. Avoid discount hooks."></textarea>
       <div class="modal-status" id="regenStratStatus" style="white-space:pre-wrap;"></div>
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closeRegenStrategyModal()">Cancel</button>
-      <button class="modal-btn save" id="regenStratBtn" onclick="submitRegenStrategy()">Regenerate</button>
+      <button class="modal-btn save" id="regenStratBtn" onclick="submitRegenStrategy()">Rerun</button>
     </div>
   </div>
 </div>
@@ -9388,7 +9397,7 @@ async function openViewStrategyModal(strategyId) {
     summaryEl.value = r.summary || '';
     bodyEl.value = r.body || '';
     document.getElementById('vsNotionLink').href = `https://www.notion.so/${strategyId}`;
-    document.getElementById('vsActions').innerHTML = stratActionBtns(strategyId, r.name, true);
+    document.getElementById('vsActions').innerHTML = stratActionBtns(strategyId, r.name, true, r.platformOverride);
   } catch(e) {
     nameEl.value = '';
     status.textContent = 'Error loading: ' + e.message;
@@ -9504,18 +9513,23 @@ async function deleteGrowthStrategy(strategyId, strategyName, btn) {
   }
 }
 
-// Re-plans a strategy's slots to the current cross-platform-arc convention
-// (each grouping = one theme spread across the platforms it needs, each
-// slot its own platform + Post Type) and rewrites the page body. Slots
-// with a Title or Asset attached are preserved untouched; every other slot
-// is archived and replaced with fresh arc slots.
+// Reruns a strategy: same input fields as the "new strategy" modal (Title /
+// Platform Focus / Guidance), pre-filled from the strategy's current values,
+// but rewrites this EXISTING record in place — fresh summary + arcs
+// re-grounded against the product's current research and the campaign's
+// current Main Keywords — rather than creating a new one. Slots with a
+// Title or Asset attached are preserved untouched; every other slot is
+// archived and replaced with fresh arc slots.
 let REGEN_STRAT = null;
-function regenerateStrategySlots(strategyId, strategyName) {
+function regenerateStrategySlots(strategyId, strategyName, currentPlatformOverride) {
   REGEN_STRAT = { id: strategyId, name: strategyName };
   document.getElementById('regenStratLabel').textContent = `Strategy: ${strategyName}`;
+  document.getElementById('regenTitleInput').value = '';
+  document.getElementById('regenTitleInput').placeholder = strategyName || 'e.g. Q3 TikTok Push';
+  document.getElementById('regenPlatformInput').value = currentPlatformOverride || '';
   document.getElementById('regenGuidance').value = '';
   const st = document.getElementById('regenStratStatus'); st.textContent = ''; st.className = 'modal-status';
-  const btn = document.getElementById('regenStratBtn'); btn.disabled = false; btn.textContent = 'Regenerate';
+  const btn = document.getElementById('regenStratBtn'); btn.disabled = false; btn.textContent = 'Rerun';
   document.getElementById('regenStrategyModal').classList.add('open');
 }
 function closeRegenStrategyModal() {
@@ -9527,11 +9541,18 @@ async function submitRegenStrategy() {
   if (!REGEN_STRAT) return;
   const btn = document.getElementById('regenStratBtn');
   const st = document.getElementById('regenStratStatus');
+  const strategyTitle = document.getElementById('regenTitleInput').value.trim();
+  const platformOverride = document.getElementById('regenPlatformInput').value.trim();
   const guidance = document.getElementById('regenGuidance').value.trim();
-  btn.disabled = true; btn.textContent = 'Regenerating…';
+  btn.disabled = true; btn.textContent = 'Running…';
   st.textContent = 'Re-planning the whole strategy…'; st.className = 'modal-status';
   try {
-    const r = await w('regenerateStrategySlots', { growthStrategyId: REGEN_STRAT.id, guidance: guidance || undefined });
+    const r = await w('regenerateStrategySlots', {
+      growthStrategyId: REGEN_STRAT.id,
+      guidance: guidance || undefined,
+      strategyTitle: strategyTitle || undefined,
+      platformOverride: platformOverride || undefined,
+    });
     if (r.error) throw new Error(r.error);
     const pp = r.platformPass && r.platformPass.total ? ` · platforms set on ${(r.platformPass.updated || 0) + (r.platformPass.unchanged || 0)}/${r.platformPass.total}` : '';
     st.textContent = `Done: ${r.created} new slot${r.created === 1 ? '' : 's'} across ${r.groupingCount} arc${r.groupingCount === 1 ? '' : 's'}, ${r.archived} archived, ${r.kept} preserved${pp}.`;
@@ -9540,7 +9561,7 @@ async function submitRegenStrategy() {
     setTimeout(closeRegenStrategyModal, 1200);
   } catch (e) {
     st.textContent = 'Error: ' + e.message; st.className = 'modal-status err';
-    btn.disabled = false; btn.textContent = 'Regenerate';
+    btn.disabled = false; btn.textContent = 'Rerun';
   }
 }
 
@@ -9641,12 +9662,24 @@ async function loadCampaignStrategies() {
 // collapsed — only the header (name/status/counts + arrow) renders until
 // clicked. Toggling is handled by one shared function keyed off element id,
 // same ▶/▾ arrow convention used elsewhere in this file (e.g. title groups).
-function toggleStrategyCollapse(bodyId, arrowEl) {
+//
+// Stack/Product/Strategy header state is additionally persisted in
+// STRAT_OPEN, keyed by a STABLE path (stack name / product name / strategy
+// id — never the positional element id, which shifts if the tree reorders)
+// so an expanded strategy stays open across the re-render every in-tree
+// action triggers (regenerate slots, assign types, write pillar, etc.) —
+// same "track only what's open, default closed" pattern as
+// toggleStackGroup/COLLAPSED_STACKS in the Products tab. Platform/Arc
+// sub-levels inside a strategy are session-only, un-persisted — one extra
+// click to re-open after an action is an acceptable tradeoff there.
+let STRAT_OPEN = new Set();
+function toggleStrategyCollapse(bodyId, arrowEl, key) {
   const body = document.getElementById(bodyId);
   if (!body) return;
   const isOpen = body.style.display !== 'none';
   body.style.display = isOpen ? 'none' : 'block';
   if (arrowEl) arrowEl.textContent = isOpen ? '▶' : '▾';
+  if (key) { if (isOpen) STRAT_OPEN.delete(key); else STRAT_OPEN.add(key); }
 }
 // Writes a Planning title's pillar content and (per writeTitlePillar's own
 // behavior server-side) promotes it to Development in the same call — the
@@ -9791,14 +9824,15 @@ function renderStrategyPlatforms(strat, stBody) {
       + `</div>`;
   }).join('');
 }
-function stratActionBtns(id, name, inModal) {
+function stratActionBtns(id, name, inModal, platformOverride) {
   const nm = String(name || 'strategy').replace(/'/g, "\\'");
+  const po = String(platformOverride || '').replace(/'/g, "\\'");
   const b = (fn, label, color, tip) => `<button onclick="${fn}" title="${tip}" style="font-size:9px;padding:1px 6px;border:1px solid ${color};border-radius:8px;background:transparent;color:${color};cursor:pointer;flex-shrink:0;line-height:1.6;">${label}</button>`;
   return (inModal ? '' : b(`openViewStrategyModal('${id}')`, 'ℹ view', '#a0aec0', 'Full write-up — summary, arcs, rationale (editable)'))
     + b(`backfillStrategyPlatforms('${id}', this)`, '🛰️ re-check platforms', '#68d391', "Re-evaluate every slot's platform — the level this panel groups by")
     + b(`backfillStrategyPostTypes('${id}', this)`, '🏷️ assign types', '#9f7aea', 'Assign a Post Type to every slot missing one')
     + b(`openAddGroupingModal('${id}','${nm}')`, '➕ new grouping', '#f6ad55', 'Add a new arc/grouping from a guidance prompt')
-    + b(`regenerateStrategySlots('${id}','${nm}', this)`, '♻️ regenerate', '#f6ad55', "Regenerate this strategy's slots (published ones kept)")
+    + b(`regenerateStrategySlots('${id}','${nm}','${po}')`, '🔁 rerun', '#f6ad55', "Rerun this strategy — same fields as a new strategy (title/platform/guidance), rewrites this one in place against current product research + Main Keywords")
     + b(`openLaunchRunModal('${id}','${nm}')`, '🚀 launch run', '#68d391', 'Reuse this strategy as a Guide against another product')
     + b(`deleteGrowthStrategy('${id}','${nm}', this)`, '🗑️ delete strategy', '#ff4444', 'Delete this strategy + its slots (attached titles are kept)');
 }
@@ -9816,12 +9850,15 @@ function renderStrategyTree(strategies) {
   const nameSort = none => (a, b) => (a === none ? 1 : 0) - (b === none ? 1 : 0) || a.localeCompare(b);
   return Object.keys(tree).sort(nameSort(NO_STACK)).map((stackK, si) => {
     const sBody = `stk-${si}`, prods = tree[stackK];
+    const sKey = `stk:${stackK}`, sOpen = STRAT_OPEN.has(sKey);
     const prodHtml = Object.keys(prods).sort(nameSort(NO_PROD)).map((prodK, pi) => {
       const pBody = `${sBody}-p${pi}`;
+      const pKey = `${sKey}::prod:${prodK}`, pOpen = STRAT_OPEN.has(pKey);
       const strats = prods[prodK].slice().sort((a, b) => String(a.createdTime || '').localeCompare(String(b.createdTime || '')));
       let arcs = '';
       strats.forEach((st, sti) => {
         const stBody = `${pBody}-s${sti}`;
+        const stKey = `strat:${st.id}`, stOpen = STRAT_OPEN.has(stKey);
         let inner = renderStrategyPlatforms(st, stBody);
         if (st.generalTitles && st.generalTitles.length) {
           inner += `<div style="margin:5px 0;">`
@@ -9832,29 +9869,32 @@ function renderStrategyTree(strategies) {
         if (!inner) inner = '<div class="empty" style="font-size:11px;">No slots yet.</div>';
         const totalSlots = (st.groupings || []).reduce((n, g) => n + (g.totalCount || 0), 0);
         // Strategy strip — the home for every strategy-level action. One per
-        // parallel generation. Collapsed by default like every other level.
+        // parallel generation. Collapsed by default, but its open/closed
+        // state persists across re-renders (STRAT_OPEN, keyed by st.id) so
+        // an in-progress strategy doesn't snap shut every time an action
+        // inside it (regenerate, assign types, write pillar) reloads the tree.
         arcs += `<div style="margin:5px 0 7px;">`
           + `<div style="display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-bottom:2px;">`
-          + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stBody}', this)">▶</span>`
-          + `<span style="font-size:11px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="toggleStrategyCollapse('${stBody}', this.previousElementSibling)">${esc(st.name)}</span>`
+          + `<span class="gs-arrow" style="font-size:8px;color:#e8ff47;flex-shrink:0;cursor:pointer;" onclick="toggleStrategyCollapse('${stBody}', this, '${stKey}')">${stOpen ? '▾' : '▶'}</span>`
+          + `<span style="font-size:11px;font-weight:700;color:#e8ff47;cursor:pointer;flex:1 1 120px;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" onclick="toggleStrategyCollapse('${stBody}', this.previousElementSibling, '${stKey}')">${esc(st.name)}</span>`
           + `<span style="font-size:9px;padding:1px 6px;border:1px solid #444;border-radius:8px;color:#fff;flex-shrink:0;">${esc(st.status)}</span>`
           + `<span style="font-size:9px;color:#555;flex-shrink:0;">${totalSlots} slot${totalSlots === 1 ? '' : 's'}</span>`
-          + stratActionBtns(st.id, st.name)
+          + stratActionBtns(st.id, st.name, false, st.platformOverride)
           + `</div>`
-          + `<div id="${stBody}" style="display:none;margin-top:2px;">${inner}</div>`
+          + `<div id="${stBody}" style="display:${stOpen ? 'block' : 'none'};margin-top:2px;">${inner}</div>`
           + `</div>`;
       });
       return `<div style="margin:4px 0 4px 8px;">`
-        + `<div style="font-size:11px;font-weight:700;color:#c4b5fd;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pBody}', this.querySelector('.gs-arrow'))">`
-        + `<span class="gs-arrow" style="font-size:7px;">▶</span><span>${esc(prodK)}</span>`
+        + `<div style="font-size:11px;font-weight:700;color:#c4b5fd;display:flex;align-items:center;gap:5px;cursor:pointer;" onclick="toggleStrategyCollapse('${pBody}', this.querySelector('.gs-arrow'), '${pKey}')">`
+        + `<span class="gs-arrow" style="font-size:7px;">${pOpen ? '▾' : '▶'}</span><span>${esc(prodK)}</span>`
         + `<span style="color:#666;font-weight:400;">${strats.length} strateg${strats.length === 1 ? 'y' : 'ies'}</span></div>`
-        + `<div id="${pBody}" style="display:none;margin-top:2px;">${arcs || '<div class="empty" style="font-size:11px;">No arcs.</div>'}</div>`
+        + `<div id="${pBody}" style="display:${pOpen ? 'block' : 'none'};margin-top:2px;">${arcs || '<div class="empty" style="font-size:11px;">No arcs.</div>'}</div>`
         + `</div>`;
     }).join('');
     return `<div style="margin:6px 0;padding-bottom:8px;border-bottom:1px solid #222;">`
-      + `<div style="font-size:12px;font-weight:800;color:#a78bfa;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="toggleStrategyCollapse('${sBody}', this.querySelector('.gs-arrow'))">`
-      + `<span class="gs-arrow" style="font-size:8px;">▶</span><span>${esc(stackK)}</span></div>`
-      + `<div id="${sBody}" style="display:none;margin-top:3px;">${prodHtml}</div>`
+      + `<div style="font-size:12px;font-weight:800;color:#a78bfa;display:flex;align-items:center;gap:6px;cursor:pointer;" onclick="toggleStrategyCollapse('${sBody}', this.querySelector('.gs-arrow'), '${sKey}')">`
+      + `<span class="gs-arrow" style="font-size:8px;">${sOpen ? '▾' : '▶'}</span><span>${esc(stackK)}</span></div>`
+      + `<div id="${sBody}" style="display:${sOpen ? 'block' : 'none'};margin-top:3px;">${prodHtml}</div>`
       + `</div>`;
   }).join('');
 }

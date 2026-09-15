@@ -14127,7 +14127,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       //   - fresh arc slots are created from the new plan.
       // Destructive to unattached slots only — confirmed client-side.
       if (body.action === "regenerateStrategySlots") {
-        const { growthStrategyId, guidance } = body;
+        const { growthStrategyId, guidance, strategyTitle, platformOverride: platformOverrideInput } = body;
         if (!growthStrategyId) return json({ error: "growthStrategyId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -14137,10 +14137,15 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const stratPage = await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, { headers: hdr }).then(r => r.json());
         if (!stratPage.properties) return json({ error: stratPage.message || "Growth Strategy not found" }, 404);
         const sp0 = stratPage.properties;
-        const stratName = (sp0["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
+        const stratName = (strategyTitle || '').trim() || (sp0["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled Strategy";
         const productId = (sp0.Product?.relation || [])[0]?.id?.replace(/-/g,"") || null;
         const campaignId = (sp0.Campaign?.relation || [])[0]?.id?.replace(/-/g,"") || null;
-        const platformOverride = (sp0["Platform Override"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        // A rerun with an explicit platform override in the modal (same field
+        // the "new strategy" modal has) honors it, same as generateGrowthStrategy.
+        // With no override supplied, this falls back to the prior "always drop
+        // any stored override, spread across platforms" behavior.
+        const priorStoredOverride = (sp0["Platform Override"]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const platformOverride = (platformOverrideInput || '').trim();
         if ((sp0["Parent Strategy"]?.relation || []).length) return json({ error: "This is a divergent child strategy — regenerate its parent instead (divergent split is retired)." }, 400);
 
         const [productPage, prodResearch, campResearchRaw, campPage, allPostTypeRows, allPlatformRows, existingSlots] = await Promise.all([
@@ -14177,16 +14182,19 @@ Return ONLY this JSON object, no other text, no markdown fences:
         allPlatformRows.forEach(p => { const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join(""); if (nm && !platformIdByName.has(nm.toLowerCase())) platformIdByName.set(nm.toLowerCase(), p.id.replace(/-/g,"")); });
         const platformCatalog = Array.from(new Set(allPlatformRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean)));
 
-        // Regenerate deliberately CLEARS any stored Platform Override — it
-        // is legacy cruft from the single-platform-per-grouping era and
-        // directly contradicts the cross-platform-arc convention the
-        // operator now wants. (New strategies from the 🚀 modal still honor
-        // an override the operator picks there for that run.)
-        const priorOverrideNote = platformOverride
-          ? `\nNOTE: this strategy previously had a "${platformOverride}" platform override — it is being dropped. Do spread these arcs across platforms.\n`
+        // A fresh platform override supplied on this rerun (same field the
+        // "new strategy" modal has) is honored — forces every slot onto it,
+        // same as generateGrowthStrategy. With none supplied, any PRIOR
+        // stored override is deliberately dropped (legacy cruft from the
+        // single-platform-per-grouping era, contradicts the cross-platform-
+        // arc convention) so the plan spreads across platforms as usual.
+        const platformNote = platformOverride
+          ? `\nPLATFORM OVERRIDE (operator-specified): force every slot in this strategy onto "${platformOverride}" — set every slot's platform, and every arc's recommendedPlatform, to it. This overrides the cross-platform-arc convention below.\n`
+          : priorStoredOverride
+          ? `\nNOTE: this strategy previously had a "${priorStoredOverride}" platform override — it is being dropped. Do spread these arcs across platforms.\n`
           : '';
         const prompt = `You are re-planning the content growth strategy "${stratName}" as 3-6 DISTRIBUTION ARCS.
-${priorOverrideNote}
+${platformNote}
 Spread each arc's slots across the platforms that fit each piece.
 
 WHAT AN ARC IS: ONE theme/beat taken across the platforms it needs — NOT a single-format series. A long-form ANCHOR (Blog / YouTube / Email), THEN 2-4 derivative pieces repackaging it for other platforms (Instagram carousel, TikTok/Reels cut, LinkedIn post, Threads/X thread, Reddit post), THEN usually a conversion piece (CTA / Direct Sales). Each arc's slots MUST span 2-3+ platforms unless the product only lives on one channel (pure Etsy listing → "etsy" everywhere). Order slots anchor → cuts → conversion.
@@ -14329,12 +14337,15 @@ Return ONLY this JSON, no other text, no fences:
         // value (Notion rejects option names containing a comma) must not
         // block clearing the stale Platform Override / Summary. Names are
         // comma-stripped for the same reason.
+        const renameProps = {};
+        if ((strategyTitle || '').trim()) renameProps["Strategy Name"] = { title: [{ type: "text", text: { content: strategyTitle.trim().slice(0, 200) } }] };
         await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: {
             "Summary": { rich_text: rtBlock(String(plan.summary || '').slice(0, 1990)) },
             "Grouping Count": { number: groupings.length },
-            "Platform Override": { rich_text: [] },
+            "Platform Override": { rich_text: rtBlock(platformOverride) },
+            ...renameProps,
           } }),
         }).catch(() => {});
         await fetch(`https://api.notion.com/v1/pages/${dash(growthStrategyId)}`, {
@@ -14347,7 +14358,7 @@ Return ONLY this JSON, no other text, no fences:
         // Same focused platform pass generateGrowthStrategy runs — the inline
         // per-slot platform picks above are unreliable.
         const platformPass = await assignSlotPlatformsForStrategy(hdr, env, growthStrategyId).catch(() => null);
-        return json({ success: true, archived: disposable.length, created, kept: kept.length, groupingCount: groupings.length, platformPass });
+        return json({ success: true, archived: disposable.length, created, kept: kept.length, groupingCount: groupings.length, platformPass, strategyName: stratName });
       }
 
       if (body.action === "updateCampaignPlatforms") {
@@ -18914,6 +18925,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
             parentId,
             name: (s.properties?.["Strategy Name"]?.title || []).map(t => t.plain_text).join("") || "Untitled",
             status: s.properties?.Status?.select?.name || "Draft",
+            platformOverride: (s.properties?.["Platform Override"]?.rich_text || []).map(t => t.plain_text).join(""),
             productId,
             productName: productId ? (productNameById[productId] || "Untitled Product") : null,
             productStack: productId ? (productStackById[productId] || "") : "",
