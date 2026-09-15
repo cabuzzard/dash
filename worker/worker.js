@@ -24905,6 +24905,21 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ success: true, url, prop: SLOT[kind].prop, republish });
       }
 
+      // ── republishBlogThumbnail ── manual trigger for the same single-
+      // asset push saveOfferImage now runs automatically on a fresh blog
+      // thumbnail — lets an already-affected post (thumbnail generated
+      // before this fix existed, never made it to the live page) be fixed
+      // without regenerating the image or running the timeout-prone bulk
+      // "Republish to Hub" sweep. { assetId }
+      if (body.action === "republishBlogThumbnail") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const result = await republishBlogThumbnailToLiveSite(env, hdr, assetId);
+        if (result.error) return json({ error: result.error }, 500);
+        return json(result);
+      }
+
       // ── getImageHistory: every past render for one asset+kind, newest
       // first (see the history-append above saveOfferImage's return).
       // { assetId, kind }
