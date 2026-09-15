@@ -1383,7 +1383,9 @@ function renderKeywordsAndIdeas() {
   });
   left.innerHTML = l;
 
-  // ── right: Main Stack + Cluster Ideas (staged clusters only) ──────────
+  // ── right: Main Stack + Cluster Ideas (both staged AND committed clusters
+  // support this — generateClusterProductStacks/removeClusterProductStack
+  // handle either kind server-side) ──────────
   let r = `<div class="kwgroup" data-ckey="pi-main" style="--kwc:#8ab4f8;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Main Stack <span style="font-weight:400;text-transform:none;color:var(--ink3);">— off Master</span>
       <span class="kwbtns">
@@ -1394,10 +1396,10 @@ function renderKeywordsAndIdeas() {
     <div class="kwgbody" id="r-prodideas">${renderIdeaLines(MAIN_PRODUCT_IDEAS_TEXT)}</div>
   </div>`;
 
-  staged.forEach(c => {
+  const clusterIdeaGroup = (c, statusLabel) => {
     const has = c.products && c.products.length;
-    r += `<div class="clusterideagrp" data-ckey="pi-${esc(c.id)}">
-      <div class="cighd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas</span>
+    return `<div class="clusterideagrp" data-ckey="pi-${esc(c.id)}">
+      <div class="cighd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— cluster ideas${statusLabel}</span>
         <span class="kwbtns">
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           ${has ? `<button class="iconbtn" title="Clear all proposed ideas for this cluster" onclick="event.stopPropagation();clearClusterIdeas('${esc(c.id)}', this)">✕</button>` : ''}
@@ -1406,7 +1408,10 @@ function renderKeywordsAndIdeas() {
       </div>
       <div class="cibody">${has ? renderIdeaCards(c.products, c.id, c.name) : '<div class="loadnote">No product ideas proposed yet — 💡 above.</div>'}</div>
     </div>`;
-  });
+  };
+
+  committed.forEach(c => { r += clusterIdeaGroup(c, ' — committed'); });
+  staged.forEach(c => { r += clusterIdeaGroup(c, ''); });
   right.innerHTML = r;
   applyCollapseState(left);
   applyCollapseState(right);
@@ -1539,33 +1544,47 @@ async function runGenerateClusters(btn) {
   catch (e) { alert('Generate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
+// Cluster idea actions work against a staged cluster (KV) OR a committed
+// one (real 🔑 Keyword Clusters row) — generateClusterProductStacks and
+// removeClusterProductStack both figure out which kind clusterId is
+// server-side and return whichever of {staged, committed} changed; the
+// other array comes back undefined and is left as-is here.
+function findAnyCluster(clusterId) {
+  return (SEO_CLUSTERS.staged || []).find(x => x.id === clusterId) || (SEO_CLUSTERS.committed || []).find(x => x.id === clusterId);
+}
 async function runProposeClusterProducts(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'researching…';
   try {
     const r = await w('generateClusterProductStacks', { campaignId: CAMPAIGN_ID, clusterId });
-    SEO_CLUSTERS.staged = r.staged || [];
+    if (r.staged) SEO_CLUSTERS.staged = r.staged;
+    if (r.committed) SEO_CLUSTERS.committed = r.committed;
     renderKeywordsAndIdeas();
   } catch (e) { alert('Propose failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
 async function dismissClusterIdea(clusterId, productId, btn) {
   btn.disabled = true;
-  try { const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
-  catch (e) { alert('Dismiss failed: ' + e.message); btn.disabled = false; }
+  try {
+    const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId });
+    if (r.staged) SEO_CLUSTERS.staged = r.staged;
+    if (r.committed) SEO_CLUSTERS.committed = r.committed;
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Dismiss failed: ' + e.message); btn.disabled = false; }
 }
 // Clear every proposed product idea for one cluster at once — the
 // section-level counterpart to dismissClusterIdea (which drops just one).
 // No bulk server action exists, so this dismisses each in turn against
 // the same real removeClusterProductStack call.
 async function clearClusterIdeas(clusterId, btn) {
-  const c = SEO_CLUSTERS.staged.find(x => x.id === clusterId);
+  const c = findAnyCluster(clusterId);
   if (!c || !c.products || !c.products.length) return;
   if (!confirm(`Clear all ${c.products.length} proposed product idea(s) for "${c.name}"?`)) return;
   btn.disabled = true;
   try {
     for (const p of c.products.slice()) {
       const r = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId, productId: p.id });
-      SEO_CLUSTERS.staged = r.staged || SEO_CLUSTERS.staged;
+      if (r.staged) SEO_CLUSTERS.staged = r.staged;
+      if (r.committed) SEO_CLUSTERS.committed = r.committed;
     }
     renderKeywordsAndIdeas();
   } catch (e) { alert('Clear failed: ' + e.message); btn.disabled = false; }
@@ -1613,7 +1632,7 @@ async function runCreateProductFromIdea(name, description, stack, kind, a, b) {
       renderKeywordsAndIdeas();
     } else if (kind === 'cluster') {
       const rr = await w('removeClusterProductStack', { campaignId: CAMPAIGN_ID, clusterId: a, productId: b }).catch(() => null);
-      if (rr) SEO_CLUSTERS.staged = rr.staged || SEO_CLUSTERS.staged;
+      if (rr) { if (rr.staged) SEO_CLUSTERS.staged = rr.staged; if (rr.committed) SEO_CLUSTERS.committed = rr.committed; }
       renderKeywordsAndIdeas();
     }
   } catch (e) { alert('Create failed: ' + e.message); }

@@ -25623,9 +25623,11 @@ Call submit_keyword_cluster with your result.`;
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
         let staged = [];
         try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+        let commProducts = {};
+        try { commProducts = (await env.TRADES.get(`seoclusters:commproducts:${norm(campaignId)}`, "json")) || {}; } catch (e) {}
         const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
         const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
-        const committed = rows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url }));
+        const committed = rows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url, products: commProducts[id] || [] }; });
         return json({ success: true, staged, committed });
       }
 
@@ -25949,8 +25951,17 @@ Call submit_keyword_cluster with your result.`;
         let staged = [];
         try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
         const idx = staged.findIndex(c => c.id === clusterId);
-        if (idx < 0) return json({ error: "Staged cluster not found — it may already be committed or regenerated" }, 404);
-        const cluster = staged[idx];
+        const isStaged = idx >= 0;
+        let cluster, committedRows = null, rtx = null;
+        if (isStaged) {
+          cluster = staged[idx];
+        } else {
+          committedRows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
+          rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+          const page = committedRows.find(r => r.id.replace(/-/g, "") === norm(clusterId));
+          if (!page) return json({ error: "Cluster not found — it may have been archived" }, 404);
+          cluster = { name: (page.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(page, "Cluster Keywords"), rationale: rtx(page, "Rationale") };
+        }
 
         const productRows = await notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
         const productNames = productRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
@@ -26029,7 +26040,7 @@ Call submit_product_stack_proposals with your result.`;
         const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_product_stack_proposals");
         if (!toolUse || !toolUse.input?.products?.length) return json({ error: "Claude did not return proposals — try again" }, 502);
 
-        cluster.products = toolUse.input.products.map((p, i) => ({
+        const products = toolUse.input.products.map((p, i) => ({
           id: `p${i}`,
           name: String(p.name || "").slice(0, 150),
           platform: String(p.platform || "").slice(0, 100),
@@ -26037,9 +26048,20 @@ Call submit_product_stack_proposals with your result.`;
           angle: String(p.angle || "").slice(0, 500),
           keywords: String(p.keywords || "").slice(0, 1000),
         }));
-        staged[idx] = cluster;
-        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
-        return json({ success: true, staged });
+
+        if (isStaged) {
+          cluster.products = products;
+          staged[idx] = cluster;
+          await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+          return json({ success: true, staged });
+        }
+
+        let commProducts = {};
+        try { commProducts = (await env.TRADES.get(`seoclusters:commproducts:${norm(campaignId)}`, "json")) || {}; } catch (e) {}
+        commProducts[norm(clusterId)] = products;
+        await env.TRADES.put(`seoclusters:commproducts:${norm(campaignId)}`, JSON.stringify(commProducts));
+        const committed = committedRows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url, products: id === norm(clusterId) ? products : (commProducts[id] || []) }; });
+        return json({ success: true, committed });
       }
 
       // Dismiss one proposed product off a staged cluster — an idea rejected,
@@ -26048,13 +26070,25 @@ Call submit_product_stack_proposals with your result.`;
         const { campaignId, clusterId, productId } = body;
         if (!campaignId || !clusterId || !productId) return json({ error: "campaignId, clusterId and productId required" }, 400);
         const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
         let staged = [];
         try { staged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
         const idx = staged.findIndex(c => c.id === clusterId);
-        if (idx < 0) return json({ error: "Staged cluster not found" }, 404);
-        staged[idx].products = (staged[idx].products || []).filter(p => p.id !== productId);
-        await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
-        return json({ success: true, staged });
+        if (idx >= 0) {
+          staged[idx].products = (staged[idx].products || []).filter(p => p.id !== productId);
+          await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+          return json({ success: true, staged });
+        }
+        let commProducts = {};
+        try { commProducts = (await env.TRADES.get(`seoclusters:commproducts:${norm(campaignId)}`, "json")) || {}; } catch (e) {}
+        const cid = norm(clusterId);
+        if (!commProducts[cid]) return json({ error: "Cluster not found" }, 404);
+        commProducts[cid] = commProducts[cid].filter(p => p.id !== productId);
+        await env.TRADES.put(`seoclusters:commproducts:${norm(campaignId)}`, JSON.stringify(commProducts));
+        const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const committed = rows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url, products: commProducts[id] || [] }; });
+        return json({ success: true, committed });
       }
 
       // -- saveImageSpec — freeze the spec text the card is showing onto the
