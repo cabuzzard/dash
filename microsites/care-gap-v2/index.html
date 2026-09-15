@@ -202,8 +202,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 <div class="wrap">
   <div class="hdr">
     <div class="hdrtop">
-      <div class="eyebrow">Care Gap Template · real, live-wired successor to New Template</div>
+      <div class="eyebrow">Campaign Template · real, live-wired successor to New Template</div>
       <div class="hdrctrls">
+        <select id="campaignPicker" title="Switch campaign — reloads this page against a different campaign" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink);"><option>Loading campaigns…</option></select>
         <details class="artnav">
           <summary>📂 Jump to…</summary>
           <div class="artnav-menu">
@@ -218,7 +219,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
     </div>
     <h1>Care Gap Template</h1>
-    <p class="sub">Same tabbed cascade as the Master/New Template artifacts, but real: real PIN auth, real worker calls, real Notion writes against the live Care Gap campaign — no simulated buttons. Notes still work the same way: click 📝 on any card or tab, jot a thought, then tell Claude "I submitted my notes."</p>
+    <p class="sub">Same tabbed cascade as the Master/New Template artifacts, but real: real PIN auth, real worker calls, real Notion writes against whichever campaign is picked above — no simulated buttons. Notes still work the same way: click 📝 on any card or tab, jot a thought, then tell Claude "I submitted my notes."</p>
 
     <div class="tabbar" id="tabbar">
       <button class="tab active" data-tab="keywords" onclick="switchTo('keywords')">Keywords</button><span class="tarrow">→</span>
@@ -231,7 +232,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   </div>
 
   <div class="livebanner">
-    <b>Real, live, wired to the actual worker.</b> Every field below loads from the real Care Gap Notion records; every ⟳/↻ button calls a real worker action that writes back to Notion. Where a field has no dedicated regenerate action yet, it's shown read-only rather than faked.
+    <b>Real, live, wired to the actual worker.</b> Every field below loads from this campaign's real Notion records; every ⟳/↻ button calls a real worker action that writes back to Notion. Where a field has no dedicated regenerate action yet, it's shown read-only rather than faked.
   </div>
 
   <div class="legend">
@@ -967,7 +968,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: METHOD ══════════════════════ -->
   <div class="panel" data-panel="method">
     <div class="stage-hd"><h2>Method</h2><span class="stagetag">stage 5 · à la carte</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-method','Method tab','method')">📝 Tab note</button></div>
-    <p class="stage-sub">Care Gap's real methods tagged "In Master Flow", via <code>getHubMethodMatrix</code> (scoped client-side to this campaign's own method IDs).</p>
+    <p class="stage-sub">This campaign's real methods tagged "In Master Flow", via <code>getHubMethodMatrix</code> (scoped client-side to this campaign's own method IDs, from <code>getCampaignHeader</code>).</p>
     <section class="card" data-ckey="card-method-list">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>In-flow methods</h3><span class="tag fresh">live</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-method-list','In-flow methods','method')">📝</button></div>
       <div class="card-body" id="methodList">
@@ -976,36 +977,107 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </section>
   </div>
 
-  <footer>Care Gap Template — real microsite, live data. Notes saved to the worker as you go.</footer>
+  <footer>Campaign Template — real microsite, live data. Notes saved to the worker as you go.</footer>
 </div>
 
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-const CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807";
-const RESEARCH_ID = "36d1f7d3a4bb81109415ed2639162893";
-// Care Gap's real Methods relation (verified against Notion directly) — used
-// to scope getHubMethodMatrix's all-campaign column list down to this
-// campaign's own methods, since that action has no campaignId filter.
-const CARE_GAP_METHOD_IDS = new Set([
-  "3911f7d3a4bb81dcb27ff738d9418d6f", // inbound (archived)
-  "3cf1f7d3a4bb81b4b5a6eb7821cc462e", // Offer – Content Hub
-  "3d01f7d3a4bb81b88d11ec72ce72e732", // Blog - SEO - News
-  "3d11f7d3a4bb81a2916bf5a4d07d86b6", // Hook Posts (archived)
-  "3ca1f7d3a4bb81ffa775e5f3e0426f8a", // single post - main social media
-  "3d61f7d3a4bb81d59083da4af143c3ec", // Content Hub (shared global method)
-]);
-const IN_FLOW_METHOD_IDS = new Set([
-  "3cf1f7d3a4bb81b4b5a6eb7821cc462e", // Offer – Content Hub
-  "3d01f7d3a4bb81b88d11ec72ce72e732", // Blog - SEO - News
-  "3ca1f7d3a4bb81ffa775e5f3e0426f8a", // single post - main social media
-  "3d61f7d3a4bb81d59083da4af143c3ec", // Content Hub
-]);
-const METHOD_NAMES = {
-  "3cf1f7d3a4bb81b4b5a6eb7821cc462e": "Offer – Content Hub",
-  "3d01f7d3a4bb81b88d11ec72ce72e732": "Blog - SEO - News",
-  "3ca1f7d3a4bb81ffa775e5f3e0426f8a": "single post - main social media",
-  "3d61f7d3a4bb81d59083da4af143c3ec": "Content Hub",
-};
+// ── Changeable head ──────────────────────────────────────────────────
+// This template is campaign-agnostic (operator direction 2026-09-14): the
+// campaign is picked via ?campaignId= in the URL — never an in-page live
+// data swap, always a REAL navigation (see the campaign picker below) so a
+// campaign switch is always a clean reload. No param = Care Gap, the
+// campaign this template was built and proven against — keeps the
+// existing bookmarked URL working unchanged.
+const DEFAULT_CAMPAIGN_ID = "34b1f7d3a4bb81b6a8a8fee04df94807"; // Care Gap
+const CAMPAIGN_ID = new URLSearchParams(location.search).get('campaignId') || DEFAULT_CAMPAIGN_ID;
+// Populated by resolveCampaignContext() (fired immediately below, before PIN
+// auth) via the new getCampaignHeader/getResearch worker actions — replaces
+// what used to be Care-Gap-specific hardcoded constants:
+//   RESEARCH_ID           — this campaign's own Research record id, lazily
+//                            created via createResearchForCampaign if the
+//                            campaign has never had one (2026-09-14 operator
+//                            direction: "lazy generation... first time a new
+//                            campaign is loaded").
+//   CAMPAIGN_NAME          — for the page title/h1/pin-mark.
+//   HUB_SLUG               — this campaign's HUB_SITES slug, or null if it
+//                            isn't a hub campaign; fed to generateResearch
+//                            Design/Palette/Fonts as `slug` (optional server-
+//                            side — only gates an optional history-log
+//                            append, never blocks generation).
+//   CAMPAIGN_METHOD_IDS    — every method id attached to this campaign
+//                            (Campaign page's own "Methods" relation) —
+//                            scopes getHubMethodMatrix's all-campaign column
+//                            list down to this campaign's own methods.
+//   IN_FLOW_METHOD_IDS/METHOD_NAMES — same set, for the method-picker
+//                            dropdowns (Bulk Choose Method / Generate Title).
+let RESEARCH_ID = null;
+let CAMPAIGN_NAME = 'Campaign';
+let HUB_SLUG = null;
+let CAMPAIGN_METHOD_IDS = new Set();
+let IN_FLOW_METHOD_IDS = new Set();
+let METHOD_NAMES = {};
+let _campaignContextPromise = null;
+function resolveCampaignContext() {
+  if (_campaignContextPromise) return _campaignContextPromise;
+  _campaignContextPromise = (async () => {
+    const [header, researchResp] = await Promise.all([
+      w('getCampaignHeader', { campaignId: CAMPAIGN_ID }).catch(() => null),
+      w('getResearch', { campaignId: CAMPAIGN_ID }).catch(() => null),
+    ]);
+    if (header) {
+      CAMPAIGN_NAME = header.name || 'Campaign';
+      HUB_SLUG = header.hubSlug || null;
+      const methods = header.methods || [];
+      CAMPAIGN_METHOD_IDS = new Set(methods.map(m => m.id));
+      IN_FLOW_METHOD_IDS = new Set(methods.filter(m => m.inMasterFlow).map(m => m.id));
+      METHOD_NAMES = {};
+      methods.forEach(m => { METHOD_NAMES[m.id] = m.name; });
+      document.title = CAMPAIGN_NAME + ' Template';
+      const pm = document.querySelector('.pin-mark'); if (pm) pm.innerHTML = esc(CAMPAIGN_NAME) + ' <span style="color:#e8ff47">·</span> Admin';
+      const h1 = document.querySelector('.hdr h1'); if (h1) h1.textContent = CAMPAIGN_NAME + ' Template';
+    }
+    let researchId = researchResp && researchResp.research ? researchResp.research.id : null;
+    if (!researchId) {
+      try {
+        const created = await w('createResearchForCampaign', { campaignId: CAMPAIGN_ID, campaignName: CAMPAIGN_NAME });
+        researchId = created && created.research ? created.research.id : null;
+      } catch (e) { /* best-effort — tabs that need a Research record will surface their own error */ }
+    }
+    RESEARCH_ID = researchId;
+  })();
+  return _campaignContextPromise;
+}
+// NOT fired here — every worker action requires a valid session token (the
+// worker's blanket "all other actions require a valid session token" gate),
+// so this can only run after PIN auth succeeds. Called from init() instead.
+async function populateCampaignPicker() {
+  const sel = document.getElementById('campaignPicker');
+  if (!sel) return;
+  try {
+    const r = await w('getHubCampaignsList', {});
+    const campaigns = r.campaigns || [];
+    sel.innerHTML = campaigns.map(c => `<option value="${esc(c.campaignId)}"${c.campaignId === CAMPAIGN_ID ? ' selected' : ''}>${esc(c.name)}</option>`).join('')
+      || '<option>No hub campaigns found</option>';
+    if (!campaigns.some(c => c.campaignId === CAMPAIGN_ID)) {
+      sel.insertAdjacentHTML('afterbegin', `<option value="${esc(CAMPAIGN_ID)}" selected>${esc(CAMPAIGN_NAME)} (current)</option>`);
+    }
+  } catch (e) {
+    sel.innerHTML = '<option>Campaigns unavailable</option>';
+  }
+}
+function onCampaignPickerChange(sel) {
+  const id = sel.value;
+  if (!id || id === CAMPAIGN_ID) return;
+  location.href = location.pathname + '?campaignId=' + encodeURIComponent(id);
+}
+// The listener is wired at DOMContentLoaded (no token needed just to
+// register a handler); the actual list fetch (populateCampaignPicker,
+// called from init()) waits for PIN auth like every other worker call.
+document.addEventListener('DOMContentLoaded', () => {
+  const sel = document.getElementById('campaignPicker');
+  if (sel) sel.addEventListener('change', () => onCampaignPickerChange(sel));
+});
 
 // ── PIN auth — same pattern as every other microsite (hard-grind) ──────
 const REMEMBER_KEY = 'hermes_remember_caregapv2';
@@ -1165,7 +1237,7 @@ async function loadNotes() {
   catch (e) {}
 }
 function submitNotes() {
-  alert('Notes are already saved. Tell Claude: "I submitted my notes on the Care Gap Template."');
+  alert(`Notes are already saved. Tell Claude: "I submitted my notes on the ${CAMPAIGN_NAME} Template."`);
 }
 
 // ══════════════════════ KEYWORDS TAB — unified nested keywords/ideas ══════
@@ -1506,7 +1578,7 @@ async function runProductIdeas(steer, omit) {
 // list once it's a real product — 'main' (a = line index in the flat
 // Main Stack text) or 'cluster' (a = clusterId, b = the idea's own id).
 async function runCreateProductFromIdea(name, description, stack, kind, a, b) {
-  if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack}) in the Care Gap campaign?`)) return;
+  if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack}) in the ${CAMPAIGN_NAME} campaign?`)) return;
   try {
     const r = await w('createProduct', { title: name, description, stack, campaignId: CAMPAIGN_ID, status: 'In Development' });
     alert(`Created — ${r.name}. Opening it in Notion.`);
@@ -1838,7 +1910,7 @@ async function loadDesignTab() {
   }
 }
 async function runRegenDesign(steer, omit) {
-  const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: 'care-gap' });
+  const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: HUB_SLUG || undefined });
   DESIGN_STAGE.register = r.design.register;
   DESIGN_STAGE.photography = r.design.photography;
   DESIGN_STAGE.avoid = r.design.avoid;
@@ -1873,7 +1945,7 @@ function clearPaletteImage() {
   const input = document.getElementById('paletteImgInput'); if (input) input.value = '';
 }
 async function runRegenPalette(steer, omit) {
-  const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, image: PALETTE_IMAGE || undefined, stage: true, slug: 'care-gap' });
+  const r = await w('generateResearchPalette', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, image: PALETTE_IMAGE || undefined, stage: true, slug: HUB_SLUG || undefined });
   DESIGN_STAGE.palette = r.palette;
   renderDesignPalette();
 }
@@ -1889,7 +1961,7 @@ async function saveStagedPalette() {
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function runRegenFonts(steer, omit) {
-  const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: 'care-gap' });
+  const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: HUB_SLUG || undefined });
   DESIGN_STAGE.fonts = r.fonts;
   renderDesignFonts();
 }
@@ -2961,7 +3033,7 @@ async function loadMethods() {
   const el = document.getElementById('methodList');
   try {
     const r = await w('getHubMethodMatrix');
-    const cols = (r.columns || []).filter(c => c.inMasterFlow && CARE_GAP_METHOD_IDS.has(c.id));
+    const cols = (r.columns || []).filter(c => c.inMasterFlow && CAMPAIGN_METHOD_IDS.has(c.id));
     if (!cols.length) { el.innerHTML = '<div class="loadnote">No methods tagged "In Master Flow" yet — tag them from the dashboard\'s Hub Method Matrix.</div>'; return; }
     el.innerHTML = cols.map(c => `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(c.name)}">${esc(c.name)}</span>
       <span class="idea-btns">
@@ -4159,8 +4231,14 @@ function applyTextEditorAndSave() {
   save(text);
 }
 
-function init() {
+async function init() {
   applyCollapseState();
+  // Every worker action needs a valid session token, so campaign-context
+  // resolution can only start here, post-auth (not fired eagerly at page
+  // load) — everything below reads RESEARCH_ID / CAMPAIGN_METHOD_IDS /
+  // CAMPAIGN_NAME it resolves.
+  await resolveCampaignContext();
+  populateCampaignPicker();
   loadOmitList();
   loadResearch();
   loadClusters();

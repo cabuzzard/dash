@@ -23900,6 +23900,57 @@ Return ONLY a JSON object with these exact keys:
         return json({ success: true, research: { id: result.id.replace(/-/g,""), notes: "" } });
       }
 
+      // ── getCampaignHeader ──
+      // Everything a campaign-agnostic microsite template (the "changeable
+      // head" — one shared tool, campaign picked via ?campaignId= and a real
+      // navigation to switch, per operator direction 2026-09-14) needs to
+      // bootstrap itself for whichever campaign was picked: the campaign's
+      // own display name, its hub slug if it has one (for the design/
+      // palette/fonts generation calls that need a HUB_SITES slug — those
+      // used to hardcode "care-gap"), and its own attached Methods (the
+      // Campaign page's "Methods" relation — the SAME relation
+      // propagateMethodToCampaigns writes to), replacing what used to be a
+      // hardcoded per-campaign method-id allowlist baked into the page.
+      if (body.action === "getCampaignHeader") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const norm = s => String(s || "").replace(/-/g, "");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
+        if (!campPage.properties) return json({ error: campPage.message || "Campaign not found" }, 404);
+        const name = (campPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Campaign";
+        const hub = HUB_SITES.find(h => norm(h.campaignId) === norm(campaignId)) || null;
+        const methodIds = (campPage.properties?.Methods?.relation || []).map(r => norm(r.id));
+        let methods = [];
+        if (methodIds.length) {
+          const pages = await Promise.all(methodIds.map(id =>
+            fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null)));
+          methods = pages.filter(Boolean).map(p => ({
+            id: p.id.replace(/-/g,""),
+            name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Method",
+            inMasterFlow: !!p.properties?.["In Master Flow"]?.checkbox,
+          }));
+        }
+        return json({
+          name,
+          hubSlug: hub ? hub.slug : null,
+          microsite: campPage.properties?.["microsite"]?.url || null,
+          liveSite: campPage.properties?.["live site"]?.url || null,
+          methods,
+        });
+      }
+
+      // ── getHubCampaignsList ──
+      // Feeds the "changeable head" campaign picker (the shared care-gap-v2
+      // template's dropdown) — starts scoped to the hub-registered campaigns
+      // in HUB_SITES per operator direction 2026-09-14 ("start with the hub
+      // campaigns in matrix"); the template itself is campaign-agnostic, so
+      // this list can grow to any campaign later without a template change.
+      if (body.action === "getHubCampaignsList") {
+        return json({ campaigns: HUB_SITES.map(h => ({ campaignId: h.campaignId, name: h.name, slug: h.slug })) });
+      }
+
       // ── getProductResearch ──
       if (body.action === "getProductResearch") {
         const { productId, researchId } = body;
@@ -27647,6 +27698,28 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { [notionField]: { rich_text: [{ type: "text", text: { content: value || "" } }] } } })
+        });
+        const result = await resp.json();
+        if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
+        return json({ success: true });
+      }
+
+      // ── setCampaignMicrositeUrl ──
+      // Points a campaign's "microsite" URL property (the STE column source
+      // — see getTodayCampaigns/index.html) at wherever its admin microsite
+      // actually lives. Added for the "changeable head" rollout (2026-09-14):
+      // pointing a hub campaign's microsite URL at the shared care-gap-v2
+      // tool with its own ?campaignId= instead of a standalone per-campaign
+      // copy. A plain URL-property write — never touches which file that
+      // URL happens to resolve to.
+      if (body.action === "setCampaignMicrositeUrl") {
+        const { campaignId, url } = body;
+        if (!campaignId || !url) return json({ error: "campaignId and url required" }, 400);
+        const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "microsite": { url } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
