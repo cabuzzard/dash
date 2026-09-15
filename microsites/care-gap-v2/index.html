@@ -432,6 +432,34 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Rerun Strategy — same fields as generating a new strategy (Title /
+       Platform Focus / Guidance), pre-filled from the strategy's current
+       values, but rewrites THIS existing strategy in place (regenerateStrategySlots)
+       re-grounded against current product research + Main Keywords. -->
+  <div class="modaloverlay" id="rerunStrategyModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Rerun Strategy</div>
+      <div class="mfield" id="rerunStratLabel"></div>
+      <div style="font-size:11px;color:var(--stale);margin-bottom:6px;">Every slot WITHOUT an attached title/asset is archived and replaced with fresh arcs. Slots with published content are kept. Can't be undone.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Title <span style="color:var(--ink3);">(optional — leave as-is to keep the current name)</span>
+          <input type="text" id="rerunTitleInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="e.g. Q3 TikTok Push">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Platform Focus <span style="color:var(--ink3);">(optional — leave blank to spread across platforms, clearing any prior focus)</span>
+          <input type="text" id="rerunPlatformInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="e.g. TikTok, LinkedIn...">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Directions / keywords <span style="color:var(--ink3);">— steers the whole re-plan; every regenerated slot angle follows this</span>
+          <textarea id="rerunGuidance" rows="4" style="width:100%;margin-top:4px;" placeholder="e.g. lean hard on the aquarium-care angle; target owners of vacation rentals specifically. Avoid discount hooks."></textarea>
+        </label>
+      </div>
+      <div id="rerunStratResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeRerunStrategyModal()">Cancel</button>
+        <button class="btn primary" id="rerunStratBtn" onclick="runRerunStrategy()">🔁 Rerun</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Publish modal — click an asset's status badge to open. Furnishes every
        copyable "sub-asset" field the asset actually carries so it can be
        delivered to whatever platform it's geared toward; sections below
@@ -2153,20 +2181,23 @@ function buildStrategyTree(strategies) {
           platform: plats.length ? plats.join(' + ') : 'No platform',
           groupingName: g.name || 'Untitled',
           groupingMeta: `${g.filledCount}/${g.totalCount} filled`,
-          strategyId: s.id, strategyName: s.name, strategyStatus: s.status,
+          strategyId: s.id, strategyName: s.name, strategyStatus: s.status, strategyPlatformOverride: s.platformOverride || '',
           slot,
         });
       });
     });
   });
-  const { groups: byStack, order: stackOrder } = groupByStack(rows, r => r.stack);
+  const { groups: byStack, order: stackOrderRaw } = groupByStack(rows, r => r.stack);
+  const stackOrder = sortGroupOrder(stackOrderRaw, 'No Stack');
   return stackOrder.map(stack => {
-    const { groups: byProduct, order: productOrder } = groupByStack(byStack[stack], r => r.product);
+    const { groups: byProduct, order: productOrderRaw } = groupByStack(byStack[stack], r => r.product);
+    const productOrder = sortGroupOrder(productOrderRaw, 'No Product');
     return {
       name: stack,
       count: byStack[stack].length,
       products: productOrder.map(product => {
-        const { groups: byPlatform, order: platformOrder } = groupByStack(byProduct[product], r => r.platform);
+        const { groups: byPlatform, order: platformOrderRaw } = groupByStack(byProduct[product], r => r.platform);
+        const platformOrder = sortGroupOrder(platformOrderRaw, 'No platform');
         return {
           name: product,
           platforms: platformOrder.map(platform => {
@@ -2176,7 +2207,7 @@ function buildStrategyTree(strategies) {
               arcs: arcOrder.map(key => {
                 const arcRows = byArc[key];
                 const first = arcRows[0];
-                return { name: first.groupingName, meta: first.groupingMeta, strategyId: first.strategyId, strategyName: first.strategyName, strategyStatus: first.strategyStatus, rows: arcRows };
+                return { name: first.groupingName, meta: first.groupingMeta, strategyId: first.strategyId, strategyName: first.strategyName, strategyStatus: first.strategyStatus, strategyPlatformOverride: first.strategyPlatformOverride, rows: arcRows };
               }),
             };
           }),
@@ -2200,20 +2231,25 @@ function renderStrategyProductGroup(stackName, prod) {
 function renderStrategyPlatformGroup(stackName, prodName, plat) {
   return `<div class="kwgroup" data-ckey="stratplat-${esc(stackName)}-${esc(prodName)}-${esc(plat.name)}" style="--kwc:#c9860f;margin:0 0 6px 8px;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(plat.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${plat.arcs.length})</span></div>
-    <div class="kwgbody">${plat.arcs.map(renderStrategyArc).join('')}</div>
+    <div class="kwgbody">${plat.arcs.map(arc => renderStrategyArc(stackName, prodName, plat.name, arc)).join('')}</div>
   </div>`;
 }
-function renderStrategyArc(arc) {
-  return `<div style="margin:0 0 8px 8px;padding-left:8px;border-left:2px solid var(--border2);">
-    <div style="font-size:10px;color:var(--ink3);display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px;">
-      <span style="font-style:italic;">${esc(arc.name)}</span>
-      <span>(${esc(arc.meta)})</span>
+// Individual strategy/arc — its own collapsible group (same kwgroup/kwghd
+// pattern as every other level here), collapsed by default like the rest.
+// Previously always fully expanded with no toggle at all.
+function renderStrategyArc(stackName, prodName, platName, arc) {
+  return `<div class="kwgroup" data-ckey="stratarc-${esc(stackName)}-${esc(prodName)}-${esc(platName)}-${esc(arc.strategyId)}-${esc(arc.name)}" style="--kwc:var(--border2);margin:0 0 8px 8px;padding-left:8px;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;">
+      <span class="kwarrow">▸</span>
+      <span style="font-style:italic;font-weight:400;color:var(--ink3);">${esc(arc.name)}</span>
+      <span style="font-weight:400;">(${esc(arc.meta)})</span>
       <span class="tag ${arc.strategyStatus === 'Approved' ? 'fresh' : 'manual'}" style="font-size:9px;">${esc(arc.strategyStatus)}</span>
-      <a class="kwlink" href="${notionUrl(arc.strategyId)}" target="_blank" rel="noopener">↗ Notion</a>
-      <button class="iconbtn" title="Delete this strategy" onclick="deleteStrategy('${esc(arc.strategyId)}','${esc(arc.strategyName)}')">✕</button>
-      <button class="notebtn" onclick="openNoteModal('strategy-${esc(arc.strategyId)}','${esc(arc.strategyName)}','strategy')">📝</button>
+      <a class="kwlink" href="${notionUrl(arc.strategyId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
+      <button class="iconbtn" title="Rerun this strategy — same fields as generating a new one (title/platform/guidance), rewrites this one in place against current product research + Main Keywords" onclick="event.stopPropagation();openRerunStrategyModal('${esc(arc.strategyId)}','${esc(arc.strategyName).replace(/'/g,"\\'")}','${esc(arc.strategyPlatformOverride).replace(/'/g,"\\'")}')">🔁</button>
+      <button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(arc.strategyId)}','${esc(arc.strategyName)}')">✕</button>
+      <button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(arc.strategyId)}','${esc(arc.strategyName)}','strategy')">📝</button>
     </div>
-    ${arc.rows.map(row => renderStrategySlot(row.slot)).join('')}
+    <div class="kwgbody">${arc.rows.map(row => renderStrategySlot(row.slot)).join('')}</div>
   </div>`;
 }
 function renderStrategySlot(slot) {
@@ -2273,6 +2309,53 @@ async function deleteStrategy(id, name) {
     loadStrategyTab();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
+// ── Rerun Strategy modal ──
+// Same input fields as generating a new strategy (Title / Platform Focus /
+// Guidance), pre-filled from the strategy's current values, but rewrites
+// THIS EXISTING strategy in place via regenerateStrategySlots — fresh
+// summary + arcs re-grounded against the product's current 🔬 Product
+// Research and the campaign's current Main Keywords — instead of creating
+// a new one. Every slot without an attached title/asset is archived and
+// replaced; slots with published content are kept.
+let RERUN_STRAT = null;
+function openRerunStrategyModal(id, name, platformOverride) {
+  RERUN_STRAT = { id, name };
+  document.getElementById('rerunStratLabel').textContent = `Strategy: ${name}`;
+  document.getElementById('rerunTitleInput').value = '';
+  document.getElementById('rerunTitleInput').placeholder = name || 'e.g. Q3 TikTok Push';
+  document.getElementById('rerunPlatformInput').value = platformOverride || '';
+  document.getElementById('rerunGuidance').value = '';
+  document.getElementById('rerunStratResult').textContent = '';
+  document.getElementById('rerunStrategyModal').classList.add('open');
+}
+function closeRerunStrategyModal() { document.getElementById('rerunStrategyModal').classList.remove('open'); RERUN_STRAT = null; }
+async function runRerunStrategy() {
+  if (!RERUN_STRAT) return;
+  const btn = document.getElementById('rerunStratBtn');
+  const resEl = document.getElementById('rerunStratResult');
+  const strategyTitle = document.getElementById('rerunTitleInput').value.trim();
+  const platformOverride = document.getElementById('rerunPlatformInput').value.trim();
+  const guidance = document.getElementById('rerunGuidance').value.trim();
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Running…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Re-planning the whole strategy…';
+  try {
+    const r = await w('regenerateStrategySlots', {
+      growthStrategyId: RERUN_STRAT.id,
+      guidance: guidance || undefined,
+      strategyTitle: strategyTitle || undefined,
+      platformOverride: platformOverride || undefined,
+    });
+    if (r.error) throw new Error(r.error);
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = `Done: ${r.created} new slot(s) across ${r.groupingCount} arc(s), ${r.archived} archived, ${r.kept} preserved.`;
+    await loadStrategyTab();
+    setTimeout(closeRerunStrategyModal, 1000);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
+}
 // ── Generate New Strategy modal ──
 // generateGrowthStrategy already grounds off Main Keywords + Product
 // Research and picks the best platform per arc on its own — this modal
@@ -2327,16 +2410,28 @@ async function runGenerateStrategy() {
 // real.
 let CAMPAIGN_TITLES = [];
 const TITLE_STAGES = ["Planning","Development","Writing","Review","Approved","Explode","Publish","Published"];
+// Alphabetical, case-insensitive, with a given "none" bucket always last —
+// same convention used everywhere else groups are shown (Products,
+// Strategies). buildTitleTree is shared by BOTH the Titles list and the
+// Assets tree (called on different subsets — all titles vs. only titles
+// with assets) — groupByStack's plain insertion order let a stack's
+// relative position drift between the two views since it depends on which
+// title happens to hit that stack first in each subset. Sorting here makes
+// both views agree regardless of which titles are in each subset.
+const sortGroupOrder = (order, none) => order.slice().sort((a, b) => (a === none ? 1 : 0) - (b === none ? 1 : 0) || a.localeCompare(b));
 function buildTitleTree(titles) {
   const stackByProductId = {}; CAMPAIGN_PRODUCTS.forEach(p => { stackByProductId[p.id] = p.stack || 'No Stack'; });
-  const { groups: byStack, order: stackOrder } = groupByStack(titles, t => (t.productId && t.productId !== '__none__') ? stackByProductId[t.productId] : 'No Stack');
+  const { groups: byStack, order: stackOrderRaw } = groupByStack(titles, t => (t.productId && t.productId !== '__none__') ? stackByProductId[t.productId] : 'No Stack');
+  const stackOrder = sortGroupOrder(stackOrderRaw, 'No Stack');
   return stackOrder.map(stack => {
-    const { groups: byProduct, order: productOrder } = groupByStack(byStack[stack], t => t.productName && t.productName !== '?' ? t.productName : 'No Product');
+    const { groups: byProduct, order: productOrderRaw } = groupByStack(byStack[stack], t => t.productName && t.productName !== '?' ? t.productName : 'No Product');
+    const productOrder = sortGroupOrder(productOrderRaw, 'No Product');
     return {
       name: stack,
       count: byStack[stack].length,
       products: productOrder.map(prodName => {
-        const { groups: byStrategy, order: strategyOrder } = groupByStack(byProduct[prodName], t => (t.strategyName && t.strategyName !== '?') ? t.strategyName : 'No Strategy');
+        const { groups: byStrategy, order: strategyOrderRaw } = groupByStack(byProduct[prodName], t => (t.strategyName && t.strategyName !== '?') ? t.strategyName : 'No Strategy');
+        const strategyOrder = sortGroupOrder(strategyOrderRaw, 'No Strategy');
         return { name: prodName, strategies: strategyOrder.map(s => ({ name: s, titles: byStrategy[s] })) };
       }),
     };
@@ -2406,7 +2501,7 @@ function renderTitleRow(t) {
   return `<div class="idea-card"><div class="idea-row"><input type="checkbox" class="title-select-cb" data-id="${esc(t.id)}" onclick="event.stopPropagation();toggleTitleSelect('${esc(t.id)}',this.checked)" style="margin-right:2px;flex-shrink:0;"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
-      ${t.stage === 'Development' ? `<button class="iconbtn" title="Rewrite this title's Pillar Content — different style/angle, optional new title, keywords to add or avoid" onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}')">🔄</button>` : ''}
+      ${t.stage !== 'Planning' ? `<button class="iconbtn" title="Rewrite this title's Pillar Content — different style/angle, optional new title, keywords to add or avoid. Works on Published titles too — pair with a blog asset's own 🔄 Push from Pillar to update the live page." onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}')">🔄</button>` : ''}
       <button class="iconbtn" title="Change which product this title is attached to" onclick="openChangeProductModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}','${esc(t.productId || '')}')">🔀</button>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>

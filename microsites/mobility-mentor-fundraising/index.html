@@ -3368,9 +3368,14 @@ async function loadTitles(opts = {}) {
     // publish, it stays Development even if the asset is set to publish").
     // A Development-stage title with assets shows in BOTH places: here as a
     // normal title row, and in the Assets section as a header over its
-    // assets. Planning stays in the Strategies tab; Published/Done/Explode
-    // drop off here (they're finished).
-    const DEV_STAGES = ['Development', 'Writing', 'Review', 'Approved', 'Publish'];
+    // assets. Planning stays in the Strategies tab; Done/Explode drop off
+    // here (they're finished). Published is deliberately KEPT (2026-09-14
+    // operator direction: "leave development titles in development even if
+    // they have publish or published assets") — some backfill/orphan-repair
+    // paths stamp a title's own Status to match its asset's, and a title
+    // still needs to show here afterward so its pillar can be rewritten and
+    // re-pushed to the (already live) asset.
+    const DEV_STAGES = ['Development', 'Writing', 'Review', 'Approved', 'Publish', 'Published'];
     const dev = titles
       .filter(t => DEV_STAGES.includes(t.stage))
       .filter(methodPass)
