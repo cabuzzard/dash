@@ -340,6 +340,26 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <button class="btn" onclick="closeGenStrategyModal()">Cancel</button>
         <button class="btn primary" id="gsGenerateBtn" onclick="runGenerateStrategy()">⟳ Generate</button>
       </div>
+
+      <!-- External-model hand-off — same Product/Platform/Guidance above,
+           bypasses Claude: copy a fully-grounded prompt to paste into
+           ChatGPT (or any other model), then paste its reply back in to
+           write the SAME Growth Strategy + Strategy Slots shape Claude's
+           own generation produces — identical hierarchy/functioning, just
+           sourced from a different model. -->
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border);">
+        <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:8px;">Or use an external model (ChatGPT, etc.)</div>
+        <div class="modalrow" style="margin:0 0 8px;">
+          <button class="btn" id="gsHandoffBtn" onclick="copyGrowthStrategyHandoff()">📋 Copy hand-off prompt</button>
+        </div>
+        <label style="font-size:11px;color:var(--ink2);">Paste the result back
+          <textarea id="gsExternalPaste" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;min-height:80px;" placeholder="Paste ChatGPT's entire reply here, then click Inject"></textarea>
+        </label>
+        <div id="gsExternalResult" style="font-size:11.5px;margin-top:8px;min-height:14px;"></div>
+        <div class="modalrow">
+          <button class="btn primary" id="gsInjectBtn" onclick="injectGrowthStrategyFromExternal()">📥 Inject as Strategy</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -2439,6 +2459,8 @@ let PLATFORMS_CACHE = null;
 async function openGenStrategyModal() {
   document.getElementById('gsResult').textContent = '';
   document.getElementById('gsOverride').value = '';
+  document.getElementById('gsExternalPaste').value = '';
+  document.getElementById('gsExternalResult').textContent = '';
   if (!CAMPAIGN_PRODUCTS.length) {
     try { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; } catch (e) {}
   }
@@ -2469,6 +2491,63 @@ async function runGenerateStrategy() {
     loadStrategyTab();
   } catch (e) {
     document.getElementById('gsResult').textContent = 'Failed: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+
+// ── External-model (ChatGPT) hand-off ──
+// Copies the EXACT SAME grounded "3-6 distribution arcs" prompt
+// generateGrowthStrategy sends to Claude — buildGrowthStrategyHandoff
+// assembles it server-side from real Product Research/Main Keywords, same
+// as the normal generation path, just without calling Claude. Reads the
+// same Product/Platform/Guidance fields above so switching between "⟳
+// Generate" and this is just a different button, not a different form.
+async function copyGrowthStrategyHandoff() {
+  const productId = document.getElementById('gsProduct').value;
+  if (!productId) { alert('Pick a product first — every strategy is grounded in one specific product.'); return; }
+  const platformOverride = document.getElementById('gsPlatform').value || undefined;
+  const researchGuidelines = (document.getElementById('gsOverride').value || '').trim() || undefined;
+  const btn = document.getElementById('gsHandoffBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'assembling…';
+  const resEl = document.getElementById('gsExternalResult');
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = '';
+  try {
+    const r = await w('buildGrowthStrategyHandoff', { campaignId: CAMPAIGN_ID, productId, platformOverride, researchGuidelines });
+    if (r.error) throw new Error(r.error);
+    await navigator.clipboard.writeText(r.prompt);
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = `✓ Copied — paste into ChatGPT, then paste its reply below and click Inject.`;
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
+}
+// Writes whatever the operator pasted back through the SAME
+// injectGrowthStrategyPlan path generateGrowthStrategy's own Claude output
+// goes through — same Growth Strategy + Strategy Slots shape, same
+// hierarchy. Method/product/campaign-agnostic: works for any product this
+// modal was opened against, with or without a Platform focus.
+async function injectGrowthStrategyFromExternal() {
+  const productId = document.getElementById('gsProduct').value;
+  if (!productId) { alert('Pick a product first — every strategy is created for one specific product.'); return; }
+  const pastedText = document.getElementById('gsExternalPaste').value;
+  if (!pastedText.trim()) { alert('Paste the external model\'s reply first.'); return; }
+  const platformOverride = document.getElementById('gsPlatform').value || undefined;
+  const btn = document.getElementById('gsInjectBtn');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'injecting…';
+  const resEl = document.getElementById('gsExternalResult');
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Writing the strategy + slots…';
+  try {
+    const r = await w('injectExternalGrowthStrategy', { campaignId: CAMPAIGN_ID, productId, platformOverride, pastedText });
+    if (r.error) throw new Error(r.error);
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = `✓ Created — ${r.groupingCount} grouping(s), ${r.slotsCreated} slot(s).`;
+    closeGenStrategyModal();
+    loadStrategyTab();
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false; btn.textContent = o;
   }
