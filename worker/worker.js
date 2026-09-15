@@ -26050,10 +26050,23 @@ Call submit_product_stack_proposals with your result.`;
         }));
 
         if (isStaged) {
-          cluster.products = products;
-          staged[idx] = cluster;
-          await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
-          return json({ success: true, staged });
+          // Re-fetch staged fresh right before writing, rather than reusing
+          // the copy read at the top of this handler — the two Claude calls
+          // above take 10-30s, and this whole action runs per-cluster (the
+          // operator fires it for several clusters back to back). Writing
+          // back a snapshot that old clobbers whatever any OTHER cluster's
+          // concurrent propose/edit/regenerate call wrote in the meantime —
+          // that's what "multiple runs fail" looked like: a second cluster's
+          // proposals would silently vanish when the first cluster's stale
+          // write landed after it. Only the merge-in point needs to be this
+          // late; the expensive AI work above is unaffected.
+          let latestStaged = [];
+          try { latestStaged = (await env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json")) || []; } catch (e) {}
+          const latestIdx = latestStaged.findIndex(c => c.id === clusterId);
+          if (latestIdx < 0) return json({ error: "Staged cluster not found — it may have been committed or removed while this was generating" }, 404);
+          latestStaged[latestIdx] = { ...latestStaged[latestIdx], products };
+          await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(latestStaged));
+          return json({ success: true, staged: latestStaged });
         }
 
         let commProducts = {};
