@@ -2924,6 +2924,307 @@ Return ONLY this JSON, no other text:
 //   arc, a nurture-email sequence, a trend-jack reel) — reusable
 //   knowledge about the platform itself, independent of any product's
 //   subject matter or keywords. Every phase here is tagged [Arc].
+// ── Growth Strategy: shared catalog + plan-injection helpers ───────────
+// Factored out of generateGrowthStrategy (2026-09-15) so an externally-
+// produced plan — a ChatGPT hand-off, see buildGrowthStrategyHandoff /
+// injectExternalGrowthStrategy — can be written into Notion through the
+// EXACT SAME path Claude's own output always has: same Growth Strategy +
+// Strategy Slots shape, same Stack→Product→Strategy→Platform→Arc
+// hierarchy, same downstream functioning (the Strategies panel, Re-check
+// Platforms, Rerun, Launch Run all just see a normal strategy record —
+// nothing about them can tell, or needs to tell, which model produced it).
+async function loadStrategyCatalogs(hdr) {
+  const [allPostTypeRows, allPlatformRows] = await Promise.all([
+    notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
+    notionQuery(PLATFORMS_DB, {}).catch(() => []),
+  ]);
+  const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+  const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
+  const postTypesCatalogBlock = allPostTypeRows.length
+    ? allPostTypeRows.map(p => {
+        const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
+        const rt = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
+        return `- ${nm}${rt ? ` — ${rt}` : ''}`;
+      }).join('\n')
+    : '(none exist yet — every title will need "newPostType": true)';
+  const platformsCatalogBlock = allPlatformRows.length
+    ? allPlatformRows.map(p => `- ${(p.properties?.Name?.title || []).map(t => t.plain_text).join("")}`).filter(s => s.trim() !== '-').join('\n')
+    : '(no platform catalog exists yet — use a plain platform name)';
+  return { postTypeIdByName, platformIdByName, postTypesCatalogBlock, platformsCatalogBlock };
+}
+
+// The "3-6 distribution arcs" brief itself — identical whether it's sent to
+// Claude inline (generateGrowthStrategy) or copied out for ChatGPT
+// (buildGrowthStrategyHandoff), so the two paths can never drift into
+// producing incompatibly-shaped plans.
+function buildGrowthStrategyPromptBody({ researchGuidelines, seedTitleBlock, platformOverride, productName, productDesc, productAvatar, strategyBlock, campaignName, researchBlock, postTypesCatalogBlock, platformsCatalogBlock }) {
+  const platformInstruction = (platformOverride || '').trim()
+    ? `PLATFORM OVERRIDE (operator-specified): the operator has forced every slot in this strategy onto "${platformOverride.trim()}". Set every slot's "platform" to "${platformOverride.trim()}" and every grouping's "recommendedPlatform" to it too. (This overrides the cross-platform-arc convention below — the operator wants a single-platform plan this time.)`
+    : `No platform override — follow the cross-platform-arc convention below: each arc's slots are spread across the platforms that genuinely fit each piece.`;
+  return `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock || ''}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy as 3-6 DISTRIBUTION ARCS. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
+
+${platformInstruction}
+
+WHAT AN ARC IS (this is the core convention — read carefully):
+An arc (a "grouping") is ONE theme or campaign beat taken across the platforms and formats that theme actually needs — NOT a single-format series. The wrong shape is "8 LinkedIn teach posts" or "5 blog articles". The right shape is a beat like "Revenue Leak" delivered as: a long-form ANCHOR piece on its natural home (a Blog article, a YouTube video, or an Email essay — whatever the Pillar's real format is), THEN 2-4 derivative pieces that repackage or extend that anchor for other platforms (an Instagram carousel, a TikTok/Reels cut, a LinkedIn post, a Threads/X thread, a Reddit post), THEN usually a conversion piece (a CTA / Direct Sales slot) on whichever platform closes best.
+- Each arc's slots MUST span at least 2-3 different platforms unless the product genuinely only lives on one channel (e.g. a pure Etsy-listing product — then "etsy" for every slot is correct).
+- Order the slots within an arc by that flow: anchor first, then the derivative cuts, then conversion.
+- "recommendedPlatform" for the arc = the ANCHOR slot's platform (its primary home), not a platform shared by all its slots.
+- Every slot still gets exactly ONE "platform" (its primary home), chosen for that specific piece.
+
+GROUPING NAMING CONVENTION (required): each arc's "name" is procedural backend metadata, not public-facing copy — 2-4 words describing the THEME/beat (e.g. "Revenue Leak", "Founder Pain Story", "Tool Stack Teardown", "Client Outcome"), never a catchy content-series title, never a format label like "Blog Posts" or "Reels", no subtitle or colon/em-dash explanation. The full explanation goes ONLY in "rationale" (shown on hover).
+
+PRODUCT: ${productName}
+Description: ${productDesc}
+Avatar: ${productAvatar}
+
+${seedTitleBlock ? 'SUPPORTING CONTEXT (secondary — the seed title above is the primary driver of this plan; use this only to keep it consistent with the product\'s actual positioning, not to steer it toward a different angle):' : 'POSITIONING STRATEGY:'}
+${strategyBlock || 'Not filled in yet — infer conservatively from the product description and campaign research below.'}
+
+CAMPAIGN: ${campaignName}
+CAMPAIGN RESEARCH:
+${researchBlock || 'Not provided.'}
+
+For each arc, also give a "recurrence" — how often this arc's content should actually go out on an ongoing basis (e.g. "Weekly", "2x/week", "One-time") — a realistic cadence. TIMING only.
+
+EXISTING POST TYPE CATALOG (the content descriptor for EACH slot — what kind of piece it is, e.g. Pillar / Intro / Feature Benefit / CTA — NOT platform, method, or cadence). Assign one to every slot, by exact name from this catalog when it genuinely fits:
+${postTypesCatalogBlock}
+Vary the Post Type across an arc's slots to match the flow: the derivative cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A as fits, the conversion slot is "CTA" or "Direct Sales". You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — rare, prefer reuse.
+
+EXACTLY ONE slot in the whole strategy is Post Type "Pillar" — the single anchor everything points back to (if this product had ONE piece of content, this is it — often the real SEO/conversion asset), normally slot 1 of arc 1 on a long-form platform. Every OTHER arc's first (anchor) slot is still a long-form piece but typed Teach / Story / Feature Benefit, NOT Pillar. Every non-Pillar slot's rationale should read as feeding traffic toward the Pillar.
+
+EXISTING PLATFORM CATALOG — assign one best-fit "platform" to EACH slot, by exact name from this list:
+${platformsCatalogBlock}
+Long-form anchors → Blog / YouTube / Email (a newsletter) / Substack. Short derivative cuts → Instagram / TikTok / Threads / X / Twitter / Reddit / LinkedIn. Marketplace listings → etsy. Match each slot to where THAT piece actually lives.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{
+  "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
+  "recommendedPlatforms": ["...", "..."],
+  "groupings": [
+    { "name": "2-4 word theme", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above" } ], "recommendedPlatform": "the anchor slot's platform", "recurrence": "..." }
+  ]
+}`;
+}
+
+// Gathers the same grounding generateGrowthStrategy fetches inline (product,
+// campaign, campaign research, product positioning) — shared so the ChatGPT
+// hand-off and the internal Claude call are always grounded in identical
+// data. Returns null fields gracefully; callers decide what's required.
+async function gatherGrowthStrategyContext(hdr, { campaignId, productId, seedTitleId }) {
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const seedTitlePage = seedTitleId ? await fetch(`https://api.notion.com/v1/pages/${dash(seedTitleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : null;
+  let seedTitleBlock = "";
+  if (seedTitlePage?.properties) {
+    const stp = seedTitlePage.properties;
+    const seedName = (stp.Title?.title || []).map(t => t.plain_text).join("") || "";
+    const seedNotes = (stp.Notes?.rich_text || []).map(t => t.plain_text).join("");
+    const seedKeywordsTxt = (stp["seed idea"]?.rich_text || []).map(t => t.plain_text).join("");
+    seedTitleBlock = `SEED TITLE (this strategy is being generated specifically to support this one title — ground the whole plan in its own angle/guidelines/keywords below; the plan should read as built FOR this title, not a generic product-wide restatement):
+Title: ${seedName}
+${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? `Initial keywords: ${seedKeywordsTxt}\n` : ""}
+`;
+  }
+  const [productPage, campPage, researchRaw, stratRecord] = await Promise.all([
+    fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
+    fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
+    fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
+    }).then(r => r.json()).catch(() => ({ results: [] })),
+    findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
+  ]);
+  if (!productPage.properties) return { error: productPage.message || "Product not found" };
+  const pp = productPage.properties;
+  const ptxt = key => (pp[key]?.rich_text || []).map(t => t.plain_text).join("");
+  const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
+  const campaignName = campPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "Campaign";
+  const strategyBlock = stratRecord
+    ? STRATEGY_FIELDS.map(f => { const v = (stratRecord.properties?.[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n')
+    : STRATEGY_FIELDS.map(f => { const v = ptxt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+  const rt = key => { for (const r of (researchRaw.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+  const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
+    .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
+  return {
+    productName, productDesc: ptxt('Description'), productAvatar: ptxt('Avatar'),
+    campaignName, campPage, strategyBlock, researchBlock, seedTitleBlock,
+  };
+}
+
+// Given a fully-formed plan {summary, recommendedPlatforms, groupings} —
+// whether Claude's own output or a pasted-back external one — writes it
+// into Notion as a real Growth Strategy + Strategy Slots, exactly like
+// generateGrowthStrategy's own (flat, non-divergent) path always has.
+async function injectGrowthStrategyPlan({ env, ctx, hdr, campaignId, productId, platformOverride, strategyTitle, plan, catalogs, campaignLastEdited }) {
+  const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
+  const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
+  if (!groupings.length) return { error: "Plan has no groupings" };
+
+  await promoteProductStatus(hdr, productId, "Active");
+
+  const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+  const productName = (productPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
+  const dateLabel = new Date(campaignLastEdited || Date.now()).toISOString().slice(0, 10);
+  const strategyName = ((strategyTitle || '').trim() || `${productName} Growth Strategy — ${dateLabel}`).slice(0, 200);
+  const esc3 = s => String(s || '');
+  const rtBlock = text => [{ type: "text", text: { content: esc3(text) } }];
+  const { postTypeIdByName, platformIdByName } = catalogs;
+
+  async function createStrategyPage({ name, summary, recPlatforms, platformOverrideVal, groupingCount, bodyChildren }) {
+    const props = {
+      "Strategy Name": { title: [{ text: { content: name.slice(0, 200) } }] },
+      "Product": { relation: [{ id: dash(productId) }] },
+      "Campaign": { relation: [{ id: dash(campaignId) }] },
+      "Platform Override": { rich_text: rtBlock(platformOverrideVal || '') },
+      // Notion multi_select options can't contain commas — the model
+      // sometimes returns a comma-joined phrase for one entry; split it,
+      // strip stray commas, cap length, drop blanks.
+      "Recommended Platforms": { multi_select: (Array.isArray(recPlatforms) ? recPlatforms : [])
+        .flatMap(p => String(p == null ? '' : p).split(','))
+        .map(p => ({ name: p.replace(/,/g, ' ').trim().slice(0, 90) }))
+        .filter(o => o.name).slice(0, 10) },
+      "Status": { select: { name: "Draft" } },
+      "Summary": { rich_text: rtBlock(summary || '') },
+      "Grouping Count": { number: groupingCount },
+    };
+    return fetch(`https://api.notion.com/v1/pages`, {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: props, children: bodyChildren.slice(0, 100) }),
+    }).then(r => r.json());
+  }
+
+  function groupingBlocks(g) {
+    const out = [];
+    const gTitles = Array.isArray(g.titles) ? g.titles : [];
+    const gPlatforms = Array.from(new Set(gTitles
+      .map(t => (typeof t === 'string' ? '' : String(t.platform || '').trim()))
+      .filter(Boolean)));
+    const multiPlatform = gPlatforms.length > 1;
+    out.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
+    out.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
+    gTitles.forEach(t => {
+      const angle = typeof t === 'string' ? t : (t.angle || '');
+      const postType = typeof t === 'string' ? '' : (t.postType || '');
+      const plat = typeof t === 'string' ? '' : String(t.platform || '').trim();
+      const tag = multiPlatform
+        ? `[${[plat || g.recommendedPlatform || '?', postType].filter(Boolean).join(' · ')}] `
+        : (postType ? `[${postType}] ` : '');
+      out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: tag
+        ? [{ type: "text", text: { content: tag }, annotations: { bold: true } }, { type: "text", text: { content: angle } }]
+        : rtBlock(angle) } });
+    });
+    out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
+      { type: "text", text: { content: "Platform: " }, annotations: { bold: true } },
+      { type: "text", text: { content: multiPlatform ? gPlatforms.join(', ') : (esc3(g.recommendedPlatform) || 'Not specified') } },
+    ] } });
+    out.push({ object: "block", type: "divider", divider: {} });
+    return out;
+  }
+
+  async function resolvePostTypeId(t) {
+    const wantName = String(t.postType || t.type || t.postTypeName || t.post_type || '').trim();
+    if (!wantName) return null;
+    const existing = postTypeIdByName.get(wantName.toLowerCase());
+    if (existing) return existing;
+    if (!t.newPostType) return null;
+    try {
+      const createResp = await fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          parent: { database_id: POST_TYPES_DB },
+          properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } },
+        }),
+      }).then(r => r.json());
+      if (createResp.id) {
+        const newId = createResp.id.replace(/-/g,"");
+        postTypeIdByName.set(wantName.toLowerCase(), newId);
+        return newId;
+      }
+    } catch (e) { /* best-effort */ }
+    return null;
+  }
+
+  function createSlotsFor(strategyIdForSlots, g) {
+    const titles = Array.isArray(g.titles) ? g.titles : [];
+    const groupingPlatformName = String(g.recommendedPlatform || platformOverride || '').trim();
+    const groupingPlatformId = platformIdByName.get(groupingPlatformName.toLowerCase());
+    return Promise.all(titles.map(async (t, i) => {
+      const angle = typeof t === 'string' ? t : (t.angle || '');
+      const titleObj = typeof t === 'string' ? { postType: '' } : t;
+      const seq = i + 1;
+      const slotPlatformName = (typeof t === 'string' ? '' : String(t.platform || '').trim()) || groupingPlatformName;
+      const slotPlatformId = platformIdByName.get(slotPlatformName.toLowerCase()) || groupingPlatformId;
+      const postTypeId = await resolvePostTypeId(titleObj);
+      const typeName = postTypeId
+        ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || ''
+        : '';
+      const name = typeName ? `${seq} – ${typeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${g.name || 'Untitled'} #${seq}`;
+      const props = {
+        "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+        "Growth Strategy": { relation: [{ id: dash(strategyIdForSlots) }] },
+        "Campaign": { relation: [{ id: dash(campaignId) }] },
+        "Product": { relation: [{ id: dash(productId) }] },
+        "Grouping": { rich_text: [{ type: "text", text: { content: String(g.name || '').slice(0, 1990) } }] },
+        "Grouping Rationale": { rich_text: [{ type: "text", text: { content: String(g.rationale || '').slice(0, 1990) } }] },
+        "Sequence": { number: seq },
+        "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
+        "Platform": { rich_text: [{ type: "text", text: { content: slotPlatformName.slice(0, 1990) } }] },
+        "Type": { rich_text: [{ type: "text", text: { content: typeName.slice(0, 1990) } }] },
+        "Recurrence": { rich_text: [{ type: "text", text: { content: String(g.recurrence || '').slice(0, 1990) } }] },
+        "Status": { select: { name: "Open" } },
+      };
+      if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
+      if (slotPlatformId) props["Platforms"] = { relation: [{ id: dash(slotPlatformId) }] };
+      return fetch("https://api.notion.com/v1/pages", {
+        method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
+      }).then(r => r.json()).then(r => {
+        if (r.message && !r.id) console.error('Strategy Slot create failed:', r.message);
+        return r;
+      }).catch(e => ({ error: String(e) }));
+    }));
+  }
+
+  const children = [
+    { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
+    { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
+    ...(platformOverride ? [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Platform focus (operator-specified): ${platformOverride}`) } }]
+      : [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } }]),
+    { object: "block", type: "divider", divider: {} },
+    ...groupings.flatMap(groupingBlocks),
+  ];
+  const createResp = await createStrategyPage({ name: strategyName, summary: plan.summary, recPlatforms: recommendedPlatforms, platformOverrideVal: platformOverride, groupingCount: groupings.length, bodyChildren: children });
+  if (!createResp.id) return { error: createResp.message || "Failed to create Growth Strategy page" };
+  const strategyId = createResp.id.replace(/-/g, "");
+  const slotResults = (await Promise.all(groupings.map(g => createSlotsFor(strategyId, g)))).flat();
+  const slotsCreated = slotResults.filter(r => r && r.id).length;
+  if (ctx && ctx.waitUntil) {
+    ctx.waitUntil((async () => {
+      await new Promise(r => setTimeout(r, 2000));
+      await assignSlotPlatformsForStrategy(hdr, env, strategyId).catch(() => null);
+    })());
+  }
+  return { success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods: [] };
+}
+
+// Best-effort parse of a pasted external (ChatGPT) response into the plan
+// shape injectGrowthStrategyPlan expects — same tolerant extraction
+// generateGrowthStrategy already uses on Claude's own raw text (find the
+// {...}, strip control chars, fall back to repairing a truncated object).
+function parseExternalGrowthStrategyPlan(raw) {
+  const text = String(raw || '');
+  const start = text.indexOf('{'), end = text.lastIndexOf('}');
+  if (start === -1) throw new Error("No JSON object found in the pasted text");
+  try {
+    return JSON.parse(sanitizeJsonControlChars(text.slice(start, end > start ? end + 1 : text.length)));
+  } catch (e1) {
+    const repaired = repairTruncatedJson(sanitizeJsonControlChars(text.slice(start)));
+    if (!repaired || !Array.isArray(repaired.groupings) || !repaired.groupings.length) throw e1;
+    return repaired;
+  }
+}
+
 // Second-pass platform assignment for a Growth Strategy's slots — a focused
 // Claude call that ONLY decides "which one catalog platform does each slot
 // live on", matched by exact name against PLATFORMS_DB. Powers both the manual
@@ -18315,135 +18616,20 @@ No other text. No markdown fences.`;
         const { campaignId, productId, platformOverride, strategyTitle, researchGuidelines, seedTitleId } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        // seedTitleId (optional): a specific title's OWN entry
-        // guidelines/keywords drive this run, distinct from — not replacing
-        // — the campaign Research/positioning grounding below. Per operator
-        // instruction: this is how an "unassigned" title in the Strategies
-        // tab gets a genuinely new, separate Growth Strategy for its
-        // product (never merged into whatever strategy already exists
-        // there — Growth Strategy already supports several per product).
-        const seedTitlePage = seedTitleId ? await fetch(`https://api.notion.com/v1/pages/${dash(seedTitleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null) : null;
-        let seedTitleBlock = "";
-        if (seedTitlePage?.properties) {
-          const stp = seedTitlePage.properties;
-          const seedName = (stp.Title?.title || []).map(t => t.plain_text).join("") || "";
-          const seedNotes = (stp.Notes?.rich_text || []).map(t => t.plain_text).join("");
-          const seedKeywordsTxt = (stp["seed idea"]?.rich_text || []).map(t => t.plain_text).join("");
-          seedTitleBlock = `SEED TITLE (this strategy is being generated specifically to support this one title — ground the whole plan in its own angle/guidelines/keywords below; the plan should read as built FOR this title, not a generic product-wide restatement):
-Title: ${seedName}
-${seedNotes ? `Entry guidelines/notes: ${seedNotes}\n` : ""}${seedKeywordsTxt ? `Initial keywords: ${seedKeywordsTxt}\n` : ""}
-`;
-        }
-
-        const [productPage, campPage, researchRaw, stratRecord] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()),
-          fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
-          }).then(r => r.json()).catch(() => ({ results: [] })),
-          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
+        const [ctxData, catalogs] = await Promise.all([
+          gatherGrowthStrategyContext(hdr, { campaignId, productId, seedTitleId }),
+          loadStrategyCatalogs(hdr),
         ]);
-        if (!productPage.properties) return json({ error: productPage.message || "Product not found" }, 404);
-        const pp = productPage.properties;
-        const ptxt = key => (pp[key]?.rich_text || []).map(t => t.plain_text).join("");
-        const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
-        const campaignName = campPage.properties?.Name?.title?.map(t => t.plain_text).join("") || "Campaign";
+        if (ctxData.error) return json({ error: ctxData.error }, 404);
 
-        const strategyBlock = stratRecord
-          ? STRATEGY_FIELDS.map(f => { const v = (stratRecord.properties?.[f]?.rich_text || []).map(t => t.plain_text).join(""); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n')
-          : STRATEGY_FIELDS.map(f => { const v = ptxt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
-
-        const rt = key => { for (const r of (researchRaw.results || [])) { const v = (r.properties[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
-        const researchBlock = ['Keywords', 'Statement', 'Unique Opportunity', 'Key Message', 'Pain Points']
-          .map(f => { const v = rt(f); return v ? `${f}: ${v}` : ''; }).filter(Boolean).join('\n');
-
-        // Per operator direction: Method is chosen (existing or new) when a
-        // title is actually created from a slot, never baked into the
-        // strategy/slot itself — a slot only ever carries a Platform. No
-        // method catalog fetch or method recommendation happens here.
-        const [allPostTypeRows, allPlatformRows] = await Promise.all([
-          // Logged, not silently swallowed — a query failure here (e.g. the
-          // DB not shared with this Worker's Notion integration) should be
-          // visible in wrangler tail rather than just quietly returning an
-          // empty catalog with no clue why.
-          notionQuery(POST_TYPES_DB, {}).catch(e => { console.error('notionQuery(POST_TYPES_DB) failed:', e.message); return []; }),
-          notionQuery(PLATFORMS_DB, {}).catch(() => []),
-        ]);
-        // Best-effort name lookups for Post Type / Platforms — the AI's
-        // freeform "type"/"recommendedPlatform" strings get matched against
-        // the standalone catalogs by exact (case-insensitive) name; no
-        // match just means the slot is created without that relation set,
-        // fixable from the Strategies panel's ✏️ Edit Slot modal.
-        const postTypeIdByName = new Map(allPostTypeRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
-        const platformIdByName = new Map(allPlatformRows.map(p => [((p.properties?.Name?.title || []).map(t => t.plain_text).join("")).toLowerCase(), p.id.replace(/-/g,"")]));
-        const postTypesCatalogBlock = allPostTypeRows.length
-          ? allPostTypeRows.map(p => {
-              const nm = (p.properties?.Name?.title || []).map(t => t.plain_text).join("");
-              const rt = (p.properties?.Rationale?.rich_text || []).map(t => t.plain_text).join("");
-              return `- ${nm}${rt ? ` — ${rt}` : ''}`;
-            }).join('\n')
-          : '(none exist yet — every title will need "newPostType": true)';
-        // Platform catalog — fed to the prompt so the per-title "platform"
-        // the AI assigns is an exact name we can resolve to a Platforms
-        // relation id. This per-slot platform is the layer the microsite
-        // Strategies panel groups slots by (Grouping → Preferred Platform →
-        // Post Type), so getting a real catalog name matters.
-        const platformsCatalogBlock = allPlatformRows.length
-          ? allPlatformRows.map(p => `- ${(p.properties?.Name?.title || []).map(t => t.plain_text).join("")}`).filter(s => s.trim() !== '-').join('\n')
-          : '(no platform catalog exists yet — use a plain platform name)';
-
-        const platformInstruction = (platformOverride || '').trim()
-          ? `PLATFORM OVERRIDE (operator-specified): the operator has forced every slot in this strategy onto "${platformOverride.trim()}". Set every slot's "platform" to "${platformOverride.trim()}" and every grouping's "recommendedPlatform" to it too. (This overrides the cross-platform-arc convention below — the operator wants a single-platform plan this time.)`
-          : `No platform override — follow the cross-platform-arc convention below: each arc's slots are spread across the platforms that genuinely fit each piece.`;
-
-        const prompt = `${researchGuidelinesBlock(researchGuidelines)}${seedTitleBlock}You are a growth strategist. Given the ${seedTitleBlock ? 'seed title above, plus the supporting ' : ''}research and positioning below for this product, produce a content growth strategy as 3-6 DISTRIBUTION ARCS. This is a recommendation for a human to review and act on — be concrete and specific, not generic.
-
-${platformInstruction}
-
-WHAT AN ARC IS (this is the core convention — read carefully):
-An arc (a "grouping") is ONE theme or campaign beat taken across the platforms and formats that theme actually needs — NOT a single-format series. The wrong shape is "8 LinkedIn teach posts" or "5 blog articles". The right shape is a beat like "Revenue Leak" delivered as: a long-form ANCHOR piece on its natural home (a Blog article, a YouTube video, or an Email essay — whatever the Pillar's real format is), THEN 2-4 derivative pieces that repackage or extend that anchor for other platforms (an Instagram carousel, a TikTok/Reels cut, a LinkedIn post, a Threads/X thread, a Reddit post), THEN usually a conversion piece (a CTA / Direct Sales slot) on whichever platform closes best.
-- Each arc's slots MUST span at least 2-3 different platforms unless the product genuinely only lives on one channel (e.g. a pure Etsy-listing product — then "etsy" for every slot is correct).
-- Order the slots within an arc by that flow: anchor first, then the derivative cuts, then conversion.
-- "recommendedPlatform" for the arc = the ANCHOR slot's platform (its primary home), not a platform shared by all its slots.
-- Every slot still gets exactly ONE "platform" (its primary home), chosen for that specific piece.
-
-GROUPING NAMING CONVENTION (required): each arc's "name" is procedural backend metadata, not public-facing copy — 2-4 words describing the THEME/beat (e.g. "Revenue Leak", "Founder Pain Story", "Tool Stack Teardown", "Client Outcome"), never a catchy content-series title, never a format label like "Blog Posts" or "Reels", no subtitle or colon/em-dash explanation. The full explanation goes ONLY in "rationale" (shown on hover).
-
-PRODUCT: ${productName}
-Description: ${ptxt('Description')}
-Avatar: ${ptxt('Avatar')}
-
-${seedTitleBlock ? 'SUPPORTING CONTEXT (secondary — the seed title above is the primary driver of this plan; use this only to keep it consistent with the product\'s actual positioning, not to steer it toward a different angle):' : 'POSITIONING STRATEGY:'}
-${strategyBlock || 'Not filled in yet — infer conservatively from the product description and campaign research below.'}
-
-CAMPAIGN: ${campaignName}
-CAMPAIGN RESEARCH:
-${researchBlock || 'Not provided.'}
-
-For each arc, also give a "recurrence" — how often this arc's content should actually go out on an ongoing basis (e.g. "Weekly", "2x/week", "One-time") — a realistic cadence. TIMING only.
-
-EXISTING POST TYPE CATALOG (the content descriptor for EACH slot — what kind of piece it is, e.g. Pillar / Intro / Feature Benefit / CTA — NOT platform, method, or cadence). Assign one to every slot, by exact name from this catalog when it genuinely fits:
-${postTypesCatalogBlock}
-Vary the Post Type across an arc's slots to match the flow: the derivative cuts are Teach / Story / Feature Benefit / Social Proof / Behind-the-Scenes / Q&A as fits, the conversion slot is "CTA" or "Direct Sales". You may propose a genuinely new Post Type (set "newPostType": true) only when nothing in the catalog fits — rare, prefer reuse.
-
-EXACTLY ONE slot in the whole strategy is Post Type "Pillar" — the single anchor everything points back to (if this product had ONE piece of content, this is it — often the real SEO/conversion asset), normally slot 1 of arc 1 on a long-form platform. Every OTHER arc's first (anchor) slot is still a long-form piece but typed Teach / Story / Feature Benefit, NOT Pillar. Every non-Pillar slot's rationale should read as feeding traffic toward the Pillar.
-
-EXISTING PLATFORM CATALOG — assign one best-fit "platform" to EACH slot, by exact name from this list:
-${platformsCatalogBlock}
-Long-form anchors → Blog / YouTube / Email (a newsletter) / Substack. Short derivative cuts → Instagram / TikTok / Threads / X / Twitter / Reddit / LinkedIn. Marketplace listings → etsy. Match each slot to where THAT piece actually lives.
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{
-  "summary": "2-4 sentences: the overall growth angle and why it fits this positioning",
-  "recommendedPlatforms": ["...", "..."],
-  "groupings": [
-    { "name": "2-4 word theme", "rationale": "...", "titles": [ { "angle": "...", "postType": "exact name from the catalog above, or a new one", "newPostType": false, "platform": "the single best platform for THIS piece — exact name from the platform catalog above" } ], "recommendedPlatform": "the anchor slot's platform", "recurrence": "..." }
-  ]
-}`;
+        const prompt = buildGrowthStrategyPromptBody({
+          researchGuidelines, seedTitleBlock: ctxData.seedTitleBlock, platformOverride,
+          productName: ctxData.productName, productDesc: ctxData.productDesc, productAvatar: ctxData.productAvatar,
+          strategyBlock: ctxData.strategyBlock, campaignName: ctxData.campaignName, researchBlock: ctxData.researchBlock,
+          postTypesCatalogBlock: catalogs.postTypesCatalogBlock, platformsCatalogBlock: catalogs.platformsCatalogBlock,
+        });
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -18454,274 +18640,83 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
         let plan;
         try {
-          const raw = aiData.content?.[0]?.text || "";
-          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-          if (start === -1) throw new Error("No JSON object found");
-          try {
-            plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end > start ? end + 1 : raw.length)));
-          } catch (e1) {
-            // LLM likely hit the token limit mid-array — salvage what parsed.
-            plan = repairTruncatedJson(sanitizeJsonControlChars(raw.slice(start)));
-            if (!plan || !Array.isArray(plan.groupings) || !plan.groupings.length) throw e1;
-          }
+          plan = parseExternalGrowthStrategyPlan(aiData.content?.[0]?.text || "");
         } catch (e) {
           const hint = aiData.stop_reason === "max_tokens" ? " — the response hit the token limit; try again" : "";
           return json({ error: "Failed to parse growth strategy JSON: " + e.message + hint }, 500);
         }
-        const groupings = Array.isArray(plan.groupings) ? plan.groupings : [];
-        const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
 
-        // A Growth Strategy was successfully generated for this product ⇒ it's
-        // Active (promotes forward only — see promoteProductStatus).
-        await promoteProductStatus(hdr, productId, "Active");
-
-        // Per operator direction: Method is chosen (existing or new) at
-        // title-creation time, never here — a strategy/slot only carries a
-        // Platform. Kept as an always-empty array so the UI's existing
-        // "N methods attached" note just degrades to nothing rather than
-        // needing its own change.
-        const attachedMethods = [];
-
-        const dateLabel = new Date(campPage.last_edited_time || Date.now()).toISOString().slice(0, 10);
-        const strategyName = ((strategyTitle || '').trim() || `${productName} Growth Strategy — ${dateLabel}`).slice(0, 200);
-        const esc3 = s => String(s || '');
-        const rtBlock = text => [{ type: "text", text: { content: esc3(text) } }];
-
-        // Divergence (parent + one child strategy per grouping) is retired.
-        // It existed to separate format-incompatible single-platform series
-        // — but under the cross-platform-arc convention EVERY arc spans
-        // platforms on purpose, so that signal (distinct recommendedPlatform
-        // across groupings) now fires on every run. One flat strategy whose
-        // arcs each nest Grouping → Platform → Post Type in the panel is
-        // exactly the intended shape. Kept as a const so the branch below
-        // still compiles; never true now.
-        const distinctPlatforms = new Set(groupings.map(g => String(g.recommendedPlatform || '').trim()).filter(Boolean));
-        const divergent = false;
-
-        async function createStrategyPage({ name, parentId, summary, recPlatforms, platformOverrideVal, groupingCount, bodyChildren }) {
-          const props = {
-            "Strategy Name": { title: [{ text: { content: name.slice(0, 200) } }] },
-            "Product": { relation: [{ id: dash(productId) }] },
-            "Campaign": { relation: [{ id: dash(campaignId) }] },
-            "Platform Override": { rich_text: rtBlock(platformOverrideVal || '') },
-            // Notion multi_select options can't contain commas — the model
-            // sometimes returns a comma-joined phrase for one entry; split it,
-            // strip stray commas, cap length, drop blanks.
-            "Recommended Platforms": { multi_select: (Array.isArray(recPlatforms) ? recPlatforms : [])
-              .flatMap(p => String(p == null ? '' : p).split(','))
-              .map(p => ({ name: p.replace(/,/g, ' ').trim().slice(0, 90) }))
-              .filter(o => o.name).slice(0, 10) },
-            "Status": { select: { name: "Draft" } },
-            "Summary": { rich_text: rtBlock(summary || '') },
-            "Grouping Count": { number: groupingCount },
-          };
-          if (parentId) props["Parent Strategy"] = { relation: [{ id: dash(parentId) }] };
-          return fetch(`https://api.notion.com/v1/pages`, {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: props, children: bodyChildren.slice(0, 100) }),
-          }).then(r => r.json());
-        }
-
-        function groupingBlocks(g) {
-          const out = [];
-          const gTitles = Array.isArray(g.titles) ? g.titles : [];
-          const gPlatforms = Array.from(new Set(gTitles
-            .map(t => (typeof t === 'string' ? '' : String(t.platform || '').trim()))
-            .filter(Boolean)));
-          const multiPlatform = gPlatforms.length > 1;
-          out.push({ object: "block", type: "heading_3", heading_3: { rich_text: rtBlock(g.name || 'Untitled Grouping') } });
-          out.push({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(g.rationale || '') } });
-          gTitles.forEach(t => {
-            const angle = typeof t === 'string' ? t : (t.angle || '');
-            const postType = typeof t === 'string' ? '' : (t.postType || '');
-            const plat = typeof t === 'string' ? '' : String(t.platform || '').trim();
-            // When a grouping spans platforms, prefix each bullet with
-            // "[Platform · PostType]" so the prose still reads correctly and
-            // launchStrategyRun's body parser (which only reads the grouping
-            // "Platform:" line) still degrades sanely. Single-platform
-            // groupings keep the plain "[PostType]" prefix they always had.
-            const tag = multiPlatform
-              ? `[${[plat || g.recommendedPlatform || '?', postType].filter(Boolean).join(' · ')}] `
-              : (postType ? `[${postType}] ` : '');
-            out.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: tag
-              ? [{ type: "text", text: { content: tag }, annotations: { bold: true } }, { type: "text", text: { content: angle } }]
-              : rtBlock(angle) } });
-          });
-          out.push({ object: "block", type: "paragraph", paragraph: { rich_text: [
-            { type: "text", text: { content: "Platform: " }, annotations: { bold: true } },
-            { type: "text", text: { content: multiPlatform ? gPlatforms.join(', ') : (esc3(g.recommendedPlatform) || 'Not specified') } },
-          ] } });
-          out.push({ object: "block", type: "divider", divider: {} });
-          return out;
-        }
-
-        // Resolves one title's postType string to a Post Type page id —
-        // reuses an exact-name match from the catalog fetched above, or (when
-        // the AI flagged newPostType and nothing matched) creates it fresh.
-        // Shared across every grouping in this one generateGrowthStrategy
-        // call so two groupings proposing the same new name don't create two
-        // duplicate Post Type pages.
-        async function resolvePostTypeId(t) {
-          // Defensive: accept a couple of plausible key-name variants in
-          // case the model drifts from the exact "postType" key the prompt
-          // asks for (seen in practice — silently no-oping on every title
-          // is worse than tolerating a synonym).
-          const wantName = String(t.postType || t.type || t.postTypeName || t.post_type || '').trim();
-          if (!wantName) return null;
-          const existing = postTypeIdByName.get(wantName.toLowerCase());
-          if (existing) return existing;
-          if (!t.newPostType) return null; // named something outside the catalog without flagging it as new — skip rather than guess
-          try {
-            const createResp = await fetch("https://api.notion.com/v1/pages", {
-              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                parent: { database_id: POST_TYPES_DB },
-                properties: { Name: { title: [{ type: "text", text: { content: wantName.slice(0, 200) } }] } },
-              }),
-            }).then(r => r.json());
-            if (createResp.id) {
-              const newId = createResp.id.replace(/-/g,"");
-              postTypeIdByName.set(wantName.toLowerCase(), newId);
-              return newId;
-            }
-          } catch (e) { /* best-effort */ }
-          return null;
-        }
-
-        // One Strategy Slot row per grouping angle (e.g. "3 – Feature
-        // Benefit") — the trackable, fillable counterpart to the prose
-        // bullets above. Best-effort: a slot-creation failure doesn't fail
-        // the strategy itself, which already saved successfully.
-        function createSlotsFor(strategyIdForSlots, g) {
-          const titles = Array.isArray(g.titles) ? g.titles : [];
-          const groupingPlatformName = String(g.recommendedPlatform || platformOverride || '').trim();
-          const groupingPlatformId = platformIdByName.get(groupingPlatformName.toLowerCase());
-          return Promise.all(titles.map(async (t, i) => {
-            // Back-compat: an older/malformed response might still hand us a
-            // plain string instead of {angle, postType, newPostType, platform}.
-            const angle = typeof t === 'string' ? t : (t.angle || '');
-            const titleObj = typeof t === 'string' ? { postType: '' } : t;
-            const seq = i + 1;
-            // Per-slot preferred platform — the strategy-making script's
-            // call, and the layer the microsite Strategies panel groups
-            // slots by. Falls back to the grouping's own recommendedPlatform
-            // when the AI didn't name one for this title (or named something
-            // off-catalog).
-            const slotPlatformName = (typeof t === 'string' ? '' : String(t.platform || '').trim()) || groupingPlatformName;
-            const slotPlatformId = platformIdByName.get(slotPlatformName.toLowerCase()) || groupingPlatformId;
-            const postTypeId = await resolvePostTypeId(titleObj);
-            const typeName = postTypeId
-              ? (Array.from(postTypeIdByName.entries()).find(([, id]) => id === postTypeId) || [])[0] || ''
-              : '';
-            const name = typeName ? `${seq} – ${typeName.replace(/\b\w/g, c => c.toUpperCase())}` : `${g.name || 'Untitled'} #${seq}`;
-            const props = {
-              "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
-              "Growth Strategy": { relation: [{ id: dash(strategyIdForSlots) }] },
-              "Campaign": { relation: [{ id: dash(campaignId) }] },
-              "Product": { relation: [{ id: dash(productId) }] },
-              "Grouping": { rich_text: [{ type: "text", text: { content: String(g.name || '').slice(0, 1990) } }] },
-              // Grouping Rationale — the full explanation behind this
-              // grouping, shown as a hover tooltip on its short name in the
-              // panel rather than crammed into the name itself. See the
-              // naming-convention note below.
-              "Grouping Rationale": { rich_text: [{ type: "text", text: { content: String(g.rationale || '').slice(0, 1990) } }] },
-              "Sequence": { number: seq },
-              "Angle": { rich_text: [{ type: "text", text: { content: String(angle || '').slice(0, 1990) } }] },
-              "Platform": { rich_text: [{ type: "text", text: { content: slotPlatformName.slice(0, 1990) } }] },
-              // "Type" (rich_text) kept in sync with Post Type's name — legacy
-              // field some older readouts (runStrategySequenceReminders,
-              // buildStrategyFromAsset) still reference by text.
-              "Type": { rich_text: [{ type: "text", text: { content: typeName.slice(0, 1990) } }] },
-              "Recurrence": { rich_text: [{ type: "text", text: { content: String(g.recurrence || '').slice(0, 1990) } }] },
-              "Status": { select: { name: "Open" } },
-            };
-            if (postTypeId) props["Post Type"] = { relation: [{ id: dash(postTypeId) }] };
-            // Best-effort exact-name Platform match — the per-slot platform
-            // the AI assigned, falling back to the grouping's. Unmatched is
-            // fine; fixable from the Strategies panel's ✏️ Edit Slot modal.
-            if (slotPlatformId) props["Platforms"] = { relation: [{ id: dash(slotPlatformId) }] };
-            return fetch("https://api.notion.com/v1/pages", {
-              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ parent: { database_id: STRATEGY_SLOTS_DB }, properties: props }),
-            }).then(r => r.json()).then(r => {
-              // Logged rather than silently swallowed — a rejected slot
-              // create (bad relation ID, schema mismatch, etc.) used to be
-              // invisible; it just quietly counted against slotsCreated.
-              if (r.message && !r.id) console.error('Strategy Slot create failed:', r.message);
-              return r;
-            }).catch(e => ({ error: String(e) }));
-          }));
-        }
-
-        if (!divergent) {
-          // ── flat path — one Growth Strategy record holding every
-          // grouping, unchanged from before this feature existed. ──
-          const children = [
-            { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
-            { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
-            ...(platformOverride ? [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Platform focus (operator-specified): ${platformOverride}`) } }]
-              : [{ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } }]),
-            { object: "block", type: "divider", divider: {} },
-            ...groupings.flatMap(groupingBlocks),
-          ];
-          const createResp = await createStrategyPage({ name: strategyName, parentId: null, summary: plan.summary, recPlatforms: recommendedPlatforms, platformOverrideVal: platformOverride, groupingCount: groupings.length, bodyChildren: children });
-          if (!createResp.id) return json({ error: createResp.message || "Failed to create Growth Strategy page" }, 500);
-          const strategyId = createResp.id.replace(/-/g, "");
-          const slotResults = (await Promise.all(groupings.map(g => createSlotsFor(strategyId, g)))).flat();
-          const slotsCreated = slotResults.filter(r => r && r.id).length;
-          // The inline per-slot platform picks above are unreliable — the
-          // same focused second pass "Re-check Platforms" uses would clean
-          // them up, but it's a second Claude call plus a sequential round
-          // of Notion updates on top of the generation call already made
-          // above; awaiting it here risked the whole request running long
-          // enough to hit Cloudflare's gateway timeout and the browser
-          // dropping the connection ("Load failed") even though the
-          // strategy itself had already saved. Run it in the background
-          // instead — same brief wait first so the just-created slots are
-          // visible to a Notion query — and return the response now.
-          ctx.waitUntil((async () => {
-            await new Promise(r => setTimeout(r, 2000));
-            await assignSlotPlatformsForStrategy(hdr, env, strategyId).catch(() => null);
-          })());
-          return json({ success: true, id: strategyId, url: createResp.url, groupingCount: groupings.length, slotsCreated, attachedMethods, divergent: false });
-        }
-
-        // ── divergent path — one parent (summary + links only, no Slots of
-        // its own) plus one child Growth Strategy per grouping, each with
-        // its own Slots. ──
-        const parentSummary = `${plan.summary || ''}\n\nThis strategy splits into ${groupings.length} sub-strategies, one per format: ${groupings.map(g => g.name).join(', ')}.`.trim();
-        const parentChildren = [
-          { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock("Summary") } },
-          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(plan.summary || 'Not provided.') } },
-          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Recommended platforms: ${recommendedPlatforms.join(', ') || 'Not specified'}`) } },
-          { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(`Sub-strategies (one per format): ${groupings.map(g => g.name).join(', ')}`) } },
-        ];
-        const parentResp = await createStrategyPage({ name: strategyName, parentId: null, summary: parentSummary, recPlatforms: recommendedPlatforms, platformOverrideVal: platformOverride, groupingCount: groupings.length, bodyChildren: parentChildren });
-        if (!parentResp.id) return json({ error: parentResp.message || "Failed to create parent Growth Strategy page" }, 500);
-        const parentId = parentResp.id.replace(/-/g, "");
-
-        const childResults = await Promise.all(groupings.map(async g => {
-          // Per operator direction: keep this short — the child is already
-          // nested visually under its parent in the panel, so repeating the
-          // parent strategy's own name here is just redundant verbosity.
-          const childName = String(g.name || 'Untitled').slice(0, 200);
-          const childResp = await createStrategyPage({
-            name: childName, parentId, summary: g.rationale || '',
-            recPlatforms: g.recommendedPlatform ? [g.recommendedPlatform] : [],
-            platformOverrideVal: g.recommendedPlatform || '', groupingCount: 1, bodyChildren: groupingBlocks(g),
-          });
-          if (!childResp.id) return { grouping: g, error: childResp.message || "Failed to create child strategy" };
-          const childId = childResp.id.replace(/-/g, "");
-          const slotResults = await createSlotsFor(childId, g);
-          return { grouping: g, id: childId, url: childResp.url, slotsCreated: slotResults.filter(r => r && r.id).length };
-        }));
-        const totalSlotsCreated = childResults.reduce((n, c) => n + (c.slotsCreated || 0), 0);
-        return json({
-          success: true, id: parentId, url: parentResp.url,
-          childIds: childResults.filter(c => c.id).map(c => c.id),
-          groupingCount: groupings.length, slotsCreated: totalSlotsCreated, attachedMethods, divergent: true,
+        const result = await injectGrowthStrategyPlan({
+          env, ctx, hdr, campaignId, productId, platformOverride, strategyTitle, plan, catalogs,
+          campaignLastEdited: ctxData.campPage?.last_edited_time,
         });
+        if (result.error) return json({ error: result.error }, 500);
+        return json(result);
       }
+
+      // ── buildGrowthStrategyHandoff ──
+      // Copy-to-clipboard version of the SAME "3-6 distribution arcs" brief
+      // generateGrowthStrategy sends to Claude — for running the generation
+      // through ChatGPT (or any other model) instead of Claude. Returns the
+      // prompt text only; nothing is written to Notion here. Method-
+      // agnostic and campaign/product-agnostic — grounded the same way
+      // generateGrowthStrategy is, for whichever product/campaign/platform
+      // the caller passes.
+      if (body.action === "buildGrowthStrategyHandoff") {
+        const { campaignId, productId, platformOverride, researchGuidelines, seedTitleId } = body;
+        if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const [ctxData, catalogs] = await Promise.all([
+          gatherGrowthStrategyContext(hdr, { campaignId, productId, seedTitleId }),
+          loadStrategyCatalogs(hdr),
+        ]);
+        if (ctxData.error) return json({ error: ctxData.error }, 404);
+        const promptBody = buildGrowthStrategyPromptBody({
+          researchGuidelines, seedTitleBlock: ctxData.seedTitleBlock, platformOverride,
+          productName: ctxData.productName, productDesc: ctxData.productDesc, productAvatar: ctxData.productAvatar,
+          strategyBlock: ctxData.strategyBlock, campaignName: ctxData.campaignName, researchBlock: ctxData.researchBlock,
+          postTypesCatalogBlock: catalogs.postTypesCatalogBlock, platformsCatalogBlock: catalogs.platformsCatalogBlock,
+        });
+        const prompt = `Paste this WHOLE prompt into ChatGPT (or any other model), then paste its ENTIRE reply back into the "paste the result back" box here — nothing else needs to change first.
+
+${promptBody}`;
+        return json({ prompt, productName: ctxData.productName, campaignName: ctxData.campaignName });
+      }
+
+      // ── injectExternalGrowthStrategy ──
+      // The other half of the hand-off: takes whatever text the operator
+      // pasted back from ChatGPT, parses out the same JSON shape Claude's
+      // own output is parsed into, and writes it through the EXACT same
+      // injectGrowthStrategyPlan path generateGrowthStrategy uses — same
+      // Growth Strategy + Strategy Slots records, same hierarchy, so
+      // everything downstream (the Strategies panel, Re-check Platforms,
+      // Rerun, Launch Run) treats it exactly like a Claude-made strategy —
+      // this is what "bypasses Claude generation but keeps the same
+      // functioning slots/hierarchy/methodology" actually means.
+      if (body.action === "injectExternalGrowthStrategy") {
+        const { campaignId, productId, platformOverride, strategyTitle, pastedText } = body;
+        if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
+        if (!pastedText || !pastedText.trim()) return json({ error: "pastedText required — paste ChatGPT's whole reply" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        let plan;
+        try {
+          plan = parseExternalGrowthStrategyPlan(pastedText);
+        } catch (e) {
+          return json({ error: "Couldn't find a valid plan in the pasted text: " + e.message }, 400);
+        }
+        const [campPage, catalogs] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+          loadStrategyCatalogs(hdr),
+        ]);
+        const result = await injectGrowthStrategyPlan({
+          env, ctx, hdr, campaignId, productId, platformOverride, strategyTitle, plan, catalogs,
+          campaignLastEdited: campPage?.last_edited_time,
+        });
+        if (result.error) return json({ error: result.error }, 500);
+        return json(result);
+      }
+
 
       // ── listGrowthStrategies ──
       // Feeds both the Product row's "plans" dropdown and the Generate
