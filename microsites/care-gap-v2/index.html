@@ -2681,8 +2681,19 @@ async function loadStrategyTab() {
   }
 }
 let STRATEGY_SLOTS_BY_ID = {};
+// Strategy id -> { name, platformOverride } — looked up by id instead of
+// interpolating the strategy's free-text name straight into an onclick
+// attribute. A name containing an apostrophe (e.g. "Q3 TikTok Push —
+// Caregiver's Guide") survives esc()'s HTML-entity escaping, gets decoded
+// back to a literal ' by the HTML parser, and breaks out of the
+// single-quoted JS string, silently killing the handler — same failure
+// mode already fixed for Product Ideas' buttons and the cluster regen
+// button elsewhere in this file.
+let STRATEGIES_BY_ID = {};
 function buildStrategyTree(strategies) {
   STRATEGY_SLOTS_BY_ID = {};
+  STRATEGIES_BY_ID = {};
+  strategies.forEach(s => { STRATEGIES_BY_ID[s.id] = { name: s.name, platformOverride: s.platformOverride || '' }; });
   const rows = [];
   strategies.forEach(s => {
     (s.groupings || []).forEach(g => {
@@ -2749,8 +2760,8 @@ function renderStrategyArc(stackName, prodName, arc) {
       ${platTag}
       <span class="tag ${arc.strategyStatus === 'Approved' ? 'fresh' : 'manual'}" style="font-size:9px;">${esc(arc.strategyStatus)}</span>
       <a class="kwlink" href="${notionUrl(arc.strategyId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
-      <button class="iconbtn" title="Rerun this strategy — same fields as generating a new one (title/platform/guidance), rewrites this one in place against current product research + Main Keywords" onclick="event.stopPropagation();openRerunStrategyModal('${esc(arc.strategyId)}','${esc(arc.strategyName).replace(/'/g,"\\'")}','${esc(arc.strategyPlatformOverride).replace(/'/g,"\\'")}')">🔁</button>
-      <button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(arc.strategyId)}','${esc(arc.strategyName)}')">✕</button>
+      <button class="iconbtn" title="Rerun this strategy — same fields as generating a new one (title/platform/guidance), rewrites this one in place against current product research + Main Keywords" onclick="event.stopPropagation();openRerunStrategyModal('${esc(arc.strategyId)}')">🔁</button>
+      <button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(arc.strategyId)}')">✕</button>
       <button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(arc.strategyId)}','${esc(arc.strategyName)}','strategy')">📝</button>
     </div>
     <div class="kwgbody">${arc.rows.map(row => renderStrategySlot(row.slot, row.platform)).join('')}</div>
@@ -2826,7 +2837,8 @@ async function runMakeTitleFromSlot() {
 // Real Notion archive (strategy + any divergent children + their slots,
 // unlinking any titles that pointed at them) — deleteGrowthStrategy
 // already exists server-side and does the full cascade in one call.
-async function deleteStrategy(id, name) {
+async function deleteStrategy(id) {
+  const name = (STRATEGIES_BY_ID[id] && STRATEGIES_BY_ID[id].name) || 'this strategy';
   if (!confirm(`Delete "${name}"? This archives the strategy and its slots in Notion, and unlinks any titles from them.`)) return;
   try {
     await w('deleteGrowthStrategy', { growthStrategyId: id });
@@ -2842,7 +2854,10 @@ async function deleteStrategy(id, name) {
 // a new one. Every slot without an attached title/asset is archived and
 // replaced; slots with published content are kept.
 let RERUN_STRAT = null;
-function openRerunStrategyModal(id, name, platformOverride) {
+function openRerunStrategyModal(id) {
+  const info = STRATEGIES_BY_ID[id] || {};
+  const name = info.name || '';
+  const platformOverride = info.platformOverride || '';
   RERUN_STRAT = { id, name };
   document.getElementById('rerunStratLabel').textContent = `Strategy: ${name}`;
   document.getElementById('rerunTitleInput').value = '';
@@ -3041,11 +3056,12 @@ async function loadTitleAndAssetTab() {
         <div class="kwgbody">${stack.products.map(prod => `
           <div style="margin-bottom:8px;">
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
-            ${prod.strategies.map(strat => `
-              <div style="margin:0 0 6px 8px;">
-                ${strat.name !== 'No Strategy' ? `<div style="font-size:10px;color:var(--ink3);font-style:italic;margin-bottom:3px;">${esc(strat.name)}</div>` : ''}
-                ${strat.titles.map(renderTitleRow).join('')}
-              </div>`).join('')}
+            ${prod.strategies.map(strat => strat.name !== 'No Strategy' ? `
+              <div class="kwgroup" data-ckey="titlestrat-${esc(stack.name)}-${esc(prod.name)}-${esc(strat.name)}" style="--kwc:var(--border2);margin:0 0 6px 8px;">
+                <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;"><span class="kwarrow">▸</span><span style="font-style:italic;">${esc(strat.name)}</span></div>
+                <div class="kwgbody">${strat.titles.map(renderTitleRow).join('')}</div>
+              </div>` : `
+              <div style="margin:0 0 6px 8px;">${strat.titles.map(renderTitleRow).join('')}</div>`).join('')}
           </div>`).join('')}</div>
       </div>`).join('');
     applyCollapseState(titleBody);
@@ -3066,11 +3082,12 @@ async function loadTitleAndAssetTab() {
         <div class="kwgbody">${stack.products.map(prod => `
           <div style="margin-bottom:8px;">
             <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
-            ${prod.strategies.map(strat => `
-              <div style="margin:0 0 6px 8px;">
-                ${strat.name !== 'No Strategy' ? `<div style="font-size:10px;color:var(--ink3);font-style:italic;margin-bottom:3px;">${esc(strat.name)}</div>` : ''}
-                ${strat.titles.map(t => renderAssetTitleNode(t, assetsByTitleId[t.id])).join('')}
-              </div>`).join('')}
+            ${prod.strategies.map(strat => strat.name !== 'No Strategy' ? `
+              <div class="kwgroup" data-ckey="assetstrat-${esc(stack.name)}-${esc(prod.name)}-${esc(strat.name)}" style="--kwc:var(--border2);margin:0 0 6px 8px;">
+                <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;"><span class="kwarrow">▸</span><span style="font-style:italic;">${esc(strat.name)}</span></div>
+                <div class="kwgbody">${strat.titles.map(t => renderAssetTitleNode(t, assetsByTitleId[t.id])).join('')}</div>
+              </div>` : `
+              <div style="margin:0 0 6px 8px;">${strat.titles.map(t => renderAssetTitleNode(t, assetsByTitleId[t.id])).join('')}</div>`).join('')}
           </div>`).join('')}</div>
       </div>`).join('');
     applyCollapseState(assetBody);
