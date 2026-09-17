@@ -231,6 +231,18 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <div class="kwgroup" data-ckey="campaignnotes" style="--kwc:#e8ff47;margin:14px 0;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>📌 Campaign Notes<span id="campaignNotesBadge" style="font-weight:400;text-transform:none;color:var(--ink3);margin-left:4px;"></span></div>
+    <div class="kwgbody">
+      <p style="font-size:10.5px;color:var(--ink3);margin:0 0 6px;">Your own scratchpad for this campaign — separate from Research, saved directly on the Campaign record. Nothing here feeds generation.</p>
+      <textarea id="campaignNotesText" placeholder="Notes on this campaign…" style="width:100%;box-sizing:border-box;min-height:90px;font-family:var(--sans);font-size:12.5px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);resize:vertical;"></textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+        <button class="btn primary" id="campaignNotesSaveBtn" onclick="saveCampaignNotes()">💾 Save</button>
+        <span id="campaignNotesStatus" style="font-size:10.5px;color:var(--ink3);"></span>
+      </div>
+    </div>
+  </div>
+
   <div class="livebanner">
     <b>Real, live, wired to the actual worker.</b> Every field below loads from this campaign's real Notion records; every ⟳/↻ button calls a real worker action that writes back to Notion. Where a field has no dedicated regenerate action yet, it's shown read-only rather than faked.
   </div>
@@ -1063,6 +1075,7 @@ const CAMPAIGN_ID = new URLSearchParams(location.search).get('campaignId') || DE
 //                            dropdowns (Bulk Choose Method / Generate Title).
 let RESEARCH_ID = null;
 let CAMPAIGN_NAME = 'Campaign';
+let CAMPAIGN_NOTES = '';
 let HUB_SLUG = null;
 let CAMPAIGN_METHOD_IDS = new Set();
 let IN_FLOW_METHOD_IDS = new Set();
@@ -1086,6 +1099,8 @@ function resolveCampaignContext() {
       document.title = CAMPAIGN_NAME + ' Template';
       const pm = document.querySelector('.pin-mark'); if (pm) pm.innerHTML = esc(CAMPAIGN_NAME) + ' <span style="color:#e8ff47">·</span> Admin';
       const h1 = document.querySelector('.hdr h1'); if (h1) h1.textContent = CAMPAIGN_NAME + ' Template';
+      CAMPAIGN_NOTES = header.notes || '';
+      renderCampaignNotes();
     }
     let researchId = researchResp && researchResp.research ? researchResp.research.id : null;
     if (!researchId) {
@@ -1097,6 +1112,40 @@ function resolveCampaignContext() {
     RESEARCH_ID = researchId;
   })();
   return _campaignContextPromise;
+}
+// Dedicated operator scratchpad, one per campaign — the Campaign record's
+// own "Notes" property (pre-existing field, already used by the root
+// dashboard's TD-tab "Campaign TD Note" modal), NOT a Research field and
+// not the per-field 📝 annotation system (openNoteModal/NOTES_CACHE) —
+// this is a single freeform box, collapsed by default, always visible at
+// the top of the page regardless of which tab is active.
+function campaignNotesPreview() {
+  const t = (CAMPAIGN_NOTES || '').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  return t.length > 70 ? t.slice(0, 70) + '…' : t;
+}
+function renderCampaignNotes() {
+  const ta = document.getElementById('campaignNotesText');
+  if (ta && document.activeElement !== ta) ta.value = CAMPAIGN_NOTES;
+  const badge = document.getElementById('campaignNotesBadge');
+  if (badge) badge.textContent = campaignNotesPreview();
+}
+async function saveCampaignNotes() {
+  const ta = document.getElementById('campaignNotesText');
+  const btn = document.getElementById('campaignNotesSaveBtn');
+  const status = document.getElementById('campaignNotesStatus');
+  const value = ta.value;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: 'notes', value });
+    CAMPAIGN_NOTES = value;
+    renderCampaignNotes();
+    if (status) { status.textContent = 'Saved ✓'; setTimeout(() => { if (status) status.textContent = ''; }, 2000); }
+  } catch (e) {
+    alert('Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = o;
+  }
 }
 // NOT fired here — every worker action requires a valid session token (the
 // worker's blanket "all other actions require a valid session token" gate),

@@ -24029,6 +24029,7 @@ Return ONLY a JSON object with these exact keys:
           hubSlug: hub ? hub.slug : null,
           microsite: campPage.properties?.["microsite"]?.url || null,
           liveSite: campPage.properties?.["live site"]?.url || null,
+          notes: (campPage.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
           methods,
         });
       }
