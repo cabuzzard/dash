@@ -8715,7 +8715,12 @@ export default {
         });
         const wanted = rows.filter(r => {
           const at = r.properties?.["Asset Type"]?.select?.name || "";
-          if (!(/seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)))) return false;
+          // QA – Story publishes to the same blog/ subpath as any other
+          // SEO Post (sub:'blog' in qaContentStep) and is a genuine
+          // editorial article, so it belongs in the journal feed too. QA –
+          // Story's sibling QA – Sales deliberately does NOT: it publishes
+          // to sales/ instead, a conversion page, not an article.
+          if (!(/seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)) || /^QA\s*[–-]\s*Story$/i.test(at))) return false;
           const h = r.properties?.["Content Hub"]?.select?.name || "";
           return !slug || !h || h === slug;
         }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0)).slice(0, lim);
@@ -8920,7 +8925,7 @@ export default {
           }).catch(() => []);
           const blogAssets = rows.filter(r => {
             const at = r.properties?.["Asset Type"]?.select?.name || "";
-            return /seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at));
+            return /seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)) || /^QA\s*[–-]\s*Story$/i.test(at);
           });
           for (const a of blogAssets) {
             const aid = a.id.replace(/-/g,"");
@@ -30839,6 +30844,36 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         });
         if (!resp.ok) { const e = await resp.json(); return json({ error: e.message || "Update failed" }, 400); }
         return json({ success: true });
+      }
+
+      // writeAssetContentBlocks — appends real paragraph/heading_2 content
+      // blocks to an asset page. Exists because every generation path (QA
+      // methods, SEO posts, etc.) writes its actual long-form content as
+      // PAGE BLOCKS, never the Body property (which is only ever a short
+      // preview) — but there was no way to backfill blocks onto an asset
+      // whose content already exists verbatim elsewhere (e.g. restoring a
+      // Notion record for a page that's live on the hub but had its asset
+      // deleted). elems: [{ type: "p"|"h2", text }, ...], written in order,
+      // appended (never clears existing blocks — only meant for a fresh
+      // asset page). Same chunking/truncation as every other block-writer
+      // in this file (100 blocks/request, 1990 chars/rich_text object).
+      if (body.action === "writeAssetContentBlocks") {
+        const { assetId, elems } = body;
+        if (!assetId || !Array.isArray(elems) || !elems.length) return json({ error: "assetId and a non-empty elems array required" }, 400);
+        const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
+        const children = elems.slice(0, 300).map(e => e.type === "h2"
+          ? { object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(e.text) } }
+          : { object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(e.text) } });
+        for (let i = 0; i < children.length; i += 100) {
+          const resp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: children.slice(i, i + 100) }),
+          });
+          if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Block write failed" }, resp.status); }
+        }
+        return json({ success: true, count: children.length });
       }
 
       if (body.action === "setAssetLogin") {
