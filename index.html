@@ -15278,7 +15278,7 @@ function renderHubAssetMatrix() {
     const hc = counts[h.slug] || {};
     const isLp = h.kind === 'landing';
     const hs = (typeof HUB_SITES !== 'undefined' ? HUB_SITES : []).find(x => x.slug === h.slug) || {};
-    const msUrl = isLp ? '' : (hs.microsite ? `https://cabuzzard.github.io/dash/microsites/${hs.microsite}/` : '');
+    const msUrl = isLp ? '' : (hs.campaignId ? `https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${hs.campaignId}` : '');
     const hubUrl = isLp ? `https://cabuzzard.github.io/dash/web/landing/${h.slug}/` : (hs.domain ? `https://${hs.domain}/` : `https://cabuzzard.github.io/dash/web/hub/${h.slug}/`);
     const rowLabel = isLp ? '◆ ' + (h.name || h.slug) : (HM_LABELS[h.slug] || h.slug);
     let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:${isLp ? 'var(--accent)' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(isLp ? 'landing page · ' + (h.keyword || h.slug) : h.slug)}">${esc(rowLabel)}</td>`
