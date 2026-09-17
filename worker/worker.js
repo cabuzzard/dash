@@ -8382,6 +8382,46 @@ export default {
       }
     }
 
+    // ── getHubProjectExperience ── public, no token. The Project
+    // Experience section (between Report and Journal on the hub page).
+    // Notion is the sole source of truth — no separate JSON file, no
+    // per-entry page. Three independent optional fields — name (Asset
+    // Title), title (Platform Title), blurb (Body) — no image/personal
+    // info (per operator direction — engineering/construction clients
+    // don't want photos or personal details on a live site). Each field
+    // renders on the hub only if it was actually given (see
+    // renderHubProjectExperience) — a missing field is just omitted, not
+    // padded or invented. Real content only: generateProjectExperienceAsset
+    // never invents any of it, it just saves what the operator typed in.
+    if (body.action === "getHubProjectExperience") {
+      const raw = String(body.campaignId || "").replace(/-/g, "");
+      if (raw.length !== 32) return json({ projectExperience: [] });
+      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+      const lim = Math.max(1, Math.min(24, Number(body.limit) || 9));
+      try {
+        const rows = await notionQuery(ASSETS_DB, {
+          filter: { and: [
+            { property: "Campaign", relation: { contains: dash(raw) } },
+            { property: "Asset Type", select: { equals: "Project Experience" } },
+            { or: [
+              { property: "Asset Status", select: { equals: "Publish" } },
+              { property: "Asset Status", select: { equals: "Published" } },
+            ] },
+          ] },
+          sorts: [{ timestamp: "created_time", direction: "descending" }],
+        });
+        const projectExperience = rows.slice(0, lim).map(r => {
+          const p = r.properties || {};
+          return {
+            name:  (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim(),
+            title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim(),
+            blurb: (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim(),
+          };
+        }).filter(t => t.name || t.title || t.blurb);
+        return json({ projectExperience });
+      } catch (e) { return json({ projectExperience: [] }); }
+    }
+
     // ── getHubContent / saveHubContent ── Content Hubs tab "✎ Section text"
     // modal. Fixed copy only — headings / subheads / blurbs / ribbon / nav
     // labels, NOT the dynamic blog/offers/news card loads. Overrides live in
@@ -38091,6 +38131,47 @@ Return ONLY this JSON object, no other text, no markdown fences:
           success: true, titleId, parentAssetId, title: plan.title || idea,
           components, awaitingCanva: components.filter(c => c.kind === "visual").length,
         });
+      }
+
+      // ── Project Experience — a short, no-photo project write-up (name +
+      // title + blurb, each independently optional). Built for engineering/
+      // construction clients who don't want photos or personal information
+      // on a live site. No AI call at all: the operator's own words go
+      // straight to Notion, published immediately — never invented or
+      // rewritten, since this stands in for a real testimonial/project
+      // reference and putting words in someone's mouth would misrepresent
+      // it. getHubProjectExperience (public, above) reads it straight back.
+      if (body.action === "generateProjectExperienceAsset") {
+        const { titleId, campaignId, productId, methodId, name, title, blurb } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const cleanName  = String(name || "").trim().slice(0, 100);
+        const cleanTitle = String(title || "").trim().slice(0, 150);
+        const cleanBlurb = String(blurb || "").trim().replace(/\s+/g, " ").slice(0, 600);
+        if (!cleanName && !cleanTitle && !cleanBlurb) return json({ error: "At least one of name, title, or blurb is required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const methodIdResolved = (methodId && methodId !== "__none__") ? methodId : await resolveMethodIdByName("Project Experience", { create: true }).catch(() => null);
+
+        const assetProps = {
+          "Asset Title": { title: cleanName ? [{ text: { content: cleanName } }] : [] },
+          "Asset Status": { select: { name: "Publish" } },
+          "Asset Type": { select: { name: "Project Experience" } },
+          "Content Strategy": { relation: [{ id: dash(titleId) }] },
+        };
+        if (cleanTitle) assetProps["Platform Title"] = { rich_text: [{ text: { content: cleanTitle } }] };
+        if (cleanBlurb) assetProps["Body"] = { rich_text: [{ text: { content: cleanBlurb } }] };
+        if (campaignId) assetProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+        if (productId && productId !== "__none__") assetProps["Product"] = { relation: [{ id: dash(productId) }] };
+        Object.assign(assetProps, await assetMethodProp(methodIdResolved, "Project Experience"));
+
+        const assetResp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+        });
+        const assetResult = await assetResp.json();
+        if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create asset" }, 502);
+        return json({ success: true, assetId: assetResult.id.replace(/-/g, "") });
       }
 
       // ── generateDesignCardMotif (EXPERIMENTAL — ChatGPT-bypass candidate) ──

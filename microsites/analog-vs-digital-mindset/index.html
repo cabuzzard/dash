@@ -2109,6 +2109,22 @@ async function submitBlankGrouping() {
         <div id="gaQaQuestions"></div>
       </div>
 
+      <!-- "Project Experience" method only: a short, no-photo project
+           write-up — name / title / blurb, each independently optional.
+           No AI call — whatever's typed here is exactly what publishes,
+           since this stands in for a real testimonial/project reference
+           and shouldn't be rewritten. Built for engineering/construction
+           clients who don't want photos or personal information live. -->
+      <div id="gaProjectExperienceWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #2f3a4a;background:rgba(56,139,253,.06);border-radius:4px;">
+        <div style="font-size:11px;color:#88b4e8;margin-bottom:8px;">Publishes exactly as typed — no rewriting. Leave any field blank to omit it from the hub card.</div>
+        <label class="lm-label">Name <span style="color:#fff;font-weight:normal;">— e.g. a client or project name (optional)</span></label>
+        <input class="modal-ta" id="gaPeNameInput" type="text" style="margin-bottom:8px;" />
+        <label class="lm-label">Title <span style="color:#fff;font-weight:normal;">— a short role/scope headline (optional)</span></label>
+        <input class="modal-ta" id="gaPeTitleInput" type="text" style="margin-bottom:8px;" />
+        <label class="lm-label">Blurb <span style="color:#fff;font-weight:normal;">— one or two sentences (optional)</span></label>
+        <textarea class="modal-ta" id="gaPeBlurbInput" rows="3" style="resize:vertical;"></textarea>
+      </div>
+
       <!-- "email hub main - <purpose>" methods only: which hub capture form's
            list this generated email sequence is written for. Options come
            from the Globals "Hub Email Forms" registry (getHubForms), filtered
@@ -7465,6 +7481,11 @@ function gaUpdateSkillHint() {
   if (qaProductWrap) { qaProductWrap.style.display = isQaMethod ? 'block' : 'none'; if (isQaMethod) gaLoadQaProducts(); }
   if (qaTypeWrap) qaTypeWrap.style.display = isQaProductMethod ? 'block' : 'none';
   if (qaInterviewWrap) qaInterviewWrap.style.display = isQaMethod ? 'block' : 'none';
+  // "Project Experience" — no interview, no product needed; just the
+  // name/title/blurb fields, published exactly as typed.
+  const peWrap = document.getElementById('gaProjectExperienceWrap');
+  const isProjectExperience = /^project experience$/i.test((GA_METHOD_NAME || '').trim());
+  if (peWrap) peWrap.style.display = isProjectExperience ? 'block' : 'none';
   const match = gaMatchSkill(GA_METHOD_NAME);
   const isCarousel = match?.workerAction === 'generateCarouselPreview';
   const isAvatar = match?.workerAction === 'generateAvatarScript';
@@ -8134,7 +8155,7 @@ async function openGenAssetsModal(titleId) {
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
   gaQaResetInterview();
-  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput','gaQaProductInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput','gaQaProductInput','gaPeNameInput','gaPeTitleInput','gaPeBlurbInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -11096,6 +11117,40 @@ async function submitGenAssets() {
       gaQaResetInterview();
       await loadTitles();
       setTimeout(closeGenAssetsModal, 4000);
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+      status.style.color = '#fc8181';
+      btn.disabled = false; btn.textContent = 'Generate';
+    }
+    return;
+  }
+
+  // Project Experience — no interview, no AI call, no Product required.
+  // Publishes exactly what's typed (any of the three fields can be blank —
+  // the hub card just omits whichever ones are).
+  if (/^project experience$/i.test((GA_METHOD_NAME || '').trim())) {
+    const peName = document.getElementById('gaPeNameInput')?.value.trim() || '';
+    const peTitle = document.getElementById('gaPeTitleInput')?.value.trim() || '';
+    const peBlurb = document.getElementById('gaPeBlurbInput')?.value.trim() || '';
+    if (!peName && !peTitle && !peBlurb) {
+      status.textContent = 'Fill in at least one of Name / Title / Blurb above.';
+      status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate';
+      return;
+    }
+    status.textContent = 'Publishing…';
+    try {
+      const method = await gaResolve('method', status);
+      const data = await w('generateProjectExperienceAsset', {
+        titleId: GA_TITLE_ID, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, productId: GA_PRODUCT_ID || undefined,
+        methodId: method.id || undefined, name: peName, title: peTitle, blurb: peBlurb,
+      });
+      if (data.error) throw new Error(data.error);
+      gaAutoAttachMethod(method.id);
+      status.textContent = '✓ Published to the hub.';
+      status.style.color = '#68d391';
+      btn.textContent = 'Done';
+      await loadTitles();
+      setTimeout(closeGenAssetsModal, 3000);
     } catch (e) {
       status.textContent = 'Error: ' + e.message;
       status.style.color = '#fc8181';

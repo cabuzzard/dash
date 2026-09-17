@@ -269,6 +269,17 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     </div>
   </section>
 
+  <section class="sec" id="projectExperience" style="display:none;">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow" id="projectExperienceLabel"></span>
+        <h2 id="projectExperienceTitle"></h2>
+        <p class="sec-note" id="projectExperienceNote"></p>
+      </div>
+      <div id="projectExperienceBody"></div>
+    </div>
+  </section>
+
   <section class="sec" id="journal">
     <div class="wrap">
       <div class="sec-head">
@@ -345,6 +356,20 @@ const HUB = {
     sub: "One session a week, recorded raw — the tone, the room, the take left as it happened. No tutorials, no over-production. Download the MP3 and the live recording, study it, or just put it on.",
     ctaPrimary:   { label: "Get this week's session", href: "#trips" },
     ctaSecondary: { label: "Join the weekly",         href: "#report" },
+  },
+
+  projectExperience: {
+    label: "Project Experience",
+    title: "Recent work",
+    note: "",
+    items: [
+      // { name:"Project or client name", title:"Short role/scope headline", blurb:"One or two sentences." }
+      // Each field is independently optional — no photos, no personal info.
+    ],
+    empty: {
+      heading: "Project write-ups are on the way.",
+      body: "The first ones will show up here once added.",
+    },
   },
 
   trips: {
@@ -516,6 +541,47 @@ function renderReport() {
   paintAside("reportAside", HUB.report.image);
 }
 
+async function renderHubProjectExperience() {
+  // Project Experience section: static HUB.projectExperience.items as the
+  // instant fallback, then live — getHubProjectExperience (Notion is the
+  // source of truth, no separate JSON file, no per-entry page). Each entry
+  // is { name, title, blurb }, every field independently optional — no
+  // photos, no personal info beyond what's typed in (per operator
+  // direction — engineering/construction clients don't want that on a
+  // live site). A missing field is just omitted from the card, never
+  // padded or invented. Unlike every other section here, an empty result
+  // hides the WHOLE section (no "coming soon" placeholder, per operator
+  // direction) — the section starts display:none in the markup and only
+  // ever gets revealed once real entries exist.
+  const s = HUB.projectExperience;
+  const section = $("projectExperience");
+  $("projectExperienceLabel").textContent = s.label;
+  $("projectExperienceTitle").textContent = s.title;
+  $("projectExperienceNote").textContent = s.note || "";
+  const body = $("projectExperienceBody");
+  const paint = (items) => {
+    if (!items || !items.length) { if (section) section.style.display = "none"; body.innerHTML = ""; return; }
+    if (section) section.style.display = "";
+    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
+      <div class="card">
+        ${it.title ? `<span class="kicker">${esc(it.title)}</span>` : ""}
+        ${it.blurb ? `<p>${esc(it.blurb)}</p>` : ""}
+        ${it.name ? `<span class="more">${esc(it.name)}</span>` : ""}
+      </div>`).join("") + `</div>`;
+  };
+  paint(s.items);
+  if (!HUB.campaignId) return;
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getHubProjectExperience", campaignId: HUB.campaignId, slug: HUB.slug }),
+    });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.projectExperience) && data.projectExperience.length) paint(data.projectExperience);
+  } catch (e) { /* keep the static fallback */ }
+}
+
 async function renderSocial() {
   $("elsewhereLabel").textContent = HUB.social.label;
   const paint = (items) => {
@@ -663,6 +729,7 @@ async function renderHubProducts() {
   renderHero();
   renderHubJournal();
   renderReport();
+  renderHubProjectExperience();
   renderHubProducts();
   renderSocial();
   if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
