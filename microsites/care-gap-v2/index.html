@@ -2808,14 +2808,19 @@ async function saveAllProductFields(btn) {
   }
 }
 
-// ══════════════════════ STRATEGY TAB — Product Stack → Product → Arc ══════════════════════
-// Arc (grouping) is the primary split, not Platform — an arc's slots can
-// span several platforms (the whole point of the cross-platform-arc
-// convention), and reappearing once per platform it touched split one arc
-// across several headers. Platform is shown per-slot instead (and as a
-// summary tag on the arc header) rather than as its own nesting level.
-// Titles/Assets keep their own separate nesting (Product Stack → Product →
-// Strategy; Assets sub-group by Platform) — untouched by this.
+// ══════════════════════ STRATEGY TAB — Product Stack → Product → Strategy → Arc ══════════════════════
+// All four levels collapsible (per operator direction — Stack/Product/Arc
+// already were, Strategy wasn't a distinct level at all before this pass:
+// a product's arcs used to render flattened directly under it, with the
+// owning strategy only surfaced as action buttons on each arc's header).
+// Arc (grouping) is still the level below Strategy, not Platform — an
+// arc's slots can span several platforms (the whole point of the
+// cross-platform-arc convention), and reappearing once per platform it
+// touched would split one arc across several headers. Platform is shown
+// per-slot instead (and as a summary tag on the arc header) rather than
+// as its own nesting level. Titles/Assets keep their own separate nesting
+// (Product Stack → Product → Strategy; Assets sub-group by Platform) —
+// untouched by this.
 async function loadStrategyTab() {
   const body = document.getElementById('strategyBody');
   body.innerHTML = '<div class="loadnote">Loading…</div>';
@@ -2872,14 +2877,27 @@ function buildStrategyTree(strategies) {
       name: stack,
       count: byStack[stack].length,
       products: productOrder.map(product => {
-        const { groups: byArc, order: arcOrder } = groupByStack(byProduct[product], r => `${r.strategyId}::${r.groupingName}`);
+        const { groups: byStrategy, order: strategyOrderRaw } = groupByStack(byProduct[product], r => r.strategyId);
         return {
           name: product,
-          arcs: arcOrder.map(key => {
-            const arcRows = byArc[key];
-            const first = arcRows[0];
-            const platforms = Array.from(new Set(arcRows.map(r => r.platform).filter(p => p && p !== 'No platform')));
-            return { name: first.groupingName, meta: first.groupingMeta, strategyId: first.strategyId, strategyName: first.strategyName, strategyStatus: first.strategyStatus, strategyPlatformOverride: first.strategyPlatformOverride, platforms, rows: arcRows };
+          count: byProduct[product].length,
+          strategies: strategyOrderRaw.map(strategyId => {
+            const stratRows = byStrategy[strategyId];
+            const first = stratRows[0];
+            const { groups: byArc, order: arcOrder } = groupByStack(stratRows, r => r.groupingName);
+            return {
+              id: strategyId,
+              name: first.strategyName,
+              status: first.strategyStatus,
+              platformOverride: first.strategyPlatformOverride,
+              count: stratRows.length,
+              arcs: arcOrder.map(gname => {
+                const arcRows = byArc[gname];
+                const f = arcRows[0];
+                const platforms = Array.from(new Set(arcRows.map(r => r.platform).filter(p => p && p !== 'No platform')));
+                return { name: f.groupingName, meta: f.groupingMeta, platforms, rows: arcRows };
+              }),
+            };
           }),
         };
       }),
@@ -2892,28 +2910,49 @@ function renderStrategyStackGroup(stack) {
     <div class="kwgbody">${stack.products.map(prod => renderStrategyProductGroup(stack.name, prod)).join('')}</div>
   </div>`;
 }
+// Product — its own collapsible group now (was a plain, always-expanded
+// label before this pass).
 function renderStrategyProductGroup(stackName, prod) {
-  return `<div style="margin-bottom:10px;">
-    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
-    ${prod.arcs.map(arc => renderStrategyArc(stackName, prod.name, arc)).join('')}
+  return `<div class="kwgroup" data-ckey="stratprod-${esc(stackName)}-${esc(prod.name)}" style="--kwc:#a78bfa;margin:0 0 10px 8px;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;">
+      <span class="kwarrow">▸</span>${esc(prod.name)} <span style="font-weight:400;color:var(--ink3);">(${prod.count})</span>
+    </div>
+    <div class="kwgbody">${prod.strategies.map(strat => renderStrategyGroup(stackName, prod.name, strat)).join('')}</div>
   </div>`;
 }
-// Individual strategy/arc — its own collapsible group (same kwgroup/kwghd
-// pattern as every other level here), collapsed by default like the rest.
-// Previously always fully expanded with no toggle at all.
-function renderStrategyArc(stackName, prodName, arc) {
+// Strategy — the level this file used to skip entirely (arcs rendered
+// flattened straight under Product, with the owning strategy only
+// surfaced as action buttons on each arc's own header). Now its own
+// collapsible group; the rerun/delete/Notion-link/note buttons move here
+// from the arc header since they always acted on the STRATEGY record, not
+// the individual arc — a strategy with 2+ arcs previously showed those
+// same four buttons duplicated once per arc, all pointing at the same id.
+function renderStrategyGroup(stackName, prodName, strat) {
+  return `<div class="kwgroup" data-ckey="stratstrategy-${esc(stackName)}-${esc(prodName)}-${esc(strat.id)}" style="--kwc:var(--border2);margin:0 0 8px 8px;padding-left:8px;">
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;">
+      <span class="kwarrow">▸</span>
+      <span>${esc(strat.name)}</span>
+      <span style="font-weight:400;color:var(--ink3);">(${strat.count})</span>
+      <span class="tag ${strat.status === 'Approved' ? 'fresh' : 'manual'}" style="font-size:9px;">${esc(strat.status)}</span>
+      <a class="kwlink" href="${notionUrl(strat.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
+      <button class="iconbtn" title="Rerun this strategy — same fields as generating a new one (title/platform/guidance), rewrites this one in place against current product research + Main Keywords" onclick="event.stopPropagation();openRerunStrategyModal('${esc(strat.id)}')">🔁</button>
+      <button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(strat.id)}')">✕</button>
+      <button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(strat.id)}','${esc(strat.name)}','strategy')">📝</button>
+    </div>
+    <div class="kwgbody">${strat.arcs.map(arc => renderStrategyArc(stackName, prodName, strat.id, arc)).join('')}</div>
+  </div>`;
+}
+// Arc — its own collapsible group, now nested under Strategy instead of
+// directly under Product. Just the grouping name/fill-count/platform
+// summary — the strategy-level actions live one level up now.
+function renderStrategyArc(stackName, prodName, strategyId, arc) {
   const platTag = arc.platforms.length ? `<span style="font-weight:400;color:var(--ink3);">${arc.platforms.map(esc).join(' + ')}</span>` : '';
-  return `<div class="kwgroup" data-ckey="stratarc-${esc(stackName)}-${esc(prodName)}-${esc(arc.strategyId)}-${esc(arc.name)}" style="--kwc:var(--border2);margin:0 0 8px 8px;padding-left:8px;">
+  return `<div class="kwgroup" data-ckey="stratarc-${esc(stackName)}-${esc(prodName)}-${esc(strategyId)}-${esc(arc.name)}" style="--kwc:var(--border2);margin:0 0 8px 8px;padding-left:8px;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;">
       <span class="kwarrow">▸</span>
       <span style="font-style:italic;font-weight:400;color:var(--ink3);">${esc(arc.name)}</span>
       <span style="font-weight:400;">(${esc(arc.meta)})</span>
       ${platTag}
-      <span class="tag ${arc.strategyStatus === 'Approved' ? 'fresh' : 'manual'}" style="font-size:9px;">${esc(arc.strategyStatus)}</span>
-      <a class="kwlink" href="${notionUrl(arc.strategyId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
-      <button class="iconbtn" title="Rerun this strategy — same fields as generating a new one (title/platform/guidance), rewrites this one in place against current product research + Main Keywords" onclick="event.stopPropagation();openRerunStrategyModal('${esc(arc.strategyId)}')">🔁</button>
-      <button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(arc.strategyId)}')">✕</button>
-      <button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(arc.strategyId)}','${esc(arc.strategyName)}','strategy')">📝</button>
     </div>
     <div class="kwgbody">${arc.rows.map(row => renderStrategySlot(row.slot, row.platform)).join('')}</div>
   </div>`;
