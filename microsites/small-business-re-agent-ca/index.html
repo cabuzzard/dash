@@ -7477,13 +7477,20 @@ function gaUpdateSkillHint() {
   const qaMatch = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec((GA_METHOD_NAME || '').trim());
   const isQaMethod = !!qaMatch;
   const isQaProductMethod = isQaMethod && /^product$/i.test(qaMatch[1]);
-  const qaChanged = isQaMethod !== gaUpdateSkillHint._lastIsQa || (GA_METHOD_NAME || '') !== gaUpdateSkillHint._lastQaMethod;
-  gaUpdateSkillHint._lastIsQa = isQaMethod;
-  gaUpdateSkillHint._lastQaMethod = GA_METHOD_NAME || '';
+  const qaKey = qaMatch ? qaMatch[1].toLowerCase() : null;
   if (qaProductWrap) { qaProductWrap.style.display = isQaMethod ? 'block' : 'none'; if (isQaMethod) gaLoadQaProducts(); }
   if (qaTypeWrap) qaTypeWrap.style.display = isQaProductMethod ? 'block' : 'none';
   if (qaInterviewWrap) qaInterviewWrap.style.display = isQaMethod ? 'block' : 'none';
-  if (qaChanged) gaQaResetInterview();
+  // Reset only when THIS title's QA state actually belongs to a
+  // different method — not on every modal open/reopen (that was the bug:
+  // comparing against the last method seen ANYWHERE, not per-title, so
+  // simply reopening the modal for the same title looked like a change
+  // and silently wiped whatever was just typed). Same title+method with
+  // nothing in memory yet (e.g. modal reopened after a reload) tries a
+  // local-storage restore first instead of assuming there's nothing there.
+  if (isQaMethod && (GA_TITLE_ID !== _gaQaStateTitleId || qaKey !== _gaQaStateKey)) {
+    if (!gaQaRestoreLocalIfAny(GA_TITLE_ID, qaKey)) gaQaResetInterview();
+  }
   // "Project Experience" — no interview, no product needed; just the
   // name/title/blurb fields, published exactly as typed.
   const peWrap = document.getElementById('gaProjectExperienceWrap');
@@ -7653,30 +7660,64 @@ async function qaPollJob(jobId, statusCb) {
   }
 }
 
-// The QA interview — one question at a time (see the modal's own
-// gaQaInterviewWrap hint). craftQaQuestions still fetches the whole set in
-// one round-trip (cheap); the operator only ever sees/answers one at a
-// time, with ← Back to revise a prior answer.
+// The QA interview — all questions at once, each its own large text box.
 //
-// No autosave-while-typing (per operator direction — that was a
-// per-keystroke network POST, which flooded the worker with 409/429s).
-// Answers only ever persist when the operator explicitly clicks 💾 Save
-// (gaQaSaveToResearch), which writes them onto the product's own
-// 🔬 Product Research record — durable, reusable positioning material,
-// not just scaffolding for one asset. Opening the modal / picking a QA
-// method always starts a fresh interview (no restore) — the interview is
-// mandatory every time regardless.
+// No autosave-to-NOTION-while-typing (per operator direction — that was
+// a per-keystroke network POST, which flooded the worker with 409/429s).
+// The 💾 Save button (gaQaSaveToResearch) is still the only thing that
+// writes answers onto the product's own 🔬 Product Research record.
+//
+// But in-progress answers ARE persisted locally (sessionStorage, zero
+// network calls — this is not the autosave the operator asked to
+// remove) keyed by title+method, and — critically — closing/reopening
+// this modal for the SAME title no longer wipes the interview at all.
+// It used to: openGenAssetsModal() unconditionally called
+// gaQaResetInterview() on every open, and gaUpdateSkillHint()'s
+// change-detection compared against a global "last method seen" instead
+// of "last method seen FOR THIS TITLE" — so simply reopening the modal
+// (e.g. after an accidental click on the backdrop) looked like a method
+// switch and silently threw away everything just typed. Reset now only
+// fires when the title or the QA method key actually changes.
 let _gaQaQuestions = [], _gaQaAnswers = [], _gaQaIndex = 0, _gaQaDone = false;
+let _gaQaStateTitleId = null, _gaQaStateKey = null;
 function gaQaCurrentMethodKey() {
   const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec((GA_METHOD_NAME || '').trim());
   return m ? m[1].toLowerCase() : null;
 }
+function gaQaLocalKey(titleId, methodKey) { return 'gaqa:' + (titleId || '') + ':' + (methodKey || ''); }
+function gaQaSaveLocal() {
+  if (!_gaQaStateTitleId || !_gaQaStateKey || !_gaQaQuestions.length) return;
+  try { sessionStorage.setItem(gaQaLocalKey(_gaQaStateTitleId, _gaQaStateKey), JSON.stringify({ questions: _gaQaQuestions, answers: _gaQaAnswers })); } catch (e) {}
+}
+function gaQaLoadLocal(titleId, methodKey) {
+  try {
+    const raw = sessionStorage.getItem(gaQaLocalKey(titleId, methodKey));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function gaQaClearLocal(titleId, methodKey) {
+  try { sessionStorage.removeItem(gaQaLocalKey(titleId, methodKey)); } catch (e) {}
+}
 function gaQaResetInterview() {
+  if (_gaQaStateTitleId && _gaQaStateKey) gaQaClearLocal(_gaQaStateTitleId, _gaQaStateKey);
   _gaQaQuestions = []; _gaQaAnswers = []; _gaQaIndex = 0; _gaQaDone = false;
+  _gaQaStateTitleId = null; _gaQaStateKey = null;
   const wrap = document.getElementById('gaQaQuestions');
   if (wrap) wrap.innerHTML = '';
   const saveStatus = document.getElementById('gaQaSaveStatus');
   if (saveStatus) saveStatus.textContent = '';
+}
+// Called from gaUpdateSkillHint whenever the title/method combo the
+// modal is showing already has answers sitting in sessionStorage (e.g.
+// the modal was closed and reopened, or the tab was reloaded) — restores
+// them instead of starting blank.
+function gaQaRestoreLocalIfAny(titleId, methodKey) {
+  const saved = gaQaLoadLocal(titleId, methodKey);
+  if (!saved || !Array.isArray(saved.questions) || !saved.questions.length) return false;
+  _gaQaQuestions = saved.questions; _gaQaAnswers = saved.answers || []; _gaQaDone = true;
+  _gaQaStateTitleId = titleId; _gaQaStateKey = methodKey;
+  gaQaRenderForm();
+  return true;
 }
 async function gaQaSaveToResearch() {
   const methodKey = gaQaCurrentMethodKey();
@@ -7696,16 +7737,15 @@ async function gaQaSaveToResearch() {
     if (statusEl) { statusEl.style.color = '#fc8181'; statusEl.textContent = 'Save failed: ' + e.message; }
   }
 }
-// All questions at once, each its own text box — per operator direction,
-// simpler and far more robust than the one-at-a-time stepper this
-// replaced (every answer visible and editable together, no Next/Back
-// state to lose track of).
+// All questions at once, each its own large text box — per operator
+// direction ("large text fields"), since answers (especially for QA –
+// Story) are often multiple sentences, not a short phrase.
 function gaQaRenderForm() {
   const wrap = document.getElementById('gaQaQuestions');
   if (!wrap) return;
   wrap.innerHTML = _gaQaQuestions.map((q, i) => `
     <label class="lm-label" style="display:block;margin-top:10px;">${esc(q.question)}</label>
-    <input class="modal-ta" id="gaQaAnswer${i}" type="text" style="height:34px;padding:6px 10px;" value="${esc(_gaQaAnswers[i] || '')}" oninput="_gaQaAnswers[${i}] = this.value;" />`).join('') + '<button type="button" class="modal-btn save" onclick="gaQaSaveToResearch()" style="margin-top:8px;">💾 Save to Product Research</button><div id="gaQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
+    <textarea class="modal-ta" id="gaQaAnswer${i}" rows="4" style="width:100%;box-sizing:border-box;resize:vertical;" oninput="_gaQaAnswers[${i}] = this.value; gaQaSaveLocal();">${esc(_gaQaAnswers[i] || '')}</textarea>`).join('') + '<button type="button" class="modal-btn save" onclick="gaQaSaveToResearch()" style="margin-top:8px;">💾 Save to Product Research</button><div id="gaQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
 }
 
 // "email hub main - <purpose>" methods — populates the "Attach to form"
@@ -8222,11 +8262,24 @@ async function gaResolve(kind, statusEl) {
 }
 
 async function openGenAssetsModal(titleId) {
+  const reopeningSameTitle = titleId && titleId === GA_TITLE_ID;
   GA_TITLE_ID = titleId; GA_CAMPAIGN_ID = null;
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
-  gaQaResetInterview();
-  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput','gaQaProductInput','gaQaTypeCustom','gaPeNameInput','gaPeTitleInput','gaPeBlurbInput'].forEach(id => {
+  // No unconditional gaQaResetInterview() here on purpose — that used to
+  // wipe an in-progress QA interview on every reopen of this modal, even
+  // for the SAME title (e.g. after an accidental click on the backdrop),
+  // because GA_METHOD_NAME transiently goes blank above and gets set back
+  // a moment later once getTitleDetails resolves. gaUpdateSkillHint()
+  // below now only resets/restores when the title or QA method key
+  // actually changes, so reopening on the same title just leaves the
+  // existing in-progress answers (and their rendered textareas) alone.
+  // Same reason gaQaProductInput/gaQaTypeCustom are skipped below when
+  // reopening the same title — wiping the picked Product broke the 💾
+  // Save button on reopen even though the answers themselves survived.
+  const fieldsToClear = ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput','gaPeNameInput','gaPeTitleInput','gaPeBlurbInput'];
+  if (!reopeningSameTitle) fieldsToClear.push('gaQaProductInput', 'gaQaTypeCustom');
+  fieldsToClear.forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -11150,6 +11203,7 @@ async function submitGenAssets() {
         if (!_gaQaQuestions.length) throw new Error('No questions came back — try again.');
         _gaQaAnswers = new Array(_gaQaQuestions.length).fill('');
         _gaQaDone = true;
+        _gaQaStateTitleId = GA_TITLE_ID; _gaQaStateKey = methodKey;
         gaQaRenderForm();
         status.textContent = 'Fill in what applies above, then Generate. 💾 Save keeps a copy in Product Research.';
         status.style.color = '#68d391';

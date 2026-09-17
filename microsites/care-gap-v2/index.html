@@ -3733,14 +3733,21 @@ function caMethodBlur() {
 async function openCreateAssetModal(titleId) {
   const t = CAMPAIGN_TITLES.find(x => x.id === titleId);
   if (!t) return;
+  // closeCreateAssetModal() nulls CA_TITLE, so "same title" has to be
+  // checked against the QA state's own tracked title id, not CA_TITLE.
+  const reopeningSameTitle = titleId === CA_QA_STATE_TITLE_ID;
   CA_TITLE = t;
   document.getElementById('caModalTitle').textContent = t.title;
   document.getElementById('caResult').textContent = '';
   document.getElementById('caOverride').value = '';
-  document.getElementById('caQaTypeCustom').value = '';
+  if (!reopeningSameTitle) document.getElementById('caQaTypeCustom').value = '';
   document.getElementById('caQaTypeCustom').style.display = 'none';
   document.getElementById('caMethodOptions').style.display = 'none';
-  caQaResetInterview();
+  // No unconditional caQaResetInterview() here on purpose — caOnMethodChange
+  // (called via caSetMethod below) now only resets/restores when the
+  // title or QA method key actually changes, so reopening the modal on
+  // the same title (e.g. after an accidental click on the backdrop)
+  // leaves an in-progress QA interview alone instead of wiping it.
   const hasMethod = t.methodId && t.methodId !== '__none__';
   caSetMethod(hasMethod ? t.methodId : '', hasMethod ? (t.methodName || t.methodId) : '');
   document.getElementById('createAssetModal').classList.add('open');
@@ -3767,11 +3774,22 @@ function caOnMethodChange() {
   const qaMatch = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(name.trim());
   const isQaMethod = !!qaMatch;
   const isQaProductMethod = isQaMethod && /^product$/i.test(qaMatch[1]);
+  const qaKey = qaMatch ? qaMatch[1].toLowerCase() : null;
   document.getElementById('caQaProductRow').style.display = isQaMethod ? 'block' : 'none';
   document.getElementById('caQaTypeRow').style.display = isQaProductMethod ? 'block' : 'none';
   document.getElementById('caQaInterviewRow').style.display = isQaMethod ? 'block' : 'none';
-  if (isQaMethod) caLoadQaProducts();
-  caQaResetInterview();
+  // Reset only when THIS title's QA state actually belongs to a
+  // different method — not on every method-set call (that was the bug:
+  // caSetMethod calls this even when re-picking the SAME method on
+  // reopen, wiping whatever was just typed). Try a local-storage restore
+  // first before assuming there's nothing to keep.
+  if (isQaMethod) {
+    caLoadQaProducts();
+    const titleId = CA_TITLE ? CA_TITLE.id : null;
+    if (titleId !== CA_QA_STATE_TITLE_ID || qaKey !== CA_QA_STATE_KEY) {
+      if (!caQaRestoreLocalIfAny(titleId, qaKey)) caQaResetInterview();
+    }
+  }
 }
 // QA – same picker pattern as elsewhere in this file — separate select,
 // prefilled with this title's already-attached product if it has one.
@@ -3844,27 +3862,62 @@ async function caQaPollJob(jobId, statusCb) {
     await new Promise(r => setTimeout(r, 300));
   }
 }
-// The QA interview — all questions at once, each its own text box (see
-// caQaRenderForm). No autosave-while-typing anymore (per operator
+// The QA interview — all questions at once, each its own large text box
+// (see caQaRenderForm). No autosave-to-NOTION-while-typing (per operator
 // direction — that was a per-keystroke network POST, which flooded the
-// worker with 409/429s). Answers only ever persist when the operator
-// explicitly clicks 💾 Save (caQaSaveToResearch), which writes them onto
-// the product's own 🔬 Product Research record — durable, reusable
-// positioning material, not just scaffolding for one asset. Opening the
-// modal / picking a QA method always starts a fresh interview (no
-// restore) — the interview is mandatory every time regardless.
+// worker with 409/429s); the 💾 Save button (caQaSaveToResearch) is still
+// the only thing that writes answers onto the product's own 🔬 Product
+// Research record.
+//
+// But in-progress answers ARE persisted locally (sessionStorage, zero
+// network calls — this is not the autosave that got removed) keyed by
+// title+method, and closing/reopening this modal for the SAME title no
+// longer wipes the interview. It used to: openCreateAssetModal() and
+// caOnMethodChange() both unconditionally called caQaResetInterview() on
+// every open/method-set, so simply reopening the modal (e.g. after an
+// accidental click on the backdrop) looked like a fresh start and threw
+// away everything just typed. Reset now only fires when the title or the
+// QA method key actually changes.
 let CA_QA_QUESTIONS = [], CA_QA_ANSWERS = [], CA_QA_INDEX = 0, CA_QA_DONE = false;
+let CA_QA_STATE_TITLE_ID = null, CA_QA_STATE_KEY = null;
 function caQaCurrentMethodKey() {
   const name = (document.getElementById('caMethod')?.dataset.name || '').trim();
   const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(name);
   return m ? m[1].toLowerCase() : null;
 }
+function caQaLocalKey(titleId, methodKey) { return 'caqa:' + (titleId || '') + ':' + (methodKey || ''); }
+function caQaSaveLocal() {
+  if (!CA_QA_STATE_TITLE_ID || !CA_QA_STATE_KEY || !CA_QA_QUESTIONS.length) return;
+  try { sessionStorage.setItem(caQaLocalKey(CA_QA_STATE_TITLE_ID, CA_QA_STATE_KEY), JSON.stringify({ questions: CA_QA_QUESTIONS, answers: CA_QA_ANSWERS })); } catch (e) {}
+}
+function caQaLoadLocal(titleId, methodKey) {
+  try {
+    const raw = sessionStorage.getItem(caQaLocalKey(titleId, methodKey));
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function caQaClearLocal(titleId, methodKey) {
+  try { sessionStorage.removeItem(caQaLocalKey(titleId, methodKey)); } catch (e) {}
+}
 function caQaResetInterview() {
+  if (CA_QA_STATE_TITLE_ID && CA_QA_STATE_KEY) caQaClearLocal(CA_QA_STATE_TITLE_ID, CA_QA_STATE_KEY);
   CA_QA_QUESTIONS = []; CA_QA_ANSWERS = []; CA_QA_INDEX = 0; CA_QA_DONE = false;
+  CA_QA_STATE_TITLE_ID = null; CA_QA_STATE_KEY = null;
   const wrap = document.getElementById('caQaQuestions');
   if (wrap) wrap.innerHTML = '';
   const saveStatus = document.getElementById('caQaSaveStatus');
   if (saveStatus) saveStatus.textContent = '';
+}
+// Called whenever the title/method combo the modal is showing already
+// has answers sitting in sessionStorage (modal closed/reopened, or the
+// tab was reloaded) — restores them instead of starting blank.
+function caQaRestoreLocalIfAny(titleId, methodKey) {
+  const saved = caQaLoadLocal(titleId, methodKey);
+  if (!saved || !Array.isArray(saved.questions) || !saved.questions.length) return false;
+  CA_QA_QUESTIONS = saved.questions; CA_QA_ANSWERS = saved.answers || []; CA_QA_DONE = true;
+  CA_QA_STATE_TITLE_ID = titleId; CA_QA_STATE_KEY = methodKey;
+  caQaRenderForm();
+  return true;
 }
 async function caQaSaveToResearch() {
   const methodKey = caQaCurrentMethodKey();
@@ -3884,16 +3937,15 @@ async function caQaSaveToResearch() {
     if (statusEl) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Save failed: ' + e.message; }
   }
 }
-// All questions at once, each its own text box — per operator direction,
-// simpler and far more robust than the one-at-a-time stepper this
-// replaced (every answer visible and editable together, no Next/Back
-// state to lose track of).
+// All questions at once, each its own large text box — per operator
+// direction ("large text fields"), since answers (especially for QA –
+// Story) are often multiple sentences, not a short phrase.
 function caQaRenderForm() {
   const wrap = document.getElementById('caQaQuestions');
   if (!wrap) return;
   wrap.innerHTML = CA_QA_QUESTIONS.map((q, i) => `
     <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:10px;">${esc(q.question)}
-      <input class="finput" id="caQaAnswer${i}" type="text" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(CA_QA_ANSWERS[i] || '')}" oninput="CA_QA_ANSWERS[${i}] = this.value;">
+      <textarea class="finput" id="caQaAnswer${i}" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;resize:vertical;" oninput="CA_QA_ANSWERS[${i}] = this.value; caQaSaveLocal();">${esc(CA_QA_ANSWERS[i] || '')}</textarea>
     </label>`).join('') + '<button type="button" class="btn" onclick="caQaSaveToResearch()" style="margin-top:4px;">💾 Save to Product Research</button><div id="caQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
@@ -3932,6 +3984,7 @@ async function runCreateAsset() {
         if (!CA_QA_QUESTIONS.length) throw new Error('No questions came back — try again.');
         CA_QA_ANSWERS = new Array(CA_QA_QUESTIONS.length).fill('');
         CA_QA_DONE = true;
+        CA_QA_STATE_TITLE_ID = CA_TITLE.id; CA_QA_STATE_KEY = qaKey;
         caQaRenderForm();
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Fill in what applies above, then Generate. 💾 Save keeps a copy in Product Research.';
       } catch (e) {
