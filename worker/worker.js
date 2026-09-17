@@ -37830,6 +37830,19 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
           }
         }
 
+        // For QA – Product, tell the interview what this SPECIFIC digital
+        // product type actually needs structurally — reusing the same
+        // shape description generateQaProduct plans from for a built-in
+        // type (ebook/checklist/spreadsheet/design bundle), or the same
+        // generic reasoning instruction it falls back to for a custom
+        // "+ Create new…" type. Without this, the interview only ever
+        // named the type in passing and asked generic questions regardless
+        // of whether it was planning an ebook or a spreadsheet — per
+        // operator direction, the questions themselves must actually
+        // reason about the type, custom types included.
+        const productTypeSpec = methodKey === "product"
+          ? (DIGITAL_PRODUCT_TYPES[productType] || { shape: `a "${String(productType || "digital product").trim()}" — use your own judgment on what a product like that actually needs` })
+          : null;
         const roleByMethod = {
           product: `a new digital product${productType ? ` (a ${productType})` : ""} that complements "${productName}"`,
           sales: `a sales page for "${productName}"`,
@@ -37838,14 +37851,14 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         const prompt = `You're about to write ${roleByMethod[methodKey]}, seeded from this raw idea:
 
 IDEA: ${idea}
-
+${productTypeSpec ? `\nWHAT THIS PRODUCT TYPE ACTUALLY NEEDS: ${productTypeSpec.shape}\n` : ""}
 WHAT'S ALREADY KNOWN about this product (do NOT ask about any of this again — it's already answered):
 ${known.length ? known.join("\n") : "(nothing on file yet)"}
 
 ${objectionsText ? `THIS PRODUCT'S KNOWN CUSTOMER OBJECTIONS (from research): ${objectionsText}` : "This product has no Objections on file yet — ask the operator to name a real one first."}
 Objections work differently from every other fact above: research can state THAT an objection exists, but only the operator can say how THEY personally handle it, or whether they've actually lived through a customer raising it. At least 2 of your questions MUST take a listed objection (or, if none are on file, one the operator names) and ask directly and personally — "How do you handle it when someone brings up <objection>?" / "Have you actually dealt with a real customer situation around this?" Never skip these because the objection itself is "already known" — that's precisely why it's worth asking, not a reason to exclude it.
 
-Write AT LEAST 3, up to 5, total questions this way — short, sharp, and personal. The rest (beyond the 2 objection questions) fill in whatever SPECIFIC material you're still missing to write a genuinely good, non-generic result.${methodKey === "story" ? " This is a first-person story, so at least 1 of the remaining questions must dig for the actual real anecdote (what specifically happened, when, the concrete detail, how it actually resolved) — you cannot invent a real personal experience, only the operator can supply it." : ""}${methodKey === "product" ? " At least 1 of the remaining questions should nail down exactly what this product covers/includes and who it's for, if the idea doesn't already say." : ""}
+Write AT LEAST 3, up to 5, total questions this way — short, sharp, and personal. The rest (beyond the 2 objection questions) fill in whatever SPECIFIC material you're still missing to write a genuinely good, non-generic result.${methodKey === "story" ? " This is a first-person story, so at least 1 of the remaining questions must dig for the actual real anecdote (what specifically happened, when, the concrete detail, how it actually resolved) — you cannot invent a real personal experience, only the operator can supply it." : ""}${methodKey === "product" ? ` At least 1 of the remaining questions must be shaped by WHAT THIS PRODUCT TYPE ACTUALLY NEEDS above — e.g. an ebook needs a sense of scope/chapter count, a checklist needs the real steps, a spreadsheet needs to know what data/columns it tracks, a video course needs format/length — reason about this specific type (built-in or custom) rather than asking something generic that would fit any product.` : ""}
 
 This interview is mandatory and runs fresh for every single asset you generate this way, even for a title/product you've generated for before — never skip it or treat it as already done.
 
