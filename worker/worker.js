@@ -72,6 +72,14 @@ const KEYWORD_CLUSTERS_DB = "cedc9c6c16b344b0bd858823809f14af"; // Cluster Name/
 // Knowledge Atlas pipeline) — deliberately distinct name to avoid confusing
 // the two. Name/Cluster Keywords/Rationale/Status/Campaign (relation).
 const SEO_KEYWORD_CLUSTERS_DB = "28ece99103064fc6874aa45cd17b81e6";
+// Search intent — funnel-stage classification per cluster (2026-09-15),
+// clusters only, never Master (the raw undifferentiated seed pool). Keys
+// are what staged clusters/API payloads use; SEARCH_INTENT_LABELS is the
+// Notion select option name each key writes/reads as on a committed
+// cluster's "Search Intent" property (created lazily — ensureClusterIntentProperty).
+const SEARCH_INTENT_LABELS = { informational: "Informational", buyer: "Buyer", transactional: "Transactional" };
+const SEARCH_INTENT_FROM_LABEL = Object.fromEntries(Object.entries(SEARCH_INTENT_LABELS).map(([k, v]) => [v, k]));
+const SEARCH_INTENT_DEFINITIONS = `INFORMATIONAL — the searcher wants to learn or understand something (how to, what is, guide, tips, symptoms, causes, examples). BUYER — the searcher is comparing options before committing (best, top, reviews, vs, alternatives, cost of, is it worth it). TRANSACTIONAL — the searcher is ready to act right now (buy, hire, book, order, near me, price, apply, sign up, schedule a call).`;
 // Link-mining system (Globals tab) — supersedes the old KNOWLEDGE_BRAIN pipeline.
 // Transcripts are mined into typed staging rows the operator promotes into
 // real app-machinery tables. All standalone. DATABASE ids (page url), not
@@ -735,6 +743,29 @@ async function notionQuery(dbId, body) {
     cursor = data.next_cursor;
   }
   return results;
+}
+
+// Same lazy-create-the-field-if-missing pattern as the Research DB's "Omit
+// Keywords" field (getOmitList/saveOmitList) — cached per isolate so a busy
+// campaign doesn't re-check the schema on every cluster write.
+let SEARCH_INTENT_PROP_ENSURED = false;
+async function ensureClusterIntentProperty() {
+  if (SEARCH_INTENT_PROP_ENSURED) return;
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  try {
+    const db = await fetch(`https://api.notion.com/v1/databases/${SEO_KEYWORD_CLUSTERS_DB}`, { headers: hdr }).then(r => r.json());
+    if (!db.properties?.["Search Intent"]) {
+      await fetch(`https://api.notion.com/v1/databases/${SEO_KEYWORD_CLUSTERS_DB}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Search Intent": { select: { options: [
+          { name: "Informational", color: "blue" },
+          { name: "Buyer", color: "yellow" },
+          { name: "Transactional", color: "green" },
+        ] } } } }),
+      });
+    }
+    SEARCH_INTENT_PROP_ENSURED = true;
+  } catch (e) { /* best-effort — the next write just retries */ }
 }
 
 // Adds a checkbox property to a database if it doesn't already have one —
@@ -25487,7 +25518,10 @@ CAMPAIGN KEYWORDS (the raw pool to organize — every keyword should end up in e
 ${keywords}
 
 ${existingClusters.length ? `ALREADY-COVERED CLUSTERS (committed or already staged — don't recreate these; build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
-For each cluster, give: a name that is its single top/most representative keyword from the pool, EXACTLY as that keyword appears there (not an invented phrase, not a paraphrase — pick the one keyword that best represents the whole cluster); the exact keywords from the pool that belong to it (including that top keyword); and a one-sentence rationale for why they group together. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
+For each cluster, give: a name that is its single top/most representative keyword from the pool, EXACTLY as that keyword appears there (not an invented phrase, not a paraphrase — pick the one keyword that best represents the whole cluster); the exact keywords from the pool that belong to it (including that top keyword); a one-sentence rationale for why they group together; and its dominant search intent. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
+
+SEARCH INTENT (classify each cluster as exactly one of these — pick whichever dominates that cluster's keywords):
+${SEARCH_INTENT_DEFINITIONS}
 
 Call submit_keyword_clusters with your result.`;
 
@@ -25510,8 +25544,9 @@ Call submit_keyword_clusters with your result.`;
                         name: { type: "string", description: "this cluster's single top/most representative keyword, exactly as it appears in the pool" },
                         keywords: { type: "string", description: "comma-separated keywords from the pool that belong to this cluster" },
                         rationale: { type: "string" },
+                        searchIntent: { type: "string", enum: ["informational", "buyer", "transactional"], description: "this cluster's dominant search intent" },
                       },
-                      required: ["name", "keywords", "rationale"],
+                      required: ["name", "keywords", "rationale", "searchIntent"],
                     },
                   },
                 },
@@ -25529,6 +25564,7 @@ Call submit_keyword_clusters with your result.`;
         const fresh = toolUse.input.clusters.map(c => ({
           id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           name: String(c.name || "").slice(0, 100), keywords: String(c.keywords || "").slice(0, 1900), rationale: String(c.rationale || "").slice(0, 500),
+          searchIntent: SEARCH_INTENT_LABELS[c.searchIntent] ? c.searchIntent : "",
         }));
         staged = staged.concat(fresh);
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
@@ -25545,8 +25581,9 @@ Call submit_keyword_clusters with your result.`;
       // Keywords pool — that's the point, it's how an operator injects a
       // specific focus area the auto-generated split didn't cover.
       if (body.action === "generateSingleKeywordCluster") {
-        const { campaignId, pastedKeywords, guidance } = body;
+        const { campaignId, pastedKeywords, guidance, searchIntent } = body;
         if (!campaignId || !pastedKeywords) return json({ error: "campaignId and pastedKeywords required" }, 400);
+        const forcedIntent = SEARCH_INTENT_LABELS[searchIntent] ? searchIntent : null;
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
         let staged = [];
@@ -25575,7 +25612,10 @@ MAIN KEYWORDS (the campaign's overall keyword pool — pull in directly-relevant
 ${mainKeywords || "(none on file)"}
 
 ${otherFixed.length ? `OTHER CLUSTERS (fixed — already claimed; don't reuse their keywords, and don't just recreate one of these):\n${otherFixed.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
-Give: a name that is this cluster's single top/most representative keyword (prefer one from the pasted group since that's the operator's stated focus); the merged keyword set (the pasted group plus any directly-relevant Main Keywords, deduplicated, minus anything already claimed by another cluster); and a one-sentence rationale for why they group together as this specific focus.
+Give: a name that is this cluster's single top/most representative keyword (prefer one from the pasted group since that's the operator's stated focus); the merged keyword set (the pasted group plus any directly-relevant Main Keywords, deduplicated, minus anything already claimed by another cluster); a one-sentence rationale for why they group together as this specific focus; and its search intent.
+
+SEARCH INTENT: ${forcedIntent ? `the operator has fixed this cluster's intent as ${SEARCH_INTENT_LABELS[forcedIntent].toUpperCase()} — favor keywords/phrasing that fit that intent (see definitions below) rather than whatever the raw pasted group happens to skew toward.` : `classify this cluster as exactly one of the three below, whichever dominates the keyword set you produce.`}
+${SEARCH_INTENT_DEFINITIONS}
 
 Call submit_keyword_cluster with your result.`;
 
@@ -25593,8 +25633,9 @@ Call submit_keyword_cluster with your result.`;
                   name: { type: "string", description: "this cluster's single top/most representative keyword" },
                   keywords: { type: "string", description: "comma-separated merged keywords for this cluster" },
                   rationale: { type: "string" },
+                  searchIntent: { type: "string", enum: ["informational", "buyer", "transactional"], description: "this cluster's search intent" },
                 },
-                required: ["name", "keywords", "rationale"],
+                required: ["name", "keywords", "rationale", "searchIntent"],
               },
             }],
             tool_choice: { type: "tool", name: "submit_keyword_cluster" },
@@ -25610,6 +25651,7 @@ Call submit_keyword_cluster with your result.`;
           name: String(toolUse.input.name || "").slice(0, 100),
           keywords: String(toolUse.input.keywords || "").slice(0, 1900),
           rationale: String(toolUse.input.rationale || "").slice(0, 500),
+          searchIntent: forcedIntent || (SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : ""),
         };
         staged.push(newCluster);
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
@@ -25627,7 +25669,8 @@ Call submit_keyword_cluster with your result.`;
         try { commProducts = (await env.TRADES.get(`seoclusters:commproducts:${norm(campaignId)}`, "json")) || {}; } catch (e) {}
         const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
         const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
-        const committed = rows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url, products: commProducts[id] || [] }; });
+        const intentOf = r => SEARCH_INTENT_FROM_LABEL[r.properties?.["Search Intent"]?.select?.name] || "";
+        const committed = rows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), searchIntent: intentOf(r), url: r.url, products: commProducts[id] || [] }; });
         return json({ success: true, staged, committed });
       }
 
@@ -25635,7 +25678,7 @@ Call submit_keyword_cluster with your result.`;
       // when the operator wants to fix a generated cluster before committing
       // it, same "editable staged content" pattern as the keyword modals.
       if (body.action === "updateStagedKeywordCluster") {
-        const { campaignId, clusterId, name, keywords, rationale } = body;
+        const { campaignId, clusterId, name, keywords, rationale, searchIntent } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
         const norm = s => String(s || "").replace(/-/g, "");
         let staged = [];
@@ -25645,8 +25688,29 @@ Call submit_keyword_cluster with your result.`;
         if (name !== undefined) staged[idx].name = String(name).slice(0, 100);
         if (keywords !== undefined) staged[idx].keywords = String(keywords).slice(0, 1900);
         if (rationale !== undefined) staged[idx].rationale = String(rationale).slice(0, 500);
+        if (searchIntent !== undefined) staged[idx].searchIntent = SEARCH_INTENT_LABELS[searchIntent] ? searchIntent : "";
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
         return json({ success: true, staged });
+      }
+
+      // Direct, deterministic intent set on a COMMITTED cluster (no Claude
+      // call) — the operator overriding or filling in what generation/regen
+      // produced, same "manual override alongside the AI path" pattern as
+      // editStagedSeoCluster's field edits, just against the live Notion row.
+      if (body.action === "setClusterSearchIntent") {
+        const { clusterId, searchIntent } = body;
+        if (!clusterId) return json({ error: "clusterId required" }, 400);
+        if (searchIntent && !SEARCH_INTENT_LABELS[searchIntent]) return json({ error: "Invalid searchIntent" }, 400);
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        await ensureClusterIntentProperty();
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(clusterId.replace(/-/g,""))}`, {
+          method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { "Search Intent": searchIntent ? { select: { name: SEARCH_INTENT_LABELS[searchIntent] } } : { select: null } } }),
+        });
+        const r = await resp.json();
+        if (!resp.ok) return json({ error: r.message || "Failed to set search intent" }, resp.status);
+        return json({ success: true });
       }
 
       // Regenerate exactly ONE staged cluster in place — every other staged/
@@ -25683,9 +25747,10 @@ Call submit_keyword_cluster with your result.`;
 
         const committedPage = isStaged ? null : committedRows.find(r => r.id.replace(/-/g, "") === norm(clusterId));
         if (!isStaged && !committedPage) return json({ error: "Cluster not found — it may have been archived" }, 404);
+        const intentOf = r => SEARCH_INTENT_FROM_LABEL[r.properties?.["Search Intent"]?.select?.name] || "";
         const target = isStaged
           ? staged[stagedIdx]
-          : { name: (committedPage.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(committedPage, "Cluster Keywords"), rationale: rtx(committedPage, "Rationale") };
+          : { name: (committedPage.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(committedPage, "Cluster Keywords"), rationale: rtx(committedPage, "Rationale"), searchIntent: intentOf(committedPage) };
 
         const otherFixed = [
           ...staged.filter(c => c.id !== clusterId).map(c => ({ name: c.name, keywords: c.keywords })),
@@ -25704,9 +25769,13 @@ CLUSTER TO REGENERATE (current version — improve it, or rework it):
 - Name: ${target.name}
 - Keywords: ${target.keywords}
 - Rationale: ${target.rationale}
+- Search Intent: ${target.searchIntent ? SEARCH_INTENT_LABELS[target.searchIntent] : "(none set)"}
 
 ${guidance ? `OPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${omitBlock(omitKeywords)}
-You may pull in currently-unclaimed keywords from the pool if it makes this cluster tighter or more complete. Give: a name that is this cluster's single top/most representative keyword, EXACTLY as it appears in the pool (not an invented phrase); the exact keywords (from the pool) that belong, including that top keyword; and a one-sentence rationale.
+You may pull in currently-unclaimed keywords from the pool if it makes this cluster tighter or more complete. Give: a name that is this cluster's single top/most representative keyword, EXACTLY as it appears in the pool (not an invented phrase); the exact keywords (from the pool) that belong, including that top keyword; a one-sentence rationale; and its dominant search intent (keep the current one unless the rework changes what stage/audience these keywords actually serve).
+
+SEARCH INTENT (classify as exactly one of these — pick whichever dominates):
+${SEARCH_INTENT_DEFINITIONS}
 
 Call submit_keyword_cluster with your result.`;
 
@@ -25724,8 +25793,9 @@ Call submit_keyword_cluster with your result.`;
                   name: { type: "string", description: "this cluster's single top/most representative keyword, exactly as it appears in the pool" },
                   keywords: { type: "string", description: "comma-separated keywords from the pool" },
                   rationale: { type: "string" },
+                  searchIntent: { type: "string", enum: ["informational", "buyer", "transactional"], description: "this cluster's dominant search intent" },
                 },
-                required: ["name", "keywords", "rationale"],
+                required: ["name", "keywords", "rationale", "searchIntent"],
               },
             }],
             tool_choice: { type: "tool", name: "submit_keyword_cluster" },
@@ -25738,25 +25808,28 @@ Call submit_keyword_cluster with your result.`;
         const name = String(toolUse.input.name || "").slice(0, 100);
         const newKeywords = applyKwOmit(String(toolUse.input.keywords || "").slice(0, 1900), omitKeywords);
         const rationale = String(toolUse.input.rationale || "").slice(0, 500);
+        const searchIntent = SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : "";
 
         if (isStaged) {
-          staged[stagedIdx] = { id: clusterId, name, keywords: newKeywords, rationale };
+          staged[stagedIdx] = { id: clusterId, name, keywords: newKeywords, rationale, searchIntent };
           await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
         } else {
+          if (searchIntent) await ensureClusterIntentProperty();
           const resp = await fetch(`https://api.notion.com/v1/pages/${dash(norm(clusterId))}`, {
             method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
               "Name": { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
               "Cluster Keywords": { rich_text: [{ type: "text", text: { content: newKeywords } }] },
               "Rationale": { rich_text: [{ type: "text", text: { content: rationale } }] },
+              ...(searchIntent ? { "Search Intent": { select: { name: SEARCH_INTENT_LABELS[searchIntent] } } } : {}),
             } }),
           });
           const r = await resp.json();
           if (!resp.ok) return json({ error: r.message || "Failed to update cluster" }, resp.status);
           const idx2 = committedRows.findIndex(r2 => r2.id.replace(/-/g, "") === norm(clusterId));
-          if (idx2 >= 0) committedRows[idx2] = { ...committedRows[idx2], properties: { ...committedRows[idx2].properties, Name: { title: [{ plain_text: name }] }, "Cluster Keywords": { rich_text: [{ plain_text: newKeywords }] }, Rationale: { rich_text: [{ plain_text: rationale }] } } };
+          if (idx2 >= 0) committedRows[idx2] = { ...committedRows[idx2], properties: { ...committedRows[idx2].properties, Name: { title: [{ plain_text: name }] }, "Cluster Keywords": { rich_text: [{ plain_text: newKeywords }] }, Rationale: { rich_text: [{ plain_text: rationale }] }, "Search Intent": { select: { name: searchIntent ? SEARCH_INTENT_LABELS[searchIntent] : null } } } };
         }
 
-        const committed = committedRows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), url: r.url }));
+        const committed = committedRows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), searchIntent: intentOf(r), url: r.url }));
         return json({ success: true, staged, committed });
       }
 
@@ -25903,6 +25976,10 @@ Call submit_keyword_cluster with your result.`;
           "Status": { select: { name: "Active" } },
           "Campaign": { relation: [{ id: dash(norm(campaignId)) }] },
         };
+        if (SEARCH_INTENT_LABELS[c.searchIntent]) {
+          await ensureClusterIntentProperty();
+          props["Search Intent"] = { select: { name: SEARCH_INTENT_LABELS[c.searchIntent] } };
+        }
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: SEO_KEYWORD_CLUSTERS_DB }, properties: props }),
         });

@@ -1294,6 +1294,19 @@ function submitNotes() {
 
 // ══════════════════════ KEYWORDS TAB — unified nested keywords/ideas ══════
 function notionUrl(id) { return `https://www.notion.so/${String(id || '').replace(/-/g,'')}`; }
+// informational=blue / buyer=amber / transactional=green — same mapping as
+// the Notion "Search Intent" select options created by ensureClusterIntentProperty
+// server-side, so the badge color matches what the operator sees in Notion.
+const SEARCH_INTENT_META = { informational: ['#60a5fa', 'Informational'], buyer: ['#fbbf24', 'Buyer'], transactional: ['#4ade80', 'Transactional'] };
+function intentBadge(intent) {
+  const meta = SEARCH_INTENT_META[intent];
+  if (!meta) return '';
+  return ` <span style="color:${meta[0]};font-weight:600;font-size:10px;">● ${meta[1]}</span>`;
+}
+function intentSelect(clusterId, current, onchangeFn) {
+  const opt = (val, label) => `<option value="${val}" ${current === val ? 'selected' : ''}>${label}</option>`;
+  return `<select onclick="event.stopPropagation();" onchange="event.stopPropagation();${onchangeFn}('${esc(clusterId)}', this.value)" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);margin-top:5px;">${opt('', 'Intent…')}${opt('informational', 'Informational')}${opt('buyer', 'Buyer')}${opt('transactional', 'Transactional')}</select>`;
+}
 let RAW_KEYWORDS = '';
 let MAIN_PRODUCT_IDEAS_TEXT = '';
 let SEO_CLUSTERS = { staged: [], committed: [] };
@@ -1384,7 +1397,7 @@ function renderKeywordsAndIdeas() {
 
   staged.forEach(c => {
     l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
-      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>
+      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>${intentBadge(c.searchIntent)}
         <span class="kwbtns">
           <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit) => regenCluster('${esc(c.id)}', steer, omit))">↻</button>
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
@@ -1397,20 +1410,21 @@ function renderKeywordsAndIdeas() {
         <input value="${esc(c.name)}" onchange="editCluster('${esc(c.id)}','name',this.value)" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);margin-bottom:5px;">
         <textarea onchange="editCluster('${esc(c.id)}','keywords',this.value)" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);min-height:60px;margin-bottom:5px;">${esc(c.keywords)}</textarea>
         <div style="font-size:10.5px;color:var(--ink3);font-style:italic;">${esc(c.rationale || '')}</div>
+        ${intentSelect(c.id, c.searchIntent || '', 'editStagedClusterIntent')}
       </div>
     </div>`;
   });
 
   committed.forEach(c => {
     l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#2f6f6a;">
-      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>
+      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>${intentBadge(c.searchIntent)}
         <span class="kwbtns">
           <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
           <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit) => regenCluster('${esc(c.id)}', steer, omit))">↻</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
       </div>
-      <div class="kwgbody"><div class="fval" style="margin:0;">${esc(c.keywords)}</div></div>
+      <div class="kwgbody"><div class="fval" style="margin:0;">${esc(c.keywords)}</div>${intentSelect(c.id, c.searchIntent || '', 'editCommittedClusterIntent')}</div>
     </div>`;
   });
   left.innerHTML = l;
@@ -1478,6 +1492,18 @@ function renderIdeaCards(products, clusterId, clusterName) {
 async function editCluster(clusterId, field, value) {
   try { const payload = { campaignId: CAMPAIGN_ID, clusterId }; payload[field] = value; const r = await w('updateStagedKeywordCluster', payload); SEO_CLUSTERS.staged = r.staged || []; }
   catch (e) { alert('Save failed: ' + e.message); }
+}
+async function editStagedClusterIntent(clusterId, value) {
+  await editCluster(clusterId, 'searchIntent', value);
+  renderKeywordsAndIdeas();
+}
+async function editCommittedClusterIntent(clusterId, value) {
+  try {
+    await w('setClusterSearchIntent', { clusterId, searchIntent: value });
+    const idx = (SEO_CLUSTERS.committed || []).findIndex(c => c.id === clusterId);
+    if (idx >= 0) SEO_CLUSTERS.committed[idx].searchIntent = value;
+    renderKeywordsAndIdeas();
+  } catch (e) { alert('Save failed: ' + e.message); }
 }
 async function regenCluster(clusterId, guidance, omit) {
   const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined });
