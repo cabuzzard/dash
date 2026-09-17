@@ -7483,7 +7483,7 @@ function gaUpdateSkillHint() {
   if (qaProductWrap) { qaProductWrap.style.display = isQaMethod ? 'block' : 'none'; if (isQaMethod) gaLoadQaProducts(); }
   if (qaTypeWrap) qaTypeWrap.style.display = isQaProductMethod ? 'block' : 'none';
   if (qaInterviewWrap) qaInterviewWrap.style.display = isQaMethod ? 'block' : 'none';
-  if (qaChanged) { if (isQaMethod) gaQaRestoreOrReset(); else gaQaResetInterview(); }
+  if (qaChanged) gaQaResetInterview();
   // "Project Experience" — no interview, no product needed; just the
   // name/title/blurb fields, published exactly as typed.
   const peWrap = document.getElementById('gaProjectExperienceWrap');
@@ -7633,81 +7633,54 @@ async function qaPollJob(jobId, statusCb) {
 // one round-trip (cheap); the operator only ever sees/answers one at a
 // time, with ← Back to revise a prior answer.
 //
-// Autosaved to the title's own Notion page (saveQaDraft/getQaDraft — see
-// worker.js), not just this browser's memory — per operator direction,
-// "just like a Research record": in-progress answers need to survive a
-// closed/reopened modal, a lost tab, or even a different device, not
-// disappear because they only ever lived in a JS variable. Fire-and-
-// forget on every answer change; never blocks the interview itself.
+// No autosave-while-typing (per operator direction — that was a
+// per-keystroke network POST, which flooded the worker with 409/429s).
+// Answers only ever persist when the operator explicitly clicks 💾 Save
+// (gaQaSaveToResearch), which writes them onto the product's own
+// 🔬 Product Research record — durable, reusable positioning material,
+// not just scaffolding for one asset. Opening the modal / picking a QA
+// method always starts a fresh interview (no restore) — the interview is
+// mandatory every time regardless.
 let _gaQaQuestions = [], _gaQaAnswers = [], _gaQaIndex = 0, _gaQaDone = false;
 function gaQaCurrentMethodKey() {
   const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec((GA_METHOD_NAME || '').trim());
   return m ? m[1].toLowerCase() : null;
 }
-function gaQaSaveDraftNow() {
-  const methodKey = gaQaCurrentMethodKey();
-  if (!methodKey || !GA_TITLE_ID) return;
-  w('saveQaDraft', {
-    titleId: GA_TITLE_ID, methodKey,
-    idea: document.getElementById('gaTitleInput')?.value || '',
-    productId: document.getElementById('gaQaProductInput')?.value || '',
-    productType: gaQaResolveProductType(),
-    questions: _gaQaQuestions, answers: _gaQaAnswers, index: _gaQaIndex, done: _gaQaDone,
-  }).catch(() => {});
-}
-// Debounced entry point for the answer input's oninput — without this,
-// every single keystroke fired its own network POST, flooding the worker
-// (409/429s piling up in the console). Next/Back/Done are discrete clicks,
-// not rapid-fire, so they call gaQaSaveDraftNow() directly instead.
-let _gaQaSaveTimer = null;
-function gaQaSaveDraft() {
-  clearTimeout(_gaQaSaveTimer);
-  _gaQaSaveTimer = setTimeout(gaQaSaveDraftNow, 900);
-}
-function gaQaClearDraft() {
-  if (!GA_TITLE_ID) return;
-  w('clearQaDraft', { titleId: GA_TITLE_ID }).catch(() => {});
-}
-// Called instead of an unconditional reset whenever the method picker
-// moves onto/between QA methods — checks Notion for an existing draft on
-// THIS title first, so switching back to a method you were already
-// mid-interview on (or just reopening the modal) restores where you left
-// off instead of wiping it.
-async function gaQaRestoreOrReset() {
-  const methodKey = gaQaCurrentMethodKey();
-  gaQaResetInterview();
-  if (!methodKey || !GA_TITLE_ID) return;
-  try {
-    const { draft } = await w('getQaDraft', { titleId: GA_TITLE_ID });
-    if (!draft || draft.methodKey !== methodKey || !Array.isArray(draft.questions) || !draft.questions.length) return;
-    _gaQaQuestions = draft.questions;
-    _gaQaAnswers = draft.answers || [];
-    _gaQaDone = true;
-    if (draft.productId) document.getElementById('gaQaProductInput').value = draft.productId;
-    if (draft.productType) {
-      const typeSel = document.getElementById('gaQaTypeInput');
-      const known = Array.from(typeSel.options).some(o => o.value === draft.productType);
-      if (known) { typeSel.value = draft.productType; }
-      else { typeSel.value = '__custom__'; gaQaTypeOnChange(); document.getElementById('gaQaTypeCustom').value = draft.productType; }
-    }
-    gaQaRenderForm();
-  } catch (e) { /* best-effort — a failed restore just starts fresh */ }
-}
 function gaQaResetInterview() {
   _gaQaQuestions = []; _gaQaAnswers = []; _gaQaIndex = 0; _gaQaDone = false;
   const wrap = document.getElementById('gaQaQuestions');
   if (wrap) wrap.innerHTML = '';
+  const saveStatus = document.getElementById('gaQaSaveStatus');
+  if (saveStatus) saveStatus.textContent = '';
+}
+async function gaQaSaveToResearch() {
+  const methodKey = gaQaCurrentMethodKey();
+  const qaProductId = document.getElementById('gaQaProductInput')?.value || '';
+  const statusEl = document.getElementById('gaQaSaveStatus');
+  if (!methodKey || !_gaQaQuestions.length) { if (statusEl) { statusEl.style.color = '#fc8181'; statusEl.textContent = 'Get the questions first.'; } return; }
+  if (!qaProductId) { if (statusEl) { statusEl.style.color = '#fc8181'; statusEl.textContent = 'Pick a Product above first.'; } return; }
+  if (statusEl) { statusEl.style.color = '#999'; statusEl.textContent = 'Saving…'; }
+  try {
+    const r = await w('saveQaToResearch', {
+      productId: qaProductId, methodKey, idea: document.getElementById('gaTitleInput')?.value || '',
+      questions: _gaQaQuestions, answers: _gaQaAnswers,
+    });
+    if (r.error) throw new Error(r.error);
+    if (statusEl) { statusEl.style.color = '#68d391'; statusEl.innerHTML = `✓ Saved to Product Research — <a href="${r.researchUrl}" target="_blank" rel="noopener">↗ open</a>`; }
+  } catch (e) {
+    if (statusEl) { statusEl.style.color = '#fc8181'; statusEl.textContent = 'Save failed: ' + e.message; }
+  }
 }
 // All questions at once, each its own text box — per operator direction,
 // simpler and far more robust than the one-at-a-time stepper this
 // replaced (every answer visible and editable together, no Next/Back
-// state to lose track of). Autosaved (debounced) as you type in any box.
+// state to lose track of).
 function gaQaRenderForm() {
   const wrap = document.getElementById('gaQaQuestions');
   if (!wrap) return;
   wrap.innerHTML = _gaQaQuestions.map((q, i) => `
     <label class="lm-label" style="display:block;margin-top:10px;">${esc(q.question)}</label>
-    <input class="modal-ta" id="gaQaAnswer${i}" type="text" style="height:34px;padding:6px 10px;" value="${esc(_gaQaAnswers[i] || '')}" oninput="_gaQaAnswers[${i}] = this.value; gaQaSaveDraft();" />`).join('');
+    <input class="modal-ta" id="gaQaAnswer${i}" type="text" style="height:34px;padding:6px 10px;" value="${esc(_gaQaAnswers[i] || '')}" oninput="_gaQaAnswers[${i}] = this.value;" />`).join('') + '<button type="button" class="modal-btn save" onclick="gaQaSaveToResearch()" style="margin-top:8px;">💾 Save to Product Research</button><div id="gaQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
 }
 
 // "email hub main - <purpose>" methods — populates the "Attach to form"
@@ -11153,8 +11126,7 @@ async function submitGenAssets() {
         _gaQaAnswers = new Array(_gaQaQuestions.length).fill('');
         _gaQaDone = true;
         gaQaRenderForm();
-        gaQaSaveDraftNow();
-        status.textContent = 'Fill in what applies above, then Generate.';
+        status.textContent = 'Fill in what applies above, then Generate. 💾 Save keeps a copy in Product Research.';
         status.style.color = '#68d391';
       } catch (e) {
         status.textContent = 'Error: ' + e.message;
@@ -11184,7 +11156,6 @@ async function submitGenAssets() {
       status.style.color = '#68d391';
       btn.textContent = 'Done';
       gaQaResetInterview();
-      gaQaClearDraft();
       await loadTitles();
       setTimeout(closeGenAssetsModal, 4000);
     } catch (e) {

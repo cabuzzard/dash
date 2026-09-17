@@ -3770,7 +3770,8 @@ function caOnMethodChange() {
   document.getElementById('caQaProductRow').style.display = isQaMethod ? 'block' : 'none';
   document.getElementById('caQaTypeRow').style.display = isQaProductMethod ? 'block' : 'none';
   document.getElementById('caQaInterviewRow').style.display = isQaMethod ? 'block' : 'none';
-  if (isQaMethod) { caLoadQaProducts(); caQaRestoreOrReset(); } else { caQaResetInterview(); }
+  if (isQaMethod) caLoadQaProducts();
+  caQaResetInterview();
 }
 // QA – same picker pattern as elsewhere in this file — separate select,
 // prefilled with this title's already-attached product if it has one.
@@ -3818,87 +3819,57 @@ async function caQaPollJob(jobId, statusCb) {
     if (rec.status === 'error') throw new Error(rec.error || 'Generation failed');
   }
 }
-// The QA interview — one question at a time (see caQaInterviewRow's own
-// hint). craftQaQuestions still fetches the whole set in one round-trip;
-// the operator only ever sees/answers one at a time, with ← Back to
-// revise a prior answer.
-//
-// Autosaved to the title's own Notion page (saveQaDraft/getQaDraft — see
-// worker.js), not just this browser's memory — per operator direction,
-// "just like a Research record": in-progress answers need to survive a
-// closed/reopened modal, a lost tab, or even a different device, not
-// disappear because they only ever lived in a JS variable. Fire-and-
-// forget on every answer change; never blocks the interview itself.
+// The QA interview — all questions at once, each its own text box (see
+// caQaRenderForm). No autosave-while-typing anymore (per operator
+// direction — that was a per-keystroke network POST, which flooded the
+// worker with 409/429s). Answers only ever persist when the operator
+// explicitly clicks 💾 Save (caQaSaveToResearch), which writes them onto
+// the product's own 🔬 Product Research record — durable, reusable
+// positioning material, not just scaffolding for one asset. Opening the
+// modal / picking a QA method always starts a fresh interview (no
+// restore) — the interview is mandatory every time regardless.
 let CA_QA_QUESTIONS = [], CA_QA_ANSWERS = [], CA_QA_INDEX = 0, CA_QA_DONE = false;
 function caQaCurrentMethodKey() {
   const name = (document.getElementById('caMethod')?.dataset.name || '').trim();
   const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(name);
   return m ? m[1].toLowerCase() : null;
 }
-function caQaSaveDraftNow() {
-  const methodKey = caQaCurrentMethodKey();
-  if (!methodKey || !CA_TITLE) return;
-  w('saveQaDraft', {
-    titleId: CA_TITLE.id, methodKey,
-    idea: CA_TITLE.title,
-    productId: document.getElementById('caQaProduct')?.value || '',
-    productType: caQaResolveProductType(),
-    questions: CA_QA_QUESTIONS, answers: CA_QA_ANSWERS, index: CA_QA_INDEX, done: CA_QA_DONE,
-  }).catch(() => {});
-}
-// Debounced entry point for the answer input's oninput — without this,
-// every single keystroke fired its own network POST, flooding the worker
-// (409/429s piling up in the console). Next/Back/Done are discrete clicks,
-// not rapid-fire, so they call caQaSaveDraftNow() directly instead.
-let _caQaSaveTimer = null;
-function caQaSaveDraft() {
-  clearTimeout(_caQaSaveTimer);
-  _caQaSaveTimer = setTimeout(caQaSaveDraftNow, 900);
-}
-function caQaClearDraft() {
-  if (!CA_TITLE) return;
-  w('clearQaDraft', { titleId: CA_TITLE.id }).catch(() => {});
-}
-// Called from caOnMethodChange instead of an unconditional reset — checks
-// Notion for an existing draft on THIS title before wiping anything, so
-// switching back to a method you were already mid-interview on (or just
-// reopening the modal) restores where you left off.
-async function caQaRestoreOrReset() {
-  const methodKey = caQaCurrentMethodKey();
-  caQaResetInterview();
-  if (!methodKey || !CA_TITLE) return;
-  try {
-    const { draft } = await w('getQaDraft', { titleId: CA_TITLE.id });
-    if (!draft || draft.methodKey !== methodKey || !Array.isArray(draft.questions) || !draft.questions.length) return;
-    CA_QA_QUESTIONS = draft.questions;
-    CA_QA_ANSWERS = draft.answers || [];
-    CA_QA_DONE = true;
-    if (draft.productId) document.getElementById('caQaProduct').value = draft.productId;
-    if (draft.productType) {
-      const typeSel = document.getElementById('caQaType');
-      const known = Array.from(typeSel.options).some(o => o.value === draft.productType);
-      if (known) { typeSel.value = draft.productType; }
-      else { typeSel.value = '__custom__'; caQaTypeOnChange(); document.getElementById('caQaTypeCustom').value = draft.productType; }
-    }
-    caQaRenderForm();
-  } catch (e) { /* best-effort — a failed restore just starts fresh */ }
-}
 function caQaResetInterview() {
   CA_QA_QUESTIONS = []; CA_QA_ANSWERS = []; CA_QA_INDEX = 0; CA_QA_DONE = false;
   const wrap = document.getElementById('caQaQuestions');
   if (wrap) wrap.innerHTML = '';
+  const saveStatus = document.getElementById('caQaSaveStatus');
+  if (saveStatus) saveStatus.textContent = '';
+}
+async function caQaSaveToResearch() {
+  const methodKey = caQaCurrentMethodKey();
+  const qaProductId = document.getElementById('caQaProduct')?.value || '';
+  const statusEl = document.getElementById('caQaSaveStatus');
+  if (!methodKey || !CA_QA_QUESTIONS.length) { if (statusEl) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Get the questions first.'; } return; }
+  if (!qaProductId) { if (statusEl) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Pick a Product above first.'; } return; }
+  if (statusEl) { statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Saving…'; }
+  try {
+    const r = await w('saveQaToResearch', {
+      productId: qaProductId, methodKey, idea: CA_TITLE ? CA_TITLE.title : '',
+      questions: CA_QA_QUESTIONS, answers: CA_QA_ANSWERS,
+    });
+    if (r.error) throw new Error(r.error);
+    if (statusEl) { statusEl.style.color = 'var(--fresh)'; statusEl.innerHTML = `✓ Saved to Product Research — <a href="${r.researchUrl}" target="_blank" rel="noopener">↗ open</a>`; }
+  } catch (e) {
+    if (statusEl) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Save failed: ' + e.message; }
+  }
 }
 // All questions at once, each its own text box — per operator direction,
 // simpler and far more robust than the one-at-a-time stepper this
 // replaced (every answer visible and editable together, no Next/Back
-// state to lose track of). Autosaved (debounced) as you type in any box.
+// state to lose track of).
 function caQaRenderForm() {
   const wrap = document.getElementById('caQaQuestions');
   if (!wrap) return;
   wrap.innerHTML = CA_QA_QUESTIONS.map((q, i) => `
     <label style="font-size:11px;color:var(--ink2);display:block;margin-bottom:10px;">${esc(q.question)}
-      <input class="finput" id="caQaAnswer${i}" type="text" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(CA_QA_ANSWERS[i] || '')}" oninput="CA_QA_ANSWERS[${i}] = this.value; caQaSaveDraft();">
-    </label>`).join('');
+      <input class="finput" id="caQaAnswer${i}" type="text" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(CA_QA_ANSWERS[i] || '')}" oninput="CA_QA_ANSWERS[${i}] = this.value;">
+    </label>`).join('') + '<button type="button" class="btn" onclick="caQaSaveToResearch()" style="margin-top:4px;">💾 Save to Product Research</button><div id="caQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
 async function runCreateAsset() {
@@ -3937,8 +3908,7 @@ async function runCreateAsset() {
         CA_QA_ANSWERS = new Array(CA_QA_QUESTIONS.length).fill('');
         CA_QA_DONE = true;
         caQaRenderForm();
-        caQaSaveDraftNow();
-        resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Fill in what applies above, then Generate.';
+        resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Fill in what applies above, then Generate. 💾 Save keeps a copy in Product Research.';
       } catch (e) {
         resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
       }
@@ -3962,7 +3932,6 @@ async function runCreateAsset() {
         resEl.textContent = data.sitePublished ? '✓ Published.' : ('Created (not published live — ' + (data.siteError || 'no live target') + ').');
       }
       caQaResetInterview();
-      caQaClearDraft();
       await loadTitleAndAssetTab();
       setTimeout(closeCreateAssetModal, 1500);
     } catch (e) {

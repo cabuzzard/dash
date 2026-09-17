@@ -38202,12 +38202,15 @@ This interview is mandatory and runs fresh for every single asset you generate t
 
 Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..."}, ...]. No other text, no markdown fences.`;
 
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
+        let aiResp, aiData;
+        try {
+          aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, messages: [{ role: "user", content: prompt }] }),
+          }, 60000);
+        } catch (e) { return json({ error: "Claude request timed out — try again: " + e.message }, 504); }
+        aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 500);
         let questions;
         try {
@@ -38258,65 +38261,56 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
         return json(rec);
       }
 
-      // ── QA interview autosave — durable on the title's own Notion page,
-      // not just in the browser. Per operator direction: in-progress
-      // answers need to survive a modal close/reopen, a lost tab, or a
-      // different device the same way a Research record would, not
-      // disappear because they only ever lived in a JS variable. Called
-      // after every answer (Next/Back/typing), fire-and-forget from the
-      // modal — never blocks the interview itself.
-      if (body.action === "saveQaDraft") {
-        const { titleId, methodKey, idea, productId, productType, questions, answers, index, done } = body;
-        if (!titleId) return json({ error: "titleId required" }, 400);
+      // ── saveQaToResearch — explicit, manual save only (per operator
+      // direction: no more autosave-per-keystroke — that was the source
+      // of the 409/429 flood and general fragility). Writes the current
+      // Q&A onto the PRODUCT's own 🔬 Product Research record (durable,
+      // reusable positioning material — not just scaffolding for one
+      // asset), under a "QA Interview Notes" field that accumulates each
+      // save as its own dated entry rather than overwriting the last one.
+      // Creates a bare Product Research record if this product has none
+      // yet (Product relation only) rather than requiring one to already
+      // exist first.
+      if (body.action === "saveQaToResearch") {
+        const { productId, methodKey, idea, questions, answers } = body;
+        if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
+        if (!Array.isArray(questions) || !questions.length) return json({ error: "Nothing to save yet — get the questions first" }, 400);
         const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         try {
-          await ensureRichTextProperty(hdr, CONTENT_STRATEGY_DB, "QA Draft");
-          const draft = JSON.stringify({ methodKey, idea, productId, productType, questions, answers, index, done, savedAt: Date.now() });
-          // Chunked across as many rich_text objects as needed — a single
-          // one caps at 2000 chars, a handful of answered questions can
-          // exceed that.
+          await ensureRichTextProperty(hdr, PRODUCT_RESEARCH_DB, "QA Interview Notes");
+          let record = await findBestProductResearchRecord(hdr, dash(productId)).catch(() => null);
+          let recordId;
+          if (record) {
+            recordId = record.id.replace(/-/g, "");
+          } else {
+            const created = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: PRODUCT_RESEARCH_DB }, properties: { "Product": { relation: [{ id: dash(productId) }] } } }),
+            }).then(r => r.json());
+            if (!created.id) return json({ error: created.message || "Failed to create a Product Research record" }, 502);
+            recordId = created.id.replace(/-/g, "");
+            record = { properties: {} };
+          }
+          const existing = (record.properties?.["QA Interview Notes"]?.rich_text || []).map(t => t.plain_text).join("");
+          const methodName = QA_METHOD_NAMES[methodKey] || methodKey || "QA";
+          const dateStr = new Date().toISOString().slice(0, 10);
+          const entry = [
+            `=== ${methodName} — ${dateStr} ===`,
+            `Idea: ${idea || "(none given)"}`,
+            "",
+            ...questions.map((q, i) => `Q: ${q.question}\nA: ${(answers && answers[i]) || "(blank)"}`),
+          ].join("\n");
+          const combined = existing ? `${entry}\n\n${existing}` : entry;
           const rich_text = [];
-          for (let i = 0; i < draft.length; i += 1900) rich_text.push({ text: { content: draft.slice(i, i + 1900) } });
-          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+          for (let i = 0; i < combined.length && rich_text.length < 100; i += 1900) rich_text.push({ text: { content: combined.slice(i, i + 1900) } });
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(recordId)}`, {
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "QA Draft": { rich_text } } }),
+            body: JSON.stringify({ properties: { "QA Interview Notes": { rich_text } } }),
           });
           if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Save failed" }, resp.status); }
-          return json({ success: true });
+          return json({ success: true, researchUrl: `https://www.notion.so/${recordId}` });
         } catch (e) { return json({ error: e.message }, 500); }
-      }
-
-      if (body.action === "getQaDraft") {
-        const { titleId } = body;
-        if (!titleId) return json({ error: "titleId required" }, 400);
-        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        try {
-          const page = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
-          const raw = (page?.properties?.["QA Draft"]?.rich_text || []).map(t => t.plain_text).join("");
-          if (!raw.trim()) return json({ draft: null });
-          let draft; try { draft = JSON.parse(raw); } catch (e) { return json({ draft: null }); }
-          return json({ draft });
-        } catch (e) { return json({ draft: null, error: e.message }); }
-      }
-
-      // Clears the draft once a QA generate actually succeeds — called
-      // from the same success path that resets the in-page interview
-      // state, so a finished interview doesn't linger and get mistaken
-      // for an in-progress one on a later visit to the same title.
-      if (body.action === "clearQaDraft") {
-        const { titleId } = body;
-        if (!titleId) return json({ error: "titleId required" }, 400);
-        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        try {
-          await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "QA Draft": { rich_text: [] } } }),
-          });
-        } catch (e) {}
-        return json({ success: true });
       }
 
       if (body.action === "generateQaProduct") {
