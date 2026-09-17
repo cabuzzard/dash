@@ -11070,17 +11070,18 @@ async function submitGenAssets() {
       try {
         const data = await w('craftQaQuestions', { methodKey, productId: qaProductId, idea: title, productType: methodKey === 'product' ? qaProductType : undefined });
         if (data.error) throw new Error(data.error);
+        // The interview is mandatory — the worker guarantees at least one
+        // question or an error, never a silent empty success. _gaQaDone
+        // must never be set true here: that's the one flag that lets
+        // Generate proceed straight to writing, and this interview has to
+        // run fresh for every asset, even a repeat one for the same title.
         _gaQaQuestions = data.questions || [];
+        if (!_gaQaQuestions.length) throw new Error('No questions came back — try again.');
         _gaQaAnswers = new Array(_gaQaQuestions.length).fill('');
-        _gaQaIndex = 0; _gaQaDone = !_gaQaQuestions.length;
-        if (_gaQaQuestions.length) {
-          gaQaRenderQuestion();
-          status.textContent = 'Answer one at a time above, then Generate.';
-          status.style.color = '#68d391';
-        } else {
-          status.textContent = 'No questions came back — Generate again to write it.';
-          status.style.color = '#f0b429';
-        }
+        _gaQaIndex = 0; _gaQaDone = false;
+        gaQaRenderQuestion();
+        status.textContent = 'Answer one at a time above, then Generate.';
+        status.style.color = '#68d391';
       } catch (e) {
         status.textContent = 'Error: ' + e.message;
         status.style.color = '#fc8181';

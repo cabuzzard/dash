@@ -37807,8 +37807,28 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
         ]);
         if (!prodPage?.properties) return json({ error: "Product not found" }, 404);
         const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
+        // Objections are handled separately from the rest of Product
+        // Research below: everything else in STRATEGY_FIELDS is a FACT the
+        // research already states, so it's excluded from questions (don't
+        // re-ask what's already answered). Objections are categorically
+        // different — the research only states WHAT objections exist, never
+        // HOW to personally handle one or whether the operator has actually
+        // faced it live. That's the whole point of asking: an objection
+        // being "already known" (on file) is exactly why it's fair game,
+        // not a reason to skip it — the old version of this prompt got that
+        // backwards (excluded objections whenever research already covered
+        // them, per operator direction: "the interview needs to know the
+        // customer objections and ask me personally how to address them or
+        // whether I've handled that situation").
         const known = [];
-        if (prodResearch) { for (const f of STRATEGY_FIELDS) { const v = rtp(prodResearch.properties, f); if (v) known.push(`${f}: ${v}`); } }
+        let objectionsText = "";
+        if (prodResearch) {
+          for (const f of STRATEGY_FIELDS) {
+            const v = rtp(prodResearch.properties, f);
+            if (!v) continue;
+            if (f === "Objections") objectionsText = v; else known.push(`${f}: ${v}`);
+          }
+        }
 
         const roleByMethod = {
           product: `a new digital product${productType ? ` (a ${productType})` : ""} that complements "${productName}"`,
@@ -37819,12 +37839,17 @@ Write a specific, non-generic deliverable title (a thing to produce — an essay
 
 IDEA: ${idea}
 
-WHAT'S ALREADY KNOWN about this product (do NOT ask about any of this — it's already answered):
+WHAT'S ALREADY KNOWN about this product (do NOT ask about any of this again — it's already answered):
 ${known.length ? known.join("\n") : "(nothing on file yet)"}
 
-Write 3-5 short, sharp, pertinent questions whose answers would give you the SPECIFIC material you're missing to write a genuinely good, non-generic result — never ask something the "already known" block above already answers.${methodKey === "story" ? " This is a first-person story, so at least 2 questions must dig for the actual real anecdote (what specifically happened, when, the concrete detail, how it actually resolved) — you cannot invent a real personal experience, only the operator can supply it." : ""}${methodKey === "product" ? " At least one question should nail down exactly what this product covers/includes and who it's for, if the idea doesn't already say." : ""}${methodKey === "sales" ? " At least one question should surface a real objection or proof point worth addressing, if Product Research above doesn't already cover it." : ""}
+${objectionsText ? `THIS PRODUCT'S KNOWN CUSTOMER OBJECTIONS (from research): ${objectionsText}` : "This product has no Objections on file yet — ask the operator to name a real one first."}
+Objections work differently from every other fact above: research can state THAT an objection exists, but only the operator can say how THEY personally handle it, or whether they've actually lived through a customer raising it. At least 2 of your questions MUST take a listed objection (or, if none are on file, one the operator names) and ask directly and personally — "How do you handle it when someone brings up <objection>?" / "Have you actually dealt with a real customer situation around this?" Never skip these because the objection itself is "already known" — that's precisely why it's worth asking, not a reason to exclude it.
 
-Return ONLY a JSON array: [{"key": "q1", "question": "..."}, ...]. No other text, no markdown fences.`;
+Write AT LEAST 3, up to 5, total questions this way — short, sharp, and personal. The rest (beyond the 2 objection questions) fill in whatever SPECIFIC material you're still missing to write a genuinely good, non-generic result.${methodKey === "story" ? " This is a first-person story, so at least 1 of the remaining questions must dig for the actual real anecdote (what specifically happened, when, the concrete detail, how it actually resolved) — you cannot invent a real personal experience, only the operator can supply it." : ""}${methodKey === "product" ? " At least 1 of the remaining questions should nail down exactly what this product covers/includes and who it's for, if the idea doesn't already say." : ""}
+
+This interview is mandatory and runs fresh for every single asset you generate this way, even for a title/product you've generated for before — never skip it or treat it as already done.
+
+Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..."}, ...]. No other text, no markdown fences.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -37840,6 +37865,11 @@ Return ONLY a JSON array: [{"key": "q1", "question": "..."}, ...]. No other text
           if (start === -1 || end === -1) throw new Error("No JSON array found");
           questions = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
         } catch (e) { return json({ error: "Failed to parse questions JSON: " + e.message }, 500); }
+        // The interview is mandatory, never optional — a caller must never
+        // be able to treat "zero questions" as "nothing to ask, proceed
+        // straight to writing." If the model still comes back empty despite
+        // the prompt above, that's a failure to retry, not a valid result.
+        if (!Array.isArray(questions) || !questions.length) return json({ error: "No questions came back — try again" }, 502);
         return json({ questions, productName });
       }
 

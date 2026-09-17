@@ -3855,15 +3855,17 @@ async function runCreateAsset() {
       try {
         const data = await w('craftQaQuestions', { methodKey: qaKey, productId: qaProductId, idea, productType: qaKey === 'product' ? qaProductType : undefined });
         if (data.error) throw new Error(data.error);
+        // The interview is mandatory — the worker guarantees at least one
+        // question or an error, never a silent empty success. CA_QA_DONE
+        // must never be set true here: that's the one flag that lets
+        // Generate proceed straight to writing, and this interview has to
+        // run fresh for every asset, even a repeat one for the same title.
         CA_QA_QUESTIONS = data.questions || [];
+        if (!CA_QA_QUESTIONS.length) throw new Error('No questions came back — try again.');
         CA_QA_ANSWERS = new Array(CA_QA_QUESTIONS.length).fill('');
-        CA_QA_INDEX = 0; CA_QA_DONE = !CA_QA_QUESTIONS.length;
-        if (CA_QA_QUESTIONS.length) {
-          caQaRenderQuestion();
-          resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer one at a time above, then Generate.';
-        } else {
-          resEl.style.color = 'var(--stale)'; resEl.textContent = 'No questions came back — Generate again to write it.';
-        }
+        CA_QA_INDEX = 0; CA_QA_DONE = false;
+        caQaRenderQuestion();
+        resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer one at a time above, then Generate.';
       } catch (e) {
         resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
       }
