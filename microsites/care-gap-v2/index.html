@@ -3669,7 +3669,7 @@ async function bulkGenerateBackgrounds() {
     statusEl.textContent = `Generating ${i + 1}/${ids.length}: ${label}…`;
     const type = data.type || '';
     const isOffer = /\boffer\b/i.test(type);
-    const isBlogType = /\bseo post\b/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type));
+    const isBlogType = /\bseo post\b/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type)) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(type);
     const isSinglePost = /single post/i.test(type);
     try {
       if (isOffer) { await generateBackgroundForKind(id, true, 'blog-thumbnail'); await generateBackgroundForKind(id, true, 'ig-background'); }
@@ -4217,9 +4217,16 @@ function openPublishAssetModal(assetId) {
   // wordless background + text overlay is handled above in pubSinglePostWrap.
   // isBlogType reuses the same name pattern generateTitleAssets' shared SEO-post
   // generation path matches on (see isSeoPost in worker.js), so anything routed
-  // through that path also gets offered a thumbnail here.
+  // through that path also gets offered a thumbnail here. QA – Sales / QA –
+  // Story are included too — they publish as real hub pages the same way
+  // (publishSeoPostToLiveSite, see qaContentStep in worker.js) and already
+  // carry the Platform Title/Body/Campaign fields generateBlogPostThumbnail
+  // grounds itself in, so no backend change was needed, just this gate. QA –
+  // Product is deliberately excluded — it produces asset components
+  // (ebook/checklist/etc.), never a published page, so a blog banner
+  // doesn't apply.
   const isOffer = /\boffer\b/i.test(data.type || '');
-  const isBlogType = /\bseo post\b/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || ''));
+  const isBlogType = /\bseo post\b/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || '')) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(data.type || '');
   document.getElementById('pubOfferImagesWrap').style.display = (isOffer || isBlogType) ? 'block' : 'none';
   document.getElementById('pubIgBgRow').style.display = isOffer ? 'flex' : 'none';
   document.getElementById('pubBlogThumbRow').style.display = (isOffer || isBlogType) ? 'flex' : 'none';
