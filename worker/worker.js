@@ -38149,8 +38149,13 @@ Return ONLY this JSON object, no other text, no markdown fences:
           return out;
         });
 
-        const components = [];
-        for (const part of parts) {
+        // Parallel, not sequential — a 6-7 part ebook doing one Notion
+        // create + block-writes + a property patch PER PART, one at a time,
+        // was slow enough (on top of the up-front 8000-token planning call)
+        // to blow past Cloudflare's edge timeout (524) on larger products.
+        // Every part is independent (its own new Asset page), so there's no
+        // ordering requirement forcing this to be sequential.
+        const components = await Promise.all(parts.map(async part => {
           const isVisual = part.kind === "visual";
           const extraProps = {
             "Content Strategy": { relation: [{ id: dash(titleId) }] },
@@ -38160,22 +38165,24 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (methodId) extraProps["Method"] = { relation: [{ id: dash(methodId) }] };
           if (isVisual) extraProps["Notes"] = { rich_text: [{ text: { content: ("DESIGN BRIEF (for Canva): " + String(part.content || "")).slice(0, 2000) } }] };
           const result = await createAssetComponentPage(hdr, { parentAssetId, assetType: String(part.label).slice(0, 100), extraProps });
-          if (result.error) { components.push({ label: part.label, error: result.error }); continue; }
+          if (result.error) return { label: part.label, error: result.error };
           if (!isVisual) {
             const children = paras(part.content);
+            const writes = [];
             for (let i = 0; i < children.length; i += 100) {
-              await fetch(`https://api.notion.com/v1/blocks/${dash(result.id)}/children`, {
+              writes.push(fetch(`https://api.notion.com/v1/blocks/${dash(result.id)}/children`, {
                 method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
                 body: JSON.stringify({ children: children.slice(i, i + 100) }),
-              }).catch(() => {});
+              }).catch(() => {}));
             }
-            await fetch(`https://api.notion.com/v1/pages/${dash(result.id)}`, {
+            writes.push(fetch(`https://api.notion.com/v1/pages/${dash(result.id)}`, {
               method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
               body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: String(part.content || "").slice(0, 2000) } }] } } }),
-            }).catch(() => {});
+            }).catch(() => {}));
+            await Promise.all(writes);
           }
-          components.push({ id: result.id, label: part.label, kind: part.kind });
-        }
+          return { id: result.id, label: part.label, kind: part.kind };
+        }));
 
         return json({
           success: true, titleId, parentAssetId, title: plan.title || idea,
