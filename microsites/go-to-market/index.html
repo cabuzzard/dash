@@ -2097,12 +2097,14 @@ async function submitBlankGrouping() {
       </div>
       <div id="gaQaTypeWrap" style="display:none;margin-bottom:10px;">
         <label class="lm-label">Digital product type</label>
-        <select class="modal-ta" id="gaQaTypeInput">
+        <select class="modal-ta" id="gaQaTypeInput" onchange="gaQaTypeOnChange()">
           <option value="ebook">Ebook</option>
           <option value="checklist">Checklist</option>
           <option value="spreadsheet">Spreadsheet</option>
           <option value="design bundle">Design Bundle</option>
+          <option value="__custom__">+ Create new…</option>
         </select>
+        <input class="modal-ta" id="gaQaTypeCustom" type="text" placeholder="e.g. video course, swipe file, template pack" style="display:none;margin-top:6px;" />
       </div>
       <div id="gaQaInterviewWrap" style="display:none;margin-bottom:10px;padding:8px 10px;border:1px solid #3a3350;background:rgba(159,122,234,.06);border-radius:4px;">
         <div style="font-size:11px;color:#b794f4;margin-bottom:8px;">QA interviews you before writing — hit Generate to get the first question, answer one at a time, then Generate again once done to actually write it.</div>
@@ -7587,6 +7589,23 @@ function gaLoadQaProducts() {
   sel.innerHTML = '<option value="">— pick a product —</option>' + (PRODUCT_ITEMS || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('');
   sel.value = current || GA_PRODUCT_ID || '';
 }
+// "+ Create new…" on the Digital product type select — QA – Product isn't
+// locked to the four built-in types (ebook/checklist/spreadsheet/design
+// bundle); generateQaProduct falls back to a generic part-planning
+// instruction for anything else, so any freeform type name works.
+function gaQaTypeOnChange() {
+  const sel = document.getElementById('gaQaTypeInput');
+  const custom = document.getElementById('gaQaTypeCustom');
+  const isCustom = sel.value === '__custom__';
+  custom.style.display = isCustom ? '' : 'none';
+  if (isCustom) custom.focus();
+}
+function gaQaResolveProductType() {
+  const sel = document.getElementById('gaQaTypeInput');
+  if (!sel) return 'ebook';
+  if (sel.value === '__custom__') return (document.getElementById('gaQaTypeCustom')?.value || '').trim() || 'ebook';
+  return sel.value || 'ebook';
+}
 
 // The QA interview — one question at a time (see the modal's own
 // gaQaInterviewWrap hint). craftQaQuestions still fetches the whole set in
@@ -8155,7 +8174,7 @@ async function openGenAssetsModal(titleId) {
   GA_METHOD_ID = null; GA_METHOD_NAME = '';
   GA_PRODUCT_ID = null; GA_PRODUCT_NAME = '';
   gaQaResetInterview();
-  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput','gaQaProductInput','gaPeNameInput','gaPeTitleInput','gaPeBlurbInput'].forEach(id => {
+  ['gaTitleInput','gaMethodInput','gaAvatarPresenterInput','gaDesignRefNotesInput','gaSourceInput','gaTshirtDesignFile','gaLoginInput','gaHubProductInput','gaCaptureFormInput','gaQaProductInput','gaQaTypeCustom','gaPeNameInput','gaPeTitleInput','gaPeBlurbInput'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
   const isolateRadio = document.querySelector('input[name="gaContext"][value="isolate"]');
@@ -11063,7 +11082,7 @@ async function submitGenAssets() {
       status.style.color = '#fc8181'; btn.disabled = false; btn.textContent = 'Generate';
       return;
     }
-    const qaProductType = document.getElementById('gaQaTypeInput')?.value || 'ebook';
+    const qaProductType = gaQaResolveProductType();
     if (!_gaQaQuestions.length) {
       status.textContent = 'Working out what to ask…';
       btn.textContent = 'Asking…';

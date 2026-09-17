@@ -489,12 +489,14 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <select id="caQaProduct" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"><option value="">— pick a product —</option></select>
         </div>
         <div id="caQaTypeRow" style="font-size:11px;color:var(--ink2);display:none;">Digital product type
-          <select id="caQaType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+          <select id="caQaType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="caQaTypeOnChange()">
             <option value="ebook">Ebook</option>
             <option value="checklist">Checklist</option>
             <option value="spreadsheet">Spreadsheet</option>
             <option value="design bundle">Design Bundle</option>
+            <option value="__custom__">+ Create new…</option>
           </select>
+          <input id="caQaTypeCustom" class="finput" type="text" placeholder="e.g. video course, swipe file, template pack" style="width:100%;box-sizing:border-box;margin-top:6px;display:none;">
         </div>
         <div id="caQaInterviewRow" style="display:none;">
           <div style="font-size:11px;color:var(--ink3);margin-bottom:6px;">QA interviews you before writing — hit Generate to get the first question, answer one at a time, then Generate again once done to actually write it.</div>
@@ -3734,6 +3736,8 @@ async function openCreateAssetModal(titleId) {
   document.getElementById('caModalTitle').textContent = t.title;
   document.getElementById('caResult').textContent = '';
   document.getElementById('caOverride').value = '';
+  document.getElementById('caQaTypeCustom').value = '';
+  document.getElementById('caQaTypeCustom').style.display = 'none';
   document.getElementById('caMethodOptions').style.display = 'none';
   caQaResetInterview();
   const hasMethod = t.methodId && t.methodId !== '__none__';
@@ -3776,6 +3780,23 @@ async function caLoadQaProducts() {
   const current = sel.value;
   sel.innerHTML = '<option value="">— pick a product —</option>' + CAMPAIGN_PRODUCTS.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
   sel.value = current || (CA_TITLE && CA_TITLE.productId) || '';
+}
+// "+ Create new…" on the Digital product type select — QA – Product isn't
+// locked to the four built-in types (ebook/checklist/spreadsheet/design
+// bundle); generateQaProduct falls back to a generic part-planning
+// instruction for anything else, so any freeform type name works.
+function caQaTypeOnChange() {
+  const sel = document.getElementById('caQaType');
+  const custom = document.getElementById('caQaTypeCustom');
+  const isCustom = sel.value === '__custom__';
+  custom.style.display = isCustom ? '' : 'none';
+  if (isCustom) custom.focus();
+}
+function caQaResolveProductType() {
+  const sel = document.getElementById('caQaType');
+  if (!sel) return 'ebook';
+  if (sel.value === '__custom__') return (document.getElementById('caQaTypeCustom')?.value || '').trim() || 'ebook';
+  return sel.value || 'ebook';
 }
 // The QA interview — one question at a time (see caQaInterviewRow's own
 // hint). craftQaQuestions still fetches the whole set in one round-trip;
@@ -3847,7 +3868,7 @@ async function runCreateAsset() {
     const qaKey = qaMethodMatch[1].toLowerCase();
     const qaProductId = document.getElementById('caQaProduct').value || '';
     if (!qaProductId) { resEl.style.color = 'var(--danger)'; resEl.textContent = 'Pick a Product above first — QA needs its research.'; return; }
-    const qaProductType = document.getElementById('caQaType').value || 'ebook';
+    const qaProductType = caQaResolveProductType();
     const idea = CA_TITLE.title;
     if (!CA_QA_QUESTIONS.length) {
       btn.disabled = true; btn.textContent = 'Asking…';

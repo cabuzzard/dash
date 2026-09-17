@@ -38028,7 +38028,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       if (body.action === "generateQaProduct") {
         const { productId, idea, productType, answers, titleId: existingTitleId } = body;
         let { campaignId } = body;
-        if (!DIGITAL_PRODUCT_TYPES[productType]) return json({ error: "productType must be one of: " + Object.keys(DIGITAL_PRODUCT_TYPES).join(", ") }, 400);
+        if (!productType || !String(productType).trim()) return json({ error: "productType required" }, 400);
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
         if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
@@ -38044,7 +38044,14 @@ Return ONLY this JSON object, no other text, no markdown fences:
         let researchBlock = "";
         if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
         const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
-        const spec = DIGITAL_PRODUCT_TYPES[productType];
+        // Not locked to the four built-in types — the operator can name
+        // anything from the "+ Create new…" option in the modal. For a
+        // custom type, let Claude use its own judgment on a sensible part
+        // breakdown instead of a hand-written shape description.
+        const spec = DIGITAL_PRODUCT_TYPES[productType] || {
+          label: String(productType).trim(),
+          shape: `a "${String(productType).trim()}": use your best judgment on the parts it needs for this specific format — typically at least one visual part (a cover or key graphic) plus one or more text parts covering its actual content`,
+        };
 
         const prompt = `Plan and WRITE the actual content for ${spec.shape}, for the product "${productName}", seeded from this idea:
 
