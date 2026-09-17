@@ -204,6 +204,20 @@ async function ensureNumberProperty(hdr, dbId, propName) {
     });
   } catch (e) { /* best-effort — a failed self-heal just means the property gets created on next attempt */ }
 }
+// Same self-healing pattern, for a plain rich_text property. Backs the QA
+// interview's autosave (saveQaDraft/getQaDraft) — per operator direction,
+// in-progress answers need to survive the same way a Research record
+// does (durable, server-side), not just live in the browser's memory,
+// which a modal close/reopen or a lost tab was wiping outright.
+async function ensureRichTextProperty(hdr, dbId, propName) {
+  try {
+    const db = await fetch(`https://api.notion.com/v1/databases/${dbId}`, { headers: hdr }).then(r => r.json());
+    if (!db.properties?.[propName]) await fetch(`https://api.notion.com/v1/databases/${dbId}`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ properties: { [propName]: { rich_text: {} } } }),
+    });
+  } catch (e) { /* best-effort — a failed self-heal just means the property gets created on next attempt */ }
+}
 async function getCampaignKeywordsVersion(hdr, campaignId) {
   if (!campaignId) return 0;
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -38218,6 +38232,67 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
         const rec = await env.TRADES.get(`qajob:${jobId}`, "json");
         if (!rec) return json({ status: "error", error: "Job not found or expired" });
         return json(rec);
+      }
+
+      // ── QA interview autosave — durable on the title's own Notion page,
+      // not just in the browser. Per operator direction: in-progress
+      // answers need to survive a modal close/reopen, a lost tab, or a
+      // different device the same way a Research record would, not
+      // disappear because they only ever lived in a JS variable. Called
+      // after every answer (Next/Back/typing), fire-and-forget from the
+      // modal — never blocks the interview itself.
+      if (body.action === "saveQaDraft") {
+        const { titleId, methodKey, idea, productId, productType, questions, answers, index, done } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          await ensureRichTextProperty(hdr, CONTENT_STRATEGY_DB, "QA Draft");
+          const draft = JSON.stringify({ methodKey, idea, productId, productType, questions, answers, index, done, savedAt: Date.now() });
+          // Chunked across as many rich_text objects as needed — a single
+          // one caps at 2000 chars, a handful of answered questions can
+          // exceed that.
+          const rich_text = [];
+          for (let i = 0; i < draft.length; i += 1900) rich_text.push({ text: { content: draft.slice(i, i + 1900) } });
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "QA Draft": { rich_text } } }),
+          });
+          if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Save failed" }, resp.status); }
+          return json({ success: true });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
+      if (body.action === "getQaDraft") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          const page = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
+          const raw = (page?.properties?.["QA Draft"]?.rich_text || []).map(t => t.plain_text).join("");
+          if (!raw.trim()) return json({ draft: null });
+          let draft; try { draft = JSON.parse(raw); } catch (e) { return json({ draft: null }); }
+          return json({ draft });
+        } catch (e) { return json({ draft: null, error: e.message }); }
+      }
+
+      // Clears the draft once a QA generate actually succeeds — called
+      // from the same success path that resets the in-page interview
+      // state, so a finished interview doesn't linger and get mistaken
+      // for an in-progress one on a later visit to the same title.
+      if (body.action === "clearQaDraft") {
+        const { titleId } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        try {
+          await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "QA Draft": { rich_text: [] } } }),
+          });
+        } catch (e) {}
+        return json({ success: true });
       }
 
       if (body.action === "generateQaProduct") {

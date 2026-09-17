@@ -7477,12 +7477,13 @@ function gaUpdateSkillHint() {
   const qaMatch = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec((GA_METHOD_NAME || '').trim());
   const isQaMethod = !!qaMatch;
   const isQaProductMethod = isQaMethod && /^product$/i.test(qaMatch[1]);
-  if (isQaMethod !== gaUpdateSkillHint._lastIsQa || (GA_METHOD_NAME || '') !== gaUpdateSkillHint._lastQaMethod) gaQaResetInterview();
+  const qaChanged = isQaMethod !== gaUpdateSkillHint._lastIsQa || (GA_METHOD_NAME || '') !== gaUpdateSkillHint._lastQaMethod;
   gaUpdateSkillHint._lastIsQa = isQaMethod;
   gaUpdateSkillHint._lastQaMethod = GA_METHOD_NAME || '';
   if (qaProductWrap) { qaProductWrap.style.display = isQaMethod ? 'block' : 'none'; if (isQaMethod) gaLoadQaProducts(); }
   if (qaTypeWrap) qaTypeWrap.style.display = isQaProductMethod ? 'block' : 'none';
   if (qaInterviewWrap) qaInterviewWrap.style.display = isQaMethod ? 'block' : 'none';
+  if (qaChanged) { if (isQaMethod) gaQaRestoreOrReset(); else gaQaResetInterview(); }
   // "Project Experience" — no interview, no product needed; just the
   // name/title/blurb fields, published exactly as typed.
   const peWrap = document.getElementById('gaProjectExperienceWrap');
@@ -7630,9 +7631,64 @@ async function qaPollJob(jobId, statusCb) {
 // The QA interview — one question at a time (see the modal's own
 // gaQaInterviewWrap hint). craftQaQuestions still fetches the whole set in
 // one round-trip (cheap); the operator only ever sees/answers one at a
-// time, with ← Back to revise a prior answer. Reset by gaQaResetInterview,
-// called whenever the method picker moves onto/off/between QA methods.
+// time, with ← Back to revise a prior answer.
+//
+// Autosaved to the title's own Notion page (saveQaDraft/getQaDraft — see
+// worker.js), not just this browser's memory — per operator direction,
+// "just like a Research record": in-progress answers need to survive a
+// closed/reopened modal, a lost tab, or even a different device, not
+// disappear because they only ever lived in a JS variable. Fire-and-
+// forget on every answer change; never blocks the interview itself.
 let _gaQaQuestions = [], _gaQaAnswers = [], _gaQaIndex = 0, _gaQaDone = false;
+function gaQaCurrentMethodKey() {
+  const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec((GA_METHOD_NAME || '').trim());
+  return m ? m[1].toLowerCase() : null;
+}
+function gaQaSaveDraft() {
+  const methodKey = gaQaCurrentMethodKey();
+  if (!methodKey || !GA_TITLE_ID) return;
+  w('saveQaDraft', {
+    titleId: GA_TITLE_ID, methodKey,
+    idea: document.getElementById('gaTitleInput')?.value || '',
+    productId: document.getElementById('gaQaProductInput')?.value || '',
+    productType: gaQaResolveProductType(),
+    questions: _gaQaQuestions, answers: _gaQaAnswers, index: _gaQaIndex, done: _gaQaDone,
+  }).catch(() => {});
+}
+function gaQaClearDraft() {
+  if (!GA_TITLE_ID) return;
+  w('clearQaDraft', { titleId: GA_TITLE_ID }).catch(() => {});
+}
+// Called instead of an unconditional reset whenever the method picker
+// moves onto/between QA methods — checks Notion for an existing draft on
+// THIS title first, so switching back to a method you were already
+// mid-interview on (or just reopening the modal) restores where you left
+// off instead of wiping it.
+async function gaQaRestoreOrReset() {
+  const methodKey = gaQaCurrentMethodKey();
+  gaQaResetInterview();
+  if (!methodKey || !GA_TITLE_ID) return;
+  try {
+    const { draft } = await w('getQaDraft', { titleId: GA_TITLE_ID });
+    if (!draft || draft.methodKey !== methodKey || !Array.isArray(draft.questions) || !draft.questions.length) return;
+    _gaQaQuestions = draft.questions;
+    _gaQaAnswers = draft.answers || [];
+    _gaQaIndex = Math.min(draft.index || 0, Math.max(_gaQaQuestions.length - 1, 0));
+    _gaQaDone = !!draft.done;
+    if (draft.productId) document.getElementById('gaQaProductInput').value = draft.productId;
+    if (draft.productType) {
+      const typeSel = document.getElementById('gaQaTypeInput');
+      const known = Array.from(typeSel.options).some(o => o.value === draft.productType);
+      if (known) { typeSel.value = draft.productType; }
+      else { typeSel.value = '__custom__'; gaQaTypeOnChange(); document.getElementById('gaQaTypeCustom').value = draft.productType; }
+    }
+    if (_gaQaDone) {
+      document.getElementById('gaQaQuestions').innerHTML = '<div style="font-size:12px;color:#68d391;">All answered ✓ (restored) — hit Generate to write it.</div>';
+    } else {
+      gaQaRenderQuestion();
+    }
+  } catch (e) { /* best-effort — a failed restore just starts fresh */ }
+}
 function gaQaResetInterview() {
   _gaQaQuestions = []; _gaQaAnswers = []; _gaQaIndex = 0; _gaQaDone = false;
   const wrap = document.getElementById('gaQaQuestions');
@@ -7647,7 +7703,7 @@ function gaQaRenderQuestion() {
   wrap.innerHTML = `
     <div style="font-size:10px;color:#999;margin-bottom:4px;">Question ${i + 1} of ${_gaQaQuestions.length}</div>
     <label class="lm-label">${esc(q.question)}</label>
-    <input class="modal-ta" id="gaQaCurrentAnswer" type="text" style="height:34px;padding:6px 10px;" value="${esc(_gaQaAnswers[i] || '')}" />
+    <input class="modal-ta" id="gaQaCurrentAnswer" type="text" style="height:34px;padding:6px 10px;" value="${esc(_gaQaAnswers[i] || '')}" oninput="_gaQaAnswers[${i}] = this.value; gaQaSaveDraft();" />
     <div style="display:flex;gap:8px;margin-top:8px;">
       ${i > 0 ? '<button class="modal-btn cancel" type="button" onclick="gaQaPrevQuestion()">← Back</button>' : ''}
       <button class="modal-btn save" type="button" onclick="gaQaNextQuestion()">${isLast ? 'Done →' : 'Next →'}</button>
@@ -7664,6 +7720,7 @@ function gaQaPrevQuestion() {
   gaQaStashCurrentAnswer();
   if (_gaQaIndex > 0) _gaQaIndex--;
   gaQaRenderQuestion();
+  gaQaSaveDraft();
 }
 function gaQaNextQuestion() {
   gaQaStashCurrentAnswer();
@@ -7674,6 +7731,7 @@ function gaQaNextQuestion() {
     _gaQaDone = true;
     document.getElementById('gaQaQuestions').innerHTML = '<div style="font-size:12px;color:#68d391;">All answered ✓ — hit Generate to write it.</div>';
   }
+  gaQaSaveDraft();
 }
 
 // "email hub main - <purpose>" methods — populates the "Attach to form"
@@ -11119,6 +11177,7 @@ async function submitGenAssets() {
         _gaQaAnswers = new Array(_gaQaQuestions.length).fill('');
         _gaQaIndex = 0; _gaQaDone = false;
         gaQaRenderQuestion();
+        gaQaSaveDraft();
         status.textContent = 'Answer one at a time above, then Generate.';
         status.style.color = '#68d391';
       } catch (e) {
@@ -11156,6 +11215,7 @@ async function submitGenAssets() {
       status.style.color = '#68d391';
       btn.textContent = 'Done';
       gaQaResetInterview();
+      gaQaClearDraft();
       await loadTitles();
       setTimeout(closeGenAssetsModal, 4000);
     } catch (e) {

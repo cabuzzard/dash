@@ -3766,11 +3766,10 @@ function caOnMethodChange() {
   const qaMatch = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(name.trim());
   const isQaMethod = !!qaMatch;
   const isQaProductMethod = isQaMethod && /^product$/i.test(qaMatch[1]);
-  caQaResetInterview();
   document.getElementById('caQaProductRow').style.display = isQaMethod ? 'block' : 'none';
   document.getElementById('caQaTypeRow').style.display = isQaProductMethod ? 'block' : 'none';
   document.getElementById('caQaInterviewRow').style.display = isQaMethod ? 'block' : 'none';
-  if (isQaMethod) caLoadQaProducts();
+  if (isQaMethod) { caLoadQaProducts(); caQaRestoreOrReset(); } else { caQaResetInterview(); }
 }
 // QA – same picker pattern as elsewhere in this file — separate select,
 // prefilled with this title's already-attached product if it has one.
@@ -3821,8 +3820,64 @@ async function caQaPollJob(jobId, statusCb) {
 // The QA interview — one question at a time (see caQaInterviewRow's own
 // hint). craftQaQuestions still fetches the whole set in one round-trip;
 // the operator only ever sees/answers one at a time, with ← Back to
-// revise a prior answer. Reset whenever the method picker changes.
+// revise a prior answer.
+//
+// Autosaved to the title's own Notion page (saveQaDraft/getQaDraft — see
+// worker.js), not just this browser's memory — per operator direction,
+// "just like a Research record": in-progress answers need to survive a
+// closed/reopened modal, a lost tab, or even a different device, not
+// disappear because they only ever lived in a JS variable. Fire-and-
+// forget on every answer change; never blocks the interview itself.
 let CA_QA_QUESTIONS = [], CA_QA_ANSWERS = [], CA_QA_INDEX = 0, CA_QA_DONE = false;
+function caQaCurrentMethodKey() {
+  const name = (document.getElementById('caMethod')?.dataset.name || '').trim();
+  const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(name);
+  return m ? m[1].toLowerCase() : null;
+}
+function caQaSaveDraft() {
+  const methodKey = caQaCurrentMethodKey();
+  if (!methodKey || !CA_TITLE) return;
+  w('saveQaDraft', {
+    titleId: CA_TITLE.id, methodKey,
+    idea: CA_TITLE.title,
+    productId: document.getElementById('caQaProduct')?.value || '',
+    productType: caQaResolveProductType(),
+    questions: CA_QA_QUESTIONS, answers: CA_QA_ANSWERS, index: CA_QA_INDEX, done: CA_QA_DONE,
+  }).catch(() => {});
+}
+function caQaClearDraft() {
+  if (!CA_TITLE) return;
+  w('clearQaDraft', { titleId: CA_TITLE.id }).catch(() => {});
+}
+// Called from caOnMethodChange instead of an unconditional reset — checks
+// Notion for an existing draft on THIS title before wiping anything, so
+// switching back to a method you were already mid-interview on (or just
+// reopening the modal) restores where you left off.
+async function caQaRestoreOrReset() {
+  const methodKey = caQaCurrentMethodKey();
+  caQaResetInterview();
+  if (!methodKey || !CA_TITLE) return;
+  try {
+    const { draft } = await w('getQaDraft', { titleId: CA_TITLE.id });
+    if (!draft || draft.methodKey !== methodKey || !Array.isArray(draft.questions) || !draft.questions.length) return;
+    CA_QA_QUESTIONS = draft.questions;
+    CA_QA_ANSWERS = draft.answers || [];
+    CA_QA_INDEX = Math.min(draft.index || 0, Math.max(CA_QA_QUESTIONS.length - 1, 0));
+    CA_QA_DONE = !!draft.done;
+    if (draft.productId) document.getElementById('caQaProduct').value = draft.productId;
+    if (draft.productType) {
+      const typeSel = document.getElementById('caQaType');
+      const known = Array.from(typeSel.options).some(o => o.value === draft.productType);
+      if (known) { typeSel.value = draft.productType; }
+      else { typeSel.value = '__custom__'; caQaTypeOnChange(); document.getElementById('caQaTypeCustom').value = draft.productType; }
+    }
+    if (CA_QA_DONE) {
+      document.getElementById('caQaQuestions').innerHTML = '<div style="font-size:11.5px;color:var(--fresh);">All answered ✓ (restored) — hit Generate to write it.</div>';
+    } else {
+      caQaRenderQuestion();
+    }
+  } catch (e) { /* best-effort — a failed restore just starts fresh */ }
+}
 function caQaResetInterview() {
   CA_QA_QUESTIONS = []; CA_QA_ANSWERS = []; CA_QA_INDEX = 0; CA_QA_DONE = false;
   const wrap = document.getElementById('caQaQuestions');
@@ -3837,7 +3892,7 @@ function caQaRenderQuestion() {
   wrap.innerHTML = `
     <div style="font-size:10px;color:var(--ink3);margin-bottom:4px;">Question ${i + 1} of ${CA_QA_QUESTIONS.length}</div>
     <label style="font-size:11px;color:var(--ink2);">${esc(q.question)}
-      <input class="finput" id="caQaCurrentAnswer" type="text" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(CA_QA_ANSWERS[i] || '')}">
+      <input class="finput" id="caQaCurrentAnswer" type="text" style="width:100%;box-sizing:border-box;margin-top:4px;" value="${esc(CA_QA_ANSWERS[i] || '')}" oninput="CA_QA_ANSWERS[${i}] = this.value; caQaSaveDraft();">
     </label>
     <div style="display:flex;gap:8px;margin-top:8px;">
       ${i > 0 ? '<button class="btn" type="button" onclick="caQaPrevQuestion()">← Back</button>' : ''}
@@ -3855,6 +3910,7 @@ function caQaPrevQuestion() {
   caQaStashCurrentAnswer();
   if (CA_QA_INDEX > 0) CA_QA_INDEX--;
   caQaRenderQuestion();
+  caQaSaveDraft();
 }
 function caQaNextQuestion() {
   caQaStashCurrentAnswer();
@@ -3865,6 +3921,7 @@ function caQaNextQuestion() {
     CA_QA_DONE = true;
     document.getElementById('caQaQuestions').innerHTML = '<div style="font-size:11.5px;color:var(--fresh);">All answered ✓ — hit Generate to write it.</div>';
   }
+  caQaSaveDraft();
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
 async function runCreateAsset() {
@@ -3906,6 +3963,7 @@ async function runCreateAsset() {
         CA_QA_ANSWERS = new Array(CA_QA_QUESTIONS.length).fill('');
         CA_QA_INDEX = 0; CA_QA_DONE = false;
         caQaRenderQuestion();
+        caQaSaveDraft();
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer one at a time above, then Generate.';
       } catch (e) {
         resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
@@ -3935,6 +3993,7 @@ async function runCreateAsset() {
         resEl.textContent = data.sitePublished ? '✓ Published.' : ('Created (not published live — ' + (data.siteError || 'no live target') + ').');
       }
       caQaResetInterview();
+      caQaClearDraft();
       await loadTitleAndAssetTab();
       setTimeout(closeCreateAssetModal, 1500);
     } catch (e) {
