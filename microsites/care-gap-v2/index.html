@@ -1547,8 +1547,8 @@ function renderIdeaLines(text) {
     const name = m ? m[1] : line, desc = m ? m[2] : '';
     return `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(name)}">${esc(name)}</span>
       <span class="idea-btns">
-        <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(name)}','${esc(RAW_KEYWORDS)}')">🔗</button>
-        <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="runCreateProductFromIdea('${esc(name)}','${esc(desc)}','Master','main',${i})">➕</button>
+        <button class="iconbtn" title="View sources" onclick="viewSourcesForMainIdea(${i})">🔗</button>
+        <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="addProductFromMainIdea(${i})">➕</button>
         <button class="iconbtn" title="Dismiss this idea" onclick="deleteMainStackIdea(${i}, this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
       </span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
@@ -1557,8 +1557,8 @@ function renderIdeaLines(text) {
 function renderIdeaCards(products, clusterId, clusterName) {
   return products.map(p => `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
       <span class="idea-btns">
-        <button class="iconbtn" title="View sources" onclick="runViewSources('${esc(p.name)}','${esc(p.keywords)}')">🔗</button>
-        <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="runCreateProductFromIdea('${esc(p.name)}','${esc(p.angle)}','${esc(clusterName)}','cluster','${esc(clusterId)}','${esc(p.id)}')">➕</button>
+        <button class="iconbtn" title="View sources" onclick="viewSourcesForClusterIdea('${esc(clusterId)}','${esc(p.id)}')">🔗</button>
+        <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="addProductFromClusterIdea('${esc(clusterId)}','${esc(p.id)}')">➕</button>
         <button class="iconbtn" title="Dismiss this proposal" onclick="dismissClusterIdea('${esc(clusterId)}','${esc(p.id)}', this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-${esc(clusterId)}-${esc(p.id)}','${esc(p.name)}','keywords')">📝</button>
       </span></div><div class="idea-desc"><b>${esc(p.platform)} · ${esc(p.type)}</b> — ${esc(p.angle)}</div></div>`).join('');
@@ -1778,6 +1778,43 @@ async function runProductIdeas(steer, omit) {
   const r = await w('getProductIdeas', { researchId: RESEARCH_ID, kwOverride: steer || undefined, kwOmit: omit || undefined });
   MAIN_PRODUCT_IDEAS_TEXT = r.text || '';
   renderKeywordsAndIdeas();
+}
+// Idea buttons are looked up by index/id at click time instead of
+// interpolating the idea's free-text name/description straight into the
+// onclick attribute — an apostrophe in either (e.g. "caregiver's guide")
+// survives esc()'s HTML-entity escaping, gets decoded back to a literal '
+// by the HTML parser, and breaks out of the single-quoted JS string in the
+// inline handler, silently killing it. Same failure mode already fixed for
+// the cluster ↻ regen button above (see the comment on openClusterRegenModal).
+function addProductFromMainIdea(i) {
+  const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const line = lines[i];
+  if (!line) return;
+  const m = line.match(/^([^:]+):\s*(.*)$/);
+  runCreateProductFromIdea(m ? m[1] : line, m ? m[2] : '', 'Master', 'main', i);
+}
+function viewSourcesForMainIdea(i) {
+  const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
+  const line = lines[i];
+  if (!line) return;
+  const m = line.match(/^([^:]+):\s*(.*)$/);
+  runViewSources(m ? m[1] : line, RAW_KEYWORDS);
+}
+function findClusterIdea(clusterId, productId) {
+  const all = [...(SEO_CLUSTERS.staged || []), ...(SEO_CLUSTERS.committed || [])];
+  const c = all.find(x => x.id === clusterId);
+  const p = c && (c.products || []).find(x => x.id === productId);
+  return c && p ? { cluster: c, product: p } : null;
+}
+function addProductFromClusterIdea(clusterId, productId) {
+  const found = findClusterIdea(clusterId, productId);
+  if (!found) return;
+  runCreateProductFromIdea(found.product.name, found.product.angle, found.cluster.name, 'cluster', clusterId, productId);
+}
+function viewSourcesForClusterIdea(clusterId, productId) {
+  const found = findClusterIdea(clusterId, productId);
+  if (!found) return;
+  runViewSources(found.product.name, found.product.keywords);
 }
 // kind/a/b identify the source idea so it can be removed from the ideas
 // list once it's a real product — 'main' (a = line index in the flat
