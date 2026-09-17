@@ -7644,7 +7644,7 @@ function gaQaCurrentMethodKey() {
   const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec((GA_METHOD_NAME || '').trim());
   return m ? m[1].toLowerCase() : null;
 }
-function gaQaSaveDraft() {
+function gaQaSaveDraftNow() {
   const methodKey = gaQaCurrentMethodKey();
   if (!methodKey || !GA_TITLE_ID) return;
   w('saveQaDraft', {
@@ -7654,6 +7654,15 @@ function gaQaSaveDraft() {
     productType: gaQaResolveProductType(),
     questions: _gaQaQuestions, answers: _gaQaAnswers, index: _gaQaIndex, done: _gaQaDone,
   }).catch(() => {});
+}
+// Debounced entry point for the answer input's oninput — without this,
+// every single keystroke fired its own network POST, flooding the worker
+// (409/429s piling up in the console). Next/Back/Done are discrete clicks,
+// not rapid-fire, so they call gaQaSaveDraftNow() directly instead.
+let _gaQaSaveTimer = null;
+function gaQaSaveDraft() {
+  clearTimeout(_gaQaSaveTimer);
+  _gaQaSaveTimer = setTimeout(gaQaSaveDraftNow, 900);
 }
 function gaQaClearDraft() {
   if (!GA_TITLE_ID) return;
@@ -7720,7 +7729,7 @@ function gaQaPrevQuestion() {
   gaQaStashCurrentAnswer();
   if (_gaQaIndex > 0) _gaQaIndex--;
   gaQaRenderQuestion();
-  gaQaSaveDraft();
+  gaQaSaveDraftNow();
 }
 function gaQaNextQuestion() {
   gaQaStashCurrentAnswer();
@@ -7731,7 +7740,7 @@ function gaQaNextQuestion() {
     _gaQaDone = true;
     document.getElementById('gaQaQuestions').innerHTML = '<div style="font-size:12px;color:#68d391;">All answered ✓ — hit Generate to write it.</div>';
   }
-  gaQaSaveDraft();
+  gaQaSaveDraftNow();
 }
 
 // "email hub main - <purpose>" methods — populates the "Attach to form"
@@ -11177,7 +11186,7 @@ async function submitGenAssets() {
         _gaQaAnswers = new Array(_gaQaQuestions.length).fill('');
         _gaQaIndex = 0; _gaQaDone = false;
         gaQaRenderQuestion();
-        gaQaSaveDraft();
+        gaQaSaveDraftNow();
         status.textContent = 'Answer one at a time above, then Generate.';
         status.style.color = '#68d391';
       } catch (e) {

@@ -3834,7 +3834,7 @@ function caQaCurrentMethodKey() {
   const m = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(name);
   return m ? m[1].toLowerCase() : null;
 }
-function caQaSaveDraft() {
+function caQaSaveDraftNow() {
   const methodKey = caQaCurrentMethodKey();
   if (!methodKey || !CA_TITLE) return;
   w('saveQaDraft', {
@@ -3844,6 +3844,15 @@ function caQaSaveDraft() {
     productType: caQaResolveProductType(),
     questions: CA_QA_QUESTIONS, answers: CA_QA_ANSWERS, index: CA_QA_INDEX, done: CA_QA_DONE,
   }).catch(() => {});
+}
+// Debounced entry point for the answer input's oninput — without this,
+// every single keystroke fired its own network POST, flooding the worker
+// (409/429s piling up in the console). Next/Back/Done are discrete clicks,
+// not rapid-fire, so they call caQaSaveDraftNow() directly instead.
+let _caQaSaveTimer = null;
+function caQaSaveDraft() {
+  clearTimeout(_caQaSaveTimer);
+  _caQaSaveTimer = setTimeout(caQaSaveDraftNow, 900);
 }
 function caQaClearDraft() {
   if (!CA_TITLE) return;
@@ -3910,7 +3919,7 @@ function caQaPrevQuestion() {
   caQaStashCurrentAnswer();
   if (CA_QA_INDEX > 0) CA_QA_INDEX--;
   caQaRenderQuestion();
-  caQaSaveDraft();
+  caQaSaveDraftNow();
 }
 function caQaNextQuestion() {
   caQaStashCurrentAnswer();
@@ -3921,7 +3930,7 @@ function caQaNextQuestion() {
     CA_QA_DONE = true;
     document.getElementById('caQaQuestions').innerHTML = '<div style="font-size:11.5px;color:var(--fresh);">All answered ✓ — hit Generate to write it.</div>';
   }
-  caQaSaveDraft();
+  caQaSaveDraftNow();
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
 async function runCreateAsset() {
@@ -3963,7 +3972,7 @@ async function runCreateAsset() {
         CA_QA_ANSWERS = new Array(CA_QA_QUESTIONS.length).fill('');
         CA_QA_INDEX = 0; CA_QA_DONE = false;
         caQaRenderQuestion();
-        caQaSaveDraft();
+        caQaSaveDraftNow();
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer one at a time above, then Generate.';
       } catch (e) {
         resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
