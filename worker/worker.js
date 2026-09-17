@@ -7863,6 +7863,30 @@ If nothing is genuinely worth adding, return {"suggestions": []} — do not forc
   return { suggestions };
 }
 
+// A ctx.waitUntil background job that hangs on a slow upstream call never
+// gets a second chance to time out on its own — Cloudflare can kill the
+// isolate on its own platform limits before the call ever resolves or
+// rejects, which means neither the "done" nor "error" write in
+// runGenerateQaContent/runGenerateQaProduct's caller ever happens: the
+// job record is stuck at "pending" forever, and the modal's own poll
+// ceiling (280s) is the only thing that ever tells the operator anything
+// — after already answering a full interview. Wrapping the slow call
+// itself in an explicit abort turns that into a clean, fast "error"
+// written to the job record well before the poll gives up, instead of an
+// indefinite hang with no explanation.
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (e) {
+    if (e.name === "AbortError") throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // Extracted from the generateQaContent action so it can run inside
 // ctx.waitUntil as a background job (see the getQaJobStatus polling
 // pattern) instead of blocking the response — a full sales page/story
@@ -7913,11 +7937,11 @@ Also write "seoTitle": the actual headline this page should publish under.
 Return ONLY this JSON object, no other text, no markdown fences:
 { "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... ], "conclusion": "...", "seoTitle": "..." }`;
 
-  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+  const aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
-  });
+  }, 120000);
   const aiData = await aiResp.json();
   if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
   let post;
@@ -8056,11 +8080,11 @@ For each part: "kind" is "text" (write the REAL, complete, ready-to-use content 
 Return ONLY this JSON object, no other text, no markdown fences:
 { "title": "...", "description": "...", "parts": [ { "label": "...", "kind": "text"|"visual", "content": "..." }, ... ] }`;
 
-  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+  const aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
-  });
+  }, 150000);
   const aiData = await aiResp.json();
   if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
   let plan;
