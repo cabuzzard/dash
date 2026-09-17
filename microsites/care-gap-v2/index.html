@@ -922,7 +922,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px;">
       <button class="btn primary" id="fullRegenBtn" onclick="runFullCampaignRegen(this)">⟳⟳ Full regen — all fields off current Main Keywords</button>
-      <span style="font-size:11.5px;color:var(--ink3);">Runs Campaign Goal, Pain Points, Key Message, Statement, Unique Opportunity, and all 13 research modules — stages every result, saves nothing until you review and hit 💾 Save on each.</span>
+      <button class="btn" id="researchSaveAllBtn" onclick="saveAllCampaignResearch(this)" disabled>💾 Save all</button>
+      <span style="font-size:11.5px;color:var(--ink3);">Runs Campaign Goal, Pain Points, Key Message, Statement, Unique Opportunity, and all 13 research modules — stages every result. 💾 Save all commits everything currently staged on this tab (Positioning + Statement + Research modules) in one go — or save one field at a time below.</span>
     </div>
 
     <section class="card" data-ckey="card-research-positioning">
@@ -1871,6 +1872,7 @@ function renderPositioningFields() {
         </div></div><button class="notebtn" onclick="openNoteModal('research-${f.key}','${esc(f.label)}','research')">📝</button></div></div>`;
     }).join('');
   refreshNoteMarks();
+  refreshResearchSaveAllBtn();
 }
 async function runPositioningField(key, steer, omit) {
   const f = POSITIONING_FIELDS.find(x => x.key === key);
@@ -1916,6 +1918,7 @@ function renderStatementFields() {
       </div></div><button class="notebtn" onclick="openNoteModal('research-${f.key}','${esc(f.label)}','research')">📝</button></div></div>`;
   }).join('');
   refreshNoteMarks();
+  refreshResearchSaveAllBtn();
 }
 async function runStatementField(key, steer, omit) {
   const f = STATEMENT_FIELDS.find(x => x.key === key);
@@ -1984,6 +1987,54 @@ function renderResearchModules() {
   const saveAllBtn = document.getElementById('modSaveAllBtn');
   if (saveAllBtn) saveAllBtn.disabled = !Object.keys(RESEARCH_STAGE).length;
   refreshNoteMarks();
+  refreshResearchSaveAllBtn();
+}
+// Tab-wide save-all — commits whatever's currently staged across Positioning
+// + Statement + Research modules in one pass, reusing each group's own
+// commit call (updateCampaignField for Positioning, updateResearch for the
+// other two) so the write path is identical to saving one field at a time.
+function refreshResearchSaveAllBtn() {
+  const btn = document.getElementById('researchSaveAllBtn');
+  if (!btn) return;
+  const any = Object.keys(POSITIONING_STAGE).length || Object.keys(STATEMENT_STAGE).length || Object.keys(RESEARCH_STAGE).length;
+  btn.disabled = !any;
+}
+async function saveAllCampaignResearch(btn) {
+  const posKeys = Object.keys(POSITIONING_STAGE);
+  const stmtKeys = Object.keys(STATEMENT_STAGE);
+  const modKeys = Object.keys(RESEARCH_STAGE);
+  if (!posKeys.length && !stmtKeys.length && !modKeys.length) return;
+  const o = btn.textContent; btn.disabled = true;
+  try {
+    for (const key of posKeys) {
+      const f = POSITIONING_FIELDS.find(x => x.key === key);
+      btn.textContent = 'saving ' + (f ? f.label : key) + '…';
+      await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: (f && f.serverField) || key, value: POSITIONING_STAGE[key] });
+      window.RESEARCH_RECORD[key] = POSITIONING_STAGE[key];
+      delete POSITIONING_STAGE[key];
+    }
+    for (const key of stmtKeys) {
+      const f = STATEMENT_FIELDS.find(x => x.key === key);
+      btn.textContent = 'saving ' + (f ? f.label : key) + '…';
+      await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: STATEMENT_STAGE[key] });
+      window.RESEARCH_RECORD[key] = STATEMENT_STAGE[key];
+      delete STATEMENT_STAGE[key];
+    }
+    for (const key of modKeys) {
+      const m = RESEARCH_MODULES.find(x => x.key === key);
+      btn.textContent = 'saving ' + (m ? m.label : key) + '…';
+      await w('updateResearch', { researchId: RESEARCH_ID, field: key, value: RESEARCH_STAGE[key] });
+      window.RESEARCH_RECORD[key] = RESEARCH_STAGE[key];
+      delete RESEARCH_STAGE[key];
+    }
+  } catch (e) {
+    alert('Save all failed partway through: ' + e.message);
+  } finally {
+    btn.textContent = o;
+    renderPositioningFields();
+    renderStatementFields();
+    renderResearchModules();
+  }
 }
 async function runAllResearchModules(steer, omit) {
   for (const m of RESEARCH_MODULES) {
