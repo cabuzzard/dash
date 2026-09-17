@@ -37804,7 +37804,7 @@ Return ONLY a JSON array: [{"key": "q1", "question": "..."}, ...]. No other text
       }
 
       if (body.action === "generateQaContent") {
-        const { methodKey, productId, idea, answers } = body;
+        const { methodKey, productId, idea, answers, titleId: existingTitleId } = body;
         let { campaignId } = body;
         if (methodKey !== "sales" && methodKey !== "story") return json({ error: "methodKey must be sales or story" }, 400);
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
@@ -37871,21 +37871,28 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
 
-        const titleProps = {
-          "Title": { title: [{ text: { content: String(idea).slice(0, 200) } }] },
-          "Status": { select: { name: "Development" } },
-          "Grouping": { rich_text: [{ text: { content: methodName } }] },
-          "Campaign": { relation: [{ id: dash(campaignId) }] },
-          "product": { relation: [{ id: dash(productId) }] },
-        };
-        if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
-        const titleResp = await fetch("https://api.notion.com/v1/pages", {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
-        });
-        const titlePage = await titleResp.json();
-        if (!titleResp.ok || !titlePage.id) return json({ error: titlePage.message || "Failed to create title" }, 502);
-        const titleId = titlePage.id.replace(/-/g, "");
+        // Called from the Generate Assets modal (an existing title is
+        // already open) — attach to it instead of creating a second one.
+        // Called standalone (no titleId) — create a fresh title from the
+        // idea, same as every other from-scratch QA entry point.
+        let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
+        if (!titleId) {
+          const titleProps = {
+            "Title": { title: [{ text: { content: String(idea).slice(0, 200) } }] },
+            "Status": { select: { name: "Development" } },
+            "Grouping": { rich_text: [{ text: { content: methodName } }] },
+            "Campaign": { relation: [{ id: dash(campaignId) }] },
+            "product": { relation: [{ id: dash(productId) }] },
+          };
+          if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
+          const titleResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+          });
+          const titlePage = await titleResp.json();
+          if (!titleResp.ok || !titlePage.id) return json({ error: titlePage.message || "Failed to create title" }, 502);
+          titleId = titlePage.id.replace(/-/g, "");
+        }
 
         const assetProps = {
           "Asset Title":  { title: [{ text: { content: String(idea).slice(0, 200) } }] },
@@ -37949,7 +37956,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
       }
 
       if (body.action === "generateQaProduct") {
-        const { productId, idea, productType, answers } = body;
+        const { productId, idea, productType, answers, titleId: existingTitleId } = body;
         let { campaignId } = body;
         if (!DIGITAL_PRODUCT_TYPES[productType]) return json({ error: "productType must be one of: " + Object.keys(DIGITAL_PRODUCT_TYPES).join(", ") }, 400);
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
@@ -38004,21 +38011,27 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const methodName = QA_METHOD_NAMES.product;
         const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
 
-        const titleProps = {
-          "Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
-          "Status": { select: { name: "Development" } },
-          "Grouping": { rich_text: [{ text: { content: methodName } }] },
-          "product": { relation: [{ id: dash(productId) }] },
-        };
-        if (campaignId) titleProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-        if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
-        const titleResp = await fetch("https://api.notion.com/v1/pages", {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
-        });
-        const titlePage = await titleResp.json();
-        if (!titleResp.ok || !titlePage.id) return json({ error: titlePage.message || "Failed to create title" }, 502);
-        const titleId = titlePage.id.replace(/-/g, "");
+        // Called from the Generate Assets modal — attach to the title
+        // that's already open instead of creating a second one. Called
+        // standalone (no titleId) — create a fresh title from the idea.
+        let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
+        if (!titleId) {
+          const titleProps = {
+            "Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
+            "Status": { select: { name: "Development" } },
+            "Grouping": { rich_text: [{ text: { content: methodName } }] },
+            "product": { relation: [{ id: dash(productId) }] },
+          };
+          if (campaignId) titleProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+          if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
+          const titleResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+          });
+          const titlePage = await titleResp.json();
+          if (!titleResp.ok || !titlePage.id) return json({ error: titlePage.message || "Failed to create title" }, 502);
+          titleId = titlePage.id.replace(/-/g, "");
+        }
 
         const parentProps = {
           "Asset Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
