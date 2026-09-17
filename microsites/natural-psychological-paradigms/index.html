@@ -308,7 +308,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
           <span id="mainKwArrow" style="font-size:8px;flex-shrink:0;">▾</span>Main Keywords
           <span style="margin-left:auto;display:flex;gap:6px;">
             <button onclick="event.stopPropagation();openModal('keywords')" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">✎ edit</button>
-            <button id="kwRegenBtn" onclick="event.stopPropagation();runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button>
+            <button id="kwRegenBtn" onclick="event.stopPropagation();openClusterActionModal('Regenerate Master Keywords', 'Refreshes the keyword pool in place — guidance adds direction, it never wipes the existing keywords.', '', (guidance, omit, intent) => runRegenKeywords(guidance, omit, intent))" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button>
             <button id="seoClusterGenBtn" onclick="event.stopPropagation();openClusterActionModal('Generate Clusters — batch', 'Groups Main Keywords into new thematic clusters, alongside whatever already exists.', '', (guidance, omit, intent) => runGenerateSeoClusters(guidance, omit, intent))" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate clusters</button>
             <button onclick="event.stopPropagation();openGenClusterModal()" title="Paste a keyword group and merge it with the main SEO strategy to create one new focused cluster" style="font-size:10px;padding:2px 8px;border:1px solid #8ab4f8;background:transparent;color:#8ab4f8;cursor:pointer;white-space:nowrap;font-family:inherit;">+ generate cluster</button>
           </span>
@@ -2324,9 +2324,13 @@ async function w(action, extra = {}) {
   return d;
 }
 
-// Escape HTML special characters
+// Escape HTML special characters — also apostrophes (not just double-
+// quotes): plenty of call sites interpolate esc()'d text straight into a
+// single-quoted JS string literal inside an onclick attribute, and an
+// unescaped apostrophe in a name like "caregiver's guide" breaks out of
+// that string, silently killing the whole inline handler.
 function esc(s) {
-  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
 // ── Research guidelines (operator routing recommendations) ───────────
@@ -11377,19 +11381,16 @@ async function saveKeywordsFromArray(kws) {
   catch(e) { console.error('Failed to save keywords:', e); }
 }
 
-async function runRegenKeywords() {
-  const btn = document.getElementById('kwRegenBtn');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+async function runRegenKeywords(guidance, omit, searchIntent) {
   const kwEl = document.getElementById('r-keywords');
   kwEl.innerHTML = '<div class="loading"><div class="spinner"></div>Researching…</div>';
   try {
-    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: (RAW && RAW.keywords) || '' });
+    const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID_LIVE || RESEARCH_ID, currentKeywords: (RAW && RAW.keywords) || '', guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
     renderKeywordPills(r.keywords || '');
-  } catch(e) {
+  } catch (e) {
     renderKeywordPills((RAW && RAW.keywords) || '');
-    alert('Regen failed: ' + e.message);
+    throw e;
   }
-  if (btn) { btn.disabled = false; btn.textContent = '⟳ regen'; }
 }
 </script>
 <div id="build-carousel-modal" onclick="if(event.target===this)closeBuildModal()">

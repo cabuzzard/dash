@@ -27352,7 +27352,7 @@ Rules:
       // refreshes all five together, so a keyword regen can't silently
       // outrun the positioning it's supposed to serve.
       if (body.action === "regenerateKeywords") {
-        const { campaignId: bodyCampaignId, researchId, currentKeywords, omitKeywords } = body;
+        const { campaignId: bodyCampaignId, researchId, currentKeywords, guidance, omitKeywords, searchIntent } = body;
         const pageId = researchId || bodyCampaignId;
         if (!pageId) return json({ error: "researchId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
@@ -27387,7 +27387,7 @@ CURRENT PAIN POINTS: "${crt("Pain Points") || '(none set)'}"
 CURRENT KEYWORDS is the dominant signal: it is the operator's own deliberate, most-recent input, not just one input among five. If it points at a different subject, tone, or audience than the CURRENT fields above, treat that as a real, deliberate pivot — let the keywords redefine the four fields rather than blending the new direction back toward the old one. Only carry forward parts of the old fields that don't conflict with where the keywords now point. If the operator guidance above adds anything further on top of that, fold it in too.
 
 Generate an expanded, optimized list of 15-20 keywords in that same subject/tone/audience (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent terms) — AND rewrite the four positioning fields so they genuinely follow it.
-${omitBlock(omitKeywords)}
+${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${SEARCH_INTENT_LABELS[searchIntent] ? `\nSEARCH INTENT: lean the keyword list toward ${SEARCH_INTENT_LABELS[searchIntent].toUpperCase()} intent — favor keywords a searcher with that intent would naturally use.\n${SEARCH_INTENT_DEFINITIONS}\n` : ""}${omitBlock(omitKeywords)}
 Call the submit_campaign_refresh tool with all five fields filled in — every field is required, none may be left out or empty.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {

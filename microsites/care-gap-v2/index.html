@@ -1295,7 +1295,12 @@ async function w(action, extra = {}) {
   if (d.error) throw new Error(d.error);
   return d;
 }
-function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// Escapes apostrophes too (not just double-quotes) — plenty of call sites
+// interpolate esc()'d text straight into a single-quoted JS string literal
+// inside an onclick attribute (e.g. openRegenModal('...${esc(c.name)}'...)),
+// and an unescaped apostrophe in a name like "caregiver's guide" breaks out
+// of that string, silently killing the whole inline handler.
+function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
 
 // ── notes system — real KV backend (saveMicrositeNote/getMicrositeNotes) ──
 let NOTE_ACTIVE = null;
@@ -1393,8 +1398,8 @@ async function loadResearch() {
     document.getElementById('kwClusterList').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
   }
 }
-async function runRegenKeywords(steer, omit) {
-  const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: steer || RAW_KEYWORDS, omitKeywords: omit || undefined, skipPositioningCascade: true });
+async function runRegenKeywords(guidance, omit, searchIntent) {
+  const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: RAW_KEYWORDS, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined, skipPositioningCascade: true });
   RAW_KEYWORDS = r.keywords || '';
   renderKeywordsAndIdeas();
 }
@@ -1455,7 +1460,7 @@ function renderKeywordsAndIdeas() {
   let l = `<div class="kwgroup" data-ckey="kw-master" style="--kwc:#4ade80;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
       <span class="kwbtns">
-        <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Steer replaces the current keyword seed entirely; leave blank to refresh in place.', (steer, omit) => runRegenKeywords(steer, omit))">⟳</button>
+        <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Refreshes the keyword pool in place — guidance adds direction, it never wipes the existing keywords.', (steer, omit, intent) => runRegenKeywords(steer, omit, intent), { current: '', label: 'Search Intent (optional — bias the generated keywords)' })">⟳</button>
         <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();openRegenModal('Generate Clusters — batch', 'Groups the Master keyword pool into new thematic clusters, alongside whatever already exists.', (steer, omit, intent) => runGenerateClusters(steer, omit, intent), { current: '', label: 'Restrict batch to one intent (optional)' })">🗂️</button>
         <button class="iconbtn" title="Generate one new cluster from a topic" onclick="event.stopPropagation();openClusterGenModal()">➕</button>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
@@ -1468,7 +1473,7 @@ function renderKeywordsAndIdeas() {
     l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>${intentBadge(c.searchIntent)}
         <span class="kwbtns">
-          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit, intent) => regenCluster('${esc(c.id)}', steer, omit, intent), { current: c.searchIntent || '' })">↻</button>
+          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();openClusterRegenModal('${esc(c.id)}', true)">↻</button>
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           <button class="iconbtn primary" title="Commit this cluster to Notion" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾</button>
           <button class="iconbtn" title="Discard this staged cluster" onclick="event.stopPropagation();deleteStagedCluster('${esc(c.id)}', this)">✕</button>
@@ -1489,7 +1494,7 @@ function renderKeywordsAndIdeas() {
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>${intentBadge(c.searchIntent)}
         <span class="kwbtns">
           <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
-          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit, intent) => regenCluster('${esc(c.id)}', steer, omit, intent), { current: c.searchIntent || '' })">↻</button>
+          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();openClusterRegenModal('${esc(c.id)}', false)">↻</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
       </div>
@@ -1573,6 +1578,17 @@ async function editCommittedClusterIntent(clusterId, value) {
     if (idx >= 0) SEO_CLUSTERS.committed[idx].searchIntent = value;
     renderKeywordsAndIdeas();
   } catch (e) { alert('Save failed: ' + e.message); }
+}
+// Looks the cluster up by id instead of interpolating its name straight
+// into an onclick attribute — a name containing an apostrophe (very
+// common: "caregiver's guide") breaks out of the single-quoted JS string
+// literal and silently kills the whole inline handler, which is why the
+// ↻ regen button "did nothing" for clusters with that kind of name.
+function openClusterRegenModal(clusterId, isStaged) {
+  const list = isStaged ? SEO_CLUSTERS.staged : SEO_CLUSTERS.committed;
+  const c = (list || []).find(x => x.id === clusterId);
+  if (!c) return;
+  openRegenModal('Regenerate Cluster — ' + c.name, 'Reworks just this cluster from the Main Keywords pool.', (steer, omit, intent) => regenCluster(clusterId, steer, omit, intent), { current: c.searchIntent || '' });
 }
 async function regenCluster(clusterId, guidance, omit, searchIntent) {
   const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
