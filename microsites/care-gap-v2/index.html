@@ -1009,7 +1009,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: PRODUCT RESEARCH ══════════════════════ -->
   <div class="panel" data-panel="product">
     <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="btn primary" style="margin-left:auto;" onclick="openAddProductModal()">+ Add Product</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
-    <p class="stage-sub">Every product on this campaign, nested by Product Stack. Click a product to open its 11 🔬 Product Research fields, each with its own regen — staged for review before Save.</p>
+    <p class="stage-sub">Every product on this campaign, nested by Product Stack. Click a product to open its 11 🔬 Product Research fields, each with its own regen — staged for review before Save. Check one or more products below to bulk-run all 11 fields across all of them in one pass — each field writes straight to Notion as it's regenerated (too many fields across too many products to stage and review one at a time).</p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <button class="btn" onclick="selectAllProducts()">Select all</button>
+      <button class="btn" onclick="clearProductSelection()">Clear selection</button>
+    </div>
+    <div id="productBulkBar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+      <span id="productBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
+      <button class="btn primary" id="productBulkRunBtn" onclick="openBulkProductRegenModal()">⟳ Bulk run all research</button>
+    </div>
     <div id="productListBody"><div class="loadnote">Loading…</div></div>
   </div>
 
@@ -2271,7 +2279,99 @@ async function saveStagedFonts() {
 
 // ══════════════════════ PRODUCT RESEARCH TAB — nested by stack, modal per product ══════════════════════
 let CAMPAIGN_PRODUCTS = [];
+let SELECTED_PRODUCTS = new Set();
 const STRATEGY_FIELDS = ["Customer","Niche","Pain Points","Emotions","Solution","Benefits","Unique Opportunity","Transformation","Offer Structure","Proof Points","Objections"];
+// Per-product research-sync indicator, sourced from the existing
+// getCampaignStrategies action (already computes exactly this: 'empty' = no
+// 🔬 Product Research record at all, 'off-main' = has one but its stamped
+// Keywords Version is behind the campaign's current one (Main Keywords
+// moved since), 'updated' = caught up). Cached once per tab load (like
+// CAMPAIGN_PRODUCTS) since it's a whole-DB query; kept fresh afterward by
+// optimistically flipping a product to 'updated' the moment any of its
+// fields is actually saved, instead of re-querying every DB again.
+let PRODUCT_RESEARCH_STATE = null;
+async function ensureProductResearchState() {
+  if (PRODUCT_RESEARCH_STATE) return;
+  PRODUCT_RESEARCH_STATE = {};
+  try {
+    const r = await w('getCampaignStrategies', { campaignId: CAMPAIGN_ID });
+    (r.products || []).forEach(p => { PRODUCT_RESEARCH_STATE[p.productId] = p.researchState; });
+  } catch (e) { /* best-effort — badges just stay blank if this fails */ }
+}
+function researchStateBadge(productId) {
+  const state = PRODUCT_RESEARCH_STATE && PRODUCT_RESEARCH_STATE[productId];
+  if (state === 'updated') return '<span class="fbadge fresh" title="Product Research is current with Main Keywords">✓ up to date</span>';
+  if (state === 'off-main') return '<span class="fbadge stale" title="Main Keywords changed since this product’s research was last generated or edited">⚠ out of sync</span>';
+  if (state === 'empty') return '<span class="fbadge manual" title="No Product Research record yet">— no research</span>';
+  return '';
+}
+function toggleProductSelect(id, checked) {
+  if (checked) SELECTED_PRODUCTS.add(id); else SELECTED_PRODUCTS.delete(id);
+  updateProductBulkBar();
+}
+function selectAllProducts() {
+  CAMPAIGN_PRODUCTS.forEach(p => SELECTED_PRODUCTS.add(p.id));
+  loadProductTab();
+}
+function clearProductSelection() {
+  SELECTED_PRODUCTS.clear();
+  loadProductTab();
+}
+function updateProductBulkBar() {
+  const bar = document.getElementById('productBulkBar');
+  const count = document.getElementById('productBulkCount');
+  if (!bar || !count) return;
+  const n = SELECTED_PRODUCTS.size;
+  bar.style.display = n ? 'flex' : 'none';
+  count.textContent = n + ' product' + (n === 1 ? '' : 's') + ' selected';
+}
+function openBulkProductRegenModal() {
+  const n = SELECTED_PRODUCTS.size;
+  if (!n) return;
+  openRegenModal(
+    `Bulk Run All Research — ${n} product${n === 1 ? '' : 's'}`,
+    'Same steer + omit applied to all 11 fields, for every selected product. Writes straight to Notion field by field as it goes — too many fields across too many products to stage and review one at a time.',
+    (steer, omit) => runBulkProductResearch(steer, omit)
+  );
+}
+// Bulk regen deliberately skips the stage/review step every other regen in
+// this app uses — reviewing 11 fields × N products before saving isn't
+// practical, so each field commits via updateProductStrategyField the
+// moment it regenerates. Progress renders into the still-open regen
+// modal's own subtitle (runRegenModalConfirm awaits this whole function
+// before closing it). Per-field failures are collected, not thrown, so one
+// bad field/product doesn't abort the rest of the batch.
+async function runBulkProductResearch(steer, omit) {
+  const ids = Array.from(SELECTED_PRODUCTS);
+  const subtitle = document.getElementById('regenModalSubtitle');
+  const failures = [];
+  for (let pi = 0; pi < ids.length; pi++) {
+    const productId = ids[pi];
+    const prod = CAMPAIGN_PRODUCTS.find(p => p.id === productId);
+    const label = prod ? prod.name : productId;
+    let anyFieldSaved = false;
+    for (let fi = 0; fi < STRATEGY_FIELDS.length; fi++) {
+      const field = STRATEGY_FIELDS[fi];
+      if (subtitle) subtitle.textContent = `Product ${pi + 1}/${ids.length} — ${label}: ${field} (${fi + 1}/${STRATEGY_FIELDS.length})…`;
+      try {
+        const r = await w('regenerateStrategyField', { productId, campaignId: CAMPAIGN_ID, field, instructions: steer || undefined, omit: omit || undefined });
+        await w('updateProductStrategyField', { productId, field, value: r.text });
+        anyFieldSaved = true;
+        if (productId === PRODUCT_MODAL_ID) { window.PRODUCT_STRATEGY_FIELDS = window.PRODUCT_STRATEGY_FIELDS || {}; window.PRODUCT_STRATEGY_FIELDS[field] = r.text; }
+      } catch (e) {
+        failures.push(`${label} — ${field}: ${e.message}`);
+      }
+    }
+    // updateProductStrategyField stamps the campaign's current Keywords
+    // Version on every successful field write, so even one success is
+    // enough to bring the whole record's stamped version current server-side.
+    if (anyFieldSaved && PRODUCT_RESEARCH_STATE) PRODUCT_RESEARCH_STATE[productId] = 'updated';
+  }
+  if (PRODUCT_MODAL_ID && ids.includes(PRODUCT_MODAL_ID)) renderProductModalFields();
+  SELECTED_PRODUCTS.clear();
+  loadProductTab();
+  if (failures.length) alert(`Bulk run finished with ${failures.length} failure(s):\n\n` + failures.join('\n'));
+}
 function groupByStack(items, keyOf, fallback) {
   const groups = {}, order = [];
   items.forEach(item => {
@@ -2286,11 +2386,15 @@ async function loadProductTab() {
   try {
     if (!CAMPAIGN_PRODUCTS.length) { const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = r.products || []; }
     if (!CAMPAIGN_PRODUCTS.length) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
+    await ensureProductResearchState();
     const { groups, order } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
     body.innerHTML = order.map(stack => `
       <div class="kwgroup" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;">
         <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span></div>
-        <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row"><span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
+        <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row">
+            <input type="checkbox" class="prod-select-cb" ${SELECTED_PRODUCTS.has(p.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleProductSelect('${esc(p.id)}', this.checked)" style="margin-right:6px;">
+            <span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
+            ${researchStateBadge(p.id)}
           <span class="idea-btns">
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
@@ -2298,6 +2402,7 @@ async function loadProductTab() {
           </span></div></div>`).join('')}</div>
       </div>`).join('');
     applyCollapseState(body);
+    updateProductBulkBar();
   } catch (e) {
     body.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`;
   }
@@ -2312,6 +2417,7 @@ async function archiveProduct(productId, btn) {
   try {
     await w('updateProductStatus', { productId, status: 'Archived' });
     CAMPAIGN_PRODUCTS = CAMPAIGN_PRODUCTS.filter(p => p.id !== productId);
+    SELECTED_PRODUCTS.delete(productId);
     loadProductTab();
   } catch (e) { alert('Archive failed: ' + e.message); btn.disabled = false; }
 }
@@ -2522,6 +2628,8 @@ async function saveProductField(field, btn) {
     window.PRODUCT_STRATEGY_FIELDS[field] = PRODUCT_STAGE[field];
     delete PRODUCT_STAGE[field];
     renderProductModalFields();
+    if (PRODUCT_RESEARCH_STATE) PRODUCT_RESEARCH_STATE[PRODUCT_MODAL_ID] = 'updated';
+    loadProductTab();
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function runAllProductFields(steer, omit) {
@@ -2544,6 +2652,8 @@ async function saveAllProductFields(btn) {
   } finally {
     btn.textContent = o;
     renderProductModalFields();
+    if (PRODUCT_RESEARCH_STATE) PRODUCT_RESEARCH_STATE[PRODUCT_MODAL_ID] = 'updated';
+    loadProductTab();
   }
 }
 
