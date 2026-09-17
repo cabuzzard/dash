@@ -7887,40 +7887,54 @@ async function fetchWithTimeout(url, options, timeoutMs) {
   }
 }
 
-// Extracted from the generateQaContent action so it can run inside
-// ctx.waitUntil as a background job (see the getQaJobStatus polling
-// pattern) instead of blocking the response — a full sales page/story
-// (Claude call + title/asset create + block writes + a live publish) can
-// take longer than Cloudflare's edge timeout. Returns a plain result
-// object on success; throws on any failure (the caller writes that into
-// the job record, there's no HTTP response to shape here).
-async function runGenerateQaContent(env, { methodKey, productId, idea, answers, existingTitleId, campaignId }) {
+// Step-based, resumable QA job runner (replaces the old ctx.waitUntil
+// background-job version of runGenerateQaContent/runGenerateQaProduct).
+// A ctx.waitUntil task turned out to be unsafe here: Cloudflare can kill
+// it well before it finishes, silently, with no error ever written to
+// KV — confirmed by jobs stuck at "pending" forever even after wrapping
+// the Anthropic call in fetchWithTimeout. Every step function below is
+// instead invoked as its own ORDINARY request via the advanceQaJob
+// action (comfortably inside Cloudflare's edge timeout, no background
+// task involved at all) and checkpoints its result to KV before
+// returning. The client drives progress by calling advanceQaJob in a
+// loop (qaPollJob) — a slow or failed step just gets retried from
+// exactly the same checkpoint, never from scratch, and the operator's
+// answers are never at risk of being lost.
+//
+// job shape in KV: { kind: "content"|"product", step, done, result,
+// lastError, state: {...accumulated fields the next step needs...} }
+async function qaContentStep(env, job) {
+  const { state } = job;
   const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
 
-  const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-  if (!prodPage?.properties) throw new Error("Product not found");
-  const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
-  if (!campaignId) campaignId = (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
-  if (!campaignId) throw new Error("This product has no Campaign linked — campaignId required");
-  const [campPage, prodResearch] = await Promise.all([
-    fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
-    findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
-  ]);
-  const campaignName = (campPage?.properties?.Name?.title || campPage?.properties?.["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
-  const productKeywords = rtp(prodPage.properties, "Keywords");
-  let researchBlock = "";
-  if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
-  const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
+  if (job.step === "init") {
+    const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(state.productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+    if (!prodPage?.properties) throw new Error("Product not found");
+    const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
+    const campaignId = state.campaignId || (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+    if (!campaignId) throw new Error("This product has no Campaign linked — campaignId required");
+    const [campPage, prodResearch] = await Promise.all([
+      fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+      findBestProductResearchRecord(hdr, dash(state.productId)).catch(() => null),
+    ]);
+    const campaignName = (campPage?.properties?.Name?.title || campPage?.properties?.["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+    const productKeywords = rtp(prodPage.properties, "Keywords");
+    let researchBlock = "";
+    if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
+    Object.assign(state, { productName, campaignId, campaignName, productKeywords, researchBlock });
+    return { step: "generate", state };
+  }
 
-  const methodName = QA_METHOD_NAMES[methodKey];
-  const isSales = methodKey === "sales";
-  const styleInstructions = isSales
-    ? `Write this as a real, persuasive SALES PAGE for "${productName}" — not an article. Structure: a strong headline/hook opening (as "intro"), then EXACTLY 3-4 sections that build the case (pick from: the problem/pain, the transformation/what they get, proof/credibility, addressing the top objection), and a closing paragraph ("conclusion") that makes the direct ask/CTA explicit. Write in second person ("you"), direct and concrete, no vague marketing fluff — ground every claim in the PRODUCT RESEARCH and ANSWERS below, never invent a stat, price, or guarantee that isn't in that material.`
-    : `Write this as a genuine FIRST-PERSON personal-experience story related to "${productName}" — real narrative voice ("I"), grounded specifically in the ANSWERS below (they contain the actual anecdote — use its real details, don't generalize them away). Structure: a hook opening (as "intro"), EXACTLY 3 sections that move the story forward (setup/struggle → turning point → outcome/lesson), and a closing paragraph ("conclusion") that ties the story back to ${productName} naturally, working in these keywords where they fit without forcing them: ${productKeywords || "(none on file)"}.`;
-
-  const prompt = `${styleInstructions}
+  if (job.step === "generate") {
+    const { methodKey, productName, idea, researchBlock, answers, campaignName, productKeywords } = state;
+    const isSales = methodKey === "sales";
+    const styleInstructions = isSales
+      ? `Write this as a real, persuasive SALES PAGE for "${productName}" — not an article. Structure: a strong headline/hook opening (as "intro"), then EXACTLY 3-4 sections that build the case (pick from: the problem/pain, the transformation/what they get, proof/credibility, addressing the top objection), and a closing paragraph ("conclusion") that makes the direct ask/CTA explicit. Write in second person ("you"), direct and concrete, no vague marketing fluff — ground every claim in the PRODUCT RESEARCH and ANSWERS below, never invent a stat, price, or guarantee that isn't in that material.`
+      : `Write this as a genuine FIRST-PERSON personal-experience story related to "${productName}" — real narrative voice ("I"), grounded specifically in the ANSWERS below (they contain the actual anecdote — use its real details, don't generalize them away). Structure: a hook opening (as "intro"), EXACTLY 3 sections that move the story forward (setup/struggle → turning point → outcome/lesson), and a closing paragraph ("conclusion") that ties the story back to ${productName} naturally, working in these keywords where they fit without forcing them: ${productKeywords || "(none on file)"}.`;
+    const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
+    const prompt = `${styleInstructions}
 
 IDEA THIS WAS SEEDED FROM: ${idea}
 
@@ -7937,37 +7951,40 @@ Also write "seoTitle": the actual headline this page should publish under.
 Return ONLY this JSON object, no other text, no markdown fences:
 { "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... ], "conclusion": "...", "seoTitle": "..." }`;
 
-  const aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
-  }, 120000);
-  const aiData = await aiResp.json();
-  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
-  let post;
-  try {
-    const raw = aiData.content?.[0]?.text || "";
-    const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error("No JSON object found");
-    post = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-  } catch (e) { throw new Error("Failed to parse content JSON: " + e.message); }
-  const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
-  if (!sections.length) throw new Error("No sections generated — try again");
+    let aiResp;
+    try {
+      aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+      }, 80000);
+    } catch (e) { throw new Error("Claude request timed out — safe to retry, nothing is lost: " + e.message); }
+    const aiData = await aiResp.json();
+    if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+    let post;
+    try {
+      const raw = aiData.content?.[0]?.text || "";
+      const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+      if (start === -1 || end === -1) throw new Error("No JSON object found");
+      post = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+    } catch (e) { throw new Error("Failed to parse content JSON: " + e.message); }
+    const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
+    if (!sections.length) throw new Error("No sections generated — try again");
+    Object.assign(state, { post, sections, isSales });
+    return { step: "title", state };
+  }
 
-  const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
-
-  // Called from the Generate Assets modal (an existing title is
-  // already open) — attach to it instead of creating a second one.
-  // Called standalone (no titleId) — create a fresh title from the
-  // idea, same as every other from-scratch QA entry point.
-  let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
-  if (!titleId) {
+  if (job.step === "title") {
+    if (state.existingTitleId) { state.titleId = String(state.existingTitleId).replace(/-/g, ""); return { step: "asset", state }; }
+    const methodName = QA_METHOD_NAMES[state.methodKey];
+    const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
+    state.methodId = methodId;
     const titleProps = {
-      "Title": { title: [{ text: { content: String(idea).slice(0, 200) } }] },
+      "Title": { title: [{ text: { content: String(state.idea).slice(0, 200) } }] },
       "Status": { select: { name: "Development" } },
       "Grouping": { rich_text: [{ text: { content: methodName } }] },
-      "Campaign": { relation: [{ id: dash(campaignId) }] },
-      "product": { relation: [{ id: dash(productId) }] },
+      "Campaign": { relation: [{ id: dash(state.campaignId) }] },
+      "product": { relation: [{ id: dash(state.productId) }] },
     };
     if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
     const titleResp = await fetch("https://api.notion.com/v1/pages", {
@@ -7976,96 +7993,118 @@ Return ONLY this JSON object, no other text, no markdown fences:
     });
     const titlePage = await titleResp.json();
     if (!titleResp.ok || !titlePage.id) throw new Error(titlePage.message || "Failed to create title");
-    titleId = titlePage.id.replace(/-/g, "");
+    state.titleId = titlePage.id.replace(/-/g, "");
+    return { step: "asset", state };
   }
 
-  const assetProps = {
-    "Asset Title":  { title: [{ text: { content: String(idea).slice(0, 200) } }] },
-    "Asset Status": { select: { name: "Publish" } },
-    "Asset Type":   { select: { name: methodName } },
-    "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
-    "Content Strategy": { relation: [{ id: dash(titleId) }] },
-    "Campaign": { relation: [{ id: dash(campaignId) }] },
-    "Product": { relation: [{ id: dash(productId) }] },
-  };
-  if (post.seoTitle) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(post.seoTitle).slice(0, 200) } }] };
-  Object.assign(assetProps, await assetMethodProp(methodId, methodName));
-  const assetResp = await fetch("https://api.notion.com/v1/pages", {
-    method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-    body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
-  });
-  const assetResult = await assetResp.json();
-  if (!assetResp.ok || !assetResult.id) throw new Error(assetResult.message || "Failed to create asset");
-  const assetId = assetResult.id.replace(/-/g, "");
-
-  const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
-  const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
-  const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
-  const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
-    const t = p.trim(); if (!t) return [];
-    const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
-    return out;
-  });
-  const children = [];
-  if (post.intro) children.push(...paras(post.intro));
-  sections.forEach(s => { children.push(heading2(s.heading)); children.push(...paras(s.body)); });
-  if (post.conclusion) children.push(...paras(post.conclusion));
-  for (let i = 0; i < children.length; i += 100) {
-    const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
-      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-      body: JSON.stringify({ children: children.slice(i, i + 100) }),
+  if (job.step === "asset") {
+    const methodName = QA_METHOD_NAMES[state.methodKey];
+    const methodId = state.methodId || await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
+    const { post, titleId, campaignId, productId, idea } = state;
+    const assetProps = {
+      "Asset Title":  { title: [{ text: { content: String(idea).slice(0, 200) } }] },
+      "Asset Status": { select: { name: "Publish" } },
+      "Asset Type":   { select: { name: methodName } },
+      "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
+      "Content Strategy": { relation: [{ id: dash(titleId) }] },
+      "Campaign": { relation: [{ id: dash(campaignId) }] },
+      "Product": { relation: [{ id: dash(productId) }] },
+    };
+    if (post.seoTitle) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(post.seoTitle).slice(0, 200) } }] };
+    Object.assign(assetProps, await assetMethodProp(methodId, methodName));
+    const assetResp = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
     });
-    if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); throw new Error(r.message || "Asset created but failed to write content"); }
+    const assetResult = await assetResp.json();
+    if (!assetResp.ok || !assetResult.id) throw new Error(assetResult.message || "Failed to create asset");
+    state.assetId = assetResult.id.replace(/-/g, "");
+    return { step: "blocks", state };
   }
 
-  let siteResult = { published: false };
-  try {
-    siteResult = await publishSeoPostToLiveSite({
-      env, hdr, dash, campaignId, spec: null,
-      seoTitle: post.seoTitle, workingTitle: idea,
-      intro: post.intro, sections, conclusion: post.conclusion, assetId,
-      sub: isSales ? "sales" : "blog",
+  if (job.step === "blocks") {
+    const { post, sections, assetId } = state;
+    const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
+    const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+    const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+    const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
+      const t = p.trim(); if (!t) return [];
+      const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
+      return out;
     });
-    if (siteResult.published && siteResult.liveUrl) {
-      await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+    const children = [];
+    if (post.intro) children.push(...paras(post.intro));
+    sections.forEach(s => { children.push(heading2(s.heading)); children.push(...paras(s.body)); });
+    if (post.conclusion) children.push(...paras(post.conclusion));
+    for (let i = 0; i < children.length; i += 100) {
+      const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
         method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-        body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
-      }).catch(() => {});
+        body: JSON.stringify({ children: children.slice(i, i + 100) }),
+      });
+      if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); throw new Error(r.message || "Asset created but failed to write content"); }
     }
-  } catch (e) { siteResult = { published: false, error: e.message }; }
+    return { step: "publish", state };
+  }
 
-  return {
-    success: true, titleId, assetId, sectionCount: sections.length,
-    sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
-  };
+  if (job.step === "publish") {
+    const { post, sections, isSales, campaignId, assetId, idea, titleId } = state;
+    let siteResult = { published: false };
+    try {
+      siteResult = await publishSeoPostToLiveSite({
+        env, hdr, dash, campaignId, spec: null,
+        seoTitle: post.seoTitle, workingTitle: idea,
+        intro: post.intro, sections, conclusion: post.conclusion, assetId,
+        sub: isSales ? "sales" : "blog",
+      });
+      if (siteResult.published && siteResult.liveUrl) {
+        await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
+        }).catch(() => {});
+      }
+    } catch (e) { siteResult = { published: false, error: e.message }; }
+    return {
+      step: "done", state, done: true,
+      result: {
+        success: true, titleId, assetId, sectionCount: sections.length,
+        sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
+      },
+    };
+  }
+
+  throw new Error("Unknown job step: " + job.step);
 }
 
-// Extracted from the generateQaProduct action for the same reason as
-// runGenerateQaContent above — runs inside ctx.waitUntil as a background
-// job. Returns a plain result object on success; throws on failure.
-async function runGenerateQaProduct(env, { productId, idea, productType, answers, existingTitleId, campaignId }) {
+async function qaProductStep(env, job) {
+  const { state } = job;
   const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
 
-  const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-  if (!prodPage?.properties) throw new Error("Product not found");
-  const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
-  if (!campaignId) campaignId = (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
-  const prodResearch = await findBestProductResearchRecord(hdr, dash(productId)).catch(() => null);
-  let researchBlock = "";
-  if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
-  const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
-  // Not locked to the four built-in types — the operator can name
-  // anything from the "+ Create new…" option in the modal. For a
-  // custom type, let Claude use its own judgment on a sensible part
-  // breakdown instead of a hand-written shape description.
-  const spec = DIGITAL_PRODUCT_TYPES[productType] || {
-    label: String(productType).trim(),
-    shape: `a "${String(productType).trim()}": use your best judgment on the parts it needs for this specific format — typically at least one visual part (a cover or key graphic) plus one or more text parts covering its actual content`,
-  };
+  if (job.step === "init") {
+    const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(state.productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+    if (!prodPage?.properties) throw new Error("Product not found");
+    const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
+    const campaignId = state.campaignId || (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+    const prodResearch = await findBestProductResearchRecord(hdr, dash(state.productId)).catch(() => null);
+    let researchBlock = "";
+    if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
+    Object.assign(state, { productName, campaignId, researchBlock });
+    return { step: "generate", state };
+  }
 
-  const prompt = `Plan and WRITE the actual content for ${spec.shape}, for the product "${productName}", seeded from this idea:
+  if (job.step === "generate") {
+    const { productName, idea, productType, answers, researchBlock } = state;
+    // Not locked to the four built-in types — the operator can name
+    // anything from the "+ Create new…" option in the modal. For a
+    // custom type, let Claude use its own judgment on a sensible part
+    // breakdown instead of a hand-written shape description.
+    const spec = DIGITAL_PRODUCT_TYPES[productType] || {
+      label: String(productType).trim(),
+      shape: `a "${String(productType).trim()}": use your best judgment on the parts it needs for this specific format — typically at least one visual part (a cover or key graphic) plus one or more text parts covering its actual content`,
+    };
+    const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
+    const prompt = `Plan and WRITE the actual content for ${spec.shape}, for the product "${productName}", seeded from this idea:
 
 IDEA: ${idea}
 
@@ -8080,38 +8119,41 @@ For each part: "kind" is "text" (write the REAL, complete, ready-to-use content 
 Return ONLY this JSON object, no other text, no markdown fences:
 { "title": "...", "description": "...", "parts": [ { "label": "...", "kind": "text"|"visual", "content": "..." }, ... ] }`;
 
-  const aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
-  }, 150000);
-  const aiData = await aiResp.json();
-  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
-  let plan;
-  try {
-    const raw = aiData.content?.[0]?.text || "";
-    const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error("No JSON object found");
-    plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-  } catch (e) { throw new Error("Failed to parse product plan JSON: " + e.message); }
-  const parts = (Array.isArray(plan.parts) ? plan.parts : []).filter(p => p && p.label && p.content);
-  if (!parts.length) throw new Error("No parts generated — try again");
+    let aiResp;
+    try {
+      aiResp = await fetchWithTimeout("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
+      }, 85000);
+    } catch (e) { throw new Error("Claude request timed out — safe to retry, nothing is lost: " + e.message); }
+    const aiData = await aiResp.json();
+    if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+    let plan;
+    try {
+      const raw = aiData.content?.[0]?.text || "";
+      const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+      if (start === -1 || end === -1) throw new Error("No JSON object found");
+      plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+    } catch (e) { throw new Error("Failed to parse product plan JSON: " + e.message); }
+    const parts = (Array.isArray(plan.parts) ? plan.parts : []).filter(p => p && p.label && p.content);
+    if (!parts.length) throw new Error("No parts generated — try again");
+    Object.assign(state, { plan, parts });
+    return { step: "title", state };
+  }
 
-  const methodName = QA_METHOD_NAMES.product;
-  const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
-
-  // Called from the Generate Assets modal — attach to the title
-  // that's already open instead of creating a second one. Called
-  // standalone (no titleId) — create a fresh title from the idea.
-  let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
-  if (!titleId) {
+  if (job.step === "title") {
+    if (state.existingTitleId) { state.titleId = String(state.existingTitleId).replace(/-/g, ""); return { step: "parent", state }; }
+    const methodName = QA_METHOD_NAMES.product;
+    const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
+    state.methodId = methodId;
     const titleProps = {
-      "Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
+      "Title": { title: [{ text: { content: String(state.plan.title || state.idea).slice(0, 200) } }] },
       "Status": { select: { name: "Development" } },
       "Grouping": { rich_text: [{ text: { content: methodName } }] },
-      "product": { relation: [{ id: dash(productId) }] },
+      "product": { relation: [{ id: dash(state.productId) }] },
     };
-    if (campaignId) titleProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+    if (state.campaignId) titleProps["Campaign"] = { relation: [{ id: dash(state.campaignId) }] };
     if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
     const titleResp = await fetch("https://api.notion.com/v1/pages", {
       method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
@@ -8119,73 +8161,85 @@ Return ONLY this JSON object, no other text, no markdown fences:
     });
     const titlePage = await titleResp.json();
     if (!titleResp.ok || !titlePage.id) throw new Error(titlePage.message || "Failed to create title");
-    titleId = titlePage.id.replace(/-/g, "");
+    state.titleId = titlePage.id.replace(/-/g, "");
+    return { step: "parent", state };
   }
 
-  const parentProps = {
-    "Asset Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
-    "Asset Status": { select: { name: "Development" } },
-    "Asset Type": { select: { name: methodName } },
-    "Body": { rich_text: [{ text: { content: String(plan.description || "").slice(0, 2000) } }] },
-    "Content Strategy": { relation: [{ id: dash(titleId) }] },
-    "Product": { relation: [{ id: dash(productId) }] },
-  };
-  if (campaignId) parentProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-  Object.assign(parentProps, await assetMethodProp(methodId, methodName));
-  const parentResp = await fetch("https://api.notion.com/v1/pages", {
-    method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-    body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: parentProps }),
-  });
-  const parentResult = await parentResp.json();
-  if (!parentResp.ok || !parentResult.id) throw new Error(parentResult.message || "Failed to create parent asset");
-  const parentAssetId = parentResult.id.replace(/-/g, "");
-
-  const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
-  const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
-  const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
-    const t = p.trim(); if (!t) return [];
-    const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
-    return out;
-  });
-
-  // Parallel, not sequential — a 6-7 part ebook doing one Notion create +
-  // block-writes + a property patch PER PART, one at a time, was slow
-  // enough to matter even on top of the background-job change above.
-  // Every part is independent (its own new Asset page), so there's no
-  // ordering requirement forcing this to be sequential.
-  const components = await Promise.all(parts.map(async part => {
-    const isVisual = part.kind === "visual";
-    const extraProps = {
+  if (job.step === "parent") {
+    const methodName = QA_METHOD_NAMES.product;
+    const methodId = state.methodId || await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
+    const { plan, idea, titleId, productId, campaignId } = state;
+    const parentProps = {
+      "Asset Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
+      "Asset Status": { select: { name: "Development" } },
+      "Asset Type": { select: { name: methodName } },
+      "Body": { rich_text: [{ text: { content: String(plan.description || "").slice(0, 2000) } }] },
       "Content Strategy": { relation: [{ id: dash(titleId) }] },
       "Product": { relation: [{ id: dash(productId) }] },
     };
-    if (campaignId) extraProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-    if (methodId) extraProps["Method"] = { relation: [{ id: dash(methodId) }] };
-    if (isVisual) extraProps["Notes"] = { rich_text: [{ text: { content: ("DESIGN BRIEF (for Canva): " + String(part.content || "")).slice(0, 2000) } }] };
-    const result = await createAssetComponentPage(hdr, { parentAssetId, assetType: String(part.label).slice(0, 100), extraProps });
-    if (result.error) return { label: part.label, error: result.error };
-    if (!isVisual) {
-      const children = paras(part.content);
-      const writes = [];
-      for (let i = 0; i < children.length; i += 100) {
-        writes.push(fetch(`https://api.notion.com/v1/blocks/${dash(result.id)}/children`, {
-          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ children: children.slice(i, i + 100) }),
-        }).catch(() => {}));
-      }
-      writes.push(fetch(`https://api.notion.com/v1/pages/${dash(result.id)}`, {
-        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-        body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: String(part.content || "").slice(0, 2000) } }] } } }),
-      }).catch(() => {}));
-      await Promise.all(writes);
-    }
-    return { id: result.id, label: part.label, kind: part.kind };
-  }));
+    if (campaignId) parentProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+    Object.assign(parentProps, await assetMethodProp(methodId, methodName));
+    const parentResp = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: parentProps }),
+    });
+    const parentResult = await parentResp.json();
+    if (!parentResp.ok || !parentResult.id) throw new Error(parentResult.message || "Failed to create parent asset");
+    state.parentAssetId = parentResult.id.replace(/-/g, "");
+    state.methodId = methodId;
+    return { step: "components", state };
+  }
 
-  return {
-    success: true, titleId, parentAssetId, title: plan.title || idea,
-    components, awaitingCanva: components.filter(c => c.kind === "visual").length,
-  };
+  if (job.step === "components") {
+    const { parts, titleId, productId, campaignId, methodId, parentAssetId } = state;
+    const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
+    const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+    const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
+      const t = p.trim(); if (!t) return [];
+      const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
+      return out;
+    });
+    // Parallel, not sequential — every part is independent (its own new
+    // Asset page), so there's no ordering requirement forcing this to
+    // run one at a time.
+    const components = await Promise.all(parts.map(async part => {
+      const isVisual = part.kind === "visual";
+      const extraProps = {
+        "Content Strategy": { relation: [{ id: dash(titleId) }] },
+        "Product": { relation: [{ id: dash(productId) }] },
+      };
+      if (campaignId) extraProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+      if (methodId) extraProps["Method"] = { relation: [{ id: dash(methodId) }] };
+      if (isVisual) extraProps["Notes"] = { rich_text: [{ text: { content: ("DESIGN BRIEF (for Canva): " + String(part.content || "")).slice(0, 2000) } }] };
+      const result = await createAssetComponentPage(hdr, { parentAssetId, assetType: String(part.label).slice(0, 100), extraProps });
+      if (result.error) return { label: part.label, error: result.error };
+      if (!isVisual) {
+        const children = paras(part.content);
+        const writes = [];
+        for (let i = 0; i < children.length; i += 100) {
+          writes.push(fetch(`https://api.notion.com/v1/blocks/${dash(result.id)}/children`, {
+            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ children: children.slice(i, i + 100) }),
+          }).catch(() => {}));
+        }
+        writes.push(fetch(`https://api.notion.com/v1/pages/${dash(result.id)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: String(part.content || "").slice(0, 2000) } }] } } }),
+        }).catch(() => {}));
+        await Promise.all(writes);
+      }
+      return { id: result.id, label: part.label, kind: part.kind };
+    }));
+    return {
+      step: "done", state, done: true,
+      result: {
+        success: true, titleId: state.titleId, parentAssetId: state.parentAssetId, title: state.plan.title || state.idea,
+        components, awaitingCanva: components.filter(c => c.kind === "visual").length,
+      },
+    };
+  }
+
+  throw new Error("Unknown job step: " + job.step);
 }
 
 export default {
@@ -38228,37 +38282,61 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
       }
 
       if (body.action === "generateQaContent") {
-        const { methodKey, productId, idea, answers, titleId: existingTitleId } = body;
-        let { campaignId } = body;
+        const { methodKey, productId, idea, answers, titleId: existingTitleId, campaignId } = body;
         if (methodKey !== "sales" && methodKey !== "story") return json({ error: "methodKey must be sales or story" }, 400);
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
         if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        // Background job, not a synchronous response — a full sales page/
-        // story (Claude call + title/asset create + block writes + a live
-        // publish) can genuinely run past Cloudflare's ~100s edge timeout
-        // (524), which silently drops the response even when the worker
-        // itself finishes fine. The modal polls getQaJobStatus instead.
+        // Step-based, resumable job (see qaContentStep) — not a single
+        // ctx.waitUntil background task, which turned out unsafe: Cloudflare
+        // can kill it before it finishes, silently, with nothing ever
+        // written to KV. The modal drives progress via advanceQaJob instead.
         const jobId = "qa" + crypto.randomUUID().replace(/-/g, "");
-        const jobKey = `qajob:${jobId}`;
-        await env.TRADES.put(jobKey, JSON.stringify({ status: "pending" }), { expirationTtl: 1800 });
-        ctx.waitUntil((async () => {
-          try {
-            const result = await runGenerateQaContent(env, { methodKey, productId, idea, answers, existingTitleId, campaignId });
-            await env.TRADES.put(jobKey, JSON.stringify({ status: "done", result }), { expirationTtl: 1800 });
-          } catch (e) {
-            await env.TRADES.put(jobKey, JSON.stringify({ status: "error", error: e.message || "Generation failed" }), { expirationTtl: 1800 });
-          }
-        })());
+        const job = {
+          kind: "content", step: "init", done: false, result: null, lastError: null,
+          state: { methodKey, productId, idea, answers: Array.isArray(answers) ? answers : [], existingTitleId: existingTitleId || null, campaignId: campaignId || null },
+        };
+        await env.TRADES.put(`qajob:${jobId}`, JSON.stringify(job), { expirationTtl: 1800 });
         return json({ jobId });
       }
 
       if (body.action === "getQaJobStatus") {
         const { jobId } = body;
         if (!jobId) return json({ error: "jobId required" }, 400);
-        const rec = await env.TRADES.get(`qajob:${jobId}`, "json");
-        if (!rec) return json({ status: "error", error: "Job not found or expired" });
-        return json(rec);
+        const job = await env.TRADES.get(`qajob:${jobId}`, "json");
+        if (!job) return json({ status: "error", error: "Job not found or expired" });
+        if (job.done) return json({ status: "done", result: job.result });
+        return json({ status: "pending", step: job.step, error: job.lastError || null });
+      }
+
+      // advanceQaJob — runs exactly ONE step of a generateQaContent/
+      // generateQaProduct job (qaContentStep/qaProductStep) and
+      // checkpoints the outcome to KV before returning. This is an
+      // ordinary request, not a background task — the client drives
+      // progress by calling it in a loop (qaPollJob) until it comes back
+      // done. A step that throws does NOT fail the job: the checkpoint is
+      // untouched, the error is surfaced to the caller, and calling this
+      // again simply retries the SAME step from the SAME state — nothing
+      // already written is redone, and the operator's answers can never
+      // be lost to a step failing or a slow Claude response.
+      if (body.action === "advanceQaJob") {
+        const { jobId } = body;
+        if (!jobId) return json({ error: "jobId required" }, 400);
+        const jobKey = `qajob:${jobId}`;
+        const job = await env.TRADES.get(jobKey, "json");
+        if (!job) return json({ error: "Job not found or expired" }, 404);
+        if (job.done) return json({ done: true, result: job.result });
+        try {
+          const stepFn = job.kind === "product" ? qaProductStep : qaContentStep;
+          const out = await stepFn(env, job);
+          const updated = { ...job, step: out.step, state: out.state, done: !!out.done, result: out.result || null, lastError: null };
+          await env.TRADES.put(jobKey, JSON.stringify(updated), { expirationTtl: 1800 });
+          return json({ done: !!updated.done, result: updated.result, step: updated.step });
+        } catch (e) {
+          const updated = { ...job, lastError: e.message || "Step failed" };
+          await env.TRADES.put(jobKey, JSON.stringify(updated), { expirationTtl: 1800 });
+          return json({ done: false, step: job.step, error: e.message || "Step failed" });
+        }
       }
 
       // ── saveQaToResearch — explicit, manual save only (per operator
@@ -38314,26 +38392,18 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
       }
 
       if (body.action === "generateQaProduct") {
-        const { productId, idea, productType, answers, titleId: existingTitleId } = body;
-        let { campaignId } = body;
+        const { productId, idea, productType, answers, titleId: existingTitleId, campaignId } = body;
         if (!productType || !String(productType).trim()) return json({ error: "productType required" }, 400);
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
         if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        // Background job — see runGenerateQaContent's comment above for
-        // why (the up-front planning call alone can run past Cloudflare's
-        // edge timeout on a multi-part product, on top of N part writes).
+        // Step-based, resumable job — see generateQaContent's comment above.
         const jobId = "qa" + crypto.randomUUID().replace(/-/g, "");
-        const jobKey = `qajob:${jobId}`;
-        await env.TRADES.put(jobKey, JSON.stringify({ status: "pending" }), { expirationTtl: 1800 });
-        ctx.waitUntil((async () => {
-          try {
-            const result = await runGenerateQaProduct(env, { productId, idea, productType, answers, existingTitleId, campaignId });
-            await env.TRADES.put(jobKey, JSON.stringify({ status: "done", result }), { expirationTtl: 1800 });
-          } catch (e) {
-            await env.TRADES.put(jobKey, JSON.stringify({ status: "error", error: e.message || "Generation failed" }), { expirationTtl: 1800 });
-          }
-        })());
+        const job = {
+          kind: "product", step: "init", done: false, result: null, lastError: null,
+          state: { productId, idea, productType, answers: Array.isArray(answers) ? answers : [], existingTitleId: existingTitleId || null, campaignId: campaignId || null },
+        };
+        await env.TRADES.put(`qajob:${jobId}`, JSON.stringify(job), { expirationTtl: 1800 });
         return json({ jobId });
       }
 

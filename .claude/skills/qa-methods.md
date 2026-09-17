@@ -33,17 +33,28 @@ Ask for the raw idea this is seeded from, in the operator's own words — a sent
 Ask each question **one at a time, in the chat**, and wait for the operator's real reply before moving to the next one — never present the whole list at once and ask them to fill in a form, and never answer on their behalf. For `story`, at least two questions dig for the real anecdote (what specifically happened, when, the concrete detail, how it resolved) — a model cannot invent a real personal experience, only the operator can supply it. If the operator wants to skip a question, leave that answer blank rather than making something up.
 
 ## Step 5 — generate
-Once every question is answered:
+Once every question is answered, kick off the job — it does NOT return the finished result directly, only a `jobId`:
 - **Sales / Story:**
   ```
   { "action": "generateQaContent", "methodKey": "sales"|"story", "productId": "<id>", "idea": "<idea>", "answers": [{ "key", "question", "answer" }, ...] }
   ```
-  → `{ success, titleId, assetId, sectionCount, sitePublished, liveUrl, siteError }`.
+  → `{ "jobId" }`.
 - **Product:**
   ```
   { "action": "generateQaProduct", "productId": "<id>", "idea": "<idea>", "productType": "<type>", "answers": [...] }
   ```
-  → `{ success, titleId, parentAssetId, title, components: [{ id, label, kind }], awaitingCanva }`.
+  → `{ "jobId" }`.
+
+Then drive it to completion yourself by calling this in a loop, waiting a couple seconds between calls:
+```
+{ "action": "advanceQaJob", "jobId": "<jobId>" }
+```
+Each call runs exactly one step server-side (fetch research → write with Claude → create title → create asset(s) → publish) and checkpoints it — it always returns quickly, never hangs. Responses look like:
+- In progress: `{ "done": false, "step": "<name>" }` — keep looping.
+- Transient failure: `{ "done": false, "step": "<name>", "error": "<message>" }` — **not fatal**, nothing is lost; just call `advanceQaJob` again with the same `jobId` to retry that same step. Only give up (and tell the operator) after several consecutive errors on the same step.
+- Finished: `{ "done": true, "result": {...} }` — for Sales/Story, `result` is `{ success, titleId, assetId, sectionCount, sitePublished, liveUrl, siteError }`; for Product, `{ success, titleId, parentAssetId, title, components: [{ id, label, kind }], awaitingCanva }`.
+
+This job never silently disappears — it's checkpointed in KV after every step, so if the chat session itself gets interrupted, resuming and calling `advanceQaJob` again with the same `jobId` picks up right where it left off (no re-interview needed).
 
 ## Step 6 — report back
 - **Sales / Story:** the live link (`liveUrl`, when `sitePublished` is true) and the Notion asset link `https://www.notion.so/<assetId>`.

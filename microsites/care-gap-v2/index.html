@@ -3799,24 +3799,49 @@ function caQaResolveProductType() {
   if (sel.value === '__custom__') return (document.getElementById('caQaTypeCustom')?.value || '').trim() || 'ebook';
   return sel.value || 'ebook';
 }
-// generateQaContent/generateQaProduct run as background jobs now (a full
-// sales page/story, or a multi-part product's planning call, can take
-// longer than Cloudflare's ~100s edge timeout — a direct await used to
-// come back as a raw "error code: 524" HTML page, not JSON, right after
-// the operator had already answered the whole interview). Both actions
-// return {jobId} immediately; this polls getQaJobStatus until it's done
-// or errored. statusCb, if given, is called with an in-progress message
-// each poll so the modal can show elapsed time.
+// generateQaContent/generateQaProduct create a resumable job and return
+// {jobId} immediately; this drives it to completion by calling
+// advanceQaJob in a loop — each call runs exactly ONE step server-side
+// (worker.js qaContentStep/qaProductStep) and checkpoints it to KV. This
+// replaced an earlier ctx.waitUntil background-job design that Cloudflare
+// could silently kill mid-flight with nothing ever written to KV (jobs
+// stuck at "pending" forever, answers seemingly lost). A step that
+// errors here is NOT fatal — the checkpoint is untouched server-side, so
+// this just retries the same step a few times before giving up; no
+// re-interview is ever needed. statusCb, if given, is called with
+// (elapsedSeconds, stepLabel) each iteration so the modal can show
+// progress.
+const QA_STEP_LABELS = {
+  init: 'gathering research', generate: 'writing with Claude', title: 'creating title',
+  asset: 'creating asset', blocks: 'writing content', parent: 'creating product',
+  components: 'building parts', publish: 'publishing', done: 'done',
+};
 async function caQaPollJob(jobId, statusCb) {
   const start = Date.now();
+  let consecutiveErrors = 0;
   for (;;) {
-    await new Promise(r => setTimeout(r, 3000));
     const elapsed = Math.round((Date.now() - start) / 1000);
-    if (statusCb) statusCb(elapsed);
-    if (elapsed > 280) throw new Error('Still running after ' + elapsed + 's — the job may still finish in the background; check the title in a minute before retrying.');
-    const rec = await w('getQaJobStatus', { jobId });
-    if (rec.status === 'done') return rec.result;
-    if (rec.status === 'error') throw new Error(rec.error || 'Generation failed');
+    if (elapsed > 600) throw new Error('Still running after ' + elapsed + 's — nothing is lost (it retries from the same checkpoint); check the title in a minute, or try again.');
+    let rec;
+    try {
+      rec = await w('advanceQaJob', { jobId });
+    } catch (e) {
+      consecutiveErrors++;
+      if (consecutiveErrors > 8) throw new Error('Lost contact with the job: ' + e.message);
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
+    if (rec.done) return rec.result;
+    if (rec.error) {
+      consecutiveErrors++;
+      if (statusCb) statusCb(elapsed, 'retrying after: ' + rec.error);
+      if (consecutiveErrors > 8) throw new Error(rec.error);
+      await new Promise(r => setTimeout(r, 2000));
+      continue;
+    }
+    consecutiveErrors = 0;
+    if (statusCb) statusCb(elapsed, QA_STEP_LABELS[rec.step] || rec.step);
+    await new Promise(r => setTimeout(r, 300));
   }
 }
 // The QA interview — all questions at once, each its own text box (see
@@ -3923,7 +3948,7 @@ async function runCreateAsset() {
         ? await w('generateQaProduct', { productId: qaProductId, campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, idea, productType: qaProductType, answers: qaAnswers })
         : await w('generateQaContent', { methodKey: qaKey, productId: qaProductId, campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, idea, answers: qaAnswers });
       if (kickoff.error) throw new Error(kickoff.error);
-      const data = await caQaPollJob(kickoff.jobId, elapsed => { resEl.textContent = 'Writing… (' + elapsed + 's)'; });
+      const data = await caQaPollJob(kickoff.jobId, (elapsed, label) => { resEl.textContent = 'Writing… ' + (label || '') + ' (' + elapsed + 's)'; });
       if (qaKey === 'product') {
         resEl.style.color = 'var(--fresh)';
         resEl.textContent = `✓ Created — ${data.components.length} part(s), ${data.awaitingCanva} awaiting Canva.`;
