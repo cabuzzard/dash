@@ -2774,7 +2774,25 @@ function renderStrategySlot(slot, platform) {
       ${platTag}
       ${slotTitleBtnHTML(slot)}
       <span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span>
+      <button class="iconbtn" title="Delete this slot" onclick="deleteStrategySlot('${esc(slot.id)}', this)">✕</button>
     </span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`;
+}
+// Per-slot delete — looked up by id (not name) for the same reason every
+// other delete/rerun button in this file now is. removeStrategySlot
+// archives just this one slot and renumbers the remaining slots in its
+// grouping so Sequence stays contiguous.
+async function deleteStrategySlot(slotId, btn) {
+  const slot = STRATEGY_SLOTS_BY_ID[slotId];
+  const name = slot ? slot.name : 'this slot';
+  if (!confirm(`Delete slot "${name}"? This archives it in Notion and renumbers the remaining slots in its grouping.`)) return;
+  if (btn) btn.disabled = true;
+  try {
+    await w('removeStrategySlot', { slotId });
+    loadStrategyTab();
+  } catch (e) {
+    alert('Delete failed: ' + e.message);
+    if (btn) btn.disabled = false;
+  }
 }
 // ── Create Title From Slot ──
 // generateTitleFromSlot already does the whole job in one call: writes
