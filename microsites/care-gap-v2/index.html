@@ -3335,7 +3335,7 @@ function renderTitleRow(t) {
       <button class="iconbtn" title="Change which product this title is attached to" onclick="openChangeProductModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}','${esc(t.productId || '')}')">🔀</button>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
-      <button class="iconbtn" title="Delete this title" onclick="deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
+      <button class="iconbtn" style="color:var(--stale);" title="Delete this TITLE (not an asset) — archives it and everything under it from view" onclick="deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
       <button class="notebtn" title="Note" onclick="openNoteModal('title-${esc(t.id)}','${esc(t.title)}','title')">📝</button>
     </span></div><div class="idea-desc">${esc(t.methodName || '')}${t.assetIds && t.assetIds.length ? ` · ${t.assetIds.length} asset(s)` : ''}</div></div>`;
 }
@@ -4043,7 +4043,7 @@ function renderAssetTitleNode(t, data) {
       <span style="font-size:10px;color:var(--ink3);">${assets.length} asset(s)</span>
       <button class="iconbtn" title="Create asset" onclick="event.stopPropagation();openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>
-      <button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this title" onclick="event.stopPropagation();deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
+      <button class="iconbtn" style="font-size:9.5px;padding:2px 7px;color:var(--stale);" title="Delete this TITLE (not one of the assets below) — archives it and everything under it from view" onclick="event.stopPropagation();deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
       <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button>
     </span></div><div class="rbody">${body}</div></div>`;
 }
