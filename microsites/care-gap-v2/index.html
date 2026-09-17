@@ -853,6 +853,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mfield">Paste keywords or a topic</div>
       <textarea id="newClusterInput" placeholder="e.g. direct care worker wage advocacy"></textarea>
       <div style="font-size:11px;color:var(--ink3);margin-top:6px;">Merges this with the Master keyword strategy into one new focused cluster.</div>
+      <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-top:12px;margin-bottom:5px;">Search Intent (optional — leave blank to let Claude classify)</label>
+      <select id="newClusterIntent" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);">
+        <option value="">Let Claude classify</option>
+        <option value="informational">Informational</option>
+        <option value="buyer">Buyer</option>
+        <option value="transactional">Transactional</option>
+      </select>
       <div class="modalrow">
         <button class="btn" onclick="closeClusterGenModal()">Cancel</button>
         <button class="btn primary" id="newClusterBtn" onclick="runGenerateSingleCluster()">Generate</button>
@@ -1628,6 +1635,7 @@ async function runRegenModalConfirm() {
 }
 function openClusterGenModal() {
   document.getElementById('newClusterInput').value = '';
+  document.getElementById('newClusterIntent').value = '';
   document.getElementById('clusterGenModal').classList.add('open');
 }
 function closeClusterGenModal() { document.getElementById('clusterGenModal').classList.remove('open'); }
@@ -1635,10 +1643,11 @@ async function runGenerateSingleCluster() {
   const btn = document.getElementById('newClusterBtn');
   const input = document.getElementById('newClusterInput');
   const pastedKeywords = (input.value || '').trim();
+  const searchIntent = document.getElementById('newClusterIntent').value || undefined;
   if (!pastedKeywords) { alert('Enter a topic or keywords to build the new cluster around first.'); return; }
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'building…';
   try {
-    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords });
+    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords, searchIntent });
     SEO_CLUSTERS.staged = r.staged || [];
     closeClusterGenModal();
     renderKeywordsAndIdeas();
