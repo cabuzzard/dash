@@ -1024,7 +1024,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: STRATEGY · TITLES · ASSETS ══════════════════════ -->
   <div class="panel" data-panel="strategy">
     <div class="stage-hd"><h2>Strategy · Titles · Assets</h2><span class="stagetag">stage 3-6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
-    <p class="stage-sub">Real 🚀 Growth Strategies (left) — nested Product Stack → Product → Platform → Arc — their Titles (middle), and Titles' Assets (right), all on one page. Titles/Assets nest Product Stack → Product → Strategy; Assets sub-group by Platform, the one level Titles don't carry.</p>
+    <p class="stage-sub">Real 🚀 Growth Strategies (left) — nested Product Stack → Product → Arc — their Titles (middle), and Titles' Assets (right), all on one page. Titles/Assets nest Product Stack → Product → Strategy; Assets sub-group by Platform, the one level Titles don't carry.</p>
     <div class="kwgrid3">
       <div class="kwcol">
         <h4>Strategy <button class="btn primary" style="margin-left:8px;font-size:9.5px;padding:2px 8px;" onclick="openGenStrategyModal()">+ Generate new</button></h4>
@@ -2657,13 +2657,14 @@ async function saveAllProductFields(btn) {
   }
 }
 
-// ══════════════════════ STRATEGY TAB — Product Stack → Product → Platform → Arc ══════════════════════
-// Platform is the primary split an operator actually works from (e.g.
-// "everything on Instagram this week"), not a sub-detail of one arc — so
-// it sits above Arc in the nesting. An arc's own slots can still span
-// several platforms (the whole point of the cross-platform-arc
-// convention); when they do, that same arc just appears once under each
-// platform it touches, showing only the slots that live there.
+// ══════════════════════ STRATEGY TAB — Product Stack → Product → Arc ══════════════════════
+// Arc (grouping) is the primary split, not Platform — an arc's slots can
+// span several platforms (the whole point of the cross-platform-arc
+// convention), and reappearing once per platform it touched split one arc
+// across several headers. Platform is shown per-slot instead (and as a
+// summary tag on the arc header) rather than as its own nesting level.
+// Titles/Assets keep their own separate nesting (Product Stack → Product →
+// Strategy; Assets sub-group by Platform) — untouched by this.
 async function loadStrategyTab() {
   const body = document.getElementById('strategyBody');
   body.innerHTML = '<div class="loadnote">Loading…</div>';
@@ -2709,20 +2710,14 @@ function buildStrategyTree(strategies) {
       name: stack,
       count: byStack[stack].length,
       products: productOrder.map(product => {
-        const { groups: byPlatform, order: platformOrderRaw } = groupByStack(byProduct[product], r => r.platform);
-        const platformOrder = sortGroupOrder(platformOrderRaw, 'No platform');
+        const { groups: byArc, order: arcOrder } = groupByStack(byProduct[product], r => `${r.strategyId}::${r.groupingName}`);
         return {
           name: product,
-          platforms: platformOrder.map(platform => {
-            const { groups: byArc, order: arcOrder } = groupByStack(byPlatform[platform], r => `${r.strategyId}::${r.groupingName}`);
-            return {
-              name: platform,
-              arcs: arcOrder.map(key => {
-                const arcRows = byArc[key];
-                const first = arcRows[0];
-                return { name: first.groupingName, meta: first.groupingMeta, strategyId: first.strategyId, strategyName: first.strategyName, strategyStatus: first.strategyStatus, strategyPlatformOverride: first.strategyPlatformOverride, rows: arcRows };
-              }),
-            };
+          arcs: arcOrder.map(key => {
+            const arcRows = byArc[key];
+            const first = arcRows[0];
+            const platforms = Array.from(new Set(arcRows.map(r => r.platform).filter(p => p && p !== 'No platform')));
+            return { name: first.groupingName, meta: first.groupingMeta, strategyId: first.strategyId, strategyName: first.strategyName, strategyStatus: first.strategyStatus, strategyPlatformOverride: first.strategyPlatformOverride, platforms, rows: arcRows };
           }),
         };
       }),
@@ -2738,36 +2733,34 @@ function renderStrategyStackGroup(stack) {
 function renderStrategyProductGroup(stackName, prod) {
   return `<div style="margin-bottom:10px;">
     <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
-    ${prod.platforms.map(plat => renderStrategyPlatformGroup(stackName, prod.name, plat)).join('')}
-  </div>`;
-}
-function renderStrategyPlatformGroup(stackName, prodName, plat) {
-  return `<div class="kwgroup" data-ckey="stratplat-${esc(stackName)}-${esc(prodName)}-${esc(plat.name)}" style="--kwc:#c9860f;margin:0 0 6px 8px;">
-    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(plat.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${plat.arcs.length})</span></div>
-    <div class="kwgbody">${plat.arcs.map(arc => renderStrategyArc(stackName, prodName, plat.name, arc)).join('')}</div>
+    ${prod.arcs.map(arc => renderStrategyArc(stackName, prod.name, arc)).join('')}
   </div>`;
 }
 // Individual strategy/arc — its own collapsible group (same kwgroup/kwghd
 // pattern as every other level here), collapsed by default like the rest.
 // Previously always fully expanded with no toggle at all.
-function renderStrategyArc(stackName, prodName, platName, arc) {
-  return `<div class="kwgroup" data-ckey="stratarc-${esc(stackName)}-${esc(prodName)}-${esc(platName)}-${esc(arc.strategyId)}-${esc(arc.name)}" style="--kwc:var(--border2);margin:0 0 8px 8px;padding-left:8px;">
+function renderStrategyArc(stackName, prodName, arc) {
+  const platTag = arc.platforms.length ? `<span style="font-weight:400;color:var(--ink3);">${arc.platforms.map(esc).join(' + ')}</span>` : '';
+  return `<div class="kwgroup" data-ckey="stratarc-${esc(stackName)}-${esc(prodName)}-${esc(arc.strategyId)}-${esc(arc.name)}" style="--kwc:var(--border2);margin:0 0 8px 8px;padding-left:8px;">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;">
       <span class="kwarrow">▸</span>
       <span style="font-style:italic;font-weight:400;color:var(--ink3);">${esc(arc.name)}</span>
       <span style="font-weight:400;">(${esc(arc.meta)})</span>
+      ${platTag}
       <span class="tag ${arc.strategyStatus === 'Approved' ? 'fresh' : 'manual'}" style="font-size:9px;">${esc(arc.strategyStatus)}</span>
       <a class="kwlink" href="${notionUrl(arc.strategyId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗ Notion</a>
       <button class="iconbtn" title="Rerun this strategy — same fields as generating a new one (title/platform/guidance), rewrites this one in place against current product research + Main Keywords" onclick="event.stopPropagation();openRerunStrategyModal('${esc(arc.strategyId)}','${esc(arc.strategyName).replace(/'/g,"\\'")}','${esc(arc.strategyPlatformOverride).replace(/'/g,"\\'")}')">🔁</button>
       <button class="iconbtn" title="Delete this strategy" onclick="event.stopPropagation();deleteStrategy('${esc(arc.strategyId)}','${esc(arc.strategyName)}')">✕</button>
       <button class="notebtn" onclick="event.stopPropagation();openNoteModal('strategy-${esc(arc.strategyId)}','${esc(arc.strategyName)}','strategy')">📝</button>
     </div>
-    <div class="kwgbody">${arc.rows.map(row => renderStrategySlot(row.slot)).join('')}</div>
+    <div class="kwgbody">${arc.rows.map(row => renderStrategySlot(row.slot, row.platform)).join('')}</div>
   </div>`;
 }
-function renderStrategySlot(slot) {
+function renderStrategySlot(slot, platform) {
+  const platTag = platform && platform !== 'No platform' ? `<span style="font-size:9px;color:var(--ink3);">${esc(platform)}</span>` : '';
   return `<div class="idea-card"><div class="idea-row"><span class="idea-title">${esc(slot.name)}</span>
     <span class="idea-btns">
+      ${platTag}
       ${slotTitleBtnHTML(slot)}
       <span class="rstatus ${slot.status === 'Filled' ? 's-live' : 's-dev'}">${esc(slot.status)}</span>
     </span></div>${slot.angle ? `<div class="idea-desc">${esc(slot.angle)}</div>` : ''}${slot.titles && slot.titles.length ? `<div class="idea-desc">${slot.titles.map(t => `<a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener">${esc(t.name)}</a>`).join(' · ')}</div>` : ''}</div>`;
