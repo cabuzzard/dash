@@ -4888,7 +4888,11 @@ function makeProductRow(p) {
   // direction — this is a deliberate per-product decision, not something
   // that fires off a half-formed keyword-generated idea.
   const ecoBtn = `<button class="td-add-btn-inline" onclick="openEcosystemModal('${p.name.replace(/'/g,"\\'")}','','${p.id}','${(p.type||'').replace(/'/g,"\\'")}')" title="Build a supporting ecosystem around this product">🧬</button>`;
-  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'Idea'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${statusBadge}${typeBadge}${stackEditBtn}${researchLink}${backfillBtn}${ecoBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
+  // QA — ask pertinent questions about a raw idea (grounded in this
+  // product's own 🔬 Product Research), then write a Story/Sales page or
+  // a full digital product in one shot. See openQamModal.
+  const qaBtn = `<button class="td-add-btn-inline" onclick="openQamModal('${p.id}','${p.name.replace(/'/g,"\\'")}')" title="QA — ask pertinent questions, then write a Story, Sales page, or digital product for this attached product">✨ QA</button>`;
+  row.innerHTML = `<span class="product-status-dot" title="${p.status || 'Idea'}"></span><a class="product-name" href="https://www.notion.so/${p.id}" target="_blank" rel="noopener">${p.name}</a>${statusBadge}${typeBadge}${stackEditBtn}${researchLink}${backfillBtn}${ecoBtn}${qaBtn}<button class="td-del" onclick="removeProduct('${p.id}', this)" title="Remove">✕</button>`;
   return row;
 }
 
@@ -11765,7 +11769,187 @@ async function openSourcesModal(query) {
     </div>
   </div>
 </div>
+<!-- QA methods (QA – Product / QA – Sales / QA – Story) — ask pertinent
+     questions about a raw idea, seeded off the attached Product's own
+     🔬 Product Research, then write the real thing in one shot. See
+     openQamModal below and craftQaQuestions/generateQaContent/
+     generateQaProduct in worker.js. "qam" prefix (not "qa") to avoid
+     colliding with the existing Quick Add Title modal's own qa* ids. -->
+<div class="modal-overlay" id="qamModal" onclick="if(event.target===this)closeQamModal()">
+  <div class="modal" style="max-width:560px;">
+    <div class="modal-head">
+      <div class="modal-title">QA — <span id="qamProductName"></span></div>
+      <button class="modal-close" onclick="closeQamModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint">Pick what this becomes, describe the idea, then it interviews you — one pertinent question at a time, grounded in this product's own research — before generating.</div>
+      <label class="lm-label" for="qamMethodSelect" style="margin-top:12px;">Method</label>
+      <select class="modal-ta" id="qamMethodSelect" style="height:36px;padding:7px 10px;" onchange="qamOnMethodChange()">
+        <option value="story">QA – Story (first-person, keyword-tailored)</option>
+        <option value="sales">QA – Sales (sales page, publishes to hub)</option>
+        <option value="product">QA – Product (digital product + sub-assets)</option>
+      </select>
+      <div id="qamProductTypeWrap" style="display:none;">
+        <label class="lm-label" for="qamProductTypeSelect" style="margin-top:10px;">Digital product type</label>
+        <select class="modal-ta" id="qamProductTypeSelect" style="height:36px;padding:7px 10px;">
+          <option value="ebook">Ebook</option>
+          <option value="checklist">Checklist</option>
+          <option value="spreadsheet">Spreadsheet</option>
+          <option value="design bundle">Design Bundle</option>
+        </select>
+      </div>
+      <label class="lm-label" for="qamIdeaInput" style="margin-top:10px;">Idea</label>
+      <textarea class="modal-ta" id="qamIdeaInput" rows="3" style="resize:vertical;min-height:70px!important;" placeholder="What's the raw idea this is seeded from?"></textarea>
+      <div id="qamQuestions" style="margin-top:10px;"></div>
+      <div id="qamStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;white-space:pre-line;"></div>
+      <div id="qamResult" style="margin-top:10px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeQamModal()">Close</button>
+      <button class="modal-btn save" id="qamAskBtn" onclick="qamRunAsk()">Get Questions</button>
+      <button class="modal-btn save" id="qamGoBtn" onclick="qamRunGenerate()" style="display:none;">Generate</button>
+    </div>
+  </div>
+</div>
 <script>
+let _qamProductId = null, _qamQuestions = [], _qamAnswers = [], _qamIndex = 0;
+function openQamModal(productId, productName) {
+  _qamProductId = productId;
+  _qamQuestions = [];
+  _qamAnswers = [];
+  _qamIndex = 0;
+  document.getElementById('qamProductName').textContent = productName || '';
+  document.getElementById('qamMethodSelect').value = 'story';
+  document.getElementById('qamProductTypeSelect').value = 'ebook';
+  document.getElementById('qamIdeaInput').value = '';
+  document.getElementById('qamQuestions').innerHTML = '';
+  document.getElementById('qamStatus').textContent = '';
+  document.getElementById('qamResult').innerHTML = '';
+  document.getElementById('qamAskBtn').style.display = '';
+  document.getElementById('qamAskBtn').disabled = false;
+  document.getElementById('qamAskBtn').textContent = 'Get Questions';
+  document.getElementById('qamGoBtn').style.display = 'none';
+  qamOnMethodChange();
+  document.getElementById('qamModal').classList.add('open');
+}
+function closeQamModal() {
+  document.getElementById('qamModal').classList.remove('open');
+}
+function qamOnMethodChange() {
+  const method = document.getElementById('qamMethodSelect').value;
+  document.getElementById('qamProductTypeWrap').style.display = method === 'product' ? '' : 'none';
+}
+async function qamRunAsk() {
+  const idea = document.getElementById('qamIdeaInput').value.trim();
+  if (!idea) { document.getElementById('qamStatus').textContent = 'Describe the idea first.'; return; }
+  const methodKey = document.getElementById('qamMethodSelect').value;
+  const productType = document.getElementById('qamProductTypeSelect').value;
+  const btn = document.getElementById('qamAskBtn');
+  const status = document.getElementById('qamStatus');
+  btn.disabled = true; btn.textContent = 'Asking…';
+  status.style.color = '#888'; status.textContent = 'Working out what to ask…';
+  try {
+    const data = await w('craftQaQuestions', { methodKey, productId: _qamProductId, idea, productType: methodKey === 'product' ? productType : undefined });
+    if (data.error) throw new Error(data.error);
+    _qamQuestions = data.questions || [];
+    _qamAnswers = new Array(_qamQuestions.length).fill('');
+    _qamIndex = 0;
+    if (_qamQuestions.length) {
+      qamRenderQuestion();
+      status.textContent = 'Answer one at a time, then Generate.';
+    } else {
+      document.getElementById('qamQuestions').innerHTML = '';
+      document.getElementById('qamGoBtn').style.display = '';
+      status.textContent = 'No questions came back — you can still Generate.';
+    }
+    status.style.color = '#68d391';
+    btn.textContent = 'Start Over';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.textContent = 'Get Questions';
+  }
+  btn.disabled = false;
+}
+// One question at a time — this is the actual "interview" (see the modal
+// hint): craftQaQuestions still fetches the whole set in one round-trip
+// (cheap), but the operator only ever sees/answers one at a time, with
+// ← Back to revise a prior answer before moving on.
+function qamRenderQuestion() {
+  const wrap = document.getElementById('qamQuestions');
+  const i = _qamIndex;
+  const q = _qamQuestions[i];
+  const isLast = i === _qamQuestions.length - 1;
+  wrap.innerHTML = `
+    <div style="font-size:10px;color:#999;margin-bottom:4px;">Question ${i + 1} of ${_qamQuestions.length}</div>
+    <label class="lm-label">${esc(q.question)}</label>
+    <input class="modal-ta" id="qamCurrentAnswer" type="text" style="height:34px;padding:6px 10px;" value="${esc(_qamAnswers[i] || '')}" />
+    <div style="display:flex;gap:8px;margin-top:8px;">
+      ${i > 0 ? '<button class="modal-btn cancel" type="button" onclick="qamPrevQuestion()">← Back</button>' : ''}
+      <button class="modal-btn save" type="button" onclick="qamNextQuestion()">${isLast ? 'Done →' : 'Next →'}</button>
+    </div>`;
+  document.getElementById('qamGoBtn').style.display = 'none';
+  const inp = document.getElementById('qamCurrentAnswer');
+  inp.focus();
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); qamNextQuestion(); } };
+}
+function qamStashCurrentAnswer() {
+  const inp = document.getElementById('qamCurrentAnswer');
+  if (inp) _qamAnswers[_qamIndex] = inp.value.trim();
+}
+function qamPrevQuestion() {
+  qamStashCurrentAnswer();
+  if (_qamIndex > 0) _qamIndex--;
+  qamRenderQuestion();
+}
+function qamNextQuestion() {
+  qamStashCurrentAnswer();
+  if (_qamIndex < _qamQuestions.length - 1) {
+    _qamIndex++;
+    qamRenderQuestion();
+  } else {
+    document.getElementById('qamQuestions').innerHTML = '<div style="font-size:12px;color:#68d391;">All answered ✓ — ↺ reopen a question with Get Questions, or Generate below.</div>';
+    document.getElementById('qamGoBtn').style.display = '';
+    document.getElementById('qamStatus').textContent = 'Answered — Generate when ready.';
+  }
+}
+async function qamRunGenerate() {
+  qamStashCurrentAnswer();
+  const idea = document.getElementById('qamIdeaInput').value.trim();
+  const methodKey = document.getElementById('qamMethodSelect').value;
+  const productType = document.getElementById('qamProductTypeSelect').value;
+  const answers = _qamQuestions.map((q, i) => ({ key: q.key, question: q.question, answer: _qamAnswers[i] || '' }));
+  const btn = document.getElementById('qamGoBtn');
+  const status = document.getElementById('qamStatus');
+  const result = document.getElementById('qamResult');
+  btn.disabled = true; btn.textContent = 'Generating…';
+  status.style.color = '#888'; status.textContent = 'Writing…'; result.innerHTML = '';
+  try {
+    const data = methodKey === 'product'
+      ? await w('generateQaProduct', { productId: _qamProductId, campaignId: CAMPAIGN_ID, idea, productType, answers })
+      : await w('generateQaContent', { methodKey, productId: _qamProductId, campaignId: CAMPAIGN_ID, idea, answers });
+    if (data.error) throw new Error(data.error);
+    if (methodKey === 'product') {
+      status.textContent = `Created — ${data.components.length} part(s), ${data.awaitingCanva} awaiting Canva.`;
+      status.style.color = '#68d391';
+      result.innerHTML = `<a href="https://www.notion.so/${data.parentAssetId}" target="_blank" rel="noopener" style="color:#a78bfa;">↗ Open in Notion</a>` +
+        '<ul style="margin:8px 0 0;padding-left:18px;font-size:12px;color:#ccc;">' +
+        data.components.map(c => `<li>${esc(c.label)}${c.kind === 'visual' ? ' — awaiting Canva' : ''}${c.error ? ' — error: ' + esc(c.error) : ''}</li>`).join('') +
+        '</ul>';
+    } else {
+      status.textContent = data.sitePublished ? 'Published ✓' : 'Created (not published live — ' + (data.siteError || 'no live target') + ')';
+      status.style.color = data.sitePublished ? '#68d391' : '#f0b429';
+      result.innerHTML = (data.liveUrl ? `<a href="${data.liveUrl}" target="_blank" rel="noopener" style="color:#a78bfa;">↗ Live page</a> · ` : '') +
+        `<a href="https://www.notion.so/${data.assetId}" target="_blank" rel="noopener" style="color:#a78bfa;">↗ Open in Notion</a>`;
+    }
+    btn.textContent = 'Generate Again';
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.textContent = 'Generate';
+  }
+  btn.disabled = false;
+}
 let _ecoSeedProductId = null, _ecoSeedType = '', _ecoStaged = [], _ecoSeedTagged = false;
 function openEcosystemModal(name, desc, seedProductId, seedType) {
   document.getElementById('ecoTitleInput').value = name || '';
