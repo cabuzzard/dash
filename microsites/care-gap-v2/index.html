@@ -853,6 +853,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mfield">Paste keywords or a topic</div>
       <textarea id="newClusterInput" placeholder="e.g. direct care worker wage advocacy"></textarea>
       <div style="font-size:11px;color:var(--ink3);margin-top:6px;">Merges this with the Master keyword strategy into one new focused cluster.</div>
+      <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-top:12px;margin-bottom:5px;">Guidance (optional)</label>
+      <textarea id="newClusterGuidance" placeholder="Add direction for this cluster…" style="min-height:50px;"></textarea>
+      <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--stale);margin-top:12px;margin-bottom:5px;">Omit — negative keywords (optional)</label>
+      <textarea id="newClusterOmit" placeholder="Comma-separated terms or topics to exclude…" style="min-height:50px;"></textarea>
       <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-top:12px;margin-bottom:5px;">Search Intent (optional — leave blank to let Claude classify)</label>
       <select id="newClusterIntent" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);">
         <option value="">Let Claude classify</option>
@@ -879,6 +883,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <textarea id="regenModalSteer" placeholder="Add direction for this regen…" style="min-height:70px;margin-bottom:14px;"></textarea>
       <label style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--stale);margin-bottom:5px;">Omit — negative keywords (optional)</label>
       <textarea id="regenModalOmit" placeholder="Comma-separated terms or topics to exclude…" style="min-height:50px;"></textarea>
+      <div id="regenModalIntentRow" style="display:none;margin-top:14px;">
+        <label id="regenModalIntentLabel" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:5px;">Search Intent (optional)</label>
+        <select id="regenModalIntent" style="width:100%;box-sizing:border-box;font-family:var(--sans);font-size:12px;padding:6px 9px;border:1px solid var(--border);border-radius:6px;background:var(--surface2);color:var(--ink);">
+          <option value="">Let Claude classify</option>
+          <option value="informational">Informational</option>
+          <option value="buyer">Buyer</option>
+          <option value="transactional">Transactional</option>
+        </select>
+      </div>
       <div class="modalrow">
         <button class="btn" onclick="closeRegenModal()">Cancel</button>
         <button class="btn primary" id="regenModalRunBtn" onclick="runRegenModalConfirm()">⟳ Regenerate</button>
@@ -1443,7 +1456,7 @@ function renderKeywordsAndIdeas() {
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
       <span class="kwbtns">
         <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Steer replaces the current keyword seed entirely; leave blank to refresh in place.', (steer, omit) => runRegenKeywords(steer, omit))">⟳</button>
-        <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();runGenerateClusters(this)">🗂️</button>
+        <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();openRegenModal('Generate Clusters — batch', 'Groups the Master keyword pool into new thematic clusters, alongside whatever already exists.', (steer, omit, intent) => runGenerateClusters(steer, omit, intent), { current: '', label: 'Restrict batch to one intent (optional)' })">🗂️</button>
         <button class="iconbtn" title="Generate one new cluster from a topic" onclick="event.stopPropagation();openClusterGenModal()">➕</button>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
       </span>
@@ -1455,7 +1468,7 @@ function renderKeywordsAndIdeas() {
     l += `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>${intentBadge(c.searchIntent)}
         <span class="kwbtns">
-          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit) => regenCluster('${esc(c.id)}', steer, omit))">↻</button>
+          <button class="iconbtn" title="Regenerate this cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit, intent) => regenCluster('${esc(c.id)}', steer, omit, intent), { current: c.searchIntent || '' })">↻</button>
           <button class="iconbtn" title="Propose product ideas for this cluster" onclick="event.stopPropagation();runProposeClusterProducts('${esc(c.id)}', this)">💡</button>
           <button class="iconbtn primary" title="Commit this cluster to Notion" onclick="event.stopPropagation();commitCluster('${esc(c.id)}', this)">💾</button>
           <button class="iconbtn" title="Discard this staged cluster" onclick="event.stopPropagation();deleteStagedCluster('${esc(c.id)}', this)">✕</button>
@@ -1476,7 +1489,7 @@ function renderKeywordsAndIdeas() {
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— committed</span>${intentBadge(c.searchIntent)}
         <span class="kwbtns">
           <a class="kwlink" href="${notionUrl(c.id)}" target="_blank" rel="noopener" title="Open in Notion" onclick="event.stopPropagation()">↗</a>
-          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit) => regenCluster('${esc(c.id)}', steer, omit))">↻</button>
+          <button class="iconbtn" title="Regenerate this committed cluster" onclick="event.stopPropagation();openRegenModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', (steer, omit, intent) => regenCluster('${esc(c.id)}', steer, omit, intent), { current: c.searchIntent || '' })">↻</button>
           <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-cluster-${esc(c.id)}','${esc(c.name)} cluster','keywords')">📝</button>
         </span>
       </div>
@@ -1561,8 +1574,8 @@ async function editCommittedClusterIntent(clusterId, value) {
     renderKeywordsAndIdeas();
   } catch (e) { alert('Save failed: ' + e.message); }
 }
-async function regenCluster(clusterId, guidance, omit) {
-  const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined });
+async function regenCluster(clusterId, guidance, omit, searchIntent) {
+  const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
   SEO_CLUSTERS.staged = r.staged || [];
   SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed;
   renderKeywordsAndIdeas();
@@ -1602,12 +1615,23 @@ function mergeOmit(base, added) {
   return out.join(', ');
 }
 let REGEN_MODAL_CTX = null;
-function openRegenModal(title, subtitle, onRun) {
+// intentOpts: { current, label } — pass to show the Search Intent row (SEO
+// cluster gen/regen only); omit entirely for every other regen use site-wide.
+function openRegenModal(title, subtitle, onRun, intentOpts) {
   REGEN_MODAL_CTX = { onRun };
   document.getElementById('regenModalTitle').textContent = title;
   document.getElementById('regenModalSubtitle').textContent = subtitle || '';
   document.getElementById('regenModalSteer').value = '';
   document.getElementById('regenModalOmit').value = GLOBAL_OMIT;
+  const intentRow = document.getElementById('regenModalIntentRow');
+  if (intentOpts) {
+    intentRow.style.display = '';
+    document.getElementById('regenModalIntentLabel').textContent = intentOpts.label || 'Search Intent (optional)';
+    document.getElementById('regenModalIntent').value = intentOpts.current || '';
+  } else {
+    intentRow.style.display = 'none';
+    document.getElementById('regenModalIntent').value = '';
+  }
   document.getElementById('regenModal').classList.add('open');
 }
 function closeRegenModal() {
@@ -1618,10 +1642,12 @@ async function runRegenModalConfirm() {
   if (!REGEN_MODAL_CTX) return;
   const steer = (document.getElementById('regenModalSteer').value || '').trim();
   const omit = (document.getElementById('regenModalOmit').value || '').trim();
+  const intentShown = document.getElementById('regenModalIntentRow').style.display !== 'none';
+  const searchIntent = intentShown ? (document.getElementById('regenModalIntent').value || '') : undefined;
   const btn = document.getElementById('regenModalRunBtn');
   const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
   try {
-    await REGEN_MODAL_CTX.onRun(steer, omit);
+    await REGEN_MODAL_CTX.onRun(steer, omit, searchIntent);
     if (omit && omit !== GLOBAL_OMIT) {
       GLOBAL_OMIT = mergeOmit(GLOBAL_OMIT, omit);
       w('saveOmitList', { researchId: RESEARCH_ID, omit: GLOBAL_OMIT }).catch(() => {});
@@ -1635,6 +1661,8 @@ async function runRegenModalConfirm() {
 }
 function openClusterGenModal() {
   document.getElementById('newClusterInput').value = '';
+  document.getElementById('newClusterGuidance').value = '';
+  document.getElementById('newClusterOmit').value = GLOBAL_OMIT;
   document.getElementById('newClusterIntent').value = '';
   document.getElementById('clusterGenModal').classList.add('open');
 }
@@ -1643,22 +1671,27 @@ async function runGenerateSingleCluster() {
   const btn = document.getElementById('newClusterBtn');
   const input = document.getElementById('newClusterInput');
   const pastedKeywords = (input.value || '').trim();
+  const guidance = (document.getElementById('newClusterGuidance').value || '').trim();
+  const omit = (document.getElementById('newClusterOmit').value || '').trim();
   const searchIntent = document.getElementById('newClusterIntent').value || undefined;
   if (!pastedKeywords) { alert('Enter a topic or keywords to build the new cluster around first.'); return; }
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'building…';
   try {
-    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords, searchIntent });
+    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent });
     SEO_CLUSTERS.staged = r.staged || [];
+    if (omit && omit !== GLOBAL_OMIT) {
+      GLOBAL_OMIT = mergeOmit(GLOBAL_OMIT, omit);
+      w('saveOmitList', { researchId: RESEARCH_ID, omit: GLOBAL_OMIT }).catch(() => {});
+    }
     closeClusterGenModal();
     renderKeywordsAndIdeas();
   } catch (e) { alert('Generate failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
-async function runGenerateClusters(btn) {
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'grouping…';
-  try { const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID }); SEO_CLUSTERS.staged = r.staged || []; renderKeywordsAndIdeas(); }
-  catch (e) { alert('Generate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runGenerateClusters(guidance, omit, searchIntent) {
+  const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
+  SEO_CLUSTERS.staged = r.staged || [];
+  renderKeywordsAndIdeas();
 }
 // Cluster idea actions work against a staged cluster (KV) OR a committed
 // one (real 🔑 Keyword Clusters row) — generateClusterProductStacks and

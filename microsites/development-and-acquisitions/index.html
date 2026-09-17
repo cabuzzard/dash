@@ -309,7 +309,7 @@ select.modal-ta { height: 32px !important; min-height: 0 !important; padding: 0 
           <span style="margin-left:auto;display:flex;gap:6px;">
             <button onclick="event.stopPropagation();openModal('keywords')" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">✎ edit</button>
             <button id="kwRegenBtn" onclick="event.stopPropagation();runRegenKeywords()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">⟳ regen</button>
-            <button id="seoClusterGenBtn" onclick="event.stopPropagation();runGenerateSeoClusters()" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate clusters</button>
+            <button id="seoClusterGenBtn" onclick="event.stopPropagation();openClusterActionModal('Generate Clusters — batch', 'Groups Main Keywords into new thematic clusters, alongside whatever already exists.', '', (guidance, omit, intent) => runGenerateSeoClusters(guidance, omit, intent))" style="font-size:10px;padding:2px 8px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;white-space:nowrap;font-family:inherit;">↻ generate clusters</button>
             <button onclick="event.stopPropagation();openGenClusterModal()" title="Paste a keyword group and merge it with the main SEO strategy to create one new focused cluster" style="font-size:10px;padding:2px 8px;border:1px solid #8ab4f8;background:transparent;color:#8ab4f8;cursor:pointer;white-space:nowrap;font-family:inherit;">+ generate cluster</button>
           </span>
         </div>
@@ -2543,7 +2543,7 @@ function renderSeoClusters() {
     const key = 'c:' + c.id;
     const kwCount = (c.keywords || '').split(',').map(s => s.trim()).filter(Boolean).length;
     const hdr = kwGroupHeader(key, '#a78bfa', c.name + ' Stack', kwCount, 0, `archiveSeoCluster('${esc(c.id)}')`, intentBadge(c.searchIntent));
-    const inner = hdr.collapsed ? '' : `<div style="font-size:10px;color:#ccc;margin-bottom:3px;">${esc(c.keywords)}</div>${c.rationale ? `<div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>` : ''}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><a href="${esc(c.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:10px;color:#8ab4f8;text-decoration:none;">open in Notion ↗</a><button onclick="event.stopPropagation();regenSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button>${intentSelect(c.id, c.searchIntent || '', 'editCommittedClusterIntent')}</div>`;
+    const inner = hdr.collapsed ? '' : `<div style="font-size:10px;color:#ccc;margin-bottom:3px;">${esc(c.keywords)}</div>${c.rationale ? `<div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>` : ''}<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><a href="${esc(c.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation();" style="font-size:10px;color:#8ab4f8;text-decoration:none;">open in Notion ↗</a><button onclick="event.stopPropagation();openClusterActionModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', '${esc(c.searchIntent || '')}', (guidance, omit, intent) => regenSeoCluster('${esc(c.id)}', guidance, omit, intent))" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button>${intentSelect(c.id, c.searchIntent || '', 'editCommittedClusterIntent')}</div>`;
     html += `<div style="border-left:2px solid #a78bfa;padding-left:8px;margin-bottom:10px;">${hdr.html}${inner}</div>`;
   });
   staged.forEach(c => {
@@ -2555,7 +2555,7 @@ function renderSeoClusters() {
       <textarea onclick="event.stopPropagation();" onchange="editStagedSeoCluster('${esc(c.id)}','keywords',this.value)" rows="2" style="width:100%;box-sizing:border-box;font-size:10px;color:#ccc;background:#1a1a1a;border:1px solid #444;border-radius:4px;padding:4px;resize:vertical;margin-bottom:5px;">${esc(c.keywords)}</textarea>
       <div style="font-size:9.5px;color:#999;font-style:italic;margin-bottom:5px;">${esc(c.rationale)}</div>
       <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-        <button onclick="event.stopPropagation();regenSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button>
+        <button onclick="event.stopPropagation();openClusterActionModal('Regenerate Cluster — ${esc(c.name)}', 'Reworks just this cluster from the Main Keywords pool.', '${esc(c.searchIntent || '')}', (guidance, omit, intent) => regenSeoCluster('${esc(c.id)}', guidance, omit, intent))" style="font-size:10px;padding:2px 9px;border:1px solid #5f5f5f;background:transparent;color:#fff;cursor:pointer;">↻ regen</button>
         <button onclick="event.stopPropagation();commitSeoCluster('${esc(c.id)}', this)" style="font-size:10px;padding:2px 9px;border:1px solid #68d391;background:transparent;color:#68d391;font-weight:600;cursor:pointer;">💾 commit</button>
         ${intentSelect(c.id, c.searchIntent || '', 'editStagedClusterIntent')}
       </div>`;
@@ -2601,15 +2601,10 @@ function renderClusterIdeas() {
   });
   el.innerHTML = html;
 }
-async function runGenerateSeoClusters() {
-  const btn = document.getElementById('seoClusterGenBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'grouping…';
-  try {
-    const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID });
-    SEO_CLUSTERS.staged = r.staged || [];
-    renderSeoClusters(); renderClusterIdeas();
-  } catch (e) { alert('Generate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function runGenerateSeoClusters(guidance, omit, searchIntent) {
+  const r = await w('generateKeywordClusters', { campaignId: CAMPAIGN_ID, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
+  SEO_CLUSTERS.staged = r.staged || [];
+  renderSeoClusters(); renderClusterIdeas();
 }
 async function editStagedSeoCluster(clusterId, field, value) {
   try {
@@ -2630,15 +2625,11 @@ async function editCommittedClusterIntent(clusterId, value) {
     renderSeoClusters();
   } catch (e) { alert('Save failed: ' + e.message); }
 }
-async function regenSeoCluster(clusterId, btn) {
-  const o = btn.textContent; btn.disabled = true; btn.textContent = '…';
-  try {
-    const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId });
-    SEO_CLUSTERS.staged = r.staged || [];
-    SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed;
-    renderSeoClusters(); renderClusterIdeas();
-  } catch (e) { alert('Regenerate failed: ' + e.message); }
-  btn.disabled = false; btn.textContent = o;
+async function regenSeoCluster(clusterId, guidance, omit, searchIntent) {
+  const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
+  SEO_CLUSTERS.staged = r.staged || [];
+  SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed;
+  renderSeoClusters(); renderClusterIdeas();
 }
 async function commitSeoCluster(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
@@ -11537,6 +11528,8 @@ async function runRegenKeywords() {
       <textarea class="modal-ta" id="genClusterKwInput" rows="5" style="resize:vertical;min-height:100px!important;" placeholder="paste keywords, comma or line separated…"></textarea>
       <label class="lm-label" for="genClusterGuidance" style="margin-top:10px;">Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
       <input class="modal-ta" id="genClusterGuidance" type="text" style="height:36px;padding:7px 10px;" placeholder="e.g. lean into the beginner angle" />
+      <label class="lm-label" for="genClusterOmit" style="margin-top:10px;">Omit — negative keywords <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <textarea class="modal-ta" id="genClusterOmit" rows="2" style="resize:vertical;min-height:44px!important;" placeholder="Comma-separated terms or topics to exclude…"></textarea>
       <label class="lm-label" for="genClusterIntent" style="margin-top:10px;">Search Intent <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional, else Claude classifies it</span></label>
       <select id="genClusterIntent" class="modal-ta" style="height:36px;padding:7px 10px;">
         <option value="">Let Claude classify</option>
@@ -11552,10 +11545,81 @@ async function runRegenKeywords() {
     </div>
   </div>
 </div>
+<!-- CLUSTER ACTION MODAL — shared by the bulk "↻ generate clusters" button
+     and every per-cluster "↻ regen": same three fields (Guidance / Omit /
+     Search Intent) as the Generate Cluster modal above, generic over
+     whichever cluster action opened it via CLUSTER_ACTION_CTX.onRun. -->
+<div class="modal-overlay" id="clusterActionModal" onclick="if(event.target===this)closeClusterActionModal()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <div class="modal-title" id="clusterActionTitle">Generate Clusters</div>
+      <button class="modal-close" onclick="closeClusterActionModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-hint" id="clusterActionHint"></div>
+      <label class="lm-label" for="clusterActionGuidance" style="margin-top:12px;">Guidance <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <input class="modal-ta" id="clusterActionGuidance" type="text" style="height:36px;padding:7px 10px;" placeholder="Add direction…" />
+      <label class="lm-label" for="clusterActionOmit" style="margin-top:10px;">Omit — negative keywords <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional</span></label>
+      <textarea class="modal-ta" id="clusterActionOmit" rows="2" style="resize:vertical;min-height:44px!important;" placeholder="Comma-separated terms or topics to exclude…"></textarea>
+      <label class="lm-label" for="clusterActionIntent" id="clusterActionIntentLabel" style="margin-top:10px;">Search Intent <span style="color:#fff;font-weight:400;text-transform:none;letter-spacing:0;font-size:10px;">— optional, else Claude classifies it</span></label>
+      <select id="clusterActionIntent" class="modal-ta" style="height:36px;padding:7px 10px;">
+        <option value="">Let Claude classify</option>
+        <option value="informational">Informational</option>
+        <option value="buyer">Buyer</option>
+        <option value="transactional">Transactional</option>
+      </select>
+      <div id="clusterActionStatus" style="font-size:12px;color:#fff;margin-top:10px;min-height:18px;"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="modal-btn cancel" onclick="closeClusterActionModal()">Cancel</button>
+      <button class="modal-btn save" id="clusterActionGoBtn" onclick="runClusterActionModal()">Run</button>
+    </div>
+  </div>
+</div>
 <script>
+let CLUSTER_ACTION_CTX = null;
+function openClusterActionModal(title, hint, currentIntent, onRun) {
+  CLUSTER_ACTION_CTX = { onRun };
+  document.getElementById('clusterActionTitle').textContent = title;
+  document.getElementById('clusterActionHint').textContent = hint || '';
+  document.getElementById('clusterActionGuidance').value = '';
+  document.getElementById('clusterActionOmit').value = '';
+  document.getElementById('clusterActionIntent').value = currentIntent || '';
+  document.getElementById('clusterActionStatus').textContent = '';
+  document.getElementById('clusterActionGoBtn').disabled = false;
+  document.getElementById('clusterActionGoBtn').textContent = 'Run';
+  document.getElementById('clusterActionModal').classList.add('open');
+}
+function closeClusterActionModal() {
+  document.getElementById('clusterActionModal').classList.remove('open');
+  CLUSTER_ACTION_CTX = null;
+}
+async function runClusterActionModal() {
+  if (!CLUSTER_ACTION_CTX) return;
+  const guidance = document.getElementById('clusterActionGuidance').value.trim();
+  const omit = document.getElementById('clusterActionOmit').value.trim();
+  const searchIntent = document.getElementById('clusterActionIntent').value || undefined;
+  const btn = document.getElementById('clusterActionGoBtn');
+  const status = document.getElementById('clusterActionStatus');
+  btn.disabled = true; btn.textContent = 'Running…';
+  status.style.color = '#888';
+  status.textContent = 'Working…';
+  try {
+    await CLUSTER_ACTION_CTX.onRun(guidance, omit, searchIntent);
+    status.textContent = '✓ Done';
+    status.style.color = '#68d391';
+    btn.textContent = 'Done';
+    setTimeout(closeClusterActionModal, 900);
+  } catch (e) {
+    status.textContent = 'Error: ' + e.message;
+    status.style.color = '#fc8181';
+    btn.disabled = false; btn.textContent = 'Run';
+  }
+}
 function openGenClusterModal() {
   document.getElementById('genClusterKwInput').value = '';
   document.getElementById('genClusterGuidance').value = '';
+  document.getElementById('genClusterOmit').value = '';
   document.getElementById('genClusterIntent').value = '';
   document.getElementById('genClusterStatus').textContent = '';
   document.getElementById('genClusterGoBtn').disabled = false;
@@ -11568,6 +11632,7 @@ function closeGenClusterModal() {
 async function runGenerateSingleCluster() {
   const pastedKeywords = document.getElementById('genClusterKwInput').value.trim();
   const guidance = document.getElementById('genClusterGuidance').value.trim();
+  const omit = document.getElementById('genClusterOmit').value.trim();
   const searchIntent = document.getElementById('genClusterIntent').value || undefined;
   if (!pastedKeywords) return;
   const btn = document.getElementById('genClusterGoBtn');
@@ -11576,7 +11641,7 @@ async function runGenerateSingleCluster() {
   status.style.color = '#888';
   status.textContent = 'Merging with the main SEO strategy…';
   try {
-    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords, guidance: guidance || undefined, searchIntent });
+    const r = await w('generateSingleKeywordCluster', { campaignId: CAMPAIGN_ID, pastedKeywords, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent });
     if (r.error) throw new Error(r.error);
     SEO_CLUSTERS.staged = r.staged || SEO_CLUSTERS.staged;
     renderSeoClusters(); renderClusterIdeas();

@@ -25491,8 +25491,9 @@ Call submit_seo_audit with your findings.`;
       // clusters are passed as fixed/covered context so the new batch only
       // fills in what's genuinely left uncovered rather than duplicating.
       if (body.action === "generateKeywordClusters") {
-        const { campaignId, guidance } = body;
+        const { campaignId, guidance, omitKeywords, searchIntent: forceIntentInput } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const forcedIntent = SEARCH_INTENT_LABELS[forceIntentInput] ? forceIntentInput : null;
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
         const [researchRows, productRows, committedRows] = await Promise.all([
@@ -25518,10 +25519,10 @@ Call submit_seo_audit with your findings.`;
 CAMPAIGN KEYWORDS (the raw pool to organize — every keyword should end up in exactly one cluster, none invented, none dropped unless truly off-topic):
 ${keywords}
 
-${existingClusters.length ? `ALREADY-COVERED CLUSTERS (committed or already staged — don't recreate these; build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+${existingClusters.length ? `ALREADY-COVERED CLUSTERS (committed or already staged — don't recreate these; build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${omitBlock(omitKeywords)}
 For each cluster, give: a name that is its single top/most representative keyword from the pool, EXACTLY as that keyword appears there (not an invented phrase, not a paraphrase — pick the one keyword that best represents the whole cluster); the exact keywords from the pool that belong to it (including that top keyword); a one-sentence rationale for why they group together; and its dominant search intent. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
 
-SEARCH INTENT (classify each cluster as exactly one of these — pick whichever dominates that cluster's keywords):
+SEARCH INTENT: ${forcedIntent ? `the operator wants ONLY ${SEARCH_INTENT_LABELS[forcedIntent].toUpperCase()}-intent clusters this round — every cluster you propose must genuinely fit that intent; skip topics from the pool that don't.` : `classify each cluster as exactly one of the three below — pick whichever dominates that cluster's keywords.`}
 ${SEARCH_INTENT_DEFINITIONS}
 
 Call submit_keyword_clusters with your result.`;
@@ -25564,8 +25565,8 @@ Call submit_keyword_clusters with your result.`;
 
         const fresh = toolUse.input.clusters.map(c => ({
           id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-          name: String(c.name || "").slice(0, 100), keywords: String(c.keywords || "").slice(0, 1900), rationale: String(c.rationale || "").slice(0, 500),
-          searchIntent: SEARCH_INTENT_LABELS[c.searchIntent] ? c.searchIntent : "",
+          name: String(c.name || "").slice(0, 100), keywords: applyKwOmit(String(c.keywords || "").slice(0, 1900), omitKeywords), rationale: String(c.rationale || "").slice(0, 500),
+          searchIntent: forcedIntent || (SEARCH_INTENT_LABELS[c.searchIntent] ? c.searchIntent : ""),
         }));
         staged = staged.concat(fresh);
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
@@ -25582,7 +25583,7 @@ Call submit_keyword_clusters with your result.`;
       // Keywords pool — that's the point, it's how an operator injects a
       // specific focus area the auto-generated split didn't cover.
       if (body.action === "generateSingleKeywordCluster") {
-        const { campaignId, pastedKeywords, guidance, searchIntent } = body;
+        const { campaignId, pastedKeywords, guidance, omitKeywords, searchIntent } = body;
         if (!campaignId || !pastedKeywords) return json({ error: "campaignId and pastedKeywords required" }, 400);
         const forcedIntent = SEARCH_INTENT_LABELS[searchIntent] ? searchIntent : null;
         const norm = s => String(s || "").replace(/-/g, "");
@@ -25612,7 +25613,7 @@ ${pastedKeywords}
 MAIN KEYWORDS (the campaign's overall keyword pool — pull in directly-relevant ones from here too if they reinforce this focus, for consistency with the rest of the SEO strategy):
 ${mainKeywords || "(none on file)"}
 
-${otherFixed.length ? `OTHER CLUSTERS (fixed — already claimed; don't reuse their keywords, and don't just recreate one of these):\n${otherFixed.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}
+${otherFixed.length ? `OTHER CLUSTERS (fixed — already claimed; don't reuse their keywords, and don't just recreate one of these):\n${otherFixed.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${omitBlock(omitKeywords)}
 Give: a name that is this cluster's single top/most representative keyword (prefer one from the pasted group since that's the operator's stated focus); the merged keyword set (the pasted group plus any directly-relevant Main Keywords, deduplicated, minus anything already claimed by another cluster); a one-sentence rationale for why they group together as this specific focus; and its search intent.
 
 SEARCH INTENT: ${forcedIntent ? `the operator has fixed this cluster's intent as ${SEARCH_INTENT_LABELS[forcedIntent].toUpperCase()} — favor keywords/phrasing that fit that intent (see definitions below) rather than whatever the raw pasted group happens to skew toward.` : `classify this cluster as exactly one of the three below, whichever dominates the keyword set you produce.`}
@@ -25650,7 +25651,7 @@ Call submit_keyword_cluster with your result.`;
         const newCluster = {
           id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
           name: String(toolUse.input.name || "").slice(0, 100),
-          keywords: String(toolUse.input.keywords || "").slice(0, 1900),
+          keywords: applyKwOmit(String(toolUse.input.keywords || "").slice(0, 1900), omitKeywords),
           rationale: String(toolUse.input.rationale || "").slice(0, 500),
           searchIntent: forcedIntent || (SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : ""),
         };
@@ -25726,8 +25727,9 @@ Call submit_keyword_cluster with your result.`;
       // and passed to Claude as already-spoken-for; this one can also reach
       // into any still-unclaimed keywords from the Main Keywords pool.
       if (body.action === "regenerateKeywordCluster") {
-        const { campaignId, clusterId, guidance, omitKeywords } = body;
+        const { campaignId, clusterId, guidance, omitKeywords, searchIntent: forceIntentInput } = body;
         if (!campaignId || !clusterId) return json({ error: "campaignId and clusterId required" }, 400);
+        const forcedIntent = SEARCH_INTENT_LABELS[forceIntentInput] ? forceIntentInput : null;
         const norm = s => String(s || "").replace(/-/g, "");
         const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
@@ -25773,9 +25775,9 @@ CLUSTER TO REGENERATE (current version — improve it, or rework it):
 - Search Intent: ${target.searchIntent ? SEARCH_INTENT_LABELS[target.searchIntent] : "(none set)"}
 
 ${guidance ? `OPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${omitBlock(omitKeywords)}
-You may pull in currently-unclaimed keywords from the pool if it makes this cluster tighter or more complete. Give: a name that is this cluster's single top/most representative keyword, EXACTLY as it appears in the pool (not an invented phrase); the exact keywords (from the pool) that belong, including that top keyword; a one-sentence rationale; and its dominant search intent (keep the current one unless the rework changes what stage/audience these keywords actually serve).
+You may pull in currently-unclaimed keywords from the pool if it makes this cluster tighter or more complete. Give: a name that is this cluster's single top/most representative keyword, EXACTLY as it appears in the pool (not an invented phrase); the exact keywords (from the pool) that belong, including that top keyword; a one-sentence rationale; and its dominant search intent.
 
-SEARCH INTENT (classify as exactly one of these — pick whichever dominates):
+SEARCH INTENT: ${forcedIntent ? `the operator has fixed this cluster's intent as ${SEARCH_INTENT_LABELS[forcedIntent].toUpperCase()} — favor keywords/phrasing that fit that intent rather than whatever the rework happens to skew toward.` : `keep the current one (${target.searchIntent ? SEARCH_INTENT_LABELS[target.searchIntent] : "none set"}) unless the rework genuinely changes what stage/audience these keywords serve — classify as exactly one of the three below.`}
 ${SEARCH_INTENT_DEFINITIONS}
 
 Call submit_keyword_cluster with your result.`;
@@ -25809,7 +25811,7 @@ Call submit_keyword_cluster with your result.`;
         const name = String(toolUse.input.name || "").slice(0, 100);
         const newKeywords = applyKwOmit(String(toolUse.input.keywords || "").slice(0, 1900), omitKeywords);
         const rationale = String(toolUse.input.rationale || "").slice(0, 500);
-        const searchIntent = SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : "";
+        const searchIntent = forcedIntent || (SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : "");
 
         if (isStaged) {
           staged[stagedIdx] = { id: clusterId, name, keywords: newKeywords, rationale, searchIntent };
