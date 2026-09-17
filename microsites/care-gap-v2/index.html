@@ -3309,7 +3309,7 @@ function renderTitleRow(t) {
   return `<div class="idea-card"><div class="idea-row"><input type="checkbox" class="title-select-cb" data-id="${esc(t.id)}" onclick="event.stopPropagation();toggleTitleSelect('${esc(t.id)}',this.checked)" style="margin-right:2px;flex-shrink:0;"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
-      ${t.stage !== 'Planning' ? `<button class="iconbtn" title="Rewrite this title's Pillar Content — different style/angle, optional new title, keywords to add or avoid. Works on Published titles too — pair with a blog asset's own 🔄 Push from Pillar to update the live page." onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}')">🔄</button>` : ''}
+      ${t.stage !== 'Planning' ? `<button class="iconbtn" title="${t.hasPillar ? 'Rewrite' : 'Write'} this title's Pillar Content — optional style/angle, new title, or keywords to add/avoid; leave everything blank to just ${t.hasPillar ? 're' : ''}write it with default research grounding. Works on Published titles too — pair with a blog asset's own 🔄 Push from Pillar to update the live page." onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}',${t.hasPillar ? 'true' : 'false'})">${t.hasPillar ? '🔄' : '✍️'}</button>` : ''}
       <button class="iconbtn" title="Change which product this title is attached to" onclick="openChangeProductModal('${esc(t.id)}','${esc(t.title).replace(/'/g,"\\'")}','${esc(t.productId || '')}')">🔀</button>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
@@ -3336,14 +3336,21 @@ async function deleteTitleRow(id, title) {
     loadTitleAndAssetTab();
   } catch (e) { alert('Delete failed: ' + e.message); }
 }
-// ── Rewrite Pillar (Development-stage titles) — reuses writeTitlePillar/
-// writePillarContent server-side (the same mechanism a Planning-stage
-// "Write Pillar" would use), which already replaces the existing Pillar
-// Content section rather than appending a second one. A Development title
-// keeps its stage untouched (only Planning ever promotes on this call).
-let RP_TITLE_ID = null;
-function openRewritePillarModal(titleId, title) {
+// ── Write / Rewrite Pillar (any non-Planning title) — reuses
+// writeTitlePillar/writePillarContent server-side (the same mechanism a
+// Planning-stage "Write Pillar" would use), which already replaces the
+// existing Pillar Content section rather than appending a second one. A
+// title's stage is untouched by this (only Planning ever promotes on this
+// call). Doubles as the FIRST write for a title that has none yet — e.g.
+// one made via + Add Title, which only ever saves the bare title record,
+// no pillar — not just a rewrite of an existing one; every field here is
+// optional either way, blank submits just (re)write it with plain default
+// research grounding, no forced steer.
+let RP_TITLE_ID = null, RP_HAS_PILLAR = false;
+function openRewritePillarModal(titleId, title, hasPillar) {
   RP_TITLE_ID = titleId;
+  RP_HAS_PILLAR = !!hasPillar;
+  document.getElementById('rewritePillarModal').querySelector('.mtitle').textContent = RP_HAS_PILLAR ? 'Rewrite Pillar' : 'Write Pillar';
   document.getElementById('rpTitleLabel').textContent = title;
   document.getElementById('rpGuidance').value = '';
   document.getElementById('rpNewTitle').value = '';
@@ -3353,7 +3360,9 @@ function openRewritePillarModal(titleId, title) {
   document.getElementById('rpNewTitle').placeholder = title || 'New title for this piece';
   document.getElementById('rpAddKeywords').value = '';
   document.getElementById('rpOmitKeywords').value = '';
-  document.getElementById('rpResult').textContent = '';
+  document.getElementById('rpResult').textContent = RP_HAS_PILLAR ? '' : 'No pillar yet — leave everything blank to write one with default research grounding, or steer it below.';
+  document.getElementById('rpResult').style.color = 'var(--ink3)';
+  document.getElementById('rpRunBtn').textContent = RP_HAS_PILLAR ? '🔄 Rewrite' : '✍️ Write';
   document.getElementById('rewritePillarModal').classList.add('open');
 }
 function closeRewritePillarModal() { document.getElementById('rewritePillarModal').classList.remove('open'); RP_TITLE_ID = null; }
@@ -3365,10 +3374,9 @@ async function runRewritePillar() {
   const newTitle = document.getElementById('rpNewTitle').value.trim();
   const addKeywords = document.getElementById('rpAddKeywords').value.trim();
   const omitKeywords = document.getElementById('rpOmitKeywords').value.trim();
-  if (!guidance && !newTitle && !addKeywords && !omitKeywords) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Give it at least a guidance note, a new title, or keywords to work with.'; return; }
   const titleId = RP_TITLE_ID;
   btn.disabled = true;
-  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Rewriting…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = RP_HAS_PILLAR ? 'Rewriting…' : 'Writing…';
   try {
     await w('writeTitlePillar', {
       titleId,
@@ -3377,7 +3385,7 @@ async function runRewritePillar() {
       addKeywords: addKeywords || undefined,
       omitKeywords: omitKeywords || undefined,
     });
-    resEl.style.color = 'var(--fresh)'; resEl.textContent = '✓ Rewritten.';
+    resEl.style.color = 'var(--fresh)'; resEl.textContent = RP_HAS_PILLAR ? '✓ Rewritten.' : '✓ Written.';
     closeRewritePillarModal();
     loadTitleAndAssetTab();
   } catch (e) {
