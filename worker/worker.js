@@ -7849,6 +7849,306 @@ If nothing is genuinely worth adding, return {"suggestions": []} — do not forc
   return { suggestions };
 }
 
+// Extracted from the generateQaContent action so it can run inside
+// ctx.waitUntil as a background job (see the getQaJobStatus polling
+// pattern) instead of blocking the response — a full sales page/story
+// (Claude call + title/asset create + block writes + a live publish) can
+// take longer than Cloudflare's edge timeout. Returns a plain result
+// object on success; throws on any failure (the caller writes that into
+// the job record, there's no HTTP response to shape here).
+async function runGenerateQaContent(env, { methodKey, productId, idea, answers, existingTitleId, campaignId }) {
+  const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+
+  const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+  if (!prodPage?.properties) throw new Error("Product not found");
+  const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
+  if (!campaignId) campaignId = (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+  if (!campaignId) throw new Error("This product has no Campaign linked — campaignId required");
+  const [campPage, prodResearch] = await Promise.all([
+    fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+    findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
+  ]);
+  const campaignName = (campPage?.properties?.Name?.title || campPage?.properties?.["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
+  const productKeywords = rtp(prodPage.properties, "Keywords");
+  let researchBlock = "";
+  if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
+  const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
+
+  const methodName = QA_METHOD_NAMES[methodKey];
+  const isSales = methodKey === "sales";
+  const styleInstructions = isSales
+    ? `Write this as a real, persuasive SALES PAGE for "${productName}" — not an article. Structure: a strong headline/hook opening (as "intro"), then EXACTLY 3-4 sections that build the case (pick from: the problem/pain, the transformation/what they get, proof/credibility, addressing the top objection), and a closing paragraph ("conclusion") that makes the direct ask/CTA explicit. Write in second person ("you"), direct and concrete, no vague marketing fluff — ground every claim in the PRODUCT RESEARCH and ANSWERS below, never invent a stat, price, or guarantee that isn't in that material.`
+    : `Write this as a genuine FIRST-PERSON personal-experience story related to "${productName}" — real narrative voice ("I"), grounded specifically in the ANSWERS below (they contain the actual anecdote — use its real details, don't generalize them away). Structure: a hook opening (as "intro"), EXACTLY 3 sections that move the story forward (setup/struggle → turning point → outcome/lesson), and a closing paragraph ("conclusion") that ties the story back to ${productName} naturally, working in these keywords where they fit without forcing them: ${productKeywords || "(none on file)"}.`;
+
+  const prompt = `${styleInstructions}
+
+IDEA THIS WAS SEEDED FROM: ${idea}
+
+PRODUCT RESEARCH:
+${researchBlock || "(none on file)"}
+
+ANSWERS TO THE CLARIFYING QUESTIONS (the real material — use it, don't ignore it):
+${answersBlock || "(none given)"}
+
+CAMPAIGN: ${campaignName}
+
+Also write "seoTitle": the actual headline this page should publish under.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... ], "conclusion": "...", "seoTitle": "..." }`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  let post;
+  try {
+    const raw = aiData.content?.[0]?.text || "";
+    const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error("No JSON object found");
+    post = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+  } catch (e) { throw new Error("Failed to parse content JSON: " + e.message); }
+  const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
+  if (!sections.length) throw new Error("No sections generated — try again");
+
+  const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
+
+  // Called from the Generate Assets modal (an existing title is
+  // already open) — attach to it instead of creating a second one.
+  // Called standalone (no titleId) — create a fresh title from the
+  // idea, same as every other from-scratch QA entry point.
+  let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
+  if (!titleId) {
+    const titleProps = {
+      "Title": { title: [{ text: { content: String(idea).slice(0, 200) } }] },
+      "Status": { select: { name: "Development" } },
+      "Grouping": { rich_text: [{ text: { content: methodName } }] },
+      "Campaign": { relation: [{ id: dash(campaignId) }] },
+      "product": { relation: [{ id: dash(productId) }] },
+    };
+    if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
+    const titleResp = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+    });
+    const titlePage = await titleResp.json();
+    if (!titleResp.ok || !titlePage.id) throw new Error(titlePage.message || "Failed to create title");
+    titleId = titlePage.id.replace(/-/g, "");
+  }
+
+  const assetProps = {
+    "Asset Title":  { title: [{ text: { content: String(idea).slice(0, 200) } }] },
+    "Asset Status": { select: { name: "Publish" } },
+    "Asset Type":   { select: { name: methodName } },
+    "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
+    "Content Strategy": { relation: [{ id: dash(titleId) }] },
+    "Campaign": { relation: [{ id: dash(campaignId) }] },
+    "Product": { relation: [{ id: dash(productId) }] },
+  };
+  if (post.seoTitle) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(post.seoTitle).slice(0, 200) } }] };
+  Object.assign(assetProps, await assetMethodProp(methodId, methodName));
+  const assetResp = await fetch("https://api.notion.com/v1/pages", {
+    method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
+  });
+  const assetResult = await assetResp.json();
+  if (!assetResp.ok || !assetResult.id) throw new Error(assetResult.message || "Failed to create asset");
+  const assetId = assetResult.id.replace(/-/g, "");
+
+  const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
+  const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
+  const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+  const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
+    const t = p.trim(); if (!t) return [];
+    const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
+    return out;
+  });
+  const children = [];
+  if (post.intro) children.push(...paras(post.intro));
+  sections.forEach(s => { children.push(heading2(s.heading)); children.push(...paras(s.body)); });
+  if (post.conclusion) children.push(...paras(post.conclusion));
+  for (let i = 0; i < children.length; i += 100) {
+    const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
+      method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ children: children.slice(i, i + 100) }),
+    });
+    if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); throw new Error(r.message || "Asset created but failed to write content"); }
+  }
+
+  let siteResult = { published: false };
+  try {
+    siteResult = await publishSeoPostToLiveSite({
+      env, hdr, dash, campaignId, spec: null,
+      seoTitle: post.seoTitle, workingTitle: idea,
+      intro: post.intro, sections, conclusion: post.conclusion, assetId,
+      sub: isSales ? "sales" : "blog",
+    });
+    if (siteResult.published && siteResult.liveUrl) {
+      await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
+      }).catch(() => {});
+    }
+  } catch (e) { siteResult = { published: false, error: e.message }; }
+
+  return {
+    success: true, titleId, assetId, sectionCount: sections.length,
+    sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
+  };
+}
+
+// Extracted from the generateQaProduct action for the same reason as
+// runGenerateQaContent above — runs inside ctx.waitUntil as a background
+// job. Returns a plain result object on success; throws on failure.
+async function runGenerateQaProduct(env, { productId, idea, productType, answers, existingTitleId, campaignId }) {
+  const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+
+  const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+  if (!prodPage?.properties) throw new Error("Product not found");
+  const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
+  if (!campaignId) campaignId = (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+  const prodResearch = await findBestProductResearchRecord(hdr, dash(productId)).catch(() => null);
+  let researchBlock = "";
+  if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
+  const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
+  // Not locked to the four built-in types — the operator can name
+  // anything from the "+ Create new…" option in the modal. For a
+  // custom type, let Claude use its own judgment on a sensible part
+  // breakdown instead of a hand-written shape description.
+  const spec = DIGITAL_PRODUCT_TYPES[productType] || {
+    label: String(productType).trim(),
+    shape: `a "${String(productType).trim()}": use your best judgment on the parts it needs for this specific format — typically at least one visual part (a cover or key graphic) plus one or more text parts covering its actual content`,
+  };
+
+  const prompt = `Plan and WRITE the actual content for ${spec.shape}, for the product "${productName}", seeded from this idea:
+
+IDEA: ${idea}
+
+PRODUCT RESEARCH:
+${researchBlock || "(none on file)"}
+
+ANSWERS TO CLARIFYING QUESTIONS (the real material — use it):
+${answersBlock || "(none given)"}
+
+For each part: "kind" is "text" (write the REAL, complete, ready-to-use content — not an outline or summary) or "visual" (this part becomes a real design file made separately in Canva — instead of content, write a design brief: what it should show, key text it should carry, the mood/style). Every text part should be substantial and genuinely usable as-is.
+
+Return ONLY this JSON object, no other text, no markdown fences:
+{ "title": "...", "description": "...", "parts": [ { "label": "...", "kind": "text"|"visual", "content": "..." }, ... ] }`;
+
+  const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
+  });
+  const aiData = await aiResp.json();
+  if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
+  let plan;
+  try {
+    const raw = aiData.content?.[0]?.text || "";
+    const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error("No JSON object found");
+    plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
+  } catch (e) { throw new Error("Failed to parse product plan JSON: " + e.message); }
+  const parts = (Array.isArray(plan.parts) ? plan.parts : []).filter(p => p && p.label && p.content);
+  if (!parts.length) throw new Error("No parts generated — try again");
+
+  const methodName = QA_METHOD_NAMES.product;
+  const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
+
+  // Called from the Generate Assets modal — attach to the title
+  // that's already open instead of creating a second one. Called
+  // standalone (no titleId) — create a fresh title from the idea.
+  let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
+  if (!titleId) {
+    const titleProps = {
+      "Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
+      "Status": { select: { name: "Development" } },
+      "Grouping": { rich_text: [{ text: { content: methodName } }] },
+      "product": { relation: [{ id: dash(productId) }] },
+    };
+    if (campaignId) titleProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+    if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
+    const titleResp = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+      body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
+    });
+    const titlePage = await titleResp.json();
+    if (!titleResp.ok || !titlePage.id) throw new Error(titlePage.message || "Failed to create title");
+    titleId = titlePage.id.replace(/-/g, "");
+  }
+
+  const parentProps = {
+    "Asset Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
+    "Asset Status": { select: { name: "Development" } },
+    "Asset Type": { select: { name: methodName } },
+    "Body": { rich_text: [{ text: { content: String(plan.description || "").slice(0, 2000) } }] },
+    "Content Strategy": { relation: [{ id: dash(titleId) }] },
+    "Product": { relation: [{ id: dash(productId) }] },
+  };
+  if (campaignId) parentProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+  Object.assign(parentProps, await assetMethodProp(methodId, methodName));
+  const parentResp = await fetch("https://api.notion.com/v1/pages", {
+    method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: parentProps }),
+  });
+  const parentResult = await parentResp.json();
+  if (!parentResp.ok || !parentResult.id) throw new Error(parentResult.message || "Failed to create parent asset");
+  const parentAssetId = parentResult.id.replace(/-/g, "");
+
+  const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
+  const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
+  const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
+    const t = p.trim(); if (!t) return [];
+    const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
+    return out;
+  });
+
+  // Parallel, not sequential — a 6-7 part ebook doing one Notion create +
+  // block-writes + a property patch PER PART, one at a time, was slow
+  // enough to matter even on top of the background-job change above.
+  // Every part is independent (its own new Asset page), so there's no
+  // ordering requirement forcing this to be sequential.
+  const components = await Promise.all(parts.map(async part => {
+    const isVisual = part.kind === "visual";
+    const extraProps = {
+      "Content Strategy": { relation: [{ id: dash(titleId) }] },
+      "Product": { relation: [{ id: dash(productId) }] },
+    };
+    if (campaignId) extraProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
+    if (methodId) extraProps["Method"] = { relation: [{ id: dash(methodId) }] };
+    if (isVisual) extraProps["Notes"] = { rich_text: [{ text: { content: ("DESIGN BRIEF (for Canva): " + String(part.content || "")).slice(0, 2000) } }] };
+    const result = await createAssetComponentPage(hdr, { parentAssetId, assetType: String(part.label).slice(0, 100), extraProps });
+    if (result.error) return { label: part.label, error: result.error };
+    if (!isVisual) {
+      const children = paras(part.content);
+      const writes = [];
+      for (let i = 0; i < children.length; i += 100) {
+        writes.push(fetch(`https://api.notion.com/v1/blocks/${dash(result.id)}/children`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ children: children.slice(i, i + 100) }),
+        }).catch(() => {}));
+      }
+      writes.push(fetch(`https://api.notion.com/v1/pages/${dash(result.id)}`, {
+        method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+        body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: String(part.content || "").slice(0, 2000) } }] } } }),
+      }).catch(() => {}));
+      await Promise.all(writes);
+    }
+    return { id: result.id, label: part.label, kind: part.kind };
+  }));
+
+  return {
+    success: true, titleId, parentAssetId, title: plan.title || idea,
+    components, awaitingCanva: components.filter(c => c.kind === "visual").length,
+  };
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -37893,149 +38193,31 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
         if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-
-        const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-        if (!prodPage?.properties) return json({ error: "Product not found" }, 404);
-        const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
-        if (!campaignId) campaignId = (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
-        if (!campaignId) return json({ error: "This product has no Campaign linked — campaignId required" }, 400);
-        const [campPage, prodResearch] = await Promise.all([
-          fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
-          findBestProductResearchRecord(hdr, dash(productId)).catch(() => null),
-        ]);
-        const campaignName = (campPage?.properties?.Name?.title || campPage?.properties?.["Campaign Name"]?.title || []).map(t => t.plain_text).join("") || "Campaign";
-        const productKeywords = rtp(prodPage.properties, "Keywords");
-        let researchBlock = "";
-        if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
-        const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
-
-        const methodName = QA_METHOD_NAMES[methodKey];
-        const isSales = methodKey === "sales";
-        const styleInstructions = isSales
-          ? `Write this as a real, persuasive SALES PAGE for "${productName}" — not an article. Structure: a strong headline/hook opening (as "intro"), then EXACTLY 3-4 sections that build the case (pick from: the problem/pain, the transformation/what they get, proof/credibility, addressing the top objection), and a closing paragraph ("conclusion") that makes the direct ask/CTA explicit. Write in second person ("you"), direct and concrete, no vague marketing fluff — ground every claim in the PRODUCT RESEARCH and ANSWERS below, never invent a stat, price, or guarantee that isn't in that material.`
-          : `Write this as a genuine FIRST-PERSON personal-experience story related to "${productName}" — real narrative voice ("I"), grounded specifically in the ANSWERS below (they contain the actual anecdote — use its real details, don't generalize them away). Structure: a hook opening (as "intro"), EXACTLY 3 sections that move the story forward (setup/struggle → turning point → outcome/lesson), and a closing paragraph ("conclusion") that ties the story back to ${productName} naturally, working in these keywords where they fit without forcing them: ${productKeywords || "(none on file)"}.`;
-
-        const prompt = `${styleInstructions}
-
-IDEA THIS WAS SEEDED FROM: ${idea}
-
-PRODUCT RESEARCH:
-${researchBlock || "(none on file)"}
-
-ANSWERS TO THE CLARIFYING QUESTIONS (the real material — use it, don't ignore it):
-${answersBlock || "(none given)"}
-
-CAMPAIGN: ${campaignName}
-
-Also write "seoTitle": the actual headline this page should publish under.
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "intro": "...", "sections": [ { "heading": "...", "body": "..." }, ... ], "conclusion": "...", "seoTitle": "..." }`;
-
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        let post;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-          if (start === -1 || end === -1) throw new Error("No JSON object found");
-          post = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-        } catch (e) { return json({ error: "Failed to parse content JSON: " + e.message }, 502); }
-        const sections = (Array.isArray(post.sections) ? post.sections : []).filter(s => s && s.heading);
-        if (!sections.length) return json({ error: "No sections generated — try again" }, 502);
-
-        const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
-
-        // Called from the Generate Assets modal (an existing title is
-        // already open) — attach to it instead of creating a second one.
-        // Called standalone (no titleId) — create a fresh title from the
-        // idea, same as every other from-scratch QA entry point.
-        let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
-        if (!titleId) {
-          const titleProps = {
-            "Title": { title: [{ text: { content: String(idea).slice(0, 200) } }] },
-            "Status": { select: { name: "Development" } },
-            "Grouping": { rich_text: [{ text: { content: methodName } }] },
-            "Campaign": { relation: [{ id: dash(campaignId) }] },
-            "product": { relation: [{ id: dash(productId) }] },
-          };
-          if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
-          const titleResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
-          });
-          const titlePage = await titleResp.json();
-          if (!titleResp.ok || !titlePage.id) return json({ error: titlePage.message || "Failed to create title" }, 502);
-          titleId = titlePage.id.replace(/-/g, "");
-        }
-
-        const assetProps = {
-          "Asset Title":  { title: [{ text: { content: String(idea).slice(0, 200) } }] },
-          "Asset Status": { select: { name: "Publish" } },
-          "Asset Type":   { select: { name: methodName } },
-          "Body":         { rich_text: [{ text: { content: String(post.intro || "").slice(0, 2000) } }] },
-          "Content Strategy": { relation: [{ id: dash(titleId) }] },
-          "Campaign": { relation: [{ id: dash(campaignId) }] },
-          "Product": { relation: [{ id: dash(productId) }] },
-        };
-        if (post.seoTitle) assetProps["Platform Title"] = { rich_text: [{ text: { content: String(post.seoTitle).slice(0, 200) } }] };
-        Object.assign(assetProps, await assetMethodProp(methodId, methodName));
-        const assetResp = await fetch("https://api.notion.com/v1/pages", {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: assetProps }),
-        });
-        const assetResult = await assetResp.json();
-        if (!assetResp.ok || !assetResult.id) return json({ error: assetResult.message || "Failed to create asset" }, 502);
-        const assetId = assetResult.id.replace(/-/g, "");
-
-        const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
-        const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
-        const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
-        const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
-          const t = p.trim(); if (!t) return [];
-          const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
-          return out;
-        });
-        const children = [];
-        if (post.intro) children.push(...paras(post.intro));
-        sections.forEach(s => { children.push(heading2(s.heading)); children.push(...paras(s.body)); });
-        if (post.conclusion) children.push(...paras(post.conclusion));
-        for (let i = 0; i < children.length; i += 100) {
-          const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children`, {
-            method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ children: children.slice(i, i + 100) }),
-          });
-          if (!blocksResp.ok) { const r = await blocksResp.json().catch(() => ({})); return json({ error: r.message || "Asset created but failed to write content" }, 502); }
-        }
-
-        let siteResult = { published: false };
-        try {
-          siteResult = await publishSeoPostToLiveSite({
-            env, hdr, dash, campaignId, spec: null,
-            seoTitle: post.seoTitle, workingTitle: idea,
-            intro: post.intro, sections, conclusion: post.conclusion, assetId,
-            sub: isSales ? "sales" : "blog",
-          });
-          if (siteResult.published && siteResult.liveUrl) {
-            await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
-              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ properties: { "Content URL": { url: siteResult.liveUrl } } }),
-            }).catch(() => {});
+        // Background job, not a synchronous response — a full sales page/
+        // story (Claude call + title/asset create + block writes + a live
+        // publish) can genuinely run past Cloudflare's ~100s edge timeout
+        // (524), which silently drops the response even when the worker
+        // itself finishes fine. The modal polls getQaJobStatus instead.
+        const jobId = "qa" + crypto.randomUUID().replace(/-/g, "");
+        const jobKey = `qajob:${jobId}`;
+        await env.TRADES.put(jobKey, JSON.stringify({ status: "pending" }), { expirationTtl: 1800 });
+        ctx.waitUntil((async () => {
+          try {
+            const result = await runGenerateQaContent(env, { methodKey, productId, idea, answers, existingTitleId, campaignId });
+            await env.TRADES.put(jobKey, JSON.stringify({ status: "done", result }), { expirationTtl: 1800 });
+          } catch (e) {
+            await env.TRADES.put(jobKey, JSON.stringify({ status: "error", error: e.message || "Generation failed" }), { expirationTtl: 1800 });
           }
-        } catch (e) { siteResult = { published: false, error: e.message }; }
+        })());
+        return json({ jobId });
+      }
 
-        return json({
-          success: true, titleId, assetId, sectionCount: sections.length,
-          sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
-        });
+      if (body.action === "getQaJobStatus") {
+        const { jobId } = body;
+        if (!jobId) return json({ error: "jobId required" }, 400);
+        const rec = await env.TRADES.get(`qajob:${jobId}`, "json");
+        if (!rec) return json({ status: "error", error: "Job not found or expired" });
+        return json(rec);
       }
 
       if (body.action === "generateQaProduct") {
@@ -38045,149 +38227,21 @@ Return ONLY this JSON object, no other text, no markdown fences:
         if (!idea || !String(idea).trim()) return json({ error: "idea required" }, 400);
         if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-
-        const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
-        if (!prodPage?.properties) return json({ error: "Product not found" }, 404);
-        const productName = (prodPage.properties.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled Product";
-        if (!campaignId) campaignId = (prodPage.properties.Campaigns?.relation || [])[0]?.id?.replace(/-/g, "") || null;
-        const prodResearch = await findBestProductResearchRecord(hdr, dash(productId)).catch(() => null);
-        let researchBlock = "";
-        if (prodResearch) researchBlock = STRATEGY_FIELDS.map(f => { const v = rtp(prodResearch.properties, f); return v ? `${f}: ${v}` : ""; }).filter(Boolean).join("\n");
-        const answersBlock = (Array.isArray(answers) ? answers : []).map(a => `Q: ${a.question}\nA: ${a.answer || "(no answer)"}`).join("\n\n");
-        // Not locked to the four built-in types — the operator can name
-        // anything from the "+ Create new…" option in the modal. For a
-        // custom type, let Claude use its own judgment on a sensible part
-        // breakdown instead of a hand-written shape description.
-        const spec = DIGITAL_PRODUCT_TYPES[productType] || {
-          label: String(productType).trim(),
-          shape: `a "${String(productType).trim()}": use your best judgment on the parts it needs for this specific format — typically at least one visual part (a cover or key graphic) plus one or more text parts covering its actual content`,
-        };
-
-        const prompt = `Plan and WRITE the actual content for ${spec.shape}, for the product "${productName}", seeded from this idea:
-
-IDEA: ${idea}
-
-PRODUCT RESEARCH:
-${researchBlock || "(none on file)"}
-
-ANSWERS TO CLARIFYING QUESTIONS (the real material — use it):
-${answersBlock || "(none given)"}
-
-For each part: "kind" is "text" (write the REAL, complete, ready-to-use content — not an outline or summary) or "visual" (this part becomes a real design file made separately in Canva — instead of content, write a design brief: what it should show, key text it should carry, the mood/style). Every text part should be substantial and genuinely usable as-is.
-
-Return ONLY this JSON object, no other text, no markdown fences:
-{ "title": "...", "description": "...", "parts": [ { "label": "...", "kind": "text"|"visual", "content": "..." }, ... ] }`;
-
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        let plan;
-        try {
-          const raw = aiData.content?.[0]?.text || "";
-          const start = raw.indexOf('{'), end = raw.lastIndexOf('}');
-          if (start === -1 || end === -1) throw new Error("No JSON object found");
-          plan = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1)));
-        } catch (e) { return json({ error: "Failed to parse product plan JSON: " + e.message }, 502); }
-        const parts = (Array.isArray(plan.parts) ? plan.parts : []).filter(p => p && p.label && p.content);
-        if (!parts.length) return json({ error: "No parts generated — try again" }, 502);
-
-        const methodName = QA_METHOD_NAMES.product;
-        const methodId = await resolveMethodIdByName(methodName, { create: true }).catch(() => null);
-
-        // Called from the Generate Assets modal — attach to the title
-        // that's already open instead of creating a second one. Called
-        // standalone (no titleId) — create a fresh title from the idea.
-        let titleId = existingTitleId ? String(existingTitleId).replace(/-/g, "") : null;
-        if (!titleId) {
-          const titleProps = {
-            "Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
-            "Status": { select: { name: "Development" } },
-            "Grouping": { rich_text: [{ text: { content: methodName } }] },
-            "product": { relation: [{ id: dash(productId) }] },
-          };
-          if (campaignId) titleProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-          if (methodId) titleProps["method"] = { relation: [{ id: dash(methodId) }] };
-          const titleResp = await fetch("https://api.notion.com/v1/pages", {
-            method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-            body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: titleProps }),
-          });
-          const titlePage = await titleResp.json();
-          if (!titleResp.ok || !titlePage.id) return json({ error: titlePage.message || "Failed to create title" }, 502);
-          titleId = titlePage.id.replace(/-/g, "");
-        }
-
-        const parentProps = {
-          "Asset Title": { title: [{ text: { content: String(plan.title || idea).slice(0, 200) } }] },
-          "Asset Status": { select: { name: "Development" } },
-          "Asset Type": { select: { name: methodName } },
-          "Body": { rich_text: [{ text: { content: String(plan.description || "").slice(0, 2000) } }] },
-          "Content Strategy": { relation: [{ id: dash(titleId) }] },
-          "Product": { relation: [{ id: dash(productId) }] },
-        };
-        if (campaignId) parentProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-        Object.assign(parentProps, await assetMethodProp(methodId, methodName));
-        const parentResp = await fetch("https://api.notion.com/v1/pages", {
-          method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: parentProps }),
-        });
-        const parentResult = await parentResp.json();
-        if (!parentResp.ok || !parentResult.id) return json({ error: parentResult.message || "Failed to create parent asset" }, 502);
-        const parentAssetId = parentResult.id.replace(/-/g, "");
-
-        const rtBlock = text => text ? [{ type: "text", text: { content: String(text).slice(0, 1990) } }] : [];
-        const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
-        const paras = text => String(text || "").split(/\n{2,}/).flatMap(p => {
-          const t = p.trim(); if (!t) return [];
-          const out = []; for (let i = 0; i < t.length; i += 1900) out.push(para(t.slice(i, i + 1900)));
-          return out;
-        });
-
-        // Parallel, not sequential — a 6-7 part ebook doing one Notion
-        // create + block-writes + a property patch PER PART, one at a time,
-        // was slow enough (on top of the up-front 8000-token planning call)
-        // to blow past Cloudflare's edge timeout (524) on larger products.
-        // Every part is independent (its own new Asset page), so there's no
-        // ordering requirement forcing this to be sequential.
-        const components = await Promise.all(parts.map(async part => {
-          const isVisual = part.kind === "visual";
-          const extraProps = {
-            "Content Strategy": { relation: [{ id: dash(titleId) }] },
-            "Product": { relation: [{ id: dash(productId) }] },
-          };
-          if (campaignId) extraProps["Campaign"] = { relation: [{ id: dash(campaignId) }] };
-          if (methodId) extraProps["Method"] = { relation: [{ id: dash(methodId) }] };
-          if (isVisual) extraProps["Notes"] = { rich_text: [{ text: { content: ("DESIGN BRIEF (for Canva): " + String(part.content || "")).slice(0, 2000) } }] };
-          const result = await createAssetComponentPage(hdr, { parentAssetId, assetType: String(part.label).slice(0, 100), extraProps });
-          if (result.error) return { label: part.label, error: result.error };
-          if (!isVisual) {
-            const children = paras(part.content);
-            const writes = [];
-            for (let i = 0; i < children.length; i += 100) {
-              writes.push(fetch(`https://api.notion.com/v1/blocks/${dash(result.id)}/children`, {
-                method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-                body: JSON.stringify({ children: children.slice(i, i + 100) }),
-              }).catch(() => {}));
-            }
-            writes.push(fetch(`https://api.notion.com/v1/pages/${dash(result.id)}`, {
-              method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-              body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: String(part.content || "").slice(0, 2000) } }] } } }),
-            }).catch(() => {}));
-            await Promise.all(writes);
+        // Background job — see runGenerateQaContent's comment above for
+        // why (the up-front planning call alone can run past Cloudflare's
+        // edge timeout on a multi-part product, on top of N part writes).
+        const jobId = "qa" + crypto.randomUUID().replace(/-/g, "");
+        const jobKey = `qajob:${jobId}`;
+        await env.TRADES.put(jobKey, JSON.stringify({ status: "pending" }), { expirationTtl: 1800 });
+        ctx.waitUntil((async () => {
+          try {
+            const result = await runGenerateQaProduct(env, { productId, idea, productType, answers, existingTitleId, campaignId });
+            await env.TRADES.put(jobKey, JSON.stringify({ status: "done", result }), { expirationTtl: 1800 });
+          } catch (e) {
+            await env.TRADES.put(jobKey, JSON.stringify({ status: "error", error: e.message || "Generation failed" }), { expirationTtl: 1800 });
           }
-          return { id: result.id, label: part.label, kind: part.kind };
-        }));
-
-        return json({
-          success: true, titleId, parentAssetId, title: plan.title || idea,
-          components, awaitingCanva: components.filter(c => c.kind === "visual").length,
-        });
+        })());
+        return json({ jobId });
       }
 
       // ── Project Experience — a short, no-photo project write-up (name +

@@ -7606,6 +7606,26 @@ function gaQaResolveProductType() {
   if (sel.value === '__custom__') return (document.getElementById('gaQaTypeCustom')?.value || '').trim() || 'ebook';
   return sel.value || 'ebook';
 }
+// generateQaContent/generateQaProduct run as background jobs now (a full
+// sales page/story, or a multi-part product's planning call, can take
+// longer than Cloudflare's ~100s edge timeout — a direct await used to
+// come back as a raw "error code: 524" HTML page, not JSON, right after
+// the operator had already answered the whole interview). Both actions
+// return {jobId} immediately; this polls getQaJobStatus until it's done
+// or errored. statusCb, if given, is called with an in-progress message
+// each poll so the modal can show elapsed time.
+async function qaPollJob(jobId, statusCb) {
+  const start = Date.now();
+  for (;;) {
+    await new Promise(r => setTimeout(r, 3000));
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    if (statusCb) statusCb(elapsed);
+    if (elapsed > 280) throw new Error('Still running after ' + elapsed + 's — the job may still finish in the background; check the title in a minute before retrying.');
+    const rec = await w('getQaJobStatus', { jobId });
+    if (rec.status === 'done') return rec.result;
+    if (rec.status === 'error') throw new Error(rec.error || 'Generation failed');
+  }
+}
 
 // The QA interview — one question at a time (see the modal's own
 // gaQaInterviewWrap hint). craftQaQuestions still fetches the whole set in
@@ -11117,13 +11137,14 @@ async function submitGenAssets() {
     gaQaStashCurrentAnswer();
     const qaAnswers = _gaQaQuestions.map((q, i) => ({ key: q.key, question: q.question, answer: _gaQaAnswers[i] || '' }));
     status.textContent = 'Writing…';
-    btn.textContent = methodKey === 'product' ? 'Writing…' : 'Writing…';
+    btn.textContent = 'Writing…';
     try {
       const method = await gaResolve('method', status);
-      const data = methodKey === 'product'
+      const kickoff = methodKey === 'product'
         ? await w('generateQaProduct', { productId: qaProductId, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, titleId: GA_TITLE_ID, idea: title, productType: qaProductType, answers: qaAnswers })
         : await w('generateQaContent', { methodKey, productId: qaProductId, campaignId: GA_CAMPAIGN_ID || CAMPAIGN_ID, titleId: GA_TITLE_ID, idea: title, answers: qaAnswers });
-      if (data.error) throw new Error(data.error);
+      if (kickoff.error) throw new Error(kickoff.error);
+      const data = await qaPollJob(kickoff.jobId, elapsed => { status.textContent = 'Writing… (' + elapsed + 's)'; });
       gaAutoAttachMethod(method.id);
       if (methodKey === 'product') {
         status.innerHTML = `✓ Created — ${data.components.length} part(s), ${data.awaitingCanva} awaiting Canva. <a href="https://www.notion.so/${data.parentAssetId}" target="_blank" rel="noopener">↗ Open in Notion</a>`;

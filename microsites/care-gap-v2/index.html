@@ -3798,6 +3798,26 @@ function caQaResolveProductType() {
   if (sel.value === '__custom__') return (document.getElementById('caQaTypeCustom')?.value || '').trim() || 'ebook';
   return sel.value || 'ebook';
 }
+// generateQaContent/generateQaProduct run as background jobs now (a full
+// sales page/story, or a multi-part product's planning call, can take
+// longer than Cloudflare's ~100s edge timeout — a direct await used to
+// come back as a raw "error code: 524" HTML page, not JSON, right after
+// the operator had already answered the whole interview). Both actions
+// return {jobId} immediately; this polls getQaJobStatus until it's done
+// or errored. statusCb, if given, is called with an in-progress message
+// each poll so the modal can show elapsed time.
+async function caQaPollJob(jobId, statusCb) {
+  const start = Date.now();
+  for (;;) {
+    await new Promise(r => setTimeout(r, 3000));
+    const elapsed = Math.round((Date.now() - start) / 1000);
+    if (statusCb) statusCb(elapsed);
+    if (elapsed > 280) throw new Error('Still running after ' + elapsed + 's — the job may still finish in the background; check the title in a minute before retrying.');
+    const rec = await w('getQaJobStatus', { jobId });
+    if (rec.status === 'done') return rec.result;
+    if (rec.status === 'error') throw new Error(rec.error || 'Generation failed');
+  }
+}
 // The QA interview — one question at a time (see caQaInterviewRow's own
 // hint). craftQaQuestions still fetches the whole set in one round-trip;
 // the operator only ever sees/answers one at a time, with ← Back to
@@ -3902,10 +3922,11 @@ async function runCreateAsset() {
     btn.disabled = true; btn.textContent = 'Writing…';
     resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Writing…';
     try {
-      const data = qaKey === 'product'
+      const kickoff = qaKey === 'product'
         ? await w('generateQaProduct', { productId: qaProductId, campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, idea, productType: qaProductType, answers: qaAnswers })
         : await w('generateQaContent', { methodKey: qaKey, productId: qaProductId, campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, idea, answers: qaAnswers });
-      if (data.error) throw new Error(data.error);
+      if (kickoff.error) throw new Error(kickoff.error);
+      const data = await caQaPollJob(kickoff.jobId, elapsed => { resEl.textContent = 'Writing… (' + elapsed + 's)'; });
       if (qaKey === 'product') {
         resEl.style.color = 'var(--fresh)';
         resEl.textContent = `✓ Created — ${data.components.length} part(s), ${data.awaitingCanva} awaiting Canva.`;
