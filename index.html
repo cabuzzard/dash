@@ -8762,7 +8762,12 @@ async function submitRun() {
 // replace both the Development and Publishing tabs; for now it's purely
 // additive (nothing else reads DEV2_ROWS).
 let DEV2_ROWS = [];
-let DEV2_SORT = { col: 'campaign', asc: true };
+// Multi-column sort — an ordered list of {col, asc} keys, evaluated in
+// order (first key wins, later keys only break ties). Plain click on a
+// header resets to that one column; shift-click adds it as the next tie-
+// breaker (or flips its direction if it's already in the list) without
+// disturbing the columns already sorted on.
+let DEV2_SORT = [{ col: 'campaign', asc: true }];
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
   { key: 'hub',          label: 'Hub' },
@@ -8783,10 +8788,39 @@ async function loadDev2() {
     el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
   }
 }
-function dev2SetSort(col) {
-  if (DEV2_SORT.col === col) DEV2_SORT.asc = !DEV2_SORT.asc;
-  else DEV2_SORT = { col, asc: true };
+function dev2SetSort(col, ev) {
+  const shift = !!(ev && ev.shiftKey);
+  const idx = DEV2_SORT.findIndex(s => s.col === col);
+  if (shift) {
+    if (idx === -1) DEV2_SORT.push({ col, asc: true });
+    else DEV2_SORT[idx].asc = !DEV2_SORT[idx].asc;
+  } else if (DEV2_SORT.length === 1 && idx === 0) {
+    DEV2_SORT[0].asc = !DEV2_SORT[0].asc;
+  } else {
+    DEV2_SORT = [{ col, asc: true }];
+  }
   renderDev2();
+}
+function dev2Cmp(a, b) {
+  for (const { col, asc } of DEV2_SORT) {
+    const av = a[col], bv = b[col];
+    // Blanks (no asset yet, or no Date Published) always sink to the
+    // bottom regardless of sort direction, at whichever sort level they
+    // appear — they're the overflow case, not a competitor for
+    // "smallest" when sorting ascending.
+    const aBlank = av === null || av === undefined || av === '';
+    const bBlank = bv === null || bv === undefined || bv === '';
+    let cmp;
+    if (aBlank && bBlank) cmp = 0;
+    else if (aBlank) cmp = 1;
+    else if (bBlank) cmp = -1;
+    else {
+      cmp = col === 'datePublished' ? (av < bv ? -1 : av > bv ? 1 : 0) : String(av).localeCompare(String(bv));
+      if (!asc) cmp = -cmp;
+    }
+    if (cmp !== 0) return cmp;
+  }
+  return 0;
 }
 function renderDev2() {
   const el = document.getElementById('dev2Content');
@@ -8799,27 +8833,19 @@ function renderDev2() {
     rows = rows.filter(r => DEV2_COLS.some(c => c.key !== 'datePublished' && String(r[c.key] || '').toLowerCase().includes(q)));
   }
 
-  const { col, asc } = DEV2_SORT;
-  rows = rows.slice().sort((a, b) => {
-    const av = a[col], bv = b[col];
-    // Blanks (no asset yet, or no Date Published) always sink to the
-    // bottom regardless of sort direction — they're the overflow case,
-    // not a competitor for "smallest" when sorting ascending.
-    const aBlank = av === null || av === undefined || av === '';
-    const bBlank = bv === null || bv === undefined || bv === '';
-    if (aBlank && bBlank) return 0;
-    if (aBlank) return 1;
-    if (bBlank) return -1;
-    const cmp = col === 'datePublished' ? (av < bv ? -1 : av > bv ? 1 : 0) : String(av).localeCompare(String(bv));
-    return asc ? cmp : -cmp;
-  });
+  rows = rows.slice().sort(dev2Cmp);
 
   if (countEl) countEl.textContent = rows.length + ' / ' + DEV2_ROWS.length + ' rows';
 
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString() : '';
   const thead = '<tr>' + DEV2_COLS.map(c => {
-    const arrow = DEV2_SORT.col === c.key ? (DEV2_SORT.asc ? ' ▲' : ' ▼') : '';
-    return `<th onclick="dev2SetSort('${c.key}')" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
+    const sortIdx = DEV2_SORT.findIndex(s => s.col === c.key);
+    let arrow = '';
+    if (sortIdx !== -1) {
+      const s = DEV2_SORT[sortIdx];
+      arrow = ' ' + (s.asc ? '▲' : '▼') + (DEV2_SORT.length > 1 ? (sortIdx + 1) : '');
+    }
+    return `<th onclick="dev2SetSort('${c.key}', event)" title="Click to sort — shift-click to add as a tie-breaker" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
   }).join('') + '</tr>';
 
   const tbody = rows.map(r => {
