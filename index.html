@@ -8934,11 +8934,17 @@ function renderDev2() {
     const assetTypeCell = r.assetId
       ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.assetType || '?')}</a>`
       : '<span style="color:var(--text3);">—</span>';
+    // Hub → the care-gap-v2 microsite template, the campaign-agnostic
+    // admin tool (pass its own campId as the query param — that's how it
+    // resolves which campaign to show, same as opening it by hand).
+    const hubCell = r.hub
+      ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.hub)}</a>`
+      : '';
     const isSel = DEV2_SELECTED.has(key);
     return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
       <td style="padding:6px 8px;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
-      <td style="padding:6px 10px;font-size:12px;">${esc(r.hub || '')}</td>
+      <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.product)}</td>
       <td style="padding:6px 10px;font-size:12px;">${titleCell}</td>

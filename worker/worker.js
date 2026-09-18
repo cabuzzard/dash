@@ -11323,6 +11323,7 @@ Return: {
           const prod = t.productId ? productById[t.productId] : null;
           const base = {
             campaign: camp ? camp.name : "?",
+            campId: t.campId || null,
             hub: t.campId ? (hubByCampId[t.campId] || "") : "",
             productStack: prod ? (prod.stack || "No Stack") : "No Product",
             product: prod ? prod.name : "No Product",
