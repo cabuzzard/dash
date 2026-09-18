@@ -8821,9 +8821,11 @@ function dev2OnFilterChange() {
   DEV2_SELECTED.clear();
   renderDev2();
 }
-function dev2ToggleRow(key, checked) {
+function dev2ToggleRow(key, checked, cb) {
   if (checked) DEV2_SELECTED.add(key); else DEV2_SELECTED.delete(key);
   dev2UpdateBulkBar();
+  const row = cb && cb.closest('tr');
+  if (row) row.style.background = checked ? 'rgba(255,80,80,.10)' : '';
   const allCb = document.getElementById('dev2SelectAll');
   if (allCb) allCb.checked = DEV2_VISIBLE_ROWS.length > 0 && DEV2_VISIBLE_ROWS.every(r => DEV2_SELECTED.has(dev2RowKey(r)));
 }
@@ -8932,8 +8934,9 @@ function renderDev2() {
     const assetTypeCell = r.assetId
       ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.assetType || '?')}</a>`
       : '<span style="color:var(--text3);">—</span>';
-    return `<tr style="border-bottom:1px solid var(--border);">
-      <td style="padding:6px 8px;"><input type="checkbox" class="dev2-row-cb" ${DEV2_SELECTED.has(key) ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked)"></td>
+    const isSel = DEV2_SELECTED.has(key);
+    return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
+      <td style="padding:6px 8px;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.hub || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
