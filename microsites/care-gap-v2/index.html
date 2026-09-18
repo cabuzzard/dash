@@ -546,6 +546,39 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Create Pillar — from a Product Research row's ✍ Pillar button. Drops
+       a new Development-stage title tied to that product (createDevTitle)
+       and immediately writes its Pillar Content (writeTitlePillar) —
+       the same two-step "+ Add title" then "Write Pillar" flow the
+       Development tab uses, collapsed into one action since the Product
+       is already known from which row this was opened. -->
+  <div class="modaloverlay" id="createPillarModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Create Pillar</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Title
+          <input type="text" id="cpTitleInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="The title/idea for this piece" autocomplete="off">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);position:relative;">Preferred method <span style="color:var(--ink3);">(optional)</span>
+          <input type="text" id="cpMethodInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Search all methods…" autocomplete="off" oninput="cpMethodSearch()" onfocus="cpMethodSearch()" onblur="cpMethodBlur()">
+          <input type="hidden" id="cpMethod">
+          <div id="cpMethodOptions" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:2px;max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.18);"></div>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Product
+          <input type="text" id="cpProductDisplay" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;opacity:.7;" disabled>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Override / guidance <span style="color:var(--ink3);">(optional — otherwise it's grounded in this product's own Product Research + campaign Research as usual)</span>
+          <textarea id="cpGuidance" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;"></textarea>
+        </label>
+      </div>
+      <div id="cpResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeCreatePillarModal()">Cancel</button>
+        <button class="btn primary" id="cpRunBtn" onclick="runCreatePillar()">✍ Create</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Rerun Strategy — same fields as generating a new strategy (Title /
        Platform Focus / Guidance), pre-filled from the strategy's current
        values, but rewrites THIS existing strategy in place (regenerateStrategySlots)
@@ -2467,6 +2500,7 @@ async function loadProductTab() {
             ${researchStateBadge(p.id)}
           <span class="idea-btns">
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
+            <button class="iconbtn" title="Create a Development-stage title with a written Pillar, off this product" onclick="openCreatePillarModal('${esc(p.id)}', '${esc(p.name).replace(/'/g,"\\'")}')">✍ Pillar</button>
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
             <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">✕</button>
           </span></div></div>`).join('')}</div>
@@ -3417,6 +3451,81 @@ async function runRewritePillar() {
     resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
   } finally {
     btn.disabled = false;
+  }
+}
+// Create Pillar — opened from a Product Research row's ✍ Pillar button.
+// Two worker calls in sequence, same as the Development tab's own
+// "+ Add title" then "Write Pillar" flow: createDevTitle drops a bare
+// Development-stage title tied to this product (+ optional method), then
+// writeTitlePillar writes the actual pillar content, reading Campaign/
+// Product/Method straight back off the title it just created.
+let CP_PRODUCT_ID = null;
+function openCreatePillarModal(productId, productName) {
+  CP_PRODUCT_ID = productId;
+  document.getElementById('cpTitleInput').value = '';
+  document.getElementById('cpProductDisplay').value = productName;
+  document.getElementById('cpMethodInput').value = '';
+  document.getElementById('cpMethod').value = '';
+  document.getElementById('cpMethod').dataset.name = '';
+  document.getElementById('cpMethodOptions').style.display = 'none';
+  document.getElementById('cpGuidance').value = '';
+  document.getElementById('cpResult').textContent = '';
+  document.getElementById('cpRunBtn').disabled = false;
+  document.getElementById('cpRunBtn').textContent = '✍ Create';
+  document.getElementById('createPillarModal').classList.add('open');
+}
+function closeCreatePillarModal() { document.getElementById('createPillarModal').classList.remove('open'); CP_PRODUCT_ID = null; }
+function cpSetMethod(id, name) {
+  document.getElementById('cpMethod').value = id || '';
+  document.getElementById('cpMethod').dataset.name = name || '';
+  document.getElementById('cpMethodInput').value = name || '';
+}
+// Same search-as-you-type method picker as the Create Asset modal
+// (caMethodSearch/caPickMethod), just against this modal's own fields.
+async function cpMethodSearch() {
+  const input = document.getElementById('cpMethodInput');
+  const hidden = document.getElementById('cpMethod');
+  if (input.value !== hidden.dataset.name) { hidden.value = ''; hidden.dataset.name = ''; }
+  const box = document.getElementById('cpMethodOptions');
+  const q = input.value.trim().toLowerCase();
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Loading…</div>';
+  let methods;
+  try { methods = await ensureAllMethodsCache(); } catch (e) { box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Load failed.</div>'; return; }
+  const filtered = (q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods).slice(0, 40);
+  box.innerHTML = filtered.length ? filtered.map(m => `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="cpPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
+}
+function cpPickMethod(el) {
+  cpSetMethod(el.dataset.id, el.dataset.name);
+  document.getElementById('cpMethodOptions').style.display = 'none';
+}
+function cpMethodBlur() {
+  setTimeout(() => { document.getElementById('cpMethodOptions').style.display = 'none'; }, 150);
+}
+async function runCreatePillar() {
+  if (!CP_PRODUCT_ID) return;
+  const title = document.getElementById('cpTitleInput').value.trim();
+  const methodId = document.getElementById('cpMethod').value || undefined;
+  const guidance = document.getElementById('cpGuidance').value.trim();
+  const resEl = document.getElementById('cpResult');
+  if (!title) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Title required.'; return; }
+  const btn = document.getElementById('cpRunBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Creating title…';
+  try {
+    const created = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId: CP_PRODUCT_ID, methodId, status: 'Development' });
+    if (created.error) throw new Error(created.error);
+    resEl.textContent = 'Writing pillar…';
+    const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: guidance || undefined });
+    if (pillarRes.error) throw new Error(pillarRes.error);
+    resEl.style.color = 'var(--fresh)';
+    resEl.innerHTML = `✓ Created — ${pillarRes.wordCount || '?'} words. <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open</a>`;
+    btn.textContent = '✓ Done';
+    loadTitleAndAssetTab();
+    setTimeout(closeCreatePillarModal, 1800);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = '✍ Create';
   }
 }
 // Real Notion archive — deleteAsset already exists server-side.
