@@ -456,6 +456,23 @@ function renderChrome() {
   }
 }
 
+// QA – Sales assets publish to their own sales/ subpath (see qaContentStep
+// in worker.js) — a conversion page, not an editorial article, so it's
+// deliberately NOT part of the journal/blog feed. Without this, a sales
+// page could be live and working but invisible from the hub itself: no nav
+// link, nothing pointing at it. Checked at runtime rather than hardcoded
+// in HUB.nav so a hub with no sales/ dir yet never shows a dead link.
+async function maybeAddSalesNavLink() {
+  try {
+    const r = await fetch("./sales/index.html", { method: "HEAD" });
+    if (!r.ok) return;
+    const a = document.createElement("a");
+    a.href = "./sales/";
+    a.textContent = "Resources";
+    $("nav").appendChild(a);
+  } catch (e) { /* no dead nav link if the check itself fails */ }
+}
+
 function renderHero() {
   $("heroEyebrow").textContent = HUB.hero.eyebrow;
   $("heroHeadline").textContent = HUB.hero.headline;
@@ -729,6 +746,7 @@ async function renderHubProducts() {
     }
   } catch (e) { /* baked defaults stand */ }
   renderChrome();
+  maybeAddSalesNavLink();
   renderHero();
   renderHubJournal();
   renderReport();
