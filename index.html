@@ -756,6 +756,7 @@
          buttons), per operator direction. -->
     <div id="dev2BulkBar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(255,80,80,.08);border:1px solid #5a2020;border-radius:4px;">
       <span id="dev2BulkCount" style="font-size:12px;color:var(--text2);font-weight:600;"></span>
+      <button onclick="dev2BulkGenerateThumbnails()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #3a5a3a;border-radius:4px;background:transparent;color:#7ed321;cursor:pointer;">🖼️ Generate Thumbnail</button>
       <button onclick="dev2BulkDelete()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #a33;border-radius:4px;background:transparent;color:#ff6b6b;cursor:pointer;">🗑 Delete</button>
       <button onclick="dev2ClearSelection()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;">Clear selection</button>
     </div>
@@ -8874,6 +8875,72 @@ async function dev2BulkDelete() {
   DEV2_SELECTED.clear();
   await loadDev2();
   if (failed) alert(ok + ' deleted, ' + failed + ' failed.');
+}
+// Bulk "generate thumbnail" — the same wordless-background Grok Imagine
+// pipeline the Publish modal's own ✨ Generate buttons use (generateOfferImage
+// for Offer types, generateBlogPostThumbnail for anything blog-like
+// including QA – Story, generateSocialBackgroundForAsset for single post),
+// just driven across every selected asset here instead of one at a time in
+// the modal. background:true on the save so it lands as the Source plate —
+// exactly what "run the grok send script for background" means: the clean
+// backdrop, not a composited-with-text final image. Runs sequentially (each
+// render is its own spec-assembly + Claude prompt + xAI call) so the status
+// line can track real progress instead of one long silent wait. Rows with
+// no asset (a Development title placeholder) or a type this pipeline
+// doesn't cover (Notion asset types outside Offer/blog-like/single post)
+// are skipped, not treated as failures.
+async function dev2BulkGenerateThumbnails() {
+  const keys = [...DEV2_SELECTED].filter(k => k.startsWith('a:'));
+  if (!keys.length) { alert('No asset rows selected — a blank Development row has nothing to generate a thumbnail for.'); return; }
+  if (!confirm('Generate a fresh wordless background for ' + keys.length + ' asset(s)? This replaces each one\'s CURRENT background (any existing text render stays on the asset until re-rendered onto the new one). Assets with no image slot are skipped.')) return;
+  const rowByAsset = {};
+  DEV2_ROWS.forEach(r => { if (r.assetId) rowByAsset[r.assetId] = r; });
+  const bar = document.getElementById('dev2BulkBar');
+  Array.from(bar.querySelectorAll('button')).forEach(b => b.disabled = true);
+  const countEl = document.getElementById('dev2BulkCount');
+  let ok = 0, skipped = 0, failed = 0;
+  for (let i = 0; i < keys.length; i++) {
+    const assetId = keys[i].slice(2);
+    const row = rowByAsset[assetId] || {};
+    const label = row.title || assetId;
+    if (countEl) countEl.textContent = 'Generating ' + (i + 1) + '/' + keys.length + ': ' + label + '…';
+    const type = row.rawAssetType || '';
+    const isOffer = /\boffer\b/i.test(type);
+    const isBlogType = /\bseo post\b/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type)) || /^QA\s*[–-]\s*Story$/i.test(type);
+    const isSinglePost = /single post/i.test(type);
+    try {
+      if (isOffer) {
+        await dev2GenerateBackground(assetId, true, 'blog-thumbnail');
+        await dev2GenerateBackground(assetId, true, 'ig-background');
+      } else if (isBlogType) {
+        await dev2GenerateBackground(assetId, false, 'blog-thumbnail');
+      } else if (isSinglePost) {
+        await dev2GenerateBackground(assetId, false, 'post-image');
+      } else {
+        skipped++; continue;
+      }
+      ok++;
+    } catch (e) { failed++; }
+  }
+  DEV2_SELECTED.clear();
+  await loadDev2();
+  alert(ok + ' generated, ' + skipped + ' skipped (no image slot for that type), ' + failed + ' failed.');
+}
+// Same two-step "generate (temp url) -> saveOfferImage (rehost + persist,
+// background:true so Source gets stamped)" pattern the Publish modal's own
+// Generate buttons use. kind picks the generation action: an Offer's
+// blog-thumbnail/ig-background reads its OFFER CARD via generateOfferImage;
+// a plain blog-like asset has none, so generateBlogPostThumbnail grounds
+// itself in the article text instead; a single-post asset's own background
+// uses generateSocialBackgroundForAsset.
+async function dev2GenerateBackground(assetId, isOffer, kind) {
+  let r;
+  if (kind === 'blog-thumbnail') r = isOffer ? await call('generateOfferImage', { assetId, kind: 'blog-thumbnail' }) : await call('generateBlogPostThumbnail', { assetId });
+  else if (kind === 'ig-background') r = await call('generateOfferImage', { assetId, kind: 'ig-background' });
+  else if (kind === 'post-image') r = await call('generateSocialBackgroundForAsset', { assetId });
+  else throw new Error('Unknown kind: ' + kind);
+  if (!r || !r.imageUrl) throw new Error((r && r.error) || 'No image returned');
+  return call('saveOfferImage', { assetId, kind, imageUrl: r.imageUrl, prompt: r.prompt, background: true });
 }
 function dev2Cmp(a, b) {
   for (const { col, asc } of DEV2_SORT) {

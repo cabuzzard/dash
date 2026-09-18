@@ -11332,14 +11332,22 @@ Return: {
           };
           const assets = assetsByTitle[titleId] || [];
           if (!assets.length) {
-            rows.push({ ...base, assetId: null, assetType: "", datePublished: null });
+            rows.push({ ...base, assetId: null, assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
             return;
           }
           assets.forEach(a => {
             rows.push({
               ...base,
               assetId: a.id,
+              // assetType is the display value (Method name, when stamped
+              // — that's what the column header promises); rawAssetType is
+              // the actual Assets DB "Asset Type" select, which can read
+              // differently (e.g. Method "Blog - SEO - News" vs a legacy
+              // Asset Type of "SEO Post") — the bulk thumbnail-generation
+              // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+              rawAssetType: a.assetType || "",
+              assetStatus: a.status || "",
               datePublished: a.status === "Published" ? a.lastEditedTime : null,
             });
           });
