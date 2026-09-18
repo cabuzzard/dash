@@ -8611,9 +8611,17 @@ export default {
             ] },
           ] },
         });
+        // Services/Products card list — any Offer asset (Pillar or Content
+        // Hub) OR a QA – Sales page. Both are conversion/pitch content, the
+        // "services we sell" the hub's Services section is meant to show —
+        // distinct from getHubBlog's editorial feed. QA – Sales assets
+        // carry no OFFER CARD block, but the card-building code below
+        // already falls back to Platform Title/Body for name/excerpt and
+        // to Content URL for the link, so no further change was needed
+        // once this filter lets them through.
         const wanted = rows.filter(r => {
           const at = r.properties?.["Asset Type"]?.select?.name || "";
-          if (!/\boffer\b/i.test(at)) return false;
+          if (!(/\boffer\b/i.test(at) || /^QA\s*[–-]\s*Sales$/i.test(at))) return false;
           const h = r.properties?.["Content Hub"]?.select?.name || "";
           return !slug || !h || h === slug;
         }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0));
@@ -8713,14 +8721,22 @@ export default {
             ] },
           ] },
         });
+        // The hub splits its editorial feed in two: "news" (Blog - SEO -
+        // News specifically — the kicker below already called this "News
+        // analysis") and "articles" (everything else that's a real
+        // written piece — SEO Post, or any QA method that ISN'T QA –
+        // Sales, i.e. QA – Story today). QA – Sales is excluded from both:
+        // it publishes to sales/ instead of blog/, a conversion page, not
+        // an article. kind omitted = the old combined behavior (either
+        // bucket), kept for any caller that hasn't been updated to pass it.
+        const isNewsType    = at => /\bblog\b/i.test(at) && /\bnews\b/i.test(at);
+        const isArticleType = at => /\bseo post\b/i.test(at) || /^QA\s*[–-]\s*(?!Sales\b)/i.test(at);
+        const kind = String(body.kind || "").trim().toLowerCase();
         const wanted = rows.filter(r => {
           const at = r.properties?.["Asset Type"]?.select?.name || "";
-          // QA – Story publishes to the same blog/ subpath as any other
-          // SEO Post (sub:'blog' in qaContentStep) and is a genuine
-          // editorial article, so it belongs in the journal feed too. QA –
-          // Story's sibling QA – Sales deliberately does NOT: it publishes
-          // to sales/ instead, a conversion page, not an article.
-          if (!(/seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)) || /^QA\s*[–-]\s*Story$/i.test(at))) return false;
+          const isNews = isNewsType(at), isArticle = isArticleType(at);
+          const matchesKind = kind === "news" ? isNews : kind === "articles" ? isArticle : (isNews || isArticle);
+          if (!matchesKind) return false;
           const h = r.properties?.["Content Hub"]?.select?.name || "";
           return !slug || !h || h === slug;
         }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0)).slice(0, lim);

@@ -238,7 +238,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
     </div>
   </section>
 
-  <section class="sec" id="trips">
+  <section class="sec" id="trips" style="display:none;">
     <div class="wrap">
       <div class="sec-head">
         <span class="eyebrow" id="tripsLabel"></span>
@@ -287,6 +287,17 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
         <p class="sec-note" id="journalNote"></p>
       </div>
       <div id="journalBody"></div>
+    </div>
+  </section>
+
+  <section class="sec" id="articles" style="display:none;">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="eyebrow" id="articlesLabel"></span>
+        <h2 id="articlesTitle"></h2>
+        <p class="sec-note" id="articlesNote"></p>
+      </div>
+      <div id="articlesBody"></div>
     </div>
   </section>
 
@@ -367,6 +378,12 @@ const HUB = {
       heading: "Posts are on the way.",
       body: "Subscribe below and you'll get the first ones before they land here.",
     },
+  },
+  articles: {
+    label: "More reading",
+    title: "More from the blog",
+    note: "",
+    items: [],
   },
 
   news: {
@@ -513,40 +530,73 @@ function renderCards(sec, bodyId, labelId, titleId, noteId) {
 }
 
 async function renderHubJournal() {
-  // Blog section: static HUB.journal.items as the instant fallback, then live —
-  // the campaign's published blog posts (getHubBlog → the hub's own
-  // web/hub/<slug>/blog/ dir), each a { kicker, title, excerpt, url } card
-  // linking to its sub-page. Replaces the old unfiltered News Feed section
-  // (removed). Mirrors renderHubProducts / getHubProducts.
+  // "News" half of the editorial feed — Blog - SEO - News assets only
+  // (getHubBlog, kind:'news'). No placeholder: the section stays hidden
+  // until something actually resolves. See renderHubArticles for the
+  // other half (blog posts + any QA method that isn't QA – Sales).
+  const sec = document.getElementById('journal');
   const s = HUB.journal;
   $("journalLabel").textContent = s.label;
   $("journalTitle").textContent = s.title;
   $("journalNote").textContent = s.note || "";
   const body = $("journalBody");
+  if (sec) sec.style.display = 'none';
   const paint = (items, isLive) => {
-    if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
-    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => {
-      const tag = it.url && it.url !== "#" ? "a" : "div";
-      const href = tag === "a" ? ` href="${esc(it.url)}"` : "";
-      return `<${tag} class="card"${href}>
+    if (!items || !items.length) { if (sec) sec.style.display = 'none'; return; }
+    if (sec) sec.style.display = '';
+    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
+      <a class="card" href="${esc(it.url)}">
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
         <h3>${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
-        ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
-      </${tag}>`;
-    }).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
+        <span class="more">Read →</span>
+      </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
   };
-  paint(s.items, false);                              // static fallback, instant
   if (!HUB.campaignId) return;
   try {
     const res = await fetch(WORKER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug }),
+      body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug, kind: "news" }),
     });
     const data = await res.json();
     if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts, !!data.hasIndex);
-  } catch (e) { /* keep the static fallback */ }
+  } catch (e) { /* stays hidden */ }
+}
+
+async function renderHubArticles() {
+  // "Articles" half of the editorial feed — SEO Post + any QA method that
+  // isn't QA – Sales (getHubBlog, kind:'articles'). Sibling of
+  // renderHubJournal (the "news" half); same no-placeholder, hidden-
+  // until-populated behavior.
+  const sec = document.getElementById('articles');
+  const s = HUB.articles;
+  $("articlesLabel").textContent = s.label;
+  $("articlesTitle").textContent = s.title;
+  $("articlesNote").textContent = s.note || "";
+  const body = $("articlesBody");
+  if (sec) sec.style.display = 'none';
+  const paint = (items, isLive) => {
+    if (!items || !items.length) { if (sec) sec.style.display = 'none'; return; }
+    if (sec) sec.style.display = '';
+    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
+      <a class="card" href="${esc(it.url)}">
+        ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
+        <h3>${esc(it.title)}</h3>
+        ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
+        <span class="more">Read →</span>
+      </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./blog/">All posts →</a></p>` : "");
+  };
+  if (!HUB.campaignId) return;
+  try {
+    const res = await fetch(WORKER_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "getHubBlog", campaignId: HUB.campaignId, slug: HUB.slug, kind: "articles" }),
+    });
+    const data = await res.json();
+    if (res.ok && Array.isArray(data.posts) && data.posts.length) paint(data.posts, !!data.hasIndex);
+  } catch (e) { /* stays hidden */ }
 }
 
 function renderReport() {
@@ -694,29 +744,27 @@ function reveal() {
 }
 
 async function renderHubProducts() {
-  // Products / Offers section: static HUB.trips.items as the instant fallback,
-  // then live — the campaign's published Offers (getHubProducts → the hub's own
-  // web/hub/<slug>/offers/ dir), each a card linking to its offer page (pitch +
-  // lead form). Mirrors renderHubJournal / getHubBlog.
+  // Services/Products section: any Offer or QA – Sales asset
+  // (getHubProducts), each a card linking to its live page. No
+  // placeholder — the section stays hidden until something resolves.
+  const sec = document.getElementById('trips');
   const s = HUB.trips;
   $("tripsLabel").textContent = s.label;
   $("tripsTitle").textContent = s.title;
   $("tripsNote").textContent = s.note || "";
   const body = $("tripsBody");
+  if (sec) sec.style.display = 'none';
   const paint = (items, isLive) => {
-    if (!items || !items.length) { body.innerHTML = emptyState(s.empty); return; }
-    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => {
-      const tag = it.url && it.url !== "#" ? "a" : "div";
-      const href = tag === "a" ? ` href="${esc(it.url)}"` : "";
-      return `<${tag} class="card"${href}>
+    if (!items || !items.length) { if (sec) sec.style.display = 'none'; return; }
+    if (sec) sec.style.display = '';
+    body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
+      <a class="card" href="${esc(it.url)}">
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
         <h3>${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
-        ${tag === "a" ? `<span class="more">Read →</span>` : `<span class="more">Coming soon</span>`}
-      </${tag}>`;
-    }).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./offers/">All offers →</a></p>` : "");
+        <span class="more">Read →</span>
+      </a>`).join("") + `</div>` + (isLive ? `<p class="sec-note" style="margin-top:22px"><a href="./offers/">All offers →</a></p>` : "");
   };
-  paint(s.items, false);                              // static fallback, instant
   if (!HUB.campaignId) return;
   try {
     const res = await fetch(WORKER_URL, {
@@ -726,7 +774,7 @@ async function renderHubProducts() {
     });
     const data = await res.json();
     if (res.ok && Array.isArray(data.products) && data.products.length) paint(data.products, !!data.hasIndex);
-  } catch (e) { /* keep the static fallback */ }
+  } catch (e) { /* stays hidden */ }
 }
 
 (async () => {
@@ -749,6 +797,7 @@ async function renderHubProducts() {
   maybeAddSalesNavLink();
   renderHero();
   renderHubJournal();
+  renderHubArticles();
   renderReport();
   renderHubProjectExperience();
   renderHubProducts();
