@@ -748,7 +748,7 @@
        replace both Development and Publishing; for now it's additive. -->
   <div class="tab-panel" id="tabDev2">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
-      <input type="text" id="dev2Filter" placeholder="Filter…" oninput="dev2OnFilterChange()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--text);">
+      <input type="text" id="dev2Filter" placeholder="Filter… (comma-separate multiple values)" oninput="dev2OnFilterChange()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--text);">
       <span id="dev2Count" style="font-size:11px;color:var(--text3);white-space:nowrap;"></span>
     </div>
     <!-- Bulk action bar — hidden until at least one row is checked. Delete
@@ -8901,10 +8901,16 @@ function renderDev2() {
   const countEl = document.getElementById('dev2Count');
   if (!DEV2_ROWS.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; if (countEl) countEl.textContent = ''; return; }
 
-  const q = (document.getElementById('dev2Filter')?.value || '').trim().toLowerCase();
+  // Comma-separated terms, OR'd together — "care gap, owners rep" shows
+  // rows matching EITHER, same idea as filtering to a set of values rather
+  // than narrowing with every extra word.
+  const terms = (document.getElementById('dev2Filter')?.value || '')
+    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
   let rows = DEV2_ROWS;
-  if (q) {
-    rows = rows.filter(r => DEV2_COLS.some(c => c.key !== 'datePublished' && String(r[c.key] || '').toLowerCase().includes(q)));
+  if (terms.length) {
+    rows = rows.filter(r => terms.some(term =>
+      DEV2_COLS.some(c => c.key !== 'datePublished' && String(r[c.key] || '').toLowerCase().includes(term))
+    ));
   }
 
   rows = rows.slice().sort(dev2Cmp);
