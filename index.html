@@ -666,6 +666,7 @@
     <div class="tab"        onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
+    <div class="tab"        onclick="switchTab('dev2')">Dev 2</div>
     <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
     <div class="tab"        onclick="switchTab('landingpages')">Landing Pages</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
@@ -740,6 +741,17 @@
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
     </div>
     <a href="https://app.notion.com/p/3c21f7d3a4bb81119dffef23153e97d7" target="_blank" rel="noopener" style="display:inline-block;margin-top:14px;font-size:12px;font-weight:400;color:var(--text3);text-decoration:none;border:1px solid var(--border);border-radius:4px;padding:2px 8px;">Information Flow</a>
+  </div>
+
+  <!-- Dev 2 — flat, fully sortable, one row per asset (blank asset columns
+       for a Development-stage title with none yet). Meant to eventually
+       replace both Development and Publishing; for now it's additive. -->
+  <div class="tab-panel" id="tabDev2">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
+      <input type="text" id="dev2Filter" placeholder="Filter…" oninput="renderDev2()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--text);">
+      <span id="dev2Count" style="font-size:11px;color:var(--text3);white-space:nowrap;"></span>
+    </div>
+    <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
   </div>
 
   <div class="tab-panel" id="tabPublishing">
@@ -3819,6 +3831,7 @@ function resetLoadFlags() {
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
   ecoLoaded = false; globalsLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
   careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false; last30TitlesLoaded = false;
+  dev2Loaded = false;
 }
 function lockApp() {
   SESSION_TOKEN = null;
@@ -3865,6 +3878,7 @@ async function call(action, extra = {}) {
 // ── TABS ─────────────────────────────────────────────────────────────
 let prodLoaded = false;
 let devLoaded  = false;
+let dev2Loaded = false;
 let tdTabLoaded = false;
 // Development Titles — default-collapsed, same lazy-load-on-expand pattern
 // as Last 30 Published / Site TDs. devLoaded still tracks whether data has
@@ -4661,6 +4675,7 @@ function loadTabContent(name) {
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
+  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
@@ -8739,6 +8754,91 @@ async function submitRun() {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = 'Create Run';
   }
+}
+
+// ── DEV 2 ────────────────────────────────────────────────────────────
+// Flat, cross-campaign, one row per asset — see getDevAssetsTable in
+// worker.js for exactly how each column resolves. Meant to eventually
+// replace both the Development and Publishing tabs; for now it's purely
+// additive (nothing else reads DEV2_ROWS).
+let DEV2_ROWS = [];
+let DEV2_SORT = { col: 'campaign', asc: true };
+const DEV2_COLS = [
+  { key: 'campaign',     label: 'Campaign' },
+  { key: 'hub',          label: 'Hub' },
+  { key: 'productStack', label: 'Product Stack' },
+  { key: 'product',      label: 'Product' },
+  { key: 'title',        label: 'Title' },
+  { key: 'assetType',    label: 'Asset Type (Method)' },
+  { key: 'datePublished',label: 'Date Published' },
+];
+async function loadDev2() {
+  const el = document.getElementById('dev2Content');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try {
+    const data = await call('getDevAssetsTable');
+    DEV2_ROWS = data.rows || [];
+    renderDev2();
+  } catch (e) {
+    el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>';
+  }
+}
+function dev2SetSort(col) {
+  if (DEV2_SORT.col === col) DEV2_SORT.asc = !DEV2_SORT.asc;
+  else DEV2_SORT = { col, asc: true };
+  renderDev2();
+}
+function renderDev2() {
+  const el = document.getElementById('dev2Content');
+  const countEl = document.getElementById('dev2Count');
+  if (!DEV2_ROWS.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; if (countEl) countEl.textContent = ''; return; }
+
+  const q = (document.getElementById('dev2Filter')?.value || '').trim().toLowerCase();
+  let rows = DEV2_ROWS;
+  if (q) {
+    rows = rows.filter(r => DEV2_COLS.some(c => c.key !== 'datePublished' && String(r[c.key] || '').toLowerCase().includes(q)));
+  }
+
+  const { col, asc } = DEV2_SORT;
+  rows = rows.slice().sort((a, b) => {
+    const av = a[col], bv = b[col];
+    // Blanks (no asset yet, or no Date Published) always sink to the
+    // bottom regardless of sort direction — they're the overflow case,
+    // not a competitor for "smallest" when sorting ascending.
+    const aBlank = av === null || av === undefined || av === '';
+    const bBlank = bv === null || bv === undefined || bv === '';
+    if (aBlank && bBlank) return 0;
+    if (aBlank) return 1;
+    if (bBlank) return -1;
+    const cmp = col === 'datePublished' ? (av < bv ? -1 : av > bv ? 1 : 0) : String(av).localeCompare(String(bv));
+    return asc ? cmp : -cmp;
+  });
+
+  if (countEl) countEl.textContent = rows.length + ' / ' + DEV2_ROWS.length + ' rows';
+
+  const fmtDate = iso => iso ? new Date(iso).toLocaleDateString() : '';
+  const thead = '<tr>' + DEV2_COLS.map(c => {
+    const arrow = DEV2_SORT.col === c.key ? (DEV2_SORT.asc ? ' ▲' : ' ▼') : '';
+    return `<th onclick="dev2SetSort('${c.key}')" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
+  }).join('') + '</tr>';
+
+  const tbody = rows.map(r => {
+    const titleCell = `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>`;
+    const assetTypeCell = r.assetId
+      ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.assetType || '?')}</a>`
+      : '<span style="color:var(--text3);">—</span>';
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
+      <td style="padding:6px 10px;font-size:12px;">${esc(r.hub || '')}</td>
+      <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
+      <td style="padding:6px 10px;font-size:12px;">${esc(r.product)}</td>
+      <td style="padding:6px 10px;font-size:12px;">${titleCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
+      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${esc(fmtDate(r.datePublished))}</td>
+    </tr>`;
+  }).join('');
+
+  el.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
 }
 
 // ── DEVELOPMENT ──────────────────────────────────────────────────────

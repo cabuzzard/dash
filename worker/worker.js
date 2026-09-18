@@ -11240,6 +11240,113 @@ Return: {
         return json({ campaigns });
       }
 
+      // getDevAssetsTable — the flat, cross-campaign data source for the
+      // dashboard's "Dev 2" tab: a single sortable table meant to eventually
+      // replace both the Development and Publishing tabs. One row per
+      // ASSET (Campaign / Hub / Product Stack / Product / Title / Asset
+      // Type (Method) / Date Published); a Development-stage title with no
+      // assets yet still gets exactly one row, with the asset-side columns
+      // left blank rather than being omitted from the table entirely.
+      // "Date Published" is last_edited_time on the asset page, only when
+      // Asset Status is actually "Published" (not "Publish", which is
+      // still queued) — Notion has no dedicated publish-date property, and
+      // a status flip to Published is itself an edit, so this is a close,
+      // zero-schema-change proxy rather than an exact timestamp.
+      if (body.action === "getDevAssetsTable") {
+        const [campRows, productRows, titleRows, assetRows] = await Promise.all([
+          notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } }),
+          notionQuery(PRODUCTS_DB, {}),
+          notionQuery(CONTENT_STRATEGY_DB, {}),
+          notionQuery(ASSETS_DB, {}),
+        ]);
+        const dropDash = raw => String(raw || "").replace(/-/g, "");
+
+        const campById = {};
+        campRows.forEach(c => {
+          const id = dropDash(c.id);
+          campById[id] = { name: (c.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" };
+        });
+        const hubByCampId = {};
+        HUB_SITES.forEach(h => { hubByCampId[dropDash(h.campaignId)] = h.name; });
+
+        const productById = {};
+        productRows.forEach(p => {
+          productById[dropDash(p.id)] = {
+            name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?",
+            stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
+          };
+        });
+
+        const titleById = {};
+        titleRows.forEach(t => {
+          const id = dropDash(t.id);
+          const p = t.properties || {};
+          titleById[id] = {
+            title: (p.Title?.title || []).map(x => x.plain_text).join("") || "Untitled",
+            campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
+            productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
+          };
+        });
+
+        const assetsByTitle = {};
+        const methIdSet = new Set();
+        assetRows.forEach(a => {
+          const p = a.properties || {};
+          const titleId = (p["Content Strategy"]?.relation || [])[0]?.id ? dropDash((p["Content Strategy"].relation)[0].id) : null;
+          if (!titleId) return; // an asset with no source title can't place itself in this title-rooted table
+          const methodId = (p["Method"]?.relation || [])[0]?.id ? dropDash((p["Method"].relation)[0].id) : null;
+          if (methodId) methIdSet.add(methodId);
+          (assetsByTitle[titleId] ||= []).push({
+            id: dropDash(a.id),
+            methodId,
+            assetType: p["Asset Type"]?.select?.name || "",
+            status: p["Asset Status"]?.select?.name || "",
+            lastEditedTime: a.last_edited_time || null,
+          });
+        });
+
+        // Resolve Method relation ids to names (same per-id page fetch
+        // pattern getDevTitles uses for the same reason: Methods aren't
+        // preloaded in bulk anywhere else worth reusing here).
+        const dashify = raw => { const s = raw.replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const methNames = Object.fromEntries(await Promise.all([...methIdSet].map(async id => {
+          try {
+            const r = await fetch(`https://api.notion.com/v1/pages/${dashify(id)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+            const pg = await r.json();
+            return [id, (pg.properties?.Name?.title || []).map(x => x.plain_text).join("") || "?"];
+          } catch (e) { return [id, "?"]; }
+        })));
+
+        const rows = [];
+        Object.entries(titleById).forEach(([titleId, t]) => {
+          const camp = t.campId ? campById[t.campId] : null;
+          const prod = t.productId ? productById[t.productId] : null;
+          const base = {
+            campaign: camp ? camp.name : "?",
+            hub: t.campId ? (hubByCampId[t.campId] || "") : "",
+            productStack: prod ? (prod.stack || "No Stack") : "No Product",
+            product: prod ? prod.name : "No Product",
+            title: t.title,
+            titleId,
+          };
+          const assets = assetsByTitle[titleId] || [];
+          if (!assets.length) {
+            rows.push({ ...base, assetId: null, assetType: "", datePublished: null });
+            return;
+          }
+          assets.forEach(a => {
+            rows.push({
+              ...base,
+              assetId: a.id,
+              assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+              datePublished: a.status === "Published" ? a.lastEditedTime : null,
+            });
+          });
+        });
+
+        return json({ rows });
+      }
+
       if (body.action === "createDevTitle") {
         // Extended idea-input shape: an idea (the title) plus optional method/
         // product relations, a content description (→ Core Idea), seed
