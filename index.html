@@ -748,8 +748,16 @@
        replace both Development and Publishing; for now it's additive. -->
   <div class="tab-panel" id="tabDev2">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
-      <input type="text" id="dev2Filter" placeholder="Filter…" oninput="renderDev2()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--text);">
+      <input type="text" id="dev2Filter" placeholder="Filter…" oninput="dev2OnFilterChange()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--text);">
       <span id="dev2Count" style="font-size:11px;color:var(--text3);white-space:nowrap;"></span>
+    </div>
+    <!-- Bulk action bar — hidden until at least one row is checked. Delete
+         is the first action; more will land here later (same bar, more
+         buttons), per operator direction. -->
+    <div id="dev2BulkBar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(255,80,80,.08);border:1px solid #5a2020;border-radius:4px;">
+      <span id="dev2BulkCount" style="font-size:12px;color:var(--text2);font-weight:600;"></span>
+      <button onclick="dev2BulkDelete()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #a33;border-radius:4px;background:transparent;color:#ff6b6b;cursor:pointer;">🗑 Delete</button>
+      <button onclick="dev2ClearSelection()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;">Clear selection</button>
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
   </div>
@@ -8768,6 +8776,14 @@ let DEV2_ROWS = [];
 // breaker (or flips its direction if it's already in the list) without
 // disturbing the columns already sorted on.
 let DEV2_SORT = [{ col: 'campaign', asc: true }];
+// Bulk selection — keyed 'a:<assetId>' for a real asset row or
+// 't:<titleId>' for a blank/no-asset placeholder row (there's no asset to
+// act on there, only the title). Persists across a re-sort (same rows,
+// new order) but is cleared whenever the filter changes, so a bulk action
+// can never fire against rows the operator can no longer see.
+let DEV2_SELECTED = new Set();
+let DEV2_VISIBLE_ROWS = [];
+function dev2RowKey(r) { return r.assetId ? ('a:' + r.assetId) : ('t:' + r.titleId); }
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
   { key: 'hub',          label: 'Hub' },
@@ -8800,6 +8816,62 @@ function dev2SetSort(col, ev) {
     DEV2_SORT = [{ col, asc: true }];
   }
   renderDev2();
+}
+function dev2OnFilterChange() {
+  DEV2_SELECTED.clear();
+  renderDev2();
+}
+function dev2ToggleRow(key, checked) {
+  if (checked) DEV2_SELECTED.add(key); else DEV2_SELECTED.delete(key);
+  dev2UpdateBulkBar();
+  const allCb = document.getElementById('dev2SelectAll');
+  if (allCb) allCb.checked = DEV2_VISIBLE_ROWS.length > 0 && DEV2_VISIBLE_ROWS.every(r => DEV2_SELECTED.has(dev2RowKey(r)));
+}
+function dev2ToggleAll(checked) {
+  DEV2_VISIBLE_ROWS.forEach(r => { const k = dev2RowKey(r); if (checked) DEV2_SELECTED.add(k); else DEV2_SELECTED.delete(k); });
+  renderDev2();
+}
+function dev2ClearSelection() {
+  DEV2_SELECTED.clear();
+  renderDev2();
+}
+function dev2UpdateBulkBar() {
+  const bar = document.getElementById('dev2BulkBar');
+  if (!bar) return;
+  const n = DEV2_SELECTED.size;
+  bar.style.display = n ? 'flex' : 'none';
+  const countEl = document.getElementById('dev2BulkCount');
+  if (countEl) countEl.textContent = n + ' selected';
+}
+// Bulk delete — an asset-backed row deletes the asset (deleteAsset); a
+// blank/no-asset placeholder row has nothing to delete but the title
+// itself, so it deletes the title (deleteTitle) instead. Both archive in
+// Notion rather than hard-deleting, same as every other delete button in
+// this dashboard, but there's no undo from HERE, hence the confirm.
+async function dev2BulkDelete() {
+  const keys = [...DEV2_SELECTED];
+  if (!keys.length) return;
+  const assetKeys = keys.filter(k => k.startsWith('a:'));
+  const titleKeys = keys.filter(k => k.startsWith('t:'));
+  const parts = [];
+  if (assetKeys.length) parts.push(assetKeys.length + ' asset(s)');
+  if (titleKeys.length) parts.push(titleKeys.length + ' title(s) with no asset');
+  if (!confirm('Delete ' + parts.join(' and ') + '? This archives them in Notion — there is no undo from this table.')) return;
+  const bar = document.getElementById('dev2BulkBar');
+  Array.from(bar.querySelectorAll('button')).forEach(b => b.disabled = true);
+  const countEl = document.getElementById('dev2BulkCount');
+  let ok = 0, failed = 0;
+  for (const k of assetKeys) {
+    if (countEl) countEl.textContent = 'Deleting ' + (ok + failed + 1) + '/' + keys.length + '…';
+    try { await call('deleteAsset', { assetId: k.slice(2) }); ok++; } catch (e) { failed++; }
+  }
+  for (const k of titleKeys) {
+    if (countEl) countEl.textContent = 'Deleting ' + (ok + failed + 1) + '/' + keys.length + '…';
+    try { await call('deleteTitle', { titleId: k.slice(2) }); ok++; } catch (e) { failed++; }
+  }
+  DEV2_SELECTED.clear();
+  await loadDev2();
+  if (failed) alert(ok + ' deleted, ' + failed + ' failed.');
 }
 function dev2Cmp(a, b) {
   for (const { col, asc } of DEV2_SORT) {
@@ -8834,26 +8906,34 @@ function renderDev2() {
   }
 
   rows = rows.slice().sort(dev2Cmp);
+  DEV2_VISIBLE_ROWS = rows;
 
   if (countEl) countEl.textContent = rows.length + ' / ' + DEV2_ROWS.length + ' rows';
+  dev2UpdateBulkBar();
 
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString() : '';
-  const thead = '<tr>' + DEV2_COLS.map(c => {
-    const sortIdx = DEV2_SORT.findIndex(s => s.col === c.key);
-    let arrow = '';
-    if (sortIdx !== -1) {
-      const s = DEV2_SORT[sortIdx];
-      arrow = ' ' + (s.asc ? '▲' : '▼') + (DEV2_SORT.length > 1 ? (sortIdx + 1) : '');
-    }
-    return `<th onclick="dev2SetSort('${c.key}', event)" title="Click to sort — shift-click to add as a tie-breaker" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
-  }).join('') + '</tr>';
+  const allChecked = rows.length > 0 && rows.every(r => DEV2_SELECTED.has(dev2RowKey(r)));
+  const thead = `<tr>
+    <th style="padding:6px 8px;border-bottom:1px solid var(--border2);"><input type="checkbox" id="dev2SelectAll" ${allChecked ? 'checked' : ''} onclick="dev2ToggleAll(this.checked)"></th>
+    ${DEV2_COLS.map(c => {
+      const sortIdx = DEV2_SORT.findIndex(s => s.col === c.key);
+      let arrow = '';
+      if (sortIdx !== -1) {
+        const s = DEV2_SORT[sortIdx];
+        arrow = ' ' + (s.asc ? '▲' : '▼') + (DEV2_SORT.length > 1 ? (sortIdx + 1) : '');
+      }
+      return `<th onclick="dev2SetSort('${c.key}', event)" title="Click to sort — shift-click to add as a tie-breaker" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
+    }).join('')}
+  </tr>`;
 
   const tbody = rows.map(r => {
+    const key = dev2RowKey(r);
     const titleCell = `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>`;
     const assetTypeCell = r.assetId
       ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.assetType || '?')}</a>`
       : '<span style="color:var(--text3);">—</span>';
     return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:6px 8px;"><input type="checkbox" class="dev2-row-cb" ${DEV2_SELECTED.has(key) ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked)"></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.hub || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
