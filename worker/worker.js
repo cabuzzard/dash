@@ -8667,14 +8667,18 @@ export default {
           cards.push({
             kicker:  String(card?.kicker || "").trim(),
             title:   oname,
-            excerpt: String(card?.promise || bodyProp || "").trim(),
+            excerpt: String(card?.promise || bodyProp || "").trim().slice(0, 240),
             url,
           });
         }
         // Two assets can resolve to the same offer page (AI name collision) —
-        // show one card, not the same one twice.
+        // show one card, not the same one twice. A card with no url at all
+        // (a malformed/half-generated asset — no OFFER CARD, no Content
+        // URL, nothing to link to) is dropped outright rather than shown
+        // as a dead, unclickable card — the same "no placeholder" rule as
+        // the rest of this section.
         const _seen = new Set();
-        const products = cards.filter(c => { const k = c.url || c.title; if (!k || _seen.has(k)) return false; _seen.add(k); return true; });
+        const products = cards.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
         return json({ products, hasIndex });
       } catch (e) {
         if (slug) {
@@ -8730,7 +8734,17 @@ export default {
         // an article. kind omitted = the old combined behavior (either
         // bucket), kept for any caller that hasn't been updated to pass it.
         const isNewsType    = at => /\bblog\b/i.test(at) && /\bnews\b/i.test(at);
-        const isArticleType = at => /\bseo post\b/i.test(at) || /^QA\s*[–-]\s*(?!Sales\b)/i.test(at);
+        // NOT `/^QA\s*[–-]\s*(?!Sales\b)/i` — the `\s*` right before the
+        // lookahead can backtrack to zero width, letting the lookahead
+        // dodge past the space and match "QA – Sales" anyway (confirmed
+        // live: it let Sales pages leak into the Articles section).
+        // Extracting the remainder and checking it directly has no
+        // backtracking ambiguity to exploit.
+        const isArticleType = at => {
+          if (/\bseo post\b/i.test(at)) return true;
+          const m = /^QA\s*[–-]\s*(.+)$/i.exec(String(at || "").trim());
+          return !!m && !/^sales\b/i.test(m[1].trim());
+        };
         const kind = String(body.kind || "").trim().toLowerCase();
         const wanted = rows.filter(r => {
           const at = r.properties?.["Asset Type"]?.select?.name || "";
@@ -8779,8 +8793,11 @@ export default {
             url,
           };
         });
+        // A card with no url (malformed/half-generated asset, nothing to
+        // link to) is dropped rather than shown as a dead, unclickable
+        // card — same "no placeholder" rule as getHubProducts.
         const _seen = new Set();
-        const deduped = posts.filter(c => { const k = c.url || c.title; if (!k || _seen.has(k)) return false; _seen.add(k); return true; });
+        const deduped = posts.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
         return json({ posts: deduped, hasIndex });
       } catch (e) {
         // Notion failed — last-ditch posts.json so the hub isn't blanked
