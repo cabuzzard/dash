@@ -4,5 +4,27 @@
   },
   "report": {
     "image": "./signup.jpg?v=1788541614415"
-  }
+  },
+  "ribbon": [
+    "Wheelchair accessible",
+    "accessible farm",
+    "Step-free throughout",
+    "Accessible parking",
+    "Companion enters free",
+    "Sensory-friendly"
+  ],
+  "nav": [
+    {
+      "label": "Visit",
+      "href": "#trips"
+    },
+    {
+      "label": "Free guide",
+      "href": "#report"
+    },
+    {
+      "label": "Journal",
+      "href": "#journal"
+    }
+  ]
 }
