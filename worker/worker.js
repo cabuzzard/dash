@@ -13057,6 +13057,70 @@ ${bodyText.slice(0, 6000)}`;
         return json({ success: true, id: created.id.replace(/-/g,""), date: targetDay });
       }
 
+      // ── syncCampaignNotesToTd ── the "📌 Campaign Notes" box on the
+      // campaign-agnostic template mirrors into a standing "td {Hub Name}"
+      // card on the This Week / Weekly Planner board, one per hub —
+      // operator direction 2026-09-21. Idempotent: finds the existing row
+      // by exact Name + Campaign match before creating a new one, so
+      // calling this on every Save never duplicates the card. Anchored on
+      // the current week's Tuesday ONLY the first time it's created —
+      // never reset afterward, so dragging it to a different day (the
+      // board's normal drag-between-days) sticks permanently. A campaignId
+      // that isn't a hub campaign is a silent no-op (only hubs get a td
+      // card this way). `notes` is optional — omit it to have this action
+      // pull the Campaign's own current "Notes" property itself (used for
+      // one-time backfill instead of the live-save path, which already has
+      // the fresh value in hand and passes it explicitly).
+      if (body.action === "syncCampaignNotesToTd") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const hub = HUB_SITES.find(h => norm(h.campaignId) === norm(campaignId));
+        if (!hub) return json({ success: true, skipped: true });
+        const dash = raw => { const s = norm(raw); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const tdName = `td ${hub.name}`;
+        try {
+          let txt;
+          if (body.notes !== undefined) {
+            txt = String(body.notes ?? "").slice(0, 1990);
+          } else {
+            const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            txt = ((campPage?.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("")).slice(0, 1990);
+          }
+          const existing = await notionQuery(WEEKLY_PLANNER_DB, { filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Name", title: { equals: tdName } },
+          ] } }).catch(() => []);
+          const notesProp = { Notes: { rich_text: txt ? [{ type: "text", text: { content: txt } }] : [] } };
+          if (existing[0]) {
+            const itemId = existing[0].id;
+            const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: notesProp }) });
+            const result = await resp.json().catch(() => ({}));
+            if (!resp.ok) return json({ error: result.message || "Notes update failed" }, resp.status);
+            return json({ success: true, itemId: itemId.replace(/-/g,""), created: false });
+          }
+          const now = new Date();
+          const dow = (now.getUTCDay() + 6) % 7; // 0 = Monday
+          const monday = new Date(now); monday.setUTCDate(now.getUTCDate() - dow);
+          const tuesday = new Date(monday); tuesday.setUTCDate(monday.getUTCDate() + 1);
+          const created = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ parent: { database_id: WEEKLY_PLANNER_DB }, properties: {
+              "Name": { title: [{ type: "text", text: { content: tdName } }] },
+              "Date": { date: { start: tuesday.toISOString().slice(0, 10) } },
+              "Order": { number: 0 },
+              "Status": { select: { name: "Open" } },
+              "Source": { select: { name: "Manual" } },
+              "Campaign": { relation: [{ id: dash(campaignId) }] },
+              ...notesProp,
+            } }),
+          }).then(r => r.json());
+          if (!created.id) return json({ error: created.message || "Failed to create td card" }, 500);
+          return json({ success: true, itemId: created.id.replace(/-/g,""), created: true });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
       // ── Hub Fronts ── the standing output mandate (🎯 Hub Fronts DB). One
       // row per hub × work-class. Powers the collapsed "Hub Front" section
       // above the This Week board on the TD tab. Cadence rows that are

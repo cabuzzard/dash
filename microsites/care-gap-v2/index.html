@@ -1311,6 +1311,11 @@ async function saveCampaignNotes() {
     await w('updateCampaignField', { campaignId: CAMPAIGN_ID, field: 'notes', value });
     CAMPAIGN_NOTES = value;
     renderCampaignNotes();
+    // Mirrors into this hub's standing "td {Hub Name}" card on the This
+    // Week board (no-op for a non-hub campaign — see the worker action's
+    // own comment). Best-effort: a failure here shouldn't make the actual
+    // notes save look like it failed, since it already succeeded above.
+    w('syncCampaignNotesToTd', { campaignId: CAMPAIGN_ID, notes: value }).catch(() => {});
     if (status) { status.textContent = 'Saved ✓'; setTimeout(() => { if (status) status.textContent = ''; }, 2000); }
   } catch (e) {
     alert('Save failed: ' + e.message);
