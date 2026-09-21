@@ -209,6 +209,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <summary>📂 Jump to…</summary>
           <div class="artnav-menu">
             <span class="current" style="padding:6px 10px;color:var(--ink3);font-style:italic;display:block;">— this page —</span>
+            <a id="liveHubLink" href="#" target="_blank" rel="noopener" style="display:none;" title="This campaign's live Content Hub — updates when you switch campaigns above">🌐 Live Hub ↗</a>
             <a href="https://claude.ai/code/artifact/b8376849-0ba0-4c52-9ace-9cdf053a73ce" target="_blank" rel="noopener">🗺️ Master (spec) ↗</a>
             <a href="https://claude.ai/code/artifact/08c30349-852f-4497-9083-cdd6147b4c2f" target="_blank" rel="noopener">🗂️ New Template (archived) ↗</a>
             <a href="https://claude.ai/code/artifact/97120115-6a94-4744-aab5-7f9d0b6bbe9a" target="_blank" rel="noopener">🛠️ Method Pipeline Grid ↗</a>
@@ -1243,6 +1244,19 @@ function resolveCampaignContext() {
       const h1 = document.querySelector('.hdr h1'); if (h1) h1.textContent = CAMPAIGN_NAME + ' Template';
       CAMPAIGN_NOTES = header.notes || '';
       renderCampaignNotes();
+      // Live Hub jump link — the Campaign's own "live site" property (kept
+      // in sync to the custom domain when a hub has one, per the hub
+      // domain-routing runbook), else the GitHub Pages hub URL built from
+      // HUB_SLUG. Hidden entirely for a non-hub campaign. Since a campaign
+      // switch is always a real page navigation (see the picker below),
+      // this only ever needs to be set once per load — no separate
+      // "updates when you switch hubs" wiring beyond that reload.
+      const liveHubLink = document.getElementById('liveHubLink');
+      if (liveHubLink) {
+        const liveHubUrl = header.liveSite || (HUB_SLUG ? `https://cabuzzard.github.io/dash/web/hub/${HUB_SLUG}/` : null);
+        if (liveHubUrl) { liveHubLink.href = liveHubUrl; liveHubLink.style.display = ''; }
+        else liveHubLink.style.display = 'none';
+      }
     }
     let researchId = researchResp && researchResp.research ? researchResp.research.id : null;
     if (!researchId) {
