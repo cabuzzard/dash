@@ -18110,6 +18110,16 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+        // Not a formal "research type" field — just checks Site (stamped
+        // "Affiliates" by createProductFromAffiliate). An affiliate program
+        // needs every field written from a PROMOTER's perspective, not a
+        // seller's — "Offer Structure" describes THEIR pricing/terms as
+        // you'd explain it to a reader, "Proof Points" are the affiliate
+        // product's own credibility signals, "Objections" are what a reader
+        // hesitates on before clicking through your link. Without this, the
+        // generic "you are the seller" framing below quietly misdescribes
+        // something you don't actually sell or control.
+        const isAffiliate = pp.Site?.select?.name === "Affiliates";
 
         let researchBlock = '';
         if (campaignId) {
@@ -18135,7 +18145,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const currentVal = existing ? (existing.properties?.[field]?.rich_text || []).map(t => t.plain_text).join("") : "";
 
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist refining ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through.
-
+${isAffiliate ? `\nTHIS IS AN AFFILIATE PROGRAM, NOT AN OWNED PRODUCT. The operator promotes it for a commission — they don't set its price, own its delivery, or control its terms. Write every field from a PROMOTER's perspective: describe the affiliate product's own offer/pricing/terms as you'd explain them to a reader (not "our" offer), its own credibility/proof signals, and what a reader hesitates on before clicking through the affiliate link — never claim ownership of the product itself.\n` : ""}
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
 KEYWORDS: ${productKeywords || "(none)"}
@@ -38063,7 +38073,7 @@ ${assemblyManifest}`;
             "Description": { rich_text: [{ type: "text", text: { content: description } }] },
             "Site": { select: { name: "Affiliates" } },
             "Status": { select: { name: "Research" } },
-            "Product Stack": { rich_text: [{ type: "text", text: { content: "Affiliate Programs" } }] },
+            "Product Stack": { rich_text: [{ type: "text", text: { content: "Affiliates" } }] },
             "Campaigns": { relation: [{ id: dash(hub.campaignId) }] },
           };
           if (keyword) createProps["Keywords"] = { rich_text: [{ type: "text", text: { content: keyword.slice(0, 1990) } }] };
