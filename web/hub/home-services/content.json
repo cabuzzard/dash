@@ -6,6 +6,7 @@
   },
   "ribbon": [
     "Small repairs",
+    "Rental Management",
     "Yard & seasonal cleanup",
     "Pets, aquariums, livestock",
     "House watch while you travel",
@@ -14,5 +15,19 @@
   ],
   "report": {
     "image": "./signup.png?v=1788541614415"
-  }
+  },
+  "nav": [
+    {
+      "label": "Services",
+      "href": "#trips"
+    },
+    {
+      "label": "Notes",
+      "href": "#journal"
+    },
+    {
+      "label": "Get in touch",
+      "href": "#report"
+    }
+  ]
 }
