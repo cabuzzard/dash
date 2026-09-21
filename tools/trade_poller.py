@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev"
-PIN        = "1246"    # same PIN used to unlock the dash
+PIN        = "135679"  # same PIN used to unlock the dash
 POLL_INTERVAL_SEC = 300   # 5 minutes between full polls during market hours
 SLEEP_OFF_HOURS   = 900   # 15 min between checks when market is closed
 
