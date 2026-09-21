@@ -6927,8 +6927,16 @@ async function affiliateHubContext(hub) {
 // ── Rank a hub's staged affiliate programs against each other ──
 // One Claude call (no web search) that reads every AFFILIATE_DB row for the
 // hub plus its Research context and returns a comparative ranking — which to
-// pursue first. Writes Priority (1 = pursue first), Match Notes (why), and
-// refreshes Fit. Returns { ranked }.
+// pursue first. Writes Priority (1 = pursue first), Match Notes (why),
+// refreshes Fit, and (2026-09-22, operator direction) also writes Traffic
+// Fit + Strategy: every hub here is a GENERALIST SEO/organic-search site —
+// broad informational content, not a narrow high-intent buyer-funnel — so
+// "Fit" (topical relevance) and "Traffic Fit" (does it actually convert
+// from that kind of drive-by, not-yet-decided visitor) are judged
+// separately; a program can be topically Strong but a Weak Traffic Fit if
+// it needs a visitor who already intends to buy. Strategy is the concrete
+// "how" — where/how to place this specific program on a generalist SEO
+// hub. Returns { ranked }.
 async function rankAffiliateProgramsForHub(env, hub) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
@@ -6958,18 +6966,24 @@ async function rankAffiliateProgramsForHub(env, hub) {
 SITE: ${hub.name}
 ${ctx.statement ? `POSITIONING: ${ctx.statement}\n` : ""}${ctx.opportunity ? `OPPORTUNITY: ${ctx.opportunity}\n` : ""}KEYWORDS: ${ctx.keywords || "(none on file)"}
 
-Judge each on: relevance to what this audience actually buys, commission economics (rate × realistic order value × recurring vs one-off), cookie window, brand credibility, and how gettable approval is for a newer site. A high commission on something the audience won't buy ranks low.
+TRAFFIC MODEL — read this carefully, it changes the judgment: this hub is a GENERALIST SEO/organic-search site. Its visitors default to broad, general search traffic landing on informational content (round-ups, guides, explainers) — NOT a narrow, already-decided, high-intent buyer funnel, unless this site's own positioning above says otherwise. A visitor here is usually still learning, comparing, or just curious, not mid-checkout.
+
+For each candidate give TWO separate judgments — a program can score differently on each:
+- "fit": topical relevance — does this program's product/service actually match what this audience is here to read about.
+- "trafficFit": does it actually CONVERT from that generalist, not-yet-decided SEO visitor specifically — impulse-friendly, low-consideration, mentionable-in-passing products convert well from drive-by traffic; anything requiring a visitor who already intends to buy (long sales cycles, high-consideration B2B, needs a dedicated comparison/review page to work at all) scores lower here even if topically Strong.
+
+Also judge commission economics (rate × realistic order value × recurring vs one-off), cookie window, brand credibility, and how gettable approval is for a newer site. A high commission on something the audience won't buy, or won't buy from a blog post, ranks low.
 
 CANDIDATES (JSON):
 ${JSON.stringify(progs.map(({ id, name, network, commission, cookie, keyword, notes }) => ({ id, name, network, commission, cookie, keyword, notes })), null, 1)}
 
 Return ONLY a JSON array, best first, one entry per candidate (use the exact id):
-[ { "id": "...", "priority": 1, "fit": "Strong" | "Possible" | "Weak", "why": "one sentence — why it ranks here" } ]`;
+[ { "id": "...", "priority": 1, "fit": "Strong" | "Possible" | "Weak", "trafficFit": "Strong" | "Possible" | "Weak", "why": "one sentence — why it ranks here", "strategy": "one or two sentences — concretely how to actually place/promote THIS program on a generalist SEO hub (e.g. which kind of post it belongs in, or that it needs a dedicated page because passive drive-by traffic won't convert on it)" } ]`;
 
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
   });
   const aiData = await aiResp.json();
   if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error");
@@ -6989,7 +7003,9 @@ Return ONLY a JSON array, best first, one entry per candidate (use the exact id)
     const props = {};
     if (Number.isFinite(item.priority)) props["Priority"] = { number: Math.round(item.priority) };
     if (AFFILIATE_FITS.includes(item.fit)) props["Fit"] = { select: { name: item.fit } };
+    if (AFFILIATE_FITS.includes(item.trafficFit)) props["Traffic Fit"] = { select: { name: item.trafficFit } };
     if (item.why && String(item.why).trim()) props["Match Notes"] = { rich_text: [{ text: { content: String(item.why).slice(0, 1900) } }] };
+    if (item.strategy && String(item.strategy).trim()) props["Strategy"] = { rich_text: [{ text: { content: String(item.strategy).slice(0, 1900) } }] };
     if (!Object.keys(props).length) continue;
     const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
     if (r.ok) ranked++; else console.error("rankAffiliateProgramsForHub write:", (await r.json().catch(() => ({}))).message);
@@ -37673,10 +37689,12 @@ ${assemblyManifest}`;
             cookie: tx(pr, "Cookie Window"),
             url: pr["Signup URL"]?.url || "",
             fit: pr.Fit?.select?.name || "",
+            trafficFit: pr["Traffic Fit"]?.select?.name || "",
             status: pr.Status?.select?.name || "New",
             notes: tx(pr, "Notes"),
             priority: pr.Priority?.number ?? null,
             matchNotes: tx(pr, "Match Notes"),
+            strategy: tx(pr, "Strategy"),
             setupNotes: tx(pr, "Setup Notes"),
             signupLog: tx(pr, "Signup Log"),
           };
@@ -37700,7 +37718,7 @@ ${assemblyManifest}`;
       }
 
       if (body.action === "updateAffiliateProgram" || body.action === "deleteAffiliateProgram") {
-        const { id, status, fit, priority, signupLog } = body;
+        const { id, status, fit, trafficFit, priority, signupLog, strategy } = body;
         if (!id) return json({ error: "id required" }, 400);
         const dash = i => { const s = String(i).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         let payload;
@@ -37709,8 +37727,10 @@ ${assemblyManifest}`;
           const props = {};
           if (status && ["New","Reviewing","Stopped at login","Applied","Approved","Rejected"].includes(status)) props["Status"] = { select: { name: status } };
           if (fit && ["Strong","Possible","Weak"].includes(fit)) props["Fit"] = { select: { name: fit } };
+          if (trafficFit && ["Strong","Possible","Weak"].includes(trafficFit)) props["Traffic Fit"] = { select: { name: trafficFit } };
           if (Number.isFinite(priority)) props["Priority"] = { number: Math.round(priority) };
           if (typeof signupLog === "string") props["Signup Log"] = { rich_text: signupLog ? [{ text: { content: signupLog.slice(0, 1900) } }] : [] };
+          if (typeof strategy === "string") props["Strategy"] = { rich_text: strategy ? [{ text: { content: strategy.slice(0, 1900) } }] : [] };
           if (!Object.keys(props).length) return json({ error: "nothing to update" }, 400);
           payload = { properties: props };
         }
