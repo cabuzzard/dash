@@ -227,7 +227,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <button class="tab tab-design" data-tab="design" onclick="switchTo('design')">🎨 Design <span class="n">constant</span></button><span class="tarrow">→</span>
       <button class="tab" data-tab="product" onclick="switchTo('product')">Product Research <span class="n">(11)</span></button><span class="tarrow">→</span>
       <button class="tab" data-tab="strategy" onclick="switchTo('strategy')">Strategy · Titles · Assets</button><span class="tarrow">→</span>
-      <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button>
+      <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button><span class="tarrow">→</span>
+      <button class="tab" data-tab="hub" onclick="switchTo('hub')">Hub</button>
     </div>
   </div>
 
@@ -983,6 +984,24 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Hub section text — fixed hub copy (headings/subheads/blurbs/ribbon/
+       nav). Ported from the root dashboard's Content Hubs card "✎ Section
+       text" modal so it's editable straight from this campaign's own
+       template. Same content.json override contract (getHubContent /
+       saveHubContent), scoped to this campaign's HUB_SLUG. -->
+  <div class="modaloverlay" id="hubTextModal">
+    <div class="modalbox" style="max-width:640px;max-height:86vh;overflow-y:auto;">
+      <div class="mtitle">Section text</div>
+      <div class="mfield" style="font-size:12px;font-weight:400;color:var(--ink3);">Overrides the hub's fixed copy — headings, subheads, blurbs, the ribbon strip, nav labels. Leave a field showing its grey placeholder to keep the current text. The dynamic blog/offer cards aren't edited here. Saves to <code>content.json</code>; live in ~1 min.</div>
+      <div id="htxBody"></div>
+      <div id="htxMsg" style="font-size:12px;margin-top:8px;min-height:16px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="document.getElementById('hubTextModal').classList.remove('open')">Cancel</button>
+        <button class="btn primary" id="htxSaveBtn" onclick="hubTextSave()">Save &amp; publish</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
     <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
@@ -1150,6 +1169,16 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div class="loadnote">Loading…</div>
       </div>
     </section>
+  </div>
+
+  <!-- ══════════════════════ TAB: HUB ══════════════════════ -->
+  <!-- Everything about this campaign's live Content Hub. Starts with just
+       the section-text editor (ported from the root dashboard's Content
+       Hubs card); more hub tools land here over time. -->
+  <div class="panel" data-panel="hub">
+    <div class="stage-hd"><h2>Hub</h2><span class="stagetag">content hub</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-hub','Hub tab','hub')">📝 Tab note</button></div>
+    <p class="stage-sub">The live Content Hub for this campaign — fixed section copy for now (headings, ribbon, nav), more hub tools land here over time.</p>
+    <div id="hubTabBody"><div class="loadnote">Loading…</div></div>
   </div>
 
   <footer>Campaign Template — real microsite, live data. Notes saved to the worker as you go.</footer>
@@ -1367,6 +1396,7 @@ const TAB_LOADERS = {
   design: () => loadDesignTab(),
   product: () => loadProductTab(),
   strategy: () => { loadStrategyTab(); loadTitleAndAssetTab(); },
+  hub: () => loadHubTab(),
 };
 const TAB_LOADED = {};
 function switchTo(key) {
@@ -5383,6 +5413,122 @@ function applyTextEditorAndSave() {
   const save = slot.save, text = t.text;
   closeTextEditor();
   save(text);
+}
+
+// ── Hub tab — section-text editor, ported from the root dashboard's ────
+// Content Hubs card "✎ Section text" modal. Same content.json override
+// contract (getHubContent/saveHubContent/generateHubRibbon), scoped to
+// this campaign's own HUB_SLUG (resolved by resolveCampaignContext, always
+// already-settled by the time a tab loader can run — init() awaits it
+// before anything else).
+async function loadHubTab() {
+  const body = document.getElementById('hubTabBody');
+  await resolveCampaignContext().catch(() => {});
+  if (!HUB_SLUG) { body.innerHTML = '<div class="loadnote">This campaign isn\'t linked to a Content Hub — nothing to show here yet.</div>'; return; }
+  body.innerHTML = `
+    <section class="card" data-ckey="card-hub-sectiontext">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Section text</h3><span class="tag fresh">live</span></div>
+      <div class="card-body">
+        <p style="font-size:11.5px;color:var(--ink2);margin:0 0 10px;">Fixed hub copy — headings, subheads, blurbs, the ribbon strip, nav labels. Saves to <code>content.json</code>; live in ~1 min.</p>
+        <button class="btn primary" onclick="openHubTextModal()">✎ Edit section text</button>
+      </div>
+    </section>
+  `;
+  applyCollapseState(body);
+}
+const HTX_FIELDS = [
+  ['brand','Brand name',0],
+  ['hero.eyebrow','Hero · eyebrow',0], ['hero.headline','Hero · headline',1], ['hero.sub','Hero · subhead',2],
+  ['hero.ctaPrimary.label','Hero · primary button',0], ['hero.ctaSecondary.label','Hero · secondary button',0],
+  ['ribbon','Ribbon strip — one phrase per line',3],
+  ['nav','Nav — "label | #anchor" per line',3],
+  ['trips.label','Products/Routes · eyebrow',0], ['trips.title','Products/Routes · heading',1], ['trips.note','Products/Routes · note',1],
+  ['trips.empty.heading','Products/Routes · empty heading',1], ['trips.empty.body','Products/Routes · empty body',2],
+  ['report.label','Signup · eyebrow',0], ['report.title','Signup · heading',1], ['report.blurb','Signup · blurb',2],
+  ['report.note','Signup · fine print',1], ['report.buttonLabel','Signup · button',0], ['report.link.label','Signup · secondary link',0],
+  ['journal.label','Blog · eyebrow',0], ['journal.title','Blog · heading',1], ['journal.note','Blog · note',1],
+  ['journal.empty.heading','Blog · empty heading',1], ['journal.empty.body','Blog · empty body',2],
+  ['social.label','Social row · label',0],
+  ['footer.tagline','Footer · tagline',2], ['footer.legal','Footer · legal',0],
+];
+let HTX = { defaults:{}, overrides:{} };
+const htxGet = (o,p) => p.split('.').reduce((x,k)=> x==null?undefined:x[k], o);
+const htxSet = (o,p,v) => { const ks=p.split('.'); let x=o; for(let i=0;i<ks.length-1;i++){ x[ks[i]]=x[ks[i]]||{}; x=x[ks[i]]; } x[ks[ks.length-1]]=v; };
+async function openHubTextModal(){
+  document.getElementById('htxBody').innerHTML = '<div class="loadnote">Loading current text…</div>';
+  document.getElementById('htxMsg').textContent = '';
+  document.getElementById('hubTextModal').classList.add('open');
+  try {
+    const r = await w('getHubContent', { slug: HUB_SLUG });
+    HTX = { defaults: r.defaults||{}, overrides: JSON.parse(JSON.stringify(r.overrides||{})) };
+    htxRender();
+  } catch(e){ document.getElementById('htxBody').innerHTML = '<div style="color:var(--stale);font-size:12px;">'+esc(e.message)+'</div>'; }
+}
+function htxRender(){
+  document.getElementById('htxBody').innerHTML = HTX_FIELDS.map(([p,label,t])=>{
+    const isArr = t===3;
+    const ov = htxGet(HTX.overrides,p), df = htxGet(HTX.defaults,p);
+    const cur = ov!==undefined ? ov : df;
+    let v = '';
+    if(isArr) v = Array.isArray(cur) ? (p==='nav' ? cur.map(n=>`${n.label} | ${n.href}`).join('\n') : cur.join('\n')) : '';
+    else v = cur==null ? '' : String(cur);
+    const ph = isArr ? '' : (df==null?'':String(df)).slice(0,140);
+    const attrs = `data-p="${p}" data-arr="${isArr?1:0}" style="width:100%;box-sizing:border-box;"`;
+    const fieldId = p==='ribbon' ? ' id="htxRibbonTa"' : '';
+    const field = t>=2
+      ? `<textarea rows="${isArr?4:2}"${fieldId} ${attrs} placeholder="${esc(ph)}" style="min-height:${isArr?70:44}px;">${esc(v)}</textarea>`
+      : `<input type="text" class="finput" ${attrs} placeholder="${esc(ph)}" value="${esc(v)}" style="width:100%;">`;
+    const labelRow = p==='ribbon'
+      ? `<span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);">${esc(label)}</span><button type="button" id="htxRibbonGenBtn" onclick="htxGenRibbon()" title="Ask Claude for a fresh set of ribbon phrases grounded in this campaign's Main Keywords — replaces this field's text below so you can edit it before saving." style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--global);cursor:pointer;">✨ Generate from keywords</button></span>`
+      : `<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);display:block;margin-bottom:3px;">${esc(label)}</span>`;
+    const ribbonMsg = p==='ribbon' ? `<div id="htxRibbonMsg" style="font-size:11px;margin:-4px 0 6px;min-height:14px;"></div>` : '';
+    return `<label style="display:block;margin-bottom:9px;">${labelRow}${field}</label>${ribbonMsg}`;
+  }).join('');
+}
+async function htxGenRibbon(){
+  const btn = document.getElementById('htxRibbonGenBtn');
+  const ta = document.getElementById('htxRibbonTa');
+  const msg = document.getElementById('htxRibbonMsg');
+  if (!btn || !ta) return;
+  const o = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Generating…';
+  msg.style.color = 'var(--ink3)'; msg.textContent = '';
+  try {
+    const r = await w('generateHubRibbon', { slug: HUB_SLUG });
+    ta.value = (r.ribbon || []).join('\n');
+    msg.style.color = 'var(--ink3)';
+    msg.textContent = 'Generated — review/edit above, then Save & publish.';
+  } catch(e) {
+    msg.style.color = 'var(--stale)';
+    msg.textContent = e.message;
+  }
+  btn.disabled = false; btn.textContent = o;
+}
+async function hubTextSave(){
+  const btn = document.getElementById('htxSaveBtn'), msg = document.getElementById('htxMsg');
+  const next = {};
+  document.querySelectorAll('#htxBody [data-p]').forEach(el=>{
+    const p = el.dataset.p, isArr = el.dataset.arr==='1';
+    if(isArr){
+      const lines = el.value.split('\n').map(s=>s.trim()).filter(Boolean);
+      if(!lines.length){ htxSet(next, p, null); return; }
+      if(p==='nav') htxSet(next, p, lines.map(l=>{ const parts=l.split('|').map(s=>s.trim()); return { label: parts[0]||l, href: parts[1]||'#' }; }));
+      else htxSet(next, p, lines);
+      return;
+    }
+    const val = el.value.trim();
+    const df = htxGet(HTX.defaults, p); const dfs = df==null ? '' : String(df);
+    htxSet(next, p, (val && val !== dfs) ? val : null);   // null → worker deletes it (revert to default)
+  });
+  btn.disabled = true; btn.textContent = 'Saving…';
+  msg.style.color = 'var(--ink3)'; msg.textContent = 'Committing content.json…';
+  try {
+    await w('saveHubContent', { slug: HUB_SLUG, overrides: next });
+    HTX.overrides = next;
+    msg.style.color = 'var(--fresh)'; msg.textContent = 'Saved — live on the hub in ~1 min (reload the preview).';
+    setTimeout(()=>document.getElementById('hubTextModal').classList.remove('open'), 1500);
+  } catch(e){ msg.style.color = 'var(--stale)'; msg.textContent = e.message; }
+  btn.disabled = false; btn.textContent = 'Save & publish';
 }
 
 async function init() {
