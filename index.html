@@ -814,6 +814,25 @@
       <a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/" target="_blank" rel="noopener" title="The real, live-wired successor to New Template — same idea, but a real microsite file calling the real worker against live Care Gap data instead of an artifact simulation." style="padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--accent);text-decoration:none;">🚀 Care Gap Template (live) ↗</a>
     </div>
 
+    <!-- HUB ASSET GRID — rows = same hubs/landing pages, same order + labels,
+         as the Hub Method Matrix above. Columns are a free-form operator
+         worksheet (seeded with Main Offer/Ticker/Headline/KW/Blog Update/
+         News Update/Products/Methods) — every cell is a plain text field,
+         autosaved (KV-backed, "hubassetgrid:v1") on a 900ms debounce just
+         like the Method Matrix Notes textarea. Columns can be renamed (click
+         header), deleted (✕), reordered (drag a header), or added (+ column).
+         Collapsed by default; lazy-loads on first expand. -->
+    <div id="hubAssetGridSection" style="margin-bottom:14px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubAssetGrid()">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Asset Grid <span id="hagSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+        <span style="display:flex;align-items:center;gap:8px;">
+          <button onclick="event.stopPropagation();hagAddColumn()" title="Add a new column" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ column</button>
+          <span id="hagToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
+        </span>
+      </div>
+      <div id="hagBody" style="display:none;margin-top:10px;"></div>
+    </div>
+
     <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
@@ -15767,6 +15786,168 @@ async function mtCopyNotes(btn) {
     document.execCommand('copy');
     const o = btn.textContent; btn.textContent = '✓ copied'; setTimeout(() => btn.textContent = o, 1200);
   }
+}
+
+// ── HUB ASSET GRID ──────────────────────────────────────────────────────
+// Free-text operator worksheet: rows are the same hubs/landing pages, same
+// order + labels (HM_LABELS / "◆ name"), as the Hub Method Matrix above.
+// Columns are fully operator-defined — add / rename / delete / drag-reorder
+// — and every cell is a plain text field. Persisted server-side (KV key
+// "hubassetgrid:v1" via getHubAssetGrid/saveHubAssetGrid) so it survives
+// across devices, same durability model as the Method Matrix Notes
+// textarea. Whole-grid autosave on a 900ms debounce after each edit (and
+// on blur) rather than a per-cell action — the grid is small (rows ×
+// ~8-15 cols of short strings), so shipping the full columns+cells blob
+// each save is simpler than a partial-write action and still cheap.
+let hagCollapsed = true;
+try { hagCollapsed = localStorage.getItem('hagCollapsed') !== 'false'; } catch(e) {}
+let HAG_DATA = null;      // { hubs: [...], grid: { columns: [{id,name}], cells: { slug: { colId: text } } } }
+let hagDirty = false;
+let hagSaveTimer = null;
+let _hagDragCol = null;
+const HAG_DEFAULT_COLS = [
+  { id: 'mainOffer',  name: 'Main Offer' },
+  { id: 'ticker',     name: 'Ticker' },
+  { id: 'headline',   name: 'Headline' },
+  { id: 'kw',         name: 'KW' },
+  { id: 'blogUpdate', name: 'Blog Update' },
+  { id: 'newsUpdate', name: 'News Update' },
+  { id: 'products',   name: 'Products' },
+  { id: 'methods',    name: 'Methods' },
+];
+function toggleHubAssetGrid() {
+  hagCollapsed = !hagCollapsed;
+  try { localStorage.setItem('hagCollapsed', String(hagCollapsed)); } catch(e) {}
+  applyHubAssetGridCollapse();
+  if (!hagCollapsed) loadHubAssetGrid();
+}
+function applyHubAssetGridCollapse() {
+  const b = document.getElementById('hagBody');
+  const i = document.getElementById('hagToggleIcon');
+  if (b) b.style.display = hagCollapsed ? 'none' : '';
+  if (i) i.textContent = hagCollapsed ? '▸' : '▾';
+}
+async function loadHubAssetGrid() {
+  applyHubAssetGridCollapse();
+  if (hagCollapsed) return;
+  const body = document.getElementById('hagBody');
+  if (body && !HAG_DATA) body.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
+  try {
+    const r = await call('getHubAssetGrid');
+    if (r.error) throw new Error(r.error);
+    const grid = r.grid || {};
+    HAG_DATA = {
+      hubs: r.hubs || [],
+      grid: {
+        columns: (Array.isArray(grid.columns) && grid.columns.length) ? grid.columns : HAG_DEFAULT_COLS.slice(),
+        cells: grid.cells && typeof grid.cells === 'object' ? grid.cells : {},
+      },
+    };
+    renderHubAssetGrid();
+  } catch(e) {
+    if (body) body.innerHTML = '<div style="font-size:11px;color:#e05252;">' + esc(e.message) + '</div>';
+  }
+}
+function hagRowLabel(h) {
+  return h.kind === 'landing' ? '◆ ' + (h.name || h.slug) : (HM_LABELS[h.slug] || h.slug);
+}
+function renderHubAssetGrid() {
+  const body = document.getElementById('hagBody');
+  const summary = document.getElementById('hagSummary');
+  if (!body || !HAG_DATA) return;
+  const hubs = HAG_DATA.hubs || [];
+  const cols = HAG_DATA.grid.columns || [];
+  const cells = HAG_DATA.grid.cells || {};
+  if (summary) summary.textContent = `— ${hubs.length} row${hubs.length === 1 ? '' : 's'} · ${cols.length} column${cols.length === 1 ? '' : 's'}`;
+  if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No columns yet — use + column.</div>'; return; }
+  const colgroup = `<colgroup><col style="width:92px;">${cols.map(() => `<col style="width:150px;">`).join('')}</colgroup>`;
+  const headRow = cols.map(c => {
+    const id = esc(c.id);
+    return `<th draggable="true"`
+    + ` ondragstart="hagColDragStart('${id}',event)" ondragover="event.preventDefault()"`
+    + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
+    + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hagColDrop('${id}')"`
+    + ` style="padding:4px 6px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;background:var(--bg);white-space:nowrap;">`
+    + `<span onclick="hagRenameColumn('${id}')" title="Click to rename · drag to reorder" style="font-size:10px;font-weight:600;color:var(--text2);cursor:pointer;">${esc(c.name)}</span>`
+    + `<span onclick="event.stopPropagation();hagDeleteColumn('${id}')" title="Delete column" style="margin-left:6px;font-size:10px;color:var(--text3);cursor:pointer;">✕</span>`
+    + `</th>`;
+  }).join('');
+  let rows = '';
+  hubs.forEach(h => {
+    const rc = cells[h.slug] || {};
+    let tds = `<td style="padding:2px 6px;font-size:10px;color:${h.kind === 'landing' ? 'var(--accent)' : 'var(--text)'};white-space:nowrap;background:var(--bg);" title="${esc(h.slug)}">${esc(hagRowLabel(h))}</td>`;
+    cols.forEach(c => {
+      const v = rc[c.id] || '';
+      tds += `<td style="padding:0;border-left:1px solid var(--border);"><input type="text" value="${esc(v)}" oninput="hagCellInput('${esc(h.slug)}','${esc(c.id)}',this.value)" onblur="hagFlush()" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;background:transparent;border:none;color:var(--text);outline:none;"></td>`;
+    });
+    rows += `<tr>${tds}</tr>`;
+  });
+  body.innerHTML = `<div style="overflow-x:auto;"><table style="table-layout:fixed;border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">Rows match the Hub Method Matrix · click a header to rename, ✕ to delete, drag a header to reorder, + column to add · every cell autosaves</div>`;
+}
+function hagCellInput(slug, colId, value) {
+  if (!HAG_DATA) return;
+  HAG_DATA.grid.cells[slug] = HAG_DATA.grid.cells[slug] || {};
+  HAG_DATA.grid.cells[slug][colId] = value;
+  hagDirty = true;
+  if (hagSaveTimer) clearTimeout(hagSaveTimer);
+  hagSaveTimer = setTimeout(hagFlush, 900);
+}
+async function hagFlush() {
+  if (hagSaveTimer) { clearTimeout(hagSaveTimer); hagSaveTimer = null; }
+  if (!hagDirty || !HAG_DATA) return;
+  hagDirty = false;
+  try {
+    const r = await call('saveHubAssetGrid', { columns: HAG_DATA.grid.columns, cells: HAG_DATA.grid.cells });
+    if (r.error) throw new Error(r.error);
+  } catch(e) { console.error('hagFlush:', e.message); }
+}
+function hagAddColumn() {
+  const name = (prompt('New column name:') || '').trim();
+  if (!name) return;
+  if (hagCollapsed) { hagCollapsed = false; try { localStorage.setItem('hagCollapsed', 'false'); } catch(e) {} applyHubAssetGridCollapse(); }
+  const afterLoad = () => {
+    const id = 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    HAG_DATA.grid.columns.push({ id, name });
+    hagDirty = true; hagFlush();
+    renderHubAssetGrid();
+  };
+  if (!HAG_DATA) { loadHubAssetGrid().then(() => { if (HAG_DATA) afterLoad(); }); }
+  else afterLoad();
+}
+function hagRenameColumn(colId) {
+  if (!HAG_DATA) return;
+  const c = HAG_DATA.grid.columns.find(x => x.id === colId);
+  if (!c) return;
+  const name = prompt('Rename column:', c.name);
+  if (name === null) return;
+  const trimmed = name.trim();
+  if (!trimmed) return;
+  c.name = trimmed;
+  hagDirty = true; hagFlush();
+  renderHubAssetGrid();
+}
+function hagDeleteColumn(colId) {
+  if (!HAG_DATA) return;
+  const c = HAG_DATA.grid.columns.find(x => x.id === colId);
+  if (!c || !confirm('Delete column "' + c.name + '"? This removes its data for every row.')) return;
+  HAG_DATA.grid.columns = HAG_DATA.grid.columns.filter(x => x.id !== colId);
+  Object.keys(HAG_DATA.grid.cells).forEach(slug => { if (HAG_DATA.grid.cells[slug]) delete HAG_DATA.grid.cells[slug][colId]; });
+  hagDirty = true; hagFlush();
+  renderHubAssetGrid();
+}
+function hagColDragStart(id, e) { _hagDragCol = id; if (e && e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }
+function hagColDrop(targetId) {
+  if (!_hagDragCol || !HAG_DATA) { _hagDragCol = null; return; }
+  const cols = HAG_DATA.grid.columns;
+  const si = cols.findIndex(c => c.id === _hagDragCol);
+  const ti = cols.findIndex(c => c.id === targetId);
+  _hagDragCol = null;
+  if (si < 0 || ti < 0 || si === ti) return;
+  const [moved] = cols.splice(si, 1);
+  cols.splice(ti, 0, moved);
+  hagDirty = true; hagFlush();
+  renderHubAssetGrid();
 }
 
 // ── THIS WEEK (global Weekly Planner) ───────────────────────────────────

@@ -13310,6 +13310,59 @@ ${bodyText.slice(0, 6000)}`;
         });
       }
 
+      // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
+      // rows = the same hubs/landing pages (and order) as the Hub Method
+      // Matrix above, columns fully operator-defined (add/rename/delete/
+      // reorder client-side). KV-backed as one JSON blob ("hubassetgrid:v1")
+      // — { columns: [{id,name}], cells: { slug: { colId: text } } } —
+      // cheap to just replace wholesale given its size (rows × a dozen-ish
+      // short text columns). No Notion query needed for the row list: same
+      // HUB_SITES + landing-page-registry union as getHubMethodMatrix, just
+      // without that action's title/asset/method queries.
+      if (body.action === "getHubAssetGrid") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let LP_REG = LANDING_PAGES.slice();
+        try {
+          const extra = await env.TRADES.get("landing:registry", "json");
+          if (Array.isArray(extra) && extra.length) {
+            const seen = new Set(LP_REG.map(l => l.slug));
+            for (const e of extra) if (e && e.slug && !seen.has(e.slug)) { seen.add(e.slug); LP_REG.push(e); }
+          }
+        } catch (e) {}
+        let grid = null;
+        try { grid = await env.TRADES.get("hubassetgrid:v1", "json"); } catch (e) {}
+        return json({ success: true, grid,
+          hubs: HUB_SITES.map(h => ({ slug: h.slug }))
+            .concat(LP_REG.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
+        });
+      }
+      if (body.action === "saveHubAssetGrid") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const columns = Array.isArray(body.columns) ? body.columns.slice(0, 60).map(c => ({
+          id: String(c?.id || "").slice(0, 60),
+          name: String(c?.name || "").slice(0, 80),
+        })).filter(c => c.id && c.name) : [];
+        const colIds = new Set(columns.map(c => c.id));
+        const cells = {};
+        if (body.cells && typeof body.cells === "object") {
+          for (const [slug, row] of Object.entries(body.cells)) {
+            if (!slug || !row || typeof row !== "object") continue;
+            const cleanRow = {};
+            for (const [colId, text] of Object.entries(row)) {
+              if (!colIds.has(colId)) continue;
+              const t = String(text ?? "").slice(0, 2000);
+              if (t) cleanRow[colId] = t;
+            }
+            if (Object.keys(cleanRow).length) cells[String(slug).slice(0, 120)] = cleanRow;
+          }
+        }
+        const payload = { columns, cells };
+        const text = JSON.stringify(payload);
+        if (text.length > 500000) return json({ error: "Grid too large" }, 400);
+        await env.TRADES.put("hubassetgrid:v1", text);
+        return json({ success: true });
+      }
+
       // ── backfillAssetMethods ── one-time (re-runnable) pass that stamps the
       // producing Method onto every Asset that has none yet. New assets get it
       // at creation (assetMethodProp); this catches everything created before
