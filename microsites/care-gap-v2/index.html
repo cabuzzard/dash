@@ -213,22 +213,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <a href="https://claude.ai/code/artifact/b8376849-0ba0-4c52-9ace-9cdf053a73ce" target="_blank" rel="noopener">🗺️ Master (spec) ↗</a>
             <a href="https://claude.ai/code/artifact/08c30349-852f-4497-9083-cdd6147b4c2f" target="_blank" rel="noopener">🗂️ New Template (archived) ↗</a>
             <a href="https://claude.ai/code/artifact/97120115-6a94-4744-aab5-7f9d0b6bbe9a" target="_blank" rel="noopener">🛠️ Method Pipeline Grid ↗</a>
-            <!-- Every hub campaign's own live domain (its real custom domain,
-                 never the cabuzzard.github.io fallback) — a static snapshot
-                 mirroring the root dashboard's own HUB_SITES.domain, same as
-                 the reference links above. Only hubs with a domain on file
-                 are listed; skipped entirely otherwise (Multifamily
-                 Acquisitions has none yet). -->
+            <!-- Every hub campaign's own live domain — fetched live from
+                 getContentHubs (HUB_SITES, the definitive record in
+                 worker.js) by loadContentHubsList(), never a hand-copied
+                 list that can drift out of sync. Only hubs with a domain on
+                 file are shown. -->
             <span class="current" style="padding:6px 10px;color:var(--ink3);font-style:italic;display:block;margin-top:6px;">— content hubs (live) —</span>
-            <a href="https://outsidesessions.com/" target="_blank" rel="noopener">🌐 Surf Vacations ↗</a>
-            <a href="https://accessiblefarms.com/" target="_blank" rel="noopener">🌐 Sunflower Acres ↗</a>
-            <a href="https://homestructionconsulting.com/" target="_blank" rel="noopener">🌐 Build Watcher ↗</a>
-            <a href="https://generalservices2020.com/" target="_blank" rel="noopener">🌐 Home Services ↗</a>
-            <a href="https://creativeflowguitar.com/" target="_blank" rel="noopener">🌐 Creative Flow Guitar ↗</a>
-            <a href="https://aisystemimplementation.com/" target="_blank" rel="noopener">🌐 AI Implementation ↗</a>
-            <a href="https://stablehomefoundation.com/" target="_blank" rel="noopener">🌐 Care Gap ↗</a>
-            <a href="https://sustainableaquarium.com/" target="_blank" rel="noopener">🌐 Sustainable Aquarium ↗</a>
-            <a href="https://mountainwize.com/" target="_blank" rel="noopener">🌐 Mountainwize ↗</a>
+            <span id="contentHubsList"></span>
           </div>
         </details>
         <button class="notebtn" data-noteid="page-overall" onclick="openNoteModal('page-overall','Whole page','page')">📝 Page note</button>
@@ -1203,27 +1194,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
-// Verified real custom domain per hub slug — mirrors the root dashboard's
-// own HUB_SITES.domain. Deliberately NOT sourced from the Campaign's Notion
-// "live site" property: that field has gone stale on more than one hub
-// campaign (still pointing at the old pre-hub page/domain), so a link built
-// from it silently sent operators to the wrong site (2026-09-21 incident —
-// Care Gap's liveSite pointed at the old cabuzzard.github.io/.../mobility-
-// mentor-fundraising/ page; AI Implementation's pointed at
-// webguyleadgeneration.com, which doesn't even redirect). Used by the
-// dynamic Live Hub link below; keep in sync with the static "content hubs
-// (live)" list in the Jump to… menu (same domains, hand-duplicated there).
-const HUB_DOMAINS = {
-  'surf-vacations': 'outsidesessions.com',
-  'sunflower-acres': 'accessiblefarms.com',
-  'owners-rep': 'homestructionconsulting.com',
-  'home-services': 'generalservices2020.com',
-  'creative-flow-guitar': 'creativeflowguitar.com',
-  'ai-implementation': 'aisystemimplementation.com',
-  'care-gap': 'stablehomefoundation.com',
-  'sustainable-aquarium': 'sustainableaquarium.com',
-  'mountainwize': 'mountainwize.com',
-};
+// No hand-duplicated domain list here — HUB_SITES in worker.js is THE
+// definitive record (slug/name/campaignId/domain) since 2026-09-21. This
+// template always reads it live (getCampaignHeader's `hubDomain` for the
+// current campaign's own Live Hub link; getContentHubs for the full
+// "content hubs (live)" list), never a local copy that can drift. That's
+// also why it deliberately does NOT read the Campaign's Notion "live site"
+// property for either — that field went stale on more than one hub
+// campaign (still pointing at an old pre-hub page/domain), silently
+// sending operators to the wrong site.
 // ── Changeable head ──────────────────────────────────────────────────
 // This template is campaign-agnostic (operator direction 2026-09-14): the
 // campaign is picked via ?campaignId= in the URL — never an in-page live
@@ -1281,17 +1260,15 @@ function resolveCampaignContext() {
       const h1 = document.querySelector('.hdr h1'); if (h1) h1.textContent = CAMPAIGN_NAME + ' Template';
       CAMPAIGN_NOTES = header.notes || '';
       renderCampaignNotes();
-      // Live Hub jump link — HUB_DOMAINS (verified real domain) else the
-      // GitHub Pages hub URL built from HUB_SLUG. Deliberately does NOT
-      // read the Campaign's Notion "live site" property — see the
-      // HUB_DOMAINS comment above for why. Hidden entirely for a non-hub
-      // campaign. Since a campaign switch is always a real page navigation
-      // (see the picker below), this only ever needs to be set once per
-      // load — no separate "updates when you switch hubs" wiring beyond
-      // that reload.
+      // Live Hub jump link — header.hubDomain (the definitive HUB_SITES
+      // record, from getCampaignHeader) else the GitHub Pages hub URL built
+      // from HUB_SLUG. Hidden entirely for a non-hub campaign. Since a
+      // campaign switch is always a real page navigation (see the picker
+      // below), this only ever needs to be set once per load — no separate
+      // "updates when you switch hubs" wiring beyond that reload.
       const liveHubLink = document.getElementById('liveHubLink');
       if (liveHubLink) {
-        const liveHubUrl = HUB_SLUG ? `https://${HUB_DOMAINS[HUB_SLUG] || `cabuzzard.github.io/dash/web/hub/${HUB_SLUG}`}/` : null;
+        const liveHubUrl = HUB_SLUG ? `https://${header.hubDomain || `cabuzzard.github.io/dash/web/hub/${HUB_SLUG}`}/` : null;
         if (liveHubUrl) { liveHubLink.href = liveHubUrl; liveHubLink.style.display = ''; }
         else liveHubLink.style.display = 'none';
       }
@@ -5583,6 +5560,19 @@ async function hubTextSave(){
   btn.disabled = false; btn.textContent = 'Save & publish';
 }
 
+// "content hubs (live)" list in the Jump to… dropdown — every hub with a
+// real domain on file, straight from getContentHubs (HUB_SITES). Fires
+// once at init, independent of which campaign is loaded; best-effort —
+// an empty result just leaves the list blank rather than erroring.
+async function loadContentHubsList() {
+  const el = document.getElementById('contentHubsList');
+  if (!el) return;
+  try {
+    const r = await w('getContentHubs', {});
+    const hubs = (r.hubs || []).filter(h => h.domain);
+    el.innerHTML = hubs.map(h => `<a href="https://${esc(h.domain)}/" target="_blank" rel="noopener">🌐 ${esc(h.name)} ↗</a>`).join('');
+  } catch (e) { /* list stays blank */ }
+}
 async function init() {
   applyCollapseState();
   // Every worker action needs a valid session token, so campaign-context
@@ -5596,6 +5586,7 @@ async function init() {
   loadClusters();
   loadMethods();
   loadNotes();
+  loadContentHubsList();
 }
 </script>
 </body>

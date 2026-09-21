@@ -590,17 +590,36 @@ function resolveOrigin(request) {
 // contents API secondary-rate-limits writes hard. Reset implicitly each
 // isolate; only ever read/written by hubSiteTarget's putFile.
 let HUB_PUT_LAST = 0;
+// ── HUB_SITES ── THE definitive record for every content hub: slug, name,
+// campaignId, and now `domain` (its real, currently-live custom domain, or
+// null if it has none yet — never the cabuzzard.github.io fallback, that's
+// derived, not stored). No separate "directory" field: by deploy convention
+// a hub's files always live at exactly web/hub/{slug}/, so it's always
+// `web/hub/${slug}/`, never hand-duplicated.
+//
+// This is the ONLY place these domains are hand-entered. getContentHubs and
+// getCampaignHeader both read `domain` straight off this array; every
+// consumer (the dashboard's own client-side HUB_SITES copy, the Care Gap
+// template's HUB_DOMAINS map + hub-list) should match this exactly — if one
+// drifts, links go quietly wrong (2026-09-21 incident: Care Gap and AI
+// Implementation's Notion "live site" property, an entirely separate
+// record, had gone stale and pointed at old pre-hub pages; several other
+// hubs' properties pointed at the GitHub Pages fallback instead of their
+// real domain even though the domain was live). Verify live via curl before
+// trusting any routing status noted elsewhere (CLAUDE.md's table has gone
+// stale more than once — Build Watcher and Mountainwize were both marked
+// unrouted there while actually serving correctly).
 const HUB_SITES = [
-  { slug: "surf-vacations",       name: "Surf Vacations",       campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770" },
-  { slug: "sunflower-acres",      name: "Sunflower Acres",      campaignId: "3871f7d3a4bb814997e5f3400fc3ff57" },
-  { slug: "owners-rep",           name: "Build Watcher",        campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961" },
-  { slug: "home-services",        name: "Home Services",        campaignId: "3951f7d3a4bb81659af8dc82fb56f92a" },
-  { slug: "care-gap",             name: "Care Gap",             campaignId: "34b1f7d3a4bb81b6a8a8fee04df94807" },
-  { slug: "ai-implementation",    name: "AI Implementation",    campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597" },
-  { slug: "creative-flow-guitar", name: "Creative Flow Guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a" },
-  { slug: "mountainwize",         name: "Mountainwize",         campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1" },
-  { slug: "sustainable-aquarium", name: "Sustainable Aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e" },
-  { slug: "multifamily-acquisitions", name: "Multifamily Acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee" },
+  { slug: "surf-vacations",       name: "Surf Vacations",       campaignId: "3b51f7d3a4bb81ae94b3c9fe6dc63770",  domain: "outsidesessions.com" },
+  { slug: "sunflower-acres",      name: "Sunflower Acres",      campaignId: "3871f7d3a4bb814997e5f3400fc3ff57", domain: "accessiblefarms.com" },
+  { slug: "owners-rep",           name: "Build Watcher",        campaignId: "3cb1f7d3a4bb819cb6d1eac7cf629961", domain: "homestructionconsulting.com" },
+  { slug: "home-services",        name: "Home Services",        campaignId: "3951f7d3a4bb81659af8dc82fb56f92a", domain: "generalservices2020.com" },
+  { slug: "care-gap",             name: "Care Gap",             campaignId: "34b1f7d3a4bb81b6a8a8fee04df94807", domain: "stablehomefoundation.com" },
+  { slug: "ai-implementation",    name: "AI Implementation",    campaignId: "3b51f7d3a4bb811e8086fa1f5f7d3597", domain: "aisystemimplementation.com" },
+  { slug: "creative-flow-guitar", name: "Creative Flow Guitar", campaignId: "34b1f7d3a4bb8154b0c5e0abcaae272a", domain: "creativeflowguitar.com" },
+  { slug: "mountainwize",         name: "Mountainwize",         campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1", domain: "mountainwize.com" },
+  { slug: "sustainable-aquarium", name: "Sustainable Aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e", domain: "sustainableaquarium.com" },
+  { slug: "multifamily-acquisitions", name: "Multifamily Acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", domain: null },
 ];
 
 // Landing pages — a niche product sliced off a hub and published as its own
@@ -8577,8 +8596,11 @@ export default {
     // ── getContentHubs ── public, no token. Feeds the Publish modal's
     // "Content Hub" picker for an "Offer – Content Hub" asset — the modal
     // filters this list down to the hub(s) on the asset's own campaign.
+    // Also the one live read of the whole HUB_SITES record (incl. domain)
+    // for any page that wants every hub's real live URL without hand-
+    // duplicating the list — see the Care Gap template's Hub tab.
     if (body.action === "getContentHubs") {
-      return json({ hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name, campaignId: h.campaignId })) });
+      return json({ hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name, campaignId: h.campaignId, domain: h.domain || null })) });
     }
 
     // ── getHubProducts ── public, no token. A content hub calls this on load
@@ -24788,6 +24810,7 @@ Return ONLY a JSON object with these exact keys:
         return json({
           name,
           hubSlug: hub ? hub.slug : null,
+          hubDomain: hub ? (hub.domain || null) : null,   // the definitive HUB_SITES record — not the Notion "live site" field, which has gone stale (2026-09-21)
           microsite: campPage.properties?.["microsite"]?.url || null,
           liveSite: campPage.properties?.["live site"]?.url || null,
           notes: (campPage.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
