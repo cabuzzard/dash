@@ -27295,6 +27295,155 @@ Call submit_keyword_cluster with your result.`;
         return json({ success: true });
       }
 
+      // ── Digest Ideas — staged idea backlog for the "digest" method's This
+      // Week/Digest section. A digest run generates TWO tiers of ideas
+      // (never full content): free/promotional single-post angles
+      // (drill-downs on individual campaign News Feed items) and premium/
+      // product-worthy concepts. Both stage into KV per campaign, same
+      // convention as staged keyword clusters. A single-post idea becomes a
+      // real Content Strategy title via the existing createDevTitle +
+      // writeTitlePillar flow (client-side, reuses the Create Pillar modal);
+      // a premium idea becomes a real Product via createProductFromIdea
+      // below. This action itself writes nothing to Notion — ideas only.
+      if (body.action === "generateDigestIdeas") {
+        const { campaignId, productId, guidance } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hasProduct = productId && productId !== "__none__" && productId !== campaignId;
+
+        const [clusterRows, researchRows, productPage, productResearch] = await Promise.all([
+          notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []),
+          hasProduct ? fetch(`https://api.notion.com/v1/pages/${dash(norm(productId))}`, { headers: hdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+          hasProduct ? findBestProductResearchRecord(hdr, productId).catch(() => null) : Promise.resolve(null),
+        ]);
+
+        const clusterText = clusterRows.map(r => {
+          const name = (r.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          const kw = (r.properties?.["Cluster Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+          return name ? `- ${name}${kw ? `: ${kw}` : ""}` : "";
+        }).filter(Boolean).join("\n");
+
+        const rtRes = key => { for (const r of researchRows) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+        const newsFeed = rtRes("News Feed");
+        const researchBlock = [
+          newsFeed                    && `News Feed (source individual items for post ideas): ${newsFeed.slice(0, 1600)}`,
+          rtRes("Trend Round-Up")     && `Trend Round-Up: ${rtRes("Trend Round-Up").slice(0, 800)}`,
+          rtRes("Trend Intelligence") && `Trend Intelligence: ${rtRes("Trend Intelligence").slice(0, 800)}`,
+        ].filter(Boolean).join("\n");
+
+        const productName = productPage ? (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") : "";
+        const isAffiliate = productPage?.properties?.Site?.select?.name === "Affiliates";
+        const rtp = key => productResearch ? (productResearch.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("") : "";
+        const productBlock = hasProduct ? [
+          productName && `Product: ${productName}${isAffiliate ? " (affiliate program — premium ideas involving it should be promoter-framed)" : ""}`,
+          rtp("Offer Structure") && `Offer Structure: ${rtp("Offer Structure")}`,
+          rtp("Benefits")        && `Benefits: ${rtp("Benefits")}`,
+        ].filter(Boolean).join("\n") : "";
+
+        const ideasPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You generate an IDEA BACKLOG, not finished content — headlines and one-line angles only, for an operator to later turn into real content or a real product.
+
+HUB KEYWORD CLUSTERS (committed): ${clusterText || "(none committed yet)"}
+CAMPAIGN RESEARCH: ${researchBlock || "(none on file)"}
+FEATURED PRODUCT: ${productBlock || "(none attached)"}
+${guidance ? `OPERATOR GUIDANCE: ${guidance}\n` : ""}
+Produce TWO separate lists:
+
+1. SINGLE-POST IDEAS (free/promotional tier) — 3-5 ideas, each an individual "drill-down" on ONE specific item from the News Feed / Trend Round-Up above (never a generic topic) — concrete enough that a single social post or short article could be written from the headline alone. These become real content titles later.
+
+2. PREMIUM IDEAS (paid tier) — 3-5 ideas, each a concept worth PAYING for — a deeper resource, tool, guide, or an actual product/offer concept, not just "more content." These become real Products later, so each needs enough substance that a Product Description could be written from it directly.
+
+Every idea: a short headline (under 12 words) and a 1-2 sentence body explaining the angle/why it's worth pursuing. Do not write full content — ideas only.
+
+Return via the submit_digest_ideas tool ONLY — nothing as plain text.`;
+
+        const ideasResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: ideasPrompt }],
+            tools: [{
+              name: "submit_digest_ideas",
+              description: "Submit the single-post idea backlog and the premium idea backlog, both required.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  postIdeas: { type: "array", items: { type: "object", properties: { headline: { type: "string" }, body: { type: "string" } }, required: ["headline", "body"] } },
+                  premiumIdeas: { type: "array", items: { type: "object", properties: { headline: { type: "string" }, body: { type: "string" } }, required: ["headline", "body"] } },
+                },
+                required: ["postIdeas", "premiumIdeas"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_digest_ideas" },
+          }),
+        });
+        const ideasData = await ideasResp.json();
+        if (!ideasResp.ok) return json({ error: ideasData.error?.message || "Claude API error" }, 502);
+        const ideasToolUse = (ideasData.content || []).find(b => b.type === "tool_use" && b.name === "submit_digest_ideas");
+        const gen = ideasToolUse?.input;
+        if (!gen) return json({ error: "No ideas generated — try again" }, 502);
+
+        const kvKey = `digest:ideas:${norm(campaignId)}`;
+        let store = { postIdeas: [], premiumIdeas: [] };
+        try { store = (await env.TRADES.get(kvKey, "json")) || store; } catch (e) {}
+        const stamp = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        const newPost = (gen.postIdeas || []).filter(x => x?.headline).map(x => ({ id: stamp(), headline: String(x.headline).slice(0,200), body: String(x.body || "").slice(0,800), createdAt: new Date().toISOString() }));
+        const newPremium = (gen.premiumIdeas || []).filter(x => x?.headline).map(x => ({ id: stamp(), headline: String(x.headline).slice(0,200), body: String(x.body || "").slice(0,800), createdAt: new Date().toISOString() }));
+        store.postIdeas = [...newPost, ...store.postIdeas].slice(0, 60);
+        store.premiumIdeas = [...newPremium, ...store.premiumIdeas].slice(0, 60);
+        await env.TRADES.put(kvKey, JSON.stringify(store));
+
+        return json({ success: true, postIdeas: store.postIdeas, premiumIdeas: store.premiumIdeas });
+      }
+
+      if (body.action === "getDigestIdeas") {
+        const { campaignId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        let store = { postIdeas: [], premiumIdeas: [] };
+        try { store = (await env.TRADES.get(`digest:ideas:${norm(campaignId)}`, "json")) || store; } catch (e) {}
+        return json({ postIdeas: store.postIdeas || [], premiumIdeas: store.premiumIdeas || [] });
+      }
+
+      if (body.action === "dismissDigestIdea") {
+        const { campaignId, listKey, ideaId } = body;
+        if (!campaignId || !listKey || !ideaId) return json({ error: "campaignId, listKey, and ideaId required" }, 400);
+        if (listKey !== "postIdeas" && listKey !== "premiumIdeas") return json({ error: "listKey must be postIdeas or premiumIdeas" }, 400);
+        const norm = s => String(s || "").replace(/-/g, "");
+        const kvKey = `digest:ideas:${norm(campaignId)}`;
+        let store = { postIdeas: [], premiumIdeas: [] };
+        try { store = (await env.TRADES.get(kvKey, "json")) || store; } catch (e) {}
+        store[listKey] = (store[listKey] || []).filter(x => x.id !== ideaId);
+        await env.TRADES.put(kvKey, JSON.stringify(store));
+        return json({ success: true, postIdeas: store.postIdeas, premiumIdeas: store.premiumIdeas });
+      }
+
+      // Generic product creation from a staged Premium Idea — same shape as
+      // createProductFromAffiliate but sourced from an idea's own headline/
+      // body instead of an AFFILIATE_DB row. Status "Idea" (earliest stage)
+      // since this is a concept, not yet validated/researched.
+      if (body.action === "createProductFromIdea") {
+        const { campaignId, name, description } = body;
+        if (!campaignId || !name) return json({ error: "campaignId and name required" }, 400);
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const createProps = {
+          "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
+          "Status": { select: { name: "Idea" } },
+          "Campaigns": { relation: [{ id: dash(String(campaignId).replace(/-/g,"")) }] },
+        };
+        if (description) createProps["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
+        const resp = await fetch("https://api.notion.com/v1/pages", {
+          method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: createProps }),
+        });
+        const out = await resp.json();
+        if (!resp.ok || !out.id) return json({ error: out.message || "Product create failed" }, 502);
+        return json({ success: true, id: out.id.replace(/-/g, "") });
+      }
+
       // Proposed product stacks off an UNCOMMITTED keyword cluster — per
       // operator direction, this runs on staged (not-yet-committed) clusters,
       // right alongside them, not gated on committing first. Staged inline on

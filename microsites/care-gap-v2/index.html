@@ -589,6 +589,61 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Run Digest — one weekly digest run. Product + optional guidance ->
+       creates a Development pillar title tagged with the "digest" method
+       (createDevTitle + writeTitlePillar, same primitives as Create Pillar
+       above), then generateDigestIdeas stages the two idea backlogs. -->
+  <div class="modaloverlay" id="digestRunModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Run Digest</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Product <span style="color:var(--ink3);">— grounds the pillar's soft mention and the premium ideas' offer angle</span>
+          <select id="digestProductSelect" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"><option value="">— choose a product —</option></select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Guidance <span style="color:var(--ink3);">(optional)</span>
+          <textarea id="digestGuidance" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;" placeholder="e.g. lean into the respite-care angle this week; skip anything about funding cuts."></textarea>
+        </label>
+      </div>
+      <div id="digestRunResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeDigestRunModal()">Cancel</button>
+        <button class="btn primary" id="digestRunBtn" onclick="runDigestRun()">▶ Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Title from a Single-Post Idea — same createDevTitle + writeTitlePillar
+       primitives as Create Pillar, its own fields (prefilled from the idea,
+       all editable) so it never has to touch that modal's product-row-only
+       assumptions (CP_PRODUCT_ID guard). Method picker included per operator
+       direction — e.g. tag "digest" or "news post" at creation time. -->
+  <div class="modaloverlay" id="digestTitleModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Create Title from Idea</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Title
+          <input type="text" id="digTitleInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="The title/idea for this piece" autocomplete="off">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);position:relative;">Method <span style="color:var(--ink3);">(optional — e.g. digest, or a news-post method)</span>
+          <input type="text" id="digMethodInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Search all methods…" autocomplete="off" oninput="digMethodSearch()" onfocus="digMethodSearch()" onblur="digMethodBlur()">
+          <input type="hidden" id="digMethod">
+          <div id="digMethodOptions" style="display:none;position:absolute;left:0;right:0;top:100%;z-index:20;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-top:2px;max-height:220px;overflow-y:auto;box-shadow:0 4px 14px rgba(0,0,0,.18);"></div>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Product <span style="color:var(--ink3);">(optional)</span>
+          <select id="digProductSelect" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;"><option value="">— none —</option></select>
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Notes / guidance <span style="color:var(--ink3);">(from the idea — editable)</span>
+          <textarea id="digGuidance" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;"></textarea>
+        </label>
+      </div>
+      <div id="digResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeDigestTitleModal()">Cancel</button>
+        <button class="btn primary" id="digRunBtn" onclick="runDigestCreateTitle()">✍ Create</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Rerun Strategy — same fields as generating a new strategy (Title /
        Platform Focus / Guidance), pre-filled from the strategy's current
        values, but rewrites THIS existing strategy in place (regenerateStrategySlots)
@@ -1226,6 +1281,29 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
     <p class="stage-sub">This campaign's slice of the global Weekly Planner — the same records shown on the dashboard's TD tab, filtered to this campaign. Drag a card between days, click the dot to cycle its flag, check it off when done.</p>
     <div id="wp-board" style="display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px;"><div class="loadnote">Loading…</div></div>
+
+    <!-- Digest — one weekly run writes a Development-stage pillar title
+         (free tier; generate an email/podcast/etc asset off it as usual via
+         the Strategy tab) plus two staged idea backlogs. Single-post ideas
+         become real titles (＋ title); premium ideas become real Products
+         (＋ product). Nothing here is sent/published automatically. -->
+    <div style="margin-top:22px;padding-top:16px;border-top:1px solid var(--border);">
+      <div class="stage-hd" style="margin-bottom:2px;">
+        <h2 style="font-size:15px;">📨 Digest</h2>
+        <button class="btn primary" onclick="openDigestRunModal()">▶ Run Digest</button>
+      </div>
+      <p class="stage-sub">One run: choose a product, add optional guidance. Writes a Development pillar title (free tier) tagged with the <b>digest</b> method, then stages a single-post idea backlog and a premium idea backlog below.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2);margin-bottom:6px;">📰 Single-Post Ideas <span id="digestPostCount" style="font-weight:400;text-transform:none;color:var(--ink3);"></span></div>
+          <div id="digestPostList"><div class="loadnote">Loading…</div></div>
+        </div>
+        <div>
+          <div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--ink2);margin-bottom:6px;">💎 Premium Ideas <span id="digestPremiumCount" style="font-weight:400;text-transform:none;color:var(--ink3);"></span></div>
+          <div id="digestPremiumList"><div class="loadnote">Loading…</div></div>
+        </div>
+      </div>
+    </div>
   </div>
 
   <footer>Campaign Template — real microsite, live data. Notes saved to the worker as you go.</footer>
@@ -1465,7 +1543,7 @@ const TAB_LOADERS = {
   product: () => loadProductTab(),
   strategy: () => { loadStrategyTab(); loadTitleAndAssetTab(); },
   hub: () => loadHubTab(),
-  thisweek: () => loadWeeklyPlanner(),
+  thisweek: () => { loadWeeklyPlanner(); loadDigestIdeas(); },
 };
 const TAB_LOADED = {};
 function switchTo(key) {
@@ -3627,6 +3705,190 @@ async function runCreatePillar() {
     btn.disabled = false; btn.textContent = '✍ Create';
   }
 }
+
+// ── DIGEST ───────────────────────────────────────────────────────────
+// One run = a Development pillar title (free tier, "digest" method) +
+// two staged idea backlogs (single-post / premium). Ideas are pure
+// staging — nothing is created in Notion until the operator explicitly
+// turns one into a title (＋ title) or a product (＋ product).
+let DIGEST_IDEAS = { postIdeas: [], premiumIdeas: [] };
+let DIGEST_LAST_PRODUCT_ID = null;
+async function ensureCampaignProductsLoaded() {
+  if (!CAMPAIGN_PRODUCTS.length) { const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = r.products || []; }
+  return CAMPAIGN_PRODUCTS;
+}
+function productSelectOptions(selectedId) {
+  return CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}" ${p.id === selectedId ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
+}
+async function openDigestRunModal() {
+  await ensureCampaignProductsLoaded();
+  const sel = document.getElementById('digestProductSelect');
+  sel.innerHTML = '<option value="">— choose a product —</option>' + productSelectOptions(DIGEST_LAST_PRODUCT_ID);
+  document.getElementById('digestGuidance').value = '';
+  document.getElementById('digestRunResult').textContent = '';
+  const btn = document.getElementById('digestRunBtn');
+  btn.disabled = false; btn.textContent = '▶ Run';
+  document.getElementById('digestRunModal').classList.add('open');
+}
+function closeDigestRunModal() { document.getElementById('digestRunModal').classList.remove('open'); }
+async function runDigestRun() {
+  const productId = document.getElementById('digestProductSelect').value;
+  const guidance = document.getElementById('digestGuidance').value.trim();
+  const resEl = document.getElementById('digestRunResult');
+  if (!productId) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Pick a product.'; return; }
+  DIGEST_LAST_PRODUCT_ID = productId;
+  const prod = CAMPAIGN_PRODUCTS.find(p => p.id === productId);
+  const btn = document.getElementById('digestRunBtn');
+  btn.disabled = true; btn.textContent = 'Running…';
+  resEl.style.color = 'var(--ink3)';
+  try {
+    const methods = await ensureAllMethodsCache();
+    const digestMethod = methods.find(m => (m.name || '').toLowerCase() === 'digest');
+    const titleName = `Weekly Digest — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${prod ? ` (${prod.name})` : ''}`;
+    resEl.textContent = 'Creating pillar title…';
+    const created = await w('createDevTitle', { title: titleName, campaignId: CAMPAIGN_ID, productId, methodId: digestMethod ? digestMethod.id : undefined, status: 'Development' });
+    if (created.error) throw new Error(created.error);
+    resEl.textContent = 'Writing pillar…';
+    const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: guidance || undefined });
+    if (pillarRes.error) throw new Error(pillarRes.error);
+    resEl.textContent = 'Generating idea backlog…';
+    const ideasRes = await w('generateDigestIdeas', { campaignId: CAMPAIGN_ID, productId, guidance: guidance || undefined });
+    if (ideasRes.error) throw new Error(ideasRes.error);
+    DIGEST_IDEAS = { postIdeas: ideasRes.postIdeas || [], premiumIdeas: ideasRes.premiumIdeas || [] };
+    renderDigestIdeas();
+    resEl.style.color = 'var(--fresh)';
+    resEl.innerHTML = `✓ Pillar title created (${pillarRes.wordCount || '?'} words) + ${(ideasRes.postIdeas || []).length} post idea(s) + ${(ideasRes.premiumIdeas || []).length} premium idea(s). <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open title</a>`;
+    btn.textContent = '✓ Done';
+    loadTitleAndAssetTab();
+    setTimeout(closeDigestRunModal, 2400);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = '▶ Run';
+  }
+}
+async function loadDigestIdeas() {
+  try {
+    const r = await w('getDigestIdeas', { campaignId: CAMPAIGN_ID });
+    DIGEST_IDEAS = { postIdeas: r.postIdeas || [], premiumIdeas: r.premiumIdeas || [] };
+    await ensureCampaignProductsLoaded();
+  } catch (e) { /* render whatever we have, empty is fine */ }
+  renderDigestIdeas();
+}
+function digestIdeaCard(idea, listKey) {
+  const isPost = listKey === 'postIdeas';
+  const actionBtn = isPost
+    ? `<button class="iconbtn" title="Create a Development title from this idea" onclick="openDigestTitleModal('${idea.id}','postIdeas')">＋ title</button>`
+    : `<button class="iconbtn" title="Create a Product from this idea" onclick="digestCreateProductFromIdea('premiumIdeas','${idea.id}', this)">＋ product</button>`;
+  return `<div class="idea-card" data-idea-id="${esc(idea.id)}">
+    <div class="idea-row"><span class="idea-title" title="${esc(idea.headline)}">${esc(idea.headline)}</span>
+      <span class="idea-btns">${actionBtn}<button class="iconbtn" title="Dismiss" onclick="digestDismissIdea('${listKey}','${idea.id}')">✕</button></span>
+    </div>
+    ${idea.body ? `<div style="font-size:11px;color:var(--ink3);margin-top:3px;">${esc(idea.body)}</div>` : ''}
+  </div>`;
+}
+function renderDigestIdeas() {
+  const postEl = document.getElementById('digestPostList');
+  const premEl = document.getElementById('digestPremiumList');
+  const postCount = document.getElementById('digestPostCount');
+  const premCount = document.getElementById('digestPremiumCount');
+  if (!postEl || !premEl) return;
+  postCount.textContent = DIGEST_IDEAS.postIdeas.length ? `(${DIGEST_IDEAS.postIdeas.length})` : '';
+  premCount.textContent = DIGEST_IDEAS.premiumIdeas.length ? `(${DIGEST_IDEAS.premiumIdeas.length})` : '';
+  postEl.innerHTML = DIGEST_IDEAS.postIdeas.length ? DIGEST_IDEAS.postIdeas.map(i => digestIdeaCard(i, 'postIdeas')).join('') : '<div class="loadnote">No ideas staged yet — run the digest above.</div>';
+  premEl.innerHTML = DIGEST_IDEAS.premiumIdeas.length ? DIGEST_IDEAS.premiumIdeas.map(i => digestIdeaCard(i, 'premiumIdeas')).join('') : '<div class="loadnote">No ideas staged yet — run the digest above.</div>';
+}
+async function digestDismissIdea(listKey, ideaId) {
+  try {
+    const r = await w('dismissDigestIdea', { campaignId: CAMPAIGN_ID, listKey, ideaId });
+    if (r.error) throw new Error(r.error);
+    DIGEST_IDEAS = { postIdeas: r.postIdeas || [], premiumIdeas: r.premiumIdeas || [] };
+    renderDigestIdeas();
+  } catch (e) { alert('Dismiss failed: ' + e.message); }
+}
+async function digestCreateProductFromIdea(listKey, ideaId, btn) {
+  const idea = DIGEST_IDEAS[listKey].find(i => i.id === ideaId);
+  if (!idea) return;
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    const r = await w('createProductFromIdea', { campaignId: CAMPAIGN_ID, name: idea.headline, description: idea.body });
+    if (r.error) throw new Error(r.error);
+    await digestDismissIdea(listKey, ideaId);
+    CAMPAIGN_PRODUCTS = []; // stale — next Product Research tab visit or digest run refetches
+    alert(`Product created ✓ — ${idea.headline}`);
+  } catch (e) {
+    alert('Create product failed: ' + e.message);
+    btn.disabled = false; btn.textContent = '＋ product';
+  }
+}
+// ── Create Title from Idea — own modal (not Create Pillar's, which is
+// gated on a product row's CP_PRODUCT_ID and always requires one).
+let DIG_SOURCE = null; // {listKey, ideaId} while open from a digest idea
+async function openDigestTitleModal(ideaId, listKey) {
+  const idea = DIGEST_IDEAS[listKey].find(i => i.id === ideaId);
+  if (!idea) return;
+  DIG_SOURCE = { listKey, ideaId };
+  await ensureCampaignProductsLoaded();
+  document.getElementById('digTitleInput').value = idea.headline;
+  document.getElementById('digGuidance').value = idea.body || '';
+  document.getElementById('digMethodInput').value = '';
+  document.getElementById('digMethod').value = '';
+  document.getElementById('digMethod').dataset.name = '';
+  document.getElementById('digMethodOptions').style.display = 'none';
+  document.getElementById('digProductSelect').innerHTML = '<option value="">— none —</option>' + productSelectOptions(DIGEST_LAST_PRODUCT_ID);
+  document.getElementById('digResult').textContent = '';
+  const btn = document.getElementById('digRunBtn');
+  btn.disabled = false; btn.textContent = '✍ Create';
+  document.getElementById('digestTitleModal').classList.add('open');
+}
+function closeDigestTitleModal() { document.getElementById('digestTitleModal').classList.remove('open'); DIG_SOURCE = null; }
+function digSetMethod(id, name) {
+  document.getElementById('digMethod').value = id || '';
+  document.getElementById('digMethod').dataset.name = name || '';
+  document.getElementById('digMethodInput').value = name || '';
+}
+async function digMethodSearch() {
+  const input = document.getElementById('digMethodInput');
+  const hidden = document.getElementById('digMethod');
+  if (input.value !== hidden.dataset.name) { hidden.value = ''; hidden.dataset.name = ''; }
+  const box = document.getElementById('digMethodOptions');
+  const q = input.value.trim().toLowerCase();
+  box.style.display = 'block';
+  box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Loading…</div>';
+  let methods;
+  try { methods = await ensureAllMethodsCache(); } catch (e) { box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Load failed.</div>'; return; }
+  const filtered = (q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods).slice(0, 40);
+  box.innerHTML = filtered.length ? filtered.map(m => `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="digPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
+}
+function digPickMethod(el) { digSetMethod(el.dataset.id, el.dataset.name); document.getElementById('digMethodOptions').style.display = 'none'; }
+function digMethodBlur() { setTimeout(() => { document.getElementById('digMethodOptions').style.display = 'none'; }, 150); }
+async function runDigestCreateTitle() {
+  const title = document.getElementById('digTitleInput').value.trim();
+  const methodId = document.getElementById('digMethod').value || undefined;
+  const productId = document.getElementById('digProductSelect').value || undefined;
+  const guidance = document.getElementById('digGuidance').value.trim();
+  const resEl = document.getElementById('digResult');
+  if (!title) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Title required.'; return; }
+  const btn = document.getElementById('digRunBtn');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Creating title…';
+  try {
+    const created = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, methodId, status: 'Development' });
+    if (created.error) throw new Error(created.error);
+    resEl.textContent = 'Writing pillar…';
+    const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: guidance || undefined });
+    if (pillarRes.error) throw new Error(pillarRes.error);
+    if (DIG_SOURCE) await digestDismissIdea(DIG_SOURCE.listKey, DIG_SOURCE.ideaId);
+    resEl.style.color = 'var(--fresh)';
+    resEl.innerHTML = `✓ Created — ${pillarRes.wordCount || '?'} words. <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open</a>`;
+    btn.textContent = '✓ Done';
+    loadTitleAndAssetTab();
+    setTimeout(closeDigestTitleModal, 1800);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = '✍ Create';
+  }
+}
+
 // Real Notion archive — deleteAsset already exists server-side.
 async function deleteAssetRow(id, name) {
   if (!confirm(`Delete asset "${name}"? This archives it in Notion.`)) return;
