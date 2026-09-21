@@ -15806,6 +15806,36 @@ let HAG_DATA = null;      // { hubs: [...], grid: { columns: [{id,name}], cells:
 let hagDirty = false;
 let hagSaveTimer = null;
 let _hagDragCol = null;
+// Per-column pixel width, dragged via the thin handle on each header's right
+// edge — same mechanism as the Hub Method Matrix (hamColResize*), but its
+// own localStorage key/state since these are two independent tables.
+const HAG_COL_MIN = 70, HAG_COL_DEFAULT = 150, HAG_COL_MAX = 420;
+let hagColWidths = {};
+try { hagColWidths = JSON.parse(localStorage.getItem('hagColWidths') || '{}'); } catch(e) {}
+function hagSaveColWidths() { try { localStorage.setItem('hagColWidths', JSON.stringify(hagColWidths)); } catch(e) {} }
+let _hagResizing = false, _hagResizeColId = null, _hagResizeStartX = 0, _hagResizeStartW = 0;
+function hagColResizeStart(id, e) {
+  e.preventDefault(); e.stopPropagation();
+  _hagResizing = true; _hagResizeColId = id; _hagResizeStartX = e.clientX;
+  _hagResizeStartW = hagColWidths[id] || HAG_COL_DEFAULT;
+  document.addEventListener('mousemove', hagColResizeMove);
+  document.addEventListener('mouseup', hagColResizeEnd);
+}
+function hagColResizeMove(e) {
+  if (!_hagResizing) return;
+  const w = Math.max(HAG_COL_MIN, Math.min(HAG_COL_MAX, _hagResizeStartW + (e.clientX - _hagResizeStartX)));
+  const col = document.querySelector('col[data-hag-col="' + CSS.escape(_hagResizeColId) + '"]');
+  if (col) col.style.width = w + 'px';
+}
+function hagColResizeEnd(e) {
+  if (!_hagResizing) return;
+  const w = Math.max(HAG_COL_MIN, Math.min(HAG_COL_MAX, _hagResizeStartW + (e.clientX - _hagResizeStartX)));
+  hagColWidths[_hagResizeColId] = w;
+  hagSaveColWidths();
+  _hagResizing = false; _hagResizeColId = null;
+  document.removeEventListener('mousemove', hagColResizeMove);
+  document.removeEventListener('mouseup', hagColResizeEnd);
+}
 const HAG_DEFAULT_COLS = [
   { id: 'mainOffer',  name: 'Main Offer' },
   { id: 'ticker',     name: 'Ticker' },
@@ -15864,16 +15894,17 @@ function renderHubAssetGrid() {
   const totalRows = hubs.length + extraRows.length;
   if (summary) summary.textContent = `— ${totalRows} row${totalRows === 1 ? '' : 's'} · ${cols.length} column${cols.length === 1 ? '' : 's'}`;
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No columns yet — use + column.</div>'; return; }
-  const colgroup = `<colgroup><col style="width:92px;">${cols.map(() => `<col style="width:150px;">`).join('')}</colgroup>`;
+  const colgroup = `<colgroup><col style="width:92px;">${cols.map(c => `<col data-hag-col="${esc(c.id)}" style="width:${hagColWidths[c.id] || HAG_COL_DEFAULT}px;">`).join('')}</colgroup>`;
   const headRow = cols.map(c => {
     const id = esc(c.id);
     return `<th draggable="true"`
     + ` ondragstart="hagColDragStart('${id}',event)" ondragover="event.preventDefault()"`
     + ` ondragenter="this.style.outline='2px solid var(--accent)';this.style.outlineOffset='-2px'" ondragleave="this.style.outline=''"`
     + ` ondragend="this.style.outline=''" ondrop="this.style.outline='';hagColDrop('${id}')"`
-    + ` style="padding:4px 6px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;background:var(--bg);white-space:nowrap;">`
+    + ` style="padding:4px 6px;border-left:1px solid var(--border);vertical-align:bottom;cursor:grab;background:var(--bg);white-space:nowrap;position:relative;overflow:hidden;">`
     + `<span onclick="hagRenameColumn('${id}')" title="Click to rename · drag to reorder" style="font-size:10px;font-weight:600;color:var(--text2);cursor:pointer;">${esc(c.name)}</span>`
     + `<span onclick="event.stopPropagation();hagDeleteColumn('${id}')" title="Delete column" style="margin-left:6px;font-size:10px;color:var(--text3);cursor:pointer;">✕</span>`
+    + `<span draggable="false" title="Drag to resize this column" onmousedown="hagColResizeStart('${id}',event)" onclick="event.stopPropagation()" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='transparent'" style="position:absolute;top:0;right:0;bottom:0;width:6px;cursor:col-resize;z-index:5;"></span>`
     + `</th>`;
   }).join('');
   let rows = '';
@@ -15900,7 +15931,7 @@ function renderHubAssetGrid() {
     rows += `<tr>${tds}</tr>`;
   });
   body.innerHTML = `<div style="overflow-x:auto;"><table style="table-layout:fixed;border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">Rows match the Hub Method Matrix, plus any custom rows added below (dashed top border) · click a header to rename, ✕ to delete, drag a header to reorder, + column/+ row to add · every cell autosaves</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">Rows match the Hub Method Matrix, plus any custom rows added below (dashed top border) · click a header to rename, ✕ to delete, drag a header to reorder, drag a header's right edge to resize, + column/+ row to add · every cell autosaves</div>`;
 }
 function hagCellInput(slug, colId, value) {
   if (!HAG_DATA) return;
