@@ -8574,6 +8574,36 @@ export default {
       }
     }
 
+    // ── getHubKeywords ── public, no token. A content hub calls this on load
+    // with its campaignId. Reads the campaign's Research record "Keywords"
+    // field (the operator-facing "Main Keywords" set — same canonical field
+    // the SEO Audit / keyword-cluster system reads) and splits it into a
+    // flat list for the hub's ribbon/ticker strip, replacing its hand-
+    // written stat-callout array so the ticker always reflects whatever's
+    // currently in the keyword research instead of needing a manual edit
+    // per hub. Same shape/fallback contract as getHubNews (silent-safe,
+    // prefers a "Current" Research record, else the newest).
+    if (body.action === "getHubKeywords") {
+      const raw = String(body.campaignId || "").replace(/-/g, "");
+      if (raw.length !== 32) return json({ keywords: [] });
+      const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+      const lim = Math.max(1, Math.min(40, Number(body.limit) || 20));
+      try {
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(raw) } } });
+        const pick = rows.slice().sort((a, b) => {
+          const ra = (a.properties?.Status?.select?.name === "Current") ? 0 : 1;
+          const rb = (b.properties?.Status?.select?.name === "Current") ? 0 : 1;
+          if (ra !== rb) return ra - rb;
+          return new Date(b.created_time || 0) - new Date(a.created_time || 0);
+        })[0];
+        const raw2 = (pick?.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const keywords = raw2.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean).slice(0, lim);
+        return json({ keywords });
+      } catch (e) {
+        return json({ keywords: [], error: e.message });
+      }
+    }
+
     // ── getContentHubs ── public, no token. Feeds the Publish modal's
     // "Content Hub" picker for an "Offer – Content Hub" asset — the modal
     // filters this list down to the hub(s) on the asset's own campaign.
