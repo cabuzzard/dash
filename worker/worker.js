@@ -31284,13 +31284,19 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ ok: true, handles: clean });
       }
       if (body.action === 'runTwitterCallScanNow') {
-        // Fire-and-forget: a full scan (Apify fetch + one Claude call per
-        // fresh tweet + a live option-chain lookup per qualifying call) can
-        // easily run past what fits in one request/response cycle — same
-        // reason the scheduled() cron path uses ctx.waitUntil. The frontend
-        // polls getTwitterCallStatus for progress instead of blocking here.
-        ctx.waitUntil(runTwitterCallScan(env).catch(e => console.error('runTwitterCallScan (manual) failed:', e.message)));
-        return json({ started: true });
+        // Synchronous, NOT ctx.waitUntil — confirmed live (2026-09-21) that a
+        // waitUntil task appended after this response gets hard-cancelled by
+        // Cloudflare well before a full scan finishes ("waitUntil() tasks did
+        // not complete within the allowed time... and have been cancelled").
+        // The scheduled() cron path below is unaffected — a cron-triggered
+        // waitUntil gets its own real execution budget, same as every other
+        // job on this file's crons. A synchronous call here can take up to
+        // ~1-2 minutes (Apify fetch + one Claude call per fresh tweet + a
+        // live option-chain lookup per qualifying call), which is fine: this
+        // work is I/O-bound (awaiting network), so it doesn't burn CPU-time
+        // budget while waiting. runTwitterCallScan's own incremental KV
+        // checkpointing still protects against a genuine mid-run failure.
+        return json(await runTwitterCallScan(env));
       }
       if (body.action === 'getTwitterCallStatus') {
         const [log, last] = await Promise.all([
@@ -38001,6 +38007,81 @@ ${assemblyManifest}`;
         const r = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify(payload) });
         if (!r.ok) return json({ error: (await r.json().catch(() => ({}))).message || "failed" }, r.status);
         return json({ success: true });
+      }
+
+      // ── createProductFromAffiliate ── operator direction 2026-09-22: "if I
+      // entered the affiliate program as a product... could I run the kw
+      // search and research on it like a product." Products are fully
+      // generic here — generateProductKeywords and regenerateStrategyField
+      // both already ground themselves in the Product's own Description
+      // field (see those actions) — so the only real gap is that a Product
+      // created with just a title gives that research nothing to work
+      // with. This creates the Product with a real Description compiled
+      // from the affiliate program's own record: what it is (name/network/
+      // commission), why it fits this hub's audience (Notes/Match Notes),
+      // and how to promote it (Strategy) — so the FIRST research pass is
+      // already grounded in the affiliate program itself, not a blank
+      // slate. Idempotent via the new dual "Product" relation on
+      // AFFILIATE_DB — calling this again just returns the existing one.
+      if (body.action === "createProductFromAffiliate") {
+        const { id } = body;
+        if (!id) return json({ error: "id required" }, 400);
+        const dash = raw => { const s = String(raw || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        try {
+          const page = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json());
+          const pr = page.properties || {};
+          if (!pr.Name) return json({ error: "affiliate program not found" }, 404);
+          const existingProductId = (pr.Product?.relation || [])[0]?.id;
+          if (existingProductId) return json({ success: true, productId: existingProductId.replace(/-/g,""), created: false, url: `https://www.notion.so/${existingProductId.replace(/-/g,"")}` });
+
+          const name = (pr.Name?.title || []).map(t => t.plain_text).join("").trim();
+          const hubSlug = pr.Hub?.select?.name || "";
+          const hub = HUB_SITES.find(h => h.slug === hubSlug);
+          if (!hub) return json({ error: "this program isn't tagged with a known hub" }, 400);
+          const tx = k => (pr[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const network = pr.Network?.select?.name || "";
+          const commission = tx("Commission");
+          const cookie = tx("Cookie Window");
+          const notes = tx("Notes");
+          const matchNotes = tx("Match Notes");
+          const strategy = tx("Strategy");
+          const keyword = tx("Keyword");
+          const signupUrl = pr["Signup URL"]?.url || "";
+
+          const descLines = [
+            `Affiliate program: ${name}${network ? ` (via ${network})` : ""}.`,
+            commission && `Commission: ${commission}${cookie ? `, cookie window ${cookie}` : ""}.`,
+            (matchNotes || notes) && `Why it fits this audience: ${matchNotes || notes}`,
+            strategy && `Promotion strategy: ${strategy}`,
+          ].filter(Boolean);
+          const description = descLines.join("\n\n").slice(0, 1990);
+
+          const createProps = {
+            "Name": { title: [{ type: "text", text: { content: `${name} (Affiliate)`.slice(0, 200) } }] },
+            "Description": { rich_text: [{ type: "text", text: { content: description } }] },
+            "Site": { select: { name: "Affiliates" } },
+            "Status": { select: { name: "Research" } },
+            "Product Stack": { rich_text: [{ type: "text", text: { content: "Affiliate Programs" } }] },
+            "Campaigns": { relation: [{ id: dash(hub.campaignId) }] },
+          };
+          if (keyword) createProps["Keywords"] = { rich_text: [{ type: "text", text: { content: keyword.slice(0, 1990) } }] };
+          if (signupUrl) createProps["URL"] = { url: signupUrl.slice(0, 1990) };
+
+          const created = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: hdr,
+            body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: createProps }),
+          }).then(r => r.json());
+          if (!created.id) return json({ error: created.message || "Failed to create product" }, 500);
+          const productId = created.id.replace(/-/g,"");
+
+          await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, {
+            method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "Product": { relation: [{ id: dash(productId) }] } } }),
+          }).catch(() => {});
+
+          return json({ success: true, productId, created: true, url: `https://www.notion.so/${productId}` });
+        } catch (e) { return json({ error: e.message }, 502); }
       }
 
       // ── Lead Sourcing engine (Globals tab · 🧲 Sourced Leads) ──

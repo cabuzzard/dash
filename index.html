@@ -18170,7 +18170,7 @@ async function runTwScan() {
   const btn    = document.getElementById('twScanBtn');
   const status = document.getElementById('twStatus');
   btn.disabled = true; btn.textContent = '…';
-  status.textContent = 'Scanning watchlist…';
+  status.textContent = 'Scanning watchlist… can take up to a couple minutes (fetching tweets + judging each one).';
   try {
     const r = await call('runTwitterCallScanNow', {});
     if (r.error) {
