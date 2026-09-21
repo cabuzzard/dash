@@ -1011,6 +1011,22 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Weekly Planner item notes — same feature as the root dashboard's TD
+       tab This Week board (links + steps per card), ported so it's not
+       missing here. setWeeklyPlannerItemNotes, same real record. -->
+  <div class="modaloverlay" id="wpNotesModal">
+    <div class="modalbox" style="max-width:480px;">
+      <div class="mtitle">📝 Notes</div>
+      <div class="mfield" id="wpNotesItemName" style="font-size:13px;color:var(--ink3);"></div>
+      <textarea id="wpNotesText" style="min-height:200px;" placeholder="- step one&#10;- step two&#10;https://link-to-reference"></textarea>
+      <div id="wpNotesMsg" style="font-size:12px;margin-top:6px;min-height:14px;color:var(--stale);"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="wpCloseNotes()">Cancel</button>
+        <button class="btn primary" id="wpNotesSaveBtn" onclick="wpSaveNotes()">Save</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
     <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
@@ -5651,15 +5667,19 @@ function renderWeeklyPlanner(monday, items) {
     const itemsHtml = dayItems.map(it => {
       const fs = it.status === 'Done' ? 'done' : (it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
       const fc = { none: {b:'var(--border2)', d:'var(--ink3)'}, urgent: {b:'var(--stale)', d:'var(--stale)'}, planning: {b:'var(--amber)', d:'var(--amber)'}, done: {b:'var(--fresh)', d:'var(--fresh)'} }[fs];
+      const hasNotes = !!(it.notes && it.notes.trim());
+      const notePreview = hasNotes ? esc(it.notes.trim().split('\n').filter(Boolean).slice(0, 3).join(' · ')).slice(0, 160) : '';
       return `
       <div class="wp-item" draggable="true" ondragstart="wpDragStart(event,'${it.id}')" ondragover="wpItemDragOver(event)" ondrop="wpItemDrop(event,'${it.id}','${dateIso}')" style="background:${it.status==='Done'?'var(--fresh-bg)':'var(--surface2)'};border:1px solid ${it.status==='Done'?'var(--fresh)':'var(--border)'};border-left:3px solid ${fc.b};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           <button onclick="wpCycleFlag('${it.id}')" title="Flag: ${fs} — click to cycle (urgent → planning → done → clear)" style="width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);background:${fc.d};flex-shrink:0;margin-top:3px;cursor:pointer;padding:0;"></button>
           <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
           <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--ink3)':'var(--ink)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
+          <button onclick="wpOpenNotes('${it.id}')" title="${hasNotes ? 'Edit notes' : 'Add notes'}" style="background:none;border:none;color:${hasNotes ? 'var(--global)' : 'var(--ink3)'};cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">📝</button>
           <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
         </div>
         ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
+        ${hasNotes ? `<div onclick="wpOpenNotes('${it.id}')" title="Edit notes" style="font-size:9px;color:var(--ink3);margin-top:3px;margin-left:20px;line-height:1.4;cursor:pointer;border-left:2px solid var(--border2);padding-left:5px;">${notePreview}</div>` : ''}
       </div>`;
     }).join('');
     return `<div class="wp-day" ondragover="event.preventDefault()" ondrop="wpDrop(event,'${dateIso}')" style="background:${isToday?'var(--global-bg)':'transparent'};border:1px solid ${isToday?'var(--global)':'var(--border)'};border-radius:8px;padding:8px;min-height:120px;">
@@ -5722,6 +5742,36 @@ async function wpCycleFlag(itemId) {
   const next = { none: 'Urgent', urgent: 'Planning', planning: 'Done', done: 'None' }[cur];
   try { const r = await w('setWeeklyPlannerItemFlag', { itemId, flag: next }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
   catch(e) { alert('Error: ' + e.message); }
+}
+// ── Weekly Planner item notes (links + steps) — same feature as the root
+// dashboard's TD tab, restored here (was missing from the initial port).
+let wpNotesId = null;
+function wpFindItem(id) { return WP_ITEMS_CACHE.find(x => x.id === id) || null; }
+function wpOpenNotes(itemId) {
+  const it = wpFindItem(itemId);
+  wpNotesId = itemId;
+  document.getElementById('wpNotesItemName').textContent = it ? it.name : '';
+  document.getElementById('wpNotesText').value = (it && it.notes) || '';
+  document.getElementById('wpNotesMsg').textContent = '';
+  const btn = document.getElementById('wpNotesSaveBtn'); btn.disabled = false; btn.textContent = 'Save';
+  document.getElementById('wpNotesModal').classList.add('open');
+  setTimeout(() => document.getElementById('wpNotesText').focus(), 30);
+}
+function wpCloseNotes() { document.getElementById('wpNotesModal').classList.remove('open'); wpNotesId = null; }
+async function wpSaveNotes() {
+  if (!wpNotesId) return;
+  const btn = document.getElementById('wpNotesSaveBtn');
+  const msg = document.getElementById('wpNotesMsg');
+  const notes = document.getElementById('wpNotesText').value;
+  btn.disabled = true; btn.textContent = 'Saving…'; msg.textContent = '';
+  try {
+    const r = await w('setWeeklyPlannerItemNotes', { itemId: wpNotesId, notes });
+    const it = wpFindItem(wpNotesId); if (it) it.notes = r.notes != null ? r.notes : notes;
+    await loadWeeklyPlanner();
+    wpCloseNotes();
+  } catch (e) {
+    msg.textContent = e.message; btn.disabled = false; btn.textContent = 'Save';
+  }
 }
 
 async function init() {
