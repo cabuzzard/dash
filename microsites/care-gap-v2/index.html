@@ -5479,7 +5479,7 @@ function htxRender(){
       ? `<textarea rows="${isArr?4:2}"${fieldId} ${attrs} placeholder="${esc(ph)}" style="min-height:${isArr?70:44}px;">${esc(v)}</textarea>`
       : `<input type="text" class="finput" ${attrs} placeholder="${esc(ph)}" value="${esc(v)}" style="width:100%;">`;
     const labelRow = p==='ribbon'
-      ? `<span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);">${esc(label)}</span><button type="button" id="htxRibbonGenBtn" onclick="htxGenRibbon()" title="Ask Claude for a fresh set of ribbon phrases grounded in this campaign's Main Keywords — replaces this field's text below so you can edit it before saving." style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--global);cursor:pointer;">✨ Generate from keywords</button></span>`
+      ? `<span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);">${esc(label)}</span><button type="button" id="htxRibbonGenBtn" onclick="htxGenRibbon()" title="Lists Main Keywords + every committed keyword cluster, 3 keywords per group, each hard-truncated to 2 words — replaces this field's text below so you can prune/edit before saving." style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--global);cursor:pointer;">✨ Generate from keywords</button></span>`
       : `<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);display:block;margin-bottom:3px;">${esc(label)}</span>`;
     const ribbonMsg = p==='ribbon' ? `<div id="htxRibbonMsg" style="font-size:11px;margin:-4px 0 6px;min-height:14px;"></div>` : '';
     return `<label style="display:block;margin-bottom:9px;">${labelRow}${field}</label>${ribbonMsg}`;
@@ -5497,7 +5497,7 @@ async function htxGenRibbon(){
     const r = await w('generateHubRibbon', { slug: HUB_SLUG });
     ta.value = (r.ribbon || []).join('\n');
     msg.style.color = 'var(--ink3)';
-    msg.textContent = 'Generated — review/edit above, then Save & publish.';
+    msg.textContent = `Listed from ${(r.groups || []).length} group${(r.groups || []).length === 1 ? '' : 's'} (${(r.groups || []).join(', ')}) — prune/edit above, then Save & publish.`;
   } catch(e) {
     msg.style.color = 'var(--stale)';
     msg.textContent = e.message;
