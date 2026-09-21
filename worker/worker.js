@@ -23451,6 +23451,190 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
           return json({ success: true, created: 1, assets: [{ id: seqAssetId, title: seqAssetTitle }], emailCount, captureForm: captureLine });
         }
 
+        // ── "digest" method: ONE weekly hub-digest issue, written as BOTH
+        // tiers in a single research/generation pass — free (public, what
+        // actually gets sent) and premium (gated, stored in Notion only,
+        // never sent/published while the hub has no paid-subscription
+        // infrastructure). Per operator direction: develop both tiers
+        // together so the premium angle isn't an afterthought once paid
+        // launches, but only the free tier is ever exposed anywhere. The
+        // premium tier lives in its own "Premium Content" property + a
+        // clearly marked page-body section — nothing in the publish/export
+        // path reads it, so gating is by omission, not by any access
+        // control (there is none yet; that's a deliberate later build once
+        // the hub has real traffic/open-rate signal — see the Email
+        // method's Path A note on the same free/paid split).
+        // Grounding chain, in priority order: hub's own committed SEO
+        // Keyword Clusters (the hub-specific signal) -> campaign Research
+        // (News Feed / Trend Round-Up / Trend Intelligence, broader signal)
+        // -> the attached product's Product Research (Offer Structure /
+        // Proof Points / Objections), used ONLY for the premium offer slot
+        // — the free tier never pitches anything.
+        if (/^digest$/i.test(assetType)) {
+          const hasMethod = methodId && methodId !== "__none__";
+          const [clusterRows, researchRows, methodFrameworkText, productPage, productResearch] = await Promise.all([
+            campaignId ? notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dsDash(campaignId) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []) : Promise.resolve([]),
+            campaignId ? notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dsDash(campaignId) } } }).catch(() => []) : Promise.resolve([]),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            hasProduct ? findBestProductResearchRecord(dsHdr, productId).catch(() => null) : Promise.resolve(null),
+          ]);
+
+          const clusterText = clusterRows.map(r => {
+            const name = (r.properties?.Name?.title || []).map(t => t.plain_text).join("");
+            const kw = (r.properties?.["Cluster Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
+            return name ? `- ${name}${kw ? `: ${kw}` : ""}` : "";
+          }).filter(Boolean).join("\n");
+
+          const rtRes = key => { for (const r of researchRows) { const v = (r.properties?.[key]?.rich_text || []).map(t => t.plain_text).join(""); if (v) return v; } return ""; };
+          const researchBlock = [
+            rtRes("News Feed")          && `News Feed: ${rtRes("News Feed").slice(0, 1200)}`,
+            rtRes("Trend Round-Up")     && `Trend Round-Up: ${rtRes("Trend Round-Up").slice(0, 800)}`,
+            rtRes("Trend Intelligence") && `Trend Intelligence: ${rtRes("Trend Intelligence").slice(0, 800)}`,
+            rtRes("Keywords")           && `Campaign Keywords: ${rtRes("Keywords").slice(0, 400)}`,
+          ].filter(Boolean).join("\n");
+
+          const productName = productPage ? (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") : "";
+          const isAffiliate = productPage?.properties?.Site?.select?.name === "Affiliates";
+          const rtp = key => productResearch ? (productResearch.properties?.[key]?.rich_text || []).map(t => t.plain_text).join("") : "";
+          const productBlock = hasProduct ? [
+            productName && `Product: ${productName}${isAffiliate ? " (AFFILIATE PROGRAM — write the offer as a promoter recommending it, never as the product owner)" : ""}`,
+            rtp("Offer Structure") && `Offer Structure: ${rtp("Offer Structure")}`,
+            rtp("Proof Points")    && `Proof Points: ${rtp("Proof Points")}`,
+            rtp("Objections")      && `Objections to pre-empt: ${rtp("Objections")}`,
+            rtp("Benefits")        && `Benefits: ${rtp("Benefits")}`,
+          ].filter(Boolean).join("\n") : "";
+
+          const digestPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing ONE issue of a weekly hub digest newsletter — a finished, publish-ready deliverable, not options to pick between.
+
+GROUNDING CHAIN (priority order):
+1. HUB KEYWORD CLUSTERS (committed): ${clusterText || "(none committed yet — use campaign research below)"}
+2. CAMPAIGN RESEARCH: ${researchBlock || "(none on file)"}
+3. FEATURED PRODUCT (premium offer slot ONLY — never mention in the free section): ${productBlock || "(no product attached — write the premium section as pure deep-dive analysis, skip the offer)"}
+
+METHOD FRAMEWORK (voice + structure — follow it exactly):
+${(methodFrameworkText || "").slice(0, 3000) || "(standard weekly-digest framework: scannable free lead + value items, one deeper premium item)"}
+
+TITLE / HUB: ${title}
+${body.researchInstructions ? `OPERATOR DIRECTION: ${body.researchInstructions}\n` : ""}
+This issue has TWO tiers, both written now in one pass, but they serve different purposes:
+
+FREE TIER (public — this is the only part that ever gets sent or published):
+- Pure value, no pitch. A reader who never upgrades should still feel this was worth opening.
+- Lead item first (the single most important thing this week), then 3–6 short "why it matters" items, one line each.
+- Close with one soft line that creates real curiosity about the premium section below, without giving away its content — this is the upgrade hook.
+
+PREMIUM TIER (gated — stored in Notion only, never sent or published at this stage):
+- ONE genuine deep-dive: 300–500 words of real analysis/opinion/insight that goes further than anything in the free section — not a rehash, not "the same thing but longer."
+- If a product is attached, one short offer paragraph reshaping the Offer Structure/Proof Points/Objections above into a real pitch (promoter framing if it's an affiliate program) — otherwise omit it.
+
+Return via the submit_digest_issue tool ONLY — nothing as plain text.`;
+
+          const digestResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 3000, messages: [{ role: "user", content: digestPrompt }],
+              tools: [{
+                name: "submit_digest_issue",
+                description: "Submit one complete weekly digest issue: free-tier public content and premium-tier gated content, both required.",
+                input_schema: {
+                  type: "object",
+                  properties: {
+                    subject: { type: "string" },
+                    preview: { type: "string" },
+                    leadItem: { type: "object", properties: { headline: { type: "string" }, body: { type: "string" } }, required: ["headline", "body"] },
+                    valueItems: { type: "array", items: { type: "object", properties: { headline: { type: "string" }, body: { type: "string" } }, required: ["headline", "body"] } },
+                    premiumTeaser: { type: "string" },
+                    premiumHeadline: { type: "string" },
+                    premiumBody: { type: "string" },
+                    premiumOfferPitch: { type: "string" },
+                  },
+                  required: ["subject", "preview", "leadItem", "valueItems", "premiumTeaser", "premiumHeadline", "premiumBody"],
+                },
+              }],
+              tool_choice: { type: "tool", name: "submit_digest_issue" },
+            }),
+          });
+          const digestData = await digestResp.json();
+          if (!digestResp.ok) return json({ error: digestData.error?.message || "Claude API error" }, 502);
+          const digestToolUse = (digestData.content || []).find(b => b.type === "tool_use" && b.name === "submit_digest_issue");
+          const d = digestToolUse?.input;
+          if (!d || !d.leadItem) return json({ error: "No digest generated — try again" }, 502);
+
+          const digestCaptureFormId = String(body.captureFormId || "").trim();
+          const digestCaptureHub = digestCaptureFormId.split("/")[0] || "";
+          const digestCaptureLine = digestCaptureFormId
+            ? [digestCaptureFormId, "ActiveCampaign", "tag: lead-hub-" + digestCaptureHub].join(" · ")
+            : "(no form picked — set one in the Generate Assets modal)";
+
+          const freeMd = `**Subject:** ${d.subject}\n**Preview:** ${d.preview}\n\n### ${d.leadItem.headline}\n${d.leadItem.body}\n\n` +
+            (d.valueItems || []).map(it => `- **${it.headline}** — ${it.body}`).join("\n") +
+            (d.premiumTeaser ? `\n\n${d.premiumTeaser}` : "");
+          const premiumMd = `### 🔒 ${d.premiumHeadline || "Premium deep dive"}\n${d.premiumBody || ""}` +
+            (d.premiumOfferPitch ? `\n\n**Offer:** ${d.premiumOfferPitch}` : "");
+
+          await ensureAssetsDbProperties(dsHdr, { "Premium Content": { type: "rich_text" }, "Capture Form": { type: "rich_text" } }).catch(() => {});
+
+          const digestAssetTitle = (title + " — digest issue").slice(0, 200);
+          const digestProps = {
+            "Asset Title":      { title: [{ type: "text", text: { content: digestAssetTitle } }] },
+            "Asset Status":     { select: { name: "Development" } },
+            "Asset Type":       { select: { name: "digest" } },
+            "Status":           { select: { name: "Ready" } },
+            "Body":             { rich_text: [{ type: "text", text: { content: freeMd.slice(0, 2000) } }] },
+            "Premium Content":  { rich_text: [{ type: "text", text: { content: premiumMd.slice(0, 2000) } }] },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Capture Form":     { rich_text: [{ type: "text", text: { content: digestCaptureLine.slice(0, 300) } }] },
+            "Platform Name":    { select: { name: "Email" } },
+          };
+          if (campaignId) digestProps["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (hasProduct) digestProps["Product"] = { relation: [{ id: dsDash(productId) }] };
+          Object.assign(digestProps, await assetMethodProp(methodId, assetType));
+
+          const digestCreateResp = await fetch("https://api.notion.com/v1/pages", {
+            method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: digestProps }),
+          });
+          const digestCreateOut = await digestCreateResp.json();
+          if (!digestCreateResp.ok || !digestCreateOut.id) return json({ error: digestCreateOut.message || "Digest asset create failed" }, 502);
+          const digestAssetId = digestCreateOut.id.replace(/-/g, "");
+
+          // Full text into the page body — free content first, then a
+          // clearly marked, visually distinct gated section. Readable in
+          // Notion for the operator; nothing outside this page ever reads
+          // the gated half.
+          try {
+            const dRt = t => t ? [{ type: "text", text: { content: String(t).slice(0, 1900) } }] : [];
+            const children = [
+              { object: "block", type: "heading_2", heading_2: { rich_text: dRt("Free tier — publish this") } },
+            ];
+            freeMd.split("\n").forEach(ln => {
+              const line = ln.trim();
+              if (!line) return;
+              if (/^###\s+/.test(line)) children.push({ object: "block", type: "heading_3", heading_3: { rich_text: dRt(line.replace(/^###\s+/, "")) } });
+              else if (/^[-*]\s+/.test(line)) children.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: dRt(line.replace(/^[-*]\s+/, "")) } });
+              else children.push({ object: "block", type: "paragraph", paragraph: { rich_text: dRt(line) } });
+            });
+            children.push({ object: "block", type: "divider", divider: {} });
+            children.push({ object: "block", type: "callout", callout: { rich_text: dRt("PREMIUM — GATED. Do not publish or send. Kept here until a paid tier exists."), icon: { emoji: "🔒" } } });
+            premiumMd.split("\n").forEach(ln => {
+              const line = ln.trim();
+              if (!line) return;
+              if (/^###\s+/.test(line)) children.push({ object: "block", type: "heading_3", heading_3: { rich_text: dRt(line.replace(/^###\s+/, "")) } });
+              else children.push({ object: "block", type: "paragraph", paragraph: { rich_text: dRt(line) } });
+            });
+            for (let i = 0; i < children.length; i += 90) {
+              await fetch(`https://api.notion.com/v1/blocks/${dsDash(digestAssetId)}/children`, {
+                method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ children: children.slice(i, i + 90) }),
+              });
+            }
+          } catch (e) { /* Body/Premium Content properties already carry the text; blocks are a bonus */ }
+
+          return json({ success: true, created: 1, assets: [{ id: digestAssetId, title: digestAssetTitle }], captureForm: digestCaptureLine, gated: true });
+        }
+
         // ── "Template CSV Export"-style table asset: ONE finished Page |
         // Field | Content table, not N visual concept options. The generic
         // concept-options path below has a hardcoded JSON schema built
