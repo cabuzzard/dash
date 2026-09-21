@@ -37967,6 +37967,7 @@ ${assemblyManifest}`;
             strategy: tx(pr, "Strategy"),
             setupNotes: tx(pr, "Setup Notes"),
             signupLog: tx(pr, "Signup Log"),
+            productId: (pr.Product?.relation || [])[0]?.id?.replace(/-/g, "") || null,
           };
         });
         return json({ items });

@@ -14186,7 +14186,10 @@ function affRow(r) {
     + '<td style="padding:6px 8px;white-space:nowrap;" title="Applicability to generalist SEO traffic"><span style="color:' + trafficFitColor + ';">●</span> ' + esc(r.trafficFit || 'General SEO') + '</td>'
     + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">' + statusSel + '</td>'
     + '<td style="padding:6px 8px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">'
-      + '<button onclick="affResearchSetup(\'' + r.id + '\')" title="Web-search this program’s signup process" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">🔍 Setup</button>'
+      + (r.productId
+          ? '<a href="https://www.notion.so/' + r.productId + '" target="_blank" rel="noopener" title="Open the Product record — run keyword/strategy research on it there" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);text-decoration:none;">📦 Product ↗</a>'
+          : '<button onclick="affMakeProduct(\'' + r.id + '\')" title="Create a Product record from this affiliate program — seeded with its commission/audience-fit/strategy so keyword search and Product Research run grounded in the program itself" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">📦 + Product</button>')
+      + '<button onclick="affResearchSetup(\'' + r.id + '\')" title="Web-search this program’s signup process" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;margin-left:4px;">🔍 Setup</button>'
       + '<button onclick="affDelete(\'' + r.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:4px;">✕</button></td>'
     + '</tr>'
     + (open && hasDetail ? '<tr><td colspan="10" style="padding:4px 14px 12px;background:var(--surface2);">'
@@ -14304,6 +14307,25 @@ async function affResearchSetup(id) {
     await loadGlAffiliate(true);
     renderAffList();
     st.textContent = 'Setup notes written for ' + (row ? row.name : 'program') + (r.loginFirst ? ' (needs a network login first).' : '.');
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+}
+// Creates a real Product record from this affiliate program (Site:
+// "Affiliates"), its Description compiled from the program's own
+// commission/audience-fit/strategy fields — so generateProductKeywords and
+// the Product Research fields (both already ground themselves in a
+// Product's Description) run grounded in the affiliate program itself
+// instead of a blank product. Idempotent — re-clicking just re-links to
+// the existing one (createProductFromAffiliate, worker.js).
+async function affMakeProduct(id) {
+  const st = document.getElementById('glAffStatus');
+  const row = AFF_DATA.find(x => x.id === id);
+  st.textContent = 'Creating product for ' + (row ? row.name : 'program') + '…';
+  try {
+    const r = await call('createProductFromAffiliate', { id });
+    if (r.error) throw new Error(r.error);
+    if (row) row.productId = r.productId;
+    renderAffList();
+    st.textContent = (r.created ? 'Product created for ' : 'Already linked to a product for ') + (row ? row.name : 'program') + '.';
   } catch (e) { st.textContent = 'Error: ' + e.message; }
 }
 async function affSetStatus(id, status) {
