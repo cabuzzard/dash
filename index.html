@@ -11478,11 +11478,36 @@ function htxRender(){
     else v = cur==null ? '' : String(cur);
     const ph = isArr ? '' : (df==null?'':String(df)).slice(0,140);
     const attrs = `data-p="${p}" data-arr="${isArr?1:0}" style="width:100%;font-size:12px;padding:7px 9px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);box-sizing:border-box;"`;
+    const fieldId = p==='ribbon' ? ' id="htxRibbonTa"' : '';
     const field = t>=2
-      ? `<textarea rows="${isArr?4:2}" ${attrs} placeholder="${esc(ph)}">${esc(v)}</textarea>`
+      ? `<textarea rows="${isArr?4:2}"${fieldId} ${attrs} placeholder="${esc(ph)}">${esc(v)}</textarea>`
       : `<input type="text" ${attrs} placeholder="${esc(ph)}" value="${esc(v)}">`;
-    return `<label style="display:block;margin-bottom:9px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);display:block;margin-bottom:3px;">${esc(label)}</span>${field}</label>`;
+    const labelRow = p==='ribbon'
+      ? `<span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);">${esc(label)}</span><button type="button" id="htxRibbonGenBtn" onclick="htxGenRibbon()" title="Ask Claude for a fresh set of ribbon phrases grounded in this campaign's Main Keywords — replaces this field's text below so you can edit it before saving." style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✨ Generate from keywords</button></span>`
+      : `<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);display:block;margin-bottom:3px;">${esc(label)}</span>`;
+    const ribbonMsg = p==='ribbon' ? `<div id="htxRibbonMsg" style="font-size:11px;margin:-4px 0 6px;min-height:14px;"></div>` : '';
+    return `<label style="display:block;margin-bottom:9px;">${labelRow}${field}</label>${ribbonMsg}`;
   }).join('');
+}
+async function htxGenRibbon(){
+  const btn = document.getElementById('htxRibbonGenBtn');
+  const ta = document.getElementById('htxRibbonTa');
+  const msg = document.getElementById('htxRibbonMsg');
+  if (!btn || !ta || !HTX.slug) return;
+  const o = btn.textContent;
+  btn.disabled = true; btn.textContent = 'Generating…';
+  msg.style.color = 'var(--text3)'; msg.textContent = '';
+  try {
+    const r = await call('generateHubRibbon', { slug: HTX.slug });
+    if (r.error) throw new Error(r.error);
+    ta.value = (r.ribbon || []).join('\n');
+    msg.style.color = 'var(--text3)';
+    msg.textContent = 'Generated — review/edit above, then Save & publish.';
+  } catch(e) {
+    msg.style.color = '#ff6b6b';
+    msg.textContent = e.message;
+  }
+  btn.disabled = false; btn.textContent = o;
 }
 async function hubTextSave(){
   const btn = document.getElementById('htxSaveBtn'), msg = document.getElementById('htxMsg');

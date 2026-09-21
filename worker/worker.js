@@ -9564,6 +9564,57 @@ Return: the logo on a transparent background, plus one preview placed on the sit
         } catch (e) { return json({ error: e.message }, 502); }
       }
 
+      // ── generateHubRibbon ── "✨ Generate from keywords" on the Section
+      // text modal's Ribbon field. STAGES a fresh set of ribbon phrases —
+      // returns them to the modal for the operator to review/edit; nothing
+      // is written to content.json here (the modal's existing Save &
+      // publish button does that, via saveHubContent, same as any other
+      // hand-edited field). Grounded in the campaign's Research Keywords
+      // (Main Keywords) + Statement/Unique Opportunity/Pain Points for
+      // tone — explicitly barred from inventing statistics that aren't
+      // already in that research, since a hallucinated number in a public
+      // ticker is worse than a plain phrase.
+      if (body.action === "generateHubRibbon") {
+        const slug = String(body.slug || "").trim();
+        const hub = HUB_SITES.find(h => h.slug === slug);
+        if (!hub) return json({ error: "unknown hub" }, 400);
+        const dashId = raw => { const s = String(raw || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        try {
+          const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashId(hub.campaignId) } } }).catch(() => []);
+          const pick = rows.slice().sort((a, b) => {
+            const ra = (a.properties?.Status?.select?.name === "Current") ? 0 : 1;
+            const rb = (b.properties?.Status?.select?.name === "Current") ? 0 : 1;
+            if (ra !== rb) return ra - rb;
+            return new Date(b.created_time || 0) - new Date(a.created_time || 0);
+          })[0];
+          const rq = k => (pick?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const keywords = rq("Keywords");
+          if (!keywords) return json({ error: "No Main Keywords set on this campaign's Research record yet — add some first." }, 400);
+          const guidance = String(body.guidance || "").trim();
+          const count = Math.max(3, Math.min(10, Number(body.count) || 6));
+          const prompt = `You are writing the ticker/ribbon strip for "${hub.name || slug}" — a thin scrolling band of ${count} short, punchy phrases near the top of the site, the kind that scan in under a second.
+
+MAIN KEYWORDS (what this site is about — the phrases must clearly reflect these, but read as crafted copy, never as a raw keyword list): ${keywords}
+
+POSITIONING STATEMENT: ${rq("Statement") || "(none on file)"}
+UNIQUE OPPORTUNITY: ${rq("Unique Opportunity") || "(none on file)"}
+AUDIENCE PAIN POINTS: ${rq("Pain Points") || "(none on file)"}
+${guidance ? `OPERATOR GUIDANCE FOR THIS PASS: ${guidance}\n` : ""}
+Write exactly ${count} phrases, one per line, nothing else (no numbering, no quotes, no preamble). Each phrase: 3-9 words, punchy, scannable, no trailing period. If the research above already contains a real statistic, you may use it verbatim — otherwise write benefit/urgency-style phrases; never invent a number, percentage, or dollar figure that isn't already given above.`;
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: prompt }] }),
+          });
+          const aiData = await aiResp.json().catch(() => ({}));
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "generation failed" }, 502);
+          const rawTxt = (aiData.content?.[0]?.text || "").trim();
+          const ribbon = rawTxt.split(/\n+/).map(s => s.trim().replace(/^[-•\d.)\s]+/, "").replace(/^["']|["']$/g, "").trim()).filter(Boolean).slice(0, count);
+          if (!ribbon.length) return json({ error: "model returned nothing usable — try again" }, 502);
+          return json({ ribbon });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
       // ── Hub palette (Content Hubs tab: Regenerate / Save to palettes / Push to hub) ──
       // The palette IS the hub's whole look: 10 CSS tokens (bg / surface / ink /
       // ink-head / ink-soft / line / sea / deep / deep-ink / accent) that drive
