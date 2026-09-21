@@ -236,7 +236,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <button class="tab" data-tab="product" onclick="switchTo('product')">Product Research <span class="n">(11)</span></button><span class="tarrow">→</span>
       <button class="tab" data-tab="strategy" onclick="switchTo('strategy')">Strategy · Titles · Assets</button><span class="tarrow">→</span>
       <button class="tab" data-tab="method" onclick="switchTo('method')">Method <span class="n">variable</span></button><span class="tarrow">→</span>
-      <button class="tab" data-tab="hub" onclick="switchTo('hub')">Hub</button>
+      <button class="tab" data-tab="hub" onclick="switchTo('hub')">Hub</button><span class="tarrow">→</span>
+      <button class="tab" data-tab="thisweek" onclick="switchTo('thisweek')">This Week</button>
     </div>
   </div>
 
@@ -1189,6 +1190,28 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div id="hubTabBody"><div class="loadnote">Loading…</div></div>
   </div>
 
+  <!-- ══════════════════════ TAB: THIS WEEK ══════════════════════ -->
+  <!-- Same standalone Weekly Planner board as the classic per-campaign
+       microsite (hard-grind's "This Week" tab) and the root dashboard's TD
+       tab — same real records (WEEKLY_PLANNER_DB via getWeeklyPlannerItems),
+       just scoped to THIS campaign via campaignId. Not a copy — editing a
+       card here edits the same row the dashboard's board shows. -->
+  <div class="panel" data-panel="thisweek">
+    <div class="stage-hd">
+      <h2 style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex:1;">
+        <span>This Week <span id="wp-range" style="color:var(--ink3);font-weight:400;font-size:12px;"></span></span>
+        <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
+          <button onclick="wpShiftWeek(-1)" class="btn" style="font-size:11px;">← Prev</button>
+          <button onclick="wpShiftWeek(0)" class="btn" style="font-size:11px;">This Week</button>
+          <button onclick="wpShiftWeek(1)" class="btn" style="font-size:11px;">Next →</button>
+        </span>
+      </h2>
+      <button class="notebtn tabnotebtn" onclick="openNoteModal('tab-thisweek','This Week tab','thisweek')">📝 Tab note</button>
+    </div>
+    <p class="stage-sub">This campaign's slice of the global Weekly Planner — the same records shown on the dashboard's TD tab, filtered to this campaign. Drag a card between days, click the dot to cycle its flag, check it off when done.</p>
+    <div id="wp-board" style="display:grid;grid-template-columns:repeat(7,minmax(140px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px;"><div class="loadnote">Loading…</div></div>
+  </div>
+
   <footer>Campaign Template — real microsite, live data. Notes saved to the worker as you go.</footer>
 </div>
 
@@ -1431,6 +1454,7 @@ const TAB_LOADERS = {
   product: () => loadProductTab(),
   strategy: () => { loadStrategyTab(); loadTitleAndAssetTab(); },
   hub: () => loadHubTab(),
+  thisweek: () => loadWeeklyPlanner(),
 };
 const TAB_LOADED = {};
 function switchTo(key) {
@@ -5578,6 +5602,133 @@ async function loadContentHubsList() {
     el.innerHTML = hubs.map(h => `<a href="https://${esc(h.domain)}/" target="_blank" rel="noopener">🌐 ${esc(h.name)} ↗</a>`).join('');
   } catch (e) { /* list stays blank */ }
 }
+
+// ── THIS WEEK (Weekly Planner) — same board as hard-grind's "This Week"
+// tab and the root dashboard's TD tab, same real WEEKLY_PLANNER_DB rows,
+// scoped to CAMPAIGN_ID. Ported here 2026-09-22 per operator direction
+// ("literally just show the same td records but filter them out by the
+// campaign") after the Campaign-Notes-mirrors-to-a-td-card approach on the
+// Hub tab didn't work reliably — this shows/edits the real records
+// directly instead of trying to keep a separate mirror in sync.
+let WP_WEEK_OFFSET = 0;
+let WP_ITEMS_CACHE = [];
+let WP_DRAG_ID = null;
+const WP_DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+function wpMonday(offsetWeeks) {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dow = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - dow + offsetWeeks * 7);
+  return d;
+}
+function wpIso(d) { return d.toISOString().slice(0, 10); }
+function wpShiftWeek(delta) {
+  WP_WEEK_OFFSET = delta === 0 ? 0 : WP_WEEK_OFFSET + delta;
+  loadWeeklyPlanner();
+}
+async function loadWeeklyPlanner() {
+  const board = document.getElementById('wp-board');
+  if (!board) return;
+  const monday = wpMonday(WP_WEEK_OFFSET);
+  const weekStart = wpIso(monday);
+  const sunday = new Date(monday); sunday.setUTCDate(monday.getUTCDate() + 6);
+  const rangeEl = document.getElementById('wp-range');
+  if (rangeEl) rangeEl.textContent = `${monday.toLocaleDateString('en-US',{month:'short',day:'numeric'})} – ${sunday.toLocaleDateString('en-US',{month:'short',day:'numeric'})}`;
+  try {
+    const r = await w('getWeeklyPlannerItems', { campaignId: CAMPAIGN_ID, weekStart });
+    WP_ITEMS_CACHE = r.items || [];
+    renderWeeklyPlanner(monday, WP_ITEMS_CACHE);
+  } catch(e) {
+    board.innerHTML = `<div class="loadnote" style="color:var(--stale);grid-column:1/-1;">${esc(e.message)}</div>`;
+  }
+}
+function renderWeeklyPlanner(monday, items) {
+  const board = document.getElementById('wp-board');
+  const byDay = {};
+  for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i); byDay[wpIso(d)] = []; }
+  items.forEach(it => { if (it.date && byDay[it.date]) byDay[it.date].push(it); });
+  const todayIso = wpIso(new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())));
+  board.innerHTML = Object.entries(byDay).map(([dateIso, dayItems], i) => {
+    const d = new Date(dateIso + 'T00:00:00Z');
+    const isToday = dateIso === todayIso;
+    const openCount = dayItems.filter(it => it.status !== 'Done').length;
+    const overCap = openCount > 5;
+    const itemsHtml = dayItems.map(it => {
+      const fs = it.status === 'Done' ? 'done' : (it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
+      const fc = { none: {b:'var(--border2)', d:'var(--ink3)'}, urgent: {b:'var(--stale)', d:'var(--stale)'}, planning: {b:'var(--amber)', d:'var(--amber)'}, done: {b:'var(--fresh)', d:'var(--fresh)'} }[fs];
+      return `
+      <div class="wp-item" draggable="true" ondragstart="wpDragStart(event,'${it.id}')" ondragover="wpItemDragOver(event)" ondrop="wpItemDrop(event,'${it.id}','${dateIso}')" style="background:${it.status==='Done'?'var(--fresh-bg)':'var(--surface2)'};border:1px solid ${it.status==='Done'?'var(--fresh)':'var(--border)'};border-left:3px solid ${fc.b};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
+        <div style="display:flex;align-items:flex-start;gap:6px;">
+          <button onclick="wpCycleFlag('${it.id}')" title="Flag: ${fs} — click to cycle (urgent → planning → done → clear)" style="width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);background:${fc.d};flex-shrink:0;margin-top:3px;cursor:pointer;padding:0;"></button>
+          <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
+          <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--ink3)':'var(--ink)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
+          <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
+        </div>
+        ${it.source === 'Development Title' ? '<div style="font-size:9px;color:#9f7aea;margin-top:2px;margin-left:20px;">from Development</div>' : ''}
+      </div>`;
+    }).join('');
+    return `<div class="wp-day" ondragover="event.preventDefault()" ondrop="wpDrop(event,'${dateIso}')" style="background:${isToday?'var(--global-bg)':'transparent'};border:1px solid ${isToday?'var(--global)':'var(--border)'};border-radius:8px;padding:8px;min-height:120px;">
+      <div style="font-size:11px;font-weight:700;color:${isToday?'var(--global)':'var(--ink)'};margin-bottom:6px;display:flex;justify-content:space-between;">
+        <span>${WP_DAY_NAMES[i]} ${d.getUTCDate()}</span>
+        <span style="color:${overCap?'var(--stale)':'var(--ink3)'};font-weight:400;">${openCount}${overCap?' ⚠':''}</span>
+      </div>
+      ${itemsHtml}
+      <input type="text" placeholder="+ add…" onkeydown="if(event.key==='Enter')wpAddItem('${dateIso}', this)" style="width:100%;font-size:11px;padding:3px 5px;border:1px dashed var(--border2);border-radius:4px;background:transparent;color:var(--ink);outline:none;margin-top:4px;box-sizing:border-box;">
+    </div>`;
+  }).join('');
+}
+async function wpAddItem(dateIso, input) {
+  const name = input.value.trim();
+  if (!name) return;
+  input.disabled = true;
+  try {
+    const r = await w('addWeeklyPlannerItem', { campaignId: CAMPAIGN_ID, name, day: dateIso });
+    if (r.error) throw new Error(r.error);
+    await loadWeeklyPlanner();
+  } catch(e) {
+    alert('Error: ' + e.message);
+    input.disabled = false;
+  }
+}
+async function wpToggleDone(itemId, checked) {
+  try { const r = await w('completeWeeklyPlannerItem', { itemId, done: checked }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+async function wpDeleteItem(itemId) {
+  try { const r = await w('deleteWeeklyPlannerItem', { itemId }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+function wpDragStart(e, itemId) { WP_DRAG_ID = itemId; e.dataTransfer.effectAllowed = 'move'; }
+async function wpDrop(e, dateIso) {
+  e.preventDefault();
+  if (!WP_DRAG_ID) return;
+  const id = WP_DRAG_ID; WP_DRAG_ID = null;
+  try { const r = await w('moveWeeklyPlannerItem', { itemId: id, day: dateIso }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(err) { alert('Error: ' + err.message); }
+}
+function wpItemDragOver(e) { e.preventDefault(); e.stopPropagation(); }
+async function wpItemDrop(e, targetId, dateIso) {
+  e.preventDefault(); e.stopPropagation();
+  const dragId = WP_DRAG_ID; WP_DRAG_ID = null;
+  if (!dragId || dragId === targetId) return;
+  const dayIds = WP_ITEMS_CACHE.filter(it => it.date === dateIso).sort((a, b) => a.order - b.order)
+                    .map(it => it.id).filter(id => id !== dragId);
+  const rect = e.currentTarget.getBoundingClientRect();
+  let idx = dayIds.indexOf(targetId);
+  if (idx < 0) idx = dayIds.length;
+  else if ((e.clientY - rect.top) > rect.height / 2) idx += 1;
+  dayIds.splice(idx, 0, dragId);
+  try { const r = await w('reorderWeeklyPlannerItems', { orderedIds: dayIds, day: dateIso }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(err) { alert('Error: ' + err.message); }
+}
+async function wpCycleFlag(itemId) {
+  const it = WP_ITEMS_CACHE.find(x => x.id === itemId);
+  const cur = !it ? 'none' : (it.status === 'Done' ? 'done' : it.flag === 'Urgent' ? 'urgent' : it.flag === 'Planning' ? 'planning' : 'none');
+  const next = { none: 'Urgent', urgent: 'Planning', planning: 'Done', done: 'None' }[cur];
+  try { const r = await w('setWeeklyPlannerItemFlag', { itemId, flag: next }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+  catch(e) { alert('Error: ' + e.message); }
+}
+
 async function init() {
   applyCollapseState();
   // Every worker action needs a valid session token, so campaign-context
