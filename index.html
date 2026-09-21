@@ -826,6 +826,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubAssetGrid()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Asset Grid <span id="hagSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:8px;">
+          <button id="hagHighlightBtn" onclick="event.stopPropagation();hagToggleHighlight()" title="Toggle highlighting of filled-in cells on/off" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">🖍 highlight</button>
           <button onclick="event.stopPropagation();hagAddRow()" title="Add a blank row at the bottom (free-text label, not tied to a hub)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ row</button>
           <button onclick="event.stopPropagation();hagAddColumn()" title="Add a new column" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ column</button>
           <span id="hagToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
@@ -15836,6 +15837,25 @@ function hagColResizeEnd(e) {
   document.removeEventListener('mousemove', hagColResizeMove);
   document.removeEventListener('mouseup', hagColResizeEnd);
 }
+// Highlight filled-in cells (non-empty text gets a tinted background) so
+// gaps in the worksheet are obvious at a glance — toggled on/off, persisted
+// per-device like the other display prefs above.
+let hagHighlight = true;
+try { hagHighlight = localStorage.getItem('hagHighlight') !== 'false'; } catch(e) {}
+const HAG_HIGHLIGHT_COLOR = 'rgba(217,164,65,.16)';
+function hagApplyHighlightBtn() {
+  const b = document.getElementById('hagHighlightBtn');
+  if (!b) return;
+  b.style.color = hagHighlight ? 'var(--accent)' : 'var(--text2)';
+  b.style.borderColor = hagHighlight ? 'var(--accent)' : 'var(--border2)';
+}
+function hagToggleHighlight() {
+  hagHighlight = !hagHighlight;
+  try { localStorage.setItem('hagHighlight', String(hagHighlight)); } catch(e) {}
+  hagApplyHighlightBtn();
+  renderHubAssetGrid();
+}
+try { hagApplyHighlightBtn(); } catch(e) {}
 const HAG_DEFAULT_COLS = [
   { id: 'mainOffer',  name: 'Main Offer' },
   { id: 'ticker',     name: 'Ticker' },
@@ -15907,13 +15927,14 @@ function renderHubAssetGrid() {
     + `<span draggable="false" title="Drag to resize this column" onmousedown="hagColResizeStart('${id}',event)" onclick="event.stopPropagation()" onmouseover="this.style.background='var(--accent)'" onmouseout="this.style.background='transparent'" style="position:absolute;top:0;right:0;bottom:0;width:6px;cursor:col-resize;z-index:5;"></span>`
     + `</th>`;
   }).join('');
+  const hagFillBg = v => (hagHighlight && v) ? HAG_HIGHLIGHT_COLOR : 'transparent';
   let rows = '';
   hubs.forEach(h => {
     const rc = cells[h.slug] || {};
     let tds = `<td style="padding:2px 6px;font-size:10px;color:${h.kind === 'landing' ? 'var(--accent)' : 'var(--text)'};white-space:nowrap;background:var(--bg);" title="${esc(h.slug)}">${esc(hagRowLabel(h))}</td>`;
     cols.forEach(c => {
       const v = rc[c.id] || '';
-      tds += `<td style="padding:0;border-left:1px solid var(--border);"><input type="text" value="${esc(v)}" oninput="hagCellInput('${esc(h.slug)}','${esc(c.id)}',this.value)" onblur="hagFlush()" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;background:transparent;border:none;color:var(--text);outline:none;"></td>`;
+      tds += `<td style="padding:0;border-left:1px solid var(--border);"><input type="text" value="${esc(v)}" oninput="this.style.background=hagHighlight&&this.value?HAG_HIGHLIGHT_COLOR:'transparent';hagCellInput('${esc(h.slug)}','${esc(c.id)}',this.value)" onblur="hagFlush()" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;background:${hagFillBg(v)};border:none;color:var(--text);outline:none;"></td>`;
     });
     rows += `<tr>${tds}</tr>`;
   });
@@ -15926,7 +15947,7 @@ function renderHubAssetGrid() {
       + `</td>`;
     cols.forEach(c => {
       const v = rc[c.id] || '';
-      tds += `<td style="padding:0;border-left:1px solid var(--border);border-top:1px dashed var(--border2);"><input type="text" value="${esc(v)}" oninput="hagExtraCellInput('${rid}','${esc(c.id)}',this.value)" onblur="hagFlush()" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;background:transparent;border:none;color:var(--text);outline:none;"></td>`;
+      tds += `<td style="padding:0;border-left:1px solid var(--border);border-top:1px dashed var(--border2);"><input type="text" value="${esc(v)}" oninput="this.style.background=hagHighlight&&this.value?HAG_HIGHLIGHT_COLOR:'transparent';hagExtraCellInput('${rid}','${esc(c.id)}',this.value)" onblur="hagFlush()" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;background:${hagFillBg(v)};border:none;color:var(--text);outline:none;"></td>`;
     });
     rows += `<tr>${tds}</tr>`;
   });
