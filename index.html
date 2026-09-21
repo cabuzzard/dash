@@ -826,6 +826,7 @@
       <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;cursor:pointer;" onclick="toggleHubAssetGrid()">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">Hub Asset Grid <span id="hagSummary" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;align-items:center;gap:8px;">
+          <button onclick="event.stopPropagation();hagAddRow()" title="Add a blank row at the bottom (free-text label, not tied to a hub)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ row</button>
           <button onclick="event.stopPropagation();hagAddColumn()" title="Add a new column" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ column</button>
           <span id="hagToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
         </span>
@@ -15841,6 +15842,7 @@ async function loadHubAssetGrid() {
       grid: {
         columns: (Array.isArray(grid.columns) && grid.columns.length) ? grid.columns : HAG_DEFAULT_COLS.slice(),
         cells: grid.cells && typeof grid.cells === 'object' ? grid.cells : {},
+        rows: Array.isArray(grid.rows) ? grid.rows : [],
       },
     };
     renderHubAssetGrid();
@@ -15858,7 +15860,9 @@ function renderHubAssetGrid() {
   const hubs = HAG_DATA.hubs || [];
   const cols = HAG_DATA.grid.columns || [];
   const cells = HAG_DATA.grid.cells || {};
-  if (summary) summary.textContent = `— ${hubs.length} row${hubs.length === 1 ? '' : 's'} · ${cols.length} column${cols.length === 1 ? '' : 's'}`;
+  const extraRows = HAG_DATA.grid.rows || [];
+  const totalRows = hubs.length + extraRows.length;
+  if (summary) summary.textContent = `— ${totalRows} row${totalRows === 1 ? '' : 's'} · ${cols.length} column${cols.length === 1 ? '' : 's'}`;
   if (!cols.length) { body.innerHTML = '<div style="font-size:11px;color:var(--text3);">No columns yet — use + column.</div>'; return; }
   const colgroup = `<colgroup><col style="width:92px;">${cols.map(() => `<col style="width:150px;">`).join('')}</colgroup>`;
   const headRow = cols.map(c => {
@@ -15882,8 +15886,21 @@ function renderHubAssetGrid() {
     });
     rows += `<tr>${tds}</tr>`;
   });
+  extraRows.forEach(row => {
+    const rc = row.cells || {};
+    const rid = esc(row.id);
+    let tds = `<td style="padding:2px 2px 2px 4px;background:var(--bg);white-space:nowrap;border-top:1px dashed var(--border2);">`
+      + `<input type="text" value="${esc(row.label || '')}" placeholder="row label…" oninput="hagRowLabelInput('${rid}',this.value)" onblur="hagFlush()" style="width:64px;box-sizing:border-box;font-size:10px;padding:2px 3px;background:transparent;border:none;color:var(--text);outline:none;">`
+      + `<span onclick="hagDeleteRow('${rid}')" title="Delete row" style="font-size:10px;color:var(--text3);cursor:pointer;">✕</span>`
+      + `</td>`;
+    cols.forEach(c => {
+      const v = rc[c.id] || '';
+      tds += `<td style="padding:0;border-left:1px solid var(--border);border-top:1px dashed var(--border2);"><input type="text" value="${esc(v)}" oninput="hagExtraCellInput('${rid}','${esc(c.id)}',this.value)" onblur="hagFlush()" style="width:100%;box-sizing:border-box;font-size:11px;padding:3px 6px;background:transparent;border:none;color:var(--text);outline:none;"></td>`;
+    });
+    rows += `<tr>${tds}</tr>`;
+  });
   body.innerHTML = `<div style="overflow-x:auto;"><table style="table-layout:fixed;border-collapse:separate;border-spacing:0;width:max-content;min-width:100%;">${colgroup}<thead><tr><th style="background:var(--bg);"></th>${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">Rows match the Hub Method Matrix · click a header to rename, ✕ to delete, drag a header to reorder, + column to add · every cell autosaves</div>`;
+    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;">Rows match the Hub Method Matrix, plus any custom rows added below (dashed top border) · click a header to rename, ✕ to delete, drag a header to reorder, + column/+ row to add · every cell autosaves</div>`;
 }
 function hagCellInput(slug, colId, value) {
   if (!HAG_DATA) return;
@@ -15898,9 +15915,46 @@ async function hagFlush() {
   if (!hagDirty || !HAG_DATA) return;
   hagDirty = false;
   try {
-    const r = await call('saveHubAssetGrid', { columns: HAG_DATA.grid.columns, cells: HAG_DATA.grid.cells });
+    const r = await call('saveHubAssetGrid', { columns: HAG_DATA.grid.columns, cells: HAG_DATA.grid.cells, rows: HAG_DATA.grid.rows || [] });
     if (r.error) throw new Error(r.error);
   } catch(e) { console.error('hagFlush:', e.message); }
+}
+function hagAddRow() {
+  if (hagCollapsed) { hagCollapsed = false; try { localStorage.setItem('hagCollapsed', 'false'); } catch(e) {} applyHubAssetGridCollapse(); }
+  const afterLoad = () => {
+    const id = 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    HAG_DATA.grid.rows = HAG_DATA.grid.rows || [];
+    HAG_DATA.grid.rows.push({ id, label: '', cells: {} });
+    hagDirty = true; hagFlush();
+    renderHubAssetGrid();
+  };
+  if (!HAG_DATA) { loadHubAssetGrid().then(() => { if (HAG_DATA) afterLoad(); }); }
+  else afterLoad();
+}
+function hagRowLabelInput(rowId, value) {
+  if (!HAG_DATA) return;
+  const row = (HAG_DATA.grid.rows || []).find(r => r.id === rowId);
+  if (!row) return;
+  row.label = value;
+  hagDirty = true;
+  if (hagSaveTimer) clearTimeout(hagSaveTimer);
+  hagSaveTimer = setTimeout(hagFlush, 900);
+}
+function hagExtraCellInput(rowId, colId, value) {
+  if (!HAG_DATA) return;
+  const row = (HAG_DATA.grid.rows || []).find(r => r.id === rowId);
+  if (!row) return;
+  row.cells = row.cells || {};
+  row.cells[colId] = value;
+  hagDirty = true;
+  if (hagSaveTimer) clearTimeout(hagSaveTimer);
+  hagSaveTimer = setTimeout(hagFlush, 900);
+}
+function hagDeleteRow(rowId) {
+  if (!HAG_DATA) return;
+  HAG_DATA.grid.rows = (HAG_DATA.grid.rows || []).filter(r => r.id !== rowId);
+  hagDirty = true; hagFlush();
+  renderHubAssetGrid();
 }
 function hagAddColumn() {
   const name = (prompt('New column name:') || '').trim();
@@ -15933,6 +15987,7 @@ function hagDeleteColumn(colId) {
   if (!c || !confirm('Delete column "' + c.name + '"? This removes its data for every row.')) return;
   HAG_DATA.grid.columns = HAG_DATA.grid.columns.filter(x => x.id !== colId);
   Object.keys(HAG_DATA.grid.cells).forEach(slug => { if (HAG_DATA.grid.cells[slug]) delete HAG_DATA.grid.cells[slug][colId]; });
+  (HAG_DATA.grid.rows || []).forEach(row => { if (row.cells) delete row.cells[colId]; });
   hagDirty = true; hagFlush();
   renderHubAssetGrid();
 }

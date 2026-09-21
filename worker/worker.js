@@ -13356,7 +13356,23 @@ ${bodyText.slice(0, 6000)}`;
             if (Object.keys(cleanRow).length) cells[String(slug).slice(0, 120)] = cleanRow;
           }
         }
-        const payload = { columns, cells };
+        // Custom rows an operator adds at the bottom (not tied to a hub) —
+        // own free-text label + the same per-column cell map shape as `cells`.
+        const rows = Array.isArray(body.rows) ? body.rows.slice(0, 200).map(r => {
+          const id = String(r?.id || "").slice(0, 60);
+          if (!id) return null;
+          const label = String(r?.label || "").slice(0, 120);
+          const cleanRow = {};
+          if (r?.cells && typeof r.cells === "object") {
+            for (const [colId, text] of Object.entries(r.cells)) {
+              if (!colIds.has(colId)) continue;
+              const t = String(text ?? "").slice(0, 2000);
+              if (t) cleanRow[colId] = t;
+            }
+          }
+          return { id, label, cells: cleanRow };
+        }).filter(Boolean) : [];
+        const payload = { columns, cells, rows };
         const text = JSON.stringify(payload);
         if (text.length > 500000) return json({ error: "Grid too large" }, 400);
         await env.TRADES.put("hubassetgrid:v1", text);
