@@ -757,21 +757,6 @@ async function renderHubProducts() {
 }
 
 (async () => {
-  // Ticker/ribbon keywords — dynamically reflects the campaign's Research
-  // "Main Keywords" field (getHubKeywords), replacing the hand-written
-  // HUB.ribbon array below when it resolves. Started immediately so it runs
-  // in parallel with the content.json fetch just below rather than serially
-  // after it; awaited right before first paint. Best-effort — a slow/down
-  // worker or an empty Keywords field just leaves the hand-written ribbon
-  // fallback in place.
-  const ribbonPromise = HUB.campaignId
-    ? Promise.race([
-        fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "getHubKeywords", campaignId: HUB.campaignId }) })
-          .then((r) => r.json()).then((d) => (Array.isArray(d.keywords) && d.keywords.length) ? d.keywords : null),
-        new Promise((res) => setTimeout(() => res(null), 2500)),
-      ]).catch(() => null)
-    : Promise.resolve(null);
-
   // Fixed-copy + image overrides — web/hub/<slug>/content.json, edited from
   // the dashboard's Content Hubs tab. Deep-merged over the baked-in HUB
   // defaults BEFORE first paint. Best-effort, 2.5s cap so a slow/down worker
@@ -787,8 +772,6 @@ async function renderHubProducts() {
       merge(HUB, cd.overrides);
     }
   } catch (e) { /* baked defaults stand */ }
-  const ribbonKeywords = await ribbonPromise;
-  if (ribbonKeywords) HUB.ribbon = ribbonKeywords;
   renderChrome();
   renderHero();
   renderHubJournal();
