@@ -3819,7 +3819,7 @@ async function runCreateProduct() {
   btn.disabled = true; btn.textContent = 'Writing…';
   resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Starting…';
   try {
-    const kickoff = await w('createProduct', { productId: CPROD_ID, productType, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    const kickoff = await w('createProductDirect', { productId: CPROD_ID, productType, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
     if (kickoff.error) throw new Error(kickoff.error);
     const data = await caQaPollJob(kickoff.jobId, (elapsed, label) => { resEl.textContent = 'Writing… ' + (label || '') + ' (' + elapsed + 's)'; });
     resEl.style.color = 'var(--fresh)';

@@ -39663,14 +39663,18 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
         } catch (e) { return json({ error: e.message }, 500); }
       }
 
-      // ── createProduct — "Create Product", triggered directly on a
+      // ── createProductDirect — "Create Product", triggered directly on a
       // Product row (no QA interview): synthesizes the seed from the
       // product's own Description + optional operator guidance, then runs
       // the exact same plan-and-write engine as QA – Product
       // (productDirectStep, a thin wrapper around qaProductStep) plus a
       // rollup phase that writes everything back onto the Product
       // record's own "Produced Content" field for Product Research to read.
-      if (body.action === "createProduct") {
+      // NOT named "createProduct" — that action already exists (bare
+      // product-record creation, the "+ Add Product" form) and a same-name
+      // second handler here would be dead code that this one silently fell
+      // through to, since the first "createProduct" match always wins.
+      if (body.action === "createProductDirect") {
         const { productId, productType, guidance, campaignId } = body;
         if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
         if (!productType || !String(productType).trim()) return json({ error: "productType required" }, 400);
