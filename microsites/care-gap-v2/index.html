@@ -1600,13 +1600,19 @@ function pd() {
   document.getElementById('d' + (pin.length-1)).classList.remove('filled');
   pin = pin.slice(0,-1);
 }
-function lockApp() {
+function lockApp(reason) {
   SESSION_TOKEN = null;
   sessionStorage.removeItem('caregapv2_token');
   localStorage.removeItem(REMEMBER_KEY);
   pin = '';
   document.querySelectorAll('.pin-dot').forEach(d => d.classList.remove('filled','error'));
-  document.getElementById('pinError').textContent = '';
+  // Without this, a 401 mid-action (token expired — 8hr HMAC limit,
+  // "remember this device" only skips re-entering the PIN, it doesn't
+  // extend the token itself) silently re-showed this screen with no
+  // explanation — from inside whatever modal was open, it just looked like
+  // "the modal disappeared, no error," since the modal (and any error text
+  // written into it) is now hidden behind this screen.
+  document.getElementById('pinError').textContent = reason || '';
   document.getElementById('pinScreen').classList.remove('hidden');
 }
 
@@ -1635,7 +1641,7 @@ async function w(action, extra = {}) {
   let d;
   try { d = await r.json(); }
   catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status})`); }
-  if (r.status === 401) { lockApp(); throw new Error('Session expired — log in again.'); }
+  if (r.status === 401) { lockApp('Session expired — enter your PIN again.'); throw new Error('Session expired — log in again.'); }
   if (d.error) throw new Error(d.error);
   return d;
 }
