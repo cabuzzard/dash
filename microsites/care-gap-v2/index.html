@@ -502,8 +502,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="caQaTypeRow" style="font-size:11px;color:var(--ink2);display:none;">Digital product type
           <select id="caQaType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="caQaTypeOnChange()">
             <option value="ebook">Ebook</option>
+            <option value="kindle book">Kindle Book</option>
             <option value="checklist">Checklist</option>
             <option value="spreadsheet">Spreadsheet</option>
+            <option value="coaching package">Coaching Package</option>
             <option value="design bundle">Design Bundle</option>
             <option value="__custom__">+ Create new…</option>
           </select>
@@ -585,6 +587,44 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="modalrow">
         <button class="btn" onclick="closeCreatePillarModal()">Cancel</button>
         <button class="btn primary" id="cpRunBtn" onclick="runCreatePillar()">✍ Create</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Product — writes the actual deliverable (ebook, coaching
+       package, spreadsheet, etc.), not just the record. Same plan-and-write
+       engine as QA – Product (productDirectStep, a thin wrapper around
+       qaProductStep server-side) with no interview — seeded from this
+       product's own Description + optional guidance. Real parts land as
+       component Assets under a new parent Asset (same viewing UI QA –
+       Product already has, visual parts get the same Canva-handoff design
+       brief), and everything written also rolls up onto the Product's own
+       "Produced Content" field, which Product Research now reads as its
+       primary grounding source. -->
+  <div class="modaloverlay" id="createProductModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Create Product</div>
+      <div class="mfield" id="cprodLabel"></div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Product Type</label>
+        <select id="cprodType" class="finput" style="width:100%;box-sizing:border-box;">
+          <option value="ebook">Ebook</option>
+          <option value="kindle book">Kindle Book</option>
+          <option value="checklist">Checklist</option>
+          <option value="spreadsheet">Spreadsheet</option>
+          <option value="coaching package">Coaching Package</option>
+          <option value="design bundle">Design Bundle</option>
+          <option value="__custom__">+ Create new…</option>
+        </select>
+        <input id="cprodTypeCustom" class="finput" type="text" placeholder="e.g. video course, swipe file, template pack" style="width:100%;box-sizing:border-box;display:none;">
+        <label style="font-size:11px;color:var(--ink2);">Guidance <span style="color:var(--ink3);">(optional — otherwise it's grounded in this product's own Description as usual)</span>
+          <textarea id="cprodGuidance" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;"></textarea>
+        </label>
+      </div>
+      <div id="cprodResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeCreateProductModal()">Cancel</button>
+        <button class="btn primary" id="cprodRunBtn" onclick="runCreateProduct()">🏗️ Create</button>
       </div>
     </div>
   </div>
@@ -2678,6 +2718,7 @@ async function loadProductTab() {
           <span class="idea-btns">
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
             <button class="iconbtn" title="Create a Development-stage title with a written Pillar, off this product" onclick="openCreatePillarModal('${esc(p.id)}', '${esc(p.name.replace(/'/g,"\\'"))}')">✍ Pillar</button>
+            <button class="iconbtn" title="Create Product — write the real deliverable (ebook, coaching package, spreadsheet, etc.), not just the record" onclick="openCreateProductModal('${esc(p.id)}', '${esc(p.name.replace(/'/g,"\\'"))}')">🏗️ Create</button>
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
             <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">✕</button>
           </span></div></div>`).join('')}</div>
@@ -3706,6 +3747,59 @@ async function runCreatePillar() {
   }
 }
 
+// ── CREATE PRODUCT ──────────────────────────────────────────────────
+// Writes the actual deliverable off a Product row, no interview — see the
+// createProductModal comment above for the full design.
+let CPROD_ID = null;
+function cprodTypeOnChange() {
+  const isCustom = document.getElementById('cprodType').value === '__custom__';
+  const custom = document.getElementById('cprodTypeCustom');
+  custom.style.display = isCustom ? '' : 'none';
+  if (isCustom) custom.focus();
+}
+function cprodResolveType() {
+  const sel = document.getElementById('cprodType');
+  if (sel.value === '__custom__') return (document.getElementById('cprodTypeCustom').value || '').trim() || 'ebook';
+  return sel.value || 'ebook';
+}
+function openCreateProductModal(productId, productName) {
+  CPROD_ID = productId;
+  document.getElementById('cprodLabel').textContent = productName;
+  document.getElementById('cprodType').value = 'ebook';
+  document.getElementById('cprodTypeCustom').value = '';
+  document.getElementById('cprodTypeCustom').style.display = 'none';
+  document.getElementById('cprodGuidance').value = '';
+  document.getElementById('cprodResult').textContent = '';
+  const btn = document.getElementById('cprodRunBtn');
+  btn.disabled = false; btn.textContent = '🏗️ Create';
+  document.getElementById('cprodType').onchange = cprodTypeOnChange;
+  document.getElementById('createProductModal').classList.add('open');
+}
+function closeCreateProductModal() { document.getElementById('createProductModal').classList.remove('open'); CPROD_ID = null; }
+async function runCreateProduct() {
+  if (!CPROD_ID) return;
+  const productType = cprodResolveType();
+  const guidance = document.getElementById('cprodGuidance').value.trim();
+  const resEl = document.getElementById('cprodResult');
+  const btn = document.getElementById('cprodRunBtn');
+  btn.disabled = true; btn.textContent = 'Writing…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Starting…';
+  try {
+    const kickoff = await w('createProduct', { productId: CPROD_ID, productType, guidance: guidance || undefined, campaignId: CAMPAIGN_ID });
+    if (kickoff.error) throw new Error(kickoff.error);
+    const data = await caQaPollJob(kickoff.jobId, (elapsed, label) => { resEl.textContent = 'Writing… ' + (label || '') + ' (' + elapsed + 's)'; });
+    resEl.style.color = 'var(--fresh)';
+    resEl.innerHTML = `✓ Created — ${data.componentsCount} part(s)${data.awaitingCanva ? `, ${data.awaitingCanva} awaiting Canva` : ''}. Saved to the product's own record too. <a href="${notionUrl(data.parentAssetId)}" target="_blank" rel="noopener">↗ open</a>`;
+    btn.textContent = '✓ Done';
+    loadProductTab();
+    loadTitleAndAssetTab();
+    setTimeout(closeCreateProductModal, 2200);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = '🏗️ Create';
+  }
+}
+
 // ── DIGEST ───────────────────────────────────────────────────────────
 // One run = a Development pillar title (free tier, "digest" method) +
 // two staged idea backlogs (single-post / premium). Ideas are pure
@@ -4302,7 +4396,7 @@ function caQaResolveProductType() {
 const QA_STEP_LABELS = {
   init: 'gathering research', generate: 'writing with Claude', title: 'creating title',
   asset: 'creating asset', blocks: 'writing content', parent: 'creating product',
-  components: 'building parts', publish: 'publishing', done: 'done',
+  components: 'building parts', rollup: 'saving to product record', publish: 'publishing', done: 'done',
 };
 async function caQaPollJob(jobId, statusCb) {
   const start = Date.now();

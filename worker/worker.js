@@ -149,10 +149,12 @@ const STRATEGY_FIELD_HINTS = {
 // chapters) inside generateQaProduct, this just tells it the convention.
 const QA_METHOD_NAMES = { product: "QA – Product", sales: "QA – Sales", story: "QA – Story" };
 const DIGITAL_PRODUCT_TYPES = {
-  "ebook":         { label: "Ebook",         shape: "a short ebook: one Cover (visual) part, then one text part per chapter (3-7 chapters, each a real written chapter, not an outline)" },
-  "checklist":     { label: "Checklist",     shape: "a checklist product: one text part named \"Checklist\" (the real numbered/grouped checklist items, ready to use as-is) and one visual part named \"Cover Graphic\"" },
-  "spreadsheet":   { label: "Spreadsheet",   shape: "a spreadsheet product: one text part named \"Data Sheet\" (the real rows/columns, written as a clear pipe-delimited table) and one text part named \"Instructions Sheet\" (how to use it)" },
-  "design bundle": { label: "Design Bundle", shape: "a design bundle: 3-6 visual parts, each a distinct template with its own design brief (name + purpose + what it should contain)" },
+  "ebook":            { label: "Ebook",            shape: "a short ebook: one Cover (visual) part, then one text part per chapter (3-7 chapters, each a real written chapter, not an outline)" },
+  "kindle book":       { label: "Kindle Book",       shape: "a Kindle-ready book: one Cover (visual) part with a design brief noting standard KDP 2560x1600px proportions, one text part named \"Front Matter\" (title page + a brief intro/foreword), one text part per chapter (5-12 chapters, each a complete, publish-ready chapter written in a voice and pacing suited to Kindle reading — short paragraphs, clear section breaks, no dense unbroken blocks), and a closing text part named \"Back Matter\" (author note + a call to action, e.g. a review request or next-book/offer mention)" },
+  "checklist":        { label: "Checklist",         shape: "a checklist product: one text part named \"Checklist\" (the real numbered/grouped checklist items, ready to use as-is) and one visual part named \"Cover Graphic\"" },
+  "spreadsheet":      { label: "Spreadsheet",       shape: "a spreadsheet product: one text part named \"Data Sheet\" (the real rows/columns, written as a clear pipe-delimited table) and one text part named \"Instructions Sheet\" (how to use it)" },
+  "coaching package": { label: "Coaching Package",  shape: "a coaching package: one text part named \"Program Overview\" (format, cadence, duration, what's included, who it's for) and one text part per session (4-8 sessions, named \"Session N — <topic>\", each a complete, ready-to-run session plan: objectives, talking points/content to cover, and an exercise or homework assignment — real usable material, not an outline)" },
+  "design bundle":    { label: "Design Bundle",     shape: "a design bundle: 3-6 visual parts, each a distinct template with its own design brief (name + purpose + what it should contain)" },
 };
 
 // Notion has no atomic "create if missing" — confirmed to have actually
@@ -2168,6 +2170,7 @@ async function ensureProductStrategy(hdr, env, productId, campaignId) {
     const rt = key => (pp[key]?.rich_text || []).map(t => t.plain_text).join("");
     const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
     const productDesc = rt("Description");
+    const producedContent = rt("Produced Content");
     const productStack = rt("Product Stack");
     let productKeywords = rt("Keywords");
 
@@ -2286,6 +2289,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
+PRODUCED CONTENT (the real, already-written product — a full Create Product run wrote this; ground everything in it over the Description when present): ${producedContent ? producedContent.slice(0, 3000) : "(none — no full product written yet)"}
 KEYWORDS: ${productKeywords || "(none)"}
 ${researchBlock}
 Write ALL of these fields — each 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections):
@@ -8570,6 +8574,44 @@ Return ONLY this JSON object, no other text, no markdown fences:
   }
 
   throw new Error("Unknown job step: " + job.step);
+}
+
+// ── productDirectStep — "Create Product" triggered directly from a
+// Product row (no QA interview): delegates init/generate/title/parent/
+// components to qaProductStep unchanged, then adds one more phase that
+// rolls every written part back onto the PRODUCT record itself (a new
+// "Produced Content" field). Per operator direction, the real written
+// product becomes the information source Product Research reads from
+// (see the PRODUCED CONTENT line in ensureProductStrategy/
+// generateStrategyField/regenerateAllStrategyFields/regenerateStrategyField)
+// rather than research only ever feeding INTO the product.
+async function productDirectStep(env, job) {
+  if (job.step !== "rollup") {
+    const out = await qaProductStep(env, job);
+    if (out.done && out.state && Array.isArray(out.state.parts)) {
+      return { step: "rollup", state: out.state, done: false };
+    }
+    return out;
+  }
+  const { state } = job;
+  const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const digest = (state.parts || []).map(p => `## ${p.label}${p.kind === "visual" ? " (visual — design brief, real file pending a Canva handoff)" : ""}\n${p.content}`).join("\n\n");
+  await ensureRichTextProperty(hdr, PRODUCTS_DB, "Produced Content");
+  const rich_text = [];
+  for (let i = 0; i < digest.length && rich_text.length < 100; i += 1900) rich_text.push({ text: { content: digest.slice(i, i + 1900) } });
+  await fetch(`https://api.notion.com/v1/pages/${dash(state.productId)}`, {
+    method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Produced Content": { rich_text } } }),
+  }).catch(() => {});
+  return {
+    step: "done", state, done: true,
+    result: {
+      success: true, titleId: state.titleId, parentAssetId: state.parentAssetId, title: state.plan.title || state.idea,
+      componentsCount: (state.parts || []).length,
+      awaitingCanva: (state.parts || []).filter(p => p.kind === "visual").length,
+    },
+  };
 }
 
 export default {
@@ -17883,6 +17925,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const producedContent = (pp["Produced Content"]?.rich_text || []).map(t => t.plain_text).join("");
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
         // Campaign Research grounding — previously missing entirely from this
@@ -17939,6 +17982,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
+PRODUCED CONTENT (the real, already-written product — ground everything in this over the Description when present): ${producedContent ? producedContent.slice(0, 3000) : "(none — no full product written yet)"}
 KEYWORDS: ${productKeywords || "(none)"}
 ${researchBlock}${otherFieldsText ? `\nALREADY-ESTABLISHED STRATEGY (stay consistent with this):\n${otherFieldsText}\n` : ''}${phaseSource ? `\nRELEVANT FRAMEWORK GUIDANCE (from an attached method's "${phaseSourceName}" section — use this to inform what to write, don't just restate it verbatim):\n${phaseSource}\n` : ''}
 FIELD TO WRITE: ${field}
@@ -18009,6 +18053,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const producedContent = (pp["Produced Content"]?.rich_text || []).map(t => t.plain_text).join("");
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
         let researchBlock = '';
@@ -18038,6 +18083,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
+PRODUCED CONTENT (the real, already-written product — ground everything in this over the Description when present): ${producedContent ? producedContent.slice(0, 3000) : "(none — no full product written yet)"}
 KEYWORDS: ${productKeywords || "(none)"}
 ${researchBlock}
 Write ALL of these fields — each 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain Points, Objections, Benefits, Proof Points):
@@ -18109,6 +18155,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const pp = productPage.properties || {};
         const productName = (pp.Name?.title || []).map(t => t.plain_text).join("") || "Product";
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const producedContent = (pp["Produced Content"]?.rich_text || []).map(t => t.plain_text).join("");
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
         // Not a formal "research type" field — just checks Site (stamped
         // "Affiliates" by createProductFromAffiliate). An affiliate program
@@ -18148,6 +18195,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
 ${isAffiliate ? `\nTHIS IS AN AFFILIATE PROGRAM, NOT AN OWNED PRODUCT. The operator promotes it for a commission — they don't set its price, own its delivery, or control its terms. Write every field from a PROMOTER's perspective: describe the affiliate product's own offer/pricing/terms as you'd explain them to a reader (not "our" offer), its own credibility/proof signals, and what a reader hesitates on before clicking through the affiliate link — never claim ownership of the product itself.\n` : ""}
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
+PRODUCED CONTENT (the real, already-written product — ground everything in this over the Description when present): ${producedContent ? producedContent.slice(0, 3000) : "(none — no full product written yet)"}
 KEYWORDS: ${productKeywords || "(none)"}
 ${researchBlock}
 FIELD TO WRITE: ${field} — ${STRATEGY_FIELD_HINTS[field]}
@@ -39418,7 +39466,7 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
         if (!job) return json({ error: "Job not found or expired" }, 404);
         if (job.done) return json({ done: true, result: job.result });
         try {
-          const stepFn = job.kind === "product" ? qaProductStep : qaContentStep;
+          const stepFn = job.kind === "product" ? qaProductStep : job.kind === "productDirect" ? productDirectStep : qaContentStep;
           const out = await stepFn(env, job);
           const updated = { ...job, step: out.step, state: out.state, done: !!out.done, result: out.result || null, lastError: null };
           await env.TRADES.put(jobKey, JSON.stringify(updated), { expirationTtl: 1800 });
@@ -39480,6 +39528,37 @@ Return ONLY a JSON array of AT LEAST 3 questions: [{"key": "q1", "question": "..
           if (!resp.ok) { const r = await resp.json().catch(() => ({})); return json({ error: r.message || "Save failed" }, resp.status); }
           return json({ success: true, researchUrl: `https://www.notion.so/${recordId}` });
         } catch (e) { return json({ error: e.message }, 500); }
+      }
+
+      // ── createProduct — "Create Product", triggered directly on a
+      // Product row (no QA interview): synthesizes the seed from the
+      // product's own Description + optional operator guidance, then runs
+      // the exact same plan-and-write engine as QA – Product
+      // (productDirectStep, a thin wrapper around qaProductStep) plus a
+      // rollup phase that writes everything back onto the Product
+      // record's own "Produced Content" field for Product Research to read.
+      if (body.action === "createProduct") {
+        const { productId, productType, guidance, campaignId } = body;
+        if (!productId || productId === "__none__") return json({ error: "productId required" }, 400);
+        if (!productType || !String(productType).trim()) return json({ error: "productType required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const prodPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+        const productName = (prodPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
+        const productDesc = (prodPage?.properties?.Description?.rich_text || []).map(t => t.plain_text).join("");
+        const idea = [
+          `Produce a complete, real, ready-to-use ${DIGITAL_PRODUCT_TYPES[productType]?.label || productType} for "${productName}".`,
+          productDesc && `Product description: ${productDesc}`,
+          guidance && `Operator guidance: ${guidance}`,
+        ].filter(Boolean).join("\n\n");
+        const jobId = "qa" + crypto.randomUUID().replace(/-/g, "");
+        const job = {
+          kind: "productDirect", step: "init", done: false, result: null, lastError: null,
+          state: { productId, idea, productType, answers: [], existingTitleId: null, campaignId: campaignId || null },
+        };
+        await env.TRADES.put(`qajob:${jobId}`, JSON.stringify(job), { expirationTtl: 1800 });
+        return json({ jobId });
       }
 
       if (body.action === "generateQaProduct") {
