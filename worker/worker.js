@@ -171,6 +171,37 @@ const DIGITAL_PRODUCT_TYPES = {
 // Notion's query happens to return first. No Method filter needed here —
 // PRODUCT_RESEARCH_DB holds only positioning docs, one concept, unlike the
 // old shared STRATEGY_DB this used to query.
+// Notion's plain `GET /v1/pages/{id}` SILENTLY TRUNCATES relation
+// properties to their first 25 related items (documented Notion API
+// behavior, easy to miss since nothing errors — the property just comes
+// back short, with `has_more: true` as the only signal). Any code reading
+// a page's own relation property directly off that page-level GET will
+// quietly drop everything past #25 once the relation grows past that size
+// — this is what silently broke "Add Product"/getCampaignProducts once a
+// campaign's Products relation passed 25 (e.g. after the affiliate
+// bulk-import), and would have caused real DATA LOSS in
+// addCampaignProduct/removeCampaignProduct (read-modify-write on the same
+// truncated array, then PATCH the whole relation back — silently dropping
+// every item past #25 that wasn't in the truncated read). Use this
+// wherever the FULL list matters; a plain page GET is still fine when only
+// the first related item is needed (e.g. `relation[0]`), since truncation
+// only ever drops items from the tail.
+async function getFullRelation(hdr, pageId, propName) {
+  const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const page = await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { headers: hdr }).then(r => r.json());
+  const prop = page.properties?.[propName];
+  if (!prop || prop.type !== "relation") return { ids: [], page };
+  if (!prop.has_more) return { ids: (prop.relation || []).map(r => r.id), page };
+  let ids = [], cursor;
+  do {
+    const url = `https://api.notion.com/v1/pages/${dash(pageId)}/properties/${prop.id}${cursor ? `?start_cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const resp = await fetch(url, { headers: hdr }).then(r => r.json());
+    ids = ids.concat((resp.results || []).map(r => r.relation?.id).filter(Boolean));
+    cursor = resp.has_more ? resp.next_cursor : null;
+  } while (cursor);
+  return { ids, page };
+}
+
 async function findBestProductResearchRecord(hdr, productId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const q = await fetch(`https://api.notion.com/v1/databases/${PRODUCT_RESEARCH_DB}/query`, {
@@ -14474,17 +14505,11 @@ ${bodyText.slice(0, 6000)}`;
       if (body.action === "getCampaignProducts") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
-        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-        });
-        const campPage = await campResp.json();
-        const productRels = campPage.properties?.["Products"]?.relation || [];
-        if (!productRels.length) return json({ products: [] });
-        const productPages = await Promise.all(productRels.map(r =>
-          fetch(`https://api.notion.com/v1/pages/${r.id}`, {
-            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-          }).then(res => res.json())
+        const hdrGcp = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const { ids: productIds } = await getFullRelation(hdrGcp, campaignId, "Products");
+        if (!productIds.length) return json({ products: [] });
+        const productPages = await Promise.all(productIds.map(id =>
+          fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdrGcp }).then(res => res.json())
         ));
         const products = productPages
           // Archiving a product only ever changed its own Status — it never
@@ -14565,11 +14590,12 @@ ${bodyText.slice(0, 6000)}`;
         const { campaignId, productId } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-        });
-        const campPage = await campResp.json();
-        const existing = (campPage.properties?.["Products"]?.relation || []).map(r => ({ id: r.id }));
+        // Full relation, not a plain page GET (see getFullRelation) — this
+        // PATCHes the whole "Products" array back, so reading a truncated
+        // (first-25-only) snapshot here would silently delete every product
+        // past #25 from the campaign the moment a 26th+ product was added.
+        const { ids: existingIds } = await getFullRelation({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, campaignId, "Products");
+        const existing = existingIds.map(id => ({ id }));
         if (!existing.some(r => r.id.replace(/-/g,"") === productId.replace(/-/g,""))) existing.push({ id: dashId(productId) });
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
           method: "PATCH",
@@ -14592,14 +14618,12 @@ ${bodyText.slice(0, 6000)}`;
       if (body.action === "removeCampaignProduct") {
         const { campaignId, productId } = body;
         if (!campaignId || !productId) return json({ error: "campaignId and productId required" }, 400);
-        const dashId = raw => { const s = raw.replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
-        const campResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
-          headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION },
-        });
-        const campPage = await campResp.json();
-        const filtered = (campPage.properties?.["Products"]?.relation || [])
-          .filter(r => r.id.replace(/-/g,"") !== productId.replace(/-/g,""))
-          .map(r => ({ id: r.id }));
+        // Full relation, not a plain page GET — see addCampaignProduct's
+        // comment / getFullRelation for why (data-loss risk on write-back).
+        const { ids: existingIdsRm } = await getFullRelation({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, campaignId, "Products");
+        const filtered = existingIdsRm
+          .filter(id => id.replace(/-/g,"") !== productId.replace(/-/g,""))
+          .map(id => ({ id }));
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dashId(campaignId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
