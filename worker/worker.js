@@ -11394,7 +11394,59 @@ Return: {
         // API to read back, so its LANDING_PAGES entry goes to KV (unioned
         // into LP_REG on every read above). index.html is small enough — its
         // mirror still gets the git commit for the frontend.
+        //
+        // A landing page also gets its OWN dedicated Campaign record here —
+        // per operator direction, slicing a product out onto its own
+        // standalone site means it deserves its own scoped admin microsite
+        // (care-gap-v2, campaign-agnostic via ?campaignId=) rather than only
+        // ever being visible buried inside the parent hub's much larger
+        // Product Research / Titles / Keywords lists. The INITIAL copy pass
+        // above still grounds in the PARENT hub's richer Research (already
+        // resolved as lpCampId/rp by this point) — that's a one-time seed,
+        // not an ongoing dependency. From here on, `lpCampId` is repointed
+        // at the new dedicated campaign: future generateLandingCopy reruns,
+        // and the registry entry every downstream read uses, are scoped to
+        // it. The product gets ADDED to this new campaign's Products
+        // relation (never removed from the parent — its existing Titles/
+        // Assets there are untouched) so care-gap-v2 pointed at the new
+        // campaign immediately shows its real Product Research.
         if (body.action === "scaffoldLandingPage" && !registered) {
+          const parentCampIdForLp = lpCampId; // capture before it gets repointed below
+          try {
+            const dedicatedProps = {
+              "Name": { title: [{ type: "text", text: { content: `${(lpAssetTitle || lpProdName || lpCampName)} — Landing Page`.slice(0, 200) } }] },
+              "Status": { select: { name: "Active" } },
+              "microsite": { url: `https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${lpCampId}` }, // placeholder — repointed to the new id right below once created
+              "live site": { url: lpUrl },
+              "Parent Campaign": { relation: [{ id: dLp(parentCampIdForLp) }] },
+            };
+            const dedicatedResp = await fetch("https://api.notion.com/v1/pages", {
+              method: "POST", headers: nh,
+              body: JSON.stringify({ parent: { database_id: CAMPAIGNS_DB }, properties: dedicatedProps }),
+            });
+            const dedicatedPage = await dedicatedResp.json();
+            if (dedicatedResp.ok && dedicatedPage.id) {
+              const dedicatedId = dedicatedPage.id.replace(/-/g, "");
+              // Fix the microsite link to point at ITS OWN id (had to create
+              // the page first to know it).
+              await fetch(`https://api.notion.com/v1/pages/${dLp(dedicatedId)}`, {
+                method: "PATCH", headers: nh,
+                body: JSON.stringify({ properties: { "microsite": { url: `https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${dedicatedId}` } } }),
+              }).catch(() => {});
+              if (lpProductId) {
+                const { ids: parentCampaignsOfProduct } = await getFullRelation(nh, lpProductId, "Campaigns").catch(() => ({ ids: [] }));
+                const already = parentCampaignsOfProduct.some(id => id.replace(/-/g, "") === dedicatedId);
+                if (!already) {
+                  await fetch(`https://api.notion.com/v1/pages/${dLp(lpProductId)}`, {
+                    method: "PATCH", headers: nh,
+                    body: JSON.stringify({ properties: { "Campaigns": { relation: [...parentCampaignsOfProduct.map(id => ({ id })), { id: dLp(dedicatedId) }] } } }),
+                  }).catch(() => {});
+                }
+              }
+              lpCampId = dedicatedId; // everything registered below uses the dedicated campaign, not the parent
+              committedLp.push(`Notion campaign ${dedicatedId} (own microsite)`);
+            }
+          } catch (e) { /* best-effort — the landing page itself still scaffolds fine without its own campaign */ }
           try {
             const cur = (await env.TRADES.get("landing:registry", "json")) || [];
             if (!cur.some(e => e && e.slug === lpSlug)) {
