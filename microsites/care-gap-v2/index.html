@@ -652,6 +652,40 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     </div>
   </div>
 
+  <!-- Publish Digest Email — reshapes the digest pillar's FREE tier into
+       real HTML-email-compliant markup and creates it in ActiveCampaign as
+       an unscheduled DRAFT (never auto-sent — the operator reviews and
+       hits Send themselves in ActiveCampaign). List + sender address are
+       picked here rather than guessed, since sending to the wrong list is
+       exactly the kind of mistake this should never make silently. -->
+  <div class="modaloverlay" id="publishDigestModal">
+    <div class="modalbox" style="max-width:560px;">
+      <div class="mtitle">Publish to ActiveCampaign</div>
+      <div class="mfield" id="pubDigestLabel"></div>
+      <div style="font-size:11px;color:var(--ink3);margin-bottom:6px;">Creates an unscheduled draft campaign — nothing is sent. Review and hit Send in ActiveCampaign when ready.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">List</label>
+        <select id="pubDigestList" class="finput" style="width:100%;box-sizing:border-box;"><option value="">Loading…</option></select>
+        <label style="font-size:11px;color:var(--ink2);">Sender address <span style="color:var(--ink3);">(CAN-SPAM compliance)</span></label>
+        <select id="pubDigestAddress" class="finput" style="width:100%;box-sizing:border-box;"><option value="">Loading…</option></select>
+        <label style="font-size:11px;color:var(--ink2);">From name
+          <input type="text" id="pubDigestFromName" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="e.g. Care Gap">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">From email
+          <input type="email" id="pubDigestFromEmail" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="hello@yourhub.com">
+        </label>
+        <label style="font-size:11px;color:var(--ink2);">Reply-to <span style="color:var(--ink3);">(optional — defaults to From email)</span>
+          <input type="email" id="pubDigestReplyTo" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+        </label>
+      </div>
+      <div id="pubDigestResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closePublishDigestModal()">Cancel</button>
+        <button class="btn primary" id="pubDigestBtn" onclick="runPublishDigestEmail()">📧 Create Draft</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Create Title from a Single-Post Idea — same createDevTitle + writeTitlePillar
        primitives as Create Pillar, its own fields (prefilled from the idea,
        all editable) so it never has to touch that modal's product-row-only
@@ -3851,13 +3885,68 @@ async function runDigestRun() {
     DIGEST_IDEAS = { postIdeas: ideasRes.postIdeas || [], premiumIdeas: ideasRes.premiumIdeas || [] };
     renderDigestIdeas();
     resEl.style.color = 'var(--fresh)';
-    resEl.innerHTML = `✓ Pillar title created (${pillarRes.wordCount || '?'} words) + ${(ideasRes.postIdeas || []).length} post idea(s) + ${(ideasRes.premiumIdeas || []).length} premium idea(s). <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open title</a>`;
+    resEl.innerHTML = `✓ Pillar title created (${pillarRes.wordCount || '?'} words) + ${(ideasRes.postIdeas || []).length} post idea(s) + ${(ideasRes.premiumIdeas || []).length} premium idea(s). <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open title</a><br><button class="btn primary" style="margin-top:8px;" onclick="openPublishDigestModal('${esc(created.id)}','${esc(titleName.replace(/'/g,"\\'"))}')">📧 Publish to ActiveCampaign</button>`;
     btn.textContent = '✓ Done';
+    btn.disabled = false;
     loadTitleAndAssetTab();
-    setTimeout(closeDigestRunModal, 2400);
   } catch (e) {
     resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
     btn.disabled = false; btn.textContent = '▶ Run';
+  }
+}
+
+// ── PUBLISH DIGEST EMAIL ─────────────────────────────────────────────
+let PUB_DIGEST_TITLE_ID = null;
+async function openPublishDigestModal(titleId, titleName) {
+  PUB_DIGEST_TITLE_ID = titleId;
+  document.getElementById('pubDigestLabel').textContent = titleName || '';
+  const listSel = document.getElementById('pubDigestList');
+  const addrSel = document.getElementById('pubDigestAddress');
+  listSel.innerHTML = '<option value="">Loading…</option>';
+  addrSel.innerHTML = '<option value="">Loading…</option>';
+  document.getElementById('pubDigestResult').textContent = '';
+  const btn = document.getElementById('pubDigestBtn');
+  btn.disabled = false; btn.textContent = '📧 Create Draft';
+  document.getElementById('publishDigestModal').classList.add('open');
+  try {
+    const [listsRes, addrRes] = await Promise.all([w('getActiveCampaignLists', {}), w('getActiveCampaignAddresses', {})]);
+    if (listsRes.error) throw new Error(listsRes.error);
+    if (addrRes.error) throw new Error(addrRes.error);
+    listSel.innerHTML = '<option value="">— choose a list —</option>' + (listsRes.lists || []).map(l => `<option value="${esc(l.id)}">${esc(l.name)}</option>`).join('');
+    addrSel.innerHTML = '<option value="">— choose an address —</option>' + (addrRes.addresses || []).map(a => `<option value="${esc(a.id)}">${esc(a.name || a.address || ('Address ' + a.id))}</option>`).join('');
+    if ((addrRes.addresses || []).length === 1) addrSel.value = addrRes.addresses[0].id;
+  } catch (e) {
+    listSel.innerHTML = '<option value="">Load failed</option>';
+    addrSel.innerHTML = '<option value="">Load failed</option>';
+    document.getElementById('pubDigestResult').style.color = 'var(--stale)';
+    document.getElementById('pubDigestResult').textContent = 'Error loading ActiveCampaign lists/addresses: ' + e.message;
+  }
+}
+function closePublishDigestModal() { document.getElementById('publishDigestModal').classList.remove('open'); PUB_DIGEST_TITLE_ID = null; }
+async function runPublishDigestEmail() {
+  if (!PUB_DIGEST_TITLE_ID) return;
+  const listId = document.getElementById('pubDigestList').value;
+  const addressId = document.getElementById('pubDigestAddress').value;
+  const fromName = document.getElementById('pubDigestFromName').value.trim();
+  const fromEmail = document.getElementById('pubDigestFromEmail').value.trim();
+  const replyTo = document.getElementById('pubDigestReplyTo').value.trim();
+  const resEl = document.getElementById('pubDigestResult');
+  if (!listId) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Pick a list.'; return; }
+  if (!addressId) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Pick a sender address.'; return; }
+  if (!fromName || !fromEmail) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'From name and From email are required.'; return; }
+  const btn = document.getElementById('pubDigestBtn');
+  btn.disabled = true; btn.textContent = 'Formatting + creating draft…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Reshaping into HTML email and creating the ActiveCampaign draft — this can take a bit…';
+  try {
+    const r = await w('publishDigestEmail', { titleId: PUB_DIGEST_TITLE_ID, campaignId: CAMPAIGN_ID, listId, addressId, fromName, fromEmail, replyTo: replyTo || undefined });
+    if (r.error) throw new Error(r.error);
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = `✓ Draft created in ActiveCampaign — "${r.subject}". Nothing sent yet — review and hit Send in ActiveCampaign when ready.`;
+    btn.textContent = '✓ Done';
+    setTimeout(closePublishDigestModal, 3000);
+  } catch (e) {
+    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
+    btn.disabled = false; btn.textContent = '📧 Create Draft';
   }
 }
 async function loadDigestIdeas() {

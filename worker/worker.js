@@ -12842,6 +12842,139 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
         } catch (e) { return json({ error: "ActiveCampaign fetch failed: " + e.message }, 502); }
       }
 
+      // Live ActiveCampaign sender addresses (the CAN-SPAM-required physical
+      // mailing address every campaign must carry) — read-only, feeds the
+      // Publish Digest Email modal's address picker.
+      if (body.action === "getActiveCampaignAddresses") {
+        const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, "");
+        const acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
+        if (!acUrl || !acKey) return json({ error: "ActiveCampaign not configured on the Worker (ACTIVECAMPAIGN_API_URL / ACTIVECAMPAIGN_API_KEY)" }, 400);
+        try {
+          const r = await fetch(`${acUrl}/api/3/addresses?limit=100`, { headers: { "Api-Token": acKey } });
+          const d = await r.json().catch(() => ({}));
+          if (!r.ok) return json({ error: d.message || `ActiveCampaign returned ${r.status}` }, 502);
+          const addresses = (d.addresses || []).map(a => ({ id: a.id, name: a.name, address: a.address1, city: a.city }));
+          return json({ addresses });
+        } catch (e) { return json({ error: "ActiveCampaign fetch failed: " + e.message }, 502); }
+      }
+
+      // ── publishDigestEmail — reshapes a digest pillar title's FREE-tier
+      // content into real HTML-email-compliant markup (table-based layout,
+      // inline styles — the actual constraint set real inboxes render
+      // correctly, not modern CSS), then creates it in ActiveCampaign as an
+      // unscheduled DRAFT campaign (a real message + campaign, never
+      // auto-sent — per operator direction, sending to a real subscriber
+      // list is always a deliberate, separate action the operator takes
+      // themselves from ActiveCampaign's own UI). This is the first real
+      // "push to the ESP" integration in dash — every other asset type's
+      // delivery has been manual copy/paste via the Publish modal until now.
+      if (body.action === "publishDigestEmail") {
+        const { titleId, campaignId, listId, addressId, fromName, fromEmail, replyTo } = body;
+        if (!titleId) return json({ error: "titleId required" }, 400);
+        if (!listId) return json({ error: "listId required — pick a list" }, 400);
+        if (!addressId) return json({ error: "addressId required — pick a sender address" }, 400);
+        if (!fromName || !fromEmail) return json({ error: "fromName and fromEmail required" }, 400);
+        const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, "");
+        const acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
+        if (!acUrl || !acKey) return json({ error: "ActiveCampaign not configured on the Worker (ACTIVECAMPAIGN_API_URL / ACTIVECAMPAIGN_API_KEY)" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+
+        const [titlePage, pillar] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+          extractPillarContent(hdr, dash(titleId)).catch(() => ""),
+        ]);
+        const titleName = (titlePage?.properties?.Title?.title || []).map(t => t.plain_text).join("") || "Digest";
+        if (!pillar) return json({ error: "This title has no Pillar Content yet — write/generate its pillar first" }, 400);
+        const resolvedCampaignId = campaignId || (titlePage?.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+
+        let palette = "", fonts = "", hubName = "";
+        if (resolvedCampaignId) {
+          const [researchRows, campPage] = await Promise.all([
+            fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
+              method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(resolvedCampaignId) } } }),
+            }).then(r => r.json()).catch(() => ({ results: [] })),
+            fetch(`https://api.notion.com/v1/pages/${dash(resolvedCampaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
+          ]);
+          const rp = (researchRows.results || [])[0]?.properties;
+          if (rp) {
+            palette = (rp.Palette?.rich_text || []).map(t => t.plain_text).join("");
+            fonts = (rp.Fonts?.rich_text || []).map(t => t.plain_text).join("");
+          }
+          hubName = (campPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "";
+        }
+
+        const emailPrompt = `You are formatting a weekly hub digest's FREE tier into a real, sendable HTML email. Reshape the pillar content below into a scannable digest issue — lead item first, then 3-6 short "why it matters" items, one soft closing line. Pure value, no pitch.
+
+PILLAR CONTENT (source — reshape, do not invent new claims):
+${pillar.slice(0, 4000)}
+
+HUB: ${hubName || "the hub"}${palette ? `\nBRAND PALETTE (use these hex colors for accents/links, keep body text a safe dark neutral for readability): ${palette}` : ""}${fonts ? `\nBRAND FONTS (reference only — use web-safe fallbacks, a real font stack, since custom fonts are unreliable in email clients): ${fonts}` : ""}
+
+Return via the submit_digest_email tool ONLY. The "html" field MUST be real HTML-EMAIL-COMPLIANT markup:
+- A single outer <table role="presentation" width="100%"> with a centered inner <table role="presentation" width="600" style="max-width:600px;"> — no <div>-based layout, no flexbox, no CSS grid.
+- ALL styling inline via style="..." attributes on each element — no <style> block, no external stylesheet, no classes.
+- Web-safe font stack only (e.g. Arial, Helvetica, sans-serif), font sizes in px, line-height set explicitly.
+- No JavaScript, no <video>, no background images.
+- The full document: <!doctype html><html><head> with a <meta charset> and a plain <title> </head><body style="margin:0;padding:0;">...</body></html>.
+- Do not include an unsubscribe link or footer address — ActiveCampaign appends those automatically.`;
+
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: emailPrompt }],
+            tools: [{
+              name: "submit_digest_email",
+              description: "Submit the formatted digest email: subject, preheader, and full HTML-email-compliant markup.",
+              input_schema: {
+                type: "object",
+                properties: {
+                  subject: { type: "string" },
+                  preheader: { type: "string" },
+                  html: { type: "string" },
+                },
+                required: ["subject", "preheader", "html"],
+              },
+            }],
+            tool_choice: { type: "tool", name: "submit_digest_email" },
+          }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_digest_email");
+        const email = toolUse?.input;
+        if (!email?.html || !email?.subject) return json({ error: "No email generated — try again" }, 502);
+
+        const acHdr = { "Api-Token": acKey, "Content-Type": "application/json" };
+        const msgResp = await fetch(`${acUrl}/api/3/messages`, {
+          method: "POST", headers: acHdr,
+          body: JSON.stringify({ message: {
+            fromname: fromName, fromemail: fromEmail, reply2: replyTo || fromEmail,
+            subject: email.subject.slice(0, 200), preheader_text: (email.preheader || "").slice(0, 200),
+            name: titleName.slice(0, 100), format: "html", html: email.html, text: pillar.slice(0, 4000),
+          } }),
+        });
+        const msgData = await msgResp.json().catch(() => ({}));
+        if (!msgResp.ok || !msgData.message?.id) return json({ error: "ActiveCampaign message create failed: " + (msgData.message || JSON.stringify(msgData)).toString().slice(0, 400) }, 502);
+        const messageId = msgData.message.id;
+
+        const campResp = await fetch(`${acUrl}/api/3/campaigns`, {
+          method: "POST", headers: acHdr,
+          body: JSON.stringify({ campaign: {
+            name: email.subject.slice(0, 200), type: "single",
+            listIds: [Number(listId)], messages: [{ messageId: Number(messageId), percentage: 100 }],
+            addressId: Number(addressId), trackLinks: "all", trackReads: true,
+          } }),
+        });
+        const campData = await campResp.json().catch(() => ({}));
+        if (!campResp.ok || !campData.campaign?.id) return json({ error: "ActiveCampaign campaign create failed (message was created, id " + messageId + "): " + (campData.message || JSON.stringify(campData)).toString().slice(0, 400) }, 502);
+
+        return json({ success: true, messageId, campaignId: campData.campaign.id, subject: email.subject, draft: true });
+      }
+
       // ── updateProductTitleDescription ──
       // Lets the ⚙ Methods modal edit a product's Name/Description in place
       // (pre-filled from Notion when the modal opens) — since these are the
