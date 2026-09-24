@@ -56,6 +56,10 @@
     "Bricolage Grotesque": {
       "query": "Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700",
       "fallback": "system-ui, sans-serif"
+    },
+    "Libre Franklin": {
+      "query": "Libre+Franklin:wght@400;500;600;700",
+      "fallback": "system-ui, sans-serif"
     }
   },
   "hubs": {
@@ -167,6 +171,59 @@
         ],
         "photography": "Documentary photography, medium-format feel — real places seen plainly: a modest porch at dusk, a residential street, a stairwell, a bus stop, a duplex block, an empty break room, keys on a counter. Housing and the ordinary infrastructure of a working life — the throughline is housing as workforce continuity. Cool, desaturated, near-monochrome grey-blue, at most one small warm pin-light (a lit window, a porch light) in the distance or the margin. Overcast daylight or blue hour only — never golden hour, never harsh midday. Muted contrast, fine grain, slight matte. No people, or a single distant silhouette at most. Quiet, austere, dignified — an annual-report cover, not a charity appeal.",
         "superseded": "Was manila #f4efe4 + evergreen #2f5d4f + burnt-ochre #a85f22 (Newsreader / IBM Plex kept)."
+      }
+    },
+    "construction-project-management": {
+      "meta": {
+        "title": "Build In Control — Run tighter projects, lead stronger teams, and finish on budget — every",
+        "description": "Practitioner-level guides, schedule frameworks, and cost-control playbooks for construction professionals who are accountable for the outcome.",
+        "ogTitle": "Build In Control",
+        "ogDescription": "Practitioner-level guides, schedule frameworks, and cost-control playbooks for construction professionals who are accountable for the outcome."
+      },
+      "fonts": {
+        "display": "Bricolage Grotesque",
+        "body": "Libre Franklin",
+        "mono": "IBM Plex Mono"
+      },
+      "logoText": "Build In Control",
+      "tokens": {
+        "bg": "#F5F3EF",
+        "surface": "#ECEAE4",
+        "ink": "#1C1A17",
+        "ink-head": "#0F0E0C",
+        "ink-soft": "#5C5750",
+        "line": "#D4D0C8",
+        "sea": "#2B5278",
+        "deep": "#1E1B16",
+        "deep-ink": "#F0EDE7",
+        "accent": "#E8600A",
+        "paper": "#ECEAE4"
+      },
+      "tokenNotes": {
+        "bg": "page ground",
+        "surface": "raised card",
+        "ink": "body ink",
+        "ink-head": "headings",
+        "ink-soft": "secondary text",
+        "line": "hairline",
+        "sea": "primary",
+        "deep": "dark band",
+        "deep-ink": "text on --deep",
+        "accent": "used once, loudly"
+      },
+      "design": {
+        "subject": "Construction project management — methodologies, tools, scheduling, cost control, and field leadership for built-environment professionals.",
+        "audience": "Project managers, site superintendents, owners' representatives, and senior estimators in commercial, civil, and residential construction who need rigorous, practitioner-level insight rather than generic business advice.",
+        "job": "Establish the hub as the go-to reference that busy construction professionals bookmark, share with their teams, and return to when a project gets complicated — converting first-time visitors into newsletter subscribers.",
+        "type": "Bricolage Grotesque for display (its industrial optical corrections and slightly mechanical letterforms echo structural engineering drawings) paired with Libre Franklin for body copy (neutral, legible at small sizes on bright jobsite screens); IBM Plex Mono for data callouts and code-like schedule fragments, reinforcing a technical, measured authority.",
+        "signature": "A bold horizontal 'blueprint-rule' — a 3 px accent-colored rule that undercuts every section heading, referencing construction drawing title blocks without resorting to literal hard-hat iconography.",
+        "risk": "A near-black warm-concrete background for the deep/hero band instead of the standard cool-dark or white that most construction brands default to — it reads premium and tactile rather than corporate.",
+        "avoided": [
+          "Hard-hat-and-crane stock-photo clichés replaced by typographic structure",
+          "Bright safety-orange as primary — used only as the accent so it reads purposeful, not loud",
+          "Rounded, 'friendly' UI conventions that would undercut the precision-engineering tone"
+        ],
+        "superseded": "First palette — seeded by scaffoldHub."
       }
     },
     "creative-flow-guitar": {
