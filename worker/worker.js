@@ -8764,6 +8764,27 @@ export default {
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+    // ── Image proxy for canvas compositing (Preview & Edit) ──
+    // POST ?imgproxy=1, X-Hermes-Token, body {url}. The browser can only draw
+    // a cross-origin image into an exportable canvas if the host sends CORS
+    // headers; when one doesn't (or a stale cached copy lacks them), the page
+    // fetches the bytes through here instead and draws a same-origin blob.
+    // Authed, https only, image/* only, ≤25 MB.
+    if (request.method === "POST" && new URL(request.url).searchParams.get("imgproxy") === "1") {
+      if (!HMAC_SECRET || !(await verifyToken(request.headers.get("X-Hermes-Token") || "", HMAC_SECRET))) return json({ error: "Unauthorized" }, 401);
+      let target = "";
+      try { target = String((await request.json()).url || ""); } catch (e) {}
+      if (!/^https:\/\//i.test(target)) return json({ error: "https url required" }, 400);
+      let up;
+      try { up = await fetch(target, { redirect: "follow" }); } catch (e) { return json({ error: "fetch failed: " + e.message }, 502); }
+      if (!up.ok) return json({ error: `image host returned HTTP ${up.status}` }, 502);
+      const ct = up.headers.get("content-type") || "";
+      if (!/^image\//i.test(ct)) return json({ error: "not an image (" + (ct || "no content-type") + ")" }, 415);
+      const len = +(up.headers.get("content-length") || 0);
+      if (len > 25_000_000) return json({ error: "image too large" }, 413);
+      return new Response(up.body, { headers: { ...CORS, "Content-Type": ct, "Cache-Control": "private, max-age=300" } });
+    }
+
     // ── Raw video upload → R2 `dash-media` (microsite Publish modal "⬆ Upload video") ──
     // POST ?upload=video&assetId=<32hex>&name=<file> with the MP4 as the raw body and the
     // session token in X-Hermes-Token. Streams straight into R2 (never buffered), then saves

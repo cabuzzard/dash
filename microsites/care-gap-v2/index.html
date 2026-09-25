@@ -5691,14 +5691,29 @@ async function pickImageForTarget(url) {
 // canvas export; a fresh xAI temp url would NOT (untested, and expires
 // quickly), which is why every path here composites onto an ALREADY-SAVED
 // background, never a temporary render url straight from xAI.
-function loadImageCORS(url) {
+// Three tries: direct → direct with a cache-bust (a copy the browser cached
+// from a plain <img>, without CORS headers, taints the canvas) → through the
+// worker's image proxy as a same-origin blob. Error names the url if all fail.
+function _loadImg(src, cors) {
   return new Promise((resolve, reject) => {
     const img = new Image();
-    img.crossOrigin = 'anonymous';
+    if (cors) img.crossOrigin = 'anonymous';
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error('Could not load the image (CORS or network).'));
-    img.src = url;
+    img.onerror = () => reject(new Error('load failed'));
+    img.src = src;
   });
+}
+async function loadImageCORS(url) {
+  try { return await _loadImg(url, true); } catch (e) {}
+  try { return await _loadImg(url + (url.includes('?') ? '&' : '?') + 'cb=' + Date.now(), true); } catch (e) {}
+  let why = '';
+  try {
+    const r = await fetch(WORKER_URL + '?imgproxy=1', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Hermes-Token': SESSION_TOKEN }, body: JSON.stringify({ url }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || ('HTTP ' + r.status)); }
+    const blobUrl = URL.createObjectURL(await r.blob());
+    return await _loadImg(blobUrl, false);
+  } catch (e) { why = e.message; }
+  throw new Error('Could not load the background image (' + why + '): ' + url);
 }
 // ── Hub brand for compositing — the real fonts/colors from hubs.design.json
 // (the same file every live hub page themes off), NOT this admin dashboard's
