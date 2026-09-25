@@ -1233,6 +1233,19 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
     <div class="stage-hd"><h2 style="color:var(--global);">🎨 Design</h2><span class="stagetag" style="color:var(--global);">global constant — not a stage</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-design','Design tab','design')">📝 Tab note</button></div>
     <p class="stage-sub">Everything that governs how this campaign LOOKS. Method and Asset consume this; they don't own it. Loaded from <code>getHubPalette</code>; each card's ⟳ calls the matching <code>generateResearch*</code> action.</p>
 
+    <section class="card" data-ckey="card-design-chatgpt">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Import from a ChatGPT design chat</h3><span class="tag manual">handoff</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-chatgpt','ChatGPT import','design')">📝</button></div>
+      <div class="card-body">
+        <p class="card-desc">Designed it in ChatGPT? <b>1.</b> 📋 Copy the prompt and paste it into <i>that</i> chat. It sends back one JSON block with every field below. <b>2.</b> Paste the reply here and 📥 Stage it. Visual direction, palette and fonts fill in <b>staged</b>; review them, then 💾 Save each card as usual.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+          <button class="btn primary" id="gptPromptBtn" onclick="copyDesignGptPrompt(this)">📋 Copy ChatGPT prompt</button>
+          <button class="btn" onclick="stageDesignGptReply()">📥 Stage the reply</button>
+          <span id="gptImportMsg" style="font-size:11px;color:var(--ink3);"></span>
+        </div>
+        <textarea id="gptReply" class="finput" rows="5" placeholder="Paste ChatGPT's whole reply here (the JSON block is found automatically)…" style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:11px;resize:vertical;"></textarea>
+      </div>
+    </section>
+
     <section class="card" data-ckey="card-design-direction">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Visual direction <span style="font-weight:400;color:var(--ink3);">(Visual Register / Photography Direction / Visual Avoid)</span></h3><span id="direction-badge" class="tag manual">real regen</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-direction','Visual direction','design')">📝</button></div>
       <div class="card-body">
@@ -2595,6 +2608,73 @@ async function runRegenDesign(steer, omit) {
   DESIGN_STAGE.photography = r.design.photography;
   DESIGN_STAGE.avoid = r.design.avoid;
   renderDesignDirection();
+}
+// ── ChatGPT design import ──
+// Copy a prompt into the ChatGPT chat where the design was made, so it reports
+// that design back as ONE JSON object in exactly our field shape; then paste
+// the reply → it lands in DESIGN_STAGE (never straight to Notion).
+function designGptPrompt() {
+  const roles = HP_ROLES.map(([k, label]) => `    "${k}": "#RRGGBB"   // ${label}`).join('\n');
+  return `We're moving the visual design we built in this chat into our campaign system. Report the design we actually settled on here — the final version, not a new one. Don't redesign. Where we never decided something, infer it from the images/mockups/direction in this chat and keep it consistent with them.
+
+Reply with ONE fenced \`\`\`json block and nothing else, exactly this shape:
+
+{
+  "register": "1-2 sentences — the overall look and mood. Concrete, specific to this subject.",
+  "photography": "3-4 sentences — the real images that belong: subjects and settings (concrete nouns), the light (time of day, quality, colour cast), how the palette shows up in a photo, the medium/finish. Say plainly whether people/faces belong.",
+  "avoid": "semicolon-separated list of the specific looks, clichés and AI/stock-photo defaults this design rejects",
+  "palette": {
+${roles}
+  },
+  "fonts": { "display": "<Google Font family>", "body": "<Google Font family>", "mono": "<Google Font family>" }
+}
+
+Palette roles: bg = page background; surface = raised card; ink = body text; ink-head = headings; ink-soft = muted text; line = hairlines/borders; sea = the primary colour (links, eyebrows, focus); deep = the one dark band; deep-ink = text on that dark band; accent = the CTA button (white label on it). Use real 6-digit hex values taken from the design. Keep ink >= 7:1 contrast on bg, and white >= 4.4:1 on accent — nudge a hex only if it fails.
+Fonts must be Google Fonts families (closest match if the design used something else). Strip the // comments from the JSON.`;
+}
+async function copyDesignGptPrompt(btn) {
+  const text = designGptPrompt();
+  const o = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'Copied ✓ — paste into the ChatGPT chat'; }
+  catch (e) { document.getElementById('gptReply').value = text; btn.textContent = 'Clipboard blocked — prompt put in the box, copy it from there'; }
+  setTimeout(() => { btn.textContent = o; }, 3000);
+}
+function stageDesignGptReply() {
+  const msg = document.getElementById('gptImportMsg');
+  const raw = document.getElementById('gptReply').value || '';
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  let body = fenced ? fenced[1] : raw;
+  const a = body.indexOf('{'), b = body.lastIndexOf('}');
+  let d;
+  try {
+    if (a < 0 || b <= a) throw new Error('no JSON object found');
+    d = JSON.parse(body.slice(a, b + 1).replace(/\/\/[^\n"]*$/gm, '').replace(/,\s*([}\]])/g, '$1'));
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Could not read the reply: ' + e.message + ' — paste the whole JSON block.'; return; }
+  const got = [];
+  if (d.register || d.photography || d.avoid) {
+    DESIGN_STAGE.register = String(d.register || DESIGN_LIVE.register || '').trim();
+    DESIGN_STAGE.photography = String(d.photography || DESIGN_LIVE.photography || '').trim();
+    DESIGN_STAGE.avoid = String(Array.isArray(d.avoid) ? d.avoid.join('; ') : (d.avoid || DESIGN_LIVE.avoid || '')).trim();
+    got.push('direction'); renderDesignDirection();
+  }
+  if (d.palette && typeof d.palette === 'object') {
+    const base = DESIGN_LIVE.palette || {};
+    const pal = {}; const bad = [];
+    for (const [k] of HP_ROLES) {
+      const v = String(d.palette[k] || '').trim();
+      if (/^#[0-9a-f]{6}$/i.test(v)) pal[k] = v.toLowerCase();
+      else if (/^#[0-9a-f]{3}$/i.test(v)) pal[k] = ('#' + v.slice(1).split('').map(c => c + c).join('')).toLowerCase();
+      else { bad.push(k); if (base[k]) pal[k] = base[k]; }
+    }
+    if (Object.keys(pal).length) { DESIGN_STAGE.palette = pal; got.push('palette' + (bad.length ? ' (kept current for: ' + bad.join(', ') + ')' : '')); renderDesignPalette(); }
+  }
+  if (d.fonts && d.fonts.display) {
+    DESIGN_STAGE.fonts = { display: String(d.fonts.display).trim(), body: String(d.fonts.body || 'Inter').trim(), mono: String(d.fonts.mono || 'Space Mono').trim() };
+    got.push('fonts'); renderDesignFonts();
+  }
+  if (!got.length) { msg.style.color = '#c0392b'; msg.textContent = 'JSON read, but none of register / photography / avoid / palette / fonts were in it.'; return; }
+  msg.style.color = 'var(--fresh)';
+  msg.textContent = 'Staged: ' + got.join(', ') + '. Review below, then 💾 Save each card.';
 }
 // ✨ Test on Grok — the direction/palette as shown (staged wins over live)
 // → renderSpecTest → one wordless plate. Session-only strip, nothing saved.
