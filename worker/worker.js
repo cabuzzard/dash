@@ -42017,16 +42017,23 @@ async function kwStepRun(env, runId) {
 }
 
 // Shared SELECT for the results table + exports (a run view carries lineage).
-function kwResultsSql(body, run, forExport) {
+// `runs` = [] (everything in the store) or one or more run summaries. With several runs a keyword
+// appears once: its shallowest appearance supplies depth / parent / root, and run_list says which
+// selected runs found it. Metrics are joined for the selected runs' market(s).
+function kwResultsSql(body, runs, forExport) {
   const where = ["1=1"], binds = [];
   let from;
-  if (run) {
-    const mk = run.params.market;
-    from = "FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
-      + "JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
+  if (runs && runs.length) {
+    const ids = runs.map(r => Number(r.id));
+    const mks = [...new Map(runs.map(r => { const mk = r.params.market; return [mk.languageId + "|" + kwGeoKey(mk.geoIds) + "|" + mk.network, mk]; })).values()];
+    from = "FROM (SELECT * FROM (SELECT x.*, ROW_NUMBER() OVER (PARTITION BY x.keyword_id ORDER BY x.depth, x.run_id) rn, "
+      + "GROUP_CONCAT(x.run_id) OVER (PARTITION BY x.keyword_id) run_list FROM kw_frontier x WHERE x.run_id IN (" + ids.map(() => "?").join(",") + ")) WHERE rn = 1) f "
+      + "JOIN kw_keywords k ON k.id = f.keyword_id "
+      + "JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND ("
+      + mks.map(() => "(m.language_id = ? AND m.geo_key = ? AND m.network = ?)").join(" OR ") + ") "
       + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id";
-    binds.push(mk.languageId, kwGeoKey(mk.geoIds), mk.network);
-    where.push("f.run_id = ?"); binds.push(run.id);
+    binds.push(...ids);
+    for (const mk of mks) binds.push(mk.languageId, kwGeoKey(mk.geoIds), mk.network);
   } else {
     from = "FROM kw_metrics m JOIN kw_keywords k ON k.id = m.keyword_id "
       + "LEFT JOIN kw_frontier f ON f.keyword_id = m.keyword_id AND f.run_id = (SELECT MAX(run_id) FROM kw_frontier x WHERE x.keyword_id = m.keyword_id) "
@@ -42052,6 +42059,7 @@ function kwResultsSql(body, run, forExport) {
   const orderBy = sorts.map(x => KW_SORTS[x.col] + (x.dir === "asc" ? " ASC" : " DESC") + " NULLS LAST").join(", ");
   const cols = "k.text keyword, m.avg_monthly_searches vol, m.competition comp, m.competition_index ci, m.low_top_of_page_bid lb, "
     + "m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct trend, m.intent, m.is_local, m.is_brand, f.depth, pk.text parent, rk.text root, m.retrieved_at, m.language_id, m.geo_key"
+    + (runs && runs.length ? ", f.run_list" : ", NULL run_list")
     + (forExport ? ", m.monthly_json, m.concepts_json, m.network, f.run_id" : "");
   const w = where.join(" AND ");
   return { from, where: w, sql: "SELECT " + cols + " " + from + " WHERE " + w + " ORDER BY " + orderBy + ", k.text",
@@ -42133,9 +42141,16 @@ async function handleKeywordAction(body, env) {
 
   // Audience-intent map: per intent → keywords, total volume, avg bid, top keywords, fitting deliverables;
   // plus an intent × audience-dimension crosstab from Google's concept groups (e.g. Sector: residential/commercial).
+  const kwSelectedRuns = async () => {
+    const ids = [...new Set([].concat(body.runIds || [], body.runId ? [body.runId] : []).map(Number).filter(Boolean))].slice(0, 50);
+    const out = [];
+    for (const id of ids) { const r = await kwRunSummary(env, id); if (r) out.push(r); }
+    return out;
+  };
+
   if (a === "kwIntentMap") {
-    const run = body.runId ? await kwRunSummary(env, Number(body.runId)) : null;
-    const q = kwResultsSql(Object.assign({}, body, { intent: [] }), run, false);
+    const runs = await kwSelectedRuns();
+    const q = kwResultsSql(Object.assign({}, body, { intent: [] }), runs, false);
     const intents = (await db.prepare("SELECT IFNULL(m.intent,'general') intent, COUNT(*) n, SUM(m.avg_monthly_searches) vol, "
       + "ROUND(AVG(m.high_top_of_page_bid),2) bid, SUM(m.is_local) local, SUM(m.is_brand) brand " + q.from + " WHERE " + q.where + " GROUP BY 1")
       .bind(...q.binds).all()).results;
@@ -42169,10 +42184,10 @@ async function handleKeywordAction(body, env) {
   }
 
   if (a === "kwResults" || a === "kwExport") {
-    const run = body.runId ? await kwRunSummary(env, Number(body.runId)) : null;
-    if (body.runId && !run) return json({ error: "run not found" }, 404);
+    const runs = await kwSelectedRuns();
+    const run = runs.length === 1 ? runs[0] : null;
     const exp = a === "kwExport";
-    const q = kwResultsSql(body, run, exp);
+    const q = kwResultsSql(body, runs, exp);
     const limit = exp ? 20000 : Math.max(1, Math.min(500, Number(body.limit) || 100));
     const offset = exp ? 0 : Math.max(0, Number(body.offset) || 0);
     const rows = (await db.prepare(q.sql + " LIMIT ? OFFSET ?").bind(...q.binds, limit, offset).all()).results;
@@ -42181,7 +42196,7 @@ async function handleKeywordAction(body, env) {
     for (const r of (await db.prepare("SELECT ids_json, label FROM kw_lookups").all()).results) {
       try { labels[JSON.parse(r.ids_json || "[]")[0]] = r.label; } catch (e) {}
     }
-    return json({ total, rows, labels, run });
+    return json({ total, rows, labels, run, runs: runs.map(r => ({ id: r.id, name: r.name, market: r.params && r.params.market })) });
   }
 
   return json({ error: "Unknown keyword action" }, 400);

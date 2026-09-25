@@ -4896,7 +4896,7 @@ function stopTradesAutoRefresh() {
 // Quick = a depth-0 run (one GenerateKeywordIdeas request). Discover = the same
 // run with depth ≥1: kwLoop calls kwStepRun until the worker says done; each step
 // is at most one Google request and all limits are enforced server-side.
-const KW = { runId: null, running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100, total: 0, labels: {} };
+const KW = { runId: null, view: [], running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100, total: 0, labels: {} };
 const kwSleep = ms => new Promise(r => setTimeout(r, ms));
 const kwNum = v => v == null ? '–' : Number(v).toLocaleString();
 const kwMoney = v => v == null ? '–' : '$' + Number(v).toFixed(2);
@@ -4928,7 +4928,9 @@ async function kwLoadRuns() {
   const el = document.getElementById('kwRuns');
   try {
     const { runs } = await call('kwRuns');
-    const row = (id, name, meta, status) => `<div class="kw-run${KW.runId === id ? ' active' : ''}" onclick="kwSelectRun(${id === null ? 'null' : id})">
+    const on = id => id === null ? !KW.view.length : KW.view.includes(id);
+    const row = (id, name, meta, status) => `<div class="kw-run${on(id) ? ' active' : ''}" onclick="kwSelectRun(${id === null ? 'null' : id})" title="${id === null ? 'Show every keyword in the store' : 'Click = view this run alone · checkbox = add to a combined set'}">
+        ${id !== null ? `<input type="checkbox" ${on(id) ? 'checked' : ''} onclick="event.stopPropagation();kwToggleRun(${id})" title="Combine with other checked runs">` : '<span style="width:13px;"></span>'}
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>
         <span style="color:var(--text3);white-space:nowrap;">${meta}</span>
         ${status ? `<span class="kw-st kw-st-${status}">${status}</span>` : ''}
@@ -4939,17 +4941,19 @@ async function kwLoadRuns() {
   } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
 }
 
-function kwSelectRun(id) { KW.runId = id; KW.offset = 0; kwLoadRuns(); kwLoadIntentMap(); kwLoadResults(0); }
+function kwSelectRun(id) { KW.view = id === null ? [] : [id]; kwViewChanged(); }
+function kwToggleRun(id) { KW.view = KW.view.includes(id) ? KW.view.filter(x => x !== id) : [...KW.view, id]; kwViewChanged(); }
+function kwViewChanged() { KW.offset = 0; kwLoadRuns(); kwLoadIntentMap(); kwLoadResults(0); }
 
 async function kwDeleteRun(id) {
   await call('kwDeleteRun', { runId: id });
-  if (KW.runId === id) KW.runId = null;
+  KW.view = KW.view.filter(x => x !== id);
   kwRefresh();
 }
 
 function kwFilters() {
   return {
-    runId: KW.runId, q: document.getElementById('kwQ').value.trim(),
+    runIds: KW.view, q: document.getElementById('kwQ').value.trim(),
     minVolume: document.getElementById('kwMinVol').value || null, minBid: document.getElementById('kwMinBid').value || null,
     competition: [...document.querySelectorAll('.kwf-comp:checked')].map(c => c.value), sorts: KW.sorts,
     intent: document.getElementById('kwIntentF').value ? [document.getElementById('kwIntentF').value] : [],
@@ -4964,21 +4968,23 @@ async function kwLoadResults(offset) {
     const d = await call('kwResults', { ...kwFilters(), limit: KW.limit, offset: KW.offset });
     KW.total = d.total; KW.labels = d.labels || {};
     const mk = d.run?.params?.market;
+    const multi = (d.runs || []).length > 1;
     document.getElementById('kwResTitle').textContent = d.run
-      ? `— #${d.run.id} ${d.run.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}` : '— all keywords';
+      ? `— #${d.run.id} ${d.run.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}`
+      : multi ? `— ${d.runs.length} runs combined (${d.runs.map(r => '#' + r.id).join(', ')}) · duplicates merged` : '— all keywords';
     const cols = [['keyword', 'Keyword'], ['intent', 'Intent'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
     KW.cols = cols;
     const mark = k => { const i = KW.sorts.findIndex(x => x.col === k); if (i < 0) return '';
       return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
     const th = cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${k === 'keyword' || k === 'intent' ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
-      + '<th style="text-align:left;">Found via</th>';
+      + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
     const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
     const body = d.rows.map(r => `<tr>
         <td style="text-align:left;">${esc(r.keyword)}${r.is_local ? ' <span class="kw-chip">local</span>' : ''}${r.is_brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
         <td style="text-align:left;"><span class="kw-chip">${esc((KW.meta && KW.meta[r.intent] && KW.meta[r.intent].label) || r.intent || '–')}</span></td><td>${kwNum(r.vol)}</td>
         <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
         <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
-        <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td></tr>`).join('');
+        <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td>${multi ? `<td style="text-align:left;color:var(--text3);">${esc(String(r.run_list || '').split(',').map(x => '#' + x).join(' '))}</td>` : ''}</tr>`).join('');
     kwRenderSortBar();
     el.innerHTML = d.rows.length ? `<table class="kw-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
       : '<div style="font-size:12px;color:var(--text3);padding:8px 0;">No keywords yet — run a search above.</div>';
@@ -4993,7 +4999,7 @@ async function kwLoadIntentMap() {
   const el = document.getElementById('kwIntentMap'), cx = document.getElementById('kwCross');
   try {
     const dimSel = document.getElementById('kwDim');
-    const d = await call('kwIntentMap', { runId: KW.runId, dimension: dimSel.value || null });
+    const d = await call('kwIntentMap', { runIds: KW.view, dimension: dimSel.value || null });
     KW.meta = d.meta;
     const f = document.getElementById('kwIntentF'), cur = f.value;
     f.innerHTML = '<option value="">any intent</option>' + d.order.map(k => `<option value="${k}">${esc(d.meta[k].label)}</option>`).join('');
@@ -5091,6 +5097,7 @@ async function kwStart() {
     kwLog(`Run #${run.id} "${run.name}" · ${mk.geoLabels.join(', ')} · ${mk.languageLabel}` + (disc
       ? ` · depth ≤${c.max_depth}, ${c.seeds_per_level} seeds/level, ≤${c.max_requests} API requests, ≤${c.max_keywords.toLocaleString()} keywords` : ' · quick search'));
     KW.runId = run.id;
+    KW.view = [run.id];
     await kwLoop(run.id);
   } catch (e) { kwLog('✗ ' + e.message); }
 }
@@ -5115,6 +5122,7 @@ async function kwLoop(runId) {
   document.getElementById('kwGoBtn').disabled = false;
   document.getElementById('kwStopBtn').style.display = 'none';
   KW.runId = runId;
+  KW.view = [runId];
   kwRefresh();
 }
 
@@ -5145,10 +5153,10 @@ async function kwExport(kind) {
       concepts: [...new Set(concepts.map(c => c.name))].join('; '), concept_groups: [...new Set(concepts.map(c => c.group).filter(Boolean))].join('; '),
       monthly_searches: JSON.parse(r.monthly_json || '[]').map(m => `${m.year}-${String(m.month).padStart(2, '0')}:${m.searches}`).join(' '),
       country: (r.geo_key || '').split(',').map(g => L[g] || g).join(', '), language: L[r.language_id] || r.language_id,
-      network: r.network, retrieved_date: (r.retrieved_at || '').slice(0, 10), run_id: r.run_id,
+      network: r.network, retrieved_date: (r.retrieved_at || '').slice(0, 10), run_id: r.run_id, in_runs: r.run_list || '',
     };
   });
-  const stem = (KW.runId ? 'keywords-run' + KW.runId : 'keywords-all') + '-' + new Date().toISOString().slice(0, 10);
+  const stem = (KW.view.length ? 'keywords-run' + KW.view.join('-') : 'keywords-all') + '-' + new Date().toISOString().slice(0, 10);
   if (kind === 'compact') {
     const rows = full.filter(r => (r.avg_monthly_searches || 0) >= 10).map(r => ({ keyword: r.keyword, intent: r.intent, volume: r.avg_monthly_searches,
       comp_idx: r.competition_index, high_bid: r.high_top_of_page_bid, trend_pct: r.trend_12m_pct, seed: r.parent_seed || r.root_seed }));
