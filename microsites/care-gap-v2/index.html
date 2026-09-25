@@ -953,7 +953,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div id="pubAssetStatus" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
       <div class="modalrow">
         <button class="btn" onclick="closePublishAssetModal()">Cancel</button>
-        <select id="pubBufferChannel" class="finput" style="display:none;width:auto;max-width:200px;" title="Buffer channel — picked from this asset's platform; change it to override"></select>
+        <select id="pubBufferType" class="finput" style="display:none;width:auto;" title="Instagram/Facebook post type — Auto = Reel for videos, Post for images/carousels"><option value="">Auto</option><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option></select>
+        <select id="pubBufferChannel" onchange="pubBufferTypeVis()" class="finput" style="display:none;width:auto;max-width:200px;" title="Buffer channel — picked from this asset's platform; change it to override"></select>
         <button class="btn" id="pubBufferBtn" style="display:none;" onclick="sendPublishAssetToBuffer()" title="Save, then create a DRAFT in this campaign's Buffer queue — review and schedule it in Buffer">📤 Send to Buffer</button>
         <button class="btn primary" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
       </div>
@@ -4875,13 +4876,15 @@ function openPublishAssetModal(assetId) {
   const bufferable = /^(carousel|single post)$/i.test(data.type || '') || isVideoAsset || /\boffer\b/i.test(data.type || '');
   bufBtn.style.display = bufferable ? '' : 'none'; bufBtn.disabled = false; bufBtn.textContent = '📤 Send to Buffer'; bufBtn.title = '';
   bufSel.style.display = 'none'; bufSel.innerHTML = '';
+  document.getElementById('pubBufferType').style.display = 'none'; document.getElementById('pubBufferType').value = '';
   if (bufferable) {
     w('bufferChannelsForAsset', { assetId }).then(d => {
       if (pubAssetId !== assetId) return;   // a different asset opened since
       if (d.noKey) { bufBtn.title = 'No Buffer API key for this campaign yet — dashboard Platforms tab → buffer cell'; return; }
       if (!d.channels || !d.channels.length) return;
       bufSel.innerHTML = (d.suggestedId ? '' : '<option value="">— pick channel —</option>')
-        + d.channels.map(c => `<option value="${esc(c.id)}" ${c.id === d.suggestedId ? 'selected' : ''}>${esc(c.service + ' · ' + c.name)}</option>`).join('');
+        + d.channels.map(c => `<option value="${esc(c.id)}" data-service="${esc(c.service)}" ${c.id === d.suggestedId ? 'selected' : ''}>${esc(c.service + ' · ' + c.name)}</option>`).join('');
+      pubBufferTypeVis();
       bufSel.style.display = '';
       bufSel.title = d.how === 'platform' ? `Matched to this asset's platform (${d.platform})` : d.how === 'missing-platform'
         ? `No ${d.platform} channel in this campaign's Buffer — pick one or connect it in Buffer` : 'Pick the channel to post to';
@@ -5024,6 +5027,12 @@ async function uploadPublishVideo(input) {
 
 // 📤 Send to Buffer — saves the modal, then creates a DRAFT in the campaign's Buffer
 // queue (worker sendAssetToBuffer). Nothing publishes until it's scheduled in Buffer.
+// Post/Reel/Story only matters for Instagram + Facebook channels.
+function pubBufferTypeVis() {
+  const o = document.getElementById('pubBufferChannel').selectedOptions[0];
+  const svc = o ? o.dataset.service : '';
+  document.getElementById('pubBufferType').style.display = (svc === 'instagram' || svc === 'facebook') ? '' : 'none';
+}
 async function sendPublishAssetToBuffer() {
   const btn = document.getElementById('pubBufferBtn');
   const status = document.getElementById('pubAssetStatus');
@@ -5038,6 +5047,7 @@ async function sendPublishAssetToBuffer() {
       videoUrl: document.getElementById('pubVideoUrl').value.trim() || undefined,
       designLink: document.getElementById('pubDesignLink').value.trim() || undefined,
       channelId: document.getElementById('pubBufferChannel').value || undefined,
+      postType: document.getElementById('pubBufferType').style.display !== 'none' ? (document.getElementById('pubBufferType').value || undefined) : undefined,
     });
     btn.textContent = '✓ In Buffer drafts';
     status.style.color = 'var(--fresh)';

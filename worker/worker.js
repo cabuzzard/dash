@@ -38328,26 +38328,43 @@ ${assemblyManifest}`;
 
         const login = await resolveCampaignBufferLogin(campaignId, dashId, env);
         if (!login || !login.token) return json({ error: "No Buffer API key for this campaign yet — dashboard Platforms tab → this campaign's buffer cell → 🔑 Buffer API key." }, 400);
-        let channelId = String(body.channelId || "").trim(), how = "chosen";
-        if (!channelId) {
-          let channels;
-          try { channels = await bufferChannels(login.token); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
+        let channels;
+        try { channels = await bufferChannels(login.token); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
+        let channel = null, how = "chosen";
+        if (body.channelId) channel = channels.find(c => c.id === String(body.channelId).trim()) || null;
+        if (!channel) {
           const platform = P["Platform Name"]?.select?.name || "";
           const pick = bufferPickChannel(channels, platform, login.channelId);
           if (!pick.channel) return json({ error: pick.how === "missing-platform"
             ? `This asset is for ${platform}, but this campaign's Buffer account has no ${platform} channel — connect it in Buffer, or pick a channel in the dropdown.`
             : "Pick a Buffer channel in the dropdown (this asset has no platform set, and the campaign has no default channel)." }, 400);
-          channelId = pick.channel.id; how = pick.how;
+          channel = pick.channel; how = pick.how;
         }
-        const toGql = v => Array.isArray(v) ? "[" + v.map(toGql).join(", ") + "]"
+        const channelId = channel.id, service = channel.service;
+
+        // Per-network metadata Buffer requires (PostInputMetaData). Enum values must be sent
+        // UNQUOTED in GraphQL, so they're wrapped as { __enum } for toGql.
+        const isVideo = assets.some(x => x.video);
+        const wanted = String(body.postType || "").toLowerCase();
+        const igType = ["post", "reel", "story"].includes(wanted) ? wanted : (isVideo ? "reel" : "post");
+        const ytTitle = (rtp("Platform Title") || (P["Asset Title"]?.title || []).map(t => t.plain_text).join("") || caption).replace(/\s+/g, " ").trim().slice(0, 100);
+        let metadata = null;
+        if (service === "instagram") metadata = { instagram: { type: { __enum: igType }, shouldShareToFeed: true } };
+        else if (service === "facebook") metadata = { facebook: { type: { __enum: igType } } };
+        else if (service === "youtube") {
+          if (!isVideo) return json({ error: "YouTube only takes video — this asset has no video." }, 400);
+          metadata = { youtube: { title: ytTitle || "Video", categoryId: String(body.youtubeCategoryId || "22") } };   // 22 = People & Blogs
+        } else if (service === "pinterest") return json({ error: "Pinterest needs a board picked per pin — not supported from dash yet. Post this one from Buffer directly." }, 400);
+        const toGql = v => v && typeof v === "object" && v.__enum ? v.__enum
+          : Array.isArray(v) ? "[" + v.map(toGql).join(", ") + "]"
           : v && typeof v === "object" ? "{ " + Object.entries(v).map(([k, x]) => k + ": " + toGql(x)).join(", ") + " }" : JSON.stringify(v);
-        const mutation = `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)} }) {
+        const mutation = `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)}${metadata ? " metadata: " + toGql(metadata) : ""} }) {
           ... on PostActionSuccess { post { id } } ... on MutationError { message } } }`;
         let data;
         try { data = await bufferGql(login.token, mutation); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
         const res = data && data.createPost;
         if (res && res.message) return json({ error: "Buffer rejected the post: " + res.message }, 502);
-        return json({ success: true, draft: true, kind, channelId, channelHow: how, bufferPostId: res && res.post && res.post.id });
+        return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId: res && res.post && res.post.id });
       }
 
       if (body.action === "sendCarouselToBuffer") {
