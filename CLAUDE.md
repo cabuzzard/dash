@@ -260,6 +260,14 @@ no longer builds the Grok prompt from spec + title alone (batches came back as o
 no reuse of the campaign's recent scenes (KV `bgscenes:<campaignId>`, last 12, appended per render — bulk runs are
 sequential so they see each other), a different camera viewpoint; spec palette/light/Never-list and the left/top text zone kept.
 
+## Generated-image hosting → R2 (2026-09-25)
+
+`saveOfferImage` (every Grok/Kie render + uploads: Post Image, Instagram Background, Thumbnail) now stores each render in
+R2 `dash-media` at a **unique** key `images/<deployPath>/<slug>-<kind>-<ts36>.<ext>` → `MEDIA_PUBLIC_BASE/...` — live instantly.
+(GitHub Pages reused one filename per asset, took ~1 min to publish, and served `max-age=600`, so the UI cached the OLD picture;
+it also committed 4-5 MB PNGs to the repo.) Bucket CORS (`worker/r2-cors.json`: GET/HEAD from `*`) keeps canvas text
+compositing (`img.crossOrigin='anonymous'`) working. GitHub path stays as a fallback when `env.MEDIA` is missing.
+
 ## Buffer API keys (Platforms tab · 2026-09-25)
 
 One Buffer account per campaign. Keys are **write-only**: Platforms tab → a campaign's `buffer` cell (shows 🔑 key /

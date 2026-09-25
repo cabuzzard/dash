@@ -26526,7 +26526,7 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
         if (!assetId || !SLOT[kind] || (!imageUrl && !fileData)) return json({ error: "assetId, a valid kind, and imageUrl or fileData required" }, 400);
         if (imageUrl && !/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
         const GT = (env.GITHUB_TOKEN || '').trim();
-        if (!GT) return json({ error: "GITHUB_TOKEN not set — run: wrangler secret put GITHUB_TOKEN" }, 400);
+        if (!env.MEDIA && !GT) return json({ error: "Neither the MEDIA (R2) binding nor GITHUB_TOKEN is available" }, 500);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
 
@@ -26536,7 +26536,7 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
         const campaignId = assetPage.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         const deployPath = await resolveDeployPath(campaignId, hdr, dash);
 
-        let ct = "image/png", b64 = fileData;
+        let ct = "image/png", b64 = fileData, rawBytes = null;
         if (!b64) {
           const imgResp = await fetch(String(imageUrl));
           if (!imgResp.ok) return json({ error: `Couldn't fetch the rendered image (HTTP ${imgResp.status})` }, 502);
@@ -26544,6 +26544,7 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
           const bytes = new Uint8Array(await imgResp.arrayBuffer());
           if (!bytes.length) return json({ error: "Rendered image was empty" }, 502);
           if (bytes.length > 15 * 1024 * 1024) return json({ error: "Rendered image is too large (>15MB)" }, 400);
+          rawBytes = bytes;
           let bin = "";
           for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
           b64 = btoa(bin);
@@ -26556,6 +26557,19 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
         const ext = ((ct.split('/')[1] || 'png').toLowerCase()).replace('jpeg', 'jpg').replace('svg+xml', 'svg').replace(/[^a-z0-9]/g, '') || 'png';
         const path = `web/${deployPath}/offer-images/${slugify(assetTitle) || assetId}-${SLOT[kind].suffix}.${ext}`;
 
+        // Hosting (2026-09-25): R2 `dash-media` under a UNIQUE key per render — live instantly, so
+        // the UI never fetches a not-yet-published file and caches the old picture (GitHub Pages
+        // reused the filename, took ~1 min to publish, and served max-age=600). Also keeps 4-5 MB
+        // PNGs out of the git repo. Bucket CORS allows GET * so canvas text compositing still works.
+        // GitHub Pages remains the fallback if the R2 binding is ever missing.
+        let url = null;
+        if (env.MEDIA) {
+          if (!rawBytes) rawBytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          const key = `images/${deployPath || "misc"}/${slugify(assetTitle) || assetId}-${SLOT[kind].suffix}-${Date.now().toString(36)}.${ext}`;
+          await env.MEDIA.put(key, rawBytes, { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } });
+          url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+        }
+        if (!url) {
         const REPO = "cabuzzard/dash", BRANCH = "main";
         const gh = { "Authorization": `Bearer ${GT}`, "Accept": "application/vnd.github+json", "User-Agent": "dash-worker" };
         let sha = null;
@@ -26568,7 +26582,8 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
         });
         if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
 
-        const url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+        url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
+        }
         const props = { [SLOT[kind].prop]: { url } };
         const ensureProps = { [SLOT[kind].prop]: { type: "url" } };
         if (body.background && SLOT[kind].srcProp) { props[SLOT[kind].srcProp] = { url }; ensureProps[SLOT[kind].srcProp] = { type: "url" }; }
