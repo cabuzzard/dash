@@ -19662,6 +19662,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // "single post" method — the finished hosted PNG (saveSinglePostImage),
             // and the Canva template it was built from.
             postImage: p["Post Image"]?.url || "",
+            videoUrl: p["Video URL"]?.url || "",
             canvaTemplate: p["Canva Template"]?.url || "",
             // The WORDLESS background stored separately from thumbnail/
             // instagramBackground/postImage above (those can be the
@@ -29828,6 +29829,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
+        const { videoUrl } = body;
         const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
@@ -29855,6 +29857,10 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Post Image": { type: "url" }, "Post Image Source": { type: "url" } });
           props["Post Image"] = { url: postImage || null };
           props["Post Image Source"] = { url: postImage || null };
+        }
+        if (videoUrl !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Video URL": { type: "url" } });
+          props["Video URL"] = { url: videoUrl || null };
         }
         if (instagramBackground !== undefined) {
           await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Instagram Background": { type: "url" }, "Instagram Background Source": { type: "url" } });
@@ -38153,6 +38159,70 @@ ${assemblyManifest}`;
       // credential to hold here). Carousel only for now — video assets
       // would need a different "assets" shape (video, not image) this
       // hasn't been built/tested against yet.
+      // ── sendAssetToBuffer ── Publish modal "📤 Send to Buffer" for any asset type.
+      // Always a DRAFT in the campaign's Buffer queue (never auto-publishes). Media by type:
+      // carousel → slide-NN.png files under its Design Link (same as sendCarouselToBuffer);
+      // video types → a public https MP4 (Video URL); everything else → one image
+      // (Post Image, e.g. single posts / finished offer stills). Caption = the modal's
+      // current Post Caption + Hashtags (falls back to the saved properties).
+      if (body.action === "sendAssetToBuffer") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dashId = raw => { const x = raw.replace(/-/g, ""); return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
+        if (!page.properties) return json({ error: page.message || "Asset not found" }, 404);
+        const P = page.properties;
+        const rtp = k => (P[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const assetType = P["Asset Type"]?.select?.name || "";
+        const campaignId = P["Campaign"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
+        if (!campaignId) return json({ error: "Asset is missing its Campaign relation" }, 400);
+        const caption = body.postCaption != null ? String(body.postCaption).trim() : rtp("Post Caption");
+        const tags = body.hashtags != null ? String(body.hashtags).trim() : rtp("Hashtags");
+        const text = [caption, tags].filter(Boolean).join("\n\n");
+        if (!text) return json({ error: "Add a Post Caption (or Hashtags) first — Buffer needs post text" }, 400);
+
+        const https = u => /^https:\/\/\S+$/i.test(String(u || "").trim());
+        let assets, kind;
+        if (/^carousel$/i.test(assetType)) {
+          const designLink = body.designLink || P["Design Link"]?.url || "";
+          if (!designLink) return json({ error: "No Design Link on this carousel yet — assemble it first" }, 400);
+          const GT = (env.GITHUB_TOKEN || "").trim();
+          if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 400);
+          const basePath = designLink.replace(/^https:\/\/cabuzzard\.github\.io\/dash\//, "").replace(/\/$/, "");
+          const lr = await fetch(`https://api.github.com/repos/cabuzzard/dash/contents/${basePath}?ref=main`,
+            { headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker" } });
+          const entries = lr.ok ? await lr.json() : [];
+          const slides = (Array.isArray(entries) ? entries : []).map(e => e.name).filter(n => /^slide-\d+\.png$/.test(n)).sort();
+          if (!slides.length) return json({ error: "No slide-NN.png files found at the Design Link folder" }, 400);
+          assets = slides.map(n => ({ image: { url: designLink.replace(/\/?$/, "/") + n } }));
+          kind = `carousel (${slides.length} slides)`;
+        } else if (/video|reel|short|explainer|avatar/i.test(assetType)) {
+          const v = String(body.videoUrl || P["Video URL"]?.url || "").trim();
+          if (!https(v)) return json({ error: "No public Video URL on this asset yet — paste a permanent https link to the MP4 (or upload it once video hosting is enabled)" }, 400);
+          assets = [{ video: { url: v, metadata: { thumbnailOffset: 1000 } } }];
+          kind = "video";
+        } else {
+          const img = String(body.imageUrl || P["Post Image"]?.url || "").trim();
+          if (!https(img)) return json({ error: "No Post Image on this asset yet — Buffer needs the finished image's public https link" }, 400);
+          assets = [{ image: { url: img } }];
+          kind = "image";
+        }
+
+        const login = await resolveCampaignBufferLogin(campaignId, dashId, env);
+        if (!login || !login.token) return json({ error: "No Buffer API key for this campaign yet — dashboard Platforms tab → this campaign's buffer cell → 🔑 Buffer API key." }, 400);
+        if (!login.channelId) return json({ error: "No Buffer channel picked for this campaign yet — Platforms tab → buffer cell → Post to channel." }, 400);
+        const toGql = v => Array.isArray(v) ? "[" + v.map(toGql).join(", ") + "]"
+          : v && typeof v === "object" ? "{ " + Object.entries(v).map(([k, x]) => k + ": " + toGql(x)).join(", ") + " }" : JSON.stringify(v);
+        const mutation = `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(login.channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)} }) {
+          ... on PostActionSuccess { post { id } } ... on MutationError { message } } }`;
+        let data;
+        try { data = await bufferGql(login.token, mutation); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
+        const res = data && data.createPost;
+        if (res && res.message) return json({ error: "Buffer rejected the post: " + res.message }, 502);
+        return json({ success: true, draft: true, kind, bufferPostId: res && res.post && res.post.id });
+      }
+
       if (body.action === "sendCarouselToBuffer") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);

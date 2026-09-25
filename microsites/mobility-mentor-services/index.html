@@ -1332,6 +1332,14 @@ async function submitBlankGrouping() {
           <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubPostImage', this)">📋</button>
         </div>
       </div>
+      <div id="pubVideoWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #2f3f4a;background:rgba(33,150,211,.06);border-radius:4px;">
+        <label class="lm-label" for="pubVideoUrl" style="margin-bottom:2px;">🎬 Video URL <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— the finished MP4 at a public, permanent https link (Buffer fetches it when the post goes out — no expiring/signed links, no preview pages)</span></label>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+          <input class="modal-ta" id="pubVideoUrl" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…/video.mp4" />
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubVideoUrl')" title="Open in a new tab">↗</button>
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubVideoUrl', this)">📋</button>
+        </div>
+      </div>
       <div id="pubHubWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
         <label class="lm-label" for="pubContentHub" style="margin-bottom:2px;">📍 Content Hub <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
         <select class="modal-ta" id="pubContentHub" style="height:32px;padding:0 8px;width:100%;background:#1e1e1e;color:#fff;border:1px solid #333;margin-top:4px;">
@@ -1560,6 +1568,7 @@ async function submitBlankGrouping() {
     </div>
     <div class="modal-foot">
       <button class="modal-btn cancel" onclick="closePublishAssetModal()">Cancel</button>
+      <button class="modal-btn cancel" id="pubBufferBtn" style="display:none;" onclick="sendPublishAssetToBuffer()" title="Save these fields, then create a DRAFT in this campaign's Buffer queue (review + schedule it in Buffer)">📤 Send to Buffer</button>
       <button class="modal-btn save" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
     </div>
   </div>
@@ -3463,7 +3472,7 @@ async function loadTitles(opts = {}) {
     function renderAssetRow(a, titleId, productId) {
       if (a.body) ASSET_SCRIPT_CACHE[a.id] = a.body; // for the 📋 Copy Script button — avoids a round-trip on click
       // For the 📋 Publish modal — avoids a round-trip on open, same pattern as ASSET_SCRIPT_CACHE above.
-      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', postImage: a.postImage || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '', contentHub: a.contentHub || '' };
+      PUB_ASSET_CACHE[a.id] = { title: a.title || '', platformTitle: a.platformTitle || '', type: a.type || '', designLink: a.designLink || '', productLink: a.productLink || '', finalMediaFile: a.finalMediaFile || '', thumbnail: a.thumbnail || '', postImage: a.postImage || '', videoUrl: a.videoUrl || '', hashtags: a.hashtags || '', postCaption: a.postCaption || '', status: a.status || 'Publish', etsyTags: a.etsyTags || '', craigslistListing: a.craigslistListing || '', fbMarketplaceListing: a.fbMarketplaceListing || '', listingPhotos: a.listingPhotos || [], dallePrompt: a.dallePrompt || '', contentHub: a.contentHub || '' };
       const ar = document.createElement('div');
       ar.style.cssText = 'display:flex;align-items:center;gap:8px;padding:4px 10px 4px 50px;border-bottom:1px solid rgba(255,255,255,.04);background:rgba(255,255,255,.015);font-size:12px;';
       // Pared down to just the two visual-production handoff buttons for
@@ -8650,8 +8659,14 @@ function openPublishAssetModal(btn) {
   // Offer – Content Hub: the hub picker. Publishing the asset with a hub
   // selected sends its OFFER CARD to that hub's Products section (getHubProducts).
   const spWrap2 = document.getElementById('pubSinglePostWrap');
-  const isSinglePostAsset = /single post/i.test(data.type || '');
+  const isSinglePostAsset = /single post/i.test(data.type || '') || /\boffer\b/i.test(data.type || '');   // offers: paste the finished still here
   spWrap2.style.display = isSinglePostAsset ? 'block' : 'none';
+  const isVideoAsset = /video|reel|short|explainer|avatar/i.test(data.type || '');
+  document.getElementById('pubVideoWrap').style.display = isVideoAsset ? 'block' : 'none';
+  document.getElementById('pubVideoUrl').value = data.videoUrl || '';
+  const bufBtn = document.getElementById('pubBufferBtn');
+  bufBtn.style.display = /^(carousel|single post)$/i.test(data.type || '') || isVideoAsset || /\boffer\b/i.test(data.type || '') ? '' : 'none';
+  bufBtn.disabled = false; bufBtn.textContent = '📤 Send to Buffer';
   if (isSinglePostAsset) {
     document.getElementById('pubPostImage').value = data.postImage || '';
     const ppImg = document.getElementById('pubPostImagePreview');
@@ -9109,6 +9124,32 @@ function openPublishFieldLink(fieldId) {
   if (!url) { alert('Nothing to open — this field is empty.'); return; }
   window.open(url, '_blank', 'noopener');
 }
+// 📤 Send to Buffer — saves the modal first, then creates a DRAFT in the campaign's
+// Buffer queue (worker sendAssetToBuffer). Nothing publishes until you schedule it in Buffer.
+async function sendPublishAssetToBuffer() {
+  const btn = document.getElementById('pubBufferBtn');
+  const status = document.getElementById('pubAssetStatus');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await savePublishAssetFields();
+    const r = await w('sendAssetToBuffer', {
+      assetId: pubAssetId,
+      postCaption: document.getElementById('pubCaption').value.trim(),
+      hashtags: document.getElementById('pubHashtags').value.trim(),
+      imageUrl: document.getElementById('pubPostImage').value.trim() || undefined,
+      videoUrl: document.getElementById('pubVideoUrl').value.trim() || undefined,
+      designLink: document.getElementById('pubDesignLink').value.trim() || undefined,
+    });
+    btn.textContent = '✓ In Buffer drafts';
+    status.textContent = `Sent ${r.kind} to Buffer as a draft — open Buffer to review and schedule it.`;
+    status.className = 'modal-status ok';
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '📤 Send to Buffer';
+    status.textContent = 'Buffer: ' + e.message;
+    status.className = 'modal-status err';
+  }
+}
+
 async function savePublishAssetFields() {
   const btn = document.getElementById('pubAssetSaveBtn');
   const status = document.getElementById('pubAssetStatus');
@@ -9129,6 +9170,8 @@ async function savePublishAssetFields() {
   if (document.getElementById('pubHubWrap').style.display !== 'none') {
     fields.contentHub = document.getElementById('pubContentHub').value;
   }
+  if (document.getElementById('pubSinglePostWrap').style.display !== 'none') fields.postImage = document.getElementById('pubPostImage').value.trim();
+  if (document.getElementById('pubVideoWrap').style.display !== 'none') fields.videoUrl = document.getElementById('pubVideoUrl').value.trim();
   btn.disabled = true;
   status.textContent = 'Saving…';
   status.className = 'modal-status';
