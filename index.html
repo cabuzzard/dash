@@ -11672,6 +11672,9 @@ let _hpSeo = {};               // slug -> { staged, committed } — SEO audit (g
 let _hpSeoFetched = {};
 let _hpSeoBusy = {};
 let _spTplSlug = '';
+let _hpTests = {};             // slug -> [{imageUrl, prompt, aspect}] — Grok test plates of the spec (session only)
+let _hpTestBusy = {};
+let _hpTestAspect = {};
 const _HP_LIST = { palette: 'palettes', fonts: 'fonts', direction: 'directions' };
 
 function _hpStageOf(slug){
@@ -12047,6 +12050,26 @@ async function spTplDelete(slug, id){
     _hpSPT[slug] = Object.assign({}, _hpSPT[slug], { templates: r.templates || [] });
     renderHubsTab();
   } catch (e) { alert(e.message); }
+}
+// ✨ Test on Grok — render the spec box's CURRENT text (staged / edited /
+// unsaved) as one wordless plate, so a design direction can be judged by eye
+// before Save / Push. Nothing is written to Notion (renderSpecTest).
+async function hpTestOnGrok(slug, btn){
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId) return;
+  const ta = document.getElementById('hubImgSpec-' + slug);
+  const spec = ta ? ta.value : (_hpSpec[slug] && _hpSpec[slug].text) || '';
+  const aspect = (document.getElementById('hpTestAspect-' + slug) || {}).value || '3:4';
+  const msg = document.getElementById('hpMsg');
+  _hpTestBusy[slug] = true; if (btn) { btn.disabled = true; btn.textContent = 'Rendering… (~20s)'; }
+  if (msg) { msg.style.color = 'var(--text3)'; msg.textContent = 'Grok is rendering a test plate from the spec…'; }
+  try {
+    const r = await call('renderSpecTest', { campaignId: h.campaignId, spec: spec.length > 80 ? spec : undefined, aspect, steer: hpInstr(slug) });
+    if (r.error) throw new Error(r.error);
+    (_hpTests[slug] = _hpTests[slug] || []).unshift({ imageUrl: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect || aspect });
+    _hpNote[slug] = 'Grok test plate rendered — see below the spec. Not saved anywhere; tweak the direction/spec and test again.';
+  } catch (e) { _hpNote[slug] = 'Grok test failed: ' + e.message; }
+  _hpTestBusy[slug] = false;
+  renderHubsTab();
 }
 // Freeze exactly what's in the spec textarea onto Research › Image Spec.
 // Not a hub push, not a regenerate — just "save this as the stored spec".
@@ -12785,10 +12808,13 @@ function renderHubsTab() {
               <button onclick="fetchHubSpecText('${slug}', true)" ${_hpSpecBusy[slug] ? 'disabled' : ''} title="Regenerate the spec in the box below from the STAGED brief — the palette / fonts / direction / notes currently on deck, saved or not. Changes the box only; hit 💾 Save spec to store it." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↻ Regenerate staged</button>
               <button id="hpSaveSpec-${slug}" onclick="hpSaveSpec('${slug}', this)" title="Save exactly what's in the box below onto the campaign Research record's Image Spec field — as-is, hand edits included. NOT a hub push: just freezes this text as the stored spec every offer plate + this card then reads." style="font-size:10px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">💾 Save spec</button>
               <button onclick="copyHubImageSpec('${slug}', this)" title="Copy the spec text to the clipboard — paste into an image model or a Remotion still job." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">📋 Copy</button>
+              <select id="hpTestAspect-${slug}" onchange="_hpTestAspect['${slug}']=this.value" title="Aspect ratio for the Grok test plate" style="font-size:10px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text2);">${['3:4','1:1','16:9'].map(a => `<option value="${a}"${(_hpTestAspect[slug] || '3:4') === a ? ' selected' : ''}>${a}</option>`).join('')}</select>
+              <button onclick="hpTestOnGrok('${slug}', this)" ${_hpTestBusy[slug] ? 'disabled' : ''} title="Throw the spec in the box below (exactly as shown — staged / hand-edited / unsaved all fine) at Grok Imagine and render one wordless test plate, so you can SEE this design direction before saving or pushing it. Writes nothing to Notion. Uses the override box above as a one-off steer." style="font-size:10px;padding:3px 10px;border:1px solid #b8f106;border-radius:5px;background:transparent;color:#b8f106;cursor:pointer;">${_hpTestBusy[slug] ? 'Rendering… (~20s)' : '✨ Test on Grok'}</button>
             </span>
           </div>
           ${_hpSpec[slug] && _hpSpec[slug].dirtyEdit ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Hand-edited — not saved. 💾 Save spec to store it.</div>' : (_hpSpec[slug] && _hpSpec[slug].preview ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Regenerated from the staged brief — not stored yet. 💾 Save spec to store it.</div>' : (_hpSpec[slug] && _hpSpec[slug].stored ? '<div style="font-size:9px;color:var(--text3);margin-bottom:4px;">Stored spec from the Research record.</div>' : ''))}
           <textarea id="hubImgSpec-${slug}" rows="14" oninput="if(_hpSpec['${slug}']){_hpSpec['${slug}'].text=this.value;_hpSpec['${slug}'].dirtyEdit=true;}" title="Editable. Tweak it here, then 💾 Save spec to store it. Or use ↻ preview to reassemble from the staged brief." style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.55;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;resize:vertical;">${esc(hubImgSpecText2(slug))}</textarea>
+          ${(_hpTests[slug] || []).length ? `<div style="display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:4px;">${_hpTests[slug].map(t => `<a href="${esc(t.imageUrl)}" target="_blank" rel="noopener" title="${esc(t.aspect + ' · ' + t.prompt)}" style="flex:0 0 auto;"><img src="${esc(t.imageUrl)}" alt="Grok test plate" style="height:150px;border-radius:6px;border:1px solid var(--border2);display:block;"></a>`).join('')}</div><div style="font-size:9px;color:var(--text3);margin-top:2px;">Grok test plates this session — newest first; hover for the prompt, click to open full size.</div>` : ''}
         </div>
 
         <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">

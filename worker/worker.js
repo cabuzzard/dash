@@ -26258,6 +26258,86 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ success: true, imageUrl, prompt, hubSlug });
       }
 
+      // -- renderSpecTest: throw the campaign's DESIGN at Grok to see it.
+      // The Content Hubs card's palette / fonts / direction / image spec are
+      // all text; this renders one wordless plate from the spec text the card
+      // is showing RIGHT NOW (staged or hand-edited, saved or not), so the
+      // operator can judge a direction visually before saving / pushing it.
+      // Writes nothing to Notion. Stored on R2 (unique key) when bound, else
+      // the raw xAI URL is returned (temporary — fine for a preview).
+      // { campaignId, spec?, direction?{register,photography,avoid}, palette?, aspect? ("3:4"|"1:1"|"16:9"), steer? }
+      if (body.action === "renderSpecTest") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const aspect = ["3:4", "1:1", "16:9"].includes(body.aspect) ? body.aspect : "3:4";
+        let spec = String(body.spec || "").trim();
+        if (spec.length < 80) {
+          const brief = await assembleImageBrief(env, { campaignId: cid });
+          if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+          else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        }
+        // Staged-but-unsaved design (microsite Design tab) overrides the spec.
+        const d = body.direction || {};
+        const pal = body.palette && typeof body.palette === "object" ? body.palette : null;
+        if (d.register || d.photography || d.avoid || pal) {
+          spec += `
+
+STAGED DESIGN — AUTHORITATIVE, overrides anything above that conflicts:
+`
+            + (d.register ? `Visual register: ${String(d.register).slice(0, 800)}
+` : "")
+            + (d.photography ? `Photography direction: ${String(d.photography).slice(0, 1200)}
+` : "")
+            + (d.avoid ? `Avoid: ${String(d.avoid).slice(0, 800)}
+` : "")
+            + (pal ? `Palette: ${Object.entries(pal).map(([k, v]) => `${k} ${v}`).join(", ").slice(0, 600)}
+` : "");
+        }
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
+
+WHAT IT IS: a ${aspect} test plate — the single most representative image for this visual direction, so the operator can judge whether the direction looks right. Pick the strongest subject/scene the spec allows. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+
+Obey this image spec exactly — palette hexes, subjects, light, medium, the "Never" / avoid list:
+${spec.slice(0, 8000)}
+${body.steer ? `\nOPERATOR STEER for this test (follow it): ${String(body.steer).slice(0, 600)}\n` : ""}
+End the prompt with: "No text, no letters, no logos, no watermarks."`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
+        });
+        const xd = await xr.json().catch(() => ({}));
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+        const xUrl = xd.data?.[0]?.url || "";
+        if (!xUrl) return json({ error: "xAI returned no image URL" }, 502);
+        let imageUrl = xUrl;
+        if (env.MEDIA) {
+          try {
+            const pr = await fetch(xUrl);
+            if (pr.ok) {
+              const ct = pr.headers.get("content-type") || "image/png";
+              const ext = /jpe?g/i.test(ct) ? "jpg" : /webp/i.test(ct) ? "webp" : "png";
+              const slug = hubSlugForCampaign(cid) || cid.slice(0, 8);
+              const key = `images/design-tests/${slug}/${Date.now().toString(36)}.${ext}`;
+              await env.MEDIA.put(key, await pr.arrayBuffer(), { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } });
+              imageUrl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+            }
+          } catch (e) { console.error("renderSpecTest: R2 store failed, returning xAI URL", e.message); }
+        }
+        return json({ ok: true, imageUrl, prompt, aspect, model: "grok-imagine-image-2.0" });
+      }
+
       // -- generateSinglePostFullCreative: ADDITIVE alternative to the
       // Canva-template-fill flow (does NOT touch it or the existing
       // per-hub template registry). Sends the asset's own Headline Primary

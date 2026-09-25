@@ -1240,7 +1240,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
           <button class="btn primary" id="designRegenBtn" onclick="openRegenModal('Regenerate Visual Direction', 'Drafts Visual Register / Photography Direction / Visual Avoid together, grounded in Main Keywords.', (steer, omit) => runRegenDesign(steer, omit))">⟳ regenerate direction</button>
           <button class="btn" id="designSaveBtn" onclick="saveStagedDesign()" disabled>💾 Save to Notion</button>
+          <select id="designTestAspect" class="finput" style="width:auto;padding:4px 6px;" title="Aspect ratio for the Grok test plate"><option>3:4</option><option>1:1</option><option>16:9</option></select>
+          <button class="btn" id="designTestBtn" onclick="testDesignOnGrok()" title="Render one wordless plate on Grok Imagine from the direction + palette shown here (staged or live) layered on the campaign's image spec — see the design before you save it. Writes nothing to Notion.">✨ Test on Grok</button>
         </div>
+        <div id="designTestMsg" style="font-size:11px;color:var(--ink3);min-height:14px;margin-bottom:6px;"></div>
+        <div id="designTests" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:10px;"></div>
         <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh" id="badge-visualRegister">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualRegister','Visual Register','design')">📝</button></div></div>
         <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh" id="badge-photographyDirection">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div><button class="notebtn" onclick="openNoteModal('design-photographyDirection','Photography Direction','design')">📝</button></div></div>
         <div class="field"><div class="frow"><span class="fname">Visual Avoid</span><span class="fbadge fresh" id="badge-visualAvoid">live</span><div class="fmeta"><div class="fval" id="f-visualAvoid">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualAvoid','Visual Avoid','design')">📝</button></div></div>
@@ -2591,6 +2595,31 @@ async function runRegenDesign(steer, omit) {
   DESIGN_STAGE.photography = r.design.photography;
   DESIGN_STAGE.avoid = r.design.avoid;
   renderDesignDirection();
+}
+// ✨ Test on Grok — the direction/palette as shown (staged wins over live)
+// → renderSpecTest → one wordless plate. Session-only strip, nothing saved.
+async function testDesignOnGrok() {
+  const btn = document.getElementById('designTestBtn'), msg = document.getElementById('designTestMsg');
+  const staged = DESIGN_STAGE.register != null;
+  const direction = {
+    register: staged ? DESIGN_STAGE.register : DESIGN_LIVE.register,
+    photography: staged ? DESIGN_STAGE.photography : DESIGN_LIVE.photography,
+    avoid: staged ? DESIGN_STAGE.avoid : DESIGN_LIVE.avoid,
+  };
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rendering… (~20s)';
+  msg.style.color = 'var(--ink3)'; msg.textContent = 'Grok is rendering a test plate from the ' + (staged ? 'STAGED' : 'live') + ' direction…';
+  try {
+    const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, direction, palette: DESIGN_STAGE.palette || DESIGN_LIVE.palette || undefined, aspect: document.getElementById('designTestAspect').value });
+    if (r.error) throw new Error(r.error);
+    const a = document.createElement('a');
+    a.href = r.imageUrl; a.target = '_blank'; a.rel = 'noopener'; a.title = (r.aspect || '') + ' · ' + (r.prompt || ''); a.style.flex = '0 0 auto';
+    const img = document.createElement('img');
+    img.src = r.imageUrl; img.alt = 'Grok test plate'; img.style.cssText = 'height:160px;border-radius:6px;border:1px solid var(--border2);display:block;';
+    a.appendChild(img);
+    const strip = document.getElementById('designTests'); strip.insertBefore(a, strip.firstChild);
+    msg.textContent = 'Rendered from the ' + (staged ? 'staged' : 'live') + ' direction — newest first; hover for the prompt.';
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Grok test failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
 }
 async function saveStagedDesign() {
   const btn = document.getElementById('designSaveBtn');
