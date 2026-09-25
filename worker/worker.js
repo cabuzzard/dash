@@ -41698,7 +41698,7 @@ const KW_DEFAULT_CONFIG = {
   max_requests: 25, max_keywords: 10000, rank_by: "volume_x_cpc",
 };
 const KW_SORTS = { keyword: "k.text", vol: "m.avg_monthly_searches", ci: "m.competition_index", lb: "m.low_top_of_page_bid",
-  hb: "m.high_top_of_page_bid", cpc: "m.average_cpc", trend: "m.trend_pct", depth: "f.depth" };
+  hb: "m.high_top_of_page_bid", cpc: "m.average_cpc", trend: "m.trend_pct", depth: "f.depth", intent: "m.intent" };
 
 const kwNow = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
 const kwNorm = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
@@ -41807,7 +41807,8 @@ function kwConvert(r, rank) {
     trend = a ? Math.round((b - a) / a * 100) : null;
   }
   const concepts = ((r.keywordAnnotations && r.keywordAnnotations.concepts) || []).map(c => ({ name: c.name, group: (c.conceptGroup && c.conceptGroup.name) || "" }));
-  return { t: kwNorm(r.text), r: rank, v: num(m.avgMonthlySearches),
+  const ki = kwIntent(r.text, concepts);
+  return { t: kwNorm(r.text), r: rank, v: num(m.avgMonthlySearches), it: ki.intent, lo: ki.isLocal, br: ki.isBrand,
     c: m.competition && !["UNSPECIFIED", "UNKNOWN"].includes(m.competition) ? m.competition : null,
     ci: num(m.competitionIndex), lb: micros(m.lowTopOfPageBidMicros), hb: micros(m.highTopOfPageBidMicros), cpc: micros(m.averageCpcMicros),
     tr: trend, m: monthly, k: concepts };
@@ -41863,15 +41864,55 @@ async function kwIdeasRequest(env, req, market, opts) {
     stmts.push(db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(ts, cj));
     stmts.push(db.prepare("INSERT OR IGNORE INTO kw_request_results(request_id, keyword_id, rank) SELECT ?1, k.id, json_extract(j.value,'$.r') FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(requestId, cj));
     stmts.push(db.prepare("INSERT OR REPLACE INTO kw_metrics(keyword_id, provider, language_id, geo_key, network, avg_monthly_searches, competition, competition_index, "
-      + "low_top_of_page_bid, high_top_of_page_bid, average_cpc, trend_pct, monthly_json, concepts_json, request_id, retrieved_at) "
+      + "low_top_of_page_bid, high_top_of_page_bid, average_cpc, trend_pct, intent, is_local, is_brand, monthly_json, concepts_json, request_id, retrieved_at) "
       + "SELECT k.id, 'google_ads', ?1, ?2, ?3, json_extract(j.value,'$.v'), json_extract(j.value,'$.c'), json_extract(j.value,'$.ci'), "
       + "json_extract(j.value,'$.lb'), json_extract(j.value,'$.hb'), json_extract(j.value,'$.cpc'), json_extract(j.value,'$.tr'), "
+      + "json_extract(j.value,'$.it'), json_extract(j.value,'$.lo'), json_extract(j.value,'$.br'), "
       + "json_extract(j.value,'$.m'), json_extract(j.value,'$.k'), ?4, ?5 "
       + "FROM json_each(?6) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')")
       .bind(market.languageId, kwGeoKey(market.geoIds), market.network, requestId, ts, cj));
   }
   if (stmts.length) await db.batch(stmts);
   return { requestId, cached: false, ideaCount: ideas.length, apiCalls: 1, retrievedAt: ts };
+}
+
+// ── Keyword intent (neutral audience-intent map, no campaign bias) ────────
+// Rule-based: wording first (the searcher's own words are the best evidence of
+// the job they're trying to do), then Google's concept tags (brand), then
+// General. First matching rule wins, so order = specificity.
+const KW_INTENTS = {
+  career:   { label: "Career",           re: /\b(jobs?|salary|salaries|hiring|career|careers|resume|internship|certification|certificate|degree|school|schools|course|courses|class|classes|training|become an?|license|licensing)\b/,
+              deliverables: "courses, certification prep, career guides, job boards, résumé / interview kits" },
+  tool:     { label: "Tool / DIY",       re: /\b(calculator|calculators|calc|template|templates|spreadsheet|excel|worksheet|checklist|checklists|generator|formula|formulas|chart|charts|planner|tracker|diy|printable|sample|samples|form|forms)\b/,
+              deliverables: "calculators, templates, spreadsheets, checklists, free tools / mini-apps (lead magnets or paid)" },
+  research: { label: "Research / Compare", re: /\b(best|top|vs|versus|review|reviews|compare|comparison|alternative|alternatives|pricing|price|prices|cost|costs|how much|rates?|cheap|cheapest|affordable|worth it|pros and cons)\b/,
+              deliverables: "comparison pages, buyer's guides, pricing / cost reports, reviews, 'best X for Y' lists" },
+  hire:     { label: "Hire / Service",   re: /\b(services?|company|companies|contractors?|consultants?|consulting|agency|agencies|firms?|hire|near me|quote|quotes|installers?|installation|repair|specialists?|experts?|outsourc\w*|freelance\w*)\b/,
+              deliverables: "service offers, done-for-you packages, directories / matchmaking, lead-gen landing pages" },
+  buy:      { label: "Buy / Product",    re: /\b(buy|for sale|shop|store|order|software|app|apps|kit|kits|supplies|supplier|suppliers|equipment|rental|rent|subscription|plugin|platform|programs?)\b/,
+              deliverables: "products, software / affiliate offers, marketplace listings, product roundups" },
+  learn:    { label: "Learn / Info",     re: /^(how|what|why|when|where|who|which|can|do|does|is|are|should)\b|\b(how to|guide|tutorial|meaning|definition|define|examples?|ideas|tips|steps|process|explained|basics|types of|list of|rules|requirements|symptoms|signs)\b/,
+              deliverables: "guides, articles, videos, newsletters, ebooks / explainers" },
+  brand:    { label: "Brand / Navigational", re: null,
+              deliverables: "alternatives & comparison pages, integrations / how-to-use content, affiliate reviews" },
+  general:  { label: "General topic",    re: null,
+              deliverables: "pillar / hub content, overviews, topic landing pages" },
+};
+const KW_INTENT_ORDER = ["career", "tool", "hire", "buy", "research", "learn", "brand", "general"];
+const KW_LOCAL_RE = /\bnear me\b|\bnearby\b|\blocal\b|\bin my area\b/;
+
+function kwIntent(text, concepts) {
+  const t = " " + kwNorm(text) + " ";
+  const groups = (concepts || []).map(c => String(c.group || ""));
+  const isBrand = groups.some(g => /brand/i.test(g) && !/non-brand/i.test(g));
+  const isLocal = KW_LOCAL_RE.test(t) || groups.some(g => /city|state|region|country|location|neighborhood|county/i.test(g));
+  let intent = "general";
+  for (const k of KW_INTENT_ORDER) {
+    const re = KW_INTENTS[k].re;
+    if (re && re.test(t.trim())) { intent = k; break; }
+  }
+  if (intent === "general" && isBrand) intent = "brand";
+  return { intent, isLocal: isLocal ? 1 : 0, isBrand: isBrand ? 1 : 0 };
 }
 
 function kwPasses(cfg, r) {
@@ -41998,15 +42039,19 @@ function kwResultsSql(body, run, forExport) {
   if (body.minVolume) { where.push("m.avg_monthly_searches >= ?"); binds.push(Number(body.minVolume)); }
   if (body.maxVolume) { where.push("m.avg_monthly_searches <= ?"); binds.push(Number(body.maxVolume)); }
   if (body.minBid) { where.push("m.high_top_of_page_bid >= ?"); binds.push(Number(body.minBid)); }
+  const intents = (body.intent || []).filter(i => KW_INTENTS[i]);
+  if (intents.length) where.push("m.intent IN (" + intents.map(i => "'" + i + "'").join(",") + ")");
+  if (body.local === "only") where.push("m.is_local = 1"); else if (body.local === "exclude") where.push("IFNULL(m.is_local,0) = 0");
+  if (body.brand === "only") where.push("m.is_brand = 1"); else if (body.brand === "exclude") where.push("IFNULL(m.is_brand,0) = 0");
   const comps = (body.competition || []).filter(c => ["LOW", "MEDIUM", "HIGH"].includes(c));
   if (comps.length) where.push("m.competition IN (" + comps.map(c => "'" + c + "'").join(",") + ")");
   const sortCol = KW_SORTS[body.sort] || KW_SORTS.vol;
   const dir = body.dir === "asc" ? "ASC" : "DESC";
   const cols = "k.text keyword, m.avg_monthly_searches vol, m.competition comp, m.competition_index ci, m.low_top_of_page_bid lb, "
-    + "m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct trend, f.depth, pk.text parent, rk.text root, m.retrieved_at, m.language_id, m.geo_key"
+    + "m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct trend, m.intent, m.is_local, m.is_brand, f.depth, pk.text parent, rk.text root, m.retrieved_at, m.language_id, m.geo_key"
     + (forExport ? ", m.monthly_json, m.concepts_json, m.network, f.run_id" : "");
   const w = where.join(" AND ");
-  return { sql: "SELECT " + cols + " " + from + " WHERE " + w + " ORDER BY " + sortCol + " " + dir + " NULLS LAST, k.text",
+  return { from, where: w, sql: "SELECT " + cols + " " + from + " WHERE " + w + " ORDER BY " + sortCol + " " + dir + " NULLS LAST, k.text",
            countSql: "SELECT COUNT(*) n " + from + " WHERE " + w, binds };
 }
 
@@ -42081,6 +42126,43 @@ async function handleKeywordAction(body, env) {
     const id = Number(body.runId);
     await db.batch([db.prepare("DELETE FROM kw_frontier WHERE run_id = ?").bind(id), db.prepare("DELETE FROM kw_runs WHERE id = ?").bind(id)]);
     return json({ ok: true });
+  }
+
+  // Audience-intent map: per intent → keywords, total volume, avg bid, top keywords, fitting deliverables;
+  // plus an intent × audience-dimension crosstab from Google's concept groups (e.g. Sector: residential/commercial).
+  if (a === "kwIntentMap") {
+    const run = body.runId ? await kwRunSummary(env, Number(body.runId)) : null;
+    const q = kwResultsSql(Object.assign({}, body, { intent: [] }), run, false);
+    const intents = (await db.prepare("SELECT IFNULL(m.intent,'general') intent, COUNT(*) n, SUM(m.avg_monthly_searches) vol, "
+      + "ROUND(AVG(m.high_top_of_page_bid),2) bid, SUM(m.is_local) local, SUM(m.is_brand) brand " + q.from + " WHERE " + q.where + " GROUP BY 1")
+      .bind(...q.binds).all()).results;
+    const tops = (await db.prepare("SELECT intent, keyword, vol FROM (SELECT IFNULL(m.intent,'general') intent, k.text keyword, m.avg_monthly_searches vol, "
+      + "ROW_NUMBER() OVER (PARTITION BY IFNULL(m.intent,'general') ORDER BY m.avg_monthly_searches DESC) rn " + q.from + " WHERE " + q.where + ") WHERE rn <= 6")
+      .bind(...q.binds).all()).results;
+    const dims = (await db.prepare("SELECT json_extract(c.value,'$.group') g, COUNT(*) n " + q.from + ", json_each(m.concepts_json) c WHERE " + q.where
+      + " GROUP BY 1 ORDER BY 2 DESC").bind(...q.binds).all()).results
+      .filter(d => d.g && !/^(non-brands|others|other brands)$/i.test(d.g)).slice(0, 12);
+    const dim = body.dimension || (dims[0] && dims[0].g) || null;
+    const cross = dim ? (await db.prepare("SELECT json_extract(c.value,'$.name') value, IFNULL(m.intent,'general') intent, COUNT(*) n, SUM(m.avg_monthly_searches) vol "
+      + q.from + ", json_each(m.concepts_json) c WHERE " + q.where + " AND json_extract(c.value,'$.group') = ? GROUP BY 1, 2")
+      .bind(...q.binds, dim).all()).results : [];
+    const meta = Object.fromEntries(KW_INTENT_ORDER.map(k => [k, { label: KW_INTENTS[k].label, deliverables: KW_INTENTS[k].deliverables }]));
+    return json({ intents, tops, dims, dimension: dim, cross, meta, order: KW_INTENT_ORDER });
+  }
+
+  // Re-run kwIntent over stored metrics (after the rules change). Resumable: pass back `after`.
+  if (a === "kwReclassify") {
+    const after = Number(body.after) || 0;
+    const rows = (await db.prepare("SELECT m.rowid rid, k.text, m.concepts_json FROM kw_metrics m JOIN kw_keywords k ON k.id = m.keyword_id "
+      + "WHERE m.rowid > ? ORDER BY m.rowid LIMIT 2000").bind(after).all()).results;
+    if (rows.length) {
+      const upd = rows.map(r => { const x = kwIntent(r.text, JSON.parse(r.concepts_json || "[]")); return { r: r.rid, i: x.intent, l: x.isLocal, b: x.isBrand }; });
+      const stmts = [];
+      for (let i = 0; i < upd.length; i += 500) stmts.push(db.prepare("UPDATE kw_metrics SET intent = json_extract(j.value,'$.i'), is_local = json_extract(j.value,'$.l'), "
+        + "is_brand = json_extract(j.value,'$.b') FROM json_each(?1) j WHERE kw_metrics.rowid = json_extract(j.value,'$.r')").bind(JSON.stringify(upd.slice(i, i + 500))));
+      await db.batch(stmts);
+    }
+    return json({ updated: rows.length, after: rows.length ? rows[rows.length - 1].rid : null, done: rows.length < 2000 });
   }
 
   if (a === "kwResults" || a === "kwExport") {

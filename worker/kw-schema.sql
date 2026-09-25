@@ -79,6 +79,9 @@ CREATE TABLE IF NOT EXISTS kw_metrics (
   high_top_of_page_bid REAL,
   average_cpc REAL,
   trend_pct INTEGER,
+  intent TEXT,                 -- kwIntent(): hire | buy | research | tool | learn | career | brand | general
+  is_local INTEGER DEFAULT 0,
+  is_brand INTEGER DEFAULT 0,
   monthly_json TEXT,
   concepts_json TEXT,
   request_id INTEGER,
@@ -86,6 +89,7 @@ CREATE TABLE IF NOT EXISTS kw_metrics (
   PRIMARY KEY (keyword_id, provider, language_id, geo_key, network)
 );
 CREATE INDEX IF NOT EXISTS ix_kw_metrics_vol ON kw_metrics(avg_monthly_searches);
+CREATE INDEX IF NOT EXISTS ix_kw_metrics_intent ON kw_metrics(intent);
 
 CREATE TABLE IF NOT EXISTS kw_frontier (
   run_id INTEGER NOT NULL,
