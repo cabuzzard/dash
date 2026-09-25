@@ -257,7 +257,10 @@ KV `buffer:tok:<campaignId>` (secret **`BUFFER_KEY_ENC`**; only last-4 + org nam
 `bufferSetChannel` → KV `buffer:chan:<campaignId>` (+ mirrored to the Logins record's `Buffer Profile ID` if one exists).
 `resolveCampaignBufferLogin(campaignId, dashId, env)` prefers the KV key, falls back to the legacy Notion
 `Buffer Access Token` field. **Rotating/deleting `BUFFER_KEY_ENC` makes every saved key undecryptable** — they'd need
-re-pasting. Only carousels send to Buffer today (`sendCarouselToBuffer`, as drafts).
+re-pasting. **Sending:** microsite Publish modal → 📤 Send to Buffer → `sendAssetToBuffer` (always a Buffer DRAFT): carousel =
+slide-NN.png under Design Link; video types (`/video|reel|short|explainer|avatar/`) = asset `Video URL` (public permanent
+https MP4 — Buffer fetches it at publish time); everything else = `Post Image` (also shown for offers now). Caption = the
+modal's Post Caption + Hashtags. `sendCarouselToBuffer` (carousel review page) still exists. Video hosting (R2 upload) pending.
 
 ## Cron Scripts panel (Globals tab · ⏰)
 
