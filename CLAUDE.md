@@ -234,6 +234,12 @@ Real Google search-demand data via the **Google Ads API v25 `KeywordPlanIdeaServ
 - **Intent** (`kwIntent`, rule-based): hire / buy / research / tool / learn / career / brand / general + local/brand flags, stored
   on `kw_metrics`; **Intent map** panel (`kwIntentMap`) + intent × concept-group crosstab; `kwReclassify` after rule changes.
   Multi-column sort (`sorts: [{col,dir}]`), checkbox run sets (`runIds: [..]`).
+- **D1 read budget (free tier = 5M rows scanned/day):** the tab never queries D1 per click. Each run is read once into a
+  KV snapshot `kwsnap:run:<id>` (`kwSnapshot`; built on finish/stop, dropped on delete/reclassify; running runs served live,
+  uncached; `kwsnap:meta` holds keyword counts). Filtering, multi-sort, paging, intent map, crosstab, run combining and
+  exports are all in-browser (`kwCore*` in index.html). `kw_runs.keywords` is a running counter — never `COUNT(*)` the
+  frontier per step. `kwResults`/`kwIntentMap`/`kwExport` still exist server-side but the tab no longer calls them.
+  **Before adding any kw_* query, check its plan on a local SQLite copy for per-row scans.**
 - **Bridge to campaigns (2026-09-25):** tab row checkboxes → `kwSendKeywords` — `main` appends to the campaign's Research
   `Keywords` (dedup, never replaces), `cluster` stages an SEO cluster in KV `seoclusters:staged:<campaignId>` (name = highest-volume
   keyword, `source: "keywords-tab"`), `campaign` creates Campaign (Planning) + Research (Draft) seeded with the keywords.
