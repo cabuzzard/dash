@@ -42045,13 +42045,16 @@ function kwResultsSql(body, run, forExport) {
   if (body.brand === "only") where.push("m.is_brand = 1"); else if (body.brand === "exclude") where.push("IFNULL(m.is_brand,0) = 0");
   const comps = (body.competition || []).filter(c => ["LOW", "MEDIUM", "HIGH"].includes(c));
   if (comps.length) where.push("m.competition IN (" + comps.map(c => "'" + c + "'").join(",") + ")");
-  const sortCol = KW_SORTS[body.sort] || KW_SORTS.vol;
-  const dir = body.dir === "asc" ? "ASC" : "DESC";
+  // Multi-column sort: body.sorts = [{col, dir}, …] (≤4, first = primary); legacy body.sort/dir still works.
+  const sorts = (Array.isArray(body.sorts) && body.sorts.length ? body.sorts : [{ col: body.sort, dir: body.dir }])
+    .filter(x => x && KW_SORTS[x.col]).slice(0, 4);
+  if (!sorts.length) sorts.push({ col: "vol", dir: "desc" });
+  const orderBy = sorts.map(x => KW_SORTS[x.col] + (x.dir === "asc" ? " ASC" : " DESC") + " NULLS LAST").join(", ");
   const cols = "k.text keyword, m.avg_monthly_searches vol, m.competition comp, m.competition_index ci, m.low_top_of_page_bid lb, "
     + "m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct trend, m.intent, m.is_local, m.is_brand, f.depth, pk.text parent, rk.text root, m.retrieved_at, m.language_id, m.geo_key"
     + (forExport ? ", m.monthly_json, m.concepts_json, m.network, f.run_id" : "");
   const w = where.join(" AND ");
-  return { from, where: w, sql: "SELECT " + cols + " " + from + " WHERE " + w + " ORDER BY " + sortCol + " " + dir + " NULLS LAST, k.text",
+  return { from, where: w, sql: "SELECT " + cols + " " + from + " WHERE " + w + " ORDER BY " + orderBy + ", k.text",
            countSql: "SELECT COUNT(*) n " + from + " WHERE " + w, binds };
 }
 

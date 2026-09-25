@@ -1023,6 +1023,7 @@
         <select id="kwBrandF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">brand: any</option><option value="only">brands only</option><option value="exclude">no brands</option></select>
         <button class="kw-btn" onclick="kwLoadResults(0)">Apply</button>
       </div>
+      <div id="kwSortBar" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:6px;"></div>
       <div id="kwResults" style="overflow-x:auto;"></div>
       <div id="kwPager" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;font-size:12px;"></div>
     </div>
@@ -4895,7 +4896,7 @@ function stopTradesAutoRefresh() {
 // Quick = a depth-0 run (one GenerateKeywordIdeas request). Discover = the same
 // run with depth ≥1: kwLoop calls kwStepRun until the worker says done; each step
 // is at most one Google request and all limits are enforced server-side.
-const KW = { runId: null, running: false, sort: 'vol', dir: 'desc', offset: 0, limit: 100, total: 0, labels: {} };
+const KW = { runId: null, running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100, total: 0, labels: {} };
 const kwSleep = ms => new Promise(r => setTimeout(r, ms));
 const kwNum = v => v == null ? '–' : Number(v).toLocaleString();
 const kwMoney = v => v == null ? '–' : '$' + Number(v).toFixed(2);
@@ -4950,7 +4951,7 @@ function kwFilters() {
   return {
     runId: KW.runId, q: document.getElementById('kwQ').value.trim(),
     minVolume: document.getElementById('kwMinVol').value || null, minBid: document.getElementById('kwMinBid').value || null,
-    competition: [...document.querySelectorAll('.kwf-comp:checked')].map(c => c.value), sort: KW.sort, dir: KW.dir,
+    competition: [...document.querySelectorAll('.kwf-comp:checked')].map(c => c.value), sorts: KW.sorts,
     intent: document.getElementById('kwIntentF').value ? [document.getElementById('kwIntentF').value] : [],
     local: document.getElementById('kwLocalF').value || null, brand: document.getElementById('kwBrandF').value || null,
   };
@@ -4966,7 +4967,10 @@ async function kwLoadResults(offset) {
     document.getElementById('kwResTitle').textContent = d.run
       ? `— #${d.run.id} ${d.run.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}` : '— all keywords';
     const cols = [['keyword', 'Keyword'], ['intent', 'Intent'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
-    const th = cols.map(([k, label]) => `<th onclick="kwSort('${k}')" style="cursor:pointer;${k === 'keyword' ? 'text-align:left;' : ''}">${label}${KW.sort === k ? (KW.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')
+    KW.cols = cols;
+    const mark = k => { const i = KW.sorts.findIndex(x => x.col === k); if (i < 0) return '';
+      return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
+    const th = cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${k === 'keyword' || k === 'intent' ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
       + '<th style="text-align:left;">Found via</th>';
     const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
     const body = d.rows.map(r => `<tr>
@@ -4975,6 +4979,7 @@ async function kwLoadResults(offset) {
         <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
         <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
         <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td></tr>`).join('');
+    kwRenderSortBar();
     el.innerHTML = d.rows.length ? `<table class="kw-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
       : '<div style="font-size:12px;color:var(--text3);padding:8px 0;">No keywords yet — run a search above.</div>';
     const last = Math.min(KW.offset + KW.limit, KW.total);
@@ -5032,10 +5037,30 @@ function kwFilterIntent(k) {
   document.getElementById('kwResults').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function kwSort(col) {
-  if (KW.sort === col) KW.dir = KW.dir === 'asc' ? 'desc' : 'asc';
-  else { KW.sort = col; KW.dir = col === 'keyword' ? 'asc' : 'desc'; }
+// Click = sort by this column only (again = flip). Shift-click = add/flip it as the next tiebreaker.
+const kwDefaultDir = col => (col === 'keyword' || col === 'intent' || col === 'depth') ? 'asc' : 'desc';
+function kwSort(col, ev) {
+  const i = KW.sorts.findIndex(x => x.col === col);
+  if (ev && ev.shiftKey) {
+    if (i >= 0) KW.sorts[i].dir = KW.sorts[i].dir === 'asc' ? 'desc' : 'asc';
+    else if (KW.sorts.length < 4) KW.sorts.push({ col, dir: kwDefaultDir(col) });
+  } else if (i === 0 && KW.sorts.length === 1) {
+    KW.sorts[0].dir = KW.sorts[0].dir === 'asc' ? 'desc' : 'asc';
+  } else {
+    KW.sorts = [{ col, dir: i >= 0 ? KW.sorts[i].dir : kwDefaultDir(col) }];
+  }
   kwLoadResults(0);
+}
+function kwSortFlip(i) { KW.sorts[i].dir = KW.sorts[i].dir === 'asc' ? 'desc' : 'asc'; kwLoadResults(0); }
+function kwSortRemove(i) { KW.sorts.splice(i, 1); if (!KW.sorts.length) KW.sorts = [{ col: 'vol', dir: 'desc' }]; kwLoadResults(0); }
+function kwSortAdd(col) { if (col && !KW.sorts.some(x => x.col === col) && KW.sorts.length < 4) KW.sorts.push({ col, dir: kwDefaultDir(col) }); kwLoadResults(0); }
+function kwRenderSortBar() {
+  const label = c => ((KW.cols || []).find(x => x[0] === c) || [c, c])[1];
+  const chips = KW.sorts.map((x, i) => `${i ? '<span>›</span>' : ''}<span class="kw-chip" style="cursor:pointer;" onclick="kwSortFlip(${i})" title="Flip direction">${esc(label(x.col))} ${x.dir === 'asc' ? '▲' : '▼'}</span>`
+    + (KW.sorts.length > 1 ? `<span class="kw-x" onclick="kwSortRemove(${i})" title="Remove">✕</span>` : '')).join('');
+  const avail = (KW.cols || []).filter(([k]) => !KW.sorts.some(x => x.col === k));
+  document.getElementById('kwSortBar').innerHTML = 'Sort: ' + chips + (KW.sorts.length < 4 && avail.length
+    ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>` : '');
 }
 
 async function kwStart() {
