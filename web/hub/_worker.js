@@ -35,6 +35,16 @@ export default {
       return env.ASSETS.fetch(request);
     }
 
+    // Google Search Console verification files (/google<hex>.html) must answer
+    // 200 at that exact URL — Pages' pretty-URL handling would 308 them to the
+    // extensionless path, which verification can reject. Serve the asset directly.
+    const gsc = url.pathname.match(/^\/(google[0-9a-f]+)\.html$/);
+    if (gsc) {
+      url.pathname = `/${slug}/${gsc[1]}`;
+      const r = await env.ASSETS.fetch(new Request(url.toString(), request));
+      return new Response(r.body, { status: r.status, headers: { "content-type": "text/html; charset=utf-8" } });
+    }
+
     // Rewrite the domain root onto the hub's subdirectory.
     url.pathname = `/${slug}${url.pathname}`;
     return env.ASSETS.fetch(new Request(url.toString(), request));
