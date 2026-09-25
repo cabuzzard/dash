@@ -234,6 +234,9 @@ Real Google search-demand data via the **Google Ads API v25 `KeywordPlanIdeaServ
 - **Intent** (`kwIntent`, rule-based): hire / buy / research / tool / learn / career / brand / general + local/brand flags, stored
   on `kw_metrics`; **Intent map** panel (`kwIntentMap`) + intent × concept-group crosstab; `kwReclassify` after rule changes.
   Multi-column sort (`sorts: [{col,dir}]`), checkbox run sets (`runIds: [..]`).
+  **➕ Add to run** (`kwAugmentRun`): new seeds explored inside an existing finished run — same market, budgets added on top
+  of what it used, `params.augment.roots` = the pass's roots (known-but-unexpanded keywords count), root phase ignores the
+  run's URL/site seed and batches by `seeds_per_request`, Discover candidates limited to `root_seed_id IN augment.roots`.
 - **D1 read budget (free tier = 5M rows scanned/day):** the tab never queries D1 per click. Each run is read once into a
   KV snapshot `kwsnap:run:<id>` (`kwSnapshot`; built on finish/stop, dropped on delete/reclassify; running runs served live,
   uncached; `kwsnap:meta` holds keyword counts). Filtering, multi-sort, paging, intent map, crosstab, run combining and

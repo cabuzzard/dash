@@ -983,6 +983,7 @@
       <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
         <input id="kwName" placeholder="Run name (optional)" style="flex:1;min-width:160px;">
         <button class="kw-btn kw-primary" id="kwGoBtn" onclick="kwStart()">▶ Run</button>
+        <button class="kw-btn" id="kwAddBtn" onclick="kwAugment()" style="display:none;" title="Explore these seeds INSIDE the selected run (same country/language; limits add on top of what it already used)">➕ Add to run</button>
         <button class="kw-btn" id="kwStopBtn" onclick="kwStop()" style="display:none;">■ Stop</button>
       </div>
       <div id="kwLog" style="display:none;margin-top:10px;max-height:190px;overflow:auto;font:11px/1.55 ui-monospace,monospace;color:var(--text2);background:var(--surface2);border-radius:4px;padding:8px;white-space:pre-wrap;"></div>
@@ -5051,6 +5052,7 @@ async function kwLoadRuns() {
       </div>`;
     el.innerHTML = row(null, 'All keywords in the store', '', '') + KW.runsList.map(r =>
       row(r.id, `#${r.id} ${r.name}`, `${r.keywords == null ? '–' : kwNum(r.keywords)} kw · ${r.api_calls} calls · ${(r.started_at || '').slice(0, 10)}${r.notes ? ' · ' + esc(r.notes) : ''}`, r.status)).join('');
+    kwUpdateAddBtn();
   } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
 }
 
@@ -5237,8 +5239,7 @@ function kwRenderSortBar() {
     ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>` : '');
 }
 
-async function kwStart() {
-  if (KW.running) return;
+function kwFormConfig() {
   const list = s => s.split(/[,\n]/).map(x => x.trim()).filter(Boolean);
   const disc = document.querySelector('input[name=kwMode]:checked').value === 'discover';
   const config = {};
@@ -5252,6 +5253,40 @@ async function kwStart() {
   } else {
     config.max_depth = 0;
   }
+  return { config, disc, list };
+}
+
+// ➕ Add to run: the typed seeds are explored inside the ONE selected run.
+function kwUpdateAddBtn() {
+  const b = document.getElementById('kwAddBtn');
+  const r = KW.view.length === 1 ? (KW.runsList || []).find(x => x.id === KW.view[0]) : null;
+  const ok = r && r.status !== 'running' && !KW.running;
+  b.style.display = ok ? '' : 'none';
+  if (ok) b.textContent = `➕ Add to run #${r.id}`;
+}
+async function kwAugment() {
+  if (KW.running || KW.view.length !== 1) return;
+  const runId = KW.view[0];
+  const { config, disc } = kwFormConfig();
+  const keywords = document.getElementById('kwSeeds').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (!keywords.length) { kwLog('✗ Type the keywords to add in "Seed keywords" (one per line).'); return; }
+  document.getElementById('kwLog').textContent = '';
+  try {
+    const r = await call('kwAugmentRun', { runId, keywords, config });
+    const mk = r.run.params.market;
+    kwLog(`➕ Adding to run #${runId} "${r.run.name}" · ${(mk.geoLabels || []).join(', ')} · ${mk.languageLabel} (the run's own market)`
+      + ` · ${r.roots} seed${r.roots === 1 ? '' : 's'} to explore${r.skipped ? `, ${r.skipped} already explored (skipped)` : ''}`
+      + (disc ? ` · depth ≤${r.run.params.config.max_depth}` : ' · quick'));
+    KW.runId = runId;
+    delete KW.snaps[runId];
+    await kwLoop(runId);
+  } catch (e) { kwLog('✗ ' + e.message); }
+}
+
+async function kwStart() {
+  if (KW.running) return;
+  const { config: _cfg, disc, list } = kwFormConfig();
+  const config = _cfg;
   const payload = {
     keywords: document.getElementById('kwSeeds').value.split('\n').map(x => x.trim()).filter(Boolean),
     url: document.getElementById('kwUrl').value.trim(), site: document.getElementById('kwSite').value.trim(),
@@ -5273,6 +5308,7 @@ async function kwStart() {
 async function kwLoop(runId) {
   KW.running = true;
   document.getElementById('kwGoBtn').disabled = true;
+  document.getElementById('kwAddBtn').style.display = 'none';
   document.getElementById('kwStopBtn').style.display = '';
   let steps = 0;
   try {

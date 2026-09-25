@@ -42254,7 +42254,17 @@ async function kwStepRun(env, runId) {
 
   let step;
   try {
-    if (!run.root_done) {
+    if (!run.root_done && p.augment) {
+      const aj = JSON.stringify(p.augment.roots);
+      const roots = (await db.prepare("SELECT f.keyword_id id, k.text, f.keyword_id root FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
+        + "WHERE f.run_id = ?1 AND f.expanded = 0 AND f.keyword_id IN (SELECT value FROM json_each(?2)) LIMIT ?3")
+        .bind(runId, aj, Math.max(1, Math.min(20, cfg.seeds_per_request || 1))).all()).results;   // 1 = exact root/parent per added seed
+      if (roots.length) step = await kwStepRequest(env, run, p, roots, 0, {});
+      const left = (await db.prepare("SELECT COUNT(*) n FROM kw_frontier WHERE run_id = ?1 AND expanded = 0 AND keyword_id IN (SELECT value FROM json_each(?2))")
+        .bind(runId, aj).first()).n;
+      if (!left) await db.prepare("UPDATE kw_runs SET root_done = 1 WHERE id = ?").bind(runId).run();
+      if (!step) step = { line: "added seeds explored" };
+    } else if (!run.root_done) {
       const roots = (await db.prepare("SELECT f.keyword_id id, k.text, f.root_seed_id root FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
         + "WHERE f.run_id = ? AND f.depth = 0 AND f.expanded = 0 LIMIT 20").bind(runId).all()).results;
       step = await kwStepRequest(env, run, p, p.site ? [] : roots, 0, { url: p.url, site: p.site });
@@ -42273,8 +42283,9 @@ async function kwStepRun(env, runId) {
         const cands = (await db.prepare("SELECT f.keyword_id id, k.text, m.avg_monthly_searches vol, m.competition comp, m.high_top_of_page_bid hb "
           + "FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
           + "LEFT JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
-          + "WHERE f.run_id = ? AND f.depth = ? AND f.expanded = 0")
-          .bind(p.market.languageId, kwGeoKey(p.market.geoIds), p.market.network, runId, next).all()).results;
+          + "WHERE f.run_id = ? AND f.depth = ? AND f.expanded = 0"
+          + (p.augment ? " AND f.root_seed_id IN (SELECT value FROM json_each(?))" : ""))
+          .bind(p.market.languageId, kwGeoKey(p.market.geoIds), p.market.network, runId, next, ...(p.augment ? [JSON.stringify(p.augment.roots)] : [])).all()).results;
         const ok = cands.filter(r => kwPasses(cfg, r)).sort((a, b) => kwScore(cfg, b) - kwScore(cfg, a));
         const chosen = ok.slice(0, cfg.seeds_per_level);
         await db.batch([
@@ -42561,6 +42572,23 @@ async function kwDropSnapshots(env, runIds) {
   return ids.length;
 }
 
+function kwParseConfig(bc) {
+  const c = Object.assign({}, KW_DEFAULT_CONFIG);
+  bc = bc || {};
+  for (const k of Object.keys(c)) {
+    const v = bc[k];
+    if (v == null || v === "") continue;
+    if (Array.isArray(c[k])) c[k] = [].concat(v).map(x => String(x).trim()).filter(Boolean);
+    else if (typeof c[k] === "string") c[k] = String(v);
+    else c[k] = Number(v) || 0;
+  }
+  c.max_depth = Math.max(0, Math.min(5, c.max_depth));
+  c.max_requests = Math.max(1, Math.min(500, c.max_requests || 1));
+  c.seeds_per_level = Math.max(1, Math.min(200, c.seeds_per_level || 1));
+  c.competition = c.competition.map(x => x.toUpperCase());
+  return c;
+}
+
 async function handleKeywordAction(body, env) {
   const a = body.action;
   if (!a || !a.startsWith("kw")) return null;
@@ -42611,19 +42639,7 @@ async function handleKeywordAction(body, env) {
     const site = String(body.site || "").trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "") || null;
     if (!keywords.length && !url && !site) return json({ error: "Give at least one keyword, a URL, or a site" }, 400);
     if (site && (keywords.length || url)) return json({ error: "A whole-site seed can't be combined with keywords or a URL" }, 400);
-    const c = Object.assign({}, KW_DEFAULT_CONFIG);
-    const bc = body.config || {};
-    for (const k of Object.keys(c)) {
-      const v = bc[k];
-      if (v == null || v === "") continue;
-      if (Array.isArray(c[k])) c[k] = [].concat(v).map(s => String(s).trim()).filter(Boolean);
-      else if (typeof c[k] === "string") c[k] = String(v);
-      else c[k] = Number(v) || 0;
-    }
-    c.max_depth = Math.max(0, Math.min(5, c.max_depth));
-    c.max_requests = Math.max(1, Math.min(500, c.max_requests || 1));
-    c.seeds_per_level = Math.max(1, Math.min(200, c.seeds_per_level || 1));
-    c.competition = c.competition.map(s => s.toUpperCase());
+    const c = kwParseConfig(body.config);
     const market = await kwMarket(env, body);
     const name = String(body.name || site || url || keywords.slice(0, 3).join(", ")).slice(0, 120);
     const params = { keywords, url, site, market, config: c };
@@ -42642,6 +42658,42 @@ async function handleKeywordAction(body, env) {
   }
 
   if (a === "kwStepRun") return json(await kwStepRun(env, Number(body.runId)));
+
+  // ➕ Add keywords to an existing (finished/stopped) run. New seeds become roots of an
+  // "augment" pass inside the SAME run: same market (country/language), limits added on top
+  // of what the run already used, Discover expansion confined to the new seeds' branches.
+  // Seeds the run already expanded are skipped. The loop is the usual kwStepRun.
+  if (a === "kwAugmentRun") {
+    const runId = Number(body.runId);
+    const run = await db.prepare("SELECT * FROM kw_runs WHERE id = ?").bind(runId).first();
+    if (!run) return json({ error: "run not found" }, 404);
+    if (run.status === "running") return json({ error: "That run is still running — stop it or let it finish first" }, 400);
+    const keywords = [...new Set((body.keywords || []).map(kwNorm).filter(Boolean))].slice(0, 200);
+    if (!keywords.length) return json({ error: "Enter the keywords to add (one per line)" }, 400);
+    const p = JSON.parse(run.params_json);
+    const add = kwParseConfig(body.config);
+    add.max_requests = (run.api_calls || 0) + add.max_requests;           // budgets are ON TOP of what the run used
+    add.max_keywords = (run.keywords || 0) + add.max_keywords;
+    const kj = JSON.stringify(keywords.map(t => ({ t })));
+    const res = await db.batch([
+      db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(kwNow(), kj),
+      db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, root_seed_id, queued) "
+        + "SELECT ?1, k.id, 0, k.id, 1 FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(runId, kj),
+    ]);
+    const inserted = (res[1].meta && res[1].meta.changes) || 0;
+    // roots of this pass = every given keyword the run hasn't expanded yet (new ones + known-but-unexplored ones)
+    const roots = (await db.prepare("SELECT f.keyword_id id FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t') "
+      + "JOIN kw_frontier f ON f.keyword_id = k.id AND f.run_id = ?1 WHERE f.expanded = 0").bind(runId, kj).all()).results.map(r => r.id);
+    if (!roots.length) return json({ error: "The run has already explored all of those keywords" }, 400);
+    p.config = add;
+    p.augment = { roots, at: kwNow(), keywords };
+    p.keywords = [...new Set([...(p.keywords || []), ...keywords])];
+    await db.prepare("UPDATE kw_runs SET params_json = ?, status = 'running', root_done = 0, level = 0, notes = NULL, finished_at = NULL, "
+      + "keywords = IFNULL(keywords, 0) + ? WHERE id = ?").bind(JSON.stringify(p), inserted, runId).run();
+    await kwDropSnapshots(env, [String(runId)]);
+    await env.TRADES.delete("kw:stats");
+    return json({ run: await kwRunSummary(env, runId), added: inserted, roots: roots.length, skipped: keywords.length - roots.length });
+  }
 
   if (a === "kwSnapshot") {
     const raw = await kwGetSnapshot(env, Number(body.runId));
