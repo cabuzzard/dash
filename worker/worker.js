@@ -26258,6 +26258,55 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         return json({ success: true, imageUrl, prompt, hubSlug });
       }
 
+      // -- foldReferenceIntoSpec: the ChatGPT → Grok loop closes back into the
+      // campaign's design spec. Takes a Grok prompt that PROVABLY renders the
+      // approved look (ChatGPT's reproduction prompt, possibly hand-tuned) and
+      // rewrites the campaign Image Spec so every future plate (offers, single
+      // posts, thumbnails — all read the stored spec) inherits that look,
+      // while subjects stay varied. Returns the draft only; the operator
+      // reviews it and commits with saveImageSpec. Writes nothing itself.
+      // { campaignId, prompt, imageUrl? }
+      if (body.action === "foldReferenceIntoSpec") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        const ref = String(body.prompt || "").trim();
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        if (ref.length < 40) return json({ error: "reference prompt required" }, 400);
+        const brief = await assembleImageBrief(env, { campaignId: cid });
+        let spec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        // drop any earlier folded reference so re-folding doesn't stack them
+        spec = spec.replace(/\n*=+ REFERENCE PLATE[\s\S]*$/i, "").trim();
+        const ask = `You maintain the IMAGE SPEC for a campaign: the one document every wordless image plate (offers, social posts, thumbnails) is rendered from on xAI Grok Imagine.
+
+The operator designed the look in a ChatGPT chat and has a Grok prompt that reproduces the APPROVED image. Rewrite the spec so every future plate carries THAT look.
+
+Rules:
+- Keep the spec's own structure/sections and its purpose (wordless plates; type is added later).
+- Adopt the reference's LOOK as the standard: medium and finish, light (source, direction, quality, colour temperature), colour grade and how the palette shows up in the image, camera/lens feel, composition habits, texture/grain, mood. Where the old spec conflicts with the reference, the reference wins.
+- The reference SCENE is one example, not the only subject. Generalise its subject matter into a family of subjects/settings in the same world, so renders vary.
+- Keep palette hexes consistent with the reference (update the spec's hexes if the reference states different ones). Keep and extend the Never/avoid list; add anything the reference look clearly rules out.
+- Plain text, same length ballpark as the current spec. Output ONLY the rewritten spec, no preamble.
+
+CURRENT SPEC:
+${spec.slice(0, 12000)}
+
+APPROVED REFERENCE PROMPT (renders the look we want):
+${ref.slice(0, 4000)}`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: ask }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const rewritten = (aiData.content?.[0]?.text || "").trim();
+        if (rewritten.length < 200) return json({ error: "Claude returned an empty spec" }, 502);
+        const text = `${rewritten}\n\n=== REFERENCE PLATE (approved look — from the ChatGPT design chat, verbatim Grok prompt${body.imageUrl ? `; render: ${String(body.imageUrl).slice(0, 300)}` : ""}) ===\n${ref.slice(0, 4000)}`;
+        return json({ ok: true, text, previous: spec });
+      }
+
       // -- renderSpecTest: throw the campaign's DESIGN at Grok to see it.
       // The Content Hubs card's palette / fonts / direction / image spec are
       // all text; this renders one wordless plate from the spec text the card
@@ -26265,15 +26314,18 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
       // operator can judge a direction visually before saving / pushing it.
       // Writes nothing to Notion. Stored on R2 (unique key) when bound, else
       // the raw xAI URL is returned (temporary — fine for a preview).
-      // { campaignId, spec?, direction?{register,photography,avoid}, palette?, aspect? ("3:4"|"1:1"|"16:9"), steer? }
+      // { campaignId, rawPrompt?, spec?, direction?{register,photography,avoid}, palette?, aspect? ("3:4"|"1:1"|"16:9"), steer? }
       if (body.action === "renderSpecTest") {
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (!cid) return json({ error: "campaignId required" }, 400);
         const aspect = ["3:4", "1:1", "16:9"].includes(body.aspect) ? body.aspect : "3:4";
+        // rawPrompt: a prompt written elsewhere (ChatGPT reproducing its own
+        // design) goes to Grok VERBATIM — no spec, no Claude rewrite.
+        const rawPrompt = String(body.rawPrompt || "").trim();
         let spec = String(body.spec || "").trim();
-        if (spec.length < 80) {
+        if (!rawPrompt && spec.length < 80) {
           const brief = await assembleImageBrief(env, { campaignId: cid });
           if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
           else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -26295,6 +26347,8 @@ STAGED DESIGN — AUTHORITATIVE, overrides anything above that conflicts:
             + (pal ? `Palette: ${Object.entries(pal).map(([k, v]) => `${k} ${v}`).join(", ").slice(0, 600)}
 ` : "");
         }
+        let prompt = rawPrompt;
+        if (!prompt) {
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
 
 WHAT IT IS: a ${aspect} test plate — the single most representative image for this visual direction, so the operator can judge whether the direction looks right. Pick the strongest subject/scene the spec allows. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
@@ -26310,8 +26364,9 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        const prompt = (aiData.content?.[0]?.text || "").trim();
+        prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        }
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },

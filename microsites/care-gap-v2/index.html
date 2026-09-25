@@ -1243,6 +1243,27 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <span id="gptImportMsg" style="font-size:11px;color:var(--ink3);"></span>
         </div>
         <textarea id="gptReply" class="finput" rows="5" placeholder="Paste ChatGPT's whole reply here (the JSON block is found automatically)…" style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:11px;resize:vertical;"></textarea>
+        <div id="gptGrokBox" style="display:none;margin-top:10px;">
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <span style="font-size:11px;color:var(--ink2);font-weight:700;">ChatGPT's Grok prompt</span>
+            <span style="font-size:10.5px;color:var(--ink3);">sent to Grok word for word, no rewrite. Edit it here if the render drifts.</span>
+            <select id="gptGrokAspect" class="finput" style="width:auto;padding:4px 6px;margin-left:auto;"><option>3:4</option><option>1:1</option><option>16:9</option></select>
+            <button class="btn primary" onclick="testGptPromptOnGrok(this)">✨ Render on Grok</button>
+          </div>
+          <textarea id="gptGrokText" class="finput" rows="6" style="width:100%;box-sizing:border-box;font-size:11px;resize:vertical;"></textarea>
+          <div style="font-size:10px;color:var(--ink3);margin-top:3px;">Renders land in the Grok strip on the Visual direction card below.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
+            <button class="btn" id="gptFoldBtn" onclick="foldGptIntoSpec(this)" title="Rewrite this campaign's Image Spec so its medium / light / colour grade / camera / composition match this prompt's look (subjects stay varied), with the prompt kept verbatim as a reference. Draft only; you review, then 💾 Save.">⤴ Fold this look into the campaign image spec</button>
+            <span style="font-size:10.5px;color:var(--ink3);">once the Grok render matches the chat. Every later Grok plate (offers, single posts, thumbnails) reads this spec.</span>
+          </div>
+          <div id="gptSpecBox" style="display:none;margin-top:8px;">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
+              <span style="font-size:11px;color:var(--ink2);font-weight:700;">Campaign image spec (draft, not saved)</span>
+              <button class="btn primary" id="gptSpecSaveBtn" onclick="saveGptSpec(this)" style="margin-left:auto;">💾 Save image spec</button>
+            </div>
+            <textarea id="gptSpecText" class="finput" rows="14" style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:10.5px;resize:vertical;"></textarea>
+          </div>
+        </div>
       </div>
     </section>
 
@@ -2626,11 +2647,83 @@ Reply with ONE fenced \`\`\`json block and nothing else, exactly this shape:
   "palette": {
 ${roles}
   },
-  "fonts": { "display": "<Google Font family>", "body": "<Google Font family>", "mono": "<Google Font family>" }
+  "fonts": { "display": "<Google Font family>", "body": "<Google Font family>", "mono": "<Google Font family>" },
+  "grokAspect": "3:4 | 1:1 | 16:9 — whichever is closest to the key image",
+  "grokPrompt": "see below"
 }
 
 Palette roles: bg = page background; surface = raised card; ink = body text; ink-head = headings; ink-soft = muted text; line = hairlines/borders; sea = the primary colour (links, eyebrows, focus); deep = the one dark band; deep-ink = text on that dark band; accent = the CTA button (white label on it). Use real 6-digit hex values taken from the design. Keep ink >= 7:1 contrast on bg, and white >= 4.4:1 on accent — nudge a hex only if it fails.
-Fonts must be Google Fonts families (closest match if the design used something else). Strip the // comments from the JSON.`;
+Fonts must be Google Fonts families (closest match if the design used something else).
+
+"grokPrompt" matters most. We render this design's imagery on xAI Grok Imagine, and your text is sent to Grok WORD FOR WORD, with nothing added. Write the prompt that makes Grok produce its closest possible facsimile of the KEY IMAGE from this chat (the hero/main visual we landed on). Grok can't see this chat, so describe everything it needs, in this order:
+- subject and scene: every object, its placement in the frame (left/right/foreground/background), scale, and what's left empty;
+- camera: shot type, angle, lens feel (e.g. 35mm, shallow depth of field), framing and crop;
+- light: source, direction, time of day, hardness, colour temperature, shadows;
+- colour: the actual palette hexes as they appear in the image, plus the grade (saturation, contrast, film/digital feel);
+- medium and finish: photo vs illustration vs 3D, texture, grain, rendering style;
+- mood, in 3-5 precise words.
+Use 120-200 words of plain descriptive prose (no bullet points, no weights or parameters, no negative-prompt syntax). Leave out any text/typography that was ON the image. End with: "No text, no letters, no logos, no watermarks."
+
+Strip the // comments from the JSON.`;
+}
+let DESIGN_GPT_GROK = null;   // { prompt, aspect } — ChatGPT's own reproduction prompt, sent to Grok verbatim
+function renderGptGrok() {
+  const box = document.getElementById('gptGrokBox');
+  if (!DESIGN_GPT_GROK) { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  document.getElementById('gptGrokText').value = DESIGN_GPT_GROK.prompt;
+  document.getElementById('gptGrokAspect').value = DESIGN_GPT_GROK.aspect;
+}
+// ChatGPT's reproduction prompt → Grok verbatim (rawPrompt). Result lands in
+// the same strip as ✨ Test on Grok, so the two sit side by side.
+async function testGptPromptOnGrok(btn) {
+  const prompt = (document.getElementById('gptGrokText').value || '').trim();
+  const aspect = document.getElementById('gptGrokAspect').value;
+  const msg = document.getElementById('designTestMsg');
+  if (prompt.length < 40) { msg.style.color = '#c0392b'; msg.textContent = 'The Grok prompt is empty.'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rendering… (~20s)';
+  msg.style.color = 'var(--ink3)'; msg.textContent = "Grok is rendering ChatGPT's reproduction prompt, verbatim…";
+  try {
+    const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, rawPrompt: prompt, aspect });
+    if (r.error) throw new Error(r.error);
+    DESIGN_GPT_LAST_URL = r.imageUrl;
+    addDesignTestPlate(r, 'ChatGPT prompt');
+    msg.textContent = "Rendered from ChatGPT's prompt, verbatim. Compare with the chat version; edit the prompt and re-run if it drifts.";
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Grok render failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
+let DESIGN_GPT_LAST_URL = '';
+async function foldGptIntoSpec(btn) {
+  const prompt = (document.getElementById('gptGrokText').value || '').trim();
+  const msg = document.getElementById('gptImportMsg');
+  if (prompt.length < 40) { msg.style.color = '#c0392b'; msg.textContent = 'No Grok prompt to fold in.'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rewriting the spec…';
+  try {
+    const r = await w('foldReferenceIntoSpec', { campaignId: CAMPAIGN_ID, prompt, imageUrl: DESIGN_GPT_LAST_URL || undefined });
+    if (r.error) throw new Error(r.error);
+    document.getElementById('gptSpecText').value = r.text;
+    document.getElementById('gptSpecBox').style.display = 'block';
+    msg.style.color = 'var(--ink3)'; msg.textContent = 'Spec draft ready below. Review/edit, then 💾 Save image spec.';
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Fold failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
+async function saveGptSpec(btn) {
+  const text = (document.getElementById('gptSpecText').value || '').trim();
+  const msg = document.getElementById('gptImportMsg');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await w('saveImageSpec', { campaignId: CAMPAIGN_ID, text });
+    if (r.error) throw new Error(r.error);
+    btn.textContent = 'Saved ✓';
+    msg.style.color = 'var(--fresh)'; msg.textContent = 'Image spec saved to Research. Every Grok render for this campaign now reads it; ✨ Test on Grok below to check.';
+    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 2500);
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Save failed: ' + e.message; btn.disabled = false; btn.textContent = o; }
+}
+function addDesignTestPlate(r, label) {
+  const a = document.createElement('a');
+  a.href = r.imageUrl; a.target = '_blank'; a.rel = 'noopener'; a.title = label + ' · ' + (r.aspect || '') + ' · ' + (r.prompt || ''); a.style.cssText = 'flex:0 0 auto;text-decoration:none;';
+  a.innerHTML = `<img src="${esc(r.imageUrl)}" alt="Grok test plate" style="height:160px;border-radius:6px;border:1px solid var(--border2);display:block;"><div style="font-size:9px;color:var(--ink3);margin-top:2px;">${esc(label)}</div>`;
+  const strip = document.getElementById('designTests'); strip.insertBefore(a, strip.firstChild);
 }
 async function copyDesignGptPrompt(btn) {
   const text = designGptPrompt();
@@ -2672,6 +2765,10 @@ function stageDesignGptReply() {
     DESIGN_STAGE.fonts = { display: String(d.fonts.display).trim(), body: String(d.fonts.body || 'Inter').trim(), mono: String(d.fonts.mono || 'Space Mono').trim() };
     got.push('fonts'); renderDesignFonts();
   }
+  if (d.grokPrompt && String(d.grokPrompt).trim().length > 40) {
+    DESIGN_GPT_GROK = { prompt: String(d.grokPrompt).trim(), aspect: (String(d.grokAspect || '').match(/3:4|1:1|16:9/) || ['3:4'])[0] };
+    got.push('Grok prompt'); renderGptGrok();
+  }
   if (!got.length) { msg.style.color = '#c0392b'; msg.textContent = 'JSON read, but none of register / photography / avoid / palette / fonts were in it.'; return; }
   msg.style.color = 'var(--fresh)';
   msg.textContent = 'Staged: ' + got.join(', ') + '. Review below, then 💾 Save each card.';
@@ -2691,12 +2788,7 @@ async function testDesignOnGrok() {
   try {
     const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, direction, palette: DESIGN_STAGE.palette || DESIGN_LIVE.palette || undefined, aspect: document.getElementById('designTestAspect').value });
     if (r.error) throw new Error(r.error);
-    const a = document.createElement('a');
-    a.href = r.imageUrl; a.target = '_blank'; a.rel = 'noopener'; a.title = (r.aspect || '') + ' · ' + (r.prompt || ''); a.style.flex = '0 0 auto';
-    const img = document.createElement('img');
-    img.src = r.imageUrl; img.alt = 'Grok test plate'; img.style.cssText = 'height:160px;border-radius:6px;border:1px solid var(--border2);display:block;';
-    a.appendChild(img);
-    const strip = document.getElementById('designTests'); strip.insertBefore(a, strip.firstChild);
+    addDesignTestPlate(r, staged ? 'staged direction' : 'live direction');
     msg.textContent = 'Rendered from the ' + (staged ? 'staged' : 'live') + ' direction — newest first; hover for the prompt.';
   } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Grok test failed: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
