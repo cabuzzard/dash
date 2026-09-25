@@ -1247,8 +1247,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
             <span style="font-size:11px;color:var(--ink2);font-weight:700;">ChatGPT's Grok prompt</span>
             <span style="font-size:10.5px;color:var(--ink3);">sent to Grok word for word, no rewrite. Edit it here if the render drifts.</span>
-            <select id="gptGrokAspect" class="finput" style="width:auto;padding:4px 6px;margin-left:auto;"><option>3:4</option><option>1:1</option><option>16:9</option></select>
-            <button class="btn primary" onclick="testGptPromptOnGrok(this)">✨ Render on Grok</button>
+            <button class="btn primary" onclick="testGptPromptOnGrok(this)" style="margin-left:auto;">✨ Render on Grok</button>
           </div>
           <textarea id="gptGrokText" class="finput" rows="6" style="width:100%;box-sizing:border-box;font-size:11px;resize:vertical;"></textarea>
           <div style="font-size:10px;color:var(--ink3);margin-top:3px;">Renders land in the Grok strip on the Visual direction card below.</div>
@@ -2668,13 +2667,12 @@ function renderGptGrok() {
   if (!DESIGN_GPT_GROK) { box.style.display = 'none'; return; }
   box.style.display = 'block';
   document.getElementById('gptGrokText').value = DESIGN_GPT_GROK.prompt;
-  document.getElementById('gptGrokAspect').value = DESIGN_GPT_GROK.aspect;
 }
 // ChatGPT's reproduction prompt → Grok verbatim (rawPrompt). Result lands in
 // the same strip as ✨ Test on Grok, so the two sit side by side.
 async function testGptPromptOnGrok(btn) {
   const prompt = (document.getElementById('gptGrokText').value || '').trim();
-  const aspect = document.getElementById('gptGrokAspect').value;
+  const aspect = (DESIGN_GPT_GROK && DESIGN_GPT_GROK.aspect) || '3:4';   // ChatGPT's own image shape, not a user choice
   const msg = document.getElementById('designTestMsg');
   if (prompt.length < 40) { msg.style.color = '#c0392b'; msg.textContent = 'The Grok prompt is empty.'; return; }
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rendering… (~20s)';
