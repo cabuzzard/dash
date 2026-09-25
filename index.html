@@ -530,6 +530,25 @@
   .asset-comp-chip.login-chip.filled { color: #a78bfa; border-color: #a78bfa; }
   .asset-row-title { cursor: pointer; }
   .asset-row-title:hover { text-decoration: underline; }
+/* Keywords tab */
+.kw-h{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:8px}
+.kw-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}
+.kw-grid-sm{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}
+.kw-f{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--text2)}
+.kw-f input,.kw-f select,.kw-f textarea,#tabKeywords input:not([type=radio]):not([type=checkbox]){background:var(--surface2);border:1px solid var(--border2);border-radius:4px;color:var(--text);padding:5px 7px;font:inherit;font-size:12px}
+.kw-hint{color:var(--text3);font-size:10px;font-weight:400}
+.kw-btn{font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer}
+.kw-btn:disabled{opacity:.4;cursor:default}
+.kw-primary{border-color:#4cff4c;color:#4cff4c}
+.kw-run{display:flex;gap:8px;align-items:center;padding:5px 6px;border-radius:4px;cursor:pointer}
+.kw-run:hover,.kw-run.active{background:var(--surface2)}
+.kw-st{font-size:10px;padding:1px 6px;border-radius:8px;border:1px solid var(--border2);color:var(--text3)}
+.kw-st-running{color:#ffb020;border-color:#ffb020}.kw-st-done{color:#4cff4c;border-color:#2a5a2a}
+.kw-x{color:var(--text3);padding:0 4px}.kw-x:hover{color:#ff6b6b}
+.kw-table{width:100%;border-collapse:collapse;font-size:12px}
+.kw-table th{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:var(--text3);font-weight:600;padding:5px 6px;border-bottom:1px solid var(--border2);text-align:right;white-space:nowrap;user-select:none}
+.kw-table td{padding:4px 6px;border-bottom:1px solid var(--border);text-align:right;white-space:nowrap}
+.kw-table tbody tr:hover{background:var(--surface2)}
 </style>
 </head>
 <body>
@@ -674,6 +693,7 @@
     <div class="tab" onclick="switchTab('domains')">Domains</div>
     <div class="tab" onclick="switchTab('trades')">Trades</div>
     <div class="tab" onclick="switchTab('links')">Links</div>
+    <div class="tab" onclick="switchTab('keywords')">Keywords</div>
     <div class="tab" onclick="switchTab('globals')">Globals</div>
     <div class="tab" onclick="switchTab('ecosystem')">Ecosystem</div>
   </div>
@@ -909,6 +929,87 @@
 
     <div id="linksContent">
       <div class="loading-wrap"><div class="spinner"></div>Loading...</div>
+    </div>
+  </div>
+
+  <!-- 🔑 KEYWORDS TAB — Google keyword research (Google Ads API GenerateKeywordIdeas).
+       Worker kw* actions + D1 `keyword-research`. Quick search = one request (depth 0);
+       Discover = budgeted recursive expansion, driven step-by-step from here (kwLoop)
+       so every Google call shows up live in the log. Results sort/filter server-side. -->
+  <div class="tab-panel" id="tabKeywords">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+      <span id="kwStats" style="font-size:11px;color:var(--text3);"></span>
+      <a class="add-link" onclick="kwRefresh()">↺ Refresh</a>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:12px;">
+      <div class="kw-h">New search</div>
+      <div class="kw-grid">
+        <label class="kw-f" style="grid-column:1/-1;">Seed keywords <span class="kw-hint">one per line (≤20 per Google request)</span>
+          <textarea id="kwSeeds" rows="3" placeholder="construction estimating services"></textarea></label>
+        <label class="kw-f">Page URL <span class="kw-hint">optional; combines with keywords</span><input id="kwUrl" placeholder="https://example.com/services"></label>
+        <label class="kw-f">Whole site <span class="kw-hint">alone, no keywords</span><input id="kwSite" placeholder="competitor.com"></label>
+        <label class="kw-f">Country <span class="kw-hint">codes / places, comma-sep</span><input id="kwGeo" value="US"></label>
+        <label class="kw-f">Language<input id="kwLang" value="en"></label>
+      </div>
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin:8px 0 4px;font-size:12px;">
+        <label><input type="radio" name="kwMode" value="quick" checked onchange="kwModeChanged()"> Quick — one request</label>
+        <label><input type="radio" name="kwMode" value="discover" onchange="kwModeChanged()"> Discover — expand recursively</label>
+      </div>
+      <div id="kwDiscoverOpts" style="display:none;">
+        <div class="kw-grid kw-grid-sm">
+          <label class="kw-f">Depth<input id="kwc_max_depth" type="number" min="0" max="5" value="1"></label>
+          <label class="kw-f">Seeds / level<input id="kwc_seeds_per_level" type="number" min="1" value="10"></label>
+          <label class="kw-f">Seeds / request<input id="kwc_seeds_per_request" type="number" min="1" max="20" value="1" title="1 = exact parent for every keyword; up to 20 = fewer API calls"></label>
+          <label class="kw-f">Max API requests<input id="kwc_max_requests" type="number" min="1" max="500" value="25"></label>
+          <label class="kw-f">Max keywords<input id="kwc_max_keywords" type="number" min="100" value="10000"></label>
+          <label class="kw-f">Min volume<input id="kwc_min_volume" type="number" min="0" value="100"></label>
+          <label class="kw-f">Max volume<input id="kwc_max_volume" type="number" min="0" value="0" title="0 = no cap"></label>
+          <label class="kw-f">Min bid $<input id="kwc_min_cpc" type="number" min="0" step="0.5" value="0" title="high top-of-page bid"></label>
+          <label class="kw-f">Max bid $<input id="kwc_max_cpc" type="number" min="0" step="0.5" value="0" title="0 = no cap"></label>
+          <label class="kw-f">Rank next seeds by<select id="kwc_rank_by"><option value="volume_x_cpc">volume × bid</option><option value="volume">volume</option><option value="cpc">bid</option></select></label>
+          <label class="kw-f" style="grid-column:span 2;">Include terms <span class="kw-hint">expand only these, comma-sep</span><input id="kwc_include"></label>
+          <label class="kw-f" style="grid-column:span 2;">Exclude terms<input id="kwc_exclude" value="jobs, salary, hiring, certification"></label>
+        </div>
+        <div style="font-size:12px;margin-top:6px;">Competition:
+          <label><input type="checkbox" class="kwc-comp" value="LOW"> Low</label>
+          <label><input type="checkbox" class="kwc-comp" value="MEDIUM"> Medium</label>
+          <label><input type="checkbox" class="kwc-comp" value="HIGH"> High</label>
+          <span class="kw-hint">(none = any)</span></div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+        <input id="kwName" placeholder="Run name (optional)" style="flex:1;min-width:160px;">
+        <button class="kw-btn kw-primary" id="kwGoBtn" onclick="kwStart()">▶ Run</button>
+        <button class="kw-btn" id="kwStopBtn" onclick="kwStop()" style="display:none;">■ Stop</button>
+      </div>
+      <div id="kwLog" style="display:none;margin-top:10px;max-height:190px;overflow:auto;font:11px/1.55 ui-monospace,monospace;color:var(--text2);background:var(--surface2);border-radius:4px;padding:8px;white-space:pre-wrap;"></div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:12px;">
+      <div class="kw-h">Runs</div>
+      <div id="kwRuns" style="font-size:12px;max-height:220px;overflow:auto;"></div>
+    </div>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;">
+        <div class="kw-h" style="margin:0;">Results <span id="kwResTitle" style="font-weight:400;text-transform:none;letter-spacing:0;"></span></div>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button class="kw-btn" onclick="kwExport('full')">⤓ Full CSV</button>
+          <button class="kw-btn" onclick="kwExport('compact')" title="keyword, volume, comp_idx, high_bid, trend_pct, seed — sized for ChatGPT">⤓ Compact CSV (for AI)</button>
+          <button class="kw-btn" onclick="kwExport('xlsx')">⤓ XLSX</button>
+        </span>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0;font-size:12px;">
+        <input id="kwQ" placeholder="filter: words, -exclude" style="flex:1;min-width:150px;" onkeydown="if(event.key==='Enter')kwLoadResults(0)">
+        <input id="kwMinVol" type="number" placeholder="min vol" style="width:80px;" onkeydown="if(event.key==='Enter')kwLoadResults(0)">
+        <input id="kwMinBid" type="number" step="0.5" placeholder="min bid" style="width:80px;" onkeydown="if(event.key==='Enter')kwLoadResults(0)">
+        <label><input type="checkbox" class="kwf-comp" value="LOW" onchange="kwLoadResults(0)"> L</label>
+        <label><input type="checkbox" class="kwf-comp" value="MEDIUM" onchange="kwLoadResults(0)"> M</label>
+        <label><input type="checkbox" class="kwf-comp" value="HIGH" onchange="kwLoadResults(0)"> H</label>
+        <button class="kw-btn" onclick="kwLoadResults(0)">Apply</button>
+      </div>
+      <div id="kwResults" style="overflow-x:auto;"></div>
+      <div id="kwPager" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;font-size:12px;"></div>
     </div>
   </div>
 
@@ -3894,7 +3995,7 @@ function resetLoadFlags() {
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
   ecoLoaded = false; globalsLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
   careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false; last30TitlesLoaded = false;
-  dev2Loaded = false;
+  dev2Loaded = false; keywordsLoaded = false;
 }
 function lockApp() {
   SESSION_TOKEN = null;
@@ -3957,6 +4058,7 @@ function toggleDevTitlesSection() {
   if (!devTitlesCollapsed && !devLoaded) { devLoaded = true; loadDev(); }
 }
 let linksLoaded = false;
+let keywordsLoaded = false;
 let toolsLoaded = false;
 let stackLoaded = false;
 let ecoLoaded = false;
@@ -4736,6 +4838,7 @@ function loadTabContent(name) {
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
+  if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
@@ -4771,6 +4874,203 @@ function startTradesAutoRefresh() {
 }
 function stopTradesAutoRefresh() {
   if (_tradesRefreshTimer) { clearInterval(_tradesRefreshTimer); _tradesRefreshTimer = null; }
+}
+
+// ── KEYWORDS TAB (Google keyword research — worker kw* actions, D1) ──────
+// Quick = a depth-0 run (one GenerateKeywordIdeas request). Discover = the same
+// run with depth ≥1: kwLoop calls kwStepRun until the worker says done; each step
+// is at most one Google request and all limits are enforced server-side.
+const KW = { runId: null, running: false, sort: 'vol', dir: 'desc', offset: 0, limit: 100, total: 0, labels: {} };
+const kwSleep = ms => new Promise(r => setTimeout(r, ms));
+const kwNum = v => v == null ? '–' : Number(v).toLocaleString();
+const kwMoney = v => v == null ? '–' : '$' + Number(v).toFixed(2);
+
+function kwModeChanged() {
+  const disc = document.querySelector('input[name=kwMode]:checked').value === 'discover';
+  document.getElementById('kwDiscoverOpts').style.display = disc ? '' : 'none';
+}
+function kwLog(line) {
+  const el = document.getElementById('kwLog');
+  el.style.display = '';
+  el.textContent += (el.textContent ? '\n' : '') + line;
+  el.scrollTop = el.scrollHeight;
+}
+
+async function loadKeywordsTab() { await kwRefresh(); }
+async function kwRefresh() {
+  try {
+    const s = await call('kwStats');
+    document.getElementById('kwStats').textContent =
+      `${kwNum(s.keywords)} keywords in the store · ${kwNum(s.requests)} Google requests cached · API calls today ${s.callsToday} / ${s.dailyBudget}`;
+  } catch (e) { document.getElementById('kwStats').textContent = 'Could not load stats: ' + e.message; }
+  await kwLoadRuns();
+  await kwLoadResults(KW.offset);
+}
+
+async function kwLoadRuns() {
+  const el = document.getElementById('kwRuns');
+  try {
+    const { runs } = await call('kwRuns');
+    const row = (id, name, meta, status) => `<div class="kw-run${KW.runId === id ? ' active' : ''}" onclick="kwSelectRun(${id === null ? 'null' : id})">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>
+        <span style="color:var(--text3);white-space:nowrap;">${meta}</span>
+        ${status ? `<span class="kw-st kw-st-${status}">${status}</span>` : ''}
+        ${id !== null ? `<span class="kw-x" title="Delete run (keywords stay in the store)" onclick="event.stopPropagation();kwDeleteRun(${id})">✕</span>` : ''}
+      </div>`;
+    el.innerHTML = row(null, 'All keywords in the store', '', '') + runs.map(r =>
+      row(r.id, `#${r.id} ${r.name}`, `${kwNum(r.keywords)} kw · ${r.api_calls} calls · ${(r.started_at || '').slice(0, 10)}${r.notes ? ' · ' + esc(r.notes) : ''}`, r.status)).join('');
+  } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+}
+
+function kwSelectRun(id) { KW.runId = id; KW.offset = 0; kwLoadRuns(); kwLoadResults(0); }
+
+async function kwDeleteRun(id) {
+  await call('kwDeleteRun', { runId: id });
+  if (KW.runId === id) KW.runId = null;
+  kwRefresh();
+}
+
+function kwFilters() {
+  return {
+    runId: KW.runId, q: document.getElementById('kwQ').value.trim(),
+    minVolume: document.getElementById('kwMinVol').value || null, minBid: document.getElementById('kwMinBid').value || null,
+    competition: [...document.querySelectorAll('.kwf-comp:checked')].map(c => c.value), sort: KW.sort, dir: KW.dir,
+  };
+}
+
+async function kwLoadResults(offset) {
+  KW.offset = offset || 0;
+  const el = document.getElementById('kwResults');
+  try {
+    const d = await call('kwResults', { ...kwFilters(), limit: KW.limit, offset: KW.offset });
+    KW.total = d.total; KW.labels = d.labels || {};
+    const mk = d.run?.params?.market;
+    document.getElementById('kwResTitle').textContent = d.run
+      ? `— #${d.run.id} ${d.run.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}` : '— all keywords';
+    const cols = [['keyword', 'Keyword'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
+    const th = cols.map(([k, label]) => `<th onclick="kwSort('${k}')" style="cursor:pointer;${k === 'keyword' ? 'text-align:left;' : ''}">${label}${KW.sort === k ? (KW.dir === 'asc' ? ' ▲' : ' ▼') : ''}</th>`).join('')
+      + '<th style="text-align:left;">Found via</th>';
+    const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
+    const body = d.rows.map(r => `<tr>
+        <td style="text-align:left;">${esc(r.keyword)}</td><td>${kwNum(r.vol)}</td>
+        <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
+        <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
+        <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td></tr>`).join('');
+    el.innerHTML = d.rows.length ? `<table class="kw-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
+      : '<div style="font-size:12px;color:var(--text3);padding:8px 0;">No keywords yet — run a search above.</div>';
+    const last = Math.min(KW.offset + KW.limit, KW.total);
+    document.getElementById('kwPager').innerHTML = KW.total ? `${kwNum(KW.offset + 1)}–${kwNum(last)} of ${kwNum(KW.total)}
+      <button class="kw-btn" ${KW.offset ? '' : 'disabled'} onclick="kwLoadResults(${Math.max(0, KW.offset - KW.limit)})">‹ Prev</button>
+      <button class="kw-btn" ${last < KW.total ? '' : 'disabled'} onclick="kwLoadResults(${KW.offset + KW.limit})">Next ›</button>` : '';
+  } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+}
+
+function kwSort(col) {
+  if (KW.sort === col) KW.dir = KW.dir === 'asc' ? 'desc' : 'asc';
+  else { KW.sort = col; KW.dir = col === 'keyword' ? 'asc' : 'desc'; }
+  kwLoadResults(0);
+}
+
+async function kwStart() {
+  if (KW.running) return;
+  const list = s => s.split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+  const disc = document.querySelector('input[name=kwMode]:checked').value === 'discover';
+  const config = {};
+  if (disc) {
+    for (const k of ['max_depth', 'seeds_per_level', 'seeds_per_request', 'max_requests', 'max_keywords', 'min_volume', 'max_volume', 'min_cpc', 'max_cpc'])
+      config[k] = document.getElementById('kwc_' + k).value;
+    config.rank_by = document.getElementById('kwc_rank_by').value;
+    config.include = list(document.getElementById('kwc_include').value);
+    config.exclude = list(document.getElementById('kwc_exclude').value);
+    config.competition = [...document.querySelectorAll('.kwc-comp:checked')].map(c => c.value);
+  } else {
+    config.max_depth = 0;
+  }
+  const payload = {
+    keywords: document.getElementById('kwSeeds').value.split('\n').map(x => x.trim()).filter(Boolean),
+    url: document.getElementById('kwUrl').value.trim(), site: document.getElementById('kwSite').value.trim(),
+    geo: list(document.getElementById('kwGeo').value), lang: document.getElementById('kwLang').value.trim() || 'en',
+    name: document.getElementById('kwName').value.trim(), config,
+  };
+  document.getElementById('kwLog').textContent = '';
+  try {
+    const { run } = await call('kwStartRun', payload);
+    const c = run.params.config, mk = run.params.market;
+    kwLog(`Run #${run.id} "${run.name}" · ${mk.geoLabels.join(', ')} · ${mk.languageLabel}` + (disc
+      ? ` · depth ≤${c.max_depth}, ${c.seeds_per_level} seeds/level, ≤${c.max_requests} API requests, ≤${c.max_keywords.toLocaleString()} keywords` : ' · quick search'));
+    KW.runId = run.id;
+    await kwLoop(run.id);
+  } catch (e) { kwLog('✗ ' + e.message); }
+}
+
+async function kwLoop(runId) {
+  KW.running = true;
+  document.getElementById('kwGoBtn').disabled = true;
+  document.getElementById('kwStopBtn').style.display = '';
+  let steps = 0;
+  try {
+    while (KW.running) {
+      const r = await call('kwStepRun', { runId });
+      if (r.line) kwLog(r.line);
+      if (r.run) kwLog(`   ↳ ${r.run.api_calls}/${r.run.params?.config?.max_requests ?? '?'} requests · ${kwNum(r.run.keywords)} keywords`);
+      if (r.retryAfter) { await kwSleep(r.retryAfter * 1000); continue; }
+      if (r.done) break;
+      if (++steps % 3 === 0) kwLoadResults(0);
+      await kwSleep(1200);   // client-side throttle — Keyword Planning is rate limited
+    }
+  } catch (e) { kwLog('✗ ' + e.message); }
+  KW.running = false;
+  document.getElementById('kwGoBtn').disabled = false;
+  document.getElementById('kwStopBtn').style.display = 'none';
+  KW.runId = runId;
+  kwRefresh();
+}
+
+async function kwStop() {
+  KW.running = false;
+  if (KW.runId) { await call('kwStopRun', { runId: KW.runId }); kwLog('■ stopped'); }
+}
+
+function kwCsv(rows, cols) {
+  const q = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  return '﻿' + [cols.join(','), ...rows.map(r => cols.map(c => q(r[c])).join(','))].join('\n');
+}
+function kwDownload(name, blob) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+async function kwExport(kind) {
+  const d = await call('kwExport', kwFilters());
+  const L = d.labels || {};
+  const full = d.rows.map(r => {
+    const concepts = JSON.parse(r.concepts_json || '[]');
+    return {
+      keyword: r.keyword, avg_monthly_searches: r.vol, competition: r.comp, competition_index: r.ci,
+      low_top_of_page_bid: r.lb, high_top_of_page_bid: r.hb, average_cpc: r.cpc, trend_12m_pct: r.trend,
+      parent_seed: r.parent || (r.depth === 1 ? r.root : ''), root_seed: r.root, depth: r.depth,
+      concepts: [...new Set(concepts.map(c => c.name))].join('; '), concept_groups: [...new Set(concepts.map(c => c.group).filter(Boolean))].join('; '),
+      monthly_searches: JSON.parse(r.monthly_json || '[]').map(m => `${m.year}-${String(m.month).padStart(2, '0')}:${m.searches}`).join(' '),
+      country: (r.geo_key || '').split(',').map(g => L[g] || g).join(', '), language: L[r.language_id] || r.language_id,
+      network: r.network, retrieved_date: (r.retrieved_at || '').slice(0, 10), run_id: r.run_id,
+    };
+  });
+  const stem = (KW.runId ? 'keywords-run' + KW.runId : 'keywords-all') + '-' + new Date().toISOString().slice(0, 10);
+  if (kind === 'compact') {
+    const rows = full.filter(r => (r.avg_monthly_searches || 0) >= 10).map(r => ({ keyword: r.keyword, volume: r.avg_monthly_searches,
+      comp_idx: r.competition_index, high_bid: r.high_top_of_page_bid, trend_pct: r.trend_12m_pct, seed: r.parent_seed || r.root_seed }));
+    kwDownload(stem + '-compact.csv', new Blob([kwCsv(rows, Object.keys(rows[0] || { keyword: 1 }))], { type: 'text/csv' }));
+  } else if (kind === 'xlsx') {
+    if (!window.XLSX) await new Promise((ok, fail) => { const s = document.createElement('script');
+      s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = ok; s.onerror = fail; document.head.appendChild(s); });
+    const wb = XLSX.utils.book_new(), ws = XLSX.utils.json_to_sheet(full);
+    ws['!autofilter'] = { ref: ws['!ref'] };
+    XLSX.utils.book_append_sheet(wb, ws, 'keywords');
+    XLSX.writeFile(wb, stem + '.xlsx');
+  } else {
+    kwDownload(stem + '-full.csv', new Blob([kwCsv(full, Object.keys(full[0] || { keyword: 1 }))], { type: 'text/csv' }));
+  }
+  if (d.total > d.rows.length) kwLog(`Exported the first ${d.rows.length.toLocaleString()} of ${d.total.toLocaleString()} (sorted as shown).`);
 }
 
 // ── LINKS TAB (Saved Posts swipe file pipeline) ─────────────────────────

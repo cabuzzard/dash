@@ -218,6 +218,22 @@ Adapters: `crexi` + `loopnet` (Apify, live), `manual` (live), `county` + `broker
 (stubs). Add a vertical → `LEAD_VERTICALS`; add a source → `LEAD_SOURCE_ADAPTERS`.
 **Full spec + how to extend + setup checklist: `docs/lead-sourcing.md`.**
 
+## Keywords tab (Google keyword research · 2026-09-25)
+
+Real Google search-demand data via the **Google Ads API v25 `KeywordPlanIdeaService.GenerateKeywordIdeas`**, stored in
+**D1 `keyword-research`** (binding `KWDB`, schema `worker/kw-schema.sql`). Standalone — never writes to Notion.
+- Auth: service-account JWT from secret **`GOOGLE_ADS_SA_KEY`** (Cloud project `keyword-research-509700`, which holds
+  **Basic** access — developer tokens were sunset 2026-09-09). `[vars]` `GOOGLE_ADS_LOGIN_CUSTOMER_ID` / `KW_CUSTOMER_ID`
+  = the Gs2020 manager `3025934670` (it serves keyword ideas directly), `KW_DAILY_BUDGET`. Access token cached in KV `kw:gtoken`.
+- Actions (`handleKeywordAction`, module scope, hooked just before "Unknown action"): `kwStats`, `kwRuns`, `kwStartRun`,
+  `kwStepRun`, `kwStopRun`/`kwResumeRun`, `kwDeleteRun`, `kwResults` (server-side sort/filter/page), `kwExport` (≤20k rows).
+- **Every search is a run.** Quick = depth 0 (one request). Discover = the tab loops `kwStepRun`; **each step makes at most
+  one Google request** and every limit (depth, seeds/level, filters, max requests/keywords, daily budget) is enforced
+  server-side. Cache-first: identical request within 30 days is never re-sent. `kw_frontier` holds depth/parent/root lineage.
+- Same data model as the local CLI at `~/keyword-research` (Python + SQLite) — that tool is a separate, local-only store.
+- Worker deploys with a D1 binding: if the GitHub Action's `CLOUDFLARE_API_TOKEN` lacks **D1 read/edit**, deploy locally
+  with `cd worker && npx wrangler deploy` (OAuth login has d1 write).
+
 ## Cron Scripts panel (Globals tab · ⏰)
 
 Read-only registry of everything on a schedule — the counterpart to the 🤖

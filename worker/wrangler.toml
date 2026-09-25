@@ -5,6 +5,11 @@ no_bundle = true
 
 [vars]
 # Secrets: NOTION_TOKEN, SESSION_TOKEN, ANTHROPIC_API_KEY (set via: npx wrangler secret put ANTHROPIC_API_KEY)
+# Keyword Research tab: secret GOOGLE_ADS_SA_KEY = the service-account JSON (project keyword-research-509700).
+# Customer IDs aren't secret: Gs2020 manager serves GenerateKeywordIdeas directly.
+GOOGLE_ADS_LOGIN_CUSTOMER_ID = "3025934670"
+KW_CUSTOMER_ID = "3025934670"
+KW_DAILY_BUDGET = "1000"
 
 [[kv_namespaces]]
 binding = "TRADES"
@@ -21,3 +26,8 @@ crons = ["0 0 * * *", "15 0 * * *", "*/30 * * * *", "*/5 12-16 * * 1-5", "*/4 * 
 
 [env]
 routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]
+# Keyword Research tab (kw* actions) — D1 store. Schema: kw-schema.sql.
+[[d1_databases]]
+binding = "KWDB"
+database_name = "keyword-research"
+database_id = "4964a64d-e834-4c74-af8b-4157e52602ad"

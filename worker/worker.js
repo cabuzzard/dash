@@ -41559,6 +41559,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
         return json({ success: true, imageUrl });
       }
 
+      // Keyword Research tab (kw* actions) — module-scope handleKeywordAction.
+      const kwResp = await handleKeywordAction(body, env);
+      if (kwResp) return kwResp;
+
       return json({ error: "Unknown action" }, 400);
     } catch (e) {
       return json({ error: e.message }, 500);
@@ -41671,3 +41675,429 @@ Produce all of this by calling the submit_listing tool — do not include any of
 };
 
 
+
+// ════════════════════════════════════════════════════════════════════════
+// KEYWORD RESEARCH (dash "Keywords" tab) — Google Ads API v25
+// KeywordPlanIdeaService.GenerateKeywordIdeas → D1 `keyword-research` (KWDB).
+// Port of the local ~/keyword-research engine (same data model, kw-schema.sql).
+// Auth: service account JWT (secret GOOGLE_ADS_SA_KEY); developer tokens were
+// sunset 2026-09-09 — the Cloud project (keyword-research-509700) holds Basic
+// access. Cache-first: an identical request inside KW_CACHE_DAYS is never re-sent.
+// Discovery is STEP-WISE: kwStartRun seeds a run, the tab calls kwStepRun in a
+// loop and each step makes at most ONE Google request (live progress, no long
+// invocations). Every limit (depth / seeds per level / filters / max requests /
+// max keywords / daily budget) is enforced server-side in kwStepRun.
+// ════════════════════════════════════════════════════════════════════════
+const KW_API = "https://googleads.googleapis.com/v25";
+const KW_CACHE_DAYS = 30;
+const KW_MONTHS = ["JANUARY","FEBRUARY","MARCH","APRIL","MAY","JUNE","JULY","AUGUST","SEPTEMBER","OCTOBER","NOVEMBER","DECEMBER"];
+const KW_BUILTIN = { language: { en: ["1000", "English"] }, geo: { us: ["2840", "United States"] } };
+const KW_DEFAULT_CONFIG = {
+  max_depth: 1, seeds_per_level: 10, seeds_per_request: 1, min_volume: 100, max_volume: 0,
+  min_cpc: 0, max_cpc: 0, competition: [], include: [], exclude: ["jobs", "salary", "hiring", "certification"],
+  max_requests: 25, max_keywords: 10000, rank_by: "volume_x_cpc",
+};
+const KW_SORTS = { keyword: "k.text", vol: "m.avg_monthly_searches", ci: "m.competition_index", lb: "m.low_top_of_page_bid",
+  hb: "m.high_top_of_page_bid", cpc: "m.average_cpc", trend: "m.trend_pct", depth: "f.depth" };
+
+const kwNow = () => new Date().toISOString().replace(/\.\d+Z$/, "Z");
+const kwNorm = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+const kwB64u = bytes => btoa(typeof bytes === "string" ? bytes : String.fromCharCode(...bytes)).replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_");
+const kwSqlStr = s => String(s).replace(/[^A-Za-z0-9 _.-]/g, "");
+
+async function kwGoogleToken(env) {
+  const cached = await env.TRADES.get("kw:gtoken");
+  if (cached) return cached;
+  if (!env.GOOGLE_ADS_SA_KEY) throw new Error("GOOGLE_ADS_SA_KEY secret not set");
+  const sa = JSON.parse(env.GOOGLE_ADS_SA_KEY);
+  const iat = Math.floor(Date.now() / 1000);
+  const aud = sa.token_uri || "https://oauth2.googleapis.com/token";
+  const unsigned = kwB64u(JSON.stringify({ alg: "RS256", typ: "JWT" })) + "." + kwB64u(JSON.stringify({
+    iss: sa.client_email, scope: "https://www.googleapis.com/auth/adwords", aud, iat, exp: iat + 3600 }));
+  const der = Uint8Array.from(atob(sa.private_key.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "")), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
+  const sig = new Uint8Array(await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned)));
+  const r = await fetch(aud, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: "grant_type=" + encodeURIComponent("urn:ietf:params:oauth:grant-type:jwt-bearer") + "&assertion=" + unsigned + "." + kwB64u(sig) });
+  const d = await r.json();
+  if (!d.access_token) throw new Error("Google token exchange failed: " + (d.error_description || d.error || r.status));
+  await env.TRADES.put("kw:gtoken", d.access_token, { expirationTtl: 3300 });
+  return d.access_token;
+}
+
+// One Google Ads REST round-trip, logged to kw_api_calls either way.
+async function kwAds(env, path, body, runId, method) {
+  const token = await kwGoogleToken(env);
+  const r = await fetch(KW_API + "/" + path, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "login-customer-id": String(env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || "").trim(),
+               "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await r.json().catch(() => ({}));
+  let err = null;
+  if (!r.ok) {
+    const e = data.error || (Array.isArray(data) && data[0] && data[0].error) || {};
+    const detail = (e.details || []).flatMap(d => (d.errors || []).map(x => x.message)).join("; ");
+    err = Object.assign(new Error((e.status || r.status) + ": " + (detail || e.message || "request failed")), { gstatus: e.status });
+  }
+  await env.KWDB.prepare("INSERT INTO kw_api_calls(ts, method, ok, error, run_id) VALUES (?,?,?,?,?)")
+    .bind(kwNow(), method, err ? 0 : 1, err ? err.message.slice(0, 500) : null, runId || null).run();
+  if (err) throw err;
+  return data;
+}
+
+const kwCid = env => String(env.KW_CUSTOMER_ID || env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || "").replace(/-/g, "").trim();
+
+async function kwLookup(env, kind, value) {
+  const q = kwNorm(value);
+  if (/^\d+$/.test(q)) return [q, q];
+  if (KW_BUILTIN[kind][q]) return KW_BUILTIN[kind][q];
+  const hit = await env.KWDB.prepare("SELECT ids_json, label FROM kw_lookups WHERE kind=? AND query=?").bind(kind, q).first();
+  if (hit) { const ids = JSON.parse(hit.ids_json || "[]"); if (ids.length) return [ids[0], hit.label]; }
+  let id = null, label = null;
+  if (kind === "language") {
+    const d = await kwAds(env, "customers/" + kwCid(env) + "/googleAds:search", { query:
+      "SELECT language_constant.id, language_constant.name FROM language_constant WHERE language_constant.code = '" + kwSqlStr(q) + "'" },
+      null, "search:language");
+    const lc = d.results && d.results[0] && d.results[0].languageConstant; if (lc) { id = String(lc.id); label = lc.name; }
+  } else if (q.length === 2) {
+    const d = await kwAds(env, "customers/" + kwCid(env) + "/googleAds:search", { query:
+      "SELECT geo_target_constant.id, geo_target_constant.name FROM geo_target_constant WHERE geo_target_constant.country_code = '"
+      + kwSqlStr(q.toUpperCase()) + "' AND geo_target_constant.target_type = 'Country'" }, null, "search:geo");
+    const g = d.results && d.results[0] && d.results[0].geoTargetConstant; if (g) { id = String(g.id); label = g.name; }
+  } else {
+    const d = await kwAds(env, "geoTargetConstants:suggest", { locale: "en", locationNames: { names: [String(value)] } }, null, "suggest:geo");
+    const s = d.geoTargetConstantSuggestions && d.geoTargetConstantSuggestions[0];
+    const g = s && s.geoTargetConstant; if (g) { id = String(g.id); label = g.canonicalName || g.name; }
+  }
+  if (!id) throw new Error("Unknown " + kind + ' "' + value + '"');
+  await env.KWDB.prepare("INSERT OR REPLACE INTO kw_lookups(kind, query, ids_json, label) VALUES (?,?,?,?)")
+    .bind(kind, q, JSON.stringify([id]), label).run();
+  return [id, label];
+}
+
+async function kwMarket(env, body) {
+  const [languageId, languageLabel] = await kwLookup(env, "language", body.lang || "en");
+  const list = (Array.isArray(body.geo) ? body.geo : String(body.geo || "US").split(",")).map(s => String(s).trim()).filter(Boolean).slice(0, 10);
+  const geos = [];
+  for (const g of list) geos.push(await kwLookup(env, "geo", g));
+  return { languageId, languageLabel, geoIds: geos.map(g => g[0]), geoLabels: geos.map(g => g[1]),
+           network: body.network === "GOOGLE_SEARCH_AND_PARTNERS" ? "GOOGLE_SEARCH_AND_PARTNERS" : "GOOGLE_SEARCH" };
+}
+const kwGeoKey = ids => [...ids].sort().join(",");
+
+async function kwRequestKey(req, market) {
+  const payload = JSON.stringify({ k: [...new Set(req.keywords.map(kwNorm))].sort(), u: (req.url || "").trim().toLowerCase().replace(/\/$/, ""),
+    s: (req.site || "").trim().toLowerCase(), l: market.languageId, g: kwGeoKey(market.geoIds), n: market.network });
+  const h = await crypto.subtle.digest("SHA-1", new TextEncoder().encode(payload));
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function kwConvert(r, rank) {
+  const m = r.keywordIdeaMetrics || {};
+  const num = v => (v == null || v === "" ? null : Number(v));
+  const micros = v => (v == null ? null : Math.round(Number(v) / 10000) / 100);
+  const monthly = (m.monthlySearchVolumes || []).map(v => ({ year: Number(v.year), month: KW_MONTHS.indexOf(v.month) + 1, searches: num(v.monthlySearches) }))
+    .filter(v => v.month > 0).sort((a, b) => a.year - b.year || a.month - b.month);
+  const vals = monthly.map(v => v.searches).filter(v => v != null);
+  let trend = null;
+  if (vals.length >= 6) {
+    const a = (vals[0] + vals[1] + vals[2]) / 3, b = vals.slice(-3).reduce((x, y) => x + y, 0) / 3;
+    trend = a ? Math.round((b - a) / a * 100) : null;
+  }
+  const concepts = ((r.keywordAnnotations && r.keywordAnnotations.concepts) || []).map(c => ({ name: c.name, group: (c.conceptGroup && c.conceptGroup.name) || "" }));
+  return { t: kwNorm(r.text), r: rank, v: num(m.avgMonthlySearches),
+    c: m.competition && !["UNSPECIFIED", "UNKNOWN"].includes(m.competition) ? m.competition : null,
+    ci: num(m.competitionIndex), lb: micros(m.lowTopOfPageBidMicros), hb: micros(m.highTopOfPageBidMicros), cpc: micros(m.averageCpcMicros),
+    tr: trend, m: monthly, k: concepts };
+}
+
+// Cache-first single GenerateKeywordIdeas request. Returns { requestId, cached, ideaCount, apiCalls }.
+async function kwIdeasRequest(env, req, market, opts) {
+  const runId = (opts && opts.runId) || null, force = !!(opts && opts.force);
+  const db = env.KWDB;
+  const key = await kwRequestKey(req, market);
+  const seedType = req.site ? "site" : req.url && req.keywords.length ? "keyword_and_url" : req.url ? "url" : "keyword";
+  if (!force) {
+    const cutoff = new Date(Date.now() - KW_CACHE_DAYS * 864e5).toISOString();
+    const hit = await db.prepare("SELECT id, idea_count, created_at FROM kw_requests WHERE request_key=? AND status='ok' AND created_at>=? ORDER BY created_at DESC LIMIT 1")
+      .bind(key, cutoff).first();
+    if (hit) return { requestId: hit.id, cached: true, ideaCount: hit.idea_count, apiCalls: 0, retrievedAt: hit.created_at };
+  }
+  const used = (await db.prepare("SELECT COUNT(*) n FROM kw_api_calls WHERE ts >= ?").bind(kwNow().slice(0, 10)).first()).n;
+  if (used >= Number(env.KW_DAILY_BUDGET || 1000)) throw Object.assign(new Error("Daily call budget reached (" + used + ")"), { budget: true });
+
+  const body = { language: "languageConstants/" + market.languageId, geoTargetConstants: market.geoIds.map(g => "geoTargetConstants/" + g),
+    includeAdultKeywords: false, keywordPlanNetwork: market.network, pageSize: 10000,
+    historicalMetricsOptions: { includeAverageCpc: true }, keywordAnnotation: ["KEYWORD_CONCEPT"] };
+  if (seedType === "site") body.siteSeed = { site: req.site };
+  else if (seedType === "keyword_and_url") body.keywordAndUrlSeed = { url: req.url, keywords: req.keywords.slice(0, 20) };
+  else if (seedType === "url") body.urlSeed = { url: req.url };
+  else body.keywordSeed = { keywords: req.keywords.slice(0, 20) };
+
+  const ts = kwNow();
+  const reqCols = "request_key, seed_type, seeds_json, url, site, language_id, geo_key, network, status";
+  const reqVals = [key, seedType, JSON.stringify(req.keywords), req.url || null, req.site || null, market.languageId, kwGeoKey(market.geoIds), market.network];
+  let data;
+  try {
+    data = await kwAds(env, "customers/" + kwCid(env) + ":generateKeywordIdeas", body, runId, "generateKeywordIdeas");
+  } catch (e) {
+    await db.prepare("INSERT INTO kw_requests(" + reqCols + ", error, run_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(...reqVals, "error", e.message.slice(0, 500), runId, ts).run();
+    throw e;
+  }
+  const ideas = (data.results || []).map((r, i) => kwConvert(r, i + 1)).filter(x => x.t);
+  const ins = await db.prepare("INSERT INTO kw_requests(" + reqCols + ", idea_count, api_calls, run_id, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id")
+    .bind(...reqVals, "ok", ideas.length, 1, runId, ts).first();
+  const requestId = ins.id;
+  const stmts = [];
+  const seeds = req.keywords.map(kwNorm).filter(Boolean);
+  if (seeds.length) {
+    const sj = JSON.stringify(seeds.map(t => ({ t })));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(ts, sj));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_request_seeds(request_id, keyword_id) SELECT ?1, k.id FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(requestId, sj));
+  }
+  for (let i = 0; i < ideas.length; i += 250) {
+    const cj = JSON.stringify(ideas.slice(i, i + 250));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(ts, cj));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_request_results(request_id, keyword_id, rank) SELECT ?1, k.id, json_extract(j.value,'$.r') FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(requestId, cj));
+    stmts.push(db.prepare("INSERT OR REPLACE INTO kw_metrics(keyword_id, provider, language_id, geo_key, network, avg_monthly_searches, competition, competition_index, "
+      + "low_top_of_page_bid, high_top_of_page_bid, average_cpc, trend_pct, monthly_json, concepts_json, request_id, retrieved_at) "
+      + "SELECT k.id, 'google_ads', ?1, ?2, ?3, json_extract(j.value,'$.v'), json_extract(j.value,'$.c'), json_extract(j.value,'$.ci'), "
+      + "json_extract(j.value,'$.lb'), json_extract(j.value,'$.hb'), json_extract(j.value,'$.cpc'), json_extract(j.value,'$.tr'), "
+      + "json_extract(j.value,'$.m'), json_extract(j.value,'$.k'), ?4, ?5 "
+      + "FROM json_each(?6) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')")
+      .bind(market.languageId, kwGeoKey(market.geoIds), market.network, requestId, ts, cj));
+  }
+  if (stmts.length) await db.batch(stmts);
+  return { requestId, cached: false, ideaCount: ideas.length, apiCalls: 1, retrievedAt: ts };
+}
+
+function kwPasses(cfg, r) {
+  const v = r.vol, bid = r.hb || 0, t = r.text;
+  if (v == null || v < (cfg.min_volume || 0) || (cfg.max_volume && v > cfg.max_volume)) return false;
+  if (bid < (cfg.min_cpc || 0) || (cfg.max_cpc && bid > cfg.max_cpc)) return false;
+  if (cfg.competition && cfg.competition.length && !cfg.competition.includes(r.comp || "")) return false;
+  if (cfg.include && cfg.include.length && !cfg.include.some(x => t.includes(String(x).toLowerCase()))) return false;
+  if ((cfg.exclude || []).some(x => x && t.includes(String(x).toLowerCase()))) return false;
+  return true;
+}
+const kwScore = (cfg, r) => cfg.rank_by === "volume" ? (r.vol || 0) : cfg.rank_by === "cpc" ? (r.hb || 0) : (r.vol || 0) * Math.max(r.hb || 0, 0.01);
+
+async function kwRunSummary(env, runId) {
+  const run = await env.KWDB.prepare("SELECT r.*, (SELECT COUNT(*) FROM kw_frontier f WHERE f.run_id = r.id) keywords FROM kw_runs r WHERE r.id = ?")
+    .bind(runId).first();
+  if (run) { try { run.params = JSON.parse(run.params_json); } catch (e) {} delete run.params_json; }
+  return run;
+}
+
+async function kwFinish(env, runId, status, notes) {
+  await env.KWDB.prepare("UPDATE kw_runs SET status=?, notes=?, finished_at=? WHERE id=?").bind(status, notes, kwNow(), runId).run();
+  return { done: true, line: "■ " + notes, run: await kwRunSummary(env, runId) };
+}
+
+// Run the request for `seeds` (rows {id,text,root}) at `depth`; results land at depth+1.
+async function kwStepRequest(env, run, p, seeds, depth, extra) {
+  extra = extra || {};
+  const db = env.KWDB;
+  const req = { keywords: seeds.map(s => s.text), url: extra.url || null, site: extra.site || null };
+  const out = await kwIdeasRequest(env, req, p.market, { runId: run.id });
+  const parent = seeds.length === 1 ? seeds[0].id : null;   // several seeds → Google doesn't attribute; kw_request_seeds keeps all
+  const root = seeds.length ? seeds[0].root : null;
+  const stmts = [
+    db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, parent_keyword_id, root_seed_id, request_id) "
+      + "SELECT ?1, keyword_id, ?2, ?3, ?4, ?5 FROM kw_request_results WHERE request_id = ?5").bind(run.id, depth + 1, parent, root, out.requestId),
+    db.prepare("UPDATE kw_runs SET api_calls = api_calls + ?, requests = requests + 1, cache_hits = cache_hits + ? WHERE id = ?")
+      .bind(out.apiCalls, out.cached ? 1 : 0, run.id),
+  ];
+  if (seeds.length) stmts.push(db.prepare("UPDATE kw_frontier SET expanded = 1, queued = 0 WHERE run_id = ?1 AND keyword_id IN (SELECT value FROM json_each(?2))")
+    .bind(run.id, JSON.stringify(seeds.map(s => s.id))));
+  const res = await db.batch(stmts);
+  const added = (res[0].meta && res[0].meta.changes) || 0;
+  const label = extra.site || [req.keywords.join(", "), extra.url].filter(Boolean).join(" + ");
+  return { line: "L" + depth + " " + label + " — " + out.ideaCount.toLocaleString() + " ideas, " + added.toLocaleString() + " new ["
+    + (out.cached ? "cache" : "1 API call") + "]" };
+}
+
+async function kwStepRun(env, runId) {
+  const db = env.KWDB;
+  const run = await db.prepare("SELECT * FROM kw_runs WHERE id = ?").bind(runId).first();
+  if (!run) throw new Error("run not found");
+  if (run.status !== "running") return { done: true, run: await kwRunSummary(env, runId) };
+  const p = JSON.parse(run.params_json), cfg = p.config;
+  const seen = (await db.prepare("SELECT COUNT(*) n FROM kw_frontier WHERE run_id = ?").bind(runId).first()).n;
+  if (run.api_calls >= cfg.max_requests) return kwFinish(env, runId, "done", "max requests reached (" + cfg.max_requests + ")");
+  if (seen >= cfg.max_keywords) return kwFinish(env, runId, "done", "max keywords reached (" + cfg.max_keywords.toLocaleString() + ")");
+
+  let step;
+  try {
+    if (!run.root_done) {
+      const roots = (await db.prepare("SELECT f.keyword_id id, k.text, f.root_seed_id root FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
+        + "WHERE f.run_id = ? AND f.depth = 0 AND f.expanded = 0 LIMIT 20").bind(runId).all()).results;
+      step = await kwStepRequest(env, run, p, p.site ? [] : roots, 0, { url: p.url, site: p.site });
+      const left = (p.site || p.url) ? 0
+        : (await db.prepare("SELECT COUNT(*) n FROM kw_frontier WHERE run_id = ? AND depth = 0 AND expanded = 0").bind(runId).first()).n;
+      if (!left) await db.prepare("UPDATE kw_runs SET root_done = 1 WHERE id = ?").bind(runId).run();
+    } else {
+      const n = Math.max(1, Math.min(20, cfg.seeds_per_request || 1));
+      const queued = (await db.prepare("SELECT f.keyword_id id, k.text, f.root_seed_id root, f.depth FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
+        + "WHERE f.run_id = ? AND f.queued = 1 AND f.expanded = 0 ORDER BY f.rowid LIMIT ?").bind(runId, n).all()).results;
+      if (queued.length) {
+        step = await kwStepRequest(env, run, p, queued, queued[0].depth);
+      } else {
+        const next = run.level + 1;
+        if (next > cfg.max_depth) return kwFinish(env, runId, "done", "max depth reached (" + cfg.max_depth + ")");
+        const cands = (await db.prepare("SELECT f.keyword_id id, k.text, m.avg_monthly_searches vol, m.competition comp, m.high_top_of_page_bid hb "
+          + "FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
+          + "LEFT JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
+          + "WHERE f.run_id = ? AND f.depth = ? AND f.expanded = 0")
+          .bind(p.market.languageId, kwGeoKey(p.market.geoIds), p.market.network, runId, next).all()).results;
+        const ok = cands.filter(r => kwPasses(cfg, r)).sort((a, b) => kwScore(cfg, b) - kwScore(cfg, a));
+        const chosen = ok.slice(0, cfg.seeds_per_level);
+        await db.batch([
+          db.prepare("UPDATE kw_runs SET level = ? WHERE id = ?").bind(next, runId),
+          db.prepare("UPDATE kw_frontier SET queued = 1 WHERE run_id = ?1 AND keyword_id IN (SELECT value FROM json_each(?2))")
+            .bind(runId, JSON.stringify(chosen.map(c => c.id))),
+        ]);
+        if (!chosen.length) return kwFinish(env, runId, "done", "no keywords at depth " + next + " passed the filters");
+        step = { line: "L" + next + ": " + cands.length.toLocaleString() + " candidates → " + ok.length.toLocaleString() + " pass filters → expanding top "
+          + chosen.length + ": " + chosen.slice(0, 6).map(c => c.text).join(", ") + (chosen.length > 6 ? " …" : "") };
+      }
+    }
+  } catch (e) {
+    if (e.gstatus === "RESOURCE_EXHAUSTED" || /RESOURCE_EXHAUSTED|429/.test(e.message)) {
+      return { retryAfter: 15, line: "rate limited by Google — waiting 15s", run: await kwRunSummary(env, runId) };
+    }
+    if (e.budget) return kwFinish(env, runId, "stopped", e.message);
+    throw e;
+  }
+  return Object.assign({}, step, { done: false, run: await kwRunSummary(env, runId) });
+}
+
+// Shared SELECT for the results table + exports (a run view carries lineage).
+function kwResultsSql(body, run, forExport) {
+  const where = ["1=1"], binds = [];
+  let from;
+  if (run) {
+    const mk = run.params.market;
+    from = "FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
+      + "JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
+      + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id";
+    binds.push(mk.languageId, kwGeoKey(mk.geoIds), mk.network);
+    where.push("f.run_id = ?"); binds.push(run.id);
+  } else {
+    from = "FROM kw_metrics m JOIN kw_keywords k ON k.id = m.keyword_id "
+      + "LEFT JOIN kw_frontier f ON f.keyword_id = m.keyword_id AND f.run_id = (SELECT MAX(run_id) FROM kw_frontier x WHERE x.keyword_id = m.keyword_id) "
+      + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id";
+  }
+  if (body.q) for (const w of String(body.q).toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5)) {
+    if (w.startsWith("-") && w.length > 1) { where.push("k.text NOT LIKE ?"); binds.push("%" + w.slice(1) + "%"); }
+    else { where.push("k.text LIKE ?"); binds.push("%" + w + "%"); }
+  }
+  if (body.minVolume) { where.push("m.avg_monthly_searches >= ?"); binds.push(Number(body.minVolume)); }
+  if (body.maxVolume) { where.push("m.avg_monthly_searches <= ?"); binds.push(Number(body.maxVolume)); }
+  if (body.minBid) { where.push("m.high_top_of_page_bid >= ?"); binds.push(Number(body.minBid)); }
+  const comps = (body.competition || []).filter(c => ["LOW", "MEDIUM", "HIGH"].includes(c));
+  if (comps.length) where.push("m.competition IN (" + comps.map(c => "'" + c + "'").join(",") + ")");
+  const sortCol = KW_SORTS[body.sort] || KW_SORTS.vol;
+  const dir = body.dir === "asc" ? "ASC" : "DESC";
+  const cols = "k.text keyword, m.avg_monthly_searches vol, m.competition comp, m.competition_index ci, m.low_top_of_page_bid lb, "
+    + "m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct trend, f.depth, pk.text parent, rk.text root, m.retrieved_at, m.language_id, m.geo_key"
+    + (forExport ? ", m.monthly_json, m.concepts_json, m.network, f.run_id" : "");
+  const w = where.join(" AND ");
+  return { sql: "SELECT " + cols + " " + from + " WHERE " + w + " ORDER BY " + sortCol + " " + dir + " NULLS LAST, k.text",
+           countSql: "SELECT COUNT(*) n " + from + " WHERE " + w, binds };
+}
+
+async function handleKeywordAction(body, env) {
+  const a = body.action;
+  if (!a || !a.startsWith("kw")) return null;
+  if (!env.KWDB) return json({ error: "KWDB (D1) binding missing" }, 500);
+  const db = env.KWDB;
+
+  if (a === "kwStats") {
+    const one = async sql => (await db.prepare(sql).first()).n;
+    return json({
+      keywords: await one("SELECT COUNT(*) n FROM kw_keywords"),
+      withMetrics: await one("SELECT COUNT(DISTINCT keyword_id) n FROM kw_metrics"),
+      requests: await one("SELECT COUNT(*) n FROM kw_requests WHERE status='ok'"),
+      callsToday: (await db.prepare("SELECT COUNT(*) n FROM kw_api_calls WHERE ts >= ?").bind(kwNow().slice(0, 10)).first()).n,
+      dailyBudget: Number(env.KW_DAILY_BUDGET || 1000),
+      defaults: KW_DEFAULT_CONFIG,
+    });
+  }
+
+  if (a === "kwRuns") {
+    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, "
+      + "(SELECT COUNT(*) FROM kw_frontier f WHERE f.run_id = r.id) keywords FROM kw_runs r ORDER BY r.id DESC LIMIT 100").all()).results;
+    return json({ runs: rows });
+  }
+
+  if (a === "kwStartRun") {
+    const keywords = [...new Set((body.keywords || []).map(kwNorm).filter(Boolean))].slice(0, 200);
+    const url = String(body.url || "").trim() || null;
+    const site = String(body.site || "").trim().replace(/^https?:\/\//, "").replace(/\/.*$/, "") || null;
+    if (!keywords.length && !url && !site) return json({ error: "Give at least one keyword, a URL, or a site" }, 400);
+    if (site && (keywords.length || url)) return json({ error: "A whole-site seed can't be combined with keywords or a URL" }, 400);
+    const c = Object.assign({}, KW_DEFAULT_CONFIG);
+    const bc = body.config || {};
+    for (const k of Object.keys(c)) {
+      const v = bc[k];
+      if (v == null || v === "") continue;
+      if (Array.isArray(c[k])) c[k] = [].concat(v).map(s => String(s).trim()).filter(Boolean);
+      else if (typeof c[k] === "string") c[k] = String(v);
+      else c[k] = Number(v) || 0;
+    }
+    c.max_depth = Math.max(0, Math.min(5, c.max_depth));
+    c.max_requests = Math.max(1, Math.min(500, c.max_requests || 1));
+    c.seeds_per_level = Math.max(1, Math.min(200, c.seeds_per_level || 1));
+    c.competition = c.competition.map(s => s.toUpperCase());
+    const market = await kwMarket(env, body);
+    const name = String(body.name || site || url || keywords.slice(0, 3).join(", ")).slice(0, 120);
+    const params = { keywords, url, site, market, config: c };
+    const ins = await db.prepare("INSERT INTO kw_runs(name, params_json, status, started_at) VALUES (?,?,?,?) RETURNING id")
+      .bind(name, JSON.stringify(params), "running", kwNow()).first();
+    if (keywords.length) {
+      const kj = JSON.stringify(keywords.map(t => ({ t })));
+      await db.batch([
+        db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(kwNow(), kj),
+        db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, root_seed_id, queued) "
+          + "SELECT ?1, k.id, 0, k.id, 1 FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(ins.id, kj),
+      ]);
+    }
+    return json({ run: await kwRunSummary(env, ins.id) });
+  }
+
+  if (a === "kwStepRun") return json(await kwStepRun(env, Number(body.runId)));
+
+  if (a === "kwStopRun" || a === "kwResumeRun") {
+    const st = a === "kwStopRun" ? "stopped" : "running";
+    await db.prepare("UPDATE kw_runs SET status = ?, notes = ? WHERE id = ?").bind(st, st === "stopped" ? "stopped by user" : null, Number(body.runId)).run();
+    return json({ run: await kwRunSummary(env, Number(body.runId)) });
+  }
+
+  if (a === "kwDeleteRun") {   // removes the run + its lineage only; keywords/metrics/cache stay (shared master data)
+    const id = Number(body.runId);
+    await db.batch([db.prepare("DELETE FROM kw_frontier WHERE run_id = ?").bind(id), db.prepare("DELETE FROM kw_runs WHERE id = ?").bind(id)]);
+    return json({ ok: true });
+  }
+
+  if (a === "kwResults" || a === "kwExport") {
+    const run = body.runId ? await kwRunSummary(env, Number(body.runId)) : null;
+    if (body.runId && !run) return json({ error: "run not found" }, 404);
+    const exp = a === "kwExport";
+    const q = kwResultsSql(body, run, exp);
+    const limit = exp ? 20000 : Math.max(1, Math.min(500, Number(body.limit) || 100));
+    const offset = exp ? 0 : Math.max(0, Number(body.offset) || 0);
+    const rows = (await db.prepare(q.sql + " LIMIT ? OFFSET ?").bind(...q.binds, limit, offset).all()).results;
+    const total = (await db.prepare(q.countSql).bind(...q.binds).first()).n;
+    const labels = { "1000": "English", "2840": "United States" };
+    for (const r of (await db.prepare("SELECT ids_json, label FROM kw_lookups").all()).results) {
+      try { labels[JSON.parse(r.ids_json || "[]")[0]] = r.label; } catch (e) {}
+    }
+    return json({ total, rows, labels, run });
+  }
+
+  return json({ error: "Unknown keyword action" }, 400);
+}
