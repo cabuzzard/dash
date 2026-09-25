@@ -1270,6 +1270,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <button class="btn" id="designTestBtn" onclick="testDesignOnGrok()" title="Render one wordless plate on Grok Imagine from the direction + palette shown here (staged or live). Judge it; ⟳ under a plate regenerates Visual Register / Photography Direction / Visual Avoid FROM that image (staged). Writes nothing to Notion.">✨ Test on Grok</button>
         </div>
         <div id="designTestMsg" style="font-size:11px;color:var(--ink3);min-height:14px;margin-bottom:6px;"></div>
+        <div id="approvedPlate" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:6px;border:1px solid var(--fresh);border-radius:8px;background:var(--fresh-bg);"></div>
         <div id="designTests" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:10px;"></div>
         <div class="field"><div class="frow"><span class="fname">Visual Register</span><span class="fbadge fresh" id="badge-visualRegister">live</span><div class="fmeta"><div class="fval" id="f-visualRegister">—</div></div><button class="notebtn" onclick="openNoteModal('design-visualRegister','Visual Register','design')">📝</button></div></div>
         <div class="field"><div class="frow"><span class="fname">Photography Direction</span><span class="fbadge fresh" id="badge-photographyDirection">live</span><div class="fmeta"><div class="fval" id="f-photographyDirection">—</div></div><button class="notebtn" onclick="openNoteModal('design-photographyDirection','Photography Direction','design')">📝</button></div></div>
@@ -2611,6 +2612,7 @@ async function loadDesignTab() {
       fonts: r.fonts || null,
     };
     renderDesignDirection(); renderDesignPalette(); renderDesignFonts();
+    loadApprovedPlate();
   } catch (e) {
     ['f-visualRegister','f-photographyDirection','f-visualAvoid'].forEach(id => { document.getElementById(id).textContent = 'Load failed: ' + e.message; });
   }
@@ -2711,6 +2713,36 @@ async function rebuildImageSpec() {
     if (msg) { msg.style.color = 'var(--fresh)'; msg.textContent = 'Image spec rebuilt from the saved design. Every Grok render now follows it.'; }
   } catch (e) { if (msg) { msg.style.color = '#c0392b'; msg.textContent = 'Saved, but the image spec rebuild failed: ' + e.message; } }
 }
+// ── Approved campaign plate (Research › Approved Plate) — the first Grok
+// throw that every asset-level throw is informed by.
+function renderApprovedPlate(p) {
+  const el = document.getElementById('approvedPlate'); if (!el) return;
+  if (!p || !p.imageUrl) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  el.style.display = 'flex';
+  el.innerHTML = `<a href="${esc(p.imageUrl)}" target="_blank" rel="noopener"><img src="${esc(p.imageUrl)}" alt="approved plate" style="height:64px;border-radius:5px;display:block;"></a>
+    <div style="flex:1;min-width:0;font-size:10.5px;color:var(--ink2);"><b>Approved campaign plate</b>${p.approvedAt ? ' · ' + esc(String(p.approvedAt).slice(0, 10)) : ''}<br><span style="color:var(--ink3);">Every asset-level Grok render matches this look (by way of the Research record).${p.attach === false ? ' Image too large to show the prompt writer; its prompt is used.' : ''}</span></div>
+    <button class="btn" onclick="clearCampaignPlate(this)" style="font-size:10px;">✕ clear</button>`;
+}
+async function loadApprovedPlate() {
+  try { const r = await w('getApprovedPlate', { campaignId: CAMPAIGN_ID }); renderApprovedPlate(r.plate); } catch (e) {}
+}
+async function approveCampaignPlate(imageUrl, prompt, btn) {
+  const msg = document.getElementById('designTestMsg');
+  if (!prompt) { msg.style.color = '#c0392b'; msg.textContent = 'This render has no prompt to store.'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
+  try {
+    const r = await w('saveApprovedPlate', { campaignId: CAMPAIGN_ID, imageUrl, prompt });
+    if (r.error) throw new Error(r.error);
+    renderApprovedPlate(r.plate);
+    msg.style.color = 'var(--fresh)'; msg.textContent = 'Approved. Stored on the Research record; asset-level Grok renders now match this plate\'s look.';
+    btn.textContent = '✓ approved';
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Approve failed: ' + e.message; btn.disabled = false; btn.textContent = o; }
+}
+async function clearCampaignPlate(btn) {
+  btn.disabled = true;
+  try { const r = await w('saveApprovedPlate', { campaignId: CAMPAIGN_ID, clear: true }); if (r.error) throw new Error(r.error); renderApprovedPlate(null); }
+  catch (e) { btn.disabled = false; alert('Clear failed: ' + e.message); }
+}
 // Grok plate → the three direction fields, read off the image (staged).
 async function regenDirectionFromPlate(imageUrl, btn, steer) {
   const msg = document.getElementById('designTestMsg');
@@ -2735,7 +2767,10 @@ function addDesignTestPlate(r, label) {
   const b = document.createElement('button'); b.className = 'btn'; b.style.cssText = 'font-size:10px;padding:3px 6px;';
   b.textContent = '⟳ direction from this'; b.title = 'Regenerate Visual Register / Photography Direction / Visual Avoid from this image. Staged; 💾 Save to keep.';
   b.onclick = () => regenDirectionFromPlate(r.imageUrl, b);
-  cell.appendChild(a); cell.appendChild(b);
+  const ap = document.createElement('button'); ap.className = 'btn'; ap.style.cssText = 'font-size:10px;padding:3px 6px;';
+  ap.textContent = '✓ approve as campaign plate'; ap.title = 'Store this render + its Grok prompt on the Research record. Every asset-level Grok render (offers, single posts, backgrounds, thumbnails) then matches its LOOK.';
+  ap.onclick = () => approveCampaignPlate(r.imageUrl, r.prompt || '', ap);
+  cell.appendChild(a); cell.appendChild(b); cell.appendChild(ap);
   const strip = document.getElementById('designTests'); strip.insertBefore(cell, strip.firstChild);
 }
 async function copyDesignGptPrompt(btn) {

@@ -287,6 +287,28 @@ async function bumpKeywordsVersion(hdr, researchPageId) {
 // one Claude call. Shared by getImageBrief (the Content Hubs card field) and
 // generateOfferImage (the actual Grok render), so the art direction has ONE
 // definition, grounded in the customer.
+// ── Approved Plate: the Grok flywheel's campaign-level result, carried to
+// asset level THROUGH the Research record. The operator approves one
+// campaign-level Grok render (Design tab); it's stored on Research ›
+// "Approved Plate" as JSON {imageUrl, prompt, approvedAt, attach}. Every
+// asset-level Grok prompt then sees it (the prompt + the image itself) as
+// the reference LOOK — never the scene.
+function parseApprovedPlate(txt) {
+  try { const j = JSON.parse(String(txt || "").trim()); return j && j.prompt ? j : null; } catch (e) { return null; }
+}
+function approvedPlateBlock(brief) {
+  const p = brief && brief.approvedPlate;
+  if (!p || !p.prompt) return "";
+  return `\n\nAPPROVED CAMPAIGN PLATE — the campaign-level Grok render the operator approved${p.approvedAt ? ` (${String(p.approvedAt).slice(0, 10)})` : ""}. It is the reference LOOK for this asset: match its light, colour grade, medium and finish, camera feel and mood so the asset reads as the same campaign. It is NOT the scene: choose this asset's own subject and composition; never copy its objects or layout.${p.attach && p.imageUrl ? " The approved image itself is attached." : ""}\nThe prompt that rendered it: ${String(p.prompt).slice(0, 2500)}`;
+}
+// Claude message content: the approved plate image (when attachable) + text.
+function plateContent(text, brief) {
+  const p = brief && brief.approvedPlate;
+  return (p && p.attach && /^https:\/\//.test(p.imageUrl || ""))
+    ? [{ type: "image", source: { type: "url", url: p.imageUrl } }, { type: "text", text }]
+    : text;
+}
+
 async function assembleImageBrief(env, { campaignId, assetId, override }) {
   // `override` = a STAGED (unsaved) brief from the Content Hubs card:
   // { register, photography, avoid, notes, palette, fonts }. When present its
@@ -297,7 +319,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
   const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const norm = s => String(s || "").replace(/-/g, "");
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "" };
+  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null };
 
   let cid = norm(campaignId || "");
   let contentHubSel = "", titleId = "", assetProductId = "";
@@ -332,6 +354,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
       };
       out.guidance = rDesign.notes;
       out.storedSpec = rtp(rp, "Image Spec");   // frozen spec, written by publishHubDesign
+      out.approvedPlate = parseApprovedPlate(rtp(rp, "Approved Plate"));
       if (rDesign.register)    out.facts.push(`VISUAL REGISTER (from research): ${rDesign.register}`);
       if (rDesign.photography) out.facts.push(`PHOTOGRAPHY DIRECTION (from research — the images that belong): ${rDesign.photography}`);
       if (rDesign.avoid)       out.facts.push(`VISUAL AVOID (from research): ${rDesign.avoid}`);
@@ -341,7 +364,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
       // fields are already above; Image Spec is the derived output, so skip it.
       const kwv = rtp(rp, "Keywords");
       if (kwv) out.facts.push(`MAIN KEYWORDS (the root of the campaign — the dominant grounding signal; everything visual must fit what these searchers want): ${kwv.slice(0, 2000)}`);
-      const SKIP = new Set(["Keywords", "Visual Register", "Photography Direction", "Visual Avoid", "Design Notes", "Image Spec", "Palette", "Fonts", "SEO Audit"]);
+      const SKIP = new Set(["Keywords", "Visual Register", "Photography Direction", "Visual Avoid", "Design Notes", "Image Spec", "Approved Plate", "Palette", "Fonts", "SEO Audit"]);
       let budget = 16000;
       for (const [fld, prop] of Object.entries(rp)) {
         if (SKIP.has(fld) || prop?.type !== "rich_text") continue;
@@ -26076,6 +26099,7 @@ Rules:
         const shape = kind === "ig-background"
           ? "a VERTICAL 3:4 background image for an Instagram post (a headline + 1-2 lines of body text get laid OVER it afterward — keep the top 40% and the vertical centre calm and near-empty)"
           : "a SQUARE 1:1 blog thumbnail plate (a headline gets laid over it afterward — keep the top ~45% calm and near-empty)";
+        spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
 
 WHAT IT IS: ${shape}. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
@@ -26091,7 +26115,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
@@ -26155,6 +26179,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
 
+        spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
 
 WHAT IT IS: a WIDE 16:9 banner — this hub's blog post header image (a headline gets laid over it separately on the hub page afterward — never baked into the image). Keep the top ~45% calm and near-empty so type reads cleanly across the full width. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
@@ -26171,7 +26196,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
@@ -26223,6 +26248,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
 
+        spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
 
 WHAT IT IS: a VERTICAL 3:4 (1080x1440) BACKGROUND for a social-post TEMPLATE. A two-line headline sits in the UPPER-LEFT with a one-line body below it, so keep the entire LEFT HALF and the TOP 55% of the frame calm, open and near-empty — a flat wash, soft gradient, or quiet out-of-focus area with no subject or busy detail there. Any subject, object, or texture belongs low and to the right. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
@@ -26235,7 +26261,7 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
@@ -26412,6 +26438,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { /* best-effort — still usable without it */ } }
 
+        spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives.
 
 WHAT THIS IS: a complete, ready-to-publish Instagram post — not a background plate. Brief the image model to design the WHOLE finished creative around this exact copy, verbatim:
@@ -26429,7 +26456,7 @@ Portrait Instagram post, ready to publish.`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: claudePrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
@@ -26546,6 +26573,7 @@ Portrait Instagram post, ready to publish.`;
         const sceneKey = "bgscenes:" + campaignId;
         let recentScenes = [];
         try { recentScenes = (await env.TRADES.get(sceneKey, "json")) || []; } catch (e) {}
+        spec += approvedPlateBlock(brief);
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine.
 
 OUTPUT FORMAT — exactly two lines, nothing else:
@@ -26572,7 +26600,7 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
@@ -28139,6 +28167,44 @@ Call submit_product_stack_proposals with your result.`;
       // (a staged preview, or a hand-edited spec) as the stored spec every
       // offer plate + the card then reads. Upstream-only counterpart to the
       // spec-freeze that Push to hub does.
+      // -- saveApprovedPlate / getApprovedPlate: the campaign-level Grok
+      // throw the operator approved → Research › "Approved Plate" (JSON), read
+      // by assembleImageBrief so every asset-level Grok throw is informed by
+      // it. attach=false when the image is too big to hand Claude by URL.
+      // { campaignId, imageUrl, prompt } / { campaignId }  ·  clear: {campaignId, clear:true}
+      if (body.action === "saveApprovedPlate" || body.action === "getApprovedPlate") {
+        const campaignId = String(body.campaignId || "");
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const scoreR = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+        const rec = rows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0];
+        if (!rec) return json({ error: "No Research record for this campaign" }, 404);
+        if (body.action === "getApprovedPlate") return json({ ok: true, plate: parseApprovedPlate(rtx(rec, "Approved Plate")) });
+        let text = "";
+        if (!body.clear) {
+          const imageUrl = String(body.imageUrl || "").trim(), prompt = String(body.prompt || "").trim();
+          if (!/^https:\/\//.test(imageUrl) || prompt.length < 40) return json({ error: "imageUrl and prompt required" }, 400);
+          let attach = true;
+          try { const h = await fetch(imageUrl, { method: "HEAD" }); const n = +(h.headers.get("content-length") || 0); if (!h.ok || n > 4_500_000) attach = false; } catch (e) { attach = false; }
+          text = JSON.stringify({ imageUrl, prompt: prompt.slice(0, 6000), approvedAt: new Date().toISOString(), attach });
+        }
+        try {
+          const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
+          if (!db.properties?.["Approved Plate"]) await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
+            method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Approved Plate": { rich_text: {} } } }),
+          });
+        } catch (e) {}
+        const chunk = t => { const o = []; for (let i = 0; i < t.length; i += 1900) o.push({ text: { content: t.slice(i, i + 1900) } }); return o; };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${rec.id.replace(/-/g, "")}`, {
+          method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Approved Plate": { rich_text: chunk(text) } } }),
+        });
+        if (!resp.ok) { const rj = await resp.json().catch(() => ({})); return json({ error: rj.message || `Notion ${resp.status}` }, 502); }
+        return json({ ok: true, plate: parseApprovedPlate(text) });
+      }
+
       if (body.action === "saveImageSpec") {
         const { campaignId, text } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
