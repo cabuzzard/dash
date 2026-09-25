@@ -3168,7 +3168,7 @@
       </div>
       <div id="lcBufferChanWrap" style="display:none;margin-top:10px;">
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
-          <span style="color:var(--text3);">Post to channel:</span>
+          <span style="color:var(--text3);" title="Send to Buffer picks the channel from each asset's platform (Instagram asset → Instagram channel). This default is used only when an asset has no platform set.">Default channel (assets with no platform):</span>
           <select id="lcBufferChan" class="modal-input" style="flex:1;min-width:180px;margin:0;"><option value="">— load channels —</option></select>
           <button class="btn btn-secondary" onclick="lcBufferLoadChannels()">↻ Load</button>
           <button class="btn btn-secondary" onclick="lcBufferSetChannel()">Use this channel</button>
@@ -7231,7 +7231,7 @@ function renderPlatformMatrix() {
           const b = platBufferStatus[c.id] || {};
           const key = document.createElement('div');
           key.style.cssText = 'font-size:10px;margin-top:2px;white-space:nowrap;color:' + (b.saved ? '#4cff4c' : 'var(--text3)') + ';';
-          key.textContent = b.saved ? '🔑 key' + (b.channel ? ' · ' + (b.channel.service || 'channel') : ' · no channel') : '🔑 no key';
+          key.textContent = b.saved ? '🔑 key' + (b.channel ? ' · default ' + (b.channel.service || 'channel') : '') : '🔑 no key';
           key.title = b.saved ? 'Buffer API key saved (…' + (b.last4 || '') + ')' + (b.channel ? ' → ' + (b.channel.name || b.channel.id) : ' — pick a channel') : 'Click to add this campaign\'s Buffer API key';
           td.appendChild(key);
         }
@@ -7320,7 +7320,7 @@ function lcBufferRender(msg) {
   const st = document.getElementById('lcBufferStatus');
   st.innerHTML = b.saved
     ? `<span style="color:#4cff4c;">✓ Key saved</span> <span style="color:var(--text3);">(…${esc(b.last4 || '')}${b.orgs && b.orgs.length ? ' · ' + esc(b.orgs.join(', ')) : ''} · ${esc(String(b.saved).slice(0, 10))})</span>`
-      + (b.channel ? `<br><span style="color:var(--text3);">Channel:</span> ${esc(b.channel.name || b.channel.id)} ${b.channel.service ? '<span style="color:var(--text3);">(' + esc(b.channel.service) + ')</span>' : ''}` : '<br><span style="color:#ffb020;">No channel picked yet</span>')
+      + '<br><span style="color:var(--text3);">Each asset posts to the channel matching its platform.</span>' + (b.channel ? ` <span style="color:var(--text3);">Default (no platform):</span> ${esc(b.channel.name || b.channel.id)}` : '')
     : '<span style="color:var(--text3);">No key yet. Paste this campaign\'s Buffer key below — it\'s checked with Buffer before saving.</span>';
   document.getElementById('lcBufferKey').value = '';
   document.getElementById('lcBufferKey').placeholder = b.saved ? 'Paste a new key to replace it' : 'Paste key from publish.buffer.com/settings/api';

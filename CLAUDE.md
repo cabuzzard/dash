@@ -260,7 +260,10 @@ KV `buffer:tok:<campaignId>` (secret **`BUFFER_KEY_ENC`**; only last-4 + org nam
 re-pasting. **Sending:** microsite Publish modal → 📤 Send to Buffer → `sendAssetToBuffer` (always a Buffer DRAFT): carousel =
 slide-NN.png under Design Link; video types (`/video|reel|short|explainer|avatar/`) = asset `Video URL` (public permanent
 https MP4 — Buffer fetches it at publish time); everything else = `Post Image` (also shown for offers now). Caption = the
-modal's Post Caption + Hashtags. `sendCarouselToBuffer` (carousel review page) still exists. **Video hosting:** R2 bucket `dash-media` (binding `MEDIA`,
+modal's Post Caption + Hashtags. **Channel = per asset:** one Buffer account holds ≤1 channel per platform, so the asset's
+`Platform Name` picks it (`bufferPickChannel`: Instagram asset → the account's instagram channel); the Publish modal shows it
+in a dropdown (`bufferChannelsForAsset`) you can override. An asset made for a platform the account lacks is **never
+rerouted** — it errors. The Platforms-tab channel (`buffer:chan:<id>`) is only the default for assets with no social platform. `sendCarouselToBuffer` (carousel review page) still exists. **Video hosting:** R2 bucket `dash-media` (binding `MEDIA`,
 public r2.dev base in `[vars] MEDIA_PUBLIC_BASE`); Publish modal ⬆ Upload → raw POST `?upload=video&assetId=&name=` with
 `X-Hermes-Token` (handled right after OPTIONS, before JSON parsing; streams to `videos/<assetId>/…`, ≤100 MB) → sets `Video URL`.
 

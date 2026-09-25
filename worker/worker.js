@@ -977,6 +977,31 @@ async function bufferGql(token, query) {
   return data.data;
 }
 
+// One Buffer account per campaign holds at most one channel per platform, so an asset's
+// "Platform Name" picks its channel unambiguously (Instagram asset → the IG channel).
+const BUFFER_SERVICE_BY_PLATFORM = { instagram: "instagram", tiktok: "tiktok", linkedin: "linkedin", youtube: "youtube",
+  "x / twitter": "twitter", twitter: "twitter", x: "twitter", facebook: "facebook", pinterest: "pinterest", threads: "threads",
+  bluesky: "bluesky", mastodon: "mastodon" };
+async function bufferChannels(token) {
+  const orgs = ((await bufferGql(token, "query { account { organizations { id name } } }")).account || {}).organizations || [];
+  const out = [];
+  for (const o of orgs) {
+    const d = await bufferGql(token, `query { channels(input: { organizationId: ${JSON.stringify(o.id)} }) { id name displayName service } }`);
+    for (const c of (d && d.channels) || []) out.push({ id: c.id, name: c.displayName || c.name || c.id, service: String(c.service || "").toLowerCase(), organizationName: o.name });
+  }
+  return out;
+}
+function bufferPickChannel(channels, platformName, fallbackId) {
+  const svc = BUFFER_SERVICE_BY_PLATFORM[String(platformName || "").trim().toLowerCase()];
+  const byPlatform = svc ? channels.find(c => c.service === svc) : null;
+  if (byPlatform) return { channel: byPlatform, how: "platform" };
+  if (svc) return { channel: null, how: "missing-platform" };   // made for a platform this Buffer account lacks — never reroute it
+  const fb = fallbackId ? channels.find(c => c.id === fallbackId) : null;
+  if (fb) return { channel: fb, how: "default" };
+  if (channels.length === 1) return { channel: channels[0], how: "only" };
+  return { channel: null, how: svc ? "missing-platform" : "none" };
+}
+
 // Resolves a campaign's own Buffer account credentials. Preferred: the encrypted
 // key saved from the dashboard (KV). Fallback: the campaign's 🔑 Logins record
 // (Name containing "buffer", Campaign relation matching) with plain Notion text
@@ -38191,6 +38216,25 @@ ${assemblyManifest}`;
       // credential to hold here). Carousel only for now — video assets
       // would need a different "assets" shape (video, not image) this
       // hasn't been built/tested against yet.
+      // ── bufferChannelsForAsset ── Publish modal channel dropdown: the campaign's Buffer
+      // channels + which one this asset's platform maps to (or the campaign default).
+      if (body.action === "bufferChannelsForAsset") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const dashId = raw => { const x = raw.replace(/-/g, ""); return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`; };
+        const page = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+        if (!page.properties) return json({ error: page.message || "Asset not found" }, 404);
+        const campaignId = page.properties["Campaign"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
+        const platform = page.properties["Platform Name"]?.select?.name || "";
+        if (!campaignId) return json({ error: "Asset is missing its Campaign relation" }, 400);
+        const login = await resolveCampaignBufferLogin(campaignId, dashId, env);
+        if (!login || !login.token) return json({ channels: [], platform, noKey: true });
+        let channels;
+        try { channels = await bufferChannels(login.token); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
+        const pick = bufferPickChannel(channels, platform, login.channelId);
+        return json({ channels, platform, suggestedId: pick.channel ? pick.channel.id : "", how: pick.how });
+      }
+
       // ── sendAssetToBuffer ── Publish modal "📤 Send to Buffer" for any asset type.
       // Always a DRAFT in the campaign's Buffer queue (never auto-publishes). Media by type:
       // carousel → slide-NN.png files under its Design Link (same as sendCarouselToBuffer);
@@ -38243,16 +38287,26 @@ ${assemblyManifest}`;
 
         const login = await resolveCampaignBufferLogin(campaignId, dashId, env);
         if (!login || !login.token) return json({ error: "No Buffer API key for this campaign yet — dashboard Platforms tab → this campaign's buffer cell → 🔑 Buffer API key." }, 400);
-        if (!login.channelId) return json({ error: "No Buffer channel picked for this campaign yet — Platforms tab → buffer cell → Post to channel." }, 400);
+        let channelId = String(body.channelId || "").trim(), how = "chosen";
+        if (!channelId) {
+          let channels;
+          try { channels = await bufferChannels(login.token); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
+          const platform = P["Platform Name"]?.select?.name || "";
+          const pick = bufferPickChannel(channels, platform, login.channelId);
+          if (!pick.channel) return json({ error: pick.how === "missing-platform"
+            ? `This asset is for ${platform}, but this campaign's Buffer account has no ${platform} channel — connect it in Buffer, or pick a channel in the dropdown.`
+            : "Pick a Buffer channel in the dropdown (this asset has no platform set, and the campaign has no default channel)." }, 400);
+          channelId = pick.channel.id; how = pick.how;
+        }
         const toGql = v => Array.isArray(v) ? "[" + v.map(toGql).join(", ") + "]"
           : v && typeof v === "object" ? "{ " + Object.entries(v).map(([k, x]) => k + ": " + toGql(x)).join(", ") + " }" : JSON.stringify(v);
-        const mutation = `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(login.channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)} }) {
+        const mutation = `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)} }) {
           ... on PostActionSuccess { post { id } } ... on MutationError { message } } }`;
         let data;
         try { data = await bufferGql(login.token, mutation); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
         const res = data && data.createPost;
         if (res && res.message) return json({ error: "Buffer rejected the post: " + res.message }, 502);
-        return json({ success: true, draft: true, kind, bufferPostId: res && res.post && res.post.id });
+        return json({ success: true, draft: true, kind, channelId, channelHow: how, bufferPostId: res && res.post && res.post.id });
       }
 
       if (body.action === "sendCarouselToBuffer") {
