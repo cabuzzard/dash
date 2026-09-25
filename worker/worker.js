@@ -26431,16 +26431,37 @@ Portrait Instagram post, ready to publish.`;
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
 
-        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
+        // VARIETY RUBRIC (2026-09-25): a bulk run of single posts used to come back as six takes on the
+        // same "calm desk + notebook" scene — every call saw the same strict spec and only the title.
+        // Now each background is driven by ITS post's message (Body = headline + accent + body), and
+        // the campaign's recent scenes (KV bgscenes:<campaignId>) are passed so a batch never repeats.
+        const postText = (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim().slice(0, 700);
+        const contentType = (assetTitle.match(/—\s*([^—]+)$/) || [])[1]?.trim() || "";
+        const sceneKey = "bgscenes:" + campaignId;
+        let recentScenes = [];
+        try { recentScenes = (await env.TRADES.get(sceneKey, "json")) || []; } catch (e) {}
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine.
+
+OUTPUT FORMAT — exactly two lines, nothing else:
+SCENE: <12 words max — main subject + setting/surface + camera viewpoint>
+PROMPT: <the Grok prompt: 60-110 words, one vivid paragraph>
 
 WHAT IT IS: a VERTICAL 3:4 wordless BACKGROUND for a social post — real type gets set over it separately afterward in real fonts, so keep the entire LEFT HALF and the TOP 55% of the frame calm, open and near-empty (a flat wash, soft gradient, or quiet out-of-focus area, no subject or busy detail there). Any subject, object, or texture belongs low and to the right. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
 
 Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
 ${spec}
 
-THIS POST IS ABOUT (pick a real scene from the spec's world that fits — do NOT put its words in the image): ${assetTitle}
+THIS POST'S MESSAGE (do NOT put its words in the image):
+${postText || assetTitle}${contentType ? `\nPOST TYPE: ${contentType}` : ""}
 
-End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+VARIETY RUBRIC — every post in this campaign must look like its own photograph, not a variation of the last one:
+1. MESSAGE → METAPHOR: turn this post's core idea into ONE concrete, photographable visual metaphor or situation that a viewer would connect to the message (e.g. "more leads into a broken pipe" → water escaping a cracked pipe joint; "five dashboards tell five stories" → five mismatched gauges or screens; "every handoff is where leads go quiet" → a dropped relay baton, an unplugged cable). Generic workspace props (desk, notebook, pen, laptop, mug) only if the message is literally about them.
+2. NO REPEATS: ${recentScenes.length ? `this campaign's recent backgrounds were —\n${recentScenes.map(r => "   • " + r.scene).join("\n")}\n   Do NOT reuse any of their main subjects, settings/surfaces, or viewpoints.` : "(no recent backgrounds yet)"}
+3. VARY THE CAMERA: pick a viewpoint unlike the recent ones — macro close-up, overhead flat-lay, low angle, wide environmental, through a doorway, shallow-focus detail.
+4. STAY IN THE BRAND: the spec's palette hexes, light, mood and its "Never" list still apply. Its example subjects are a starting vocabulary, not a limit.
+5. KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
+
+End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -26449,7 +26470,11 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        const prompt = (aiData.content?.[0]?.text || "").trim();
+        const raw = (aiData.content?.[0]?.text || "").trim();
+        const sceneM = raw.match(/^\s*SCENE:\s*(.+)$/mi);
+        const promptM = raw.match(/PROMPT:\s*([\s\S]+)$/i);
+        const prompt = (promptM ? promptM[1] : raw.replace(/^\s*SCENE:.*$/mi, "")).trim();
+        const scene = (sceneM ? sceneM[1] : prompt.slice(0, 90)).trim().slice(0, 140);
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
 
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
@@ -26463,7 +26488,8 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         const imageUrl = xd.data?.[0]?.url || "";
         if (!imageUrl) return json({ error: "xAI returned no image URL: " + xdRaw.slice(0, 300) }, 502);
 
-        return json({ imageUrl, prompt, kind: "post-image", model: "grok-imagine-image-2.0", sync: true });
+        try { await env.TRADES.put(sceneKey, JSON.stringify([...recentScenes, { scene, at: new Date().toISOString(), assetId }].slice(-12))); } catch (e) {}
+        return json({ imageUrl, prompt, scene, kind: "post-image", model: "grok-imagine-image-2.0", sync: true });
       }
 
       // -- saveOfferImage (rehost a finished image on GitHub Pages and write
