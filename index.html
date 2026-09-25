@@ -4903,15 +4903,98 @@ function stopTradesAutoRefresh() {
   if (_tradesRefreshTimer) { clearInterval(_tradesRefreshTimer); _tradesRefreshTimer = null; }
 }
 
-// ── KEYWORDS TAB (Google keyword research — worker kw* actions, D1) ──────
+// ── KEYWORDS TAB (Google keyword research — worker kw* actions, D1 + KV snapshots) ──
 // Quick = a depth-0 run (one GenerateKeywordIdeas request). Discover = the same
 // run with depth ≥1: kwLoop calls kwStepRun until the worker says done; each step
 // is at most one Google request and all limits are enforced server-side.
-const KW = { runId: null, view: [], selected: new Set(), running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100, total: 0, labels: {} };
+// VIEWING is free: each run is fetched once as a KV snapshot (kwSnapshot) and cached
+// here; filtering, multi-sort, paging, the intent map, run-combining and exports all run
+// in the browser (kwCore*). D1 bills every row scanned — never query it per click.
+const KW = { runId: null, view: [], selected: new Set(), running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100,
+  total: 0, labels: {}, snaps: {}, runsList: [], rows: [], meta: null, order: [] };
 const kwSleep = ms => new Promise(r => setTimeout(r, ms));
 const kwNum = v => v == null ? '–' : Number(v).toLocaleString();
 const kwMoney = v => v == null ? '–' : '$' + Number(v).toFixed(2);
 
+// ---- pure data core (no DOM) --------------------------------------------------------
+function kwCoreDecode(snap) {
+  const c = snap.cols, ix = Object.fromEntries(c.map((k, i) => [k, i])), id = snap.run.id;
+  return snap.rows.map(r => {
+    const o = {}; for (const k of c) o[k] = r[ix[k]];
+    o.runs = [id];
+    return o;
+  });
+}
+// One row per keyword × market; shallowest appearance supplies depth/parent/root (ties → lowest run id);
+// metrics from the most recently retrieved copy; `runs` = every selected run that found it.
+function kwCoreMerge(snaps) {
+  const by = new Map();
+  for (const snap of [...snaps].sort((a, b) => a.run.id - b.run.id)) {
+    for (const r of kwCoreDecode(snap)) {
+      const key = r.keyword + '|' + r.lang + '|' + r.geo + '|' + r.network;
+      const cur = by.get(key);
+      if (!cur) { by.set(key, r); continue; }
+      cur.runs.push(snap.run.id);
+      if ((r.depth ?? 99) < (cur.depth ?? 99)) { cur.depth = r.depth; cur.parent = r.parent; cur.root = r.root; }
+      if ((r.retrieved || '') > (cur.retrieved || '')) for (const k of ['vol', 'comp', 'ci', 'lb', 'hb', 'cpc', 'trend', 'intent', 'local', 'brand', 'concepts', 'monthly', 'retrieved']) cur[k] = r[k];
+    }
+  }
+  return [...by.values()];
+}
+function kwCoreFilter(rows, f, skipIntent) {
+  const words = String(f.q || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+  const minV = Number(f.minVolume) || 0, minB = Number(f.minBid) || 0;
+  const comps = f.competition || [], intents = skipIntent ? [] : (f.intent || []);
+  return rows.filter(r => {
+    for (const w of words) { if (w.startsWith('-') && w.length > 1) { if (r.keyword.includes(w.slice(1))) return false; } else if (!r.keyword.includes(w)) return false; }
+    if (minV && !((r.vol || 0) >= minV)) return false;
+    if (minB && !((r.hb || 0) >= minB)) return false;
+    if (comps.length && !comps.includes(r.comp)) return false;
+    if (intents.length && !intents.includes(r.intent)) return false;
+    if (f.local === 'only' && !r.local) return false; if (f.local === 'exclude' && r.local) return false;
+    if (f.brand === 'only' && !r.brand) return false; if (f.brand === 'exclude' && r.brand) return false;
+    return true;
+  });
+}
+function kwCoreSort(rows, sorts) {
+  const val = (r, c) => c === 'keyword' ? r.keyword : r[c];
+  return [...rows].sort((a, b) => {
+    for (const { col, dir } of sorts) {
+      const x = val(a, col), y = val(b, col);
+      if (x == null && y == null) continue;
+      if (x == null) return 1; if (y == null) return -1;          // nulls last either direction
+      const d = typeof x === 'string' ? x.localeCompare(y) : x - y;
+      if (d) return dir === 'asc' ? d : -d;
+    }
+    return a.keyword.localeCompare(b.keyword);
+  });
+}
+const KW_DIM_SKIP = /^(non-brands|others|other brands)$/i;
+function kwCoreIntentMap(rows, dimension) {
+  const intents = {}, tops = {}, dims = {};
+  for (const r of rows) {
+    const k = r.intent || 'general';
+    const a = intents[k] || (intents[k] = { intent: k, n: 0, vol: 0, bidSum: 0, bidN: 0 });
+    a.n++; a.vol += r.vol || 0; if (r.hb != null) { a.bidSum += r.hb; a.bidN++; }
+    (tops[k] || (tops[k] = [])).push(r);
+    for (const [g] of r.concepts || []) if (g && !KW_DIM_SKIP.test(g)) dims[g] = (dims[g] || 0) + 1;
+  }
+  const dimList = Object.entries(dims).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([g, n]) => ({ g, n }));
+  const dim = dimension && dims[dimension] ? dimension : (dimList[0] && dimList[0].g) || null;
+  const cross = {};
+  if (dim) for (const r of rows) for (const [g, name] of r.concepts || []) if (g === dim) {
+    const key = name + '|' + (r.intent || 'general');
+    const c = cross[key] || (cross[key] = { value: name, intent: r.intent || 'general', n: 0, vol: 0 });
+    c.n++; c.vol += r.vol || 0;
+  }
+  return {
+    intents: Object.values(intents).map(a => ({ intent: a.intent, n: a.n, vol: a.vol, bid: a.bidN ? Math.round(a.bidSum / a.bidN * 100) / 100 : null })),
+    tops: Object.entries(tops).flatMap(([k, rs]) => rs.sort((a, b) => (b.vol || 0) - (a.vol || 0)).slice(0, 6).map(r => ({ intent: k, keyword: r.keyword, vol: r.vol }))),
+    dims: dimList, dimension: dim, cross: Object.values(cross),
+  };
+}
+
+// ---- UI ----------------------------------------------------------------------------
 function kwModeChanged() {
   const disc = document.querySelector('input[name=kwMode]:checked').value === 'discover';
   document.getElementById('kwDiscoverOpts').style.display = disc ? '' : 'none';
@@ -4927,18 +5010,19 @@ async function loadKeywordsTab() { await kwRefresh(); }
 async function kwRefresh() {
   try {
     const s = await call('kwStats');
+    KW.meta = s.intentMeta || KW.meta; KW.order = s.intentOrder || KW.order;
     document.getElementById('kwStats').textContent =
       `${kwNum(s.keywords)} keywords in the store · ${kwNum(s.requests)} Google requests cached · API calls today ${s.callsToday} / ${s.dailyBudget}`;
   } catch (e) { document.getElementById('kwStats').textContent = 'Could not load stats: ' + e.message; }
   await kwLoadRuns();
-  await kwLoadIntentMap();
-  await kwLoadResults(KW.offset);
+  await kwLoadView();
 }
 
 async function kwLoadRuns() {
   const el = document.getElementById('kwRuns');
   try {
-    const { runs } = await call('kwRuns');
+    const d = await call('kwRuns');
+    KW.runsList = d.runs || []; KW.labels = d.labels || KW.labels;
     const on = id => id === null ? !KW.view.length : KW.view.includes(id);
     const row = (id, name, meta, status) => `<div class="kw-run${on(id) ? ' active' : ''}" onclick="kwSelectRun(${id === null ? 'null' : id})" title="${id === null ? 'Show every keyword in the store' : 'Click = view this run alone · checkbox = add to a combined set'}">
         ${id !== null ? `<input type="checkbox" ${on(id) ? 'checked' : ''} onclick="event.stopPropagation();kwToggleRun(${id})" title="Combine with other checked runs">` : '<span style="width:13px;"></span>'}
@@ -4947,109 +5031,130 @@ async function kwLoadRuns() {
         ${status ? `<span class="kw-st kw-st-${status}">${status}</span>` : ''}
         ${id !== null ? `<span class="kw-x" title="Delete run (keywords stay in the store)" onclick="event.stopPropagation();kwDeleteRun(${id})">✕</span>` : ''}
       </div>`;
-    el.innerHTML = row(null, 'All keywords in the store', '', '') + runs.map(r =>
-      row(r.id, `#${r.id} ${r.name}`, `${kwNum(r.keywords)} kw · ${r.api_calls} calls · ${(r.started_at || '').slice(0, 10)}${r.notes ? ' · ' + esc(r.notes) : ''}`, r.status)).join('');
+    el.innerHTML = row(null, 'All keywords in the store', '', '') + KW.runsList.map(r =>
+      row(r.id, `#${r.id} ${r.name}`, `${r.keywords == null ? '–' : kwNum(r.keywords)} kw · ${r.api_calls} calls · ${(r.started_at || '').slice(0, 10)}${r.notes ? ' · ' + esc(r.notes) : ''}`, r.status)).join('');
   } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
 }
 
 function kwSelectRun(id) { KW.view = id === null ? [] : [id]; kwViewChanged(); }
 function kwToggleRun(id) { KW.view = KW.view.includes(id) ? KW.view.filter(x => x !== id) : [...KW.view, id]; kwViewChanged(); }
-function kwViewChanged() { KW.offset = 0; kwLoadRuns(); kwLoadIntentMap(); kwLoadResults(0); }
+function kwViewChanged() { KW.offset = 0; kwLoadRuns(); kwLoadView(); }
+
+// Fetch (once) the snapshots the current view needs, merge, then render locally.
+async function kwLoadView() {
+  const el = document.getElementById('kwResults');
+  const ids = KW.view.length ? KW.view : KW.runsList.map(r => r.id);
+  const need = ids.filter(id => !KW.snaps[id]);
+  if (need.length) el.innerHTML = `<div class="loading-wrap"><div class="spinner"></div>Loading ${need.length} run${need.length > 1 ? 's' : ''}…</div>`;
+  try {
+    for (const id of need) {
+      const snap = await call('kwSnapshot', { runId: id });
+      if (snap.run.status !== 'running') KW.snaps[id] = snap;   // finished runs never change — keep
+      else KW.snaps['live:' + id] = snap;
+    }
+  } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; return; }
+  const snaps = ids.map(id => KW.snaps[id] || KW.snaps['live:' + id]).filter(Boolean);
+  KW.viewSnaps = snaps;
+  KW.rows = snaps.length === 1 ? kwCoreDecode(snaps[0]) : kwCoreMerge(snaps);
+  kwLoadIntentMap();
+  kwLoadResults(KW.offset);
+}
 
 async function kwDeleteRun(id) {
   await call('kwDeleteRun', { runId: id });
+  delete KW.snaps[id];
   KW.view = KW.view.filter(x => x !== id);
   kwRefresh();
 }
 
 function kwFilters() {
   return {
-    runIds: KW.view, q: document.getElementById('kwQ').value.trim(),
+    q: document.getElementById('kwQ').value.trim(),
     minVolume: document.getElementById('kwMinVol').value || null, minBid: document.getElementById('kwMinBid').value || null,
-    competition: [...document.querySelectorAll('.kwf-comp:checked')].map(c => c.value), sorts: KW.sorts,
+    competition: [...document.querySelectorAll('.kwf-comp:checked')].map(c => c.value),
     intent: document.getElementById('kwIntentF').value ? [document.getElementById('kwIntentF').value] : [],
     local: document.getElementById('kwLocalF').value || null, brand: document.getElementById('kwBrandF').value || null,
   };
 }
+const kwIntentLabel = k => (KW.meta && KW.meta[k] && KW.meta[k].label) || k || '–';
 
-async function kwLoadResults(offset) {
+// Local render — no network. (Name kept: every sort/filter/page control calls it.)
+function kwLoadResults(offset) {
   KW.offset = offset || 0;
   const el = document.getElementById('kwResults');
-  try {
-    const d = await call('kwResults', { ...kwFilters(), limit: KW.limit, offset: KW.offset });
-    KW.total = d.total; KW.labels = d.labels || {};
-    const mk = d.run?.params?.market;
-    const multi = (d.runs || []).length > 1;
-    document.getElementById('kwResTitle').textContent = d.run
-      ? `— #${d.run.id} ${d.run.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}`
-      : multi ? `— ${d.runs.length} runs combined (${d.runs.map(r => '#' + r.id).join(', ')}) · duplicates merged` : '— all keywords';
-    const cols = [['keyword', 'Keyword'], ['intent', 'Intent'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
-    KW.cols = cols;
-    const mark = k => { const i = KW.sorts.findIndex(x => x.col === k); if (i < 0) return '';
-      return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
-    KW.pageRows = d.rows.map(r => r.keyword);
-    const allOn = KW.pageRows.length && KW.pageRows.every(k => KW.selected.has(k));
-    const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${k === 'keyword' || k === 'intent' ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
-      + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
-    const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
-    const body = d.rows.map(r => `<tr>
-        <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
-        <td style="text-align:left;">${esc(r.keyword)}${r.is_local ? ' <span class="kw-chip">local</span>' : ''}${r.is_brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
-        <td style="text-align:left;"><span class="kw-chip">${esc((KW.meta && KW.meta[r.intent] && KW.meta[r.intent].label) || r.intent || '–')}</span></td><td>${kwNum(r.vol)}</td>
-        <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
-        <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
-        <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td>${multi ? `<td style="text-align:left;color:var(--text3);">${esc(String(r.run_list || '').split(',').map(x => '#' + x).join(' '))}</td>` : ''}</tr>`).join('');
-    kwRenderSortBar();
-    kwRenderSendBar();
-    el.innerHTML = d.rows.length ? `<table class="kw-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
-      : '<div style="font-size:12px;color:var(--text3);padding:8px 0;">No keywords yet — run a search above.</div>';
-    const last = Math.min(KW.offset + KW.limit, KW.total);
-    document.getElementById('kwPager').innerHTML = KW.total ? `${kwNum(KW.offset + 1)}–${kwNum(last)} of ${kwNum(KW.total)}
-      <button class="kw-btn" ${KW.offset ? '' : 'disabled'} onclick="kwLoadResults(${Math.max(0, KW.offset - KW.limit)})">‹ Prev</button>
-      <button class="kw-btn" ${last < KW.total ? '' : 'disabled'} onclick="kwLoadResults(${KW.offset + KW.limit})">Next ›</button>` : '';
-  } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+  const rows = kwCoreSort(kwCoreFilter(KW.rows, kwFilters()), KW.sorts);
+  KW.filtered = rows; KW.total = rows.length;
+  const page = rows.slice(KW.offset, KW.offset + KW.limit);
+  const snaps = KW.viewSnaps || [], multi = snaps.length > 1;
+  const one = snaps.length === 1 ? snaps[0].run : null, mk = one && one.market;
+  document.getElementById('kwResTitle').textContent = one
+    ? `— #${one.id} ${one.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}`
+    : multi ? `— ${KW.view.length ? snaps.length + ' runs combined (' + snaps.map(s => '#' + s.run.id).join(', ') + ')' : 'all keywords (' + snaps.length + ' runs)'} · duplicates merged` : '— all keywords';
+  const cols = [['keyword', 'Keyword'], ['intent', 'Intent'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
+  KW.cols = cols;
+  const mark = k => { const i = KW.sorts.findIndex(x => x.col === k); if (i < 0) return '';
+    return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
+  KW.pageRows = page.map(r => r.keyword);
+  const allOn = KW.pageRows.length && KW.pageRows.every(k => KW.selected.has(k));
+  const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${k === 'keyword' || k === 'intent' ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
+    + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
+  const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
+  const body = page.map(r => `<tr>
+      <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
+      <td style="text-align:left;">${esc(r.keyword)}${r.local ? ' <span class="kw-chip">local</span>' : ''}${r.brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
+      <td style="text-align:left;"><span class="kw-chip">${esc(kwIntentLabel(r.intent))}</span></td><td>${kwNum(r.vol)}</td>
+      <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
+      <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
+      <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td>${multi ? `<td style="text-align:left;color:var(--text3);">${esc(r.runs.map(x => '#' + x).join(' '))}</td>` : ''}</tr>`).join('');
+  kwRenderSortBar();
+  kwRenderSendBar();
+  el.innerHTML = page.length ? `<table class="kw-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
+    : `<div style="font-size:12px;color:var(--text3);padding:8px 0;">${KW.rows.length ? 'No keywords match these filters.' : 'No keywords yet — run a search above.'}</div>`;
+  const last = Math.min(KW.offset + KW.limit, KW.total);
+  document.getElementById('kwPager').innerHTML = KW.total ? `${kwNum(KW.offset + 1)}–${kwNum(last)} of ${kwNum(KW.total)}
+    <button class="kw-btn" ${KW.offset ? '' : 'disabled'} onclick="kwLoadResults(${Math.max(0, KW.offset - KW.limit)})">‹ Prev</button>
+    <button class="kw-btn" ${last < KW.total ? '' : 'disabled'} onclick="kwLoadResults(${KW.offset + KW.limit})">Next ›</button>` : '';
 }
 
-async function kwLoadIntentMap() {
+// Local intent map over the current view + filters (the intent filter itself is ignored here).
+function kwLoadIntentMap() {
   const el = document.getElementById('kwIntentMap'), cx = document.getElementById('kwCross');
-  try {
-    const dimSel = document.getElementById('kwDim');
-    const d = await call('kwIntentMap', { runIds: KW.view, dimension: dimSel.value || null });
-    KW.meta = d.meta;
-    const f = document.getElementById('kwIntentF'), cur = f.value;
-    f.innerHTML = '<option value="">any intent</option>' + d.order.map(k => `<option value="${k}">${esc(d.meta[k].label)}</option>`).join('');
-    f.value = cur;
-    dimSel.innerHTML = d.dims.length ? d.dims.map(x => `<option value="${esc(x.g)}">${esc(x.g)}</option>`).join('') : '<option value="">—</option>';
-    if (d.dimension) dimSel.value = d.dimension;
-    const by = Object.fromEntries(d.intents.map(i => [i.intent, i]));
-    const total = d.intents.reduce((a, i) => a + (i.vol || 0), 0) || 1;
-    const rows = d.order.filter(k => by[k]).sort((a, b) => (by[b].vol || 0) - (by[a].vol || 0)).map(k => {
-      const i = by[k], share = (i.vol || 0) / total;
-      const tops = d.tops.filter(t => t.intent === k).map(t => esc(t.keyword)).join(' · ');
-      return `<tr onclick="kwFilterIntent('${k}')" title="Show only ${esc(d.meta[k].label)} keywords">
-        <td style="text-align:left;"><b>${esc(d.meta[k].label)}</b></td><td>${kwNum(i.n)}</td><td>${kwNum(i.vol)}</td>
-        <td><span style="display:inline-block;vertical-align:middle;width:70px;height:6px;border-radius:3px;background:var(--surface2);"><span style="display:block;height:6px;border-radius:3px;background:#4cff4c;width:${Math.round(share * 70)}px;"></span></span> ${Math.round(share * 100)}%</td>
-        <td>${kwMoney(i.bid)}</td>
-        <td style="text-align:left;white-space:normal;min-width:220px;">${esc(d.meta[k].deliverables)}</td>
-        <td style="text-align:left;white-space:normal;color:var(--text3);min-width:220px;">${tops}</td></tr>`;
-    }).join('');
-    el.innerHTML = rows ? `<table class="kw-table kw-imap"><thead><tr><th style="text-align:left;">Intent</th><th>Keywords</th><th>Searches/mo</th><th>Share</th><th>Avg high bid</th>
-      <th style="text-align:left;">Deliverables that fit</th><th style="text-align:left;">Top searches</th></tr></thead><tbody>${rows}</tbody></table>`
-      : '<div style="font-size:12px;color:var(--text3);">No data yet — run a search above.</div>';
-    // intent × audience-dimension crosstab (searches/mo), from Google's concept groups
-    if (d.cross.length) {
-      const vals = [...new Set(d.cross.map(c => c.value))];
-      const cell = (v, k) => d.cross.find(c => c.value === v && c.intent === k);
-      const tot = v => d.cross.filter(c => c.value === v).reduce((a, c) => a + (c.vol || 0), 0);
-      vals.sort((a, b) => tot(b) - tot(a));
-      const ks = d.order.filter(k => d.cross.some(c => c.intent === k));
-      cx.innerHTML = `<div class="kw-hint" style="margin-bottom:4px;">Searches/mo by ${esc(d.dimension)} × intent</div><table class="kw-table"><thead><tr><th style="text-align:left;">${esc(d.dimension)}</th>`
-        + ks.map(k => `<th>${esc(d.meta[k].label)}</th>`).join('') + '<th>Total</th></tr></thead><tbody>'
-        + vals.slice(0, 25).map(v => `<tr><td style="text-align:left;">${esc(v)}</td>`
-          + ks.map(k => { const c = cell(v, k); return `<td>${c ? kwNum(c.vol) : '·'}</td>`; }).join('')
-          + `<td><b>${kwNum(tot(v))}</b></td></tr>`).join('') + '</tbody></table>';
-    } else cx.innerHTML = '';
-  } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
+  const dimSel = document.getElementById('kwDim');
+  const d = kwCoreIntentMap(kwCoreFilter(KW.rows, kwFilters(), true), dimSel.value || null);
+  const meta = KW.meta || {}, order = (KW.order && KW.order.length) ? KW.order : d.intents.map(i => i.intent);
+  const lab = k => (meta[k] && meta[k].label) || k, del = k => (meta[k] && meta[k].deliverables) || '';
+  const f = document.getElementById('kwIntentF'), cur = f.value;
+  f.innerHTML = '<option value="">any intent</option>' + order.map(k => `<option value="${k}">${esc(lab(k))}</option>`).join('');
+  f.value = cur;
+  dimSel.innerHTML = d.dims.length ? d.dims.map(x => `<option value="${esc(x.g)}">${esc(x.g)}</option>`).join('') : '<option value="">—</option>';
+  if (d.dimension) dimSel.value = d.dimension;
+  const by = Object.fromEntries(d.intents.map(i => [i.intent, i]));
+  const total = d.intents.reduce((a, i) => a + (i.vol || 0), 0) || 1;
+  const rows = order.filter(k => by[k]).sort((a, b) => (by[b].vol || 0) - (by[a].vol || 0)).map(k => {
+    const i = by[k], share = (i.vol || 0) / total;
+    const tops = d.tops.filter(t => t.intent === k).map(t => esc(t.keyword)).join(' · ');
+    return `<tr onclick="kwFilterIntent('${k}')" title="Show only ${esc(lab(k))} keywords">
+      <td style="text-align:left;"><b>${esc(lab(k))}</b></td><td>${kwNum(i.n)}</td><td>${kwNum(i.vol)}</td>
+      <td><span style="display:inline-block;vertical-align:middle;width:70px;height:6px;border-radius:3px;background:var(--surface2);"><span style="display:block;height:6px;border-radius:3px;background:#4cff4c;width:${Math.round(share * 70)}px;"></span></span> ${Math.round(share * 100)}%</td>
+      <td>${kwMoney(i.bid)}</td>
+      <td style="text-align:left;white-space:normal;min-width:220px;">${esc(del(k))}</td>
+      <td style="text-align:left;white-space:normal;color:var(--text3);min-width:220px;">${tops}</td></tr>`;
+  }).join('');
+  el.innerHTML = rows ? `<table class="kw-table kw-imap"><thead><tr><th style="text-align:left;">Intent</th><th>Keywords</th><th>Searches/mo</th><th>Share</th><th>Avg high bid</th>
+    <th style="text-align:left;">Deliverables that fit</th><th style="text-align:left;">Top searches</th></tr></thead><tbody>${rows}</tbody></table>`
+    : '<div style="font-size:12px;color:var(--text3);">No data yet — run a search above.</div>';
+  if (d.cross.length) {
+    const vals = [...new Set(d.cross.map(c => c.value))];
+    const cell = (v, k) => d.cross.find(c => c.value === v && c.intent === k);
+    const tot = v => d.cross.filter(c => c.value === v).reduce((a, c) => a + (c.vol || 0), 0);
+    vals.sort((a, b) => tot(b) - tot(a));
+    const ks = order.filter(k => d.cross.some(c => c.intent === k));
+    cx.innerHTML = `<div class="kw-hint" style="margin-bottom:4px;">Searches/mo by ${esc(d.dimension)} × intent</div><table class="kw-table"><thead><tr><th style="text-align:left;">${esc(d.dimension)}</th>`
+      + ks.map(k => `<th>${esc(lab(k))}</th>`).join('') + '<th>Total</th></tr></thead><tbody>'
+      + vals.slice(0, 25).map(v => `<tr><td style="text-align:left;">${esc(v)}</td>`
+        + ks.map(k => { const c = cell(v, k); return `<td>${c ? kwNum(c.vol) : '·'}</td>`; }).join('')
+        + `<td><b>${kwNum(tot(v))}</b></td></tr>`).join('') + '</tbody></table>';
+  } else cx.innerHTML = '';
 }
 function kwFilterIntent(k) {
   const f = document.getElementById('kwIntentF');
@@ -5159,13 +5264,15 @@ async function kwLoop(runId) {
       if (r.run) kwLog(`   ↳ ${r.run.api_calls}/${r.run.params?.config?.max_requests ?? '?'} requests · ${kwNum(r.run.keywords)} keywords`);
       if (r.retryAfter) { await kwSleep(r.retryAfter * 1000); continue; }
       if (r.done) break;
-      if (++steps % 3 === 0) kwLoadResults(0);
+      // live peek at the growing run every 5 steps (one uncached snapshot read)
+      if (++steps % 5 === 0) { delete KW.snaps['live:' + runId]; KW.view = [runId]; kwLoadView(); }
       await kwSleep(1200);   // client-side throttle — Keyword Planning is rate limited
     }
   } catch (e) { kwLog('✗ ' + e.message); }
   KW.running = false;
   document.getElementById('kwGoBtn').disabled = false;
   document.getElementById('kwStopBtn').style.display = 'none';
+  delete KW.snaps['live:' + runId]; delete KW.snaps[runId];
   KW.runId = runId;
   KW.view = [runId];
   kwRefresh();
@@ -5184,23 +5291,26 @@ function kwDownload(name, blob) {
   const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+// monthly snapshot form: [firstYear, firstMonth, s1, s2, …] → "2025-09:673000 2025-10:…"
+function kwMonthly(m) {
+  if (!m || m.length < 3) return '';
+  let y = m[0], mo = m[1];
+  return m.slice(2).map(s => { const out = `${y}-${String(mo).padStart(2, '0')}:${s}`; if (++mo > 12) { mo = 1; y++; } return out; }).join(' ');
+}
 
+// Exports = exactly what's filtered + sorted on screen (all pages), built locally.
 async function kwExport(kind) {
-  const d = await call('kwExport', kwFilters());
-  const L = d.labels || {};
-  const full = d.rows.map(r => {
-    const concepts = JSON.parse(r.concepts_json || '[]');
-    return {
-      keyword: r.keyword, intent: (KW.meta && KW.meta[r.intent] && KW.meta[r.intent].label) || r.intent, is_local: r.is_local ? 1 : 0, is_brand: r.is_brand ? 1 : 0,
-      avg_monthly_searches: r.vol, competition: r.comp, competition_index: r.ci,
-      low_top_of_page_bid: r.lb, high_top_of_page_bid: r.hb, average_cpc: r.cpc, trend_12m_pct: r.trend,
-      parent_seed: r.parent || (r.depth === 1 ? r.root : ''), root_seed: r.root, depth: r.depth,
-      concepts: [...new Set(concepts.map(c => c.name))].join('; '), concept_groups: [...new Set(concepts.map(c => c.group).filter(Boolean))].join('; '),
-      monthly_searches: JSON.parse(r.monthly_json || '[]').map(m => `${m.year}-${String(m.month).padStart(2, '0')}:${m.searches}`).join(' '),
-      country: (r.geo_key || '').split(',').map(g => L[g] || g).join(', '), language: L[r.language_id] || r.language_id,
-      network: r.network, retrieved_date: (r.retrieved_at || '').slice(0, 10), run_id: r.run_id, in_runs: r.run_list || '',
-    };
-  });
+  const L = KW.labels || {};
+  const full = (KW.filtered || []).map(r => ({
+    keyword: r.keyword, intent: kwIntentLabel(r.intent), is_local: r.local ? 1 : 0, is_brand: r.brand ? 1 : 0,
+    avg_monthly_searches: r.vol, competition: r.comp, competition_index: r.ci,
+    low_top_of_page_bid: r.lb, high_top_of_page_bid: r.hb, average_cpc: r.cpc, trend_12m_pct: r.trend,
+    parent_seed: r.parent || (r.depth === 1 ? r.root : ''), root_seed: r.root, depth: r.depth,
+    concepts: [...new Set((r.concepts || []).map(c => c[1]))].join('; '), concept_groups: [...new Set((r.concepts || []).map(c => c[0]).filter(Boolean))].join('; '),
+    monthly_searches: kwMonthly(r.monthly),
+    country: String(r.geo || '').split(',').map(g => L[g] || g).join(', '), language: L[r.lang] || r.lang,
+    network: r.network, retrieved_date: r.retrieved, in_runs: r.runs.join(' '),
+  }));
   const stem = (KW.view.length ? 'keywords-run' + KW.view.join('-') : 'keywords-all') + '-' + new Date().toISOString().slice(0, 10);
   if (kind === 'compact') {
     const rows = full.filter(r => (r.avg_monthly_searches || 0) >= 10).map(r => ({ keyword: r.keyword, intent: r.intent, volume: r.avg_monthly_searches,
@@ -5216,7 +5326,6 @@ async function kwExport(kind) {
   } else {
     kwDownload(stem + '-full.csv', new Blob([kwCsv(full, Object.keys(full[0] || { keyword: 1 }))], { type: 'text/csv' }));
   }
-  if (d.total > d.rows.length) kwLog(`Exported the first ${d.rows.length.toLocaleString()} of ${d.total.toLocaleString()} (sorted as shown).`);
 }
 
 // ── LINKS TAB (Saved Posts swipe file pipeline) ─────────────────────────

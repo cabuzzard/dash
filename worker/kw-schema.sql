@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS kw_runs (
   name TEXT,
   params_json TEXT,
   status TEXT,               -- running | done | stopped
+  keywords INTEGER,          -- running count of kw_frontier rows (maintained by kwStepRequest)
   level INTEGER DEFAULT 0,   -- depth currently being expanded
   root_done INTEGER DEFAULT 0,
   started_at TEXT,

@@ -41947,14 +41947,16 @@ function kwPasses(cfg, r) {
 const kwScore = (cfg, r) => cfg.rank_by === "volume" ? (r.vol || 0) : cfg.rank_by === "cpc" ? (r.hb || 0) : (r.vol || 0) * Math.max(r.hb || 0, 0.01);
 
 async function kwRunSummary(env, runId) {
-  const run = await env.KWDB.prepare("SELECT r.*, (SELECT COUNT(*) FROM kw_frontier f WHERE f.run_id = r.id) keywords FROM kw_runs r WHERE r.id = ?")
-    .bind(runId).first();
+  const run = await env.KWDB.prepare("SELECT r.* FROM kw_runs r WHERE r.id = ?").bind(runId).first();
+  if (run) run.keywords = run.keywords || 0;
   if (run) { try { run.params = JSON.parse(run.params_json); } catch (e) {} delete run.params_json; }
   return run;
 }
 
 async function kwFinish(env, runId, status, notes) {
   await env.KWDB.prepare("UPDATE kw_runs SET status=?, notes=?, finished_at=? WHERE id=?").bind(status, notes, kwNow(), runId).run();
+  try { await kwBuildSnapshot(env, runId); } catch (e) { console.error("snapshot", runId, e && e.message); }
+  await env.TRADES.delete("kw:stats");
   return { done: true, line: "■ " + notes, run: await kwRunSummary(env, runId) };
 }
 
@@ -41976,6 +41978,7 @@ async function kwStepRequest(env, run, p, seeds, depth, extra) {
     .bind(run.id, JSON.stringify(seeds.map(s => s.id))));
   const res = await db.batch(stmts);
   const added = (res[0].meta && res[0].meta.changes) || 0;
+  if (added) await db.prepare("UPDATE kw_runs SET keywords = IFNULL(keywords, 0) + ? WHERE id = ?").bind(added, run.id).run();
   const label = extra.site || [req.keywords.join(", "), extra.url].filter(Boolean).join(" + ");
   return { line: "L" + depth + " " + label + " — " + out.ideaCount.toLocaleString() + " ideas, " + added.toLocaleString() + " new ["
     + (out.cached ? "cache" : "1 API call") + "]" };
@@ -41987,7 +41990,7 @@ async function kwStepRun(env, runId) {
   if (!run) throw new Error("run not found");
   if (run.status !== "running") return { done: true, run: await kwRunSummary(env, runId) };
   const p = JSON.parse(run.params_json), cfg = p.config;
-  const seen = (await db.prepare("SELECT COUNT(*) n FROM kw_frontier WHERE run_id = ?").bind(runId).first()).n;
+  const seen = run.keywords || 0;
   if (run.api_calls >= cfg.max_requests) return kwFinish(env, runId, "done", "max requests reached (" + cfg.max_requests + ")");
   if (seen >= cfg.max_keywords) return kwFinish(env, runId, "done", "max keywords reached (" + cfg.max_keywords.toLocaleString() + ")");
 
@@ -42238,31 +42241,110 @@ async function kwSendKeywords(env, body) {
   return json({ error: "mode must be main, cluster or campaign" }, 400);
 }
 
+// ── Run snapshots (KV) — the tab works on these in the browser ────────────
+// D1 bills every row SCANNED, so re-querying on each sort/filter/page burned the free
+// 5M reads/day. A finished run never changes, so its rows are read from D1 ONCE into a
+// compact KV snapshot `kwsnap:run:<id>`; the tab downloads it (1 read) and does all
+// sorting / filtering / intent map / run-combining / export client-side.
+// Rebuilt when: a run finishes or stops (kwFinish / kwStopRun), a run is deleted, or the
+// intent rules change (kwReclassify clears them). A RUNNING run is served live, uncached.
+const KW_SNAP_COLS = ["keyword", "vol", "comp", "ci", "lb", "hb", "cpc", "trend", "intent", "local", "brand",
+  "depth", "parent", "root", "concepts", "monthly", "lang", "geo", "network", "retrieved"];
+
+async function kwBuildSnapshot(env, runId) {
+  const db = env.KWDB;
+  const run = await kwRunSummary(env, runId);
+  if (!run) return null;
+  const mk = run.params.market;
+  const rows = [];
+  let after = 0;
+  for (;;) {   // keyword_id chunks along the (run_id, keyword_id) primary key — linear, no per-row scans
+    const part = (await db.prepare("SELECT f.keyword_id kid, k.text, m.avg_monthly_searches vol, m.competition comp, m.competition_index ci, "
+      + "m.low_top_of_page_bid lb, m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct tr, m.intent, m.is_local lo, m.is_brand br, "
+      + "f.depth, pk.text parent, rk.text root, m.concepts_json cj, m.monthly_json mj, m.retrieved_at at "
+      + "FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
+      + "JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
+      + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id "
+      + "WHERE f.run_id = ? AND f.keyword_id > ? ORDER BY f.keyword_id LIMIT 5000")
+      .bind(mk.languageId, kwGeoKey(mk.geoIds), mk.network, runId, after).all()).results;
+    for (const r of part) {
+      let concepts = [], monthly = [];
+      try { concepts = JSON.parse(r.cj || "[]").map(c => [c.group || "", c.name || ""]); } catch (e) {}
+      try { const m = JSON.parse(r.mj || "[]"); if (m.length) monthly = [m[0].year, m[0].month, ...m.map(x => x.searches)]; } catch (e) {}
+      rows.push([r.text, r.vol, r.comp, r.ci, r.lb, r.hb, r.cpc, r.tr, r.intent || "general", r.lo ? 1 : 0, r.br ? 1 : 0,
+        r.depth, r.parent, r.root, concepts, monthly, mk.languageId, kwGeoKey(mk.geoIds), mk.network, (r.at || "").slice(0, 10)]);
+    }
+    if (part.length < 5000) break;
+    after = part[part.length - 1].kid;
+  }
+  const snap = { v: 1, built: kwNow(), run: { id: run.id, name: run.name, status: run.status, market: mk,
+    api_calls: run.api_calls, started_at: run.started_at, notes: run.notes }, cols: KW_SNAP_COLS, rows };
+  if (run.status !== "running") {
+    await env.TRADES.put("kwsnap:run:" + runId, JSON.stringify(snap));
+    const meta = (await env.TRADES.get("kwsnap:meta", "json")) || {};
+    meta[runId] = { keywords: rows.length, built: snap.built };
+    await env.TRADES.put("kwsnap:meta", JSON.stringify(meta));
+  }
+  return snap;
+}
+
+async function kwGetSnapshot(env, runId) {
+  const cached = await env.TRADES.get("kwsnap:run:" + runId);
+  if (cached) return cached;                      // raw JSON string — no re-parse
+  const snap = await kwBuildSnapshot(env, runId);
+  return snap ? JSON.stringify(snap) : null;
+}
+
+async function kwDropSnapshots(env, runIds) {
+  const meta = (await env.TRADES.get("kwsnap:meta", "json")) || {};
+  const ids = runIds || Object.keys(meta);
+  for (const id of ids) { await env.TRADES.delete("kwsnap:run:" + id); delete meta[id]; }
+  await env.TRADES.put("kwsnap:meta", JSON.stringify(meta));
+  return ids.length;
+}
+
 async function handleKeywordAction(body, env) {
   const a = body.action;
   if (!a || !a.startsWith("kw")) return null;
   if (!env.KWDB) return json({ error: "KWDB (D1) binding missing" }, 500);
   const db = env.KWDB;
   if (!globalThis.__kwIdx) {
-    try { await db.prepare("CREATE INDEX IF NOT EXISTS ix_kw_frontier_kw ON kw_frontier(keyword_id, run_id)").run(); globalThis.__kwIdx = true; } catch (e) {}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS ix_kw_frontier_kw ON kw_frontier(keyword_id, run_id)").run(); } catch (e) {}
+    try {   // running keyword count per run, so steps never COUNT(*) the frontier
+      await db.prepare("ALTER TABLE kw_runs ADD COLUMN keywords INTEGER").run();
+      await db.prepare("UPDATE kw_runs SET keywords = (SELECT COUNT(*) FROM kw_frontier f WHERE f.run_id = kw_runs.id)").run();
+    } catch (e) { /* column already exists */ }
+    globalThis.__kwIdx = true;
   }
 
   if (a === "kwStats") {
+    const cachedStats = await env.TRADES.get("kw:stats", "json");
+    if (cachedStats) return json(cachedStats);
     const one = async sql => (await db.prepare(sql).first()).n;
-    return json({
+    const stats = {
       keywords: await one("SELECT COUNT(*) n FROM kw_keywords"),
       withMetrics: await one("SELECT COUNT(DISTINCT keyword_id) n FROM kw_metrics"),
       requests: await one("SELECT COUNT(*) n FROM kw_requests WHERE status='ok'"),
       callsToday: (await db.prepare("SELECT COUNT(*) n FROM kw_api_calls WHERE ts >= ?").bind(kwNow().slice(0, 10)).first()).n,
       dailyBudget: Number(env.KW_DAILY_BUDGET || 1000),
       defaults: KW_DEFAULT_CONFIG,
-    });
+      intentMeta: Object.fromEntries(KW_INTENT_ORDER.map(k => [k, { label: KW_INTENTS[k].label, deliverables: KW_INTENTS[k].deliverables }])),
+      intentOrder: KW_INTENT_ORDER,
+    };
+    await env.TRADES.put("kw:stats", JSON.stringify(stats), { expirationTtl: 600 });
+    return json(stats);
   }
 
   if (a === "kwRuns") {
-    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, "
-      + "(SELECT COUNT(*) FROM kw_frontier f WHERE f.run_id = r.id) keywords FROM kw_runs r ORDER BY r.id DESC LIMIT 100").all()).results;
-    return json({ runs: rows });
+    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, r.keywords keywords_live "
+      + "FROM kw_runs r ORDER BY r.id DESC LIMIT 100").all()).results;
+    const meta = (await env.TRADES.get("kwsnap:meta", "json")) || {};
+    for (const r of rows) {
+      if (meta[r.id]) r.keywords = meta[r.id].keywords;
+      else r.keywords = r.keywords_live != null ? r.keywords_live : null;
+    }
+    return json({ runs: rows, labels: Object.assign({ "1000": "English", "2840": "United States" },
+      Object.fromEntries((await db.prepare("SELECT ids_json, label FROM kw_lookups").all()).results.map(x => { try { return [JSON.parse(x.ids_json)[0], x.label]; } catch (e) { return [null, null]; } }))) });
   }
 
   if (a === "kwStartRun") {
@@ -42295,6 +42377,7 @@ async function handleKeywordAction(body, env) {
         db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(kwNow(), kj),
         db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, root_seed_id, queued) "
           + "SELECT ?1, k.id, 0, k.id, 1 FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(ins.id, kj),
+        db.prepare("UPDATE kw_runs SET keywords = ? WHERE id = ?").bind(keywords.length, ins.id),
       ]);
     }
     return json({ run: await kwRunSummary(env, ins.id) });
@@ -42302,18 +42385,28 @@ async function handleKeywordAction(body, env) {
 
   if (a === "kwStepRun") return json(await kwStepRun(env, Number(body.runId)));
 
+  if (a === "kwSnapshot") {
+    const raw = await kwGetSnapshot(env, Number(body.runId));
+    if (!raw) return json({ error: "run not found" }, 404);
+    return new Response(raw, { headers: { "Content-Type": "application/json", ...CORS } });
+  }
+
   // Tab → campaign: add to Main Keywords / stage an SEO cluster / create a campaign.
   if (a === "kwSendKeywords") return kwSendKeywords(env, body);
 
   if (a === "kwStopRun" || a === "kwResumeRun") {
     const st = a === "kwStopRun" ? "stopped" : "running";
     await db.prepare("UPDATE kw_runs SET status = ?, notes = ? WHERE id = ?").bind(st, st === "stopped" ? "stopped by user" : null, Number(body.runId)).run();
+    if (st === "stopped") { try { await kwBuildSnapshot(env, Number(body.runId)); } catch (e) {} }
+    else await kwDropSnapshots(env, [String(Number(body.runId))]);
     return json({ run: await kwRunSummary(env, Number(body.runId)) });
   }
 
   if (a === "kwDeleteRun") {   // removes the run + its lineage only; keywords/metrics/cache stay (shared master data)
     const id = Number(body.runId);
     await db.batch([db.prepare("DELETE FROM kw_frontier WHERE run_id = ?").bind(id), db.prepare("DELETE FROM kw_runs WHERE id = ?").bind(id)]);
+    await kwDropSnapshots(env, [String(id)]);
+    await env.TRADES.delete("kw:stats");
     return json({ ok: true });
   }
 
@@ -42358,7 +42451,9 @@ async function handleKeywordAction(body, env) {
         + "is_brand = json_extract(j.value,'$.b') FROM json_each(?1) j WHERE kw_metrics.rowid = json_extract(j.value,'$.r')").bind(JSON.stringify(upd.slice(i, i + 500))));
       await db.batch(stmts);
     }
-    return json({ updated: rows.length, after: rows.length ? rows[rows.length - 1].rid : null, done: rows.length < 2000 });
+    const done = rows.length < 2000;
+    if (done) await kwDropSnapshots(env);
+    return json({ updated: rows.length, after: rows.length ? rows[rows.length - 1].rid : null, done });
   }
 
   if (a === "kwResults" || a === "kwExport") {
