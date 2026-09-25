@@ -252,6 +252,14 @@ Real Google search-demand data via the **Google Ads API v25 `KeywordPlanIdeaServ
 - Worker deploys with a D1 binding: if the GitHub Action's `CLOUDFLARE_API_TOKEN` lacks **D1 read/edit**, deploy locally
   with `cd worker && npx wrangler deploy` (OAuth login has d1 write).
 
+## Grok background variety rubric (2026-09-25)
+
+`generateSocialBackgroundForAsset` (single-post Post Image — used by the bulk 🎨 Generate Backgrounds and the modal's ✨ Generate)
+no longer builds the Grok prompt from spec + title alone (batches came back as one repeated desk scene). Claude now returns
+`SCENE:` + `PROMPT:` under a rubric: message → concrete visual metaphor (asset `Body` + content type from the title),
+no reuse of the campaign's recent scenes (KV `bgscenes:<campaignId>`, last 12, appended per render — bulk runs are
+sequential so they see each other), a different camera viewpoint; spec palette/light/Never-list and the left/top text zone kept.
+
 ## Buffer API keys (Platforms tab · 2026-09-25)
 
 One Buffer account per campaign. Keys are **write-only**: Platforms tab → a campaign's `buffer` cell (shows 🔑 key /
