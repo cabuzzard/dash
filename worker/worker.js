@@ -335,8 +335,21 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
       if (rDesign.register)    out.facts.push(`VISUAL REGISTER (from research): ${rDesign.register}`);
       if (rDesign.photography) out.facts.push(`PHOTOGRAPHY DIRECTION (from research — the images that belong): ${rDesign.photography}`);
       if (rDesign.avoid)       out.facts.push(`VISUAL AVOID (from research): ${rDesign.avoid}`);
-      for (const [fld, label] of [["Statement", "Positioning statement"], ["Pain Points", "Audience pain points"], ["Emotions", "Audience emotional state"], ["Unique Opportunity", "Unique opportunity"], ["Keywords", "Keywords"]]) {
-        const v = rtp(rp, fld); if (v) out.facts.push(`${label}: ${v}`);
+      // The WHOLE campaign Research record feeds the image flow (Grok renders
+      // included), not a hand-picked subset. Keywords lead and dominate
+      // (Information Flow Contract, Stage 1: keywords are the root). Design
+      // fields are already above; Image Spec is the derived output, so skip it.
+      const kwv = rtp(rp, "Keywords");
+      if (kwv) out.facts.push(`MAIN KEYWORDS (the root of the campaign — the dominant grounding signal; everything visual must fit what these searchers want): ${kwv.slice(0, 2000)}`);
+      const SKIP = new Set(["Keywords", "Visual Register", "Photography Direction", "Visual Avoid", "Design Notes", "Image Spec", "Palette", "Fonts", "SEO Audit"]);
+      let budget = 16000;
+      for (const [fld, prop] of Object.entries(rp)) {
+        if (SKIP.has(fld) || prop?.type !== "rich_text") continue;
+        const v = rtp(rp, fld); if (!v) continue;
+        const piece = v.slice(0, 1500);
+        if (budget - piece.length < 0) break;
+        budget -= piece.length;
+        out.facts.push(`Campaign Research — ${fld}: ${piece}`);
       }
     } catch (e) { /* research optional */ }
   }
@@ -26280,8 +26293,11 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         // design) goes to Grok VERBATIM — no spec, no Claude rewrite.
         const rawPrompt = String(body.rawPrompt || "").trim();
         let spec = String(body.spec || "").trim();
+        // full campaign research + keywords (+ main product research) — Grok's
+        // prompt is written with the whole Stage-1/2 record in view, not just the spec
+        const brief = rawPrompt ? null : await assembleImageBrief(env, { campaignId: cid });
+        const researchBlock = brief ? brief.facts.join("\n").slice(0, 20000) : "";
         if (!rawPrompt && spec.length < 80) {
-          const brief = await assembleImageBrief(env, { campaignId: cid });
           if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
           else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
         }
@@ -26310,7 +26326,7 @@ WHAT IT IS: a ${aspect} test plate — the single most representative image for 
 
 Obey this image spec exactly — palette hexes, subjects, light, medium, the "Never" / avoid list:
 ${spec.slice(0, 8000)}
-${body.steer ? `\nOPERATOR STEER for this test (follow it): ${String(body.steer).slice(0, 600)}\n` : ""}
+${researchBlock ? `\nTHE CAMPAIGN'S RESEARCH (keywords first, then campaign + main product research). Use it to choose the subject/scene that best fits what this audience is searching for and feels; the spec above still governs the look:\n${researchBlock}\n` : ""}${body.steer ? `\nOPERATOR STEER for this test (follow it): ${String(body.steer).slice(0, 600)}\n` : ""}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
