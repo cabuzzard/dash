@@ -10,6 +10,7 @@
 // Only three regions of each hub are ever rewritten: the <head> meta (title +
 // description + og:*), the Google Fonts <link>, and the :root DESIGN TOKENS
 // block. SHARED LAYOUT and the RENDER script are never touched.
+// Also renders web/hub/privacy-template.html → <slug>/privacy/index.html.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -130,6 +131,45 @@ for (const slug of slugs) {
   } else {
     fs.writeFileSync(file, out);
     console.log(`  ✎ ${slug}`);
+  }
+}
+
+/* ---------- privacy policy page for every hub ------------------------ */
+// web/hub/privacy-template.html → web/hub/<slug>/privacy/index.html, themed
+// from the same spec. Domain comes from the Host→slug map in _worker.js;
+// contact email falls back to FALLBACK_EMAIL (with a warning) when unset.
+const FALLBACK_EMAIL = "info@webguyleadgeneration.com";
+const privacyTpl = fs.readFileSync(path.join(HUB_DIR, "privacy-template.html"), "utf8");
+const domainBySlug = {};
+for (const [, dom, slug] of fs.readFileSync(path.join(HUB_DIR, "_worker.js"), "utf8")
+       .matchAll(/"([a-z0-9.-]+\.[a-z]+)":\s*"([a-z0-9-]+)"/g)) domainBySlug[slug] = dom;
+const html = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+for (const slug of slugs) {
+  const hub = spec.hubs[slug];
+  if (!hub.email) console.warn(`  ⚠ ${slug}: no email in spec — privacy page uses ${FALLBACK_EMAIL}`);
+  if (!domainBySlug[slug]) console.warn(`  ⚠ ${slug}: no domain in _worker.js — privacy page names the brand only`);
+  const vals = {
+    ROOT: rootBlock(hub, "\n"),
+    FONT_LINK: fontLink(hub),
+    BRAND: html(hub.logoText),
+    EMAIL: html(hub.email || FALLBACK_EMAIL),
+    DOMAIN: html(domainBySlug[slug] || hub.logoText),
+    YEAR: "2026",
+  };
+  const out = privacyTpl
+    .replace(/<!-- Privacy policy TEMPLATE[\s\S]*?-->\n/, "")
+    .replace(/\{\{(\w+)\}\}/g, (m, k) => (k in vals ? vals[k] : m));
+  const file = path.join(HUB_DIR, slug, "privacy", "index.html");
+  const cur = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  if (cur === out) continue;
+  if (CHECK) {
+    console.log(`  ✗ ${slug}/privacy — out of date`);
+    drift++;
+  } else {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, out);
+    console.log(`  ✎ ${slug}/privacy`);
   }
 }
 
