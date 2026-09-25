@@ -260,7 +260,9 @@ KV `buffer:tok:<campaignId>` (secret **`BUFFER_KEY_ENC`**; only last-4 + org nam
 re-pasting. **Sending:** microsite Publish modal → 📤 Send to Buffer → `sendAssetToBuffer` (always a Buffer DRAFT): carousel =
 slide-NN.png under Design Link; video types (`/video|reel|short|explainer|avatar/`) = asset `Video URL` (public permanent
 https MP4 — Buffer fetches it at publish time); everything else = `Post Image` (also shown for offers now). Caption = the
-modal's Post Caption + Hashtags. `sendCarouselToBuffer` (carousel review page) still exists. Video hosting (R2 upload) pending.
+modal's Post Caption + Hashtags. `sendCarouselToBuffer` (carousel review page) still exists. **Video hosting:** R2 bucket `dash-media` (binding `MEDIA`,
+public r2.dev base in `[vars] MEDIA_PUBLIC_BASE`); Publish modal ⬆ Upload → raw POST `?upload=video&assetId=&name=` with
+`X-Hermes-Token` (handled right after OPTIONS, before JSON parsing; streams to `videos/<assetId>/…`, ≤100 MB) → sets `Video URL`.
 
 ## Cron Scripts panel (Globals tab · ⏰)
 

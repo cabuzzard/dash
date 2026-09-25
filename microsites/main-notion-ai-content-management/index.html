@@ -1335,10 +1335,13 @@ async function submitBlankGrouping() {
       <div id="pubVideoWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #2f3f4a;background:rgba(33,150,211,.06);border-radius:4px;">
         <label class="lm-label" for="pubVideoUrl" style="margin-bottom:2px;">🎬 Video URL <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— the finished MP4 at a public, permanent https link (Buffer fetches it when the post goes out — no expiring/signed links, no preview pages)</span></label>
         <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
-          <input class="modal-ta" id="pubVideoUrl" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…/video.mp4" />
+          <input class="modal-ta" id="pubVideoUrl" type="text" style="height:32px;padding:5px 10px;flex:1;" autocomplete="off" placeholder="https://…/video.mp4 — or ⬆ upload the MP4" />
+          <input type="file" id="pubVideoFile" accept="video/mp4,video/quicktime,video/*" style="display:none;" onchange="uploadPublishVideo(this)" />
+          <button class="modal-btn cancel" style="flex-shrink:0;" onclick="document.getElementById('pubVideoFile').click()" title="Upload the finished MP4 — hosted permanently for Buffer">⬆ Upload</button>
           <button class="modal-btn cancel" style="flex-shrink:0;" onclick="openPublishFieldLink('pubVideoUrl')" title="Open in a new tab">↗</button>
           <button class="modal-btn cancel" style="flex-shrink:0;" onclick="copyPublishField('pubVideoUrl', this)">📋</button>
         </div>
+        <div id="pubVideoStatus" style="font-size:11px;color:#aaa;margin-top:4px;"></div>
       </div>
       <div id="pubHubWrap" style="display:none;margin-top:12px;padding:10px 12px;border:1px solid #3a4a2f;background:rgba(126,211,33,.06);border-radius:4px;">
         <label class="lm-label" for="pubContentHub" style="margin-bottom:2px;">📍 Content Hub <span style="font-weight:400;color:#fff;text-transform:none;letter-spacing:0;">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
@@ -8664,6 +8667,7 @@ function openPublishAssetModal(btn) {
   const isVideoAsset = /video|reel|short|explainer|avatar/i.test(data.type || '');
   document.getElementById('pubVideoWrap').style.display = isVideoAsset ? 'block' : 'none';
   document.getElementById('pubVideoUrl').value = data.videoUrl || '';
+  document.getElementById('pubVideoStatus').textContent = '';
   const bufBtn = document.getElementById('pubBufferBtn');
   bufBtn.style.display = /^(carousel|single post)$/i.test(data.type || '') || isVideoAsset || /\boffer\b/i.test(data.type || '') ? '' : 'none';
   bufBtn.disabled = false; bufBtn.textContent = '📤 Send to Buffer';
@@ -9124,6 +9128,26 @@ function openPublishFieldLink(fieldId) {
   if (!url) { alert('Nothing to open — this field is empty.'); return; }
   window.open(url, '_blank', 'noopener');
 }
+// ⬆ Upload video — streams the MP4 to the worker (R2 dash-media), which saves the
+// permanent public link onto the asset's Video URL. ≤100 MB.
+async function uploadPublishVideo(input) {
+  const f = input.files && input.files[0];
+  const st = document.getElementById('pubVideoStatus');
+  if (!f) return;
+  if (f.size > 100 * 1024 * 1024) { st.textContent = '✗ Over 100 MB — export a smaller MP4 (1080×1920, H.264).'; input.value = ''; return; }
+  st.textContent = `Uploading ${(f.size / 1048576).toFixed(1)} MB…`;
+  try {
+    const u = WORKER_URL + '?upload=video&assetId=' + encodeURIComponent(pubAssetId) + '&name=' + encodeURIComponent(f.name);
+    const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': f.type || 'video/mp4', 'X-Hermes-Token': SESSION_TOKEN }, body: f });
+    const d = await r.json().catch(() => ({ error: 'Upload failed (' + r.status + ')' }));
+    if (!r.ok || d.error) throw new Error(d.error || r.status);
+    document.getElementById('pubVideoUrl').value = d.url;
+    (PUB_ASSET_CACHE[pubAssetId] || (PUB_ASSET_CACHE[pubAssetId] = {})).videoUrl = d.url;
+    st.textContent = `✓ Hosted (${(d.size / 1048576).toFixed(1)} MB)${d.saved ? ' and saved to the asset' : ' — click Save to keep it'} — ready for 📤 Send to Buffer.`;
+  } catch (e) { st.textContent = '✗ ' + e.message; }
+  input.value = '';
+}
+
 // 📤 Send to Buffer — saves the modal first, then creates a DRAFT in the campaign's
 // Buffer queue (worker sendAssetToBuffer). Nothing publishes until you schedule it in Buffer.
 async function sendPublishAssetToBuffer() {

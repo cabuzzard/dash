@@ -10,6 +10,8 @@ no_bundle = true
 GOOGLE_ADS_LOGIN_CUSTOMER_ID = "3025934670"
 KW_CUSTOMER_ID = "3025934670"
 KW_DAILY_BUDGET = "1000"
+# Public base of the R2 bucket dash-media (r2.dev) — hosted MP4s for Buffer video posts.
+MEDIA_PUBLIC_BASE = "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev"
 
 [[kv_namespaces]]
 binding = "TRADES"
@@ -31,3 +33,8 @@ routes = [{ pattern = "https://cabuzzard.github.io/dash/*" }]
 binding = "KWDB"
 database_name = "keyword-research"
 database_id = "4964a64d-e834-4c74-af8b-4157e52602ad"
+
+# Hosted media (finished short-form MP4s) — public read via MEDIA_PUBLIC_BASE; uploads via ?upload=video.
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "dash-media"

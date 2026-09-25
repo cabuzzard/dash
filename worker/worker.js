@@ -667,7 +667,7 @@ const LANDING_PAGES = [
 const CORS = {
   "Access-Control-Allow-Origin":  DEFAULT_ORIGIN,
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
+  "Access-Control-Allow-Headers": "Content-Type, X-Hermes-Token",
   "Vary":                         "Origin",
   "X-Content-Type-Options":       "nosniff",
   "X-Frame-Options":              "DENY",
@@ -8702,6 +8702,38 @@ export default {
     const AC_API_KEY     = (env.ACTIVECAMPAIGN_API_KEY || "").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // ── Raw video upload → R2 `dash-media` (microsite Publish modal "⬆ Upload video") ──
+    // POST ?upload=video&assetId=<32hex>&name=<file> with the MP4 as the raw body and the
+    // session token in X-Hermes-Token. Streams straight into R2 (never buffered), then saves
+    // the permanent public URL onto the asset's "Video URL" — what Buffer fetches at publish.
+    if (request.method === "POST" && new URL(request.url).searchParams.get("upload") === "video") {
+      if (!HMAC_SECRET || !(await verifyToken(request.headers.get("X-Hermes-Token") || "", HMAC_SECRET))) return json({ error: "Unauthorized" }, 401);
+      if (!env.MEDIA) return json({ error: "MEDIA (R2) binding missing" }, 500);
+      const q = new URL(request.url).searchParams;
+      const assetId = String(q.get("assetId") || "").replace(/-/g, "");
+      if (!/^[0-9a-f]{32}$/.test(assetId)) return json({ error: "assetId required" }, 400);
+      const len = Number(request.headers.get("content-length") || 0);
+      if (!len) return json({ error: "Empty upload" }, 400);
+      if (len > 100 * 1024 * 1024) return json({ error: "Video is over 100 MB — export a smaller MP4 (1080×1920, H.264, ~8 Mbps is plenty for Reels)" }, 413);
+      const ctype = request.headers.get("content-type") || "video/mp4";
+      if (!/^video\//.test(ctype)) return json({ error: "Only video files (MP4) can be uploaded here" }, 400);
+      const safe = String(q.get("name") || "video.mp4").toLowerCase().replace(/[^a-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "video.mp4";
+      const key = `videos/${assetId}/${Date.now().toString(36)}-${safe}`;
+      await env.MEDIA.put(key, request.body, { httpMetadata: { contentType: ctype, cacheControl: "public, max-age=31536000, immutable" } });
+      const url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+      const dashA = `${assetId.slice(0, 8)}-${assetId.slice(8, 12)}-${assetId.slice(12, 16)}-${assetId.slice(16, 20)}-${assetId.slice(20)}`;
+      let saved = false;
+      try {
+        const nh = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        await ensureAssetsDbProperties(nh, { "Video URL": { type: "url" } });
+        const r = await fetch("https://api.notion.com/v1/pages/" + dashA, { method: "PATCH", headers: { ...nh, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Video URL": { url } } }) });
+        saved = r.ok;
+      } catch (e) {}
+      return json({ ok: true, url, size: len, saved });
+    }
+
     if (request.method === "GET") {
       const url = new URL(request.url);
       if (url.pathname.startsWith("/img/")) {
