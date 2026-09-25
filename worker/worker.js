@@ -41903,8 +41903,23 @@ const KW_INTENTS = {
   general:  { label: "General topic",    re: null,
               deliverables: "pillar / hub content, overviews, topic landing pages" },
 };
+// Hire also covers "marketing-service FOR audience" (seo for roofers, leads for contractors) and
+// "trade + marketing-service" (roofing seo, hvac marketing, construction leads) — but not generic
+// marketing topics (digital / data driven / content marketing …), which stay General.
+const KW_SVC = "(seo|search engine optimization|marketing|advertising|ads|ppc|leads?|lead generation|lead gen|web design|website design|websites?|social media|branding|reputation management)";
+const KW_HIRE_EXTRA = [
+  new RegExp("\\b" + KW_SVC + "\\b.*\\bfor\\b"),
+  new RegExp("^(?!(digital|data|driven|content|email|social|online|internet|affiliate|inbound|outbound|b2b|b2c|network|performance|growth|search|video|influencer|mobile|direct|event|product|brand|customer)\\b)\\S.*\\b(seo|marketing|advertising|ppc|leads|lead generation|lead gen|web design|website design)$"),
+];
 const KW_INTENT_ORDER = ["career", "tool", "hire", "buy", "research", "learn", "brand", "general"];
 const KW_LOCAL_RE = /\bnear me\b|\bnearby\b|\blocal\b|\bin my area\b/;
+
+// The extra Hire phrasings only count when nothing else in the phrase says compare / learn / buy / brand
+// ("best roofing leads" stays Research, "icp meaning marketing" Learn, "buy b2b sales leads" Buy).
+function kwHireExtra(t, isBrand) {
+  if (isBrand || ["research", "learn", "buy"].some(o => KW_INTENTS[o].re.test(t))) return false;
+  return KW_HIRE_EXTRA.some(x => x.test(t));
+}
 
 function kwIntent(text, concepts) {
   const t = " " + kwNorm(text) + " ";
@@ -41914,7 +41929,7 @@ function kwIntent(text, concepts) {
   let intent = "general";
   for (const k of KW_INTENT_ORDER) {
     const re = KW_INTENTS[k].re;
-    if (re && re.test(t.trim())) { intent = k; break; }
+    if ((re && re.test(t.trim())) || (k === "hire" && kwHireExtra(t.trim(), isBrand))) { intent = k; break; }
   }
   if (intent === "general" && isBrand) intent = "brand";
   return { intent, isLocal: isLocal ? 1 : 0, isBrand: isBrand ? 1 : 0 };
@@ -42040,8 +42055,11 @@ function kwResultsSql(body, runs, forExport) {
     binds.push(...ids);
     for (const mk of mks) binds.push(mk.languageId, kwGeoKey(mk.geoIds), mk.network);
   } else {
+    // Everything: one lineage row per keyword (its latest run), deduped in ONE pass over kw_frontier.
+    // (The old per-row correlated MAX(run_id) subquery did ~N×M row reads — it blew D1's free
+    // 5M-reads/day limit on a single page load at ~5k keywords.)
     from = "FROM kw_metrics m JOIN kw_keywords k ON k.id = m.keyword_id "
-      + "LEFT JOIN kw_frontier f ON f.keyword_id = m.keyword_id AND f.run_id = (SELECT MAX(run_id) FROM kw_frontier x WHERE x.keyword_id = m.keyword_id) "
+      + "LEFT JOIN (SELECT * FROM (SELECT x.*, ROW_NUMBER() OVER (PARTITION BY x.keyword_id ORDER BY x.run_id DESC) rn FROM kw_frontier x) WHERE rn = 1) f ON f.keyword_id = m.keyword_id "
       + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id";
   }
   if (body.q) for (const w of String(body.q).toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5)) {
@@ -42225,6 +42243,9 @@ async function handleKeywordAction(body, env) {
   if (!a || !a.startsWith("kw")) return null;
   if (!env.KWDB) return json({ error: "KWDB (D1) binding missing" }, 500);
   const db = env.KWDB;
+  if (!globalThis.__kwIdx) {
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS ix_kw_frontier_kw ON kw_frontier(keyword_id, run_id)").run(); globalThis.__kwIdx = true; } catch (e) {}
+  }
 
   if (a === "kwStats") {
     const one = async sql => (await db.prepare(sql).first()).n;

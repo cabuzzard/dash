@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS kw_frontier (
   PRIMARY KEY (run_id, keyword_id)
 );
 CREATE INDEX IF NOT EXISTS ix_kw_frontier_q ON kw_frontier(run_id, depth, queued, expanded);
+CREATE INDEX IF NOT EXISTS ix_kw_frontier_kw ON kw_frontier(keyword_id, run_id);
 
 CREATE TABLE IF NOT EXISTS kw_api_calls (
   id INTEGER PRIMARY KEY,
