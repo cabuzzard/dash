@@ -266,7 +266,8 @@ https MP4 — Buffer fetches it at publish time); everything else = `Post Image`
 modal's Post Caption + Hashtags. **Channel = per asset:** one Buffer account holds ≤1 channel per platform, so the asset's
 `Platform Name` picks it (`bufferPickChannel`: Instagram asset → the account's instagram channel); the Publish modal shows it
 in a dropdown (`bufferChannelsForAsset`) you can override. An asset made for a platform the account lacks is **never
-rerouted** — it errors. The Platforms-tab channel (`buffer:chan:<id>`) is only the default for assets with no social platform. `sendCarouselToBuffer` (carousel review page) still exists. **Video hosting:** R2 bucket `dash-media` (binding `MEDIA`,
+rerouted** — it errors. The Platforms-tab channel (`buffer:chan:<id>`) is only the default for assets with no social platform. `sendCarouselToBuffer` (carousel review page) still exists. **care-gap-v2 is NOT covered by `sync_microsites.py`** (own
+layout) — every Publish-modal feature must be ported to `microsites/care-gap-v2/index.html` by hand (done for Buffer 2026-09-25). **Video hosting:** R2 bucket `dash-media` (binding `MEDIA`,
 public r2.dev base in `[vars] MEDIA_PUBLIC_BASE`); Publish modal ⬆ Upload → raw POST `?upload=video&assetId=&name=` with
 `X-Hermes-Token` (handled right after OPTIONS, before JSON parsing; streams to `videos/<assetId>/…`, ≤100 MB) → sets `Video URL`.
 
