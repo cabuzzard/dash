@@ -10422,10 +10422,14 @@ Output: one line per role — "Display: <Family> — why it fits the audience" /
           const opDirection = rtOf(t.resProps, "Design Notes") || rtOf(t.props, "Design Notes");
           // Source mode: an attached reference image wins; else the operator's
           // edited keyword string; else the campaign + product research.
-          const hasImg = body.image && /^data:image\//.test(body.image);
+          // imageUrl: a hosted image (e.g. a Grok test plate on R2) — passed to
+          // Claude by URL, so no base64 round-trip through the browser.
+          const imgUrl = /^https:\/\//.test(String(body.imageUrl || "")) ? String(body.imageUrl) : "";
+          const hasImg = !!imgUrl || (body.image && /^data:image\//.test(body.image));
           const kw = String(body.keywords || "").trim();
           const parts = [];
-          if (hasImg) {
+          if (imgUrl) parts.push({ type: "image", source: { type: "url", url: imgUrl } });
+          else if (hasImg) {
             const m = body.image.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
             if (m && m[2].length < 6_000_000) parts.push({ type: "image", source: { type: "base64", media_type: m[1], data: m[2] } });
           }
@@ -26256,55 +26260,6 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
         if (!put.ok) { const r = await put.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || put.status}` }, 500); }
         const imageUrl = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
         return json({ success: true, imageUrl, prompt, hubSlug });
-      }
-
-      // -- foldReferenceIntoSpec: the ChatGPT → Grok loop closes back into the
-      // campaign's design spec. Takes a Grok prompt that PROVABLY renders the
-      // approved look (ChatGPT's reproduction prompt, possibly hand-tuned) and
-      // rewrites the campaign Image Spec so every future plate (offers, single
-      // posts, thumbnails — all read the stored spec) inherits that look,
-      // while subjects stay varied. Returns the draft only; the operator
-      // reviews it and commits with saveImageSpec. Writes nothing itself.
-      // { campaignId, prompt, imageUrl? }
-      if (body.action === "foldReferenceIntoSpec") {
-        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
-        const cid = String(body.campaignId || "").replace(/-/g, "");
-        const ref = String(body.prompt || "").trim();
-        if (!cid) return json({ error: "campaignId required" }, 400);
-        if (ref.length < 40) return json({ error: "reference prompt required" }, 400);
-        const brief = await assembleImageBrief(env, { campaignId: cid });
-        let spec = "";
-        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
-        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
-        // drop any earlier folded reference so re-folding doesn't stack them
-        spec = spec.replace(/\n*=+ REFERENCE PLATE[\s\S]*$/i, "").trim();
-        const ask = `You maintain the IMAGE SPEC for a campaign: the one document every wordless image plate (offers, social posts, thumbnails) is rendered from on xAI Grok Imagine.
-
-The operator designed the look in a ChatGPT chat and has a Grok prompt that reproduces the APPROVED image. Rewrite the spec so every future plate carries THAT look.
-
-Rules:
-- Keep the spec's own structure/sections and its purpose (wordless plates; type is added later).
-- Adopt the reference's LOOK as the standard: medium and finish, light (source, direction, quality, colour temperature), colour grade and how the palette shows up in the image, camera/lens feel, composition habits, texture/grain, mood. Where the old spec conflicts with the reference, the reference wins.
-- The reference SCENE is one example, not the only subject. Generalise its subject matter into a family of subjects/settings in the same world, so renders vary.
-- Keep palette hexes consistent with the reference (update the spec's hexes if the reference states different ones). Keep and extend the Never/avoid list; add anything the reference look clearly rules out.
-- Plain text, same length ballpark as the current spec. Output ONLY the rewritten spec, no preamble.
-
-CURRENT SPEC:
-${spec.slice(0, 12000)}
-
-APPROVED REFERENCE PROMPT (renders the look we want):
-${ref.slice(0, 4000)}`;
-        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: ask }] }),
-        });
-        const aiData = await aiResp.json();
-        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
-        const rewritten = (aiData.content?.[0]?.text || "").trim();
-        if (rewritten.length < 200) return json({ error: "Claude returned an empty spec" }, 502);
-        const text = `${rewritten}\n\n=== REFERENCE PLATE (approved look — from the ChatGPT design chat, verbatim Grok prompt${body.imageUrl ? `; render: ${String(body.imageUrl).slice(0, 300)}` : ""}) ===\n${ref.slice(0, 4000)}`;
-        return json({ ok: true, text, previous: spec });
       }
 
       // -- renderSpecTest: throw the campaign's DESIGN at Grok to see it.

@@ -1253,15 +1253,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <textarea id="gptGrokText" class="finput" rows="6" style="width:100%;box-sizing:border-box;font-size:11px;resize:vertical;"></textarea>
           <div style="font-size:10px;color:var(--ink3);margin-top:3px;">Renders land in the Grok strip on the Visual direction card below.</div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px;">
-            <button class="btn" id="gptFoldBtn" onclick="foldGptIntoSpec(this)" title="Rewrite this campaign's Image Spec so its medium / light / colour grade / camera / composition match this prompt's look (subjects stay varied), with the prompt kept verbatim as a reference. Draft only; you review, then 💾 Save.">⤴ Fold this look into the campaign image spec</button>
-            <span style="font-size:10.5px;color:var(--ink3);">once the Grok render matches the chat. Every later Grok plate (offers, single posts, thumbnails) reads this spec.</span>
-          </div>
-          <div id="gptSpecBox" style="display:none;margin-top:8px;">
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:4px;">
-              <span style="font-size:11px;color:var(--ink2);font-weight:700;">Campaign image spec (draft, not saved)</span>
-              <button class="btn primary" id="gptSpecSaveBtn" onclick="saveGptSpec(this)" style="margin-left:auto;">💾 Save image spec</button>
-            </div>
-            <textarea id="gptSpecText" class="finput" rows="14" style="width:100%;box-sizing:border-box;font-family:var(--mono);font-size:10.5px;resize:vertical;"></textarea>
+            <button class="btn" id="gptFoldBtn" onclick="foldGptRenderIntoDirection(this)" title="Once the Grok render matches the chat: regenerate Visual Register / Photography Direction / Visual Avoid FROM that render (with ChatGPT's prompt as detail). Staged on the Visual direction card; 💾 Save there — the image spec every Grok render reads is then rebuilt from it.">⟳ Set the campaign direction from this render</button>
+            <span style="font-size:10.5px;color:var(--ink3);">the Stage-1 direction fields are the source. Save them, and the image spec plus every later Grok plate follow.</span>
           </div>
         </div>
       </div>
@@ -1274,8 +1267,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;">
           <button class="btn primary" id="designRegenBtn" onclick="openRegenModal('Regenerate Visual Direction', 'Drafts Visual Register / Photography Direction / Visual Avoid together, grounded in Main Keywords.', (steer, omit) => runRegenDesign(steer, omit))">⟳ regenerate direction</button>
           <button class="btn" id="designSaveBtn" onclick="saveStagedDesign()" disabled>💾 Save to Notion</button>
-          <select id="designTestAspect" class="finput" style="width:auto;padding:4px 6px;" title="Aspect ratio for the Grok test plate"><option>3:4</option><option>1:1</option><option>16:9</option></select>
-          <button class="btn" id="designTestBtn" onclick="testDesignOnGrok()" title="Render one wordless plate on Grok Imagine from the direction + palette shown here (staged or live) layered on the campaign's image spec — see the design before you save it. Writes nothing to Notion.">✨ Test on Grok</button>
+          <button class="btn" id="designTestBtn" onclick="testDesignOnGrok()" title="Render one wordless plate on Grok Imagine from the direction + palette shown here (staged or live). Judge it; ⟳ under a plate regenerates Visual Register / Photography Direction / Visual Avoid FROM that image (staged). Writes nothing to Notion.">✨ Test on Grok</button>
         </div>
         <div id="designTestMsg" style="font-size:11px;color:var(--ink3);min-height:14px;margin-bottom:6px;"></div>
         <div id="designTests" style="display:flex;gap:8px;overflow-x:auto;margin-bottom:10px;"></div>
@@ -2638,6 +2630,8 @@ function designGptPrompt() {
   const roles = HP_ROLES.map(([k, label]) => `    "${k}": "#RRGGBB"   // ${label}`).join('\n');
   return `We're moving the visual design we built in this chat into our campaign system. Report the design we actually settled on here — the final version, not a new one. Don't redesign. Where we never decided something, infer it from the images/mockups/direction in this chat and keep it consistent with them.
 
+Write register / photography / avoid as DIRECTION any image model could follow (it becomes the campaign's source-of-truth visual direction), not as a prompt for one tool. The Grok-specific prompt goes only in grokPrompt.
+
 Reply with ONE fenced \`\`\`json block and nothing else, exactly this shape:
 
 {
@@ -2693,37 +2687,56 @@ async function testGptPromptOnGrok(btn) {
   btn.disabled = false; btn.textContent = o;
 }
 let DESIGN_GPT_LAST_URL = '';
-async function foldGptIntoSpec(btn) {
+async function foldGptRenderIntoDirection(btn) {
+  const msg = document.getElementById('gptImportMsg');
+  if (!DESIGN_GPT_LAST_URL) { msg.style.color = '#c0392b'; msg.textContent = '✨ Render on Grok first, then set the direction from the render you approve.'; return; }
   const prompt = (document.getElementById('gptGrokText').value || '').trim();
-  const msg = document.getElementById('gptImportMsg');
-  if (prompt.length < 40) { msg.style.color = '#c0392b'; msg.textContent = 'No Grok prompt to fold in.'; return; }
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rewriting the spec…';
-  try {
-    const r = await w('foldReferenceIntoSpec', { campaignId: CAMPAIGN_ID, prompt, imageUrl: DESIGN_GPT_LAST_URL || undefined });
-    if (r.error) throw new Error(r.error);
-    document.getElementById('gptSpecText').value = r.text;
-    document.getElementById('gptSpecBox').style.display = 'block';
-    msg.style.color = 'var(--ink3)'; msg.textContent = 'Spec draft ready below. Review/edit, then 💾 Save image spec.';
-  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Fold failed: ' + e.message; }
-  btn.disabled = false; btn.textContent = o;
+  await regenDirectionFromPlate(DESIGN_GPT_LAST_URL, btn, prompt ? 'This image is the APPROVED look, reproduced from the design chat. The prompt that produced it (use its detail on light, colour grade, camera, medium and finish, but generalise the subject into a family of scenes; write model-agnostic direction, not a prompt): ' + prompt.slice(0, 2500) : undefined);
+  msg.style.color = 'var(--fresh)'; msg.textContent = 'Direction staged on the Visual direction card below. 💾 Save it there; the image spec is rebuilt from it.';
 }
-async function saveGptSpec(btn) {
-  const text = (document.getElementById('gptSpecText').value || '').trim();
-  const msg = document.getElementById('gptImportMsg');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+// The stored Image Spec is DERIVED from the Stage-1 Design fields (and every
+// Grok render reads the stored one) — so after any Design save, re-derive it
+// from the saved record + the saved palette/fonts, and store it.
+async function rebuildImageSpec() {
+  const msg = document.getElementById('designTestMsg');
+  if (msg) { msg.style.color = 'var(--ink3)'; msg.textContent = 'Rebuilding the image spec from the saved design…'; }
   try {
-    const r = await w('saveImageSpec', { campaignId: CAMPAIGN_ID, text });
+    const staged = {};
+    if (DESIGN_LIVE.palette) staged.palette = DESIGN_LIVE.palette;
+    if (DESIGN_LIVE.fonts && DESIGN_LIVE.fonts.display) staged.fonts = DESIGN_LIVE.fonts;
+    const r = await w('previewImageSpec', { campaignId: CAMPAIGN_ID, staged });
     if (r.error) throw new Error(r.error);
-    btn.textContent = 'Saved ✓';
-    msg.style.color = 'var(--fresh)'; msg.textContent = 'Image spec saved to Research. Every Grok render for this campaign now reads it; ✨ Test on Grok below to check.';
-    setTimeout(() => { btn.textContent = o; btn.disabled = false; }, 2500);
-  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Save failed: ' + e.message; btn.disabled = false; btn.textContent = o; }
+    const s = await w('saveImageSpec', { campaignId: CAMPAIGN_ID, text: r.text });
+    if (s.error) throw new Error(s.error);
+    if (msg) { msg.style.color = 'var(--fresh)'; msg.textContent = 'Image spec rebuilt from the saved design. Every Grok render now follows it.'; }
+  } catch (e) { if (msg) { msg.style.color = '#c0392b'; msg.textContent = 'Saved, but the image spec rebuild failed: ' + e.message; } }
+}
+// Grok plate → the three direction fields, read off the image (staged).
+async function regenDirectionFromPlate(imageUrl, btn, steer) {
+  const msg = document.getElementById('designTestMsg');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'reading…';
+  msg.style.color = 'var(--ink3)'; msg.textContent = 'Regenerating the visual direction from that plate…';
+  try {
+    const cur = DESIGN_STAGE.register != null
+      ? { register: DESIGN_STAGE.register, photography: DESIGN_STAGE.photography, avoid: DESIGN_STAGE.avoid } : undefined;
+    const r = await w('generateResearchDesign', { campaignId: CAMPAIGN_ID, imageUrl, instructions: steer || undefined, current: cur, stage: true, slug: HUB_SLUG || undefined });
+    if (r.error) throw new Error(r.error);
+    DESIGN_STAGE.register = r.design.register; DESIGN_STAGE.photography = r.design.photography; DESIGN_STAGE.avoid = r.design.avoid;
+    renderDesignDirection();
+    msg.style.color = 'var(--fresh)'; msg.textContent = 'Direction regenerated from the plate. Staged above; 💾 Save to Notion to keep it.';
+  } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Could not read the plate: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
 }
 function addDesignTestPlate(r, label) {
   const a = document.createElement('a');
   a.href = r.imageUrl; a.target = '_blank'; a.rel = 'noopener'; a.title = label + ' · ' + (r.aspect || '') + ' · ' + (r.prompt || ''); a.style.cssText = 'flex:0 0 auto;text-decoration:none;';
   a.innerHTML = `<img src="${esc(r.imageUrl)}" alt="Grok test plate" style="height:160px;border-radius:6px;border:1px solid var(--border2);display:block;"><div style="font-size:9px;color:var(--ink3);margin-top:2px;">${esc(label)}</div>`;
-  const strip = document.getElementById('designTests'); strip.insertBefore(a, strip.firstChild);
+  const cell = document.createElement('div'); cell.style.cssText = 'flex:0 0 auto;display:flex;flex-direction:column;gap:4px;';
+  const b = document.createElement('button'); b.className = 'btn'; b.style.cssText = 'font-size:10px;padding:3px 6px;';
+  b.textContent = '⟳ direction from this'; b.title = 'Regenerate Visual Register / Photography Direction / Visual Avoid from this image. Staged; 💾 Save to keep.';
+  b.onclick = () => regenDirectionFromPlate(r.imageUrl, b);
+  cell.appendChild(a); cell.appendChild(b);
+  const strip = document.getElementById('designTests'); strip.insertBefore(cell, strip.firstChild);
 }
 async function copyDesignGptPrompt(btn) {
   const text = designGptPrompt();
@@ -2786,7 +2799,7 @@ async function testDesignOnGrok() {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rendering… (~20s)';
   msg.style.color = 'var(--ink3)'; msg.textContent = 'Grok is rendering a test plate from the ' + (staged ? 'STAGED' : 'live') + ' direction…';
   try {
-    const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, direction, palette: DESIGN_STAGE.palette || DESIGN_LIVE.palette || undefined, aspect: document.getElementById('designTestAspect').value });
+    const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, direction, palette: DESIGN_STAGE.palette || DESIGN_LIVE.palette || undefined, aspect: '3:4' });
     if (r.error) throw new Error(r.error);
     addDesignTestPlate(r, staged ? 'staged direction' : 'live direction');
     msg.textContent = 'Rendered from the ' + (staged ? 'staged' : 'live') + ' direction — newest first; hover for the prompt.';
@@ -2803,6 +2816,7 @@ async function saveStagedDesign() {
     DESIGN_LIVE.register = DESIGN_STAGE.register; DESIGN_LIVE.photography = DESIGN_STAGE.photography; DESIGN_LIVE.avoid = DESIGN_STAGE.avoid;
     DESIGN_STAGE.register = DESIGN_STAGE.photography = DESIGN_STAGE.avoid = null;
     renderDesignDirection();
+    rebuildImageSpec();
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 function setPaletteImage(input) {
@@ -2835,6 +2849,7 @@ async function saveStagedPalette() {
     DESIGN_LIVE.palette = DESIGN_STAGE.palette;
     DESIGN_STAGE.palette = null;
     renderDesignPalette();
+    rebuildImageSpec();
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function runRegenFonts(steer, omit) {
@@ -2851,6 +2866,7 @@ async function saveStagedFonts() {
     DESIGN_LIVE.fonts = DESIGN_STAGE.fonts;
     DESIGN_STAGE.fonts = null;
     renderDesignFonts();
+    rebuildImageSpec();
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 
