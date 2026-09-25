@@ -231,6 +231,15 @@ Real Google search-demand data via the **Google Ads API v25 `KeywordPlanIdeaServ
   one Google request** and every limit (depth, seeds/level, filters, max requests/keywords, daily budget) is enforced
   server-side. Cache-first: identical request within 30 days is never re-sent. `kw_frontier` holds depth/parent/root lineage.
 - Same data model as the local CLI at `~/keyword-research` (Python + SQLite) — that tool is a separate, local-only store.
+- **Intent** (`kwIntent`, rule-based): hire / buy / research / tool / learn / career / brand / general + local/brand flags, stored
+  on `kw_metrics`; **Intent map** panel (`kwIntentMap`) + intent × concept-group crosstab; `kwReclassify` after rule changes.
+  Multi-column sort (`sorts: [{col,dir}]`), checkbox run sets (`runIds: [..]`).
+- **Bridge to campaigns (2026-09-25):** tab row checkboxes → `kwSendKeywords` — `main` appends to the campaign's Research
+  `Keywords` (dedup, never replaces), `cluster` stages an SEO cluster in KV `seoclusters:staged:<campaignId>` (name = highest-volume
+  keyword, `source: "keywords-tab"`), `campaign` creates Campaign (Planning) + Research (Draft) seeded with the keywords.
+  **Research reads the store:** `kwDemandBlock(env, keywords)` injects real volume/bid/intent/trend + related high-demand searches
+  + intent mix into `regenerateKeywords`, `generateKeywordClusters`, `generateProductKeywords`, `regenerateTitleKeywords` and
+  both steps of `generateClusterProductStacks`. Returns "" when the store has nothing relevant — prompts then behave as before.
 - Worker deploys with a D1 binding: if the GitHub Action's `CLOUDFLARE_API_TOKEN` lacks **D1 read/edit**, deploy locally
   with `cd worker && npx wrangler deploy` (OAuth login has d1 write).
 

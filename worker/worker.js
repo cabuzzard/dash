@@ -13120,12 +13120,13 @@ Return via the submit_digest_email tool ONLY. The "html" field MUST be real HTML
           if (clusterKeywords) clusterBlock = `\nSEO CLUSTER THIS PRODUCT BELONGS TO (Product Stack "${productStack}") — stay faithful to these, merge with the product's own keywords rather than drifting from them: ${clusterKeywords}\n`;
         }
 
+        const demandBlock = await kwDemandBlock(env, [currentKeywords, productStack, productName].filter(Boolean).join(", "));
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
 ${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
-${clusterBlock}
+${clusterBlock}${demandBlock}
 Return 10-15 real, specific keywords/phrases this product should be associated with — a mix of category terms, buyer-intent phrases, and long-tail specifics. Comma-separated, no other text, no numbering, no explanation.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -13178,7 +13179,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
 
 TITLE: ${titleName}
 ${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
-${clusterBlock}
+${clusterBlock}${await kwDemandBlock(env, [currentKeywords, titleName].filter(Boolean).join(", "), { related: 15 })}
 Return 8-12 real, specific keywords/phrases this piece of content should target — comma-separated, no other text, no numbering, no explanation.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -27064,7 +27065,7 @@ Call submit_seo_audit with your findings.`;
 
 CAMPAIGN KEYWORDS (the raw pool to organize — every keyword should end up in exactly one cluster, none invented, none dropped unless truly off-topic):
 ${keywords}
-
+${await kwDemandBlock(env, keywords, { limit: 60, related: 20, instruction: "Use this: when choosing each cluster's name (its single most representative keyword from the pool), prefer the member with the most real search volume; keep clusters that carry real demand distinct, and note in the rationale roughly how much search demand each cluster represents. Only pool keywords may be placed in clusters." })}
 ${existingClusters.length ? `ALREADY-COVERED CLUSTERS (committed or already staged — don't recreate these; build clusters for what's LEFT uncovered, or propose a genuinely better split only if you have one):\n${existingClusters.map(c => `- ${c.name}: ${c.keywords}`).join("\n")}\n` : ""}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match clusters to these; per operator direction, clusters are invented fresh from the keywords, existing products won't cleanly fit real keyword clusters):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this): ${guidance}\n` : ""}${omitBlock(omitKeywords)}
 For each cluster, give: a name that is its single top/most representative keyword from the pool, EXACTLY as that keyword appears there (not an invented phrase, not a paraphrase — pick the one keyword that best represents the whole cluster); the exact keywords from the pool that belong to it (including that top keyword); a one-sentence rationale for why they group together; and its dominant search intent. 3-8 clusters depending on how the keywords naturally split — don't force an arbitrary count.
 
@@ -27741,6 +27742,10 @@ Return via the submit_digest_ideas tool ONLY — nothing as plain text.`;
         const productRows = await notionQuery(PRODUCTS_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(campaignId)) } } }).catch(() => []);
         const productNames = productRows.map(p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
 
+        // Real Google demand for this cluster (volume, bids, intent mix) — feeds both steps below.
+        const demandBlock = await kwDemandBlock(env, [cluster.keywords, cluster.name].join(", "), { related: 25,
+          instruction: "Use this: size and prioritize proposals by real demand — lead with offers that serve the intents carrying the most volume and the highest bids, name/position products in the phrases people actually search, and say which searches each product answers." });
+
         // Step 1 — grounded research: real, current monetization pathways
         // for this keyword space, not guessed from training data alone.
         let researchText = "";
@@ -27755,7 +27760,7 @@ Return via the submit_digest_ideas tool ONLY — nothing as plain text.`;
 
 KEYWORDS: ${cluster.keywords}
 TOPIC: ${cluster.name}${guidance ? `\nOPERATOR FOCUS (prioritize this pathway/platform if it's viable, still report others found): ${guidance}` : ""}
-
+${demandBlock}
 Find the most common and most successful monetization pathways people/businesses actually use in this space — e.g. Etsy or Amazon (physical/print-on-demand), Amazon KDP (books), Gumroad/Teachable/Kajabi (digital products, courses), YouTube (ad revenue + sponsorships), affiliate/review sites, Shopify (physical goods brand), service marketplaces (Fiverr/Upwork/local services), SaaS/tools, coaching/consulting, membership/community, newsletter/Substack, etc. — whichever actually fit this space, don't force ones that don't.
 
 For each pathway found, report: the PLATFORM, the specific product/offer format, and why it works for this niche (real examples/evidence, not speculation).` }],
@@ -27770,7 +27775,7 @@ For each pathway found, report: the PLATFORM, the specific product/offer format,
 STACK: ${cluster.name}
 CLUSTER KEYWORDS: ${cluster.keywords}
 RATIONALE: ${cluster.rationale}
-
+${demandBlock}
 ${researchText ? `MONETIZATION RESEARCH (base your proposals on this — real pathways/platforms found for this space):\n${researchText}\n` : `(No research results came back — ground proposals in the keywords/rationale above as a fallback, but still choose a concrete platform and format for each.)\n`}${productNames.length ? `EXISTING PRODUCTS UNDER THIS CAMPAIGN (context only — do NOT try to match or avoid duplicating these; per operator direction, proposals are invented fresh from the cluster's own keywords):\n${productNames.join(", ")}\n` : ""}${guidance ? `\nOPERATOR GUIDANCE (follow this — an override on top of the research above): ${guidance}\n` : ""}
 For each proposed product, give: a short working name/title; the PLATFORM it sells on (from the research, or the operator's override); the FORMAT (concrete deliverable — e.g. PDF, Print-on-demand item, Online course, Coaching package, Membership, Physical product, Affiliate content, SaaS tool, Service); a one-sentence angle (what it is / who it's for / why this platform+format monetizes this niche); and the specific keywords from the cluster (plus close long-tail variants) it targets. 2-5 products depending on how the cluster naturally splits — don't force an arbitrary count, and don't repeat the same platform+format for every one unless the research genuinely points that way.
 
@@ -29078,7 +29083,7 @@ CURRENT TARGET AUDIENCE: "${crt("Target Audience") || '(none set)'}"
 CURRENT CAMPAIGN GOAL: "${crt("Campaign Goal") || '(none set)'}"
 CURRENT KEY MESSAGE: "${crt("Key Message") || '(none set)'}"
 CURRENT PAIN POINTS: "${crt("Pain Points") || '(none set)'}"
-
+${await kwDemandBlock(env, currentKeywords || "", { related: 30, instruction: "Use this: the expanded keyword list should favor real searched phrases with meaningful volume (from either list above) over invented ones, and should cover the intents that carry real demand." })}
 CURRENT KEYWORDS is the dominant signal: it is the operator's own deliberate, most-recent input, not just one input among five. If it points at a different subject, tone, or audience than the CURRENT fields above, treat that as a real, deliberate pivot — let the keywords redefine the four fields rather than blending the new direction back toward the old one. Only carry forward parts of the old fields that don't conflict with where the keywords now point. If the operator guidance above adds anything further on top of that, fold it in too.
 
 Generate an expanded, optimized list of 15-20 keywords in that same subject/tone/audience (long-tail variations, related search terms, problem-aware and solution-aware terms, high-intent terms) — AND rewrite the four positioning fields so they genuinely follow it.
@@ -42066,6 +42071,155 @@ function kwResultsSql(body, runs, forExport) {
            countSql: "SELECT COUNT(*) n " + from + " WHERE " + w, binds };
 }
 
+// ── Bridge: Google keyword store ⇄ campaign research ─────────────────────
+// kwDemandBlock: real search demand for a keyword list, as a prompt block. Used by
+// campaign keyword refresh, SEO clusters, product keywords, title keywords and
+// cluster → product proposals so they pick/position around what people actually
+// search. Read-only; returns "" when the store has nothing relevant (prompts then
+// behave exactly as before).
+const KW_STOP = new Set("the and for with from your you are how what why when who best near into that this does can get make use using about over free top vs".split(" "));
+async function kwDemandBlock(env, keywordsText, opts) {
+  opts = opts || {};
+  try {
+    if (!env.KWDB) return "";
+    const kws = [...new Set(String(keywordsText || "").split(/[,;\n|]/).map(kwNorm).filter(k => k && k.length < 120))].slice(0, 150);
+    if (!kws.length) return "";
+    const db = env.KWDB;
+    const label = k => (KW_INTENTS[k] && KW_INTENTS[k].label) || k || "?";
+    const fmt = r => `${r.text} — ${Number(r.vol || 0).toLocaleString()}/mo${r.hb ? `, top bid $${Number(r.hb).toFixed(2)}` : ""}${r.intent ? `, ${label(r.intent)}` : ""}${r.tr != null ? `, 12m ${r.tr > 0 ? "+" : ""}${r.tr}%` : ""}`;
+    // SQLite: bare columns come from the MAX() row → each keyword's best market row.
+    const exact = (await db.prepare("SELECT k.text, MAX(m.avg_monthly_searches) vol, m.high_top_of_page_bid hb, m.intent, m.trend_pct tr "
+      + "FROM json_each(?1) j JOIN kw_keywords k ON k.text = j.value JOIN kw_metrics m ON m.keyword_id = k.id GROUP BY k.id ORDER BY vol DESC")
+      .bind(JSON.stringify(kws)).all()).results;
+    // Related demand: other keywords Google returned in the same requests, kept only if they
+    // share a meaningful word with the input (so a broad request can't drag in noise).
+    const tokens = new Set(kws.join(" ").split(" ").filter(w => w.length >= 4 && !KW_STOP.has(w)));
+    const sib = (await db.prepare("WITH hit AS (SELECT k.id FROM json_each(?1) j JOIN kw_keywords k ON k.text = j.value), "
+      + "reqs AS (SELECT request_id FROM kw_request_results WHERE keyword_id IN (SELECT id FROM hit) UNION SELECT request_id FROM kw_request_seeds WHERE keyword_id IN (SELECT id FROM hit)) "
+      + "SELECT k.text, MAX(m.avg_monthly_searches) vol, m.high_top_of_page_bid hb, m.intent, m.trend_pct tr FROM kw_request_results rr "
+      + "JOIN kw_keywords k ON k.id = rr.keyword_id JOIN kw_metrics m ON m.keyword_id = k.id "
+      + "WHERE rr.request_id IN (SELECT request_id FROM reqs) AND rr.keyword_id NOT IN (SELECT id FROM hit) GROUP BY k.id ORDER BY vol DESC LIMIT 400")
+      .bind(JSON.stringify(kws)).all()).results;
+    let related = sib.filter(r => r.text.split(" ").some(w => tokens.has(w))).slice(0, opts.related || 25);
+    if (!exact.length && !related.length && tokens.size) {
+      // Nothing matched directly — fall back to stored keywords containing the input's key words.
+      const words = [...tokens].slice(0, 3);
+      related = (await db.prepare("SELECT k.text, MAX(m.avg_monthly_searches) vol, m.high_top_of_page_bid hb, m.intent, m.trend_pct tr FROM kw_keywords k "
+        + "JOIN kw_metrics m ON m.keyword_id = k.id WHERE " + words.map(() => "k.text LIKE ?").join(" OR ") + " GROUP BY k.id ORDER BY vol DESC LIMIT " + (opts.related || 25))
+        .bind(...words.map(w => "%" + w + "%")).all()).results;
+    }
+    if (!exact.length && !related.length) return "";
+    const mix = {};
+    for (const r of exact.concat(related)) { const k = r.intent || "general"; mix[k] = (mix[k] || 0) + (r.vol || 0); }
+    const tot = Object.values(mix).reduce((a, b) => a + b, 0) || 1;
+    const mixLine = Object.entries(mix).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${label(k)} ${Math.round(v / tot * 100)}%`).join(" · ");
+    const missing = kws.length - exact.length;
+    return `\nREAL GOOGLE SEARCH DEMAND (Google Ads Keyword Planner data from the operator's keyword store — US monthly searches, top-of-page bid = what advertisers pay per click, intent = what the searcher is trying to do):\n`
+      + (exact.length ? `Keywords above WITH data (${exact.length} of ${kws.length}${missing ? `; ${missing} have no search data yet` : ""}):\n${exact.slice(0, opts.limit || 40).map(r => "- " + fmt(r)).join("\n")}\n` : `None of the keywords above are in the store yet.\n`)
+      + (related.length ? `Related high-demand searches in the same space:\n${related.map(r => "- " + fmt(r)).join("\n")}\n` : "")
+      + `Intent mix of this space (by search volume): ${mixLine}\n`
+      + (opts.instruction || "Use this: prefer real searched phrases over invented ones, weight toward phrases with meaningful volume and bids, and match each output to the intent people actually show (a Tool/DIY-heavy space wants tools/templates; a Hire-heavy space wants services). Don't copy low-volume noise just because it has data.") + "\n";
+  } catch (e) {
+    console.error("kwDemandBlock", e && e.message);
+    return "";
+  }
+}
+
+// Map the tab's intents onto the microsite's 3-way SEARCH_INTENT labels for staged clusters.
+const KW_TO_SEARCH_INTENT = { hire: "transactional", buy: "transactional", research: "buyer", brand: "buyer", tool: "informational", learn: "informational", career: "informational", general: "informational" };
+
+async function kwNotionRichText(text) {
+  const out = [];
+  for (let i = 0; i < text.length; i += 1900) out.push({ type: "text", text: { content: text.slice(i, i + 1900) } });
+  return out.length ? out : [{ type: "text", text: { content: "" } }];
+}
+
+// kwSendKeywords { mode: "main" | "cluster" | "campaign", keywords: [..], campaignId?, name? }
+async function kwSendKeywords(env, body) {
+  const keywords = [...new Set((body.keywords || []).map(kwNorm).filter(Boolean))].slice(0, 300);
+  if (!keywords.length) return json({ error: "Select at least one keyword" }, 400);
+  const mode = body.mode;
+  const token = (env.NOTION_TOKEN || "").trim();
+  const hdr = { Authorization: "Bearer " + token, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const norm = s => String(s || "").replace(/-/g, "");
+  const dashId = s => { s = norm(s); return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`; };
+  const rtOf = (p, k) => ((p && p.properties && p.properties[k] && p.properties[k].rich_text) || []).map(t => t.plain_text).join("");
+  // metrics for naming / ordering / summaries
+  const mets = (await env.KWDB.prepare("SELECT k.text, MAX(m.avg_monthly_searches) vol, m.high_top_of_page_bid hb, m.intent FROM json_each(?1) j "
+    + "JOIN kw_keywords k ON k.text = j.value LEFT JOIN kw_metrics m ON m.keyword_id = k.id GROUP BY k.id ORDER BY vol DESC NULLS LAST")
+    .bind(JSON.stringify(keywords)).all()).results;
+  const byVol = mets.map(r => r.text).concat(keywords.filter(k => !mets.some(r => r.text === k)));
+  const totalVol = mets.reduce((a, r) => a + (r.vol || 0), 0);
+  const mix = {};
+  for (const r of mets) { const k = r.intent || "general"; mix[k] = (mix[k] || 0) + (r.vol || 0); }
+  const topIntent = Object.entries(mix).sort((a, b) => b[1] - a[1])[0];
+
+  async function researchFor(campaignId, campaignName) {
+    const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashId(campaignId) } } }).catch(() => []);
+    const score = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtOf(r, k).length, 0);
+    const best = rows.slice().sort((a, b) => score(b) - score(a))[0];
+    if (best) return best;
+    const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: RESEARCH_DB }, properties: {
+      Name: { title: [{ type: "text", text: { content: String(campaignName || "Research").slice(0, 200) } }] },
+      Campaign: { relation: [{ id: dashId(campaignId) }] }, Status: { select: { name: "Draft" } } } }) });
+    const d = await r.json();
+    if (!r.ok) throw new Error("Could not create Research record: " + (d.message || r.status));
+    return d;
+  }
+
+  if (mode === "main") {
+    if (!body.campaignId) return json({ error: "campaignId required" }, 400);
+    const research = await researchFor(body.campaignId, body.campaignName);
+    const current = rtOf(research, "Keywords");
+    const have = new Set(current.split(/[,;\n]/).map(kwNorm).filter(Boolean));
+    const add = byVol.filter(k => !have.has(k));
+    if (!add.length) return json({ ok: true, added: 0, note: "All selected keywords are already in Main Keywords" });
+    const next = (current.trim() ? current.trim().replace(/[,\s]+$/, "") + ", " : "") + add.join(", ");
+    const r = await fetch("https://api.notion.com/v1/pages/" + research.id, { method: "PATCH", headers: hdr,
+      body: JSON.stringify({ properties: { Keywords: { rich_text: await kwNotionRichText(next) } } }) });
+    if (!r.ok) { const d = await r.json(); return json({ error: d.message || "Update failed" }, r.status); }
+    return json({ ok: true, added: add.length, skipped: keywords.length - add.length, researchId: norm(research.id) });
+  }
+
+  if (mode === "cluster") {
+    if (!body.campaignId) return json({ error: "campaignId required" }, 400);
+    let list = byVol, kwText = list.join(", ");
+    while (kwText.length > 1900 && list.length > 1) { list = list.slice(0, -1); kwText = list.join(", "); }
+    const name = String(body.name || byVol[0]).slice(0, 100);
+    const cluster = {
+      id: "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name, keywords: kwText,
+      rationale: `From Google keyword research: ${list.length} keywords, ${totalVol.toLocaleString()} searches/mo combined`
+        + (topIntent ? `; dominant intent ${(KW_INTENTS[topIntent[0]] || {}).label || topIntent[0]} (${Math.round(topIntent[1] / (totalVol || 1) * 100)}% of volume)` : "") + ".",
+      searchIntent: topIntent ? KW_TO_SEARCH_INTENT[topIntent[0]] || "" : "",
+      source: "keywords-tab",
+    };
+    const key = "seoclusters:staged:" + norm(body.campaignId);
+    let staged = [];
+    try { staged = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+    staged.push(cluster);
+    await env.TRADES.put(key, JSON.stringify(staged));
+    return json({ ok: true, cluster, trimmed: byVol.length - list.length });
+  }
+
+  if (mode === "campaign") {
+    const name = String(body.name || "").trim() || byVol[0].replace(/\b\w/g, c => c.toUpperCase());
+    const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: CAMPAIGNS_DB }, properties: {
+      Name: { title: [{ type: "text", text: { content: name.slice(0, 200) } }] }, Status: { select: { name: "Planning" } } } }) });
+    const cd = await cr.json();
+    if (!cr.ok) return json({ error: cd.message || "Campaign create failed" }, cr.status);
+    const rr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: RESEARCH_DB }, properties: {
+      Name: { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+      Campaign: { relation: [{ id: cd.id }] }, Status: { select: { name: "Draft" } },
+      Keywords: { rich_text: await kwNotionRichText(byVol.join(", ")) } } }) });
+    const rd = await rr.json();
+    return json({ ok: true, campaignId: norm(cd.id), name, researchId: rr.ok ? norm(rd.id) : null,
+      warning: rr.ok ? null : "Campaign created, but the Research record failed: " + (rd.message || rr.status) });
+  }
+
+  return json({ error: "mode must be main, cluster or campaign" }, 400);
+}
+
 async function handleKeywordAction(body, env) {
   const a = body.action;
   if (!a || !a.startsWith("kw")) return null;
@@ -42126,6 +42280,9 @@ async function handleKeywordAction(body, env) {
   }
 
   if (a === "kwStepRun") return json(await kwStepRun(env, Number(body.runId)));
+
+  // Tab → campaign: add to Main Keywords / stage an SEO cluster / create a campaign.
+  if (a === "kwSendKeywords") return kwSendKeywords(env, body);
 
   if (a === "kwStopRun" || a === "kwResumeRun") {
     const st = a === "kwStopRun" ? "stopped" : "running";

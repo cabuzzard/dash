@@ -1023,6 +1023,17 @@
         <select id="kwBrandF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">brand: any</option><option value="only">brands only</option><option value="exclude">no brands</option></select>
         <button class="kw-btn" onclick="kwLoadResults(0)">Apply</button>
       </div>
+      <div id="kwSendBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;margin-bottom:8px;padding:8px;border:1px solid #2a5a2a;border-radius:4px;background:var(--surface2);">
+        <b id="kwSelCount"></b>
+        <select id="kwSendCampaign" class="kw-sel" style="max-width:240px;"><option value="">choose campaign…</option></select>
+        <button class="kw-btn" onclick="kwSend('main')" title="Append to the campaign's Main Keywords (Research Keywords) — existing keywords kept, duplicates skipped">+ Main Keywords</button>
+        <button class="kw-btn" onclick="kwSend('cluster')" title="Stage an SEO cluster in the campaign's microsite (Keywords &amp; Notes → SEO Clusters) — review, commit, then propose products from it">+ Cluster</button>
+        <span style="color:var(--text3);">or</span>
+        <input id="kwSendName" placeholder="name (optional)" style="width:150px;">
+        <button class="kw-btn" onclick="kwSend('campaign')" title="Create a new campaign (Status: Planning) with a Research record whose Main Keywords are the selection">+ New campaign</button>
+        <span class="kw-x" onclick="kwClearSel()" title="Clear selection">✕ clear</span>
+        <span id="kwSendMsg" style="color:var(--text3);"></span>
+      </div>
       <div id="kwSortBar" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:6px;"></div>
       <div id="kwResults" style="overflow-x:auto;"></div>
       <div id="kwPager" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;font-size:12px;"></div>
@@ -4896,7 +4907,7 @@ function stopTradesAutoRefresh() {
 // Quick = a depth-0 run (one GenerateKeywordIdeas request). Discover = the same
 // run with depth ≥1: kwLoop calls kwStepRun until the worker says done; each step
 // is at most one Google request and all limits are enforced server-side.
-const KW = { runId: null, view: [], running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100, total: 0, labels: {} };
+const KW = { runId: null, view: [], selected: new Set(), running: false, sorts: [{ col: 'vol', dir: 'desc' }], offset: 0, limit: 100, total: 0, labels: {} };
 const kwSleep = ms => new Promise(r => setTimeout(r, ms));
 const kwNum = v => v == null ? '–' : Number(v).toLocaleString();
 const kwMoney = v => v == null ? '–' : '$' + Number(v).toFixed(2);
@@ -4976,16 +4987,20 @@ async function kwLoadResults(offset) {
     KW.cols = cols;
     const mark = k => { const i = KW.sorts.findIndex(x => x.col === k); if (i < 0) return '';
       return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
-    const th = cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${k === 'keyword' || k === 'intent' ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
+    KW.pageRows = d.rows.map(r => r.keyword);
+    const allOn = KW.pageRows.length && KW.pageRows.every(k => KW.selected.has(k));
+    const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${k === 'keyword' || k === 'intent' ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
       + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
     const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
     const body = d.rows.map(r => `<tr>
+        <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
         <td style="text-align:left;">${esc(r.keyword)}${r.is_local ? ' <span class="kw-chip">local</span>' : ''}${r.is_brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
         <td style="text-align:left;"><span class="kw-chip">${esc((KW.meta && KW.meta[r.intent] && KW.meta[r.intent].label) || r.intent || '–')}</span></td><td>${kwNum(r.vol)}</td>
         <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
         <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
         <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td>${multi ? `<td style="text-align:left;color:var(--text3);">${esc(String(r.run_list || '').split(',').map(x => '#' + x).join(' '))}</td>` : ''}</tr>`).join('');
     kwRenderSortBar();
+    kwRenderSendBar();
     el.innerHTML = d.rows.length ? `<table class="kw-table"><thead><tr>${th}</tr></thead><tbody>${body}</tbody></table>`
       : '<div style="font-size:12px;color:var(--text3);padding:8px 0;">No keywords yet — run a search above.</div>';
     const last = Math.min(KW.offset + KW.limit, KW.total);
@@ -5045,6 +5060,36 @@ function kwFilterIntent(k) {
 
 // Click = sort by this column only (again = flip). Shift-click = add/flip it as the next tiebreaker.
 const kwDefaultDir = col => (col === 'keyword' || col === 'intent' || col === 'depth') ? 'asc' : 'desc';
+function kwSel(cb, kw) { cb.checked ? KW.selected.add(kw) : KW.selected.delete(kw); kwRenderSendBar(); }
+function kwSelPage(on) { for (const k of KW.pageRows || []) on ? KW.selected.add(k) : KW.selected.delete(k); kwLoadResults(KW.offset); }
+function kwClearSel() { KW.selected.clear(); kwLoadResults(KW.offset); }
+async function kwRenderSendBar() {
+  const bar = document.getElementById('kwSendBar');
+  bar.style.display = KW.selected.size ? 'flex' : 'none';
+  document.getElementById('kwSelCount').textContent = `${KW.selected.size} selected →`;
+  const sel = document.getElementById('kwSendCampaign');
+  if (KW.selected.size && !KW.campaigns) {
+    try {
+      KW.campaigns = ((await call('getCampaigns')).campaigns || []).filter(c => c.name && c.status !== 'Delete').sort((a, b) => a.name.localeCompare(b.name));
+      sel.innerHTML = '<option value="">choose campaign…</option>' + KW.campaigns.map(c => `<option value="${c.id}">${esc(c.name)}${c.status ? ' · ' + esc(c.status) : ''}</option>`).join('');
+    } catch (e) { document.getElementById('kwSendMsg').textContent = 'Could not load campaigns: ' + e.message; }
+  }
+}
+async function kwSend(mode) {
+  const msg = document.getElementById('kwSendMsg');
+  const campaignId = document.getElementById('kwSendCampaign').value;
+  const name = document.getElementById('kwSendName').value.trim();
+  if (mode !== 'campaign' && !campaignId) { msg.textContent = 'Choose a campaign first.'; return; }
+  const camp = (KW.campaigns || []).find(c => c.id === campaignId);
+  msg.textContent = 'Sending…';
+  try {
+    const r = await call('kwSendKeywords', { mode, campaignId, campaignName: camp && camp.name, name, keywords: [...KW.selected] });
+    if (mode === 'main') msg.textContent = r.added ? `✓ Added ${r.added} to ${camp.name} Main Keywords${r.skipped ? ` (${r.skipped} already there)` : ''}` : '✓ ' + (r.note || 'Nothing new to add');
+    else if (mode === 'cluster') msg.textContent = `✓ Staged cluster "${r.cluster.name}" in ${camp.name} — open its microsite → Keywords & Notes → SEO Clusters${r.trimmed ? ` (${r.trimmed} lowest-volume keywords trimmed to fit)` : ''}`;
+    else { msg.textContent = `✓ Created campaign "${r.name}" (Planning) with ${KW.selected.size} Main Keywords` + (r.warning ? ' — ' + r.warning : ''); KW.campaigns = null; }
+  } catch (e) { msg.textContent = '✗ ' + e.message; }
+}
+
 function kwSort(col, ev) {
   const i = KW.sorts.findIndex(x => x.col === col);
   if (ev && ev.shiftKey) {
