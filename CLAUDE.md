@@ -249,6 +249,16 @@ Real Google search-demand data via the **Google Ads API v25 `KeywordPlanIdeaServ
 - Worker deploys with a D1 binding: if the GitHub Action's `CLOUDFLARE_API_TOKEN` lacks **D1 read/edit**, deploy locally
   with `cd worker && npx wrangler deploy` (OAuth login has d1 write).
 
+## Buffer API keys (Platforms tab · 2026-09-25)
+
+One Buffer account per campaign. Keys are **write-only**: Platforms tab → a campaign's `buffer` cell (shows 🔑 key /
+no key) → modal box → `bufferSaveKey` validates the key against Buffer's GraphQL API, then stores it AES-GCM-encrypted in
+KV `buffer:tok:<campaignId>` (secret **`BUFFER_KEY_ENC`**; only last-4 + org names are ever returned). Channel pick →
+`bufferSetChannel` → KV `buffer:chan:<campaignId>` (+ mirrored to the Logins record's `Buffer Profile ID` if one exists).
+`resolveCampaignBufferLogin(campaignId, dashId, env)` prefers the KV key, falls back to the legacy Notion
+`Buffer Access Token` field. **Rotating/deleting `BUFFER_KEY_ENC` makes every saved key undecryptable** — they'd need
+re-pasting. Only carousels send to Buffer today (`sendCarouselToBuffer`, as drafts).
+
 ## Cron Scripts panel (Globals tab · ⏰)
 
 Read-only registry of everything on a schedule — the counterpart to the 🤖

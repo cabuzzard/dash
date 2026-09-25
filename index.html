@@ -3158,6 +3158,24 @@
       <span onclick="closeLoginCellModal()" style="cursor:pointer;color:var(--text3);font-size:18px;padding:4px;">✕</span>
     </div>
     <div id="loginCellSub" style="font-size:11px;color:var(--text3);margin-bottom:16px;"></div>
+    <div id="lcBufferBox" style="display:none;margin-bottom:14px;padding:10px 12px;border:1px solid var(--border2);border-radius:var(--radius-sm);">
+      <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">🔑 Buffer API key <span style="font-weight:400;text-transform:none;letter-spacing:0;">— write-only, stored encrypted, never shown again</span></div>
+      <div id="lcBufferStatus" style="font-size:12px;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <input class="modal-input" id="lcBufferKey" type="password" autocomplete="off" placeholder="Paste key from publish.buffer.com/settings/api" style="flex:1;min-width:200px;margin:0;" />
+        <button class="btn btn-secondary" id="lcBufferSaveBtn" onclick="lcBufferSave()">Save key</button>
+        <button class="btn btn-secondary" id="lcBufferClearBtn" onclick="lcBufferClear()" style="display:none;">Remove</button>
+      </div>
+      <div id="lcBufferChanWrap" style="display:none;margin-top:10px;">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;">
+          <span style="color:var(--text3);">Post to channel:</span>
+          <select id="lcBufferChan" class="modal-input" style="flex:1;min-width:180px;margin:0;"><option value="">— load channels —</option></select>
+          <button class="btn btn-secondary" onclick="lcBufferLoadChannels()">↻ Load</button>
+          <button class="btn btn-secondary" onclick="lcBufferSetChannel()">Use this channel</button>
+        </div>
+      </div>
+      <div id="lcBufferMsg" style="font-size:11px;color:var(--text3);margin-top:6px;"></div>
+    </div>
     <div id="loginCellList" style="margin-bottom:12px;"></div>
     <div id="loginCellCreateWrap">
       <div style="display:flex;gap:8px;margin-bottom:0;">
@@ -6591,6 +6609,8 @@ let platCampaigns    = [];   // full campaign list from getCampaigns
 let platPlatforms    = [];   // Publish-status platforms only
 let platLoginIndex   = {};   // [campId][platId] -> login obj | null
 let platAllLogins    = [];   // full login list for "link existing" picker
+let platBufferStatus = {};   // [campId] -> { saved, last4, orgs, channel } — write-only Buffer keys (never the key itself)
+const isBufferPlatform = p => /^buffer$/i.test(String(p && p.name || '').trim());
 let platParentOf     = {};   // [childCampId] -> parentCampId
 let platNotesResearchId = null;
 let platNotesCallback   = null;
@@ -6681,11 +6701,13 @@ async function loadPlatformMatrix() {
   const el = document.getElementById('platformsContent');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
-    const [campData, platData, loginData] = await Promise.all([
+    const [campData, platData, loginData, bufData] = await Promise.all([
       call('getCampaigns'),
       call('getPlatforms'),
       call('getLogins'),
+      call('bufferKeyStatus').catch(() => ({ campaigns: {} })),
     ]);
+    platBufferStatus = (bufData && bufData.campaigns) || {};
 
     platCampaigns = campData.campaigns || [];
     platAllLogins = loginData.logins || [];
@@ -7205,6 +7227,14 @@ function renderPlatformMatrix() {
           td.innerHTML = '<span style="font-size:16px;color:var(--border2);">+</span>';
         }
 
+        if (isBufferPlatform(p)) {
+          const b = platBufferStatus[c.id] || {};
+          const key = document.createElement('div');
+          key.style.cssText = 'font-size:10px;margin-top:2px;white-space:nowrap;color:' + (b.saved ? '#4cff4c' : 'var(--text3)') + ';';
+          key.textContent = b.saved ? '🔑 key' + (b.channel ? ' · ' + (b.channel.service || 'channel') : ' · no channel') : '🔑 no key';
+          key.title = b.saved ? 'Buffer API key saved (…' + (b.last4 || '') + ')' + (b.channel ? ' → ' + (b.channel.name || b.channel.id) : ' — pick a channel') : 'Click to add this campaign\'s Buffer API key';
+          td.appendChild(key);
+        }
         td.onclick = () => openLoginCellModal(c, p, logins);
         tr.appendChild(td);
       });
@@ -7278,9 +7308,67 @@ function openLoginCellModal(campaign, platform, logins) {
   lcPlatId = platform.id;
   document.getElementById('loginCellTitle').textContent = campaign.name;
   document.getElementById('loginCellSub').textContent   = platform.name;
+  document.getElementById('lcBufferBox').style.display = isBufferPlatform(platform) ? '' : 'none';
+  if (isBufferPlatform(platform)) lcBufferRender();
   hideLoginCellForm();
   renderLoginCellList(logins);
   document.getElementById('loginCellModal').classList.add('open');
+}
+
+function lcBufferRender(msg) {
+  const b = platBufferStatus[lcCampId] || {};
+  const st = document.getElementById('lcBufferStatus');
+  st.innerHTML = b.saved
+    ? `<span style="color:#4cff4c;">✓ Key saved</span> <span style="color:var(--text3);">(…${esc(b.last4 || '')}${b.orgs && b.orgs.length ? ' · ' + esc(b.orgs.join(', ')) : ''} · ${esc(String(b.saved).slice(0, 10))})</span>`
+      + (b.channel ? `<br><span style="color:var(--text3);">Channel:</span> ${esc(b.channel.name || b.channel.id)} ${b.channel.service ? '<span style="color:var(--text3);">(' + esc(b.channel.service) + ')</span>' : ''}` : '<br><span style="color:#ffb020;">No channel picked yet</span>')
+    : '<span style="color:var(--text3);">No key yet. Paste this campaign\'s Buffer key below — it\'s checked with Buffer before saving.</span>';
+  document.getElementById('lcBufferKey').value = '';
+  document.getElementById('lcBufferKey').placeholder = b.saved ? 'Paste a new key to replace it' : 'Paste key from publish.buffer.com/settings/api';
+  document.getElementById('lcBufferClearBtn').style.display = b.saved ? '' : 'none';
+  document.getElementById('lcBufferChanWrap').style.display = b.saved ? '' : 'none';
+  document.getElementById('lcBufferMsg').textContent = msg || '';
+}
+async function lcBufferSave() {
+  const inp = document.getElementById('lcBufferKey'), key = inp.value.trim();
+  if (!key) return;
+  const btn = document.getElementById('lcBufferSaveBtn'); btn.disabled = true;
+  document.getElementById('lcBufferMsg').textContent = 'Checking with Buffer…';
+  try {
+    const r = await call('bufferSaveKey', { campaignId: lcCampId, key });
+    inp.value = '';
+    platBufferStatus[lcCampId] = { ...(platBufferStatus[lcCampId] || {}), saved: new Date().toISOString(), last4: r.last4, orgs: r.orgs };
+    lcBufferRender('✓ Saved. Now load and pick the channel to post to.');
+    renderPlatformMatrix();
+    lcBufferLoadChannels();
+  } catch (e) { inp.value = ''; document.getElementById('lcBufferMsg').textContent = '✗ ' + e.message; }
+  btn.disabled = false;
+}
+async function lcBufferClear() {
+  await call('bufferClearKey', { campaignId: lcCampId });
+  if (platBufferStatus[lcCampId]) { delete platBufferStatus[lcCampId].saved; delete platBufferStatus[lcCampId].last4; delete platBufferStatus[lcCampId].orgs; }
+  lcBufferRender('Key removed.');
+  renderPlatformMatrix();
+}
+async function lcBufferLoadChannels() {
+  const sel = document.getElementById('lcBufferChan');
+  document.getElementById('lcBufferMsg').textContent = 'Loading channels…';
+  try {
+    const { channels } = await call('bufferListChannels', { campaignId: lcCampId });
+    const cur = (platBufferStatus[lcCampId] || {}).channel;
+    sel.innerHTML = (channels || []).map(c => `<option value="${esc(c.id)}" data-name="${esc(c.displayName || c.name || '')}" data-service="${esc(c.service || '')}" ${cur && cur.id === c.id ? 'selected' : ''}>${esc((c.displayName || c.name || c.id) + ' · ' + (c.service || '') + (c.organizationName ? ' · ' + c.organizationName : ''))}</option>`).join('')
+      || '<option value="">No channels connected in this Buffer account</option>';
+    document.getElementById('lcBufferMsg').textContent = channels && channels.length ? 'Pick one and click "Use this channel".' : 'Connect a channel inside Buffer first.';
+  } catch (e) { document.getElementById('lcBufferMsg').textContent = '✗ ' + e.message; }
+}
+async function lcBufferSetChannel() {
+  const sel = document.getElementById('lcBufferChan'), o = sel.selectedOptions[0];
+  if (!o || !o.value) return;
+  try {
+    const r = await call('bufferSetChannel', { campaignId: lcCampId, channelId: o.value, channelName: o.dataset.name, service: o.dataset.service });
+    platBufferStatus[lcCampId] = { ...(platBufferStatus[lcCampId] || {}), channel: r.channel };
+    lcBufferRender('✓ Channel set' + (r.mirrored ? ' (also saved on the Logins record)' : ''));
+    renderPlatformMatrix();
+  } catch (e) { document.getElementById('lcBufferMsg').textContent = '✗ ' + e.message; }
 }
 
 function closeLoginCellModal() {

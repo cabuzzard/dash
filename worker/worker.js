@@ -947,21 +947,65 @@ function formatCharacterArcsBlock(arcs) {
 // per campaign. Buffer Access Token / Buffer Profile ID are plain Notion
 // text properties on that record, filled in by the operator directly in
 // Notion (never passed through this Worker's own action bodies).
-async function resolveCampaignBufferLogin(campaignId, dashId) {
+// ── Buffer API keys: write-only, encrypted (Platforms tab → Buffer cell) ──
+// The key is pasted once in the dashboard, validated against Buffer, then stored
+// AES-GCM-encrypted in KV `buffer:tok:<campaignId>` under secret BUFFER_KEY_ENC.
+// Nothing ever returns it (only its last 4 chars); it's decrypted only at send time.
+// Channel choice (not secret) lives in KV `buffer:chan:<campaignId>` and is mirrored
+// to the campaign's Logins "Buffer Profile ID" when such a record exists.
+async function bufferCipherKey(env) {
+  const raw = (env.BUFFER_KEY_ENC || "").trim();
+  if (!raw) throw new Error("BUFFER_KEY_ENC secret not set");
+  return crypto.subtle.importKey("raw", Uint8Array.from(atob(raw), c => c.charCodeAt(0)), "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+async function bufferEncrypt(env, text) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, await bufferCipherKey(env), new TextEncoder().encode(text)));
+  const b64 = u => btoa(String.fromCharCode(...u));
+  return { iv: b64(iv), ct: b64(ct) };
+}
+async function bufferDecrypt(env, rec) {
+  const u = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+  const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u(rec.iv) }, await bufferCipherKey(env), u(rec.ct));
+  return new TextDecoder().decode(pt);
+}
+async function bufferGql(token, query) {
+  const resp = await fetch("https://api.buffer.com", { method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || data.errors) throw new Error((data.errors || []).map(e => e.message).join("; ") || "HTTP " + resp.status);
+  return data.data;
+}
+
+// Resolves a campaign's own Buffer account credentials. Preferred: the encrypted
+// key saved from the dashboard (KV). Fallback: the campaign's 🔑 Logins record
+// (Name containing "buffer", Campaign relation matching) with plain Notion text
+// fields "Buffer Access Token" / "Buffer Profile ID" — the operator runs one
+// separate Buffer account per campaign, so there's no single global credential.
+async function resolveCampaignBufferLogin(campaignId, dashId, env) {
+  const cid = String(campaignId || "").replace(/-/g, "");
+  let kvToken = "", kvChan = null;
+  if (env && env.TRADES) {
+    try {
+      const rec = await env.TRADES.get("buffer:tok:" + cid, "json");
+      if (rec) kvToken = await bufferDecrypt(env, rec);
+    } catch (e) { console.error("buffer key decrypt", cid, e && e.message); }
+    try { kvChan = await env.TRADES.get("buffer:chan:" + cid, "json"); } catch (e) {}
+  }
   const rows = await notionQuery(LOGINS_DB, {
     filter: { and: [
       { property: "Campaign", relation: { contains: dashId(campaignId) } },
       { property: "Name", title: { contains: "buffer" } },
     ] },
-  });
+  }).catch(() => []);
   const row = rows[0];
-  if (!row) return null;
-  const rt = key => (row.properties[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  if (!row && !kvToken) return null;
+  const rt = key => row ? (row.properties[key]?.rich_text || []).map(t => t.plain_text).join("").trim() : "";
   return {
-    id: row.id.replace(/-/g, ""),
-    name: row.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-    token: rt("Buffer Access Token"),
-    channelId: rt("Buffer Profile ID"),
+    id: row ? row.id.replace(/-/g, "") : null,
+    name: row ? (row.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled") : "Buffer (dashboard key)",
+    token: kvToken || rt("Buffer Access Token"),
+    channelId: rt("Buffer Profile ID") || (kvChan && kvChan.id) || "",
   };
 }
 
@@ -38006,13 +38050,71 @@ ${assemblyManifest}`;
       // GraphQL themselves. Buffer's API is GraphQL at https://api.buffer.com
       // (their old REST API is being retired) — organizations first, then
       // channels per organization, since channels are scoped to an org.
+      // ── Buffer key management (write-only) ── Platforms tab → Buffer cell modal.
+      if (body.action === "bufferKeyStatus") {
+        const out = {};
+        let cursor;
+        do {
+          const page = await env.TRADES.list({ prefix: "buffer:", cursor });
+          for (const k of page.keys) {
+            const m = k.name.match(/^buffer:(tok|chan):([0-9a-f]{32})$/);
+            if (!m) continue;
+            const v = await env.TRADES.get(k.name, "json");
+            const o = out[m[2]] || (out[m[2]] = {});
+            if (m[1] === "tok") { o.saved = v && v.saved; o.last4 = v && v.last4; o.orgs = v && v.orgs; }
+            else o.channel = v;
+          }
+          cursor = page.list_complete ? null : page.cursor;
+        } while (cursor);
+        return json({ campaigns: out });
+      }
+      if (body.action === "bufferSaveKey") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        const key = String(body.key || "").trim();
+        if (!/^[0-9a-f]{32}$/.test(cid)) return json({ error: "campaignId required" }, 400);
+        if (key.length < 10) return json({ error: "That doesn't look like a Buffer API key" }, 400);
+        let orgs;
+        try {
+          const d = await bufferGql(key, "query { account { organizations { id name } } }");
+          orgs = ((d && d.account && d.account.organizations) || []).map(o => o.name);
+        } catch (e) { return json({ error: "Buffer rejected that key: " + e.message }, 400); }
+        const enc = await bufferEncrypt(env, key);
+        await env.TRADES.put("buffer:tok:" + cid, JSON.stringify({ ...enc, saved: new Date().toISOString(), last4: key.slice(-4), orgs }));
+        return json({ ok: true, last4: key.slice(-4), orgs });
+      }
+      if (body.action === "bufferClearKey") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        await env.TRADES.delete("buffer:tok:" + cid);
+        return json({ ok: true });
+      }
+      if (body.action === "bufferSetChannel") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        const ch = { id: String(body.channelId || ""), name: String(body.channelName || ""), service: String(body.service || "") };
+        if (!/^[0-9a-f]{32}$/.test(cid) || !ch.id) return json({ error: "campaignId and channelId required" }, 400);
+        await env.TRADES.put("buffer:chan:" + cid, JSON.stringify(ch));
+        // mirror onto the campaign's Logins record when one exists (non-secret)
+        const dashId = raw => { const x = raw.replace(/-/g, ""); return `${x.slice(0, 8)}-${x.slice(8, 12)}-${x.slice(12, 16)}-${x.slice(16, 20)}-${x.slice(20)}`; };
+        let mirrored = false;
+        try {
+          const rows = await notionQuery(LOGINS_DB, { filter: { and: [
+            { property: "Campaign", relation: { contains: dashId(cid) } }, { property: "Name", title: { contains: "buffer" } } ] } });
+          if (rows[0]) {
+            const r = await fetch("https://api.notion.com/v1/pages/" + rows[0].id, { method: "PATCH",
+              headers: { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+              body: JSON.stringify({ properties: { "Buffer Profile ID": { rich_text: [{ type: "text", text: { content: ch.id } }] } } }) });
+            mirrored = r.ok;
+          }
+        } catch (e) {}
+        return json({ ok: true, channel: ch, mirrored });
+      }
+
       if (body.action === "bufferListChannels") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dashId = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-        const login = await resolveCampaignBufferLogin(campaignId, dashId);
-        if (!login) return json({ error: 'No Buffer login found for this campaign — add a record to the 🔑 Logins DB with "buffer" in its Name and this campaign in its Campaign relation.' }, 400);
-        if (!login.token) return json({ error: `That login's ("${login.name}") Buffer Access Token is empty — get one at https://publish.buffer.com/settings/api and paste it into that Notion record first.` }, 400);
+        const login = await resolveCampaignBufferLogin(campaignId, dashId, env);
+        if (!login) return json({ error: "No Buffer API key for this campaign yet — Platforms tab → this campaign's buffer cell → 🔑 Buffer API key." }, 400);
+        if (!login.token) return json({ error: `No Buffer API key for this campaign yet — Platforms tab → this campaign's buffer cell → 🔑 Buffer API key (get one at https://publish.buffer.com/settings/api).` }, 400);
 
         const gql = async query => {
           const resp = await fetch("https://api.buffer.com", {
@@ -38070,9 +38172,9 @@ ${assemblyManifest}`;
         const text = [postCaption, hashtags].filter(Boolean).join("\n\n");
         if (!text) return json({ error: "This asset has no Post Caption or Hashtags to send" }, 400);
 
-        const login = await resolveCampaignBufferLogin(campaignId, dashId);
-        if (!login) return json({ error: 'No Buffer login found for this campaign — add a record to the 🔑 Logins DB with "buffer" in its Name and this campaign in its Campaign relation.' }, 400);
-        if (!login.token) return json({ error: `That login's ("${login.name}") Buffer Access Token is empty — get one at https://publish.buffer.com/settings/api and paste it into that Notion record first.` }, 400);
+        const login = await resolveCampaignBufferLogin(campaignId, dashId, env);
+        if (!login) return json({ error: "No Buffer API key for this campaign yet — Platforms tab → this campaign's buffer cell → 🔑 Buffer API key." }, 400);
+        if (!login.token) return json({ error: `No Buffer API key for this campaign yet — Platforms tab → this campaign's buffer cell → 🔑 Buffer API key (get one at https://publish.buffer.com/settings/api).` }, 400);
         if (!login.channelId) return json({ error: `That login's ("${login.name}") Buffer Profile ID is empty — run bufferListChannels to find it, then paste it into that Notion record.` }, 400);
 
         // Re-derive the slide file list from the hosted folder listing
