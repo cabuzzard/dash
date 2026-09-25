@@ -814,6 +814,17 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           </div>
         </div>
 
+        <div id="pubVideoWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <label style="font-size:11px;color:var(--ink2);">🎬 Video URL <span style="color:var(--ink3);">— the finished MP4 at a public, permanent link (Buffer fetches it when the post goes out). ⬆ Upload hosts it for you.</span></label>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+            <input class="finput" id="pubVideoUrl" type="text" autocomplete="off" placeholder="https://…/video.mp4 — or ⬆ upload the MP4">
+            <input type="file" id="pubVideoFile" accept="video/mp4,video/quicktime,video/*" style="display:none;" onchange="uploadPublishVideo(this)">
+            <button class="iconbtn" onclick="document.getElementById('pubVideoFile').click()" title="Upload the finished MP4 (≤100 MB) — hosted permanently for Buffer">⬆</button>
+            <button class="iconbtn" onclick="openPublishFieldLink('pubVideoUrl')" title="Open">↗</button>
+          </div>
+          <div id="pubVideoStatus" style="font-size:11px;color:var(--ink3);margin-top:4px;"></div>
+        </div>
+
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <label style="font-size:11px;color:var(--ink2);">📍 Content Hub <span style="color:var(--ink3);">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
           <select id="pubContentHub" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
@@ -942,6 +953,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div id="pubAssetStatus" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
       <div class="modalrow">
         <button class="btn" onclick="closePublishAssetModal()">Cancel</button>
+        <select id="pubBufferChannel" class="finput" style="display:none;width:auto;max-width:200px;" title="Buffer channel — picked from this asset's platform; change it to override"></select>
+        <button class="btn" id="pubBufferBtn" style="display:none;" onclick="sendPublishAssetToBuffer()" title="Save, then create a DRAFT in this campaign's Buffer queue — review and schedule it in Buffer">📤 Send to Buffer</button>
         <button class="btn primary" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
       </div>
     </div>
@@ -4853,6 +4866,28 @@ function openPublishAssetModal(assetId) {
   document.getElementById('pubPlatformTitle').value = data.platformTitle || '';
   document.getElementById('pubDesignLink').value = data.designLink || '';
 
+  // Video URL (video asset types) + 📤 Send to Buffer (any type Buffer can take)
+  const isVideoAsset = /video|reel|short|explainer|avatar/i.test(data.type || '');
+  document.getElementById('pubVideoWrap').style.display = isVideoAsset ? 'block' : 'none';
+  document.getElementById('pubVideoUrl').value = data.videoUrl || '';
+  document.getElementById('pubVideoStatus').textContent = '';
+  const bufBtn = document.getElementById('pubBufferBtn'), bufSel = document.getElementById('pubBufferChannel');
+  const bufferable = /^(carousel|single post)$/i.test(data.type || '') || isVideoAsset || /\boffer\b/i.test(data.type || '');
+  bufBtn.style.display = bufferable ? '' : 'none'; bufBtn.disabled = false; bufBtn.textContent = '📤 Send to Buffer'; bufBtn.title = '';
+  bufSel.style.display = 'none'; bufSel.innerHTML = '';
+  if (bufferable) {
+    w('bufferChannelsForAsset', { assetId }).then(d => {
+      if (pubAssetId !== assetId) return;   // a different asset opened since
+      if (d.noKey) { bufBtn.title = 'No Buffer API key for this campaign yet — dashboard Platforms tab → buffer cell'; return; }
+      if (!d.channels || !d.channels.length) return;
+      bufSel.innerHTML = (d.suggestedId ? '' : '<option value="">— pick channel —</option>')
+        + d.channels.map(c => `<option value="${esc(c.id)}" ${c.id === d.suggestedId ? 'selected' : ''}>${esc(c.service + ' · ' + c.name)}</option>`).join('');
+      bufSel.style.display = '';
+      bufSel.title = d.how === 'platform' ? `Matched to this asset's platform (${d.platform})` : d.how === 'missing-platform'
+        ? `No ${d.platform} channel in this campaign's Buffer — pick one or connect it in Buffer` : 'Pick the channel to post to';
+    }).catch(() => {});
+  }
+
   const spWrap = document.getElementById('pubSinglePostWrap');
   const isSinglePostAsset = /single post/i.test(data.type || '');
   spWrap.style.display = isSinglePostAsset ? 'block' : 'none';
@@ -4967,6 +5002,53 @@ function openPublishFieldLink(fieldId) {
   if (!url) { alert('Nothing to open — this field is empty.'); return; }
   window.open(url, '_blank', 'noopener');
 }
+// ⬆ Upload video — streams the MP4 to the worker (R2 dash-media), which saves the
+// permanent public link onto the asset's Video URL. ≤100 MB.
+async function uploadPublishVideo(input) {
+  const f = input.files && input.files[0];
+  const st = document.getElementById('pubVideoStatus');
+  if (!f) return;
+  if (f.size > 100 * 1024 * 1024) { st.textContent = '✗ Over 100 MB — export a smaller MP4 (1080×1920, H.264).'; input.value = ''; return; }
+  st.textContent = `Uploading ${(f.size / 1048576).toFixed(1)} MB…`;
+  try {
+    const u = WORKER_URL + '?upload=video&assetId=' + encodeURIComponent(pubAssetId) + '&name=' + encodeURIComponent(f.name);
+    const r = await fetch(u, { method: 'POST', headers: { 'Content-Type': f.type || 'video/mp4', 'X-Hermes-Token': SESSION_TOKEN }, body: f });
+    const d = await r.json().catch(() => ({ error: 'Upload failed (' + r.status + ')' }));
+    if (!r.ok || d.error) throw new Error(d.error || r.status);
+    document.getElementById('pubVideoUrl').value = d.url;
+    (PUB_ASSET_CACHE[pubAssetId] || (PUB_ASSET_CACHE[pubAssetId] = {})).videoUrl = d.url;
+    st.textContent = `✓ Hosted (${(d.size / 1048576).toFixed(1)} MB)${d.saved ? ' and saved to the asset' : ' — click Save to keep it'} — ready for 📤 Send to Buffer.`;
+  } catch (e) { st.textContent = '✗ ' + e.message; }
+  input.value = '';
+}
+
+// 📤 Send to Buffer — saves the modal, then creates a DRAFT in the campaign's Buffer
+// queue (worker sendAssetToBuffer). Nothing publishes until it's scheduled in Buffer.
+async function sendPublishAssetToBuffer() {
+  const btn = document.getElementById('pubBufferBtn');
+  const status = document.getElementById('pubAssetStatus');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    await savePublishAssetFields();
+    const r = await w('sendAssetToBuffer', {
+      assetId: pubAssetId,
+      postCaption: document.getElementById('pubCaption').value.trim(),
+      hashtags: document.getElementById('pubHashtags').value.trim(),
+      imageUrl: document.getElementById('pubPostImage').value.trim() || undefined,
+      videoUrl: document.getElementById('pubVideoUrl').value.trim() || undefined,
+      designLink: document.getElementById('pubDesignLink').value.trim() || undefined,
+      channelId: document.getElementById('pubBufferChannel').value || undefined,
+    });
+    btn.textContent = '✓ In Buffer drafts';
+    status.style.color = 'var(--fresh)';
+    status.textContent = `Sent ${r.kind} to Buffer as a draft — open Buffer to review and schedule it.`;
+  } catch (e) {
+    btn.disabled = false; btn.textContent = '📤 Send to Buffer';
+    status.style.color = 'var(--stale)';
+    status.textContent = 'Buffer: ' + e.message;
+  }
+}
+
 async function savePublishAssetFields() {
   const btn = document.getElementById('pubAssetSaveBtn');
   const status = document.getElementById('pubAssetStatus');
@@ -4983,6 +5065,7 @@ async function savePublishAssetFields() {
   if (document.getElementById('pubHubWrap').style.display !== 'none') {
     fields.contentHub = document.getElementById('pubContentHub').value;
   }
+  if (document.getElementById('pubVideoWrap').style.display !== 'none') fields.videoUrl = document.getElementById('pubVideoUrl').value.trim();
   btn.disabled = true;
   status.style.color = 'var(--ink3)'; status.textContent = 'Saving…';
   try {
