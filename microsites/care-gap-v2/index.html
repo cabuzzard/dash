@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -119,6 +119,8 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 @media (max-width:1100px){.kwgrid3{grid-template-columns:1fr 1fr;}}
 @media (max-width:720px){.kwgrid3{grid-template-columns:1fr;}}
 .kwcol{min-width:0;}
+/* Bulk bars stay in view while you scroll a long list (they used to sit at the column top, off-screen). */
+.bulkbar{position:sticky;top:calc(var(--tabbar-h,56px) + 6px);z-index:19;box-shadow:0 4px 14px rgba(0,0,0,.18);}
 .kwcol h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin:0 0 8px;}
 .kwgroup{border-left:3px solid var(--kwc,var(--border2));padding-left:9px;margin-bottom:12px;}
 .kwghd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--kwc,var(--ink2));margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
@@ -1271,7 +1273,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <button class="btn" onclick="selectAllProducts()">Select all</button>
       <button class="btn" onclick="clearProductSelection()">Clear selection</button>
     </div>
-    <div id="productBulkBar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+    <div id="productBulkBar" class="bulkbar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
       <span id="productBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
       <button class="btn primary" id="productBulkRunBtn" onclick="openBulkProductRegenModal()">⟳ Bulk run all research</button>
     </div>
@@ -1289,7 +1291,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
       <div class="kwcol">
         <h4>Titles <button class="btn primary" style="margin-left:8px;font-size:9.5px;padding:2px 8px;" onclick="openAddTitleModal()">+ Add Title</button></h4>
-        <div id="titleBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+        <div id="titleBulkBar" class="bulkbar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
           <span id="titleBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
           <button class="btn" onclick="openBulkProductModal()">Change Product</button>
           <button class="btn" onclick="openBulkMethodModal()">Choose Method</button>
@@ -1301,7 +1303,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
       <div class="kwcol">
         <h4>Assets <button class="iconbtn" id="republishHubBtn" style="font-size:9.5px;padding:2px 7px;font-weight:400;text-transform:none;letter-spacing:normal;" onclick="republishHubContent()" title="Re-publishes every already-published Blog/Offer asset on this campaign's hub — pushes each one's CURRENT Notion content and Thumbnail to its live page (no rewrite, no Claude call), just what the batch 'Rebuild blog + offers' does. Use this after adding/changing a Thumbnail so the live post's banner image actually updates.">🖼️ Republish to Hub</button></h4>
-        <div id="assetBulkBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
+        <div id="assetBulkBar" class="bulkbar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
           <span id="assetBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
           <button class="btn" id="bulkBgBtn" onclick="bulkGenerateBackgrounds()" title="Generates a fresh wordless background for each selected asset — Blog thumbnail for blog-type assets, both images for Offer, the social background for Single Post. Skips any asset type with no image slot.">🎨 Generate Backgrounds</button>
           <button class="btn" style="color:var(--stale);" onclick="bulkDeleteAssets()">✕ Delete</button>
@@ -4269,7 +4271,14 @@ function toggleAssetSelect(id, checked) {
   if (checked) SELECTED_ASSET_IDS.add(id); else SELECTED_ASSET_IDS.delete(id);
   updateAssetBulkBar();
 }
+function kwSetTabbarH() {
+  const tb = document.querySelector('.tabbar');
+  if (tb) document.documentElement.style.setProperty('--tabbar-h', tb.offsetHeight + 'px');
+}
+window.addEventListener('resize', kwSetTabbarH);
+document.addEventListener('DOMContentLoaded', kwSetTabbarH);
 function updateAssetBulkBar() {
+  kwSetTabbarH();
   const bar = document.getElementById('assetBulkBar');
   const n = SELECTED_ASSET_IDS.size;
   bar.style.display = n ? 'flex' : 'none';
