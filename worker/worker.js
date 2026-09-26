@@ -38560,8 +38560,17 @@ ${assemblyManifest}`;
         // No post id back = Buffer did NOT create anything — never report that as a success.
         const bufferPostId = res && res.post && res.post.id;
         if (!bufferPostId) return json({ error: "Buffer returned no post id — nothing was created. Raw reply: " + JSON.stringify(data).slice(0, 300) }, 502);
+        // Sent = Published (operator's rule): flip the asset's status now that Buffer holds it.
+        let statusSet = false;
+        try {
+          const up = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { method: "PATCH",
+            headers: { ...hdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Published" } } } }) });
+          statusSet = up.ok;
+          if (!up.ok) console.error("sendAssetToBuffer: status flip failed", up.status, (await up.text()).slice(0, 200));
+        } catch (e) { console.error("sendAssetToBuffer: status flip failed", e.message); }
         return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId,
-          channelName: channel.name, organizationName: channel.organizationName || "" });
+          channelName: channel.name, organizationName: channel.organizationName || "", statusSet });
       }
 
       if (body.action === "sendCarouselToBuffer") {
