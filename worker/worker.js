@@ -26821,6 +26821,58 @@ Portrait Instagram post, ready to publish.`;
         return json({ ok: true, fields: next, learned });
       }
 
+      // -- repassCaption {assetId}: after the operator rewrites a single post's
+      // Headline Primary / Accent / Body, re-write its Post Caption + Hashtags to
+      // match the NEW copy, in the learned voice. Stored directly — an AI rewrite,
+      // so it is NOT logged as an operator edit (only the operator's own changes teach the voice).
+      if (body.action === "repassCaption") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const dash = id => { const x = String(id).replace(/-/g,""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
+        const [page, blocksResp] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] })),
+        ]);
+        const P = page.properties || {};
+        const rt = k => (P[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        let fields = null;
+        for (const b of (blocksResp.results || [])) {
+          if (b.type !== "code") continue;
+          try { const j = JSON.parse((b.code?.rich_text || []).map(t => t.plain_text).join("")); if (j.kind === "single-post") { fields = j.fields || {}; break; } } catch (e) {}
+        }
+        if (!fields) return json({ error: "No single-post copy on this asset" }, 400);
+        const campaignId = (P["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+        const voice = await voiceBlock(env, campaignId).catch(() => "");
+        const prompt = `${voice}You write the Instagram feed caption and hashtags for ONE single-image post. The image's own text was just rewritten by the operator — the caption must now match THAT copy (its angle, claim and wording), not the old one.
+
+THE POST'S ON-IMAGE COPY (final):
+Headline: ${fields["Headline Primary"] || ""} ${fields["Headline Accent"] || ""}
+Blurb: ${fields["Body"] || ""}
+
+PREVIOUS CAPTION (for context — keep anything still true, drop what no longer fits the new copy):
+${rt("Post Caption") || "(none)"}
+PREVIOUS HASHTAGS: ${rt("Hashtags") || "(none)"}
+
+Write: "caption" = 2-4 conversational sentences that extend the on-image copy (never repeat it word for word), ending on one soft nudge; "hashtags" = 3-5 space-separated Instagram hashtags (Instagram allows at most 5).
+Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: prompt }] }) });
+        const d = await r.json();
+        if (!r.ok) return json({ error: d.error?.message || "Claude error" }, 502);
+        const out = d.content?.[0]?.text || "";
+        let j; try { j = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch (e) { return json({ error: "Couldn't read the rewrite" }, 502); }
+        const caption = String(j.caption || "").trim();
+        const hashtags = String(j.hashtags || "").split(/\s+/).filter(t => /^#\S+/.test(t)).slice(0, 5).join(" ");
+        if (!caption) return json({ error: "Empty caption from the rewrite" }, 502);
+        const up = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { "Post Caption": { rich_text: [{ text: { content: caption.slice(0, 1990) } }] },
+            "Hashtags": { rich_text: hashtags ? [{ text: { content: hashtags } }] : [] } } }) });
+        if (!up.ok) { const e = await up.json().catch(() => ({})); return json({ error: "Couldn't save: " + (e.message || up.status) }, 502); }
+        return json({ ok: true, caption, hashtags });
+      }
+
       // -- getVoiceProfile / saveVoiceProfile {campaignId, global?, campaign?}
       if (body.action === "getVoiceProfile" || body.action === "saveVoiceProfile") {
         const cid = String(body.campaignId || "").replace(/-/g, "");

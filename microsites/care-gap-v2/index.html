@@ -6416,11 +6416,27 @@ async function persistTextEditorCopy(slot, text) {
       const r = await w('updatePublishFields', { assetId: pubAssetId, platformTitle: (text.title || '').trim() });
       learned = r.voiceEdits || 0;
     } else {
+      const prev = (PUB_SP_LOADED === pubAssetId) ? pubSpFields() : null;
       document.getElementById('pubSpPrimary').value = text.primary || '';
       document.getElementById('pubSpAccent').value = text.accent || '';
       document.getElementById('pubSpBody').value = text.body || '';
       if (PUB_SP_LOADED !== pubAssetId) PUB_SP_LOADED = pubAssetId;
       learned = await pubSpSave();
+      const now = pubSpFields();
+      const changed = !prev || ['Headline Primary', 'Headline Accent', 'Body'].some(k => (prev[k] || '') !== (now[k] || ''));
+      if (changed) {
+        // Copy changed → re-write the caption + hashtags to match it (AI rewrite; not logged as your edit).
+        if (st) { st.style.color = 'var(--ink3)'; st.textContent = '✓ Copy saved. Re-writing the caption + hashtags to match…'; }
+        const forAsset = pubAssetId;
+        const rp = await w('repassCaption', { assetId: forAsset });
+        if (pubAssetId === forAsset) {
+          document.getElementById('pubCaption').value = rp.caption || '';
+          document.getElementById('pubHashtags').value = rp.hashtags || '';
+          Object.assign(PUB_ASSET_CACHE[forAsset] || (PUB_ASSET_CACHE[forAsset] = {}), { postCaption: rp.caption || '', hashtags: rp.hashtags || '' });
+        }
+        if (st) { st.style.color = 'var(--fresh)'; st.textContent = '✓ Copy saved; caption + hashtags re-written to match.' + (learned ? ` Learned from ${learned} edit${learned === 1 ? '' : 's'}.` : '') + ' Tweak them and Save if needed.'; }
+        return;
+      }
     }
     if (st) { st.style.color = 'var(--fresh)'; st.textContent = '✓ Copy saved.' + (learned ? ` Learned from ${learned} edit${learned === 1 ? '' : 's'}.` : ''); }
   } catch (e) { if (st) { st.style.color = 'var(--stale)'; st.textContent = 'Copy not saved: ' + e.message; } }
