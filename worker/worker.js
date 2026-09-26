@@ -2364,7 +2364,8 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
   const groundingBlock = parts.join("\n\n");
   if (!groundingBlock.trim()) return { skipped: true, reason: "no grounding available yet for this title" };
 
-  const prompt = `You are writing the PILLAR piece for a content title — a full-length, complete piece of writing that captures everything worth saying on this topic, grounded strictly in the research/positioning below. This is the raw source material a later step will reshape into platform-specific assets (a carousel, a video script, a post) — it is not itself a finished social post, so don't write it as one: no hashtags, no CTA button copy, no slide-numbered structure.
+  const pillarVoice = campaignId ? await voiceBlock(env, campaignId).catch(() => "") : "";
+  const prompt = `${pillarVoice}You are writing the PILLAR piece for a content title — a full-length, complete piece of writing that captures everything worth saying on this topic, grounded strictly in the research/positioning below. This is the raw source material a later step will reshape into platform-specific assets (a carousel, a video script, a post) — it is not itself a finished social post, so don't write it as one: no hashtags, no CTA button copy, no slide-numbered structure.
 
 TITLE: ${titleText}
 
@@ -9644,6 +9645,14 @@ export default {
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
     }
+    // Operator voice for every WRITING action (titles, pillars, strategies,
+    // assets): looked up once here, appended after researchGuidelinesBlock in
+    // each writer's prompt. Learned from the operator's final-pass edits in the
+    // asset Publish modal (voiceLogEdits). Writers that resolve their campaign
+    // later (slot → campaign, title → campaign) fill body.__voice themselves.
+    if (body.campaignId && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
+      body.__voice = await voiceBlock(env, body.campaignId).catch(() => "");
+    }
 
     try {
       // ── backfillHubBlog ── Content Hubs tab "⟳ Rebuild blog + offers" button.
@@ -9719,7 +9728,7 @@ export default {
               if (!titleId || !env.ANTHROPIC_API_KEY) { results.push({ hub: h.slug, asset: aid, error: "blank asset page and can't rebuild (no linked title or no ANTHROPIC_API_KEY)" }); continue; }
               const pillar = await extractPillarContent(hdr, dashId(titleId)).catch(() => "");
               if (!pillar) { results.push({ hub: h.slug, asset: aid, error: "blank asset page and the source title has no Pillar Content to rebuild from" }); continue; }
-              const genPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content editor. FORMAT the pillar piece below into a complete, publish-ready blog post — a structuring/polishing pass, not a rewrite. Preserve its substance, claims and examples; invent nothing new; no generic filler.
+              const genPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an SEO content editor. FORMAT the pillar piece below into a complete, publish-ready blog post — a structuring/polishing pass, not a rewrite. Preserve its substance, claims and examples; invent nothing new; no generic filler.
 
 TITLE: ${workingTitle}
 PILLAR CONTENT:
@@ -13154,7 +13163,7 @@ Return ONLY this JSON, no other text, no fences:
         // Write the sequence
         const captureFormId = hub.slug + "/main";
         const captureLine = [captureFormId, "ActiveCampaign", "tag: lead-hub-" + hub.slug].join(" · ");
-        const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options — for the purpose "${purpose}".
+        const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options — for the purpose "${purpose}".
 
 GROUNDING CHAIN (priority order):
 1. CAMPAIGN KEYWORDS: ${campaignKeywords || "(none on file)"}
@@ -13439,7 +13448,7 @@ Return via the submit_digest_email tool ONLY. The "html" field MUST be real HTML
         }
 
         const demandBlock = await kwDemandBlock(env, [currentKeywords, productStack, productName].filter(Boolean).join(", "));
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this product.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -13493,7 +13502,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           }
         }
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this content title.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an SEO/positioning strategist. Generate a refined, specific keyword list for this content title.
 
 TITLE: ${titleName}
 ${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
@@ -17580,7 +17589,7 @@ Return ONLY this JSON, no other text, no fences:
         const keywords = rt(researchRaw, "Keywords") || (cp["Keywords"]?.rich_text || []).map(t => t.plain_text).join("");
         const buyerIntent = (cp["Pain Points"]?.rich_text || []).map(t => t.plain_text).join("") || "(none on file)";
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a product and funnel strategist. A campaign has one seed product idea. Determine the full ECOSYSTEM of products needed to market and sell it — not just the core offer itself, but the supporting products at other funnel stages (e.g. a free/low-ticket lead-in, a credibility or content product, the core offer, a retention/upsell product) that a real launch plan would need. Ground everything in the campaign context below. Not every idea needs every stage — a simple info product might only need 2-3 items; a high-ticket offer might need the full ladder.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a product and funnel strategist. A campaign has one seed product idea. Determine the full ECOSYSTEM of products needed to market and sell it — not just the core offer itself, but the supporting products at other funnel stages (e.g. a free/low-ticket lead-in, a credibility or content product, the core offer, a retention/upsell product) that a real launch plan would need. Ground everything in the campaign context below. Not every idea needs every stage — a simple info product might only need 2-3 items; a high-ticket offer might need the full ladder.
 
 CAMPAIGN: ${campaignName}
 CAMPAIGN KEYWORDS: ${keywords || "(none on file)"}
@@ -17810,7 +17819,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
           ? existingMethods.map((m, i) => `[E${i+1}] ${m.name}${m.platform ? ` (${m.platform})` : ''}${m.notes ? ` — ${m.notes.slice(0, 200)}` : ' — (no methodology written yet)'}`).join('\n')
           : '(no existing methods on file)';
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a marketing strategist choosing HOW to market and sell one specific product. Below is the full list of EXISTING marketing methods already on file. Strongly prefer reusing one of them — only propose a new method if none of them genuinely fit this product's context.
 
 PRODUCT: ${productName}
 TYPE (format — this is the PRIMARY signal for which method fits): ${productType || "(not set — infer format from the name/description)"}
@@ -18506,7 +18515,7 @@ Return ONLY a JSON object, no other text, no markdown fences:
           return v ? `${f}: ${v}` : '';
         }).filter(Boolean).join("\n");
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist writing ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a marketing strategist writing ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -18607,7 +18616,7 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         }
 
         const fieldList = STRATEGY_FIELDS.map(f => `- ${f}: ${STRATEGY_FIELD_HINTS[f]}`).join("\n");
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist writing a product's complete core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform. This is a full re-run, replacing every field with a fresh pass — write the strongest possible version of each, don't hedge toward whatever may have been there before.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a marketing strategist writing a product's complete core strategy document — a fixed positioning reference used across every marketing channel this product is sold through, not tied to any one platform. This is a full re-run, replacing every field with a fresh pass — write the strongest possible version of each, don't hedge toward whatever may have been there before.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -18719,7 +18728,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         const existing = await findBestProductResearchRecord(hdr, productId);
         const currentVal = existing ? (existing.properties?.[field]?.rich_text || []).map(t => t.plain_text).join("") : "";
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist refining ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a marketing strategist refining ONE field of a product's core strategy document — a fixed positioning reference used across every marketing channel this product is sold through.
 ${isAffiliate ? `\nTHIS IS AN AFFILIATE PROGRAM, NOT AN OWNED PRODUCT. The operator promotes it for a commission — they don't set its price, own its delivery, or control its terms. Write every field from a PROMOTER's perspective: describe the affiliate product's own offer/pricing/terms as you'd explain them to a reader (not "our" offer), its own credibility/proof signals, and what a reader hesitates on before clicking through the affiliate link — never claim ownership of the product itself.\n` : ""}
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -18901,7 +18910,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
 
         const groupingsBlock = target.groupings.map(g => `${g.name}:\n${g.notes.map(n => `- ${n}`).join("\n")}`).join("\n\n");
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a marketing strategist writing ONE section of a larger product-page brief.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a marketing strategist writing ONE section of a larger product-page brief.
 
 PRODUCT: ${productName}
 DESCRIPTION: ${productDesc || "(none)"}
@@ -19095,7 +19104,7 @@ Return ONLY a JSON array, no other text, no markdown fences:
         const failedPhases = [];
         for (const phase of relevantPhases) {
           const frameworkBlock = `PHASE: ${phase.name}\n` + phase.groupings.map(g => `${g.name}: ${g.notes.join("; ")}`).join("\n");
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing the actual publishable deliverable(s) for ONE section of a marketing method, using this product's core strategy as the source material for what to say.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are producing the actual publishable deliverable(s) for ONE section of a marketing method, using this product's core strategy as the source material for what to say.
 
 PRODUCT: ${productName}
 KEYWORDS: ${productKeywords || "(none)"}
@@ -19188,7 +19197,7 @@ Return ONLY a JSON array, no other text, no markdown fences:
         const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json());
         const productName = (productPage.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Product";
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You have a complete marketing STRATEGY document below for one product and destination method. Your job is to turn it into actual PUBLISHABLE deliverables — real assets with a publication destination — NOT a restatement of the strategy's planning decisions.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You have a complete marketing STRATEGY document below for one product and destination method. Your job is to turn it into actual PUBLISHABLE deliverables — real assets with a publication destination — NOT a restatement of the strategy's planning decisions.
 
 PRODUCT: ${productName}
 METHOD: ${methodName}
@@ -20199,7 +20208,7 @@ Pain Points: ${research.painPoints}
 ${hasTrendResearch ? `\nTRENDING RESEARCH (${trendSource}):\n${trendResearch.slice(0, 1500)}\n` : '\n(No trend research on file for this campaign — titles below are grounded in static campaign research only, not current trends.)\n'}` : isolateNote;
 
         // Call Claude to generate titles
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Generate all deliverable titles for a method, grounded in ${contextMode === "blend" ? `the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}` : "this product's own strategy only (isolated from campaign-level research)"}.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a content strategist. Generate all deliverable titles for a method, grounded in ${contextMode === "blend" ? `the campaign research${hasProduct ? " and product strategy" : ""}${hasTrendResearch ? " and current trend research" : ""}` : "this product's own strategy only (isolated from campaign-level research)"}.
 
 ${campaignResearchBlock}
 METHOD: ${methodName}
@@ -20336,7 +20345,7 @@ No other text. No markdown fences.`;
         ]);
         if (ctxData.error) return json({ error: ctxData.error }, 404);
 
-        const prompt = buildGrowthStrategyPromptBody({
+        const prompt = (body.__voice || "") + buildGrowthStrategyPromptBody({
           researchGuidelines, seedTitleBlock: ctxData.seedTitleBlock, platformOverride,
           productName: ctxData.productName, productDesc: ctxData.productDesc, productAvatar: ctxData.productAvatar,
           strategyBlock: ctxData.strategyBlock, campaignName: ctxData.campaignName, researchBlock: ctxData.researchBlock,
@@ -21157,7 +21166,8 @@ ${promptBody}`;
             ? await callGrokTrendingTopics(env, { niche: nicheText, customer: customerText, platformName: platform })
             : "";
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
+          if (!body.__voice && campaignId) body.__voice = await voiceBlock(env, campaignId).catch(() => "");
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a content strategist. Write ONE specific, concrete deliverable title${slotId ? ' for a specific planned content angle' : ''} — a thing to produce, not a content-post headline. Do not write any script, slides, or body content — only the title. Its actual content is written separately, method-agnostically, right after this.
 
 ${grokBlock}${slotId ? `SLOT: ${slotName} (grouping: "${grouping}")\nPLANNED ANGLE: ${angle}\n` : ''}${slotSequence != null ? `SEQUENCE POSITION: #${slotSequence} in this grouping's arc — write it so it reads as that step, not a standalone one-off\n` : ''}${platform ? `PLATFORM: ${platform}\n` : ''}${slotType ? `CONTENT TYPE: ${slotType} (the strategic category this title must clearly execute)\n` : ''}${slotRecurrence ? `RECURRENCE: ${slotRecurrence} — this is a recurring slot type, so this specific instance should feel fresh, not interchangeable with a prior fill of the same slot\n` : ''}
 ${productSection}
@@ -22191,7 +22201,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           keywords = rt(researchRaw, "Keywords");
         }
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write a full 7-slide Instagram carousel script for this specific title.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}Write a full 7-slide Instagram carousel script for this specific title.
 
 TITLE: ${title}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
@@ -22280,7 +22290,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           keywords = rt(researchRaw, "Keywords");
         }
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}Write a 3-subhead outline for this SEO pillar-post title — the structure a writer will fill in to produce a mid-length, full-page article.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}Write a 3-subhead outline for this SEO pillar-post title — the structure a writer will fill in to produce a mid-length, full-page article.
 
 TITLE: ${title}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}
@@ -22651,7 +22661,7 @@ Return ONLY this JSON, no other text, no markdown fences:
           notes:             (cp["Notes"]?.rich_text || []).map(t => t.plain_text).join(""),
         };
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a brand & visual designer. Based on the campaign research below, propose exactly 3 DISTINCT design specs for its social carousels — each a different coherent aesthetic direction that fits the audience and positioning (e.g. one editorial/quiet, one bold/high-contrast, one warm/human — but choose whatever actually fits THIS campaign).
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a brand & visual designer. Based on the campaign research below, propose exactly 3 DISTINCT design specs for its social carousels — each a different coherent aesthetic direction that fits the audience and positioning (e.g. one editorial/quiet, one bold/high-contrast, one warm/human — but choose whatever actually fits THIS campaign).
 
 CAMPAIGN: ${campaignName}
 Keywords: ${research.keywords}
@@ -22819,7 +22829,7 @@ Return ONLY a JSON array of exactly 3 objects with keys: name, bg, ink, accent, 
           }
         } catch(e) {}
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a content strategist. Generate exactly ${count} DISTINCT publishable content titles derived from the idea below — each a different angle, hook, or framing of the same core idea (not rewordings of each other).
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a content strategist. Generate exactly ${count} DISTINCT publishable content titles derived from the idea below — each a different angle, hook, or framing of the same core idea (not rewordings of each other).
 
 IDEA: ${title}
 ${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `SEED KEYWORDS (work these in naturally): ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly — they override the defaults): ${researchInstructions}\n` : ""}${methodName ? `METHOD (the content format these titles are for): ${methodName}\n` : ""}${campaignCtx ? campaignCtx + "\n" : ""}
@@ -23089,7 +23099,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
             })() : Promise.resolve(""),
           ]);
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an SEO content editor. Your job is to FORMAT the pillar piece below into a complete, publish-ready blog post — this is a structuring and polishing pass, not a rewrite from scratch. The pillar already contains the real substance, claims, and examples; preserve them. Do not invent new claims, statistics, or examples that aren't already in the source, and do not water the ideas down into generic filler.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an SEO content editor. Your job is to FORMAT the pillar piece below into a complete, publish-ready blog post — this is a structuring and polishing pass, not a rewrite from scratch. The pillar already contains the real substance, claims, and examples; preserve them. Do not invent new claims, statistics, or examples that aren't already in the source, and do not water the ideas down into generic filler.
 
 TITLE: ${title}
 ${methodFrameworkText ? `METHOD FRAMEWORK — follow any writing-quality/structure/voice conventions defined here on top of the requirements below:\n${methodFrameworkText.slice(0, 3000)}\n` : ""}${description ? `DESCRIPTION: ${description}\n` : ""}${seedKeywords ? `KEYWORDS: ${seedKeywords}\n` : ""}${researchInstructions ? `OPERATOR INSTRUCTIONS (follow these exactly): ${researchInstructions}\n` : ""}${platformName ? `PUBLISHING TO: ${platformName} — write for that platform's norms if it isn't a standard blog destination.\n` : ""}${blendBlock}${pillarContent ? `PILLAR CONTENT (the source material — format THIS into the blog post below, don't write a different piece):\n${pillarContent.slice(0, 12000)}\n` : `NO PILLAR CONTENT FOUND — this title has no Pillar Content section yet, so write the post from the title/description/keywords/instructions above instead.\n`}${existingOutline && existingOutline !== pillarContent ? `PRE-PLANNED OUTLINE ON THIS TITLE (if it already defines subheads, use those headings verbatim as the article's structure — otherwise choose headings that naturally divide the pillar content above):\n${existingOutline.slice(0, 2000)}\n` : ""}
@@ -23244,8 +23254,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
           const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
 
-          const hfVoice = await voiceBlock(env, campaignId).catch(() => "");
-          const hfPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${hfVoice}You write short-form vertical video scripts. Produce ${hfCount} DISTINCT 20-second kinetic-text Reels${productName ? ` for "${productName}"` : ""} on the title "${title || ""}". The text IS the video — animated type over a photo, no voiceover — so every line must land on its own, read in about 3 seconds.
+          const hfPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You write short-form vertical video scripts. Produce ${hfCount} DISTINCT 20-second kinetic-text Reels${productName ? ` for "${productName}"` : ""} on the title "${title || ""}". The text IS the video — animated type over a photo, no voiceover — so every line must land on its own, read in about 3 seconds.
 ${description ? `OPERATOR NOTES (follow): ${description}\n` : ""}${methodFrameworkText ? `METHOD FRAMEWORK (voice + structure — follow it):\n${methodFrameworkText.slice(0, 3000)}\n` : ""}
 RESEARCH (ground every line in it; use its plain phrasing, invent no claims):
 ${prodFacts || "(no product research)"}
@@ -23379,8 +23388,7 @@ Return via the submit_reels tool ONLY.`;
             "Contrarian / Claim": "A strong claim that cuts against the category's received wisdom. Body defends it in one line.",
           };
 
-          const spVoice = await voiceBlock(env, campaignId).catch(() => "");
-          const spPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${spVoice}You are a short-form social copywriter. Produce ${spCount} DISTINCT single-page posts${productName ? ` for "${productName}"` : ""}, ALL of the "${contentType}" content type. Each fills a fixed Canva template with exactly three text fields.
+          const spPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a short-form social copywriter. Produce ${spCount} DISTINCT single-page posts${productName ? ` for "${productName}"` : ""}, ALL of the "${contentType}" content type. Each fills a fixed Canva template with exactly three text fields.
 
 TITLE / ANGLE: ${title}
 CONTENT TYPE — "${contentType}": ${CT_GUIDE[contentType] || CT_GUIDE["Hook"]}
@@ -23603,7 +23611,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
             if (ns.length) takenNames = Array.from(new Set(ns)).slice(0, 20).join("; ");
           } catch (e) {}
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing ONE finished, publish-ready OFFER for a product — the way that offer is presented on a content hub or sales page. Not N options, not a brief: the actual offer, ready to drop in.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are writing ONE finished, publish-ready OFFER for a product — the way that offer is presented on a content hub or sales page. Not N options, not a brief: the actual offer, ready to drop in.
 
 PRODUCT: ${productName}
 WORKING TITLE / ANGLE FOR THIS OFFER: ${title}${description ? `\nOPERATOR NOTES: ${description}` : ""}${researchInstructions ? `\nRESEARCH INSTRUCTIONS: ${researchInstructions}` : ""}${takenNames ? `\nOFFER NAMES ALREADY IN USE ON THIS CAMPAIGN (pick a clearly different "offerName" — do NOT reuse or lightly reword any of these): ${takenNames}` : ""}
@@ -23887,7 +23895,7 @@ Return ONLY this JSON object:
           // Copy Canva prompt button) has it ready without a lookup.
           const canvaTemplateLink = methodPage?.properties?.["Template"]?.url || "";
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are reshaping source material into ONE finished, publish-ready LinkedIn Article (LinkedIn's long-form "Write article" format, not a short feed post).
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are reshaping source material into ONE finished, publish-ready LinkedIn Article (LinkedIn's long-form "Write article" format, not a short feed post).
 
 TITLE: ${title}
 ${methodFrameworkText ? `FRAMEWORK — follow these conventions for length, headline, hook, structure, voice, and CTA:\n${methodFrameworkText.slice(0, 3000)}\n` : ''}
@@ -24037,7 +24045,7 @@ Produce all of this by calling the submit_article tool — do not include any of
             : "(no form picked — set one in the Generate Assets modal)";
 
           const purpose = assetType.replace(/^email hub main\s*[-–]\s*/i, "").trim() || "nurture";
-          const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options to choose between — for the purpose "${purpose}".
+          const seqPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an email copywriter. Write ONE complete, ordered email sequence — a finished deliverable, not options to choose between — for the purpose "${purpose}".
 
 GROUNDING CHAIN (use in this priority order):
 1. CAMPAIGN KEYWORDS: ${campaignKeywords || "(none on file)"}
@@ -24173,7 +24181,7 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
             rtp("Benefits")        && `Benefits: ${rtp("Benefits")}`,
           ].filter(Boolean).join("\n") : "";
 
-          const digestPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing ONE issue of a weekly hub digest newsletter — a finished, publish-ready deliverable, not options to pick between.
+          const digestPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are writing ONE issue of a weekly hub digest newsletter — a finished, publish-ready deliverable, not options to pick between.
 
 GROUNDING CHAIN (priority order):
 1. HUB KEYWORD CLUSTERS (committed): ${clusterText || "(none committed yet — use campaign research below)"}
@@ -24375,7 +24383,7 @@ Return via the submit_digest_issue tool ONLY — nothing as plain text.`;
 RESEARCHED BENEFITS & PROOF POINTS (the product's own positioning research — already written in the plain, concrete register this table's Feature/Benefit/Problem/Solution-style fields should match. Lift phrasing from here directly wherever a table field maps to one of these bullets; adapt only for length, never rewrite into cleverer, more abstract, or punchier language than what's here):
 ${strategyFields.benefits ? `Benefits:\n${strategyFields.benefits}\n` : ''}${strategyFields.proofPoints ? `Proof Points:\n${strategyFields.proofPoints}\n` : ''}${strategyFields.painPoints ? `Pain Points (ground any Problem-side fields in these):\n${strategyFields.painPoints}\n` : ''}` : '';
 
-          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing the full package for a templated carousel post: a Page | Field | Content table reshaping the source material below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from, PLUS the social post caption and hashtags that will accompany the finished carousel when it's published. No visual/image descriptions in the table — that stays a technical handoff document — but the caption and hashtags are the real, finished, platform-native post copy.
+          const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are producing the full package for a templated carousel post: a Page | Field | Content table reshaping the source material below into the field structure a template (e.g. a multi-page Canva carousel design) will later be filled from, PLUS the social post caption and hashtags that will accompany the finished carousel when it's published. No visual/image descriptions in the table — that stays a technical handoff document — but the caption and hashtags are the real, finished, platform-native post copy.
 
 TITLE: ${title}
 ${platformName ? `PLATFORM: ${platformName} — write the caption and hashtags in this platform's native conventions (length, tone, hashtag count/style, line breaks). A LinkedIn caption reads nothing like a TikTok caption.\n` : ''}${methodFrameworkText ? `METHOD FRAMEWORK (if this defines specific page/field names or a page count, follow them exactly — otherwise use your judgment):\n${methodFrameworkText.slice(0, 2000)}\n` : ''}
@@ -24575,7 +24583,7 @@ Produce all of this by calling the submit_table tool — do not include any of i
           extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
         ]);
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a senior content designer and copywriter. Create exactly ${count} DISTINCT asset concepts — options for the operator to choose between — for the content idea below. Every concept is a ${assetType} — do not propose other formats. Each must be complete enough to build immediately without further questions.
 
 IDEA / TITLE: ${title}
 ${researchContext ? `\n${researchContext}\n` : ""}${methodName ? `\nMETHOD: ${methodName}${methodBody ? `\nMETHOD NOTES/FRAMEWORK (dictates the deliverable format, tone, and any copy-writing focus — e.g. benefits-first, skills-list, etc.):\n${methodBody}` : ""}\n` : ""}${pillarContent ? `\nPILLAR CONTENT (this title's own already-written source material — reshape THIS, don't invent new facts beyond what's here and the research above):\n${pillarContent.slice(0, 3000)}\n` : ""}${platformName ? `\nPLATFORM (from the Platforms DB — this asset is being packaged for publishing here, every concept must fit its native format/length/conventions): ${platformName}\n` : ""}${subMethodName ? `\nSUB METHOD / TARGET PLATFORM: ${subMethodName} — every concept must be built for ${subMethodName} specifically (its native formats, dimensions, character limits, and audience behavior).${subMethodBody ? `\nPLATFORM FRAMEWORK NOTES:\n${subMethodBody}` : ""}\n` : ""}
@@ -24844,7 +24852,7 @@ Notes: ${notes || "(none)"}`;
             ).join('\n')
           : `(no live reference posts${refNote ? ' — ' + refNote : ''})`;
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a social media trend analyst and content strategist. Analyze the research below, then recommend exactly 10 Instagram carousel concepts — compelling working titles for FUTURE carousels that have not been written yet, each with a short description. These are recommendations only, not scripts.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a social media trend analyst and content strategist. Analyze the research below, then recommend exactly 10 Instagram carousel concepts — compelling working titles for FUTURE carousels that have not been written yet, each with a short description. These are recommendations only, not scripts.
 
 CAMPAIGN: ${campaignName}
 MERGED KEYWORDS (campaign + product): ${mergedKeywords}
@@ -25075,7 +25083,7 @@ Return ONLY a JSON array of 6 short strings — no other text, no fences. Exampl
 
         // Step 3 — Claude proposes titles for the ACTIVE markets, weighted by
         // real live-ad volume, grounded in the seed.
-        const titlePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a freelance market strategist. Below are candidate Upwork markets for a seed, each with the number of LIVE ads found just now (real current demand). Propose exactly 10 titles for content/offers this campaign${hasProduct ? "/product" : ""} should make to win work in the markets that are ACTUALLY ACTIVE.
+        const titlePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a freelance market strategist. Below are candidate Upwork markets for a seed, each with the number of LIVE ads found just now (real current demand). Propose exactly 10 titles for content/offers this campaign${hasProduct ? "/product" : ""} should make to win work in the markets that are ACTUALLY ACTIVE.
 
 SEED KEYWORDS: ${seed}
 ${hasProduct ? productSection : ""}
@@ -25456,7 +25464,7 @@ Return ONLY a JSON array of exactly 10 objects — no other text, no fences:
           uniqueAngle:    ptxt("Unique Angle"),
         };
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are an expert content writer. Write the actual content for a specific deliverable in a content system.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are an expert content writer. Write the actual content for a specific deliverable in a content system.
 
 METHOD: ${methodName}
 METHOD FRAMEWORK (defines the content format and how to write for this method):
@@ -25657,7 +25665,7 @@ Write only the content itself. No preamble, no meta-commentary, no "Here's the c
 
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY secret not configured" }, 500);
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a direct-response copywriter and product strategist. Given campaign research and a product name, derive a complete product strategy profile.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a direct-response copywriter and product strategist. Given campaign research and a product name, derive a complete product strategy profile.
 
 CAMPAIGN RESEARCH:
 Keywords: ${research.keywords}
@@ -28250,7 +28258,7 @@ Call submit_keyword_cluster with your result.`;
           rtp("Benefits")        && `Benefits: ${rtp("Benefits")}`,
         ].filter(Boolean).join("\n") : "";
 
-        const ideasPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You generate an IDEA BACKLOG, not finished content — headlines and one-line angles only, for an operator to later turn into real content or a real product.
+        const ideasPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You generate an IDEA BACKLOG, not finished content — headlines and one-line angles only, for an operator to later turn into real content or a real product.
 
 HUB KEYWORD CLUSTERS (committed): ${clusterText || "(none committed yet)"}
 CAMPAIGN RESEARCH: ${researchBlock || "(none on file)"}
@@ -29762,7 +29770,7 @@ Rules:
         }
         const crt = k => (campProps[k]?.rich_text || []).map(t => t.plain_text).join("");
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are refreshing a campaign's keywords AND its core positioning together, so they never drift apart — keywords chosen for one audience while the stated positioning still names a different one is exactly the failure mode to avoid.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are refreshing a campaign's keywords AND its core positioning together, so they never drift apart — keywords chosen for one audience while the stated positioning still names a different one is exactly the failure mode to avoid.
 
 CURRENT KEYWORDS: "${currentKeywords || 'none provided'}"
 CURRENT TARGET AUDIENCE: "${crt("Target Audience") || '(none set)'}"
@@ -29865,7 +29873,7 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
         const research = resRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
         const mainKeywords = rtx(research, "Keywords") || keywords;
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are refreshing ONE field of a campaign's core positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are refreshing ONE field of a campaign's core positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
 
 MAIN KEYWORDS (dominant signal): "${mainKeywords || '(none set)'}"
 CURRENT ${notionField}: "${crt(notionField) || '(none set)'}"
@@ -29904,7 +29912,7 @@ Rewrite ${notionField} (1-2 sentences) so it genuinely follows the keywords abov
         const otherField = field === "statement" ? "Unique Opportunity" : "Statement";
         const otherVal = rrt(otherField);
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are refreshing ONE field of a campaign's core research positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are refreshing ONE field of a campaign's core research positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
 
 MAIN KEYWORDS (dominant signal): "${keywords || '(none set)'}"
 CURRENT ${notionField}: "${rrt(notionField) || '(none set)'}"
@@ -33607,7 +33615,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
           // checklist). Per the spec: visual planning is yes/no flags ONLY —
           // no image prompts, no illustration-style descriptions; a separate
           // Visual Director stage owns all visual decisions downstream.
-          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are producing a full Carousel Asset Package for this title — reshaping its pillar content below for this specific Method (Carousel)${platformName ? ` and Platform (${platformName})` : ''} — not just slide copy. ${isNumberedBreakdown ? 'Write however many slides the FORMAT below specifies (2 + your chosen category count) — do not default to 7.' : 'Write EXACTLY 7 slides, no more, no fewer.'}
+          const slidePrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are producing a full Carousel Asset Package for this title — reshaping its pillar content below for this specific Method (Carousel)${platformName ? ` and Platform (${platformName})` : ''} — not just slide copy. ${isNumberedBreakdown ? 'Write however many slides the FORMAT below specifies (2 + your chosen category count) — do not default to 7.' : 'Write EXACTLY 7 slides, no more, no fewer.'}
 
 TITLE: ${titleName}
 ${keywords ? `KEYWORDS: ${keywords}\n` : ''}${pillarBlock}${briefBlock}${overrideBlock}
@@ -41937,7 +41945,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           extractPillarContent(hdr, dash(titleId)).catch(() => ""),
         ]);
 
-        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are writing the publish-ready listing copy for ONE real physical item being sold directly (not print-on-demand, not a service) — real photos will be attached separately after this. Your job is the words that sell it, across three marketplaces.
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are writing the publish-ready listing copy for ONE real physical item being sold directly (not print-on-demand, not a service) — real photos will be attached separately after this. Your job is the words that sell it, across three marketplaces.
 
 ITEM / TITLE: ${titleName}
 ${researchContext ? `\n${researchContext}\n` : ""}${methodName ? `\nMETHOD: ${methodName}${methodBody ? `\nMETHOD FRAMEWORK:\n${methodBody}` : ""}\n` : ""}${pillarContent ? `\nSOURCE MATERIAL (this title's own already-written content — reshape THIS into the listing, don't invent facts beyond what's here and the research above):\n${pillarContent.slice(0, 3000)}\n` : ""}
