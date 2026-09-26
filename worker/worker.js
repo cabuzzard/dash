@@ -38549,12 +38549,10 @@ ${assemblyManifest}`;
         const igType = ["post", "reel", "story"].includes(wanted) ? wanted : (isVideo ? "reel" : "post");
         const ytTitle = (rtp("Platform Title") || (P["Asset Title"]?.title || []).map(t => t.plain_text).join("") || caption).replace(/\s+/g, " ").trim().slice(0, 100);
         let metadata = null;
-        // Instagram: hashtags go in the FIRST COMMENT (Buffer's slot for them), caption stays clean.
+        // Hashtags stay at the end of the caption. (Buffer's "first comment" needs a paid
+        // Buffer plan — operator said don't use it.)
         let tagsWhere = "caption";
-        if (service === "instagram") {
-          metadata = { instagram: { type: { __enum: igType }, shouldShareToFeed: true } };
-          if (tags && caption) { metadata.instagram.firstComment = tags; text = caption; tagsWhere = "first comment"; }
-        }
+        if (service === "instagram") metadata = { instagram: { type: { __enum: igType }, shouldShareToFeed: true } };
         else if (service === "facebook") metadata = { facebook: { type: { __enum: igType } } };
         else if (service === "youtube") {
           if (!isVideo) return json({ error: "YouTube only takes video — this asset has no video." }, 400);
