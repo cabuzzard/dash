@@ -1011,6 +1011,74 @@ function hashtagsFromNotes(notes) {
   const t = String(notes || "").trim();
   return /^(#[^\s#]+\s*)+$/.test(t) ? t : "";
 }
+// ── HyperFrames Reel method (HeyGen-hosted HyperFrames rendering) ─────────
+// Templates are HyperFrames compositions in repo hyperframes/<name>/, zipped +
+// published to R2 by hyperframes/publish-template.py (bump the version on every
+// change — never overwrite a published zip). The worker renders them on HeyGen's
+// cloud (POST /v3/hyperframes/renders, project by URL) with per-asset variables;
+// HeyGen calls back (?hfhook=1, HMAC-signed per asset) and hfFinalize moves the
+// MP4 to R2 → the asset's Video URL. Secret: HEYGEN_API_KEY.
+const HF_TEMPLATES = {
+  "reel-kinetic": {
+    url: "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/hyperframes/reel-kinetic-v1.zip",
+    aspect: "9:16",
+    displayFonts: ["Bricolage Grotesque", "Newsreader", "DM Serif Display", "Familjen Grotesk", "Bitter", "Space Grotesk", "Archivo", "Fraunces", "Libre Franklin", "Inter", "Hanken Grotesk", "IBM Plex Sans"],
+    bodyFonts: ["Hanken Grotesk", "Inter", "IBM Plex Sans", "Libre Franklin", "Space Grotesk", "Archivo"],
+  },
+};
+async function hmacHex(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+async function hfApi(env, method, path, body) {
+  const key = (env.HEYGEN_API_KEY || "").trim();
+  if (!key) throw new Error("HEYGEN_API_KEY not set — `npx wrangler secret put HEYGEN_API_KEY` in worker/");
+  const r = await fetch("https://api.heygen.com" + path, {
+    method, headers: { "x-api-key": key, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`HeyGen ${r.status}: ` + String(d?.error?.message || d?.message || JSON.stringify(d)).slice(0, 300));
+  return (d && typeof d === "object" && d.data && typeof d.data === "object") ? d.data : d;
+}
+async function hfAssetPatch(assetId, props) {
+  const id = String(assetId).replace(/-/g, "");
+  const dashed = `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
+  return fetch(`https://api.notion.com/v1/pages/${dashed}`, { method: "PATCH",
+    headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: props }) });
+}
+const hfRenderNote = t => ({ "Video Render": { rich_text: [{ text: { content: String(t).slice(0, 1900) } }] } });
+// Check one asset's render; when completed, copy the MP4 to R2 and fill Video URL.
+async function hfFinalize(env, assetId) {
+  const aid = String(assetId).replace(/-/g, "");
+  const job = await env.TRADES.get("hf:asset:" + aid, "json").catch(() => null);
+  if (!job || !job.renderId) return { status: "none" };
+  if (job.status === "done") return { status: "done", videoUrl: job.videoUrl };
+  const d = await hfApi(env, "GET", "/v3/hyperframes/renders/" + encodeURIComponent(job.renderId));
+  const status = String(d.status || "").toLowerCase();
+  if (status === "failed") {
+    const err = String(d.error?.message || d.error || d.failure_reason || "render failed").slice(0, 400);
+    await env.TRADES.put("hf:asset:" + aid, JSON.stringify({ ...job, status: "failed", error: err }));
+    await hfAssetPatch(aid, hfRenderNote(`failed ${new Date().toISOString().slice(0, 16)} — ${err}`)).catch(() => {});
+    return { status: "failed", error: err };
+  }
+  if (status !== "completed") return { status: status || "rendering" };
+  const src = d.video_url || d.url || "";
+  if (!src) return { status: "rendering" };
+  if (!env.MEDIA) throw new Error("R2 binding MEDIA missing");
+  const vr = await fetch(src);
+  if (!vr.ok) throw new Error(`couldn't download the render (HTTP ${vr.status})`);
+  const key = `videos/${aid}/hf-reel-${Date.now().toString(36)}.mp4`;
+  await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } });
+  const videoUrl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+  await hfAssetPatch(aid, { "Video URL": { url: videoUrl }, "Asset Status": { select: { name: "Publish" } },
+    ...hfRenderNote(`done ${new Date().toISOString().slice(0, 16)} — ${job.renderId}`) });
+  await env.TRADES.put("hf:asset:" + aid, JSON.stringify({ ...job, status: "done", videoUrl }));
+  return { status: "done", videoUrl };
+}
+
 async function bufferGql(token, query) {
   const resp = await fetch("https://api.buffer.com", { method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
@@ -1407,6 +1475,7 @@ const ASSET_TYPE_METHOD_ALIAS = {
   "drawing post simple": "Drawing Post",
   "carousel": "Carousel",
   "upwork search": "Upwork Search",
+  "hyperframes reel": "HyperFrames Reel",
 };
 
 // The producing Method for an asset, as a { "Method": { relation:[{id}] } }
@@ -8769,6 +8838,18 @@ export default {
     const AC_API_KEY     = (env.ACTIVECAMPAIGN_API_KEY || "").trim();
 
     if (request.method === "OPTIONS") return new Response(null, { headers: CORS });
+
+    // ── HeyGen HyperFrames render webhook: ?hfhook=1&a=<assetId>&s=<hmac> ──
+    // The signature is per asset (HMAC of "hf:"+assetId), so only renders this
+    // worker started can finalize. The payload isn't trusted — hfFinalize
+    // re-reads the render from HeyGen's API.
+    if (request.method === "POST" && new URL(request.url).searchParams.get("hfhook") === "1") {
+      const u = new URL(request.url), aid = (u.searchParams.get("a") || "").replace(/[^0-9a-f]/gi, "");
+      const want = await hmacHex(HMAC_SECRET, "hf:" + aid);
+      if (!aid || u.searchParams.get("s") !== want) return new Response("bad signature", { status: 401 });
+      try { const r = await hfFinalize(env, aid); return new Response(JSON.stringify(r), { headers: { "Content-Type": "application/json" } }); }
+      catch (e) { console.error("hfhook", aid, e.message); return new Response("error", { status: 500 }); }
+    }
 
     // ── Image proxy for canvas compositing (Preview & Edit) ──
     // POST ?imgproxy=1, X-Hermes-Token, body {url}. The browser can only draw
@@ -23070,6 +23151,94 @@ Return ONLY this JSON object, no other text, no markdown fences:
             success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode,
             sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
           });
+        }
+
+        // ── "HyperFrames Reel": N kinetic-text Reels per run (hook → 3 beats →
+        // CTA). Writes the copy only (Asset Type "HyperFrames Reel", Status
+        // Development, copy on "Video Spec" as JSON); the 🎬 Render button then
+        // renders it on HeyGen (hyperframesReel action). The method's own Notion
+        // body is the methodology (voice/structure) — read here, never copied.
+        if (/\bhyperframes\b/i.test(assetType)) {
+          const hfCount = Math.min(Math.max(parseInt(body.count) || 3, 1), 6);
+          const hasMethod = methodId && methodId !== "__none__";
+          const [prodPage, researchRec, methodFrameworkText, pillarContent] = await Promise.all([
+            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            hasProduct ? findBestProductResearchRecord(dsHdr, productId).catch(() => null) : Promise.resolve(null),
+            hasMethod ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+          ]);
+          const rtp = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const productName = (prodPage?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+          const rp = researchRec?.properties || {};
+          const prodFacts = ["Customer", "Pain Points", "Emotions", "Objections", "Benefits", "Proof Points", "Transformation"]
+            .map(f => rtp(rp, f) && `${f}:\n${rtp(rp, f)}`).filter(Boolean).join("\n\n");
+          const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
+          const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
+
+          const hfPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You write short-form vertical video scripts. Produce ${hfCount} DISTINCT 20-second kinetic-text Reels${productName ? ` for "${productName}"` : ""} on the title "${title || ""}". The text IS the video — animated type over a photo, no voiceover — so every line must land on its own, read in about 3 seconds.
+${description ? `OPERATOR NOTES (follow): ${description}\n` : ""}${methodFrameworkText ? `METHOD FRAMEWORK (voice + structure — follow it):\n${methodFrameworkText.slice(0, 3000)}\n` : ""}
+RESEARCH (ground every line in it; use its plain phrasing, invent no claims):
+${prodFacts || "(no product research)"}
+${campFacts ? `\n${campFacts}\n` : ""}${pillarContent ? `\nPILLAR CONTENT (facts + voice to stay faithful to):\n${pillarContent.slice(0, 2400)}\n` : ""}
+STRUCTURE per reel (on screen in this order):
+- "hook": the scroll-stopper, 5s on screen. A pain, a surprising fact or a contrarian claim in the viewer's own words. At most ~60 characters.
+- "beat1", "beat2", "beat3": three short lines, 4s each, that build — problem → consequence → turn/proof works well. Each at most ~70 characters, each a complete thought.
+- "cta": the closing action, at most ~32 characters, a soft ask (e.g. "See how it works", "Check if you qualify").
+- "caption": 2-4 conversational feed sentences ending on one soft nudge.
+- "hashtags": 3-5 space-separated Instagram hashtags (Instagram allows at most 5).
+Different angle per reel — never two reels on the same point. Plain second person. No emojis on screen.
+
+Return via the submit_reels tool ONLY.`;
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: hfPrompt }],
+              tools: [{ name: "submit_reels", description: `Submit exactly ${hfCount} reels.`,
+                input_schema: { type: "object", required: ["reels"], properties: { reels: { type: "array", items: { type: "object",
+                  required: ["hook", "beat1", "beat2", "beat3", "cta", "caption"],
+                  properties: { hook: { type: "string" }, beat1: { type: "string" }, beat2: { type: "string" }, beat3: { type: "string" },
+                    cta: { type: "string" }, caption: { type: "string" }, hashtags: { type: "string" } } } } } } }],
+              tool_choice: { type: "tool", name: "submit_reels" },
+            }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          const tu = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_reels");
+          const reels = ((tu && tu.input && Array.isArray(tu.input.reels)) ? tu.input.reels : []).filter(r => r && String(r.hook || "").trim()).slice(0, hfCount);
+          if (!reels.length) return json({ error: "No reels generated — try again" }, 502);
+          try {
+            await ensureAssetsDbProperties(dsHdr, { "Video Spec": { type: "rich_text" }, "Video Render": { type: "rich_text" },
+              "Video URL": { type: "url" }, "Post Caption": { type: "rich_text" }, "Hashtags": { type: "rich_text" } });
+          } catch (e) {}
+          const mProp = await assetMethodProp(methodId, "HyperFrames Reel");
+          const created = [], failures = [];
+          for (const r of reels) {
+            const clip = (v, n) => String(v || "").replace(/\s+/g, " ").trim().slice(0, n);
+            const spec = { template: "reel-kinetic", hook: clip(r.hook, 90), beat1: clip(r.beat1, 90), beat2: clip(r.beat2, 90), beat3: clip(r.beat3, 90), cta: clip(r.cta, 50) };
+            const tags = String(r.hashtags || "").split(/\s+/).filter(t => /^#\S+/.test(t)).slice(0, 5).join(" ");
+            const props = {
+              "Asset Title": { title: [{ text: { content: `Reel — ${spec.hook}`.slice(0, 200) } }] },
+              "Asset Status": { select: { name: "Development" } },
+              "Asset Type": { select: { name: "HyperFrames Reel" } },
+              "Body": { rich_text: [{ text: { content: [spec.hook, spec.beat1, spec.beat2, spec.beat3, spec.cta].join("\n").slice(0, 1990) } }] },
+              "Video Spec": { rich_text: [{ text: { content: JSON.stringify(spec).slice(0, 1990) } }] },
+              "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+              "Post Caption": { rich_text: [{ text: { content: String(r.caption || "").slice(0, 1990) } }] },
+              "Platform Name": { select: { name: platformName || "Instagram" } },
+              ...mProp,
+            };
+            if (tags) props["Hashtags"] = { rich_text: [{ text: { content: tags } }] };
+            if (hasProduct) props["Product"] = { relation: [{ id: dsDash(productId) }] };
+            if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+            if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+            const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+            const cd = await cr.json().catch(() => ({}));
+            if (cr.ok) created.push(cd.id); else failures.push(cd.message || `HTTP ${cr.status}`);
+          }
+          if (!created.length) return json({ error: "Couldn't create the reel assets: " + failures.join("; ").slice(0, 300) }, 502);
+          return json({ success: true, created: created.length, assetIds: created, failures });
         }
 
         // ── "single post": fill one of the hub's FIXED Canva templates with
@@ -38482,6 +38651,55 @@ ${assemblyManifest}`;
       // video types → a public https MP4 (Video URL); everything else → one image
       // (Post Image, e.g. single posts / finished offer stills). Caption = the modal's
       // current Post Caption + Hashtags (falls back to the saved properties).
+      // -- hyperframesReel {assetId, op: "render"|"check"} — render a HyperFrames
+      // Reel asset on HeyGen, or check/finish a render in flight.
+      if (body.action === "hyperframesReel") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        if (!aid) return json({ error: "assetId required" }, 400);
+        try {
+          if (body.op === "check") return json({ ok: true, ...(await hfFinalize(env, aid)) });
+          const nh = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          const dashed = `${aid.slice(0,8)}-${aid.slice(8,12)}-${aid.slice(12,16)}-${aid.slice(16,20)}-${aid.slice(20)}`;
+          const page = await fetch(`https://api.notion.com/v1/pages/${dashed}`, { headers: nh }).then(r => r.json());
+          const P = page.properties || {};
+          const rt = k => (P[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          let spec; try { spec = JSON.parse(rt("Video Spec")); } catch (e) { return json({ error: "This asset has no Video Spec — generate it with the HyperFrames Reel method" }, 400); }
+          const tpl = HF_TEMPLATES[spec.template || "reel-kinetic"];
+          if (!tpl) return json({ error: "Unknown template " + spec.template }, 400);
+          const campaignId = (P["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+          // hub look: tokens + fonts + brand from hubs.design.json; plate = asset's own image → approved campaign plate
+          const hubSlug = hubSlugForCampaign(campaignId);
+          let hub = null;
+          if (hubSlug) { try { hub = ((await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json())).hubs || {})[hubSlug] || null; } catch (e) {} }
+          const tk = hub?.tokens || {}, fonts = hub?.fonts || {};
+          const hex = v => /^#[0-9a-f]{6}$/i.test(String(v || "")) ? v : undefined;
+          const brief = campaignId ? await assembleImageBrief(env, { campaignId }).catch(() => null) : null;
+          const plate = P["Post Image"]?.url || P["Instagram Background"]?.url || brief?.approvedPlate?.imageUrl || "";
+          const variables = {
+            hook: spec.hook, beat1: spec.beat1, beat2: spec.beat2, beat3: spec.beat3, cta: spec.cta,
+            brand: String(hub?.logoText || (P["Asset Title"]?.title || []).map(t => t.plain_text).join("").split(" — ")[0] || "").slice(0, 40),
+          };
+          if (/^https:\/\//.test(plate)) variables.bgImage = plate;
+          if (hex(tk.bg)) variables.bg = tk.bg;
+          if (hex(tk.ink)) variables.ink = tk.ink;
+          if (hex(tk.accent)) variables.accent = tk.accent;
+          if (tpl.displayFonts.includes(fonts.display)) variables.displayFont = fonts.display;
+          if (tpl.bodyFonts.includes(fonts.body)) variables.bodyFont = fonts.body;
+          const origin = new URL(request.url).origin;
+          const sig = await hmacHex((env.HMAC_SECRET || "").trim(), "hf:" + aid);
+          const d = await hfApi(env, "POST", "/v3/hyperframes/renders", {
+            project: { type: "url", url: tpl.url }, aspect_ratio: tpl.aspect, quality: "standard", fps: 30,
+            variables, title: `dash reel ${aid.slice(0, 8)}`,
+            callback_url: `${origin}/?hfhook=1&a=${aid}&s=${sig}`, callback_id: aid,
+          });
+          const renderId = d.render_id || d.id || "";
+          if (!renderId) return json({ error: "HeyGen returned no render id: " + JSON.stringify(d).slice(0, 300) }, 502);
+          await env.TRADES.put("hf:asset:" + aid, JSON.stringify({ renderId, status: "rendering", ts: Date.now() }));
+          await hfAssetPatch(aid, hfRenderNote(`rendering ${new Date().toISOString().slice(0, 16)} — ${renderId}`)).catch(() => {});
+          return json({ ok: true, status: "rendering", renderId, variables });
+        } catch (e) { return json({ error: e.message }, 502); }
+      }
+
       if (body.action === "sendAssetToBuffer") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);

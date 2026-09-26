@@ -287,6 +287,20 @@ layout) — every Publish-modal feature must be ported to `microsites/care-gap-v
 public r2.dev base in `[vars] MEDIA_PUBLIC_BASE`); Publish modal ⬆ Upload → raw POST `?upload=video&assetId=&name=` with
 `X-Hermes-Token` (handled right after OPTIONS, before JSON parsing; streams to `videos/<assetId>/…`, ≤100 MB) → sets `Video URL`.
 
+## HyperFrames Reel method (2026-09-26)
+
+Method **HyperFrames Reel** (Methods DB, Live): 20s 9:16 kinetic-text Reel (hook 0-5s → 3 beats → CTA 17-20s).
+- **Template:** `hyperframes/reel-kinetic/` (HyperFrames composition; variables hook/beat1-3/cta/brand/bgImage/bg/ink/accent/
+  displayFont/bodyFont; 15 hub fonts bundled in assets/fonts — no network at render). Publish to R2 with
+  `python hyperframes/publish-template.py reel-kinetic v<N>` and point `HF_TEMPLATES` (worker.js) at the new version — never overwrite.
+- **Copy:** `generateTitleAssets` `/hyperframes/i` branch → N assets (Asset Type "HyperFrames Reel", Status Development,
+  copy as JSON on `Video Spec`, Post Caption, Hashtags ≤5). Frontend `gaMatchSkill` excludes it from the old `reel` Text Video skill.
+- **Render:** asset row 🎬 Render → `hyperframesReel {assetId, op:"render"}` → HeyGen `POST /v3/hyperframes/renders` (project by R2 zip URL,
+  variables from Video Spec + hub tokens/fonts/logoText + plate = Post Image → Instagram Background → Research Approved Plate),
+  `callback_url` = worker `?hfhook=1&a=<assetId>&s=<HMAC("hf:"+assetId)>`. `hfFinalize` re-reads the render from HeyGen, copies the MP4
+  to R2 `videos/<assetId>/`, sets Video URL + Asset Status Publish + `Video Render` note. `op:"check"` = the polling fallback. KV `hf:asset:<id>`.
+- Secret **`HEYGEN_API_KEY`** (HeyGen account, billed per render credit). Publish → Buffer as an Instagram Reel (existing video path).
+
 ## Cron Scripts panel (Globals tab · ⏰)
 
 Read-only registry of everything on a schedule — the counterpart to the 🤖
