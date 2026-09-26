@@ -779,6 +779,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </label>
 
         <div id="pubSinglePostWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <div id="pubSpWrap" style="display:none;flex-direction:column;gap:6px;padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--border2);">
+          <div style="font-size:11px;color:var(--ink2);font-weight:700;">Post copy <span style="font-weight:400;color:var(--ink3);">— the three text fields on the image. Edit here or in 🎯 Preview &amp; Edit; Save stores them, and your rewrites teach the writer your voice.</span></div>
+          <label style="font-size:11px;color:var(--ink2);">Headline Primary<input type="text" id="pubSpPrimary" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
+          <label style="font-size:11px;color:var(--ink2);">Headline Accent<input type="text" id="pubSpAccent" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
+          <label style="font-size:11px;color:var(--ink2);">Body<textarea id="pubSpBody" rows="2" style="width:100%;margin-top:3px;box-sizing:border-box;"></textarea></label>
+          <span id="pubSpStatus" style="font-size:10.5px;color:var(--ink3);"></span>
+        </div>
           <label style="font-size:11px;color:var(--ink2);">🖼️ Post Image <span style="color:var(--ink3);">— the finished creative. Open it full-size and post it yourself.</span></label>
           <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
             <img id="pubPostImagePreview" src="" alt="" style="display:none;width:52px;height:65px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;cursor:pointer;" title="Choose from this asset's other images" onclick="openImagePicker('postImage')">
@@ -930,13 +937,6 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <button class="btn" onclick="document.getElementById('pubThumbnailFile').click()">📤 Upload Image</button>
             <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
           </div>
-        </div>
-        <div id="pubSpWrap" style="display:none;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--border2);border-radius:8px;">
-          <div style="font-size:11px;color:var(--ink2);font-weight:700;">Post copy <span style="font-weight:400;color:var(--ink3);">— the three text fields on the image. Edit here or in 🎯 Preview &amp; Edit; Save stores them, and your rewrites teach the writer your voice.</span></div>
-          <label style="font-size:11px;color:var(--ink2);">Headline Primary<input type="text" id="pubSpPrimary" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
-          <label style="font-size:11px;color:var(--ink2);">Headline Accent<input type="text" id="pubSpAccent" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
-          <label style="font-size:11px;color:var(--ink2);">Body<textarea id="pubSpBody" rows="2" style="width:100%;margin-top:3px;box-sizing:border-box;"></textarea></label>
-          <span id="pubSpStatus" style="font-size:10.5px;color:var(--ink3);"></span>
         </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
@@ -6160,7 +6160,7 @@ async function compositeTextOnPostImage(overrideFields) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = overrideFields ? 'Rendering headline text…' : 'Fetching this post\'s copy…';
   const myAsset = pubAssetId;
   try {
-    const fields = overrideFields || (await w('getSinglePostFields', { assetId: myAsset })).fields || {};
+    const fields = overrideFields || ((PUB_SP_LOADED === myAsset) ? pubSpFields() : null) || (await w('getSinglePostFields', { assetId: myAsset })).fields || {};
     const primary = truncateToChars((fields['Headline Primary'] ?? fields.primary ?? '').trim(), maxChars);
     const accent = truncateToChars((fields['Headline Accent'] ?? fields.accent ?? '').trim(), maxChars);
     const bodyText = (fields['Body'] ?? fields.body ?? '').trim();
