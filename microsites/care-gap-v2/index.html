@@ -106,6 +106,13 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .notebar .btn:hover{background:var(--global);color:#fff;}
 .modaloverlay{position:fixed;inset:0;background:rgba(20,16,10,.45);z-index:200;display:none;align-items:center;justify-content:center;padding:20px;}
 .modaloverlay.open{display:flex;}
+/* Phones: the whole modal scrolls inside the overlay (no clipped bottoms), with room under
+   Save for the browser toolbar / home bar. Inner 70vh scroll boxes flatten into that scroll. */
+@media (max-width: 820px){
+  .modaloverlay{overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:flex-start;padding:12px 10px calc(110px + env(safe-area-inset-bottom));}
+  .modaloverlay > .modalbox{margin:0 auto;max-height:none !important;overflow:visible !important;}
+  .modaloverlay .modalbox [style*="max-height:70vh"]{max-height:none !important;overflow:visible !important;}
+}
 .modalbox{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);}
 .modalbox .mtitle{font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--global);font-weight:700;margin-bottom:4px;}
 .modalbox .mfield{font-size:15px;font-weight:700;margin-bottom:12px;line-height:1.35;}

@@ -153,6 +153,13 @@
 /* MODAL — lighter background, scrollable body */
 .modal-overlay { background: rgba(0,0,0,0.35) !important; }
 .modal { background: #3a3a3a !important; max-height: 90vh; display: flex; flex-direction: column; }
+/* Phones: the whole modal scrolls inside its overlay so Save is always reachable
+   (90vh counts the browser toolbar on mobile and clipped the bottom). */
+@media (max-width: 820px){
+  .modal-overlay, #build-carousel-modal, #design-spec-modal{overflow-y:auto;-webkit-overflow-scrolling:touch;align-items:flex-start !important;padding:12px 0 calc(110px + env(safe-area-inset-bottom));}
+  .modal, .bc-box, .ds-box{max-height:none !important;overflow:visible !important;margin:0 auto;}
+  .modal-body{max-height:none !important;overflow:visible !important;}
+}
 .modal-body { overflow-y: auto; flex: 1; }
 /* Thin fields — must override min-height:160px set in style.css */
 input.modal-ta  { height: 32px !important; min-height: 0 !important; padding: 4px 10px !important; font-size: 13px !important; box-sizing: border-box; }
