@@ -931,6 +931,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <span id="pubThumbnailStatus" style="font-size:10.5px;"></span>
           </div>
         </div>
+        <div id="pubSpWrap" style="display:none;flex-direction:column;gap:6px;padding:8px;border:1px solid var(--border2);border-radius:8px;">
+          <div style="font-size:11px;color:var(--ink2);font-weight:700;">Post copy <span style="font-weight:400;color:var(--ink3);">— the three text fields on the image. Edit here or in 🎯 Preview &amp; Edit; Save stores them, and your rewrites teach the writer your voice.</span></div>
+          <label style="font-size:11px;color:var(--ink2);">Headline Primary<input type="text" id="pubSpPrimary" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
+          <label style="font-size:11px;color:var(--ink2);">Headline Accent<input type="text" id="pubSpAccent" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
+          <label style="font-size:11px;color:var(--ink2);">Body<textarea id="pubSpBody" rows="2" style="width:100%;margin-top:3px;box-sizing:border-box;"></textarea></label>
+          <span id="pubSpStatus" style="font-size:10.5px;color:var(--ink3);"></span>
+        </div>
         <label style="font-size:11px;color:var(--ink2);">Hashtags
           <div style="display:flex;gap:6px;margin-top:4px;align-items:flex-start;">
             <textarea id="pubHashtags" rows="2" style="flex:1;" placeholder="#…"></textarea>
@@ -1232,6 +1239,21 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="panel" data-panel="design">
     <div class="stage-hd"><h2 style="color:var(--global);">🎨 Design</h2><span class="stagetag" style="color:var(--global);">global constant — not a stage</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-design','Design tab','design')">📝 Tab note</button></div>
     <p class="stage-sub">Everything that governs how this campaign LOOKS. Method and Asset consume this; they don't own it. Loaded from <code>getHubPalette</code>; each card's ⟳ calls the matching <code>generateResearch*</code> action.</p>
+
+    <section class="card" data-ckey="card-design-voice">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement);loadVoiceProfile()"><span class="chev">▶</span><h3>🗣 Your voice (learned from your edits)</h3><span class="tag manual" id="voiceEditsTag">learning</span></div>
+      <div class="card-body">
+        <p class="card-desc">Every time you rewrite AI copy (single-post headline / accent / body, caption, hashtags, title) and save, the before → after is logged and these rules are rewritten from your recent edits. The single-post and Reel writers follow them on every run. Edit them directly if a rule is wrong.</p>
+        <label style="font-size:11px;color:var(--ink2);">Across all campaigns<textarea id="voiceGlobal" rows="6" style="width:100%;margin-top:4px;box-sizing:border-box;font-size:12px;"></textarea></label>
+        <label style="font-size:11px;color:var(--ink2);">This campaign<textarea id="voiceCampaign" rows="6" style="width:100%;margin-top:4px;box-sizing:border-box;font-size:12px;"></textarea></label>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+          <button class="btn" onclick="loadVoiceProfile(true)">↻ Refresh</button>
+          <button class="btn primary" onclick="saveVoiceProfile(this)">💾 Save rules</button>
+          <span id="voiceMsg" style="font-size:11px;color:var(--ink3);"></span>
+        </div>
+        <div id="voiceRecent" style="margin-top:8px;font-size:10.5px;color:var(--ink3);"></div>
+      </div>
+    </section>
 
     <section class="card" data-ckey="card-design-chatgpt">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Import from a ChatGPT design chat</h3><span class="tag manual">handoff</span><button class="notebtn" onclick="event.stopPropagation();openNoteModal('card-design-chatgpt','ChatGPT import','design')">📝</button></div>
@@ -2818,6 +2840,31 @@ function stageDesignGptReply() {
   if (!got.length) { msg.style.color = '#c0392b'; msg.textContent = 'JSON read, but none of register / photography / avoid / palette / fonts were in it.'; return; }
   msg.style.color = 'var(--fresh)';
   msg.textContent = 'Staged: ' + got.join(', ') + '. Review below, then 💾 Save each card.';
+}
+// 🗣 Learned voice profile (worker getVoiceProfile / saveVoiceProfile)
+let VOICE_LOADED = false;
+async function loadVoiceProfile(force) {
+  if (VOICE_LOADED && !force) return;
+  const msg = document.getElementById('voiceMsg'); msg.textContent = 'Loading…';
+  try {
+    const r = await w('getVoiceProfile', { campaignId: CAMPAIGN_ID });
+    document.getElementById('voiceGlobal').value = (r.global && r.global.text) || '';
+    document.getElementById('voiceCampaign').value = (r.campaign && r.campaign.text) || '';
+    document.getElementById('voiceEditsTag').textContent = `${r.edits.campaign} edit${r.edits.campaign === 1 ? '' : 's'} here · ${r.edits.all} total`;
+    document.getElementById('voiceRecent').innerHTML = (r.recent || []).length
+      ? '<b>Recent edits here:</b>' + r.recent.map(e => `<div style="margin-top:4px;"><span style="color:var(--ink2);">${esc(e.field)}</span>: <s>${esc(e.before)}</s> → ${esc(e.after)}</div>`).join('')
+      : 'No edits logged for this campaign yet.';
+    msg.textContent = (r.campaign && r.campaign.updatedAt) ? 'Updated ' + new Date(r.campaign.updatedAt).toLocaleString() : '';
+    VOICE_LOADED = true;
+  } catch (e) { msg.textContent = 'Load failed: ' + e.message; }
+}
+async function saveVoiceProfile(btn) {
+  const msg = document.getElementById('voiceMsg'); btn.disabled = true;
+  try {
+    await w('saveVoiceProfile', { campaignId: CAMPAIGN_ID, global: document.getElementById('voiceGlobal').value, campaign: document.getElementById('voiceCampaign').value });
+    msg.textContent = '✓ Saved. Your next edits keep refining these.';
+  } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
+  btn.disabled = false;
 }
 // ✨ Test on Grok — the direction/palette as shown (staged wins over live)
 // → renderSpecTest → one wordless plate. Session-only strip, nothing saved.
@@ -5243,6 +5290,25 @@ function openPublishAssetModal(assetId) {
   document.getElementById('pubThumbnailEditBtn').style.display = data.thumbnail ? '' : 'none';
   document.getElementById('pubHashtags').value = data.hashtags || '';
   document.getElementById('pubCaption').value = data.postCaption || '';
+  // Single-post copy (Headline Primary / Accent / Body) — first-level fields.
+  PUB_SP_LOADED = null;
+  const pubSpWrapEl = document.getElementById('pubSpWrap');
+  const isSp = /\bsingle post\b/i.test(data.type || '');
+  pubSpWrapEl.style.display = isSp ? 'flex' : 'none';
+  ['pubSpPrimary', 'pubSpAccent', 'pubSpBody'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('pubSpStatus').textContent = isSp ? 'Loading…' : '';
+  if (isSp) {
+    const forAsset = assetId;
+    w('getSinglePostFields', { assetId }).then(fr => {
+      if (pubAssetId !== forAsset) return;
+      const f = fr.fields || {};
+      document.getElementById('pubSpPrimary').value = f['Headline Primary'] || '';
+      document.getElementById('pubSpAccent').value = f['Headline Accent'] || '';
+      document.getElementById('pubSpBody').value = f['Body'] || '';
+      PUB_SP_LOADED = forAsset;
+      document.getElementById('pubSpStatus').textContent = '';
+    }).catch(e => { if (pubAssetId === forAsset) document.getElementById('pubSpStatus').textContent = 'Could not load: ' + e.message; });
+  }
   const status = document.getElementById('pubAssetStatus');
   status.textContent = ''; status.style.color = '';
   document.getElementById('publishAssetModal').classList.add('open');
@@ -5334,6 +5400,17 @@ async function sendPublishAssetToBuffer() {
   }
 }
 
+let PUB_SP_LOADED = null;   // asset id whose single-post fields are loaded in the Publish modal
+function pubSpFields() {
+  return { 'Headline Primary': document.getElementById('pubSpPrimary').value.trim(),
+    'Headline Accent': document.getElementById('pubSpAccent').value.trim(),
+    'Body': document.getElementById('pubSpBody').value.trim() };
+}
+async function pubSpSave() {
+  if (!PUB_SP_LOADED || PUB_SP_LOADED !== pubAssetId) return 0;
+  const r = await w('saveSinglePostFields', { assetId: pubAssetId, fields: pubSpFields() });
+  return r.learned || 0;
+}
 async function savePublishAssetFields() {
   const btn = document.getElementById('pubAssetSaveBtn');
   const status = document.getElementById('pubAssetStatus');
@@ -5354,9 +5431,11 @@ async function savePublishAssetFields() {
   btn.disabled = true;
   status.style.color = 'var(--ink3)'; status.textContent = 'Saving…';
   try {
-    await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    const pr = await w('updatePublishFields', { assetId: pubAssetId, ...fields });
+    const spLearned = await pubSpSave();
     Object.assign(PUB_ASSET_CACHE[pubAssetId] || (PUB_ASSET_CACHE[pubAssetId] = {}), fields, { assetTitle: fields.title });
-    status.style.color = 'var(--fresh)'; status.textContent = '✓ Saved.';
+    const learned = spLearned + ((pr && pr.voiceEdits) || 0);
+    status.style.color = 'var(--fresh)'; status.textContent = '✓ Saved.' + (learned ? ` Learned from ${learned} edit${learned === 1 ? '' : 's'} — your voice profile is updating.` : '');
     loadTitleAndAssetTab();
   } catch (e) {
     status.style.color = 'var(--stale)'; status.textContent = 'Save failed: ' + e.message;
@@ -6161,8 +6240,7 @@ async function openTextEditor(mode) {
     if (slot.draw === 'title') {
       text = { title: (data.platformTitle || data.assetTitle || data.title || '').trim() };
     } else {
-      const fr = await w('getSinglePostFields', { assetId: pubAssetId });
-      const fields = fr.fields || {};
+      const fields = (PUB_SP_LOADED === pubAssetId) ? pubSpFields() : ((await w('getSinglePostFields', { assetId: pubAssetId })).fields || {});
       text = { primary: (fields['Headline Primary'] || '').trim(), accent: (fields['Headline Accent'] || '').trim(), body: (fields['Body'] || '').trim() };
     }
     const canvas = document.getElementById('textEditorCanvas');
@@ -6325,6 +6403,27 @@ function applyTextEditorAndSave() {
   const save = slot.save, text = t.text;
   closeTextEditor();
   save(text);
+  persistTextEditorCopy(slot, text);
+}
+// The text typed in Preview & Edit is the operator's final copy — store it on
+// the asset (and mirror it into the Publish modal), which also feeds voice learning.
+async function persistTextEditorCopy(slot, text) {
+  const st = document.getElementById('pubAssetStatus');
+  try {
+    let learned = 0;
+    if (slot.draw === 'title') {
+      document.getElementById('pubPlatformTitle').value = text.title || '';
+      const r = await w('updatePublishFields', { assetId: pubAssetId, platformTitle: (text.title || '').trim() });
+      learned = r.voiceEdits || 0;
+    } else {
+      document.getElementById('pubSpPrimary').value = text.primary || '';
+      document.getElementById('pubSpAccent').value = text.accent || '';
+      document.getElementById('pubSpBody').value = text.body || '';
+      if (PUB_SP_LOADED !== pubAssetId) PUB_SP_LOADED = pubAssetId;
+      learned = await pubSpSave();
+    }
+    if (st) { st.style.color = 'var(--fresh)'; st.textContent = '✓ Copy saved.' + (learned ? ` Learned from ${learned} edit${learned === 1 ? '' : 's'}.` : ''); }
+  } catch (e) { if (st) { st.style.color = 'var(--stale)'; st.textContent = 'Copy not saved: ' + e.message; } }
 }
 
 // ── Hub tab — section-text editor, ported from the root dashboard's ────

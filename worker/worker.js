@@ -1011,6 +1011,75 @@ function hashtagsFromNotes(notes) {
   const t = String(notes || "").trim();
   return /^(#[^\s#]+\s*)+$/.test(t) ? t : "";
 }
+// ── Operator voice learning ─────────────────────────────────────────────────
+// Every time the operator rewrites AI-written copy (single-post headline /
+// accent / body in Preview & Edit; caption / hashtags / platform title in the
+// Publish modal), the BEFORE→AFTER pair is logged and a short learned voice
+// profile is rewritten from the recent edits (one global, one per campaign).
+// The copy writers (single post, HyperFrames Reel) read voiceBlock() on every
+// run, so each round of edits shapes the next draft. KV: voice:edits:all /
+// voice:edits:<cid> (recent pairs), voice:profile:global / voice:profile:<cid>.
+async function voiceLogEdits(env, ctx, campaignId, assetType, edits) {
+  const cid = String(campaignId || "").replace(/-/g, "");
+  const real = (edits || []).map(e => ({ field: e.field, before: String(e.before || "").trim(), after: String(e.after || "").trim() }))
+    .filter(e => e.before && e.after && e.before !== e.after);   // empty before = operator-authored, not a correction
+  if (!real.length || !env.TRADES) return 0;
+  const stamp = { ts: Date.now(), cid, assetType: String(assetType || "") };
+  const push = async (key, max) => {
+    let list = []; try { list = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+    list.push(...real.map(e => ({ ...stamp, ...e, before: e.before.slice(0, 600), after: e.after.slice(0, 600) })));
+    await env.TRADES.put(key, JSON.stringify(list.slice(-max)));
+  };
+  await push("voice:edits:all", 80);
+  if (cid) await push("voice:edits:" + cid, 40);
+  const job = voiceRelearn(env, cid).catch(e => console.error("voiceRelearn", e.message));
+  if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+  return real.length;
+}
+async function voiceRelearn(env, cid) {
+  if (!env.ANTHROPIC_API_KEY) return;
+  const get = async k => { try { return await env.TRADES.get(k, "json"); } catch (e) { return null; } };
+  const [all, mine, pg, pc] = await Promise.all([get("voice:edits:all"), cid ? get("voice:edits:" + cid) : null, get("voice:profile:global"), cid ? get("voice:profile:" + cid) : null]);
+  const fmt = list => (list || []).slice(-30).map(e => `[${e.field}${e.assetType ? " · " + e.assetType : ""}]\nBEFORE: ${e.before}\nAFTER:  ${e.after}`).join("\n\n");
+  const prompt = `You maintain the operator's VOICE PROFILE, learned from how they rewrite AI-written social copy. Each pair is the AI draft (BEFORE) and the operator's final (AFTER).
+
+Infer DURABLE preferences — word choice, length, rhythm, tone, punctuation, what they cut, what they add, how they open and close, hashtag style. Update both profiles: keep rules that still hold, add new ones the edits show, drop or soften ones the edits contradict. Ignore one-off factual fixes. Each profile: at most 12 short imperative bullets ("- Cut ...", "- Prefer ..."), concrete enough to follow, each backed by the edits. Empty string if the edits show nothing yet.
+
+CURRENT GLOBAL PROFILE (across every campaign):
+${(pg && pg.text) || "(none yet)"}
+
+CURRENT CAMPAIGN PROFILE (this campaign's audience/brand only):
+${(pc && pc.text) || "(none yet)"}
+
+RECENT EDITS, ALL CAMPAIGNS:
+${fmt(all) || "(none)"}
+
+RECENT EDITS, THIS CAMPAIGN:
+${fmt(mine) || "(none)"}
+
+Return ONLY a JSON object: {"global":"- ...\\n- ...","campaign":"- ...\\n- ..."}. "global" = patterns that show up across campaigns; "campaign" = patterns specific to this campaign.`;
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content: prompt }] }) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error?.message || "Claude error");
+  const out = (d.content?.[0]?.text || "");
+  let j; try { j = JSON.parse(out.slice(out.indexOf("{"), out.lastIndexOf("}") + 1)); } catch (e) { return; }
+  const now = Date.now(), n = (all || []).length;
+  if (typeof j.global === "string" && !(pg && pg.manual && pg.manualAt > now - 60000)) await env.TRADES.put("voice:profile:global", JSON.stringify({ text: j.global.trim().slice(0, 3000), updatedAt: now, fromEdits: n }));
+  if (cid && typeof j.campaign === "string") await env.TRADES.put("voice:profile:" + cid, JSON.stringify({ text: j.campaign.trim().slice(0, 3000), updatedAt: now, fromEdits: (mine || []).length }));
+}
+// Prompt block for copy writers: the learned voice, stated as overriding defaults.
+async function voiceBlock(env, campaignId) {
+  if (!env.TRADES) return "";
+  const cid = String(campaignId || "").replace(/-/g, "");
+  let g = null, c = null;
+  try { [g, c] = await Promise.all([env.TRADES.get("voice:profile:global", "json"), cid ? env.TRADES.get("voice:profile:" + cid, "json") : null]); } catch (e) {}
+  const gt = (g && g.text || "").trim(), ct = (c && c.text || "").trim();
+  if (!gt && !ct) return "";
+  return `OPERATOR VOICE — learned from the operator's own rewrites of earlier drafts. Follow it; where it conflicts with any default style guidance above or below, the operator's voice wins:\n${gt ? `Across all campaigns:\n${gt}\n` : ""}${ct ? `This campaign:\n${ct}\n` : ""}\n`;
+}
+
 // ── HyperFrames Reel method (HeyGen-hosted HyperFrames rendering) ─────────
 // Templates are HyperFrames compositions in repo hyperframes/<name>/, zipped +
 // published to R2 by hyperframes/publish-template.py (bump the version on every
@@ -23175,7 +23244,8 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
           const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
 
-          const hfPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You write short-form vertical video scripts. Produce ${hfCount} DISTINCT 20-second kinetic-text Reels${productName ? ` for "${productName}"` : ""} on the title "${title || ""}". The text IS the video — animated type over a photo, no voiceover — so every line must land on its own, read in about 3 seconds.
+          const hfVoice = await voiceBlock(env, campaignId).catch(() => "");
+          const hfPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${hfVoice}You write short-form vertical video scripts. Produce ${hfCount} DISTINCT 20-second kinetic-text Reels${productName ? ` for "${productName}"` : ""} on the title "${title || ""}". The text IS the video — animated type over a photo, no voiceover — so every line must land on its own, read in about 3 seconds.
 ${description ? `OPERATOR NOTES (follow): ${description}\n` : ""}${methodFrameworkText ? `METHOD FRAMEWORK (voice + structure — follow it):\n${methodFrameworkText.slice(0, 3000)}\n` : ""}
 RESEARCH (ground every line in it; use its plain phrasing, invent no claims):
 ${prodFacts || "(no product research)"}
@@ -23309,7 +23379,8 @@ Return via the submit_reels tool ONLY.`;
             "Contrarian / Claim": "A strong claim that cuts against the category's received wisdom. Body defends it in one line.",
           };
 
-          const spPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are a short-form social copywriter. Produce ${spCount} DISTINCT single-page posts${productName ? ` for "${productName}"` : ""}, ALL of the "${contentType}" content type. Each fills a fixed Canva template with exactly three text fields.
+          const spVoice = await voiceBlock(env, campaignId).catch(() => "");
+          const spPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${spVoice}You are a short-form social copywriter. Produce ${spCount} DISTINCT single-page posts${productName ? ` for "${productName}"` : ""}, ALL of the "${contentType}" content type. Each fills a fixed Canva template with exactly three text fields.
 
 TITLE / ANGLE: ${title}
 CONTENT TYPE — "${contentType}": ${CT_GUIDE[contentType] || CT_GUIDE["Hook"]}
@@ -26712,6 +26783,57 @@ Portrait Instagram post, ready to publish.`;
       // already reads) so the Publish modal can composite that exact text
       // onto a background client-side, without duplicating the field-write
       // path server-side. { assetId }
+      // -- saveSinglePostFields {assetId, fields:{"Headline Primary","Headline Accent","Body"}}
+      // Writes the operator's final copy back into the asset's SINGLE POST json
+      // block + Body property (Preview & Edit used to use it for the image only),
+      // and logs each changed field for voice learning.
+      if (body.action === "saveSinglePostFields") {
+        const { assetId } = body;
+        const f = body.fields || {};
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const dash = id => { const x = String(id).replace(/-/g,""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
+        const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+        let blk = null, card = null;
+        for (const b of (blocksResp.results || [])) {
+          if (b.type !== "code") continue;
+          const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
+          try { const j = JSON.parse(txt); if (j.kind === "single-post") { blk = b; card = j; break; } } catch (e) {}
+        }
+        if (!card) return json({ error: "Couldn't find this asset's single-post block" }, 400);
+        const KEYS = ["Headline Primary", "Headline Accent", "Body"];
+        const old = { ...(card.fields || {}) };
+        const next = { ...old };
+        for (const k of KEYS) if (typeof f[k] === "string") next[k] = f[k].trim();
+        card.fields = next;
+        const txt = JSON.stringify(card, null, 2);
+        const rt = []; for (let i = 0; i < txt.length; i += 1900) rt.push({ type: "text", text: { content: txt.slice(i, i + 1900) } });
+        const pb = await fetch(`https://api.notion.com/v1/blocks/${blk.id}`, { method: "PATCH", headers: hdr,
+          body: JSON.stringify({ code: { rich_text: rt, language: blk.code?.language || "json" } }) });
+        if (!pb.ok) { const e = await pb.json().catch(() => ({})); return json({ error: "Couldn't save the copy: " + (e.message || pb.status) }, 502); }
+        const hp = next["Headline Primary"] || "", ha = next["Headline Accent"] || "", bd = next["Body"] || "";
+        const page = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { method: "PATCH", headers: hdr,
+          body: JSON.stringify({ properties: { "Body": { rich_text: [{ text: { content: (hp + (ha ? " " + ha : "") + (bd ? "\n" + bd : "")).slice(0, 2000) } }] } } }) }).then(r => r.json()).catch(() => ({}));
+        const pp = page.properties || {};
+        let learned = 0;
+        try { learned = await voiceLogEdits(env, ctx, pp["Campaign"]?.relation?.[0]?.id || "", pp["Asset Type"]?.select?.name || "single post",
+          KEYS.map(k => ({ field: k, before: old[k], after: next[k] }))); } catch (e) { console.error("voice capture (single post)", e.message); }
+        return json({ ok: true, fields: next, learned });
+      }
+
+      // -- getVoiceProfile / saveVoiceProfile {campaignId, global?, campaign?}
+      if (body.action === "getVoiceProfile" || body.action === "saveVoiceProfile") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (body.action === "saveVoiceProfile") {
+          const now = Date.now();
+          if (typeof body.global === "string") await env.TRADES.put("voice:profile:global", JSON.stringify({ text: body.global.slice(0, 3000), updatedAt: now, manual: true, manualAt: now }));
+          if (cid && typeof body.campaign === "string") await env.TRADES.put("voice:profile:" + cid, JSON.stringify({ text: body.campaign.slice(0, 3000), updatedAt: now, manual: true, manualAt: now }));
+        }
+        const get = async k => { try { return await env.TRADES.get(k, "json"); } catch (e) { return null; } };
+        const [g, c, all, mine] = await Promise.all([get("voice:profile:global"), cid ? get("voice:profile:" + cid) : null, get("voice:edits:all"), cid ? get("voice:edits:" + cid) : null]);
+        return json({ ok: true, global: g, campaign: c, edits: { all: (all || []).length, campaign: (mine || []).length }, recent: (mine || []).slice(-8).reverse() });
+      }
+
       if (body.action === "getSinglePostFields") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
@@ -30369,6 +30491,20 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         }
         if (hashtags !== undefined) props["Hashtags"] = { rich_text: hashtags ? chunkRT(hashtags) : [] };
         if (postCaption !== undefined) props["Post Caption"] = { rich_text: postCaption ? chunkRT(postCaption) : [] };
+        // Voice learning: diff the copy fields against what's stored BEFORE this save.
+        let voiceEdits = 0;
+        if (hashtags !== undefined || postCaption !== undefined || platformTitle !== undefined) {
+          try {
+            const before = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+            const bp = before.properties || {};
+            const brt = k => (bp[k]?.rich_text || []).map(t => t.plain_text).join("");
+            const edits = [];
+            if (postCaption !== undefined) edits.push({ field: "Post Caption", before: brt("Post Caption"), after: postCaption });
+            if (hashtags !== undefined) edits.push({ field: "Hashtags", before: brt("Hashtags"), after: hashtags });
+            if (platformTitle !== undefined) edits.push({ field: "Title", before: brt("Platform Title"), after: platformTitle });
+            voiceEdits = await voiceLogEdits(env, ctx, (bp["Campaign"]?.relation?.[0]?.id || ""), bp["Asset Type"]?.select?.name || "", edits);
+          } catch (e) { console.error("voice capture (publish fields)", e.message); }
+        }
         // Content Hub — the "Offer – Content Hub" publish target. A slug from
         // HUB_SITES, or "" to clear. getHubProducts reads this to decide which
         // hub an offer asset renders on.
@@ -30432,7 +30568,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
             } catch (e) { /* best-effort */ }
           })());
         }
-        return json({ success: true });
+        return json({ success: true, voiceEdits });
       }
 
       // ── uploadAssetThumbnail ──
