@@ -1,0 +1,43 @@
+@font-face{font-family:"Space Grotesk";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/SpaceGrotesk-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Space Grotesk";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/SpaceGrotesk-500-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Space Grotesk";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/SpaceGrotesk-600-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Space Grotesk";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/SpaceGrotesk-700-normal-3.woff2) format("woff2");}
+@font-face{font-family:"Inter";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/Inter-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Inter";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/Inter-500-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Inter";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/Inter-600-normal-2.woff2) format("woff2");}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/JetBrainsMono-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"JetBrains Mono";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/JetBrainsMono-700-normal-1.woff2) format("woff2");}
+@font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/IBMPlexSans-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/IBMPlexSans-500-normal-1.woff2) format("woff2");}
+@font-face{font-family:"IBM Plex Sans";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/IBMPlexSans-600-normal-2.woff2) format("woff2");}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/IBMPlexMono-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"IBM Plex Mono";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/IBMPlexMono-700-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Newsreader";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/Newsreader-500-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Newsreader";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/Newsreader-600-normal-1.woff2) format("woff2");}
+@font-face{font-family:"DM Serif Display";font-style:italic;font-weight:400;font-display:block;src:url(assets/fonts/DMSerifDisplay-400-italic-0.woff2) format("woff2");}
+@font-face{font-family:"DM Serif Display";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/DMSerifDisplay-400-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Hanken Grotesk";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/HankenGrotesk-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Hanken Grotesk";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/HankenGrotesk-500-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Hanken Grotesk";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/HankenGrotesk-600-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Space Mono";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/SpaceMono-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Space Mono";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/SpaceMono-700-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Familjen Grotesk";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/FamiljenGrotesk-500-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Familjen Grotesk";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/FamiljenGrotesk-600-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Familjen Grotesk";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/FamiljenGrotesk-700-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Bitter";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/Bitter-500-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Bitter";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/Bitter-600-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Bitter";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/Bitter-700-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Archivo";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/Archivo-500-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Archivo";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/Archivo-600-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Archivo";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/Archivo-700-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Fraunces";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/Fraunces-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Fraunces";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/Fraunces-500-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Fraunces";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/Fraunces-600-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Fraunces";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/Fraunces-700-normal-3.woff2) format("woff2");}
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/BricolageGrotesque-500-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/BricolageGrotesque-600-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Bricolage Grotesque";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/BricolageGrotesque-700-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Libre Franklin";font-style:normal;font-weight:400;font-display:block;src:url(assets/fonts/LibreFranklin-400-normal-0.woff2) format("woff2");}
+@font-face{font-family:"Libre Franklin";font-style:normal;font-weight:500;font-display:block;src:url(assets/fonts/LibreFranklin-500-normal-1.woff2) format("woff2");}
+@font-face{font-family:"Libre Franklin";font-style:normal;font-weight:600;font-display:block;src:url(assets/fonts/LibreFranklin-600-normal-2.woff2) format("woff2");}
+@font-face{font-family:"Libre Franklin";font-style:normal;font-weight:700;font-display:block;src:url(assets/fonts/LibreFranklin-700-normal-3.woff2) format("woff2");}
