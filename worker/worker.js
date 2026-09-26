@@ -1005,6 +1005,12 @@ async function bufferDecrypt(env, rec) {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u(rec.iv) }, await bufferCipherKey(env), u(rec.ct));
   return new TextDecoder().decode(pt);
 }
+// Older single-post assets stored their hashtags in Notes. Treat Notes as
+// hashtags only when it is NOTHING but hashtags.
+function hashtagsFromNotes(notes) {
+  const t = String(notes || "").trim();
+  return /^(#[^\s#]+\s*)+$/.test(t) ? t : "";
+}
 async function bufferGql(token, query) {
   const resp = await fetch("https://api.buffer.com", { method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
@@ -19737,7 +19743,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // (renderAssetRow's 📋 Publish button), prefetched here
             // alongside everything else so opening that modal needs no
             // extra round-trip.
-            hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            hashtags: p["Hashtags"]?.rich_text?.map(x => x.plain_text).join("") || hashtagsFromNotes(p["Notes"]?.rich_text?.map(x => x.plain_text).join("")),
             postCaption: p["Post Caption"]?.rich_text?.map(x => x.plain_text).join("") || "",
             thumbnail: p["Thumbnail"]?.url || "",
             // The finished deliverable file — t-shirt print file (PDF/
@@ -23151,7 +23157,7 @@ Write the whole headline sentence first, then split it at the most load-bearing 
 
 Also per post:
 - "caption": 2-4 conversational sentences for the feed, ending on one soft nudge (not a hard CTA).
-- "hashtags": one string of 3-6 space-separated hashtags, Instagram-native.
+- "hashtags": one string of 3-5 space-separated hashtags, Instagram-native (Instagram allows at most 5).
 - "altText": one sentence describing the finished card.
 
 Return via the submit_single_posts tool ONLY — nothing as plain text.`;
@@ -23201,6 +23207,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
               "Post Image": { type: "url" }, "Canva Template": { type: "url" },
               "Design Link": { type: "url" }, "Post Caption": { type: "rich_text" },
               "Alt Text": { type: "rich_text" }, "Notes": { type: "rich_text" },
+              "Hashtags": { type: "rich_text" },
             });
           } catch (e) { /* PATCH below surfaces a real prop error if one slips through */ }
 
@@ -23217,7 +23224,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
             const ha = String(post.headlineAccent || "").trim();
             const bd = String(post.body || "").trim();
             const cap = String(post.caption || "").trim();
-            const tags = String(post.hashtags || "").trim();
+            const tags = String(post.hashtags || "").split(/\s+/).filter(t => /^#\S+/.test(t)).slice(0, 5).join(" ");
             const alt = String(post.altText || "").trim();
             const label = `${(hp + (ha ? " " + ha : "")).slice(0, 80)} — ${contentType}`;
             const cardObj = {
@@ -23242,7 +23249,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
             if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
             props["Platform Name"] = { select: { name: platformName || "Instagram" } };
             if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
-            if (tags) props["Notes"] = { rich_text: [{ text: { content: tags.slice(0, 1990) } }] };
+            if (tags) props["Hashtags"] = { rich_text: [{ text: { content: tags.slice(0, 1990) } }] };
             if (alt) props["Alt Text"] = { rich_text: [{ text: { content: alt.slice(0, 1990) } }] };
             Object.assign(props, spMProp);
             const aResp = await fetch("https://api.notion.com/v1/pages", {
@@ -38488,8 +38495,8 @@ ${assemblyManifest}`;
         const campaignId = P["Campaign"]?.relation?.[0]?.id?.replace(/-/g, "") || null;
         if (!campaignId) return json({ error: "Asset is missing its Campaign relation" }, 400);
         const caption = body.postCaption != null ? String(body.postCaption).trim() : rtp("Post Caption");
-        const tags = body.hashtags != null ? String(body.hashtags).trim() : rtp("Hashtags");
-        const text = [caption, tags].filter(Boolean).join("\n\n");
+        const tags = (body.hashtags != null && String(body.hashtags).trim()) ? String(body.hashtags).trim() : (rtp("Hashtags") || hashtagsFromNotes(rtp("Notes")));
+        let text = [caption, tags].filter(Boolean).join("\n\n");
         if (!text) return json({ error: "Add a Post Caption (or Hashtags) first — Buffer needs post text" }, 400);
 
         const https = u => /^https:\/\/\S+$/i.test(String(u || "").trim());
@@ -38542,7 +38549,12 @@ ${assemblyManifest}`;
         const igType = ["post", "reel", "story"].includes(wanted) ? wanted : (isVideo ? "reel" : "post");
         const ytTitle = (rtp("Platform Title") || (P["Asset Title"]?.title || []).map(t => t.plain_text).join("") || caption).replace(/\s+/g, " ").trim().slice(0, 100);
         let metadata = null;
-        if (service === "instagram") metadata = { instagram: { type: { __enum: igType }, shouldShareToFeed: true } };
+        // Instagram: hashtags go in the FIRST COMMENT (Buffer's slot for them), caption stays clean.
+        let tagsWhere = "caption";
+        if (service === "instagram") {
+          metadata = { instagram: { type: { __enum: igType }, shouldShareToFeed: true } };
+          if (tags && caption) { metadata.instagram.firstComment = tags; text = caption; tagsWhere = "first comment"; }
+        }
         else if (service === "facebook") metadata = { facebook: { type: { __enum: igType } } };
         else if (service === "youtube") {
           if (!isVideo) return json({ error: "YouTube only takes video — this asset has no video." }, 400);
@@ -38551,10 +38563,21 @@ ${assemblyManifest}`;
         const toGql = v => v && typeof v === "object" && v.__enum ? v.__enum
           : Array.isArray(v) ? "[" + v.map(toGql).join(", ") + "]"
           : v && typeof v === "object" ? "{ " + Object.entries(v).map(([k, x]) => k + ": " + toGql(x)).join(", ") + " }" : JSON.stringify(v);
-        const mutation = `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)}${metadata ? " metadata: " + toGql(metadata) : ""} }) {
+        const buildMutation = () => `mutation { createPost(input: { text: ${JSON.stringify(text)} channelId: ${JSON.stringify(channelId)} schedulingType: automatic mode: addToQueue saveToDraft: true assets: ${toGql(assets)}${metadata ? " metadata: " + toGql(metadata) : ""} }) {
           ... on PostActionSuccess { post { id } } ... on MutationError { message } } }`;
         let data;
-        try { data = await bufferGql(login.token, mutation); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
+        try { data = await bufferGql(login.token, buildMutation()); }
+        catch (e) {
+          // Buffer's schema refused firstComment → put the hashtags back in the caption and retry once.
+          if (tagsWhere === "first comment" && /firstComment/i.test(e.message)) {
+            delete metadata.instagram.firstComment; text = [caption, tags].filter(Boolean).join("\n\n"); tagsWhere = "caption";
+            try { data = await bufferGql(login.token, buildMutation()); } catch (e2) { return json({ error: "Buffer API error: " + e2.message }, 502); }
+          } else return json({ error: "Buffer API error: " + e.message }, 502);
+        }
+        if (!data?.createPost?.post?.id && tagsWhere === "first comment" && /firstComment/i.test(data?.createPost?.message || "")) {
+          delete metadata.instagram.firstComment; text = [caption, tags].filter(Boolean).join("\n\n"); tagsWhere = "caption";
+          try { data = await bufferGql(login.token, buildMutation()); } catch (e2) { return json({ error: "Buffer API error: " + e2.message }, 502); }
+        }
         const res = data && data.createPost;
         if (res && res.message) return json({ error: "Buffer rejected the post: " + res.message }, 502);
         // No post id back = Buffer did NOT create anything — never report that as a success.
@@ -38570,7 +38593,7 @@ ${assemblyManifest}`;
           if (!up.ok) console.error("sendAssetToBuffer: status flip failed", up.status, (await up.text()).slice(0, 200));
         } catch (e) { console.error("sendAssetToBuffer: status flip failed", e.message); }
         return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId,
-          channelName: channel.name, organizationName: channel.organizationName || "", statusSet });
+          channelName: channel.name, organizationName: channel.organizationName || "", statusSet, tagsWhere: tags ? tagsWhere : "" });
       }
 
       if (body.action === "sendCarouselToBuffer") {

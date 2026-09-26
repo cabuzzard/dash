@@ -5306,7 +5306,7 @@ async function sendPublishAssetToBuffer() {
       if (typeof loadTitles === 'function') loadTitles().catch(() => {});
     }
     status.style.color = 'var(--fresh)';
-    status.innerHTML = `Sent ${esc(r.kind || 'post')} to Buffer as a draft → <b>${esc(r.organizationName || 'Buffer')} › ${esc(r.channelName || r.service || '')}</b> (${esc(r.service || '')}; post id ${esc(r.bufferPostId || '?')}). In Buffer, open that channel's <b>Drafts</b> tab (not the Queue) — <a href="https://publish.buffer.com/" target="_blank" rel="noopener" style="color:inherit;font-weight:700;text-decoration:underline;">open Buffer ↗</a> to review and schedule it.${r.statusSet ? ' Asset marked <b>Published</b>.' : ' <b>Could not mark the asset Published</b> — set it in the status dropdown.'}`;
+    status.innerHTML = `Sent ${esc(r.kind || 'post')} to Buffer as a draft → <b>${esc(r.organizationName || 'Buffer')} › ${esc(r.channelName || r.service || '')}</b> (${esc(r.service || '')}; post id ${esc(r.bufferPostId || '?')}). In Buffer, open that channel's <b>Drafts</b> tab (not the Queue) — <a href="https://publish.buffer.com/" target="_blank" rel="noopener" style="color:inherit;font-weight:700;text-decoration:underline;">open Buffer ↗</a> to review and schedule it.${r.tagsWhere ? ' Hashtags → ' + esc(r.tagsWhere) + '.' : ''}${r.statusSet ? ' Asset marked <b>Published</b>.' : ' <b>Could not mark the asset Published</b> — set it in the status dropdown.'}`;
   } catch (e) {
     btn.disabled = false; btn.textContent = '📤 Send to Buffer';
     status.style.color = 'var(--stale)';
