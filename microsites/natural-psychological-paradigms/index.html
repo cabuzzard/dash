@@ -9192,7 +9192,7 @@ async function sendPublishAssetToBuffer() {
       postType: document.getElementById('pubBufferType').style.display !== 'none' ? (document.getElementById('pubBufferType').value || undefined) : undefined,
     });
     btn.textContent = '✓ In Buffer drafts';
-    status.innerHTML = `Sent ${esc(r.kind || 'post')} to Buffer as a draft — <a href="https://publish.buffer.com/" target="_blank" rel="noopener" style="color:inherit;font-weight:700;text-decoration:underline;">open Buffer ↗</a> to review and schedule it.`;
+    status.innerHTML = `Sent ${esc(r.kind || 'post')} to Buffer as a draft → <b>${esc(r.organizationName || 'Buffer')} › ${esc(r.channelName || r.service || '')}</b> (${esc(r.service || '')}; post id ${esc(r.bufferPostId || '?')}). In Buffer, open that channel's <b>Drafts</b> tab (not the Queue) — <a href="https://publish.buffer.com/" target="_blank" rel="noopener" style="color:inherit;font-weight:700;text-decoration:underline;">open Buffer ↗</a> to review and schedule it.`;
     status.className = 'modal-status ok';
   } catch (e) {
     btn.disabled = false; btn.textContent = '📤 Send to Buffer';

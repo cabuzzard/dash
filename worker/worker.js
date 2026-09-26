@@ -38557,7 +38557,11 @@ ${assemblyManifest}`;
         try { data = await bufferGql(login.token, mutation); } catch (e) { return json({ error: "Buffer API error: " + e.message }, 502); }
         const res = data && data.createPost;
         if (res && res.message) return json({ error: "Buffer rejected the post: " + res.message }, 502);
-        return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId: res && res.post && res.post.id });
+        // No post id back = Buffer did NOT create anything — never report that as a success.
+        const bufferPostId = res && res.post && res.post.id;
+        if (!bufferPostId) return json({ error: "Buffer returned no post id — nothing was created. Raw reply: " + JSON.stringify(data).slice(0, 300) }, 502);
+        return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId,
+          channelName: channel.name, organizationName: channel.organizationName || "" });
       }
 
       if (body.action === "sendCarouselToBuffer") {
