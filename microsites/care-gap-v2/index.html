@@ -819,7 +819,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <label title="Panel width, % of image width">W <input type="number" id="pubPostBoxW" value="62" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel height, % of image height">H <input type="number" id="pubPostBoxH" value="58" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel fill color">Color <input type="color" id="pubPostBoxColor" value="#ffffff" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-            <label title="Panel opacity at its strongest edge">Opacity <input type="number" id="pubPostBoxOpacity" value="88" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubPostBoxOpacity" value="88" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
           </div>
           <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
             <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
@@ -875,7 +875,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Dark zone width, % of width">W <input type="number" id="pubIgBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubIgBoxH" value="40" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone fill color">Color <input type="color" id="pubIgBoxColor" value="#191b1f" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-                <label title="Dark zone opacity at its darkest edge">Opacity <input type="number" id="pubIgBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Box opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubIgBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
                 <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
@@ -907,7 +907,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Dark zone width, % of width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone fill color">Color <input type="color" id="pubThumbBoxColor" value="#191b1f" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-                <label title="Dark zone opacity at its darkest edge">Opacity <input type="number" id="pubThumbBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Box opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubThumbBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
                 <span style="color:var(--ink3);flex-shrink:0;">Image:</span>
@@ -6050,9 +6050,9 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
   // body text color on a light page) so it reads as this hub's by default.
   const scrim = hexToRgb(opts.boxColor || hub.tokens.deep);
   const peakAlpha = (opts.boxOpacity != null ? opts.boxOpacity : 72) / 100;
-  const grad = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
-  grad.addColorStop(0, `rgba(${scrim.r},${scrim.g},${scrim.b},${peakAlpha})`); grad.addColorStop(1, `rgba(${scrim.r},${scrim.g},${scrim.b},0)`);
-  ctx.fillStyle = grad; ctx.fillRect(box.x, box.y, box.w, box.h);
+  // One even fill at exactly the chosen opacity (was a gradient fading to 0 at
+  // the bottom, so the Opacity setting barely changed what sat behind the text).
+  ctx.fillStyle = `rgba(${scrim.r},${scrim.g},${scrim.b},${peakAlpha})`; ctx.fillRect(box.x, box.y, box.w, box.h);
   const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top'; ctx.fillStyle = hub.tokens.deepInk;
   let fontSize = Math.round(w * (opts.sizePct / 100));
@@ -6075,9 +6075,9 @@ function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
   // by default.
   const panel = hexToRgb(opts.boxColor || hub.tokens.surface);
   const peakAlpha = (opts.boxOpacity != null ? opts.boxOpacity : 88) / 100;
-  const grad = ctx.createLinearGradient(0, box.y, 0, box.y + box.h);
-  grad.addColorStop(0, `rgba(${panel.r},${panel.g},${panel.b},${peakAlpha})`); grad.addColorStop(1, `rgba(${panel.r},${panel.g},${panel.b},${Math.min(peakAlpha, 0.35)})`);
-  ctx.fillStyle = grad; ctx.fillRect(box.x, box.y, box.w, box.h);
+  // One even fill at exactly the chosen opacity (was a gradient capped at 35%
+  // at the bottom, so 100% never gave a solid panel).
+  ctx.fillStyle = `rgba(${panel.r},${panel.g},${panel.b},${peakAlpha})`; ctx.fillRect(box.x, box.y, box.w, box.h);
   const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top';
   let y = box.y + pad;
