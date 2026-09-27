@@ -19947,6 +19947,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // distinct from "Asset Title" (this record's own display
             // name) above.
             platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            thumbnailText: p["Thumbnail Text"]?.rich_text?.map(x => x.plain_text).join("") || "",
             // Listing method fields — Etsy is canonical (title/body
             // above), these are the derived cross-posts + Etsy's own
             // tags, plus the accumulated product photos.
@@ -23382,6 +23383,8 @@ Return via the submit_outline tool ONLY.`;
             ...mProp,
           };
           if (hashtags) props["Hashtags"] = { rich_text: rt(hashtags) };
+          const thumbOpts = (o.thumbnailText || []).map(S).filter(Boolean).join(" | ");
+          if (thumbOpts) { try { await ensureAssetsDbProperties(dsHdr, { "Thumbnail Text": { type: "rich_text" } }); } catch (e) {} props["Thumbnail Text"] = { rich_text: rt(thumbOpts) }; }
           if (hasProduct) props["Product"] = { relation: [{ id: dsDash(productId) }] };
           if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
           if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
@@ -26596,6 +26599,87 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
       // already generic across asset types, only the generation half was
       // offer-specific. Same xAI/Grok connection as generateSinglePostBackground
       // and generateSinglePostFullCreative. { assetId }
+      // -- generateYouTubeThumbnail {assetId}: a YouTube-specific 16:9 plate on
+      // Grok for a YouTube Longform asset — one bold focal subject, high contrast,
+      // readable at small size, LEFT ~45% clean for 3-5 big words (laid on
+      // afterwards in 🔤 Add title text / 🎯 Preview & Edit, never baked in).
+      // Same return shape as generateBlogPostThumbnail → saveOfferImage kind
+      // "blog-thumbnail" persists it on Thumbnail. Also returns thumbText (the
+      // outline's first thumbnail-text option) for the text editor.
+      if (body.action === "generateYouTubeThumbnail") {
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const dash = id => { const x = String(id).replace(/-/g,""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
+        const [assetPage, blocksResp] = await Promise.all([
+          fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()),
+          fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=30`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] })),
+        ]);
+        if (!assetPage.properties) return json({ error: assetPage.message || "Asset not found" }, 404);
+        const ap = assetPage.properties;
+        const rtp = (k) => (ap?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const videoTitle = rtp("Platform Title") || (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+        const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
+        if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+        // thumbnail text options: the property, else the outline's "Thumbnail text:" line
+        let thumbOpts = rtp("Thumbnail Text");
+        if (!thumbOpts) for (const b of (blocksResp.results || [])) {
+          const t = ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("");
+          if (/^Thumbnail text:/i.test(t)) { thumbOpts = t.replace(/^Thumbnail text:\s*/i, ""); break; }
+        }
+        const thumbText = (thumbOpts.split("|")[0] || "").trim();
+        const outline = (blocksResp.results || []).slice(0, 12).map(b => ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 1500);
+
+        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        let spec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
+        else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        spec += approvedPlateBlock(brief);
+        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 70-120 words, one vivid paragraph.
+
+WHAT IT IS: a YouTube THUMBNAIL background, 16:9 (1280x720). It competes in a crowded feed and is seen at ~160px wide, so: ONE bold focal subject that instantly says what the video is about (an object, a scene, or a person if the spec allows people), big and close, placed in the RIGHT ~55% of the frame; strong subject/background separation, high contrast, rich saturated colour drawn from the spec's palette, dramatic but clean light. The LEFT ~45% must be a simple, uncluttered, fairly dark or flat area — 3-5 huge words get laid over it afterwards. Emotion or curiosity over prettiness. No busy detail, no small elements that turn to mush at small size.
+WORDLESS: no text, letters, numbers, logos, watermarks, UI or signage anywhere in the image.
+
+Obey this campaign's image spec — palette, subjects, light, what people/faces are allowed, the "Never" list:
+${spec}
+
+THE VIDEO (pick the one image that makes its promise obvious — do NOT put these words in the picture):
+Title: ${videoTitle}
+Thumbnail words that will go on the left: ${thumbText || "(short, punchy)"}
+Outline opening:
+${outline}
+
+End the prompt with: "No text, no letters, no logos, no watermarks."`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content: plateContent(claudePrompt, brief) }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const prompt = (aiData.content?.[0]?.text || "").trim();
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        const xr = await fetch("https://api.x.ai/v1/images/generations", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
+        });
+        const xdRaw = await xr.text();
+        let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || xdRaw.slice(0, 300) || `xAI image error (${xr.status})` }, 502);
+        const imageUrl = xd.data?.[0]?.url || "";
+        if (!imageUrl) return json({ error: "xAI returned no image URL: " + xdRaw.slice(0, 300) }, 502);
+        try {
+          await ensureAssetsDbProperties(hdr, { "Image Prompt (Blog Thumbnail)": { type: "rich_text" }, "Thumbnail Text": { type: "rich_text" } });
+          const props = { "Image Prompt (Blog Thumbnail)": { rich_text: [{ text: { content: prompt.slice(0, 1990) } }] } };
+          if (thumbOpts && !rtp("Thumbnail Text")) props["Thumbnail Text"] = { rich_text: [{ text: { content: thumbOpts.slice(0, 500) } }] };
+          await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+        } catch (e) { /* best-effort */ }
+        return json({ imageUrl, prompt, kind: "blog-thumbnail", thumbText, model: "grok-imagine-image-2.0", sync: true });
+      }
+
       if (body.action === "generateBlogPostThumbnail") {
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);

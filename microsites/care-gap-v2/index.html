@@ -891,7 +891,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div id="pubBlogThumbRow" style="display:none;align-items:flex-start;gap:10px;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
             <img id="pubBlogThumbPreview" src="" alt="" style="display:none;width:80px;height:45px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);flex-shrink:0;">
             <div style="flex:1;min-width:0;">
-              <div style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— wide 16:9 banner, this method's actual thumbnail (not a social-media square)</span></div>
+              <div id="pubBlogThumbLabel" style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— wide 16:9 banner, this method's actual thumbnail (not a social-media square)</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
                 <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()">✨ Generate</button>
                 <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
@@ -5289,14 +5289,19 @@ function openPublishAssetModal(assetId) {
   // doesn't apply.
   const isOffer = /\boffer\b/i.test(data.type || '');
   const isBlogType = /\bseo post\b/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || '')) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(data.type || '');
-  document.getElementById('pubOfferImagesWrap').style.display = (isOffer || isBlogType) ? 'block' : 'none';
+  const isYtThumb = /\byoutube\b/i.test(data.type || '');   // YouTube Longform: the same 16:9 row, YouTube-specific Grok generator
+  if (PUB_BLOG_THUMB_LABEL === null) PUB_BLOG_THUMB_LABEL = document.getElementById('pubBlogThumbLabel').innerHTML;
+  document.getElementById('pubBlogThumbLabel').innerHTML = isYtThumb
+    ? '▶️ YouTube thumbnail <span style="font-weight:400;color:var(--ink3);">— 16:9, one bold subject on the right, the left kept clean for 3-5 big words. ✨ Generate on Grok, then 🔤 Add title text or 🎯 Preview &amp; Edit to lay the words on.</span>'
+    : PUB_BLOG_THUMB_LABEL;
+  document.getElementById('pubOfferImagesWrap').style.display = (isOffer || isBlogType || isYtThumb) ? 'block' : 'none';
   document.getElementById('pubIgBgRow').style.display = isOffer ? 'flex' : 'none';
-  document.getElementById('pubBlogThumbRow').style.display = (isOffer || isBlogType) ? 'flex' : 'none';
+  document.getElementById('pubBlogThumbRow').style.display = (isOffer || isBlogType || isYtThumb) ? 'flex' : 'none';
   document.getElementById('pubBlogThumbRow').style.marginTop = isOffer ? '10px' : '0';
   document.getElementById('pubBlogThumbRow').style.borderTop = isOffer ? '1px solid var(--border)' : 'none';
   document.getElementById('pubBlogThumbRow').style.paddingTop = isOffer ? '10px' : '0';
   _offerImgReset();
-  if (isOffer || isBlogType) {
+  if (isOffer || isBlogType || isYtThumb) {
     if (data.instagramBackground) _offerImgShow('ig-background', data.instagramBackground, data.igBackgroundPrompt || '');
     if (data.thumbnail) _offerImgShow('blog-thumbnail', data.thumbnail, data.blogThumbnailPrompt || '');
     // The wordless background, separate from the (possibly texted) values
@@ -5318,7 +5323,7 @@ function openPublishAssetModal(assetId) {
   // it (Offer/Blog types) — that section's own Blog thumbnail row is THE
   // thumbnail for those methods, with full editing; showing both was
   // confusing (two displays of the same value, only one with an editor).
-  document.getElementById('pubThumbnailFieldWrap').style.display = (isOffer || isBlogType) ? 'none' : 'block';
+  document.getElementById('pubThumbnailFieldWrap').style.display = (isOffer || isBlogType || isYtThumb) ? 'none' : 'block';
   document.getElementById('pubThumbnail').value = data.thumbnail || '';
   renderPubThumbnailPreview(data.thumbnail || '');
   document.getElementById('pubThumbnailStatus').textContent = '';
@@ -5627,9 +5632,13 @@ async function regenOfferImage(kind) {
 // instead — same shared hub image spec, self-contained (renders, hosts, and
 // writes the Thumbnail property in one call), grounded in the article's own
 // headline/excerpt rather than an offer's card fields.
+let PUB_BLOG_THUMB_LABEL = null;
+const isYtAsset = id => /\byoutube\b/i.test((PUB_ASSET_CACHE[id] || {}).type || '');
+// YouTube thumbnail text for the editor/compositor: the outline's first thumbnail-text option.
+function ytThumbText(data) { return String((data && data.thumbnailText) || '').split('|')[0].trim(); }
 function genThumbnail() {
   const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
-  return isOffer ? genOfferImage('blog-thumbnail') : genBlogThumbnail();
+  return isOffer ? genOfferImage('blog-thumbnail') : genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail');
 }
 async function regenThumbnail() {
   const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
@@ -5638,9 +5647,9 @@ async function regenThumbnail() {
   if (p) { try { await navigator.clipboard.writeText(p); } catch (e) {} }
   const statusEl = document.getElementById(OFFER_IMG['blog-thumbnail'].status);
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
-  genBlogThumbnail();
+  genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail');
 }
-async function genBlogThumbnail() {
+async function genBlogThumbnail(action) {
   if (!pubAssetId) return;
   const c = OFFER_IMG['blog-thumbnail'];
   const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
@@ -5656,7 +5665,8 @@ async function genBlogThumbnail() {
     // every other image kind here uses. Skipping this step is the bug to
     // watch for: the field would show a url that 404s once xAI's temp CDN
     // link expires, and nothing would actually be saved to Notion.
-    const r = await w('generateBlogPostThumbnail', { assetId: myAsset });
+    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset });
+    if (r.thumbText && PUB_ASSET_CACHE[myAsset] && !PUB_ASSET_CACHE[myAsset].thumbnailText) PUB_ASSET_CACHE[myAsset].thumbnailText = r.thumbText;
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow('blog-thumbnail', null, r.prompt);
     await _offerImgFinish('blog-thumbnail', myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
@@ -6096,7 +6106,7 @@ async function compositeTitleOnThumbnail(overrideTitle) {
   // The alert below tells the operator to Generate fresh or pick one from
   // ⭐ Choose background, rather than silently guessing wrong.
   const bgUrl = document.getElementById('pubThumbBgSource').value;
-  let title = (overrideTitle != null ? overrideTitle : (data.platformTitle || data.assetTitle || data.title || '')).trim();
+  let title = (overrideTitle != null ? overrideTitle : ((/\byoutube\b/i.test(data.type || '') && ytThumbText(data)) || data.platformTitle || data.assetTitle || data.title || '')).trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
   // Editable dimensions — the number inputs right next to this button (or
@@ -6145,7 +6155,7 @@ async function compositeTitleOnIgBackground(overrideTitle) {
   const data = PUB_ASSET_CACHE[pubAssetId] || {};
   // No fallback to the main field — see compositeTitleOnThumbnail's note.
   const bgUrl = document.getElementById('pubIgBgSource').value;
-  let title = (overrideTitle != null ? overrideTitle : (data.platformTitle || data.assetTitle || data.title || '')).trim();
+  let title = (overrideTitle != null ? overrideTitle : ((/\byoutube\b/i.test(data.type || '') && ytThumbText(data)) || data.platformTitle || data.assetTitle || data.title || '')).trim();
   if (!bgUrl) { alert('Generate or attach a background first.'); return; }
   if (!title) { alert('This asset has no title to render.'); return; }
   const sizePct = parseFloat(document.getElementById('pubIgTextSizePct').value) || 8;
@@ -6277,7 +6287,7 @@ async function openTextEditor(mode) {
     const img = await loadImageCORS(bgUrl);
     let text;
     if (slot.draw === 'title') {
-      text = { title: (data.platformTitle || data.assetTitle || data.title || '').trim() };
+      text = { title: ((/\byoutube\b/i.test(data.type || '') && ytThumbText(data)) || data.platformTitle || data.assetTitle || data.title || '').trim() };
     } else {
       const fields = (PUB_SP_LOADED === pubAssetId) ? pubSpFields() : ((await w('getSinglePostFields', { assetId: pubAssetId })).fields || {});
       text = { primary: (fields['Headline Primary'] || '').trim(), accent: (fields['Headline Accent'] || '').trim(), body: (fields['Body'] || '').trim() };
