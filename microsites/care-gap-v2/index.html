@@ -1918,7 +1918,7 @@ function renderKeywordsAndIdeas() {
       <span class="kwbtns">
         <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Refreshes the keyword pool in place — guidance adds direction, it never wipes the existing keywords.', (steer, omit, intent) => runRegenKeywords(steer, omit, intent), { current: '', label: 'Search Intent (optional — bias the generated keywords)' })">⟳</button>
         <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();openRegenModal('Generate Clusters — batch', 'Groups the Master keyword pool into new thematic clusters, alongside whatever already exists.', (steer, omit, intent) => runGenerateClusters(steer, omit, intent), { current: '', label: 'Restrict batch to one intent (optional)' })">🗂️</button>
-        <button class="iconbtn" title="Generate one new cluster from a topic" onclick="event.stopPropagation();openClusterGenModal()">➕</button>
+        <button class="iconbtn" title="Generate one new cluster from a topic or pasted keywords" onclick="event.stopPropagation();openClusterGenModal()">➕ New cluster</button>
         <a class="kwlink" href="https://cabuzzard.github.io/dash/#keywords" target="_blank" rel="noopener" title="Research real Google keywords on the dashboard's Keywords tab, then tick them → send to this campaign's Main Keywords" onclick="event.stopPropagation()">🔎 Find keywords</a>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
       </span>
