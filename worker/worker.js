@@ -23329,7 +23329,7 @@ Return via the submit_outline tool ONLY.`;
           const chapters = ["0:00 Intro", ...segs.map(x => `${S(x.start)} ${x.heading}`)].join("\n");
           const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
           const hashtags = (o.hashtags || []).map(t => S(t)).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
-          const description = `${S(o.description)}\n\nChapters:\n${chapters}${hashtags ? `\n\n${hashtags}` : ""}`;
+          const ytDescription = `${S(o.description)}\n\nChapters:\n${chapters}${hashtags ? `\n\n${hashtags}` : ""}`;
 
           // Page blocks: the outline itself.
           const rt = t => { const out = []; const x = String(t || ""); for (let i = 0; i < x.length && out.length < 90; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; };
@@ -23368,7 +23368,7 @@ Return via the submit_outline tool ONLY.`;
             "Asset Status": { select: { name: "Development" } },
             "Asset Type": { select: { name: "YouTube Longform" } },
             "Platform Title": { rich_text: rt(S(o.title)) },
-            "Post Caption": { rich_text: rt(description) },
+            "Post Caption": { rich_text: rt(ytDescription) },
             "Body": { rich_text: rt([S(o.coldOpen), ...segs.map(x => `${S(x.start)} ${x.heading}`)].join("\n").slice(0, 1990)) },
             "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
             "Platform Name": { select: { name: platformName || "YouTube" } },
