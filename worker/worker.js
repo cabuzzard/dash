@@ -1005,6 +1005,29 @@ async function bufferDecrypt(env, rec) {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u(rec.iv) }, await bufferCipherKey(env), u(rec.ct));
   return new TextDecoder().decode(pt);
 }
+// Which content-hub section an asset is listed in. The asset's own "Hub Section"
+// (News / Articles / Offers — set in the Publish modal) overrides the type default:
+// Blog - SEO - News → news; SEO Post / QA (not Sales) → articles; Offer / QA – Sales → offers.
+function hubSectionOf(props) {
+  const o = String(props?.["Hub Section"]?.select?.name || "").trim().toLowerCase();
+  if (o === "news" || o === "articles" || o === "offers") return o;
+  const at = String(props?.["Asset Type"]?.select?.name || "").trim();
+  if (/\bblog\b/i.test(at) && /\bnews\b/i.test(at)) return "news";
+  if (/\bseo post\b/i.test(at)) return "articles";
+  const qa = /^QA\s*[–-]\s*(.+)$/i.exec(at);
+  if (qa) return /^sales\b/i.test(qa[1].trim()) ? "offers" : "articles";
+  if (/\boffer\b/i.test(at)) return "offers";
+  return null;
+}
+// The hub-relative link of an asset's published page, whichever dir it lives in.
+function hubPagePath(props) {
+  for (const k of ["Content URL", "Site URL"]) {
+    const m = String(props?.[k]?.url || "").trim().match(/\/web\/hub\/[^/]+\/((?:blog|offers|sales)\/[^/]+)\/?$/);
+    if (m) return `./${m[1]}/`;
+  }
+  return "";
+}
+
 // Older single-post assets stored their hashtags in Notes. Treat Notes as
 // hashtags only when it is NOTHING but hashtags.
 function hashtagsFromNotes(notes) {
@@ -9342,8 +9365,7 @@ export default {
         // to Content URL for the link, so no further change was needed
         // once this filter lets them through.
         const wanted = rows.filter(r => {
-          const at = r.properties?.["Asset Type"]?.select?.name || "";
-          if (!(/\boffer\b/i.test(at) || /^QA\s*[–-]\s*Sales$/i.test(at))) return false;
+          if (hubSectionOf(r.properties) !== "offers") return false;   // Hub Section override wins over type
           const h = r.properties?.["Content Hub"]?.select?.name || "";
           return !slug || !h || h === slug;
         }).sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0));
@@ -9381,9 +9403,9 @@ export default {
           } catch (e) {}
           const oname = String(card?.name || platformTitle || assetTitle || "Untitled").trim();
           const pageSlug = slugifyO(oname);
-          const m = siteUrl.match(/\/web\/hub\/[^/]+\/(offers\/[^/]+)\/?$/);
+          const hp = hubPagePath(p);
           let url = "";
-          if (m) { url = `./${m[1]}/`; hasIndex = true; }
+          if (hp) { url = hp; hasIndex = true; }
           else if (ojson[pageSlug]) { url = `./offers/${pageSlug}/`; hasIndex = true; }
           else url = siteUrl || card?.ctaUrl || contentUrl || "";
           cards.push({
@@ -9469,9 +9491,9 @@ export default {
         };
         const kind = String(body.kind || "").trim().toLowerCase();
         const wanted = rows.filter(r => {
-          const at = r.properties?.["Asset Type"]?.select?.name || "";
-          const isNews = isNewsType(at), isArticle = isArticleType(at);
-          const matchesKind = kind === "news" ? isNews : kind === "articles" ? isArticle : (isNews || isArticle);
+          // Hub Section override (Publish modal) wins over the type default.
+          const sec = hubSectionOf(r.properties);
+          const matchesKind = kind === "news" ? sec === "news" : kind === "articles" ? sec === "articles" : (sec === "news" || sec === "articles");
           if (!matchesKind) return false;
           const h = r.properties?.["Content Hub"]?.select?.name || "";
           return !slug || !h || h === slug;
@@ -9503,13 +9525,13 @@ export default {
           const bodyProp      = (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim();
           const contentUrl    = (p["Content URL"]?.url || "").trim();
           const pageSlug      = slugify(platformTitle || assetTitle);
-          const m = contentUrl.match(/\/web\/hub\/[^/]+\/(blog\/[^/]+)\/?$/);
+          const hp = hubPagePath(p);
           let url = "";
-          if (m) { url = `./${m[1]}/`; hasIndex = true; }
+          if (hp) { url = hp; hasIndex = true; }
           else if (pjson[pageSlug]) { url = `./blog/${pageSlug}/`; hasIndex = true; }
           else if (contentUrl) { url = contentUrl; }
           return {
-            kicker:  /news/i.test(at) ? "News analysis" : "Article",
+            kicker:  hubSectionOf(p) === "news" ? "News analysis" : "Article",
             title:   platformTitle || assetTitle || "Untitled",
             excerpt: String(pjson[pageSlug]?.intro || bodyProp).slice(0, 240),
             url,
@@ -19948,6 +19970,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             // name) above.
             platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
             thumbnailText: p["Thumbnail Text"]?.rich_text?.map(x => x.plain_text).join("") || "",
+            hubSection: (p["Hub Section"]?.select?.name || "").toLowerCase(),
             // Listing method fields — Etsy is canonical (title/body
             // above), these are the derived cross-posts + Etsy's own
             // tags, plus the accumulated product photos.
@@ -30727,7 +30750,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
         const { videoUrl } = body;
-        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource } = body;
+        const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource, hubSection } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const chunkRT = s => { const out = []; for (let i = 0; i < s.length; i += 1900) out.push({ text: { content: s.slice(i, i + 1900) } }); return out; };
@@ -30816,6 +30839,11 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         // Content Hub — the "Offer – Content Hub" publish target. A slug from
         // HUB_SITES, or "" to clear. getHubProducts reads this to decide which
         // hub an offer asset renders on.
+        if (hubSection !== undefined) {
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers"] } });
+          const hs = { news: "News", articles: "Articles", offers: "Offers" }[String(hubSection || "").toLowerCase()];
+          props["Hub Section"] = { select: hs ? { name: hs } : null };   // "" = back to the type default
+        }
         if (contentHub !== undefined) {
           const okHub = HUB_SITES.some(h => h.slug === contentHub);
           props["Content Hub"] = { select: (contentHub && okHub) ? { name: contentHub } : null };

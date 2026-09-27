@@ -841,6 +841,16 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div id="pubVideoStatus" style="font-size:11px;color:var(--ink3);margin-top:4px;"></div>
         </div>
 
+        <div id="pubHubSectionWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <label style="font-size:11px;color:var(--ink2);">🗂 Hub section <span style="color:var(--ink3);">— which section of the live hub lists this. Overrides the default for this asset type; takes effect on the hub as soon as you Save (📤 Push to Hub / 🔄 Push from Pillar use it too).</span>
+            <select id="pubHubSection" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+              <option value="">Default for this type</option>
+              <option value="news">News</option>
+              <option value="articles">Articles</option>
+              <option value="offers">Offers / Services</option>
+            </select>
+          </label>
+        </div>
         <div id="pubHubWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
           <label style="font-size:11px;color:var(--ink2);">📍 Content Hub <span style="color:var(--ink3);">— publishing this offer sends its card to this hub's Products section. Leave on the campaign's own hub unless you mean to route it elsewhere.</span></label>
           <select id="pubContentHub" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
@@ -5106,7 +5116,7 @@ function isBlogAssetType(type) {
 // live post instead of sitting unused on the title. Rewriting in place
 // rather than deleting/recreating preserves the URL's accumulated SEO value.
 async function pushAssetFromPillar(assetId, title) {
-  if (!confirm(`Push the current Pillar Content out to "${title}"?\n\nThis rewrites the asset's article in place (its live page updates at the SAME url, if it's published) — the old article text is replaced, not kept alongside the new one.`)) return;
+  if (!confirm(`Push the current Pillar Content out to "${title}"?\n\nHub section: ${hubSectionLabel(assetId)} (change it in 📋 Publish → 🗂 Hub section).\n\nThis rewrites the asset's article in place (its live page updates at the SAME url, if it's published) — the old article text is replaced, not kept alongside the new one.`)) return;
   try {
     const r = await w('refreshBlogAssetFromPillar', { assetId });
     let msg = '✓ Pushed.';
@@ -5127,11 +5137,26 @@ async function pushAssetFromPillar(assetId, title) {
 // automatically right after a thumbnail save — this is the manual version,
 // for when you want to push without generating a new image, or to fix a
 // post that predates that auto-push). Always fast, single asset.
+// The hub section an asset type lists under by default (mirrors worker hubSectionOf).
+function hubSectionDefault(type) {
+  const at = String(type || '').trim();
+  if (/\bblog\b/i.test(at) && /\bnews\b/i.test(at)) return 'news';
+  if (/\bseo post\b/i.test(at)) return 'articles';
+  const qa = /^QA\s*[–-]\s*(.+)$/i.exec(at);
+  if (qa) return /^sales\b/i.test(qa[1].trim()) ? 'offers' : 'articles';
+  if (/\boffer\b/i.test(at)) return 'offers';
+  return '';
+}
+function hubSectionLabel(assetId) {
+  const d = PUB_ASSET_CACHE[assetId] || {};
+  const k = d.hubSection || hubSectionDefault(d.type);
+  return ({ news: 'News', articles: 'Articles', offers: 'Offers / Services' }[k] || 'default') + (d.hubSection ? ' (override)' : ' (type default)');
+}
 async function pushAssetToHub(assetId, title) {
   try {
     const r = await w('republishBlogThumbnail', { assetId });
     if (r.skipped) { alert(`Not pushed: ${r.skipped}`); return; }
-    alert(r.published && r.liveUrl ? `✓ Pushed. Live page updated: ${r.liveUrl}` : `Push failed: ${r.error || 'unknown error'}`);
+    alert(r.published && r.liveUrl ? `✓ Pushed. Live page updated: ${r.liveUrl}\n\nListed on the hub under: ${hubSectionLabel(assetId)} — change it in 📋 Publish → 🗂 Hub section.` : `Push failed: ${r.error || 'unknown error'}`);
     loadTitleAndAssetTab();
   } catch (e) {
     alert('Push failed: ' + e.message);
@@ -5289,7 +5314,12 @@ function openPublishAssetModal(assetId) {
   // doesn't apply.
   const isOffer = /\boffer\b/i.test(data.type || '');
   const isBlogType = /\bseo post\b/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || '')) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(data.type || '');
-  const isYtThumb = /\byoutube\b/i.test(data.type || '');   // YouTube Longform: the same 16:9 row, YouTube-specific Grok generator
+  const isYtThumb = /\byoutube\b/i.test(data.type || '');
+  const hubPublishable = isBlogType || isOffer || /^QA\s*[–-]/i.test(data.type || '');
+  document.getElementById('pubHubSectionWrap').style.display = hubPublishable ? 'block' : 'none';
+  const hsSel = document.getElementById('pubHubSection');
+  hsSel.value = data.hubSection || '';
+  hsSel.options[0].textContent = 'Default for this type — ' + ({ news: 'News', articles: 'Articles', offers: 'Offers / Services' }[hubSectionDefault(data.type)] || 'none');   // YouTube Longform: the same 16:9 row, YouTube-specific Grok generator
   if (PUB_BLOG_THUMB_LABEL === null) PUB_BLOG_THUMB_LABEL = document.getElementById('pubBlogThumbLabel').innerHTML;
   document.getElementById('pubBlogThumbLabel').innerHTML = isYtThumb
     ? '▶️ YouTube thumbnail <span style="font-weight:400;color:var(--ink3);">— 16:9, one bold subject on the right, the left kept clean for 3-5 big words. ✨ Generate on Grok, then 🔤 Add title text or 🎯 Preview &amp; Edit to lay the words on.</span>'
@@ -5472,6 +5502,7 @@ async function savePublishAssetFields() {
     fields.contentHub = document.getElementById('pubContentHub').value;
   }
   if (document.getElementById('pubVideoWrap').style.display !== 'none') fields.videoUrl = document.getElementById('pubVideoUrl').value.trim();
+  if (document.getElementById('pubHubSectionWrap').style.display !== 'none') fields.hubSection = document.getElementById('pubHubSection').value;
   btn.disabled = true;
   status.style.color = 'var(--ink3)'; status.textContent = 'Saving…';
   try {
