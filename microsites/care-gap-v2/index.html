@@ -1878,6 +1878,35 @@ function applyCollapseState(root) {
 // cluster, same level, per operator direction "Master is a cluster");
 // right = Main Stack + one Cluster Ideas group per STAGED cluster (only
 // staged clusters support generateClusterProductStacks server-side).
+// Master (= Research › Keywords, "Main Keywords") — add / remove by hand.
+async function saveMasterKeywords(list) {
+  const seen = new Set(), clean = [];
+  list.map(k => String(k).trim()).filter(Boolean).forEach(k => { const key = k.toLowerCase(); if (!seen.has(key)) { seen.add(key); clean.push(k); } });
+  RAW_KEYWORDS = clean.join(', ');
+  renderKeywordsAndIdeas();
+  const rid = RESEARCH_ID || (window.RESEARCH_RECORD && window.RESEARCH_RECORD.id);
+  if (!rid) { alert('No Research record for this campaign yet.'); return; }
+  try { await w('updateResearch', { researchId: rid, field: 'keywords', value: RAW_KEYWORDS }); }
+  catch (e) { alert('Could not save keywords: ' + e.message); }
+}
+function removeMasterKeyword(i) {
+  const list = (RAW_KEYWORDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  list.splice(i, 1); saveMasterKeywords(list);
+}
+function startAddMasterKeyword() {
+  const pill = document.getElementById('kwAddPill'); if (!pill) return;
+  const inp = document.createElement('input');
+  inp.placeholder = 'keyword, another keyword'; inp.className = 'finput';
+  inp.style.cssText = 'width:220px;font-size:12px;padding:3px 7px;';
+  const commit = () => {
+    const add = inp.value.split(',').map(s => s.trim()).filter(Boolean);
+    if (!add.length) { renderKeywordsAndIdeas(); return; }
+    saveMasterKeywords((RAW_KEYWORDS || '').split(',').concat(add));
+  };
+  inp.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); inp.onblur = null; commit(); } if (e.key === 'Escape') { inp.onblur = null; renderKeywordsAndIdeas(); } };
+  inp.onblur = commit;
+  pill.replaceWith(inp); inp.focus();
+}
 function renderKeywordsAndIdeas() {
   const left = document.getElementById('kwClusterList');
   const right = document.getElementById('prodIdeaList');
@@ -1890,10 +1919,11 @@ function renderKeywordsAndIdeas() {
         <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Refreshes the keyword pool in place — guidance adds direction, it never wipes the existing keywords.', (steer, omit, intent) => runRegenKeywords(steer, omit, intent), { current: '', label: 'Search Intent (optional — bias the generated keywords)' })">⟳</button>
         <button class="iconbtn" title="Generate clusters (batch, from Master)" onclick="event.stopPropagation();openRegenModal('Generate Clusters — batch', 'Groups the Master keyword pool into new thematic clusters, alongside whatever already exists.', (steer, omit, intent) => runGenerateClusters(steer, omit, intent), { current: '', label: 'Restrict batch to one intent (optional)' })">🗂️</button>
         <button class="iconbtn" title="Generate one new cluster from a topic" onclick="event.stopPropagation();openClusterGenModal()">➕</button>
+        <a class="kwlink" href="https://cabuzzard.github.io/dash/#keywords" target="_blank" rel="noopener" title="Research real Google keywords on the dashboard's Keywords tab, then tick them → send to this campaign's Main Keywords" onclick="event.stopPropagation()">🔎 Find keywords</a>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-root','Master keywords','keywords')">📝</button>
       </span>
     </div>
-    <div class="kwgbody">${masterPills.length ? masterPills.map(k => `<span class="kw-pill">${esc(k)}</span>`).join('') : '<span style="color:var(--ink3);font-size:11px;">No keywords yet.</span>'}</div>
+    <div class="kwgbody">${masterPills.map((k, i) => `<span class="kw-pill">${esc(k)}<button title="Remove this keyword" onclick="event.stopPropagation();removeMasterKeyword(${i})" style="margin-left:5px;border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:11px;padding:0;">✕</button></span>`).join('')}<span class="kw-pill" id="kwAddPill" title="Add keywords (comma-separated)" onclick="event.stopPropagation();startAddMasterKeyword()" style="cursor:pointer;border-style:dashed;opacity:.8;">+ add keyword</span>${masterPills.length ? '' : '<span style="color:var(--ink3);font-size:11px;margin-left:6px;">No keywords yet.</span>'}</div>
   </div>`;
 
   staged.forEach(c => {

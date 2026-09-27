@@ -19800,6 +19800,22 @@ async function loadMorningTodos() {
   }
 }
 
+
+// Deep link: dash/#keywords (or any tab name) opens that tab once logged in —
+// clicks the real tab so switchTab gets its event. Used by the microsites'
+// "🔎 Find keywords" link.
+(function openHashTab() {
+  const name = (location.hash || '').slice(1);
+  if (!/^[a-z]+$/i.test(name)) return;
+  let tries = 0;
+  const t = setInterval(() => {
+    const tab = document.querySelector(`.tab[onclick="switchTab('${name}')"]`);
+    const pin = document.getElementById('pinScreen');
+    const locked = pin && getComputedStyle(pin).display !== 'none';
+    if (tab && SESSION_TOKEN && !locked) { clearInterval(t); tab.click(); }
+    else if (++tries > 600) clearInterval(t);   // give up after ~5 min
+  }, 500);
+})();
 </script>
 
 </body>
