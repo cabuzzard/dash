@@ -11668,8 +11668,10 @@ async function submitGenAssets() {
     const spCount = isSinglePost ? Math.min(Math.max(parseInt(document.getElementById('gaSinglePostCount')?.value) || 6, 1), 12) : 4;
     const isCarouselMethod = /^carousel$/i.test((GA_METHOD_NAME || '').trim());
     const isHfReel = /\bhyperframes\b/i.test(GA_METHOD_NAME || '');
+    const isYtOutline = /\byoutube\b/i.test(GA_METHOD_NAME || '') && /long\s*-?\s*form|outline/i.test(GA_METHOD_NAME || '');
     status.textContent = isHubMethod ? 'Creating the Content Hub asset…'
       : isHfReel ? 'Writing 3 kinetic-text Reel scripts from the research…'
+      : isYtOutline ? 'Writing a 20-30 min talking outline (segments, examples, ad breaks) — a minute or two. Leave this tab open.'
       : isEmailHubMain ? 'Writing the email sequence (campaign keywords → hub product keywords → the method arc). Leave this tab open.'
       : isSinglePost ? 'Writing the single posts, cycling through the hub templates. Leave this tab open.'
       : 'Generating asset concepts… (this can take a couple minutes — each concept may go through several grade-and-retry passes). Leave this tab open.';
@@ -11690,6 +11692,13 @@ async function submitGenAssets() {
       platformName: document.getElementById('gaPlatformInput')?.value ? document.getElementById('gaPlatformInput').selectedOptions[0].textContent : undefined,
     });
     gaAutoAttachMethod(method.id);
+    if (r.ytOutline) {
+      status.innerHTML = `✓ Wrote a ${r.ytOutline.minutes}-min talking outline (${r.ytOutline.segments} segments): <b>${esc(r.ytOutline.title)}</b>. Open the asset's 📋 Publish (title, description with chapters, hashtags) or its Notion page for the full outline.`;
+      status.style.color = '#68d391'; btn.textContent = 'Done';
+      await loadTitles();
+      setTimeout(closeGenAssetsModal, 8000);
+      return;
+    }
     if (isHfReel && r.created != null) {
       status.innerHTML = `✓ Wrote ${r.created} Reel script${r.created === 1 ? '' : 's'}. Click <b>🎬 Render</b> on each asset row to render it on HeyGen (~1-3 min); the MP4 lands on the asset's Video URL.`;
       status.style.color = '#68d391'; btn.textContent = 'Done';

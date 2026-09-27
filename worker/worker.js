@@ -1545,6 +1545,7 @@ const ASSET_TYPE_METHOD_ALIAS = {
   "carousel": "Carousel",
   "upwork search": "Upwork Search",
   "hyperframes reel": "HyperFrames Reel",
+  "youtube longform": "YouTube Longform — Talk Outline",
 };
 
 // The producing Method for an asset, as a { "Method": { relation:[{id}] } }
@@ -23257,6 +23258,135 @@ Return ONLY this JSON object, no other text, no markdown fences:
             success: true, created: 1, assets: [{ id: assetId, title }], sectionCount: sections.length, contextMode,
             sitePublished: !!siteResult.published, liveUrl: siteResult.liveUrl || null, siteError: siteResult.error || null,
           });
+        }
+
+        // ── "YouTube Longform — Talk Outline": ONE asset per run — a timed outline
+        // the operator talks over for 20-30 min. Informational, advertiser-friendly
+        // (YouTube native ads: mid-roll break markers at natural pauses + one
+        // sponsor/integrated-read slot). Title/alt titles/thumbnail text/description
+        // with chapters/tags/hashtags on the asset; the outline itself as page blocks.
+        // The method's Notion body is the methodology (read here, never copied).
+        if (/\byoutube\b/i.test(assetType) && /long\s*-?\s*form|outline/i.test(assetType)) {
+          const hasMethod = methodId && methodId !== "__none__";
+          const minutes = Math.min(Math.max(parseInt(body.minutes) || 25, 12), 40);
+          const [prodPage, researchRec, methodFrameworkText, pillarContent] = await Promise.all([
+            hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
+            hasProduct ? findBestProductResearchRecord(dsHdr, productId).catch(() => null) : Promise.resolve(null),
+            // only the Talk Outline method's page is a writing brief — the older
+            // "YouTube Long Form" page is a channel-analysis chat prompt, so skip it
+            (hasMethod && /outline/i.test(assetType)) ? extractBlocksTextRecursive(dsHdr, dsDash(methodId)).catch(() => "") : Promise.resolve(""),
+            extractPillarContent(dsHdr, dsDash(titleId)).catch(() => ""),
+          ]);
+          const rtp = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const productName = (prodPage?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+          const rp = researchRec?.properties || {};
+          const prodFacts = STRATEGY_FIELDS.map(f => rtp(rp, f) && `${f}:\n${rtp(rp, f)}`).filter(Boolean).join("\n\n");
+          const brief = await assembleImageBrief(env, { campaignId }).catch(() => null);
+          const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 9000) : "";
+
+          const ytPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a YouTube strategist and script editor. Build ONE talking OUTLINE for a ${minutes}-minute informational YouTube video on the title "${title}"${productName ? `, for the audience of "${productName}"` : ""}. The creator will TALK OVER this outline on camera — so give them structure, talking points, concrete examples and transitions, not a word-for-word script (only the cold open is written out).
+${description ? `OPERATOR NOTES (follow): ${description}\n` : ""}${methodFrameworkText ? `METHOD FRAMEWORK (follow it):\n${methodFrameworkText.slice(0, 4000)}\n` : ""}
+PURPOSE: informational content that earns watch time and supports YouTube's NATIVE ADVERTISERS — advertiser-friendly topic handling and language (no shock, profanity, sensational health/finance claims), a clean structure with natural pauses where YouTube can place MID-ROLL ads (videos over 8 min), and one natural SPONSOR / integrated-read slot. Viewers stay because every segment pays off a promise made earlier.
+
+RESEARCH (ground every point in it; invent no statistics — only use numbers that appear here):
+${prodFacts || "(no product research)"}
+${campFacts ? `\n${campFacts}\n` : ""}${pillarContent ? `\nPILLAR CONTENT (the facts and angle to stay faithful to):\n${pillarContent.slice(0, 6000)}\n` : ""}
+BUILD:
+- "title": the main YouTube title, ≤70 characters, specific and searchable (lead with the keyword the audience actually types), no clickbait the video doesn't pay off. "altTitles": 2 alternates with different angles.
+- "thumbnailText": 3 options, 2-5 words each.
+- "coldOpen": the first ~45 seconds WRITTEN OUT (the only scripted part): the problem in the viewer's words, the promise of the video, why stay to the end.
+- "segments": 6-9 segments covering the full ${minutes} minutes, each with "start" and "end" as m:ss (contiguous, first starts after the cold open at 0:45, last ends at ~${minutes}:00), "heading", "goal" (what the viewer understands after it), "talkingPoints" (4-7 bullets — enough to talk over for the segment's length), "example" (one concrete story/scenario/case from the research to talk through), "transition" (the open loop into the next segment), and "adBreakAfter" true on 2-4 segments that end at a natural pause (never mid-thought, never in the first 2 minutes).
+- "sponsorSlot": {"after": heading of the segment it follows (between 25% and 50% of the runtime), "angle": how an integrated read ties to the topic naturally}.
+- "cta": the closing ask (subscribe / next video / the offer), one or two sentences.
+- "description": the YouTube description — 2 short paragraphs (what the video covers, who it's for) then leave room for chapters (don't write the chapters, they're added from the segments).
+- "tags": 10-15 search tags. "hashtags": at most 3.
+
+Return via the submit_outline tool ONLY.`;
+          const segSchema = { type: "object", required: ["start", "end", "heading", "talkingPoints"], properties: {
+            start: { type: "string" }, end: { type: "string" }, heading: { type: "string" }, goal: { type: "string" },
+            talkingPoints: { type: "array", items: { type: "string" } }, example: { type: "string" }, transition: { type: "string" }, adBreakAfter: { type: "boolean" } } };
+          const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({
+              model: "claude-sonnet-4-6", max_tokens: 12000, messages: [{ role: "user", content: ytPrompt }],
+              tools: [{ name: "submit_outline", description: "Submit the talking outline.", input_schema: { type: "object",
+                required: ["title", "coldOpen", "segments", "description"],
+                properties: { title: { type: "string" }, altTitles: { type: "array", items: { type: "string" } }, thumbnailText: { type: "array", items: { type: "string" } },
+                  coldOpen: { type: "string" }, segments: { type: "array", items: segSchema },
+                  sponsorSlot: { type: "object", properties: { after: { type: "string" }, angle: { type: "string" } } },
+                  cta: { type: "string" }, description: { type: "string" }, tags: { type: "array", items: { type: "string" } }, hashtags: { type: "array", items: { type: "string" } } } } }],
+              tool_choice: { type: "tool", name: "submit_outline" },
+            }),
+          });
+          const aiData = await aiResp.json();
+          if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+          const o = ((aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_outline") || {}).input;
+          if (!o || !Array.isArray(o.segments) || !o.segments.length) return json({ error: "No outline generated — try again" }, 502);
+
+          const S = v => String(v || "").trim();
+          const segs = o.segments.map(x => ({ ...x, heading: S(x.heading), talkingPoints: (x.talkingPoints || []).map(S).filter(Boolean) }));
+          const chapters = ["0:00 Intro", ...segs.map(x => `${S(x.start)} ${x.heading}`)].join("\n");
+          const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
+          const hashtags = (o.hashtags || []).map(t => S(t)).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
+          const description = `${S(o.description)}\n\nChapters:\n${chapters}${hashtags ? `\n\n${hashtags}` : ""}`;
+
+          // Page blocks: the outline itself.
+          const rt = t => { const out = []; const x = String(t || ""); for (let i = 0; i < x.length && out.length < 90; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; };
+          const h2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: rt(t) } });
+          const h3 = t => ({ object: "block", type: "heading_3", heading_3: { rich_text: rt(t) } });
+          const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: rt(t) } });
+          const bullet = t => ({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rt(t) } });
+          const callout = (t, e) => ({ object: "block", type: "callout", callout: { rich_text: rt(t), icon: { type: "emoji", emoji: e } } });
+          const blocks = [
+            h2(`🎬 ${S(o.title)}`),
+            para(`Alt titles: ${(o.altTitles || []).map(S).filter(Boolean).join("  |  ")}`),
+            para(`Thumbnail text: ${(o.thumbnailText || []).map(S).filter(Boolean).join("  |  ")}`),
+            para(`Target length: ~${minutes} min · ${segs.length} segments · ${segs.filter(x => x.adBreakAfter).length} mid-roll breaks`),
+            h2("0:00 – 0:45 · Cold open (scripted)"),
+            para(S(o.coldOpen)),
+          ];
+          const sponsorAfter = S(o.sponsorSlot?.after).toLowerCase();
+          for (const x of segs) {
+            blocks.push(h3(`${S(x.start)} – ${S(x.end)} · ${x.heading}`));
+            if (x.goal) blocks.push(para(`Goal: ${S(x.goal)}`));
+            for (const tp of x.talkingPoints) blocks.push(bullet(tp));
+            if (x.example) blocks.push(para(`Example to talk through: ${S(x.example)}`));
+            if (x.transition) blocks.push(para(`→ Transition: ${S(x.transition)}`));
+            if (sponsorAfter && x.heading.toLowerCase() === sponsorAfter) blocks.push(callout(`SPONSOR / integrated read here — ${S(o.sponsorSlot.angle)}`, "🤝"));
+            if (x.adBreakAfter) blocks.push(callout("MID-ROLL AD BREAK — natural pause here", "⏸"));
+          }
+          if (sponsorAfter && !segs.some(x => x.heading.toLowerCase() === sponsorAfter)) blocks.push(callout(`SPONSOR / integrated read (after "${S(o.sponsorSlot.after)}") — ${S(o.sponsorSlot?.angle)}`, "🤝"));
+          blocks.push(h2("Close + CTA"), para(S(o.cta)), h2("Tags"), para(tags.join(", ")));
+
+          try {
+            await ensureAssetsDbProperties(dsHdr, { "Platform Title": { type: "rich_text" }, "Post Caption": { type: "rich_text" }, "Hashtags": { type: "rich_text" } });
+          } catch (e) {}
+          const mProp = await assetMethodProp(methodId, "YouTube Longform");
+          const props = {
+            "Asset Title": { title: [{ text: { content: `YouTube — ${S(o.title)}`.slice(0, 200) } }] },
+            "Asset Status": { select: { name: "Development" } },
+            "Asset Type": { select: { name: "YouTube Longform" } },
+            "Platform Title": { rich_text: rt(S(o.title)) },
+            "Post Caption": { rich_text: rt(description) },
+            "Body": { rich_text: rt([S(o.coldOpen), ...segs.map(x => `${S(x.start)} ${x.heading}`)].join("\n").slice(0, 1990)) },
+            "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
+            "Platform Name": { select: { name: platformName || "YouTube" } },
+            ...mProp,
+          };
+          if (hashtags) props["Hashtags"] = { rich_text: rt(hashtags) };
+          if (hasProduct) props["Product"] = { relation: [{ id: dsDash(productId) }] };
+          if (campaignId) props["Campaign"] = { relation: [{ id: dsDash(campaignId) }] };
+          if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
+          const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
+            body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props, children: blocks.slice(0, 95) }) });
+          const cd = await cr.json().catch(() => ({}));
+          if (!cr.ok) return json({ error: "Couldn't create the outline asset: " + (cd.message || cr.status) }, 502);
+          for (let i = 95; i < blocks.length; i += 95) {
+            await fetch(`https://api.notion.com/v1/blocks/${cd.id}/children`, { method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
+              body: JSON.stringify({ children: blocks.slice(i, i + 95) }) }).catch(() => {});
+          }
+          return json({ success: true, created: 1, assetIds: [cd.id], ytOutline: { title: S(o.title), segments: segs.length, minutes } });
         }
 
         // ── "HyperFrames Reel": N kinetic-text Reels per run (hook → 3 beats →
