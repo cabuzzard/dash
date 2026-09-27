@@ -23146,13 +23146,20 @@ Return ONLY this JSON object, no other text, no markdown fences:
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }),
+            // Structured tool output: a 2,000-word article as free-text JSON broke on
+            // unescaped quotes ("Failed to parse post JSON"); the tool input is parsed by the API.
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000,
+              messages: [{ role: "user", content: prompt + "\n\n(Return it via the submit_post tool.)" }],
+              tools: [{ name: "submit_post", description: "Submit the finished blog post.", input_schema: { type: "object", required: ["intro", "sections", "conclusion", "seoTitle"],
+                properties: { intro: { type: "string" }, conclusion: { type: "string" }, seoTitle: { type: "string" },
+                  sections: { type: "array", items: { type: "object", required: ["heading", "body"], properties: { heading: { type: "string" }, body: { type: "string" } } } } } } }],
+              tool_choice: { type: "tool", name: "submit_post" } }),
           });
           const aiData = await aiResp.json();
           if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
 
-          let post;
-          try {
+          let post = ((aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_post") || {}).input || null;
+          if (!post) try {
             const raw = aiData.content?.[0]?.text || "";
             const start = raw.indexOf('{');
             const end = raw.lastIndexOf('}');
