@@ -9645,6 +9645,33 @@ export default {
     if (!HMAC_SECRET || !(await verifyToken(body.token, HMAC_SECRET))) {
       return json({ error: "Unauthorized" }, 401);
     }
+    // Long writer actions (full-length scripts, multi-concept grade/retry runs)
+    // can pass Cloudflare's 100s no-bytes limit → client gets "error code: 524"
+    // (HTML, not JSON). Keep-alive: reply immediately as a stream, run the real
+    // action in-process through the SELF binding (no 100s cap there), write a
+    // space every 15s, then the action's JSON. JSON.parse ignores the leading
+    // whitespace, so callers need no change. HTTP status is always 200 here —
+    // errors arrive as {error} like every other action.
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter(), enc = new TextEncoder();
+      const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
+      const job = (async () => {
+        let out;
+        try {
+          const r = await env.SELF.fetch(request.url, { method: "POST",
+            headers: { "Content-Type": "application/json", "Origin": request.headers.get("Origin") || "https://cabuzzard.github.io" },
+            body: JSON.stringify({ ...body, __inner: true }) });
+          out = await r.text();
+          if (!/^\s*[{\[]/.test(out)) out = JSON.stringify({ error: `Worker returned HTTP ${r.status}: ` + out.slice(0, 200) });
+        } catch (e) { out = JSON.stringify({ error: "Background run failed: " + (e.message || e) }); }
+        clearInterval(beat);
+        try { await writer.write(enc.encode(out)); await writer.close(); } catch (e) {}
+      })();
+      ctx.waitUntil(job);
+      return new Response(readable, { status: 200, headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+    }
+
     // Operator voice for every WRITING action (titles, pillars, strategies,
     // assets): looked up once here, appended after researchGuidelinesBlock in
     // each writer's prompt. Learned from the operator's final-pass edits in the
