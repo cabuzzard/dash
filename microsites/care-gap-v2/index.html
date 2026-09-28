@@ -6960,8 +6960,90 @@ async function loadHubTab() {
         <button class="btn primary" onclick="openHubTextModal()">✎ Edit section text</button>
       </div>
     </section>
+    <section class="card" data-ckey="card-hub-dynsections">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Page sections &amp; what they pull from</h3><span class="tag fresh">live</span></div>
+      <div class="card-body">
+        <p style="font-size:11.5px;color:var(--ink2);margin:0 0 10px;">Every section of <b>${esc(HUB_SLUG)}</b>, in page order (read from the hub's live page), with the source each dynamic section loads from and how many items it shows right now. Section numbers match the "section N head" tags in ✎ Edit section text.</p>
+        <div id="hubSectionsBody"><div class="loadnote">Loading…</div></div>
+        <button class="btn" style="margin-top:8px;" onclick="loadHubSections(true)">↻ Refresh counts</button>
+      </div>
+    </section>
   `;
   applyCollapseState(body);
+  loadHubSections();
+}
+// ── Hub page sections — per hub (whatever HUB_SLUG this template is showing).
+// Order comes from the hub's own live index.html; counts from the same public
+// worker actions the hub page calls on load. Sources are the worker's filters.
+const HUB_SECTION_INFO = {
+  hero:              { name: 'Hero', dynamic: false, pulls: 'Fixed copy — Section text (content.json over the hub\'s baked defaults). Hero image via the Content Hubs card.' },
+  trips:             { name: 'Products / Services', dynamic: true, action: 'getHubProducts', key: 'products',
+                       pulls: 'This campaign\'s Assets at Asset Status Publish/Published that are an Offer (Offer – Pillar / Offer – Content Hub, Content Hub = this hub or unset) or a QA – Sales page. Card text from the asset\'s OFFER CARD block (else Platform Title / Body). Links to offers/. Hidden when empty.' },
+  report:            { name: 'Signup / briefing', dynamic: false, pulls: 'Fixed copy — Section text. The form submits to submitLead → Leads DB + ActiveCampaign tag lead-hub-<slug> (Globals ✉️ Hub Email Forms).' },
+  projectExperience: { name: 'Project Experience', dynamic: true, action: 'getHubProjectExperience', key: 'projectExperience',
+                       pulls: 'This campaign\'s Assets with Asset Type = Project Experience at Publish/Published — name = Asset Title, kicker = Platform Title, blurb = Body. Hidden when empty.' },
+  journal:           { name: 'Blog — news', dynamic: true, action: 'getHubBlog', kind: 'news', key: 'posts',
+                       pulls: 'getHubBlog (news): this campaign\'s Blog - SEO - News assets at Publish/Published, linked to the blog/ pages publishSeoPostToLiveSite writes (📝 make into article on a News Feed row).' },
+  articles:          { name: 'Blog — articles', dynamic: true, action: 'getHubBlog', kind: 'articles', key: 'posts',
+                       pulls: 'getHubBlog (articles): SEO Post assets + any QA method except QA – Sales, at Publish/Published, linked to blog/. Hidden when empty.' },
+  elsewhere:         { name: 'Social row', dynamic: true, action: 'getHubSocials', key: 'socials',
+                       pulls: 'This campaign\'s Logins with Status Active and a Profile Link — labelled by Platform (one per label).' },
+};
+let HUB_SECTION_ORDER = null, HUB_SECTION_ORDER_SLUG = null, HUB_PAGE_CAMPAIGN = null;
+async function ensureHubSectionOrder(force) {
+  if (HUB_SECTION_ORDER && HUB_SECTION_ORDER_SLUG === HUB_SLUG && !force) return HUB_SECTION_ORDER;
+  const html = await fetch(`https://cabuzzard.github.io/dash/web/hub/${encodeURIComponent(HUB_SLUG)}/index.html?t=${Date.now()}`).then(r => r.ok ? r.text() : '');
+  const ids = [...html.matchAll(/<section\b[^>]*?(?:id="([A-Za-z]+)"|class="hero")/g)].map(m => m[1] || 'hero');
+  const cm = html.match(/campaignId:\s*["']([0-9a-f-]{32,36})["']/i);
+  HUB_PAGE_CAMPAIGN = cm ? cm[1] : CAMPAIGN_ID;
+  HUB_SECTION_ORDER = ids.length ? [...new Set(ids)] : ['hero', 'trips', 'report', 'projectExperience', 'journal', 'articles', 'elsewhere'];
+  HUB_SECTION_ORDER_SLUG = HUB_SLUG;
+  return HUB_SECTION_ORDER;
+}
+// Section N = position among the page's sections after the hero.
+function hubSectionNumber(id) {
+  const order = (HUB_SECTION_ORDER || []).filter(x => x !== 'hero');
+  const i = order.indexOf(id);
+  return i < 0 ? null : i + 1;
+}
+async function loadHubSections(force) {
+  const el = document.getElementById('hubSectionsBody');
+  if (!el || !HUB_SLUG) return;
+  el.innerHTML = '<div class="loadnote">Loading…</div>';
+  try {
+    const order = await ensureHubSectionOrder(force);
+    const [content, counts] = await Promise.all([
+      w('getHubContent', { slug: HUB_SLUG }).catch(() => ({})),
+      Promise.all(order.map(async id => {
+        const info = HUB_SECTION_INFO[id];
+        if (!info || !info.dynamic) return null;
+        try {
+          const r = await w(info.action, { campaignId: HUB_PAGE_CAMPAIGN, slug: HUB_SLUG, kind: info.kind });
+          return (r[info.key] || []).length;
+        } catch (e) { return '?'; }
+      })),
+    ]);
+    const headOf = id => {
+      const path = id === 'hero' ? ['hero', 'headline'] : id === 'elsewhere' ? ['social', 'label'] : [id, 'title'];
+      const get = o => path.reduce((x, k) => x == null ? undefined : x[k], o);
+      const v = get(content.overrides || {}); return v !== undefined ? v : get(content.defaults || {});
+    };
+    el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11.5px;">
+      <tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Section</th><th style="padding:4px 6px;">Pulls from</th><th style="padding:4px 6px;">Live now</th></tr>
+      ${order.map((id, i) => {
+        const info = HUB_SECTION_INFO[id] || { name: id, dynamic: false, pulls: 'Not catalogued yet — section added to this hub after this list was written.' };
+        const n = hubSectionNumber(id), head = headOf(id), c = counts[i];
+        const live = !info.dynamic ? '<span style="color:var(--ink3);">fixed</span>'
+          : c === 0 ? '<span class="fbadge manual" title="Section is hidden on the page until something qualifies">0 · hidden</span>'
+          : `<span class="fbadge fresh">${esc(String(c))}</span>`;
+        return `<tr style="border-top:1px solid var(--border);vertical-align:top;">
+          <td style="padding:6px;font-weight:700;white-space:nowrap;">${n ? 'Section ' + n : 'Top'}</td>
+          <td style="padding:6px;"><b>${esc(info.name)}</b>${info.dynamic ? ' <span class="fbadge fresh">dynamic</span>' : ''}<div style="color:var(--ink3);font-size:10.5px;">#${esc(id)}${head ? ' · “' + esc(String(head).slice(0, 60)) + '”' : ''}</div></td>
+          <td style="padding:6px;color:var(--ink2);">${esc(info.pulls)}</td>
+          <td style="padding:6px;white-space:nowrap;">${live}</td></tr>`;
+      }).join('')}
+    </table>`;
+  } catch (e) { el.innerHTML = `<div class="errnote">Couldn't read the hub page: ${esc(e.message)}</div>`; }
 }
 const HTX_FIELDS = [
   ['brand','Brand name',0],
@@ -6973,8 +7055,10 @@ const HTX_FIELDS = [
   ['trips.empty.heading','Products/Routes · empty heading',1], ['trips.empty.body','Products/Routes · empty body',2],
   ['report.label','Signup · eyebrow',0], ['report.title','Signup · heading',1], ['report.blurb','Signup · blurb',2],
   ['report.note','Signup · fine print',1], ['report.buttonLabel','Signup · button',0], ['report.link.label','Signup · secondary link',0],
-  ['journal.label','Blog · eyebrow',0], ['journal.title','Blog · heading',1], ['journal.note','Blog · note',1],
-  ['journal.empty.heading','Blog · empty heading',1], ['journal.empty.body','Blog · empty body',2],
+  ['projectExperience.label','Project Experience · eyebrow',0], ['projectExperience.title','Project Experience · heading',1], ['projectExperience.note','Project Experience · note',1],
+  ['journal.label','Blog (news) · eyebrow',0], ['journal.title','Blog (news) · heading',1], ['journal.note','Blog (news) · note',1],
+  ['journal.empty.heading','Blog (news) · empty heading',1], ['journal.empty.body','Blog (news) · empty body',2],
+  ['articles.label','Blog (articles) · eyebrow',0], ['articles.title','Blog (articles) · heading',1], ['articles.note','Blog (articles) · note',1],
   ['social.label','Social row · label',0],
   ['footer.tagline','Footer · tagline',2], ['footer.legal','Footer · legal',0],
 ];
@@ -6986,6 +7070,7 @@ async function openHubTextModal(){
   document.getElementById('htxMsg').textContent = '';
   document.getElementById('hubTextModal').classList.add('open');
   try {
+    await ensureHubSectionOrder().catch(() => {});   // for the "section N head" tags
     const r = await w('getHubContent', { slug: HUB_SLUG });
     HTX = { defaults: r.defaults||{}, overrides: JSON.parse(JSON.stringify(r.overrides||{})) };
     htxRender();
@@ -7007,10 +7092,19 @@ function htxRender(){
       : `<input type="text" class="finput" ${attrs} placeholder="${esc(ph)}" value="${esc(v)}" style="width:100%;">`;
     const labelRow = p==='ribbon'
       ? `<span style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;"><span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);">${esc(label)}</span><button type="button" id="htxRibbonGenBtn" onclick="htxGenRibbon()" title="Lists Main Keywords + every committed keyword cluster, 3 keywords per group, each hard-truncated to 2 words — replaces this field's text below so you can prune/edit before saving." style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--global);cursor:pointer;">✨ Generate from keywords</button></span>`
-      : `<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);display:block;margin-bottom:3px;">${esc(label)}</span>`;
+      : `<span style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink3);display:block;margin-bottom:3px;">${esc(label)}${htxHeadTag(p)}</span>`;
     const ribbonMsg = p==='ribbon' ? `<div id="htxRibbonMsg" style="font-size:11px;margin:-4px 0 6px;min-height:14px;"></div>` : '';
     return `<label style="display:block;margin-bottom:9px;">${labelRow}${field}</label>${ribbonMsg}`;
   }).join('');
+}
+// Which fields are the page's section headings: "<section>.title" (social row: its label).
+function htxHeadTag(p) {
+  const tag = t => ` <b style="color:#f6ad55;text-transform:none;letter-spacing:0;">(${t})</b>`;
+  if (p === 'hero.headline') return tag('hero head');
+  const m = p.match(/^([A-Za-z]+)\.title$/) || (p === 'social.label' ? [p, 'elsewhere'] : null);
+  if (!m) return '';
+  const n = hubSectionNumber(m[1]);
+  return n ? tag(`section ${n} head`) : '';
 }
 async function htxGenRibbon(){
   const btn = document.getElementById('htxRibbonGenBtn');
