@@ -3334,26 +3334,37 @@ function stackSort(order) {
   return order.slice().sort((a, b) => (a === 'No Stack') - (b === 'No Stack') || idx(a) - idx(b) || a.localeCompare(b));
 }
 // Pointer-based drag (works with a finger on phones, unlike HTML5 drag-and-drop).
+// Listeners go on window, not the handle: moving the group in the DOM (insertBefore)
+// releases the handle's pointer capture, which froze the drag after the first swap.
 function stackDragStart(e, handle) {
   e.preventDefault(); e.stopPropagation();
   const item = handle.closest('[data-stack]'), list = item.parentElement;
   item.classList.add('stack-dragging');
-  try { handle.setPointerCapture(e.pointerId); } catch (x) {}
+  const ghost = document.createElement('div');
+  ghost.textContent = '⠿ ' + item.dataset.stack;
+  ghost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:4px 10px;border-radius:6px;background:var(--surface);border:1px solid #8ab4f8;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:11px;font-weight:700;';
+  document.body.appendChild(ghost);
   const move = ev => {
+    if (ev.pointerId !== e.pointerId) return;
+    ev.preventDefault();
+    ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 8) + 'px';
     if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
     const sibs = [...list.children].filter(c => c !== item && c.dataset.stack && c.dataset.stack !== 'No Stack');
     const before = sibs.find(c => { const r = c.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
     if (before) list.insertBefore(item, before);
     else { const none = [...list.children].find(c => c.dataset.stack === 'No Stack'); none ? list.insertBefore(item, none) : list.appendChild(item); }
   };
-  const up = () => {
-    handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
+  const up = ev => {
+    if (ev.pointerId !== e.pointerId) return;
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    ghost.remove();
     item.classList.remove('stack-dragging');
     const shown = [...list.children].map(c => c.dataset.stack).filter(x => x && x !== 'No Stack');
     STACK_ORDER = shown.concat(STACK_ORDER.filter(x => !shown.includes(x)));   // keep stacks not on screen, after
     saveStackMeta();
   };
-  handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+  window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  move(e);
 }
 function stackHandle(stack) {
   return stack === 'No Stack' ? '' : `<span class="stack-handle" title="Drag to reorder stacks" onpointerdown="stackDragStart(event, this)" onclick="event.stopPropagation()">⠿</span>`;
