@@ -14209,6 +14209,9 @@ const CRON_REGISTRY = [
   { fn: 'enrichUnprocessedSavedPosts', cron: '*/30 * * * *', when: 'Every 30 min', group: 'Links / content',
     what: 'Cheap "clean save" enrichment of 🔗 Saved Posts — fills Name / Platform / real Date Saved for any row the iOS Shortcut left bare. Never touches Apify / ElevenLabs / Claude.',
     io: 'Notion: 🔗 Saved Posts' },
+  { fn: 'runTradePoll', cron: '*/4 * * * *', when: 'Every 4 min in US market hours · hourly otherwise', group: 'Trading',
+    what: 'Paper-trade price tracker (replaced the local Windows poller 2026-09-28). Refreshes the 15 least-recently-updated active trades per tick; highs/lows come from Yahoo 5m bars since entry for both the underlying and the option contract, so missed ticks lose nothing. Archives expired trades to Notion.',
+    io: 'KV: trades:*, tradepoll:last · Notion: Trades (on expiry)' },
   { fn: 'runBulkHubStrategy', cron: '*/4 * * * *', when: 'Every 4 min', group: 'Content strategy',
     what: 'Drains the bulk hub research+strategy queue ~1 product per tick (seeded by bulkHubStrategyStart). Once the queue is empty this is a 1-KV-read no-op forever until re-seeded.',
     io: 'KV: bulk_hub_strategy · writes 🔬 Product Research + 🚀 Growth Strategy' },
@@ -18218,8 +18221,17 @@ async function loadTrades() {
     renderTradeTable();
     const syncEl = document.getElementById('tradesLastSync');
     if (syncEl) {
-      const now = new Date();
-      syncEl.textContent = 'Synced ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+      // Price tracking is the worker's runTradePoll cron (not a local script)
+      // — show when it last ran so a stall is visible, not silent.
+      const pl = data.poll;
+      if (!pl || !pl.at) { syncEl.textContent = 'Price poller: no run recorded yet'; syncEl.style.color = '#ffb020'; }
+      else {
+        const mins = Math.round((Date.now() - Date.parse(pl.at)) / 60000);
+        const stale = pl.marketOpen ? mins > 20 : mins > 90;
+        syncEl.textContent = 'Prices updated ' + (mins < 1 ? 'just now' : mins + 'm ago') + ' · ' + pl.updated + '/' + pl.polled + ' of ' + pl.active + ' active' + (pl.errors && pl.errors.length ? ' · ' + pl.errors.length + ' err' : '');
+        syncEl.title = (pl.errors || []).map(e => e.ticker + ': ' + e.error).join(' · ');
+        syncEl.style.color = stale ? '#ff6b6b' : (pl.errors && pl.errors.length ? '#ffb020' : 'var(--text3)');
+      }
     }
   } catch(e) {
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="error-msg">' + e.message + '</td></tr>';

@@ -5406,7 +5406,11 @@ async function orbPickSwingContract(ticker, optType) {
   }
   if (!best) return null;
   const c = best.c;
-  const price = c.lastPrice > 0 ? c.lastPrice : (c.bid > 0 && c.ask > 0 ? (c.bid + c.ask) / 2 : null);
+  let price = c.lastPrice > 0 ? c.lastPrice : (c.bid > 0 && c.ask > 0 ? (c.bid + c.ask) / 2 : null);
+  // Data hygiene, not a strategy param: a no-bid or sub-$0.05 contract (e.g.
+  // KVUE entered at $0.01) can't be measured meaningfully — treat it as no
+  // tradeable contract, which runOrbMonitor logs as a NO_TRADE reject.
+  if (!(c.bid > 0) || !(price >= 0.05)) price = null;
   const d = new Date(bestExpiry * 1000);
   const expiry = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`;
   return {
@@ -5415,6 +5419,245 @@ async function orbPickSwingContract(ticker, optType) {
     delta: +best.delta.toFixed(3),
     dte: Math.round((bestExpiry - now) / 86400),
   };
+}
+
+// ── TRADE PRICE POLLER (worker-side, 2026-09-28) ─────────────────────────
+// Replaces the local Windows poller (tools/trade_poller.py), which only ran
+// while the PC was logged in, awake and on AC power — it died 2026-09-21 and
+// every ORB signal after that was never tracked. Rides the */4 cron: every
+// tick during US regular hours, at most hourly otherwise.
+//
+// Excursions come from Yahoo BARS since entry — the underlying's AND the
+// option contract's own OCC symbol (e.g. NVDA261023P00240000) — not from
+// point-in-time snapshots, so a missed tick or a dead day loses nothing: the
+// next pass recomputes max high / low from the bars. Stored values are only
+// ever widened (a real earlier observation is never discarded).
+const TRADE_POLL_KV    = 'tradepoll:last';
+const TRADE_POLL_BATCH = 15;   // trades per tick (2 Yahoo fetches each), oldest-updated first
+
+function tradeExpiryYmd(t) {
+  const e = String(t.expiry || '').replace(/-/g, '');
+  return /^\d{8}$/.test(e) ? e : null;
+}
+
+function tradeOccSymbol(t) {
+  const ymd = tradeExpiryYmd(t);
+  const strike = Number(t.strike);
+  if (!ymd || !(strike > 0) || !/^[A-Z]{1,6}$/.test(String(t.ticker || '').toUpperCase())) return null;
+  const cp = /^P/i.test(t.direction || 'C') ? 'P' : 'C';
+  return `${t.ticker.toUpperCase()}${ymd.slice(2)}${cp}${String(Math.round(strike * 1000)).padStart(8, '0')}`;
+}
+
+// Expired once the expiry date's session is over (21:00 UTC is after the
+// 16:00 ET close in both EST and EDT).
+function tradeIsExpired(t) {
+  const ymd = tradeExpiryYmd(t);
+  if (!ymd) return false;
+  return Date.now() > Date.parse(`${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6, 8)}T21:00:00Z`);
+}
+
+// Bars from `fromMs` to now. Yahoo serves 5m bars only ~60 days back, so an
+// older entry falls back to 1h bars (the entry hour is then included whole).
+async function tradeBars(sym, fromMs) {
+  const hourly = Date.now() - fromMs > 55 * 86400e3;
+  const stepMs = hourly ? 3600e3 : 300e3;
+  const p1 = Math.floor((fromMs - stepMs) / 1000), p2 = Math.floor(Date.now() / 1000);
+  const j = await orbFetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=${hourly ? '1h' : '5m'}&period1=${p1}&period2=${p2}&includePrePost=false`);
+  const res = j?.chart?.result?.[0];
+  if (!res) throw new Error(j?.chart?.error?.description || 'no chart data');
+  const q = res.indicators?.quote?.[0] || {}, ts = res.timestamp || [];
+  const bars = [];
+  for (let i = 0; i < ts.length; i++) {
+    const t = ts[i] * 1000;
+    if (t + stepMs <= fromMs) continue;           // bar ended before entry
+    if (q.high?.[i] == null || q.low?.[i] == null || q.close?.[i] == null) continue;
+    bars.push({ t, o: q.open?.[i] ?? q.close[i], h: q.high[i], l: q.low[i], c: q.close[i] });
+  }
+  const last = res.meta?.regularMarketPrice ?? (bars.length ? bars[bars.length - 1].c : null);
+  return { bars, last };
+}
+
+const tradeRound = v => v == null ? null : Math.round(v * 10000) / 10000;
+const tradeIso   = ms => new Date(ms).toISOString();
+
+// Computes the update fields for one trade. Pure w.r.t. KV — caller writes.
+async function tradePollOne(t) {
+  const entryMs = Date.parse(t.entry_time || '') || null;
+  if (!entryMs) throw new Error('no entry_time');
+  const nowIso = new Date().toISOString();
+  const up = { last_updated: nowIso, poll_error: null };
+  const isPut = /^P/i.test(t.direction || 'C');
+
+  // ── Underlying ──
+  const u = await tradeBars(t.ticker.toUpperCase(), entryMs);
+  if (u.last != null) {
+    const entry = t.entry_price ?? (u.bars[0]?.o ?? u.last);
+    if (t.entry_price == null) { up.entry_price = tradeRound(entry); up.price_captured = true; }
+    up.current_price = tradeRound(u.last);
+    up.current_pct   = tradeRound((u.last - entry) / entry * 100);
+    let hi = t.max_high, hiT = t.max_high_time, lo = t.max_low, loT = t.max_low_time;
+    let strikeHit = !!t.strike_reached, strikeT = t.strike_reached_time || null;
+    const days = {};
+    for (const b of u.bars) {
+      if (hi == null || b.h > hi) { hi = b.h; hiT = tradeIso(b.t); }
+      if (lo == null || b.l < lo) { lo = b.l; loT = tradeIso(b.t); }
+      if (!strikeHit && t.strike != null && (isPut ? b.l <= t.strike : b.h >= t.strike)) { strikeHit = true; strikeT = tradeIso(b.t); }
+      // ET session date: regular hours are 13:30–21:00 UTC, so UTC−5h lands on
+      // the same calendar day under both EST and EDT.
+      const d = new Date(b.t - 5 * 3600e3).toISOString().slice(0, 10);
+      const g = days[d] || (days[d] = { o: b.o, h: b.h, l: b.l });
+      if (b.h > g.h) g.h = b.h;
+      if (b.l < g.l) g.l = b.l;
+    }
+    Object.assign(up, { max_high: tradeRound(hi), max_high_time: hiT, max_low: tradeRound(lo), max_low_time: loT,
+                        strike_reached: strikeHit, strike_reached_time: strikeT });
+    let best = null;
+    for (const [d, g] of Object.entries(days)) {
+      const pct = g.o > 0 ? (g.h - g.l) / g.o * 100 : null;
+      if (pct != null && (!best || pct > best.pct)) best = { d, pct, h: g.h, l: g.l };
+    }
+    if (best && (t.max_daily_range_pct == null || best.pct > t.max_daily_range_pct)) {
+      Object.assign(up, { max_daily_range_pct: tradeRound(best.pct), max_daily_range_date: best.d,
+                          max_daily_range_high: tradeRound(best.h), max_daily_range_low: tradeRound(best.l) });
+    }
+  }
+
+  // ── Option contract (its own OCC chart; sparse — only bars that traded) ──
+  const occ = tradeOccSymbol(t);
+  if (occ) {
+    let c = null;
+    try { c = await tradeBars(occ, entryMs); } catch (e) { up.poll_error = `contract: ${e.message}`; }
+    if (c && c.last != null) {
+      const entry = t.entry_contract ?? (c.bars[0]?.c ?? c.last);
+      if (t.entry_contract == null) { up.entry_contract = tradeRound(entry); up.contract_captured = true; }
+      up.current_contract = tradeRound(c.last);
+      up.contract_pct     = entry > 0 ? tradeRound((c.last - entry) / entry * 100) : null;
+      // Floors at entry: you always held the entry price as a baseline.
+      let hi = Math.max(entry, t.contract_max_high ?? entry), hiT = t.contract_max_high_time || t.entry_time;
+      let lo = Math.min(entry, t.contract_max_low ?? entry),  loT = t.contract_max_low_time  || t.entry_time;
+      for (const b of c.bars) {
+        if (b.h > hi) { hi = b.h; hiT = tradeIso(b.t); }
+        if (b.l < lo) { lo = b.l; loT = tradeIso(b.t); }
+      }
+      Object.assign(up, { contract_max_high: tradeRound(hi), contract_max_high_time: hiT,
+                          contract_max_low: tradeRound(lo), contract_max_low_time: loT });
+    }
+  }
+  return up;
+}
+
+async function runTradePoll(env, { force = false, limit = TRADE_POLL_BATCH } = {}) {
+  const et = orbNowET();
+  const marketOpen = !et.isWeekend && et.minutes >= 9 * 60 + 30 && et.minutes <= 16 * 60 + 15;
+  const last = await env.TRADES.get(TRADE_POLL_KV, 'json');
+  if (!force && !marketOpen && last?.at && Date.now() - Date.parse(last.at) < 55 * 60e3) {
+    return { ran: false, reason: 'off-hours; polled within the last hour' };
+  }
+  const list = await env.TRADES.list({ prefix: 'trades:' });
+  const all = (await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')))).filter(Boolean);
+  const active = all.filter(t => !t.expired && t.ticker && t.id);
+  active.sort((a, b) => (Date.parse(a.last_updated || '') || 0) - (Date.parse(b.last_updated || '') || 0));
+  const batch = active.slice(0, limit);
+
+  let updated = 0, expired = 0;
+  const errors = [];
+  for (const t of batch) {
+    try {
+      const up = await tradePollOne(t);
+      const merged = { ...t, ...up };
+      if (tradeIsExpired(t)) {
+        merged.expired = true;
+        await env.TRADES.put(`trades:${t.id}`, JSON.stringify(merged));
+        await archiveExpiredTrade(env, t.id, merged);
+        expired++;
+      } else {
+        await env.TRADES.put(`trades:${t.id}`, JSON.stringify(merged));
+      }
+      updated++;
+      if (up.poll_error) errors.push({ ticker: t.ticker, error: up.poll_error });
+    } catch (e) {
+      errors.push({ ticker: t.ticker, error: e.message });
+      await env.TRADES.put(`trades:${t.id}`, JSON.stringify({ ...t, poll_error: e.message, last_poll_attempt: new Date().toISOString() }));
+    }
+  }
+  const summary = { at: new Date().toISOString(), marketOpen, active: active.length, polled: batch.length, updated, expired, errors: errors.slice(0, 20) };
+  await env.TRADES.put(TRADE_POLL_KV, JSON.stringify(summary));
+  return { ran: true, ...summary };
+}
+
+// Archives an expired trade to the Notion Trades DB, then removes it from KV.
+// On failure it stays in KV flagged archive_failed so the UI can warn (and
+// retryArchiveTrade can re-attempt). Shared by updateTrade and runTradePoll.
+// Archives an expired trade to the Notion Trades DB, then removes it from KV.
+// On failure it stays in KV flagged archive_failed so the UI can warn (and
+// retryArchiveTrade can re-attempt). Shared by updateTrade and runTradePoll.
+async function archiveExpiredTrade(env, id, updated) {
+  const token = (env.NOTION_TOKEN || '').trim();
+  const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v ?? "") } }] });
+  const name = `${updated.ticker} ${updated.strike}${updated.direction || "C"} ${updated.expiry}`;
+  let archiveOk = false;
+  let archiveError = null;
+  try {
+    const notionResp = await fetch("https://api.notion.com/v1/pages", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        parent: { database_id: TRADES_DB },
+        properties: {
+          Name:                  { title: [{ type: "text", text: { content: name } }] },
+          Ticker:                rt(updated.ticker || ""),
+          Strike:                { number: updated.strike ?? null },
+          Expiry:                rt(updated.expiry || ""),
+          Direction:             { select: { name: updated.direction || "C" } },
+          Strategy:              rt(updated.strategy || "Manual"),
+          Status:                { select: { name: "Expired" } },
+          "Entry Price":         { number: updated.entry_price ?? null },
+          "Current Price":       { number: updated.current_price ?? null },
+          "Current Pct":         { number: updated.current_pct ?? null },
+          "Max High":            { number: updated.max_high ?? null },
+          "Max High Time":       rt(updated.max_high_time || ""),
+          "Max Low":             { number: updated.max_low ?? null },
+          "Max Low Time":        rt(updated.max_low_time || ""),
+          "Strike Reached":         { checkbox: !!updated.strike_reached },
+          "Strike Reached Time":    rt(updated.strike_reached_time || ""),
+          "Price Captured":         { checkbox: !!updated.price_captured },
+          "Last Updated":           rt(updated.last_updated || ""),
+          "Entry Contract":         { number: updated.entry_contract ?? null },
+          "Current Contract":       { number: updated.current_contract ?? null },
+          "Contract Pct":           { number: updated.contract_pct ?? null },
+          "Contract Max High":      { number: updated.contract_max_high ?? null },
+          "Contract Max High Time": rt(updated.contract_max_high_time || ""),
+          "Contract Max Low":       { number: updated.contract_max_low ?? null },
+          "Contract Max Low Time":  rt(updated.contract_max_low_time || ""),
+        },
+        ...(updated.meta ? { children: [
+          { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: `${updated.strategy || "Strategy"} signal metadata` } }] } },
+          { object: "block", type: "code", code: { language: "json", rich_text: [{ type: "text", text: { content: JSON.stringify(updated.meta, null, 2).slice(0, 1900) } }] } },
+        ] } : {}),
+      }),
+    });
+    if (notionResp.ok) {
+      archiveOk = true;
+    } else {
+      const errBody = await notionResp.text().catch(() => '');
+      archiveError = `Notion ${notionResp.status}: ${errBody.slice(0, 200)}`;
+    }
+  } catch(e) {
+    archiveError = e.message || 'Network error';
+  }
+
+  if (archiveOk) {
+    // Safe to remove from KV — confirmed in Notion
+    await env.TRADES.delete(`trades:${id}`);
+  } else {
+    // Archive failed — keep in KV, flag it so the UI can warn the user
+    await env.TRADES.put(`trades:${id}`, JSON.stringify({
+      ...updated,
+      archive_failed: true,
+      archive_error: archiveError,
+      archive_attempted: new Date().toISOString(),
+    }));
+  }
 }
 
 const orbHhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
@@ -32694,11 +32937,18 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true, id });
       }
 
+      if (body.action === 'runTradePollNow') {
+        return json(await runTradePoll(env, { force: true, limit: Math.min(Number(body.limit) || TRADE_POLL_BATCH, 40) }));
+      }
+
       if (body.action === 'getTrades') {
         const list   = await env.TRADES.list({ prefix: 'trades:' });
-        const trades = await Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json')));
+        const [trades, poll] = await Promise.all([
+          Promise.all(list.keys.map(k => env.TRADES.get(k.name, 'json'))),
+          env.TRADES.get(TRADE_POLL_KV, 'json'),
+        ]);
         trades.sort((a, b) => new Date(b.entry_time) - new Date(a.entry_time));
-        return json({ trades: trades.filter(Boolean) });
+        return json({ trades: trades.filter(Boolean), poll: poll || null });
       }
 
       if (body.action === 'updateTrade') {
@@ -32710,73 +32960,7 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         await env.TRADES.put(`trades:${id}`, JSON.stringify(updated));
 
         // On expiry — archive full record to Notion then remove from KV
-        if (fields.expired) {
-          const rt = v => ({ rich_text: [{ type: "text", text: { content: String(v ?? "") } }] });
-          const name = `${updated.ticker} ${updated.strike}${updated.direction || "C"} ${updated.expiry}`;
-          let archiveOk = false;
-          let archiveError = null;
-          try {
-            const notionResp = await fetch("https://api.notion.com/v1/pages", {
-              method: "POST",
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-              body: JSON.stringify({
-                parent: { database_id: TRADES_DB },
-                properties: {
-                  Name:                  { title: [{ type: "text", text: { content: name } }] },
-                  Ticker:                rt(updated.ticker || ""),
-                  Strike:                { number: updated.strike ?? null },
-                  Expiry:                rt(updated.expiry || ""),
-                  Direction:             { select: { name: updated.direction || "C" } },
-                  Strategy:              rt(updated.strategy || "Manual"),
-                  Status:                { select: { name: "Expired" } },
-                  "Entry Price":         { number: updated.entry_price ?? null },
-                  "Current Price":       { number: updated.current_price ?? null },
-                  "Current Pct":         { number: updated.current_pct ?? null },
-                  "Max High":            { number: updated.max_high ?? null },
-                  "Max High Time":       rt(updated.max_high_time || ""),
-                  "Max Low":             { number: updated.max_low ?? null },
-                  "Max Low Time":        rt(updated.max_low_time || ""),
-                  "Strike Reached":         { checkbox: !!updated.strike_reached },
-                  "Strike Reached Time":    rt(updated.strike_reached_time || ""),
-                  "Price Captured":         { checkbox: !!updated.price_captured },
-                  "Last Updated":           rt(updated.last_updated || ""),
-                  "Entry Contract":         { number: updated.entry_contract ?? null },
-                  "Current Contract":       { number: updated.current_contract ?? null },
-                  "Contract Pct":           { number: updated.contract_pct ?? null },
-                  "Contract Max High":      { number: updated.contract_max_high ?? null },
-                  "Contract Max High Time": rt(updated.contract_max_high_time || ""),
-                  "Contract Max Low":       { number: updated.contract_max_low ?? null },
-                  "Contract Max Low Time":  rt(updated.contract_max_low_time || ""),
-                },
-                ...(updated.meta ? { children: [
-                  { object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: `${updated.strategy || "Strategy"} signal metadata` } }] } },
-                  { object: "block", type: "code", code: { language: "json", rich_text: [{ type: "text", text: { content: JSON.stringify(updated.meta, null, 2).slice(0, 1900) } }] } },
-                ] } : {}),
-              }),
-            });
-            if (notionResp.ok) {
-              archiveOk = true;
-            } else {
-              const errBody = await notionResp.text().catch(() => '');
-              archiveError = `Notion ${notionResp.status}: ${errBody.slice(0, 200)}`;
-            }
-          } catch(e) {
-            archiveError = e.message || 'Network error';
-          }
-
-          if (archiveOk) {
-            // Safe to remove from KV — confirmed in Notion
-            await env.TRADES.delete(`trades:${id}`);
-          } else {
-            // Archive failed — keep in KV, flag it so the UI can warn the user
-            await env.TRADES.put(`trades:${id}`, JSON.stringify({
-              ...updated,
-              archive_failed: true,
-              archive_error: archiveError,
-              archive_attempted: new Date().toISOString(),
-            }));
-          }
-        }
+        if (fields.expired) await archiveExpiredTrade(env, id, updated);
 
         return json({ success: true });
       }
@@ -42822,6 +43006,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "*/4 * * * *") {
+      // Trade price poller (replaced the local Windows poller 2026-09-28) —
+      // every tick in market hours, hourly otherwise. See runTradePoll.
+      ctx.waitUntil(runTradePoll(env).then(r => { if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
       // Bulk hub research+strategy: auto-seed the queue the first time (no KV
       // state), then drain ~2 products/tick until done. Once complete the KV
       // state persists with a full done-list, so this stays a cheap no-op
