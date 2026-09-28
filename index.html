@@ -5466,6 +5466,7 @@ function renderLinks() {
 
   el.innerHTML = '<div id="ltBulk" style="margin-bottom:10px;font-size:11px;color:var(--text3);">' + nUnmined + ' transcribed, not yet mined' + bulkBtn + transcribeBar + '</div>' + LINKS_POSTS.map(p => {
     const dateStr = p.dateSaved ? new Date(p.dateSaved).toLocaleDateString() : '';
+    const notionHref = p.notionUrl || (p.id ? 'https://www.notion.so/' + p.id.replace(/-/g, '') : '');
     const errorBlock = p.error ? '<div style="margin-top:6px;font-size:12px;color:#ff6b6b;">⚠ ' + esc(p.error) + '</div>' : '';
     const notesBlock = p.notes ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>' : '';
     const savedNoteBlock = p.savedNote ? '<div style="margin-top:6px;font-size:12px;color:var(--text);line-height:1.5;">📌 ' + esc(p.savedNote) + '</div>' : '';
@@ -5505,6 +5506,7 @@ function renderLinks() {
       +   '</div>'
       + '</div>'
       + '<div style="margin-top:6px;font-size:13px;font-weight:600;color:var(--text);line-height:1.4;">' + esc(p.name) + '</div>'
+      + (notionHref ? '<div style="margin-top:3px;font-size:10px;line-height:1.4;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><a href="' + esc(notionHref) + '" target="_blank" title="Open the Saved Posts record in Notion" style="color:var(--text3);text-decoration:underline;">Notion: ' + esc(notionHref) + '</a></div>' : '')
       + savedNoteBlock + notesBlock + errorBlock + knowledgeBlock
       + '</div>';
   }).join('');
