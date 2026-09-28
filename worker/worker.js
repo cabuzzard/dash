@@ -28574,7 +28574,71 @@ Call submit_keyword_cluster with your result.`;
         const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
         const intentOf = r => SEARCH_INTENT_FROM_LABEL[r.properties?.["Search Intent"]?.select?.name] || "";
         const committed = rows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), rationale: rtx(r, "Rationale"), searchIntent: intentOf(r), url: r.url, products: commProducts[id] || [] }; });
-        return json({ success: true, staged, committed });
+        // Cluster layer over topics (a "topic" = what this code calls a cluster).
+        let topicClusters = { clusters: [], assign: {} };
+        try { topicClusters = (await env.TRADES.get(`seotopicclusters:${norm(campaignId)}`, "json")) || topicClusters; } catch (e) {}
+        return json({ success: true, staged, committed, topicClusters });
+      }
+
+      // ── Topic clusters: a layer ABOVE the SEO "clusters" (now called TOPICS
+      // in the UI). A cluster is itself a keyword that groups topics; a keyword
+      // can be both a cluster and one of its own topics. Stored per campaign in
+      // KV seotopicclusters:<cid> = { clusters: [names, in order], assign: { topicId: clusterName } }
+      // — works the same for staged (KV) and committed (Notion) topics.
+      if (body.action === "saveTopicClusters") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const clusters = [...new Set((Array.isArray(body.clusters) ? body.clusters : []).map(x => String(x).trim().slice(0, 120)).filter(Boolean))].slice(0, 60);
+        const assign = {};
+        for (const [k, v] of Object.entries(body.assign || {})) { const n = String(v || "").trim(); if (n && clusters.includes(n)) assign[String(k).replace(/-/g, "")] = n; }
+        await env.TRADES.put(`seotopicclusters:${cid}`, JSON.stringify({ clusters, assign }));
+        return json({ success: true, clusters, assign });
+      }
+      // generateTopicClusters {campaignId, guidance?} — groups every existing topic
+      // (staged + committed) into clusters, each named with a real keyword; replaces
+      // the campaign's clusters + assignments.
+      if (body.action === "generateTopicClusters") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        let staged = [];
+        try { staged = (await env.TRADES.get(`seoclusters:staged:${cid}`, "json")) || []; } catch (e) {}
+        const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(cid) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
+        const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+        const topics = [
+          ...rows.map(r => ({ id: r.id.replace(/-/g, ""), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords") })),
+          ...staged.map(c => ({ id: String(c.id), name: c.name || "", keywords: c.keywords || "" })),
+        ].filter(t => t.id && t.name);
+        if (topics.length < 2) return json({ error: "Need at least 2 topics to cluster." }, 400);
+        const demand = await kwDemandBlock(env, topics.map(t => t.name).join(", "), { related: 15 }).catch(() => "");
+        const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are organising a campaign's SEO TOPICS into CLUSTERS — a layer above them. Each cluster is itself a real search KEYWORD (a broader head term) that groups related topics; a cluster keyword may be the same as one of its own topics.
+
+TOPICS (id · topic keyword · its keywords):
+${topics.map(t => `- ${t.id} · ${t.name} · ${String(t.keywords).slice(0, 300)}`).join("\n")}
+${demand}
+${body.guidance ? `OPERATOR GUIDANCE (follow): ${String(body.guidance).slice(0, 600)}\n` : ""}
+Make 2-6 clusters (fewer if the topics are tight). Name each with a real searched keyword — prefer the broader, higher-volume term that the topics sit under; reuse a topic's own keyword when it IS the natural head term. Put EVERY topic in exactly one cluster; no empty clusters. Return via the submit_clusters tool.`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }],
+            tools: [{ name: "submit_clusters", description: "Submit the clusters.", input_schema: { type: "object", required: ["clusters"], properties: {
+              clusters: { type: "array", items: { type: "object", required: ["name", "topicIds"], properties: { name: { type: "string" }, rationale: { type: "string" }, topicIds: { type: "array", items: { type: "string" } } } } } } } }],
+            tool_choice: { type: "tool", name: "submit_clusters" } }) });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
+        const out = ((aiData.content || []).find(b => b.type === "tool_use") || {}).input || {};
+        const valid = new Set(topics.map(t => t.id));
+        const clusters = [], assign = {};
+        for (const c of (out.clusters || [])) {
+          const n = String(c.name || "").trim().slice(0, 120); if (!n) continue;
+          const ids = (c.topicIds || []).map(x => String(x).replace(/-/g, "")).filter(x => valid.has(x) && !assign[x]);
+          if (!ids.length) continue;
+          if (!clusters.includes(n)) clusters.push(n);
+          ids.forEach(x => { assign[x] = n; });
+        }
+        if (!clusters.length) return json({ error: "No clusters came back — try again" }, 502);
+        await env.TRADES.put(`seotopicclusters:${cid}`, JSON.stringify({ clusters, assign }));
+        return json({ success: true, clusters, assign });
       }
 
       // Edits ONE staged (uncommitted) cluster in place — name/keywords, for
@@ -28891,6 +28955,11 @@ Call submit_keyword_cluster with your result.`;
         if (!resp.ok || !created.id) return json({ error: created.message || "Failed to commit cluster" }, resp.status || 500);
         staged.splice(idx, 1);
         await env.TRADES.put(`seoclusters:staged:${norm(campaignId)}`, JSON.stringify(staged));
+        // the topic keeps its cluster: re-key the assignment from the staged id to the Notion id
+        try {
+          const tk = `seotopicclusters:${norm(campaignId)}`, tc = (await env.TRADES.get(tk, "json")) || null;
+          if (tc && tc.assign && tc.assign[clusterId]) { tc.assign[created.id.replace(/-/g, "")] = tc.assign[clusterId]; delete tc.assign[clusterId]; await env.TRADES.put(tk, JSON.stringify(tc)); }
+        } catch (e) {}
         return json({ success: true, id: created.id.replace(/-/g, ""), staged });
       }
 
