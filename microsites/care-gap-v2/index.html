@@ -3477,7 +3477,13 @@ const AFF_STATUSES = ['New', 'Reviewing', 'To Apply', 'Stopped at login', 'Appli
 let AFF_BY_PRODUCT = null, _affLoaded = null;
 function ensureAffiliateLinks() {
   if (!_affLoaded) _affLoaded = w('getAffiliatePrograms', { slug: 'care-gap' }).then(r => {
-    AFF_BY_PRODUCT = {}; (r.items || []).forEach(a => { if (a.productId) AFF_BY_PRODUCT[a.productId] = a; });
+    AFF_BY_PRODUCT = {};
+    // Linked via the Product relation, else by name ("X (Affiliate)" product ↔ "X" program).
+    const norm = t => String(t || '').toLowerCase().replace(/\(affiliate\)/, '').replace(/[^a-z0-9]+/g, ' ').trim();
+    (r.items || []).forEach(a => {
+      const prod = a.productId ? { id: a.productId } : CAMPAIGN_PRODUCTS.find(p => norm(p.name) === norm(a.name));
+      if (prod) AFF_BY_PRODUCT[String(prod.id).replace(/-/g, '')] = a;
+    });
   }).catch(() => { AFF_BY_PRODUCT = {}; });
   return _affLoaded;
 }
