@@ -135,6 +135,7 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .kwghd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--kwc,var(--ink2));margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
 .stack-handle{cursor:grab;touch-action:none;user-select:none;padding:0 6px 0 0;font-size:14px;color:var(--ink3);line-height:1;}
 .stack-handle:active{cursor:grabbing;}
+.cluster-drop{outline:2px dashed #7c5cff;outline-offset:2px;background:rgba(124,92,255,.06);}
 .stack-dragging{opacity:.55;outline:2px dashed var(--kwc,var(--border2));outline-offset:2px;}
 .kwbtns{margin-left:auto;display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;}
 .kwbtns .btn{font-size:9.5px;padding:2px 7px;}
@@ -1938,23 +1939,71 @@ function groupTopics(list) {
   list.forEach(t => { const cl = TOPIC_CLUSTERS.assign[t.id]; if (cl && TOPIC_CLUSTERS.clusters.includes(cl)) (by[cl] = by[cl] || []).push(t); else un.push(t); });
   return { by, un };
 }
-function clusterWrap(key, title, sub, inner, btns, color) {
-  return `<div class="kwgroup" data-ckey="${key}" style="--kwc:${color};">
+function clusterWrap(key, title, sub, inner, btns, color, dropName) {
+  return `<div class="kwgroup" data-ckey="${key}"${dropName != null ? ` data-cluster="${esc(dropName)}"` : ''} style="--kwc:${color};">
     <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${title} <span style="font-weight:400;text-transform:none;color:var(--ink3);">${sub}</span><span class="kwbtns">${btns}</span></div>
     <div class="kwgbody" style="padding-left:12px;border-left:2px solid ${color}55;">${inner}</div></div>`;
 }
+function topicCtrl(id, name) {
+  return `<input type="checkbox" class="topic-cb" ${SELECTED_TOPICS.has(id) ? 'checked' : ''} title="Select for bulk move" onclick="event.stopPropagation()" onchange="toggleTopicSelect('${esc(id)}', this.checked)" style="margin:0 4px 0 0;">`
+    + `<span class="stack-handle" title="Drag onto a cluster" data-topic-name="${esc(name)}" onpointerdown="topicDragStart(event, this, '${esc(id)}')" onclick="event.stopPropagation()">⠿</span>`;
+}
 function renderTopicTree(staged, committed, stagedHtml, committedHtml) {
-  const all = [...staged.map(c => ({ id: c.id, html: stagedHtml(c) })), ...committed.map(c => ({ id: c.id, html: committedHtml(c) }))];
+  const withCtrl = (c, html) => html.replace('<span class="kwarrow">▸</span>', topicCtrl(c.id, c.name) + '<span class="kwarrow">▸</span>');
+  const all = [...staged.map(c => ({ id: c.id, html: withCtrl(c, stagedHtml(c)) })), ...committed.map(c => ({ id: c.id, html: withCtrl(c, committedHtml(c)) }))];
   const { by, un } = groupTopics(all);
-  let out = '';
+  let out = SELECTED_TOPICS.size ? `<div class="bulkbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:6px 0 8px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;font-size:11px;">
+      <b>${SELECTED_TOPICS.size} topic${SELECTED_TOPICS.size === 1 ? '' : 's'} →</b>
+      <select id="topicBulkTarget" class="finput" style="width:auto;font-size:11px;padding:2px 6px;"><option value="">— unclustered —</option>${TOPIC_CLUSTERS.clusters.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+      <button class="btn primary" onclick="bulkMoveTopics()">Move</button>
+      <button class="btn" onclick="SELECTED_TOPICS.clear();renderKeywordsAndIdeas()">clear</button></div>` : '';
   TOPIC_CLUSTERS.clusters.forEach((n, i) => {
     const items = by[n] || [];
     out += clusterWrap('kwcl-' + esc(n), '🧩 ' + esc(n), `— cluster · ${items.length} topic${items.length === 1 ? '' : 's'}`,
       items.map(t => t.html).join('') || '<div class="loadnote">No topics here yet — use a topic\'s 🧩 Cluster picker to move it in.</div>',
-      `<button class="iconbtn" title="Rename this cluster" onclick="event.stopPropagation();renameTopicCluster(${i})">✎</button><button class="iconbtn" title="Delete this cluster (its topics become unclustered)" onclick="event.stopPropagation();deleteTopicCluster(${i})">✕</button>`, '#7c5cff');
+      `<button class="iconbtn" title="Rename this cluster" onclick="event.stopPropagation();renameTopicCluster(${i})">✎</button><button class="iconbtn" title="Delete this cluster (its topics become unclustered)" onclick="event.stopPropagation();deleteTopicCluster(${i})">✕</button>`, '#7c5cff', n);
   });
-  if (un.length) out += clusterWrap('kwcl-__none', 'Unclustered topics', `— ${un.length}`, un.map(t => t.html).join(''), '', '#9aa0a6');
+  // always present as a drop target while any cluster exists
+  if (un.length || TOPIC_CLUSTERS.clusters.length) out += clusterWrap('kwcl-__none', 'Unclustered topics', `— ${un.length}`, un.map(t => t.html).join('') || '<div class="loadnote">Drop a topic here to take it out of its cluster.</div>', '', '#9aa0a6', '');
   return out;
+}
+let SELECTED_TOPICS = new Set();
+function toggleTopicSelect(id, on) { on ? SELECTED_TOPICS.add(id) : SELECTED_TOPICS.delete(id); renderKeywordsAndIdeas(); }
+function bulkMoveTopics() {
+  const target = (document.getElementById('topicBulkTarget') || {}).value || '';
+  SELECTED_TOPICS.forEach(id => { if (target) TOPIC_CLUSTERS.assign[id] = target; else delete TOPIC_CLUSTERS.assign[id]; });
+  SELECTED_TOPICS.clear();
+  renderKeywordsAndIdeas(); saveTopicClusters();
+}
+// Drag a topic onto a cluster (pointer events — works by finger on phones).
+function topicDragStart(e, handle, id) {
+  e.preventDefault(); e.stopPropagation();
+  try { handle.setPointerCapture(e.pointerId); } catch (x) {}
+  const ghost = document.createElement('div');
+  ghost.textContent = '⠿ ' + (handle.dataset.topicName || 'topic');
+  ghost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:4px 10px;border-radius:6px;background:var(--surface);border:1px solid #7c5cff;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:11px;font-weight:700;';
+  document.body.appendChild(ghost);
+  let target = null;
+  const setTarget = el => { if (target === el) return; if (target) target.classList.remove('cluster-drop'); target = el; if (target) target.classList.add('cluster-drop'); };
+  const move = ev => {
+    ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 8) + 'px';
+    if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    setTarget(under && under.closest('#kwClusterList [data-cluster]'));
+  };
+  const up = () => {
+    handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
+    ghost.remove();
+    const t = target; setTarget(null);
+    if (!t) return;
+    const name = t.dataset.cluster || '';
+    if ((TOPIC_CLUSTERS.assign[id] || '') === name) return;
+    if (name) TOPIC_CLUSTERS.assign[id] = name; else delete TOPIC_CLUSTERS.assign[id];
+    if (name) GROUPS_OPEN['kwcl-' + name] = 1;   // open the cluster it landed in
+    renderKeywordsAndIdeas(); saveTopicClusters();
+  };
+  handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+  move(e);
 }
 function renderTopicTreeIdeas(staged, committed, ideaGroup) {
   const all = [...committed.map(c => ({ id: c.id, html: ideaGroup(c, ' — committed') })), ...staged.map(c => ({ id: c.id, html: ideaGroup(c, '') }))];
