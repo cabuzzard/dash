@@ -1,0 +1,3 @@
+- 2026-09-28 **momentum** `lookback=63, top_k=3, universe=multi` — failed C1 Sharpe ≥ max(0.8, SPY) · validation CAGR 8.4% · Sharpe 0.66 · MaxDD -18.5% · exposure 89% · trades 80
+- 2026-09-28 **meanrev** `rsi_n=2, rsi_th=5, exit_sma=10, slots=5` — failed C1 Sharpe ≥ max(0.8, SPY), C2 MaxDD ≤ 25% and ≤ SPY, C3 2× costs: CAGR>0, Sharpe ≥ 0.6, C4 no year > 50% of profit · validation CAGR -4.0% · Sharpe -0.30 · MaxDD -36.3% · exposure 22% · trades 231
+- 2026-09-28 **meanrev_vix** `rsi_n=20, rsi_th=40, exit_sma=5, slots=5, fear=level` — failed C1 Sharpe ≥ max(0.8, SPY), C3 2× costs: CAGR>0, Sharpe ≥ 0.6, C4 no year > 50% of profit, C5 neighbours ≥ 0.7× in-sample Sharpe · validation CAGR 2.7% · Sharpe 0.58 · MaxDD -8.5% · exposure 4% · trades 85
