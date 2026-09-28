@@ -6963,9 +6963,9 @@ async function loadHubTab() {
     <section class="card" data-ckey="card-hub-dynsections">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Page sections &amp; what they pull from</h3><span class="tag fresh">live</span></div>
       <div class="card-body">
-        <p style="font-size:11.5px;color:var(--ink2);margin:0 0 10px;">Every section of <b>${esc(HUB_SLUG)}</b>, in page order (read from the hub's live page), with the source each dynamic section loads from and how many items it shows right now. Section numbers match the "section N head" tags in ✎ Edit section text.</p>
+        <p style="font-size:11.5px;color:var(--ink2);margin:0 0 10px;">Every section of <b>${esc(HUB_SLUG)}</b>, in page order (read from the hub's live page), with the source each dynamic section loads from and your own notes per section (saved per hub). Section numbers match the "section N head" tags in ✎ Edit section text.</p>
         <div id="hubSectionsBody"><div class="loadnote">Loading…</div></div>
-        <button class="btn" style="margin-top:8px;" onclick="loadHubSections(true)">↻ Refresh counts</button>
+        <button class="btn" style="margin-top:8px;" onclick="loadHubSections(true)">↻ Reload</button>
       </div>
     </section>
   `;
@@ -7006,41 +7006,46 @@ function hubSectionNumber(id) {
   const i = order.indexOf(id);
   return i < 0 ? null : i + 1;
 }
+// Section notes ride the existing microsite-notes store (saveMicrositeNote), keyed per hub + section.
+function hubSecNoteId(id) { return `hubsec-${HUB_SLUG}-${id}`; }
+async function saveHubSectionNote(btn) {
+  const ta = btn.closest('td').querySelector('textarea'), msg = btn.parentElement.querySelector('.hubsec-msg');
+  const id = ta.dataset.sec, info = HUB_SECTION_INFO[id] || { name: id }, n = hubSectionNumber(id);
+  btn.disabled = true; msg.style.color = 'var(--ink3)'; msg.textContent = 'Saving…';
+  try {
+    const r = await w('saveMicrositeNote', { campaignId: CAMPAIGN_ID, fieldId: hubSecNoteId(id), label: `Hub ${HUB_SLUG} · ${n ? 'Section ' + n + ' · ' : ''}${info.name}`, tab: 'hub', note: ta.value });
+    if (typeof NOTES_CACHE !== 'undefined' && r.notes) NOTES_CACHE = r.notes;
+    msg.style.color = 'var(--fresh)'; msg.textContent = '✓ Saved';
+  } catch (e) { btn.disabled = false; msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
+}
 async function loadHubSections(force) {
   const el = document.getElementById('hubSectionsBody');
   if (!el || !HUB_SLUG) return;
   el.innerHTML = '<div class="loadnote">Loading…</div>';
   try {
     const order = await ensureHubSectionOrder(force);
-    const [content, counts] = await Promise.all([
+    const [content, notesRes] = await Promise.all([
       w('getHubContent', { slug: HUB_SLUG }).catch(() => ({})),
-      Promise.all(order.map(async id => {
-        const info = HUB_SECTION_INFO[id];
-        if (!info || !info.dynamic) return null;
-        try {
-          const r = await w(info.action, { campaignId: HUB_PAGE_CAMPAIGN, slug: HUB_SLUG, kind: info.kind });
-          return (r[info.key] || []).length;
-        } catch (e) { return '?'; }
-      })),
+      w('getMicrositeNotes', { campaignId: CAMPAIGN_ID }).catch(() => ({ notes: [] })),
     ]);
+    const noteOf = id => ((notesRes.notes || []).find(n => n.fieldId === hubSecNoteId(id)) || {}).note || '';
     const headOf = id => {
       const path = id === 'hero' ? ['hero', 'headline'] : id === 'elsewhere' ? ['social', 'label'] : [id, 'title'];
       const get = o => path.reduce((x, k) => x == null ? undefined : x[k], o);
       const v = get(content.overrides || {}); return v !== undefined ? v : get(content.defaults || {});
     };
     el.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:11.5px;">
-      <tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Section</th><th style="padding:4px 6px;">Pulls from</th><th style="padding:4px 6px;">Live now</th></tr>
+      <tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Section</th><th style="padding:4px 6px;">Pulls from</th><th style="padding:4px 6px;min-width:200px;">Notes</th></tr>
       ${order.map((id, i) => {
         const info = HUB_SECTION_INFO[id] || { name: id, dynamic: false, pulls: 'Not catalogued yet — section added to this hub after this list was written.' };
-        const n = hubSectionNumber(id), head = headOf(id), c = counts[i];
-        const live = !info.dynamic ? '<span style="color:var(--ink3);">fixed</span>'
-          : c === 0 ? '<span class="fbadge manual" title="Section is hidden on the page until something qualifies">0 · hidden</span>'
-          : `<span class="fbadge fresh">${esc(String(c))}</span>`;
+        const n = hubSectionNumber(id), head = headOf(id);
+        const live = `<textarea class="finput hubsec-note" data-sec="${esc(id)}" rows="3" placeholder="Notes for this section…" style="width:100%;box-sizing:border-box;font-size:11px;min-height:54px;" oninput="this.nextElementSibling.querySelector('button').disabled=false">${esc(noteOf(id))}</textarea>
+          <div style="display:flex;gap:6px;align-items:center;margin-top:3px;"><button class="btn" style="font-size:9.5px;padding:2px 8px;" disabled onclick="saveHubSectionNote(this)">💾 Save</button><span class="hubsec-msg" style="font-size:10px;color:var(--ink3);"></span></div>`;
         return `<tr style="border-top:1px solid var(--border);vertical-align:top;">
           <td style="padding:6px;font-weight:700;white-space:nowrap;">${n ? 'Section ' + n : 'Top'}</td>
           <td style="padding:6px;"><b>${esc(info.name)}</b>${info.dynamic ? ' <span class="fbadge fresh">dynamic</span>' : ''}<div style="color:var(--ink3);font-size:10.5px;">#${esc(id)}${head ? ' · “' + esc(String(head).slice(0, 60)) + '”' : ''}</div></td>
           <td style="padding:6px;color:var(--ink2);">${esc(info.pulls)}</td>
-          <td style="padding:6px;white-space:nowrap;">${live}</td></tr>`;
+          <td style="padding:6px;">${live}</td></tr>`;
       }).join('')}
     </table>`;
   } catch (e) { el.innerHTML = `<div class="errnote">Couldn't read the hub page: ${esc(e.message)}</div>`; }
