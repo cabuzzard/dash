@@ -1839,10 +1839,66 @@ async function loadResearch() {
     document.getElementById('kwClusterList').innerHTML = `<span style="color:var(--stale);">Load failed: ${esc(e.message)}</span>`;
   }
 }
+// Master re-run is staged: nothing is written until the operator accepts the diff.
 async function runRegenKeywords(guidance, omit, searchIntent) {
-  const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: RAW_KEYWORDS, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined, skipPositioningCascade: true });
-  RAW_KEYWORDS = r.keywords || '';
-  renderKeywordsAndIdeas();
+  const before = RAW_KEYWORDS;
+  const r = await w('regenerateKeywords', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID, currentKeywords: RAW_KEYWORDS, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined, skipPositioningCascade: true, stageOnly: true });
+  openKwReview({
+    title: 'Review — Master keywords re-run',
+    note: 'Nothing is saved yet. Accepting writes Main Keywords (and marks products\' research out of sync, same as before).',
+    prev: before, next: r.keywords || '',
+    onAccept: async keywords => {
+      const c = await w('commitMasterKeywords', { researchId: RESEARCH_ID, keywords });
+      RAW_KEYWORDS = c.keywords || keywords;
+      renderKeywordsAndIdeas();
+    },
+  });
+}
+// ── Keyword re-run review (pre-commit) ──
+// Added keywords are opt-out (checked = keep), removed ones are opt-in to remove
+// (checked = drop) — so the operator can take only part of a re-run.
+const kwSplit = t => String(t || '').split(',').map(x => x.trim()).filter(Boolean);
+let KW_REVIEW = null;
+function openKwReview(o) {
+  const prev = kwSplit(o.prev), next = kwSplit(o.next);
+  const lc = new Set(prev.map(x => x.toLowerCase())), nc = new Set(next.map(x => x.toLowerCase()));
+  const added = next.filter(x => !lc.has(x.toLowerCase())), removed = prev.filter(x => !nc.has(x.toLowerCase()));
+  const kept = next.filter(x => lc.has(x.toLowerCase()));
+  KW_REVIEW = { o, next, added, removed, kept };
+  let el = document.getElementById('kwReviewOverlay');
+  if (!el) { el = document.createElement('div'); el.id = 'kwReviewOverlay'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:40px 16px;';
+  const pill = (k, i, kind) => `<label style="display:inline-flex;align-items:center;gap:4px;margin:0 6px 6px 0;padding:2px 8px;border-radius:12px;font-size:11px;border:1px solid ${kind === 'add' ? '#4ade80' : '#f87171'};background:${kind === 'add' ? 'rgba(74,222,128,.1)' : 'rgba(248,113,113,.1)'};"><input type="checkbox" data-kind="${kind}" data-i="${i}" checked>${kind === 'rem' ? '<s>' + esc(k) + '</s>' : esc(k)}</label>`;
+  const ext = o.extra || '';
+  el.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;max-width:760px;width:100%;padding:16px 18px;box-shadow:0 10px 40px rgba(0,0,0,.3);">
+    <h3 style="margin:0 0 4px;font-size:15px;">${esc(o.title)}</h3>
+    <p style="margin:0 0 12px;font-size:11.5px;color:var(--ink2);">${esc(o.note || '')}</p>
+    ${ext}
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#4ade80;margin:8px 0 6px;">Added (${added.length}) — uncheck to leave out</div>
+    <div>${added.map((k, i) => pill(k, i, 'add')).join('') || '<span style="font-size:11px;color:var(--ink3);">none</span>'}</div>
+    <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#f87171;margin:10px 0 6px;">Removed (${removed.length}) — uncheck to keep</div>
+    <div>${removed.map((k, i) => pill(k, i, 'rem')).join('') || '<span style="font-size:11px;color:var(--ink3);">none</span>'}</div>
+    <details style="margin-top:10px;font-size:11px;color:var(--ink2);"><summary>Unchanged (${kept.length})</summary><div style="margin-top:6px;">${kept.map(esc).join(', ')}</div></details>
+    <div id="kwReviewMsg" style="font-size:11px;min-height:14px;margin-top:10px;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
+      <button class="btn" onclick="closeKwReview()">✕ Discard</button>
+      <button class="btn primary" id="kwReviewAccept" onclick="acceptKwReview()">✓ Accept &amp; save</button>
+    </div></div>`;
+}
+function closeKwReview() { const el = document.getElementById('kwReviewOverlay'); if (el) el.remove(); KW_REVIEW = null; }
+async function acceptKwReview() {
+  const R = KW_REVIEW; if (!R) return;
+  const el = document.getElementById('kwReviewOverlay');
+  const on = kind => new Set([...el.querySelectorAll(`input[data-kind="${kind}"]`)].filter(c => c.checked).map(c => +c.dataset.i));
+  const addOn = on('add'), remOn = on('rem');
+  const dropAdded = new Set(R.added.filter((k, i) => !addOn.has(i)).map(k => k.toLowerCase()));
+  const keepBack = R.removed.filter((k, i) => !remOn.has(i));
+  const final = R.next.filter(k => !dropAdded.has(k.toLowerCase())).concat(keepBack).join(', ');
+  if (!final) return alert('That would leave no keywords — uncheck some removals.');
+  const btn = document.getElementById('kwReviewAccept'), msg = document.getElementById('kwReviewMsg');
+  btn.disabled = true; btn.textContent = 'Saving…'; msg.textContent = '';
+  try { await R.o.onAccept(final); closeKwReview(); }
+  catch (e) { btn.disabled = false; btn.textContent = '✓ Accept & save'; msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
 }
 async function loadClusters() {
   try {
@@ -2191,11 +2247,24 @@ function openClusterRegenModal(clusterId, isStaged) {
   if (!c) return;
   openRegenModal('Regenerate Cluster — ' + c.name, 'Reworks just this cluster from the Main Keywords pool.', (steer, omit, intent) => regenCluster(clusterId, steer, omit, intent), { current: c.searchIntent || '' });
 }
+// Topic re-run is staged: review the diff, then the accepted version is applied (no second AI call).
 async function regenCluster(clusterId, guidance, omit, searchIntent) {
-  const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined });
-  SEO_CLUSTERS.staged = r.staged || [];
-  SEO_CLUSTERS.committed = r.committed || SEO_CLUSTERS.committed;
-  renderKeywordsAndIdeas();
+  const r = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, guidance: guidance || undefined, omitKeywords: omit || undefined, searchIntent: searchIntent || undefined, stageOnly: true });
+  const P = r.proposal, V = r.previous;
+  const nameRow = P.name !== V.name ? `<div style="font-size:12px;margin-bottom:6px;"><b>Name:</b> <s style="color:var(--ink3);">${esc(V.name)}</s> → <b>${esc(P.name)}</b></div>` : '';
+  const intentRow = (P.searchIntent || '') !== (V.searchIntent || '') ? `<div style="font-size:12px;margin-bottom:6px;"><b>Intent:</b> ${esc(V.searchIntent || '—')} → <b>${esc(P.searchIntent || '—')}</b></div>` : '';
+  openKwReview({
+    title: 'Review — topic re-run: ' + V.name,
+    note: 'Nothing is saved yet. ' + (r.isStaged ? 'Accepting updates this staged topic.' : 'Accepting overwrites this committed topic in Notion.'),
+    prev: V.keywords, next: P.keywords,
+    extra: nameRow + intentRow + (P.rationale ? `<div style="font-size:11px;color:var(--ink2);margin-bottom:6px;"><b>Rationale:</b> ${esc(P.rationale)}</div>` : ''),
+    onAccept: async keywords => {
+      const a = await w('regenerateKeywordCluster', { campaignId: CAMPAIGN_ID, clusterId, proposal: { ...P, keywords } });
+      SEO_CLUSTERS.staged = a.staged || [];
+      SEO_CLUSTERS.committed = a.committed || SEO_CLUSTERS.committed;
+      renderKeywordsAndIdeas();
+    },
+  });
 }
 async function commitCluster(clusterId, btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';

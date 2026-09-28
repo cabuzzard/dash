@@ -28748,6 +28748,17 @@ ${SEARCH_INTENT_DEFINITIONS}
 
 Call submit_keyword_cluster with your result.`;
 
+        // Pre-commit review (care-gap): stageOnly → return the proposal next to the
+        // current version and write nothing; proposal → apply a reviewed one (no AI call).
+        let name, newKeywords, rationale, searchIntent;
+        if (body.proposal && typeof body.proposal === "object") {
+          const pp = body.proposal;
+          name = String(pp.name || "").slice(0, 100);
+          newKeywords = String(pp.keywords || "").slice(0, 1900);
+          rationale = String(pp.rationale || "").slice(0, 500);
+          searchIntent = SEARCH_INTENT_LABELS[pp.searchIntent] ? pp.searchIntent : "";
+          if (!name || !newKeywords) return json({ error: "proposal needs a name and keywords" }, 400);
+        } else {
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -28774,10 +28785,14 @@ Call submit_keyword_cluster with your result.`;
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_keyword_cluster");
         if (!toolUse) return json({ error: "Claude did not return a cluster — try again" }, 502);
-        const name = String(toolUse.input.name || "").slice(0, 100);
-        const newKeywords = applyKwOmit(String(toolUse.input.keywords || "").slice(0, 1900), omitKeywords);
-        const rationale = String(toolUse.input.rationale || "").slice(0, 500);
-        const searchIntent = forcedIntent || (SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : "");
+        name = String(toolUse.input.name || "").slice(0, 100);
+        newKeywords = applyKwOmit(String(toolUse.input.keywords || "").slice(0, 1900), omitKeywords);
+        rationale = String(toolUse.input.rationale || "").slice(0, 500);
+        searchIntent = forcedIntent || (SEARCH_INTENT_LABELS[toolUse.input.searchIntent] ? toolUse.input.searchIntent : "");
+        }
+        if (body.stageOnly) return json({ success: true, isStaged,
+          proposal: { name, keywords: newKeywords, rationale, searchIntent },
+          previous: { name: target.name || "", keywords: target.keywords || "", rationale: target.rationale || "", searchIntent: target.searchIntent || "" } });
 
         if (isStaged) {
           staged[stagedIdx] = { id: clusterId, name, keywords: newKeywords, rationale, searchIntent };
@@ -30513,6 +30528,24 @@ Rules:
       // to regenerate them at all. Per operator direction: one call now
       // refreshes all five together, so a keyword regen can't silently
       // outrun the positioning it's supposed to serve.
+      // ── commitMasterKeywords {researchId, keywords} — writes a reviewed Master pool
+      // (from regenerateKeywords stageOnly) and bumps the keywords version, exactly
+      // what regenerateKeywords does when it writes directly.
+      if (body.action === "commitMasterKeywords") {
+        const { researchId } = body;
+        const keywords = String(body.keywords || "").trim();
+        if (!researchId || !keywords) return json({ error: "researchId and keywords required" }, 400);
+        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const resp = await fetch(`https://api.notion.com/v1/pages/${dash(researchId)}`, {
+          method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords.slice(0, 1990) } }] } } })
+        });
+        if (!resp.ok) return json({ error: (await resp.json().catch(() => ({}))).message || "Failed to save keywords" }, resp.status);
+        await bumpKeywordsVersion(hdr, dash(researchId));
+        return json({ success: true, keywords: keywords.slice(0, 1990) });
+      }
+
       if (body.action === "regenerateKeywords") {
         const { campaignId: bodyCampaignId, researchId, currentKeywords, guidance, omitKeywords, searchIntent } = body;
         const pageId = researchId || bodyCampaignId;
@@ -30581,6 +30614,8 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
         if (!toolUse) return json({ error: "model did not return the expected tool call", raw: JSON.stringify(aiData).slice(0, 500) }, 502);
         const parsed = toolUse.input || {};
         const keywords = applyKwOmit(String(parsed.keywords || "").trim(), omitKeywords);
+        // Pre-commit review (care-gap): nothing is written; commitMasterKeywords applies it.
+        if (body.stageOnly) return json({ keywords, previous: String(currentKeywords || ""), targetAudience: parsed.targetAudience, campaignGoal: parsed.campaignGoal, keyMessage: parsed.keyMessage, painPoints: parsed.painPoints });
 
         // Keywords write goes wherever it always went (Research page if
         // researchId was passed, else the Campaign itself) — unchanged.
