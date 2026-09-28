@@ -3471,12 +3471,34 @@ function groupByStack(items, keyOf, fallback) {
   });
   return { groups, order };
 }
+// Affiliate products link back to their 🤝 Affiliate Programs row (Product relation).
+// Its Status is the application flag — 'To Apply' queues it for a browser apply walk.
+const AFF_STATUSES = ['New', 'Reviewing', 'To Apply', 'Stopped at login', 'Applied', 'Approved', 'Rejected'];
+let AFF_BY_PRODUCT = null, _affLoaded = null;
+function ensureAffiliateLinks() {
+  if (!_affLoaded) _affLoaded = w('getAffiliatePrograms', { slug: 'care-gap' }).then(r => {
+    AFF_BY_PRODUCT = {}; (r.items || []).forEach(a => { if (a.productId) AFF_BY_PRODUCT[a.productId] = a; });
+  }).catch(() => { AFF_BY_PRODUCT = {}; });
+  return _affLoaded;
+}
+function affiliateStatusSel(productId) {
+  const a = AFF_BY_PRODUCT && AFF_BY_PRODUCT[String(productId).replace(/-/g, '')];
+  if (!a) return '';
+  const hot = a.status === 'To Apply';
+  return `<select class="finput" title="Affiliate application status (🤝 Affiliate Programs)" onclick="event.stopPropagation()" onchange="setAffiliateStatus('${esc(a.id)}', this)" style="width:auto;font-size:10px;padding:1px 4px;margin-left:6px;${hot ? 'border-color:#f6ad55;font-weight:700;' : ''}">${AFF_STATUSES.map(s => `<option${s === a.status ? ' selected' : ''}>${s}</option>`).join('')}</select>`;
+}
+async function setAffiliateStatus(affId, sel) {
+  const a = Object.values(AFF_BY_PRODUCT || {}).find(x => x.id === affId);
+  const prev = a ? a.status : '';
+  try { await w('updateAffiliateProgram', { id: affId, status: sel.value }); if (a) a.status = sel.value; loadProductTab(); }
+  catch (e) { alert('Could not update: ' + e.message); sel.value = prev; }
+}
 async function loadProductTab() {
   const body = document.getElementById('productListBody');
   try {
     if (!CAMPAIGN_PRODUCTS.length) { const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = r.products || []; }
     if (!CAMPAIGN_PRODUCTS.length) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
-    await Promise.all([ensureProductResearchState(), ensureStackOrder()]);
+    await Promise.all([ensureProductResearchState(), ensureStackOrder(), ensureAffiliateLinks()]);
     const { groups, order: rawOrder } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
     EMPTY_STACKS.forEach(s => { if (!groups[s]) { groups[s] = []; rawOrder.push(s); } });
     if (!groups['No Stack']) { groups['No Stack'] = []; rawOrder.push('No Stack'); }   // hidden while empty; shown as a drop target during a product drag
@@ -3489,6 +3511,7 @@ async function loadProductTab() {
             <input type="checkbox" class="prod-select-cb" ${SELECTED_PRODUCTS.has(p.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleProductSelect('${esc(p.id)}', this.checked)" style="margin-right:6px;">
             <span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
             ${researchStateBadge(p.id)}
+            ${affiliateStatusSel(p.id)}
           <span class="idea-btns">
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
             <button class="iconbtn" title="Create a Development-stage title with a written Pillar, off this product" onclick="openCreatePillarModal('${esc(p.id)}', '${esc(p.name.replace(/'/g,"\\'"))}')">✍ Pillar</button>

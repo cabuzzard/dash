@@ -40326,7 +40326,7 @@ ${assemblyManifest}`;
         if (body.action === "deleteAffiliateProgram") payload = { archived: true };
         else {
           const props = {};
-          if (status && ["New","Reviewing","Stopped at login","Applied","Approved","Rejected"].includes(status)) props["Status"] = { select: { name: status } };
+          if (status && ["New","Reviewing","To Apply","Stopped at login","Applied","Approved","Rejected"].includes(status)) props["Status"] = { select: { name: status } };
           if (fit && ["Strong","Possible","Weak"].includes(fit)) props["Fit"] = { select: { name: fit } };
           if (trafficFit && ["Strong","Possible","Weak"].includes(trafficFit)) props["Traffic Fit"] = { select: { name: trafficFit } };
           if (Number.isFinite(priority)) props["Priority"] = { number: Math.round(priority) };
