@@ -1043,7 +1043,7 @@
         <b id="kwSelCount"></b>
         <select id="kwSendCampaign" class="kw-sel" style="max-width:240px;"><option value="">choose campaign…</option></select>
         <button class="kw-btn" onclick="kwSend('main')" title="Append to the campaign's Main Keywords (Research Keywords) — existing keywords kept, duplicates skipped">+ Main Keywords</button>
-        <button class="kw-btn" onclick="kwSend('cluster')" title="Stage an SEO cluster in the campaign's microsite (Keywords &amp; Notes → SEO Clusters) — review, commit, then propose products from it">+ Cluster</button>
+        <button class="kw-btn" onclick="kwSend('cluster')" title="Stage these keywords as a new TOPIC in the campaign (microsite Keywords tab → Unclustered topics) — review, commit, propose products, then place it under a 🧩 cluster">+ Topic</button>
         <span style="color:var(--text3);">or</span>
         <input id="kwSendName" placeholder="name (optional)" style="width:150px;">
         <button class="kw-btn" onclick="kwSend('campaign')" title="Create a new campaign (Status: Planning) with a Research record whose Main Keywords are the selection">+ New campaign</button>
@@ -5225,7 +5225,7 @@ async function kwSend(mode) {
   try {
     const r = await call('kwSendKeywords', { mode, campaignId, campaignName: camp && camp.name, name, keywords: [...KW.selected] });
     if (mode === 'main') msg.textContent = r.added ? `✓ Added ${r.added} to ${camp.name} Main Keywords${r.skipped ? ` (${r.skipped} already there)` : ''}` : '✓ ' + (r.note || 'Nothing new to add');
-    else if (mode === 'cluster') msg.textContent = `✓ Staged cluster "${r.cluster.name}" in ${camp.name} — open its microsite → Keywords & Notes → SEO Clusters${r.trimmed ? ` (${r.trimmed} lowest-volume keywords trimmed to fit)` : ''}`;
+    else if (mode === 'cluster') msg.textContent = `✓ Staged topic "${r.cluster.name}" in ${camp.name} — open its microsite → Keywords → Unclustered topics, then move it under a 🧩 cluster${r.trimmed ? ` (${r.trimmed} lowest-volume keywords trimmed to fit)` : ''}`;
     else { msg.textContent = `✓ Created campaign "${r.name}" (Planning) with ${KW.selected.size} Main Keywords` + (r.warning ? ' — ' + r.warning : ''); KW.campaigns = null; }
   } catch (e) { msg.textContent = '✗ ' + e.message; }
 }
