@@ -10053,7 +10053,7 @@ export default {
           const strOf = (scope, key) => { const m = String(scope).match(new RegExp(`(?:^|[\\s{,])${key}\\s*:\\s*"((?:[^"\\\\]|\\\\.)*)"`)); return m ? unesc(m[1]) : ""; };
           const sub = (scope, name) => { const i = String(scope).search(new RegExp(`(?:^|[\\s{,])${name}\\s*:\\s*\\{`)); if (i < 0) return ""; let d = 0, st = scope.indexOf("{", i); for (let j = st; j < scope.length; j++) { const c = scope[j]; if (c === '"') { j++; while (j < scope.length && scope[j] !== '"') { if (scope[j] === "\\") j++; j++; } continue; } if (c === "{") d++; else if (c === "}") { d--; if (!d) return scope.slice(st, j + 1); } } return ""; };
           defaults.brand = strOf(block.slice(0, block.indexOf("\n  nav:") + 1 || 400), "brand");
-          for (const s of ["hero", "trips", "report", "journal", "social", "footer"]) {
+          for (const s of ["hero", "trips", "report", "projectExperience", "journal", "articles", "social", "footer"]) {
             const sc = sub(block, s); if (!sc) continue;
             defaults[s] = {};
             for (const k of ["eyebrow", "headline", "sub", "label", "title", "note", "blurb", "buttonLabel", "tagline", "legal"]) { const v = strOf(sc, k); if (v) defaults[s][k] = v; }
