@@ -1356,7 +1356,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: PRODUCT RESEARCH ══════════════════════ -->
   <div class="panel" data-panel="product">
-    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="btn" style="margin-left:auto;" onclick="newProductStack()">+ New Stack</button><button class="btn primary" onclick="openAddProductModal()">+ Add Product</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
+    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="btn" style="margin-left:auto;" onclick="newProductGroup()">+ New Group</button><button class="btn" onclick="newProductStack()">+ New Stack</button><button class="btn primary" onclick="openAddProductModal()">+ Add Product</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
     <p class="stage-sub">Every product on this campaign, nested by Product Stack. Click a product to open its 11 🔬 Product Research fields, each with its own regen — staged for review before Save. Check one or more products below to bulk-run all 11 fields across all of them in one pass — each field writes straight to Notion as it's regenerated (too many fields across too many products to stage and review one at a time).</p>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
       <button class="btn" onclick="selectAllProducts()">Select all</button>
@@ -3233,13 +3233,79 @@ async function runBulkProductResearch(steer, omit) {
 // Saved stacks first in the saved order, unknown stacks after (A→Z), "No Stack" last.
 let STACK_ORDER = [];
 let EMPTY_STACKS = [];   // stacks kept even with zero products (KV, alongside the order)
+// Product Groups — purely organizing layer above stacks (Group → Stack → Product).
+// Lives only in KV next to the stack order; products carry just their stack label,
+// and research still flows campaign → individual product (groups never feed it).
+let STACK_GROUPS = { order: [], map: {} };   // map: stack name → group name
 let _stackOrderLoaded = null;
 function ensureStackOrder() {
-  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID }).then(r => { STACK_ORDER = r.order || []; EMPTY_STACKS = r.empty || []; }).catch(() => {});
+  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID }).then(r => {
+    STACK_ORDER = r.order || []; EMPTY_STACKS = r.empty || [];
+    const g = r.groups || {}; STACK_GROUPS = { order: g.order || [], map: g.map || {} };
+  }).catch(() => {});
   return _stackOrderLoaded;
 }
 function saveStackMeta() {
-  return w('saveStackOrder', { campaignId: CAMPAIGN_ID, order: STACK_ORDER, empty: EMPTY_STACKS }).catch(e => alert('Could not save stacks: ' + e.message));
+  return w('saveStackOrder', { campaignId: CAMPAIGN_ID, order: STACK_ORDER, empty: EMPTY_STACKS, groups: STACK_GROUPS }).catch(e => alert('Could not save stacks: ' + e.message));
+}
+function newProductGroup() {
+  const name = (prompt('New group name:') || '').trim();
+  if (!name) return;
+  if (STACK_GROUPS.order.some(g => g.toLowerCase() === name.toLowerCase())) return alert('A group with that name already exists.');
+  STACK_GROUPS.order.push(name);
+  GROUPS_OPEN['prodgroup-' + name] = 1;
+  loadProductTab(); saveStackMeta();
+}
+function renameProductGroupUi(btn) {
+  const from = btn.closest('[data-group]').dataset.group;
+  const to = (prompt(`Rename group "${from}" to:`, from) || '').trim();
+  if (!to || to === from) return;
+  if (STACK_GROUPS.order.some(g => g.toLowerCase() === to.toLowerCase() && g !== from)) return alert('A group with that name already exists.');
+  STACK_GROUPS.order = STACK_GROUPS.order.map(g => g === from ? to : g);
+  Object.keys(STACK_GROUPS.map).forEach(st => { if (STACK_GROUPS.map[st] === from) STACK_GROUPS.map[st] = to; });
+  if (GROUPS_OPEN['prodgroup-' + from]) GROUPS_OPEN['prodgroup-' + to] = 1;
+  loadProductTab(); saveStackMeta();
+}
+function deleteProductGroupUi(btn) {
+  const name = btn.closest('[data-group]').dataset.group;
+  const n = Object.values(STACK_GROUPS.map).filter(g => g === name).length;
+  if (!confirm(`Delete group "${name}"?` + (n ? ` Its ${n} stack${n === 1 ? '' : 's'} become ungrouped (no stack or product changes).` : ''))) return;
+  STACK_GROUPS.order = STACK_GROUPS.order.filter(g => g !== name);
+  Object.keys(STACK_GROUPS.map).forEach(st => { if (STACK_GROUPS.map[st] === name) delete STACK_GROUPS.map[st]; });
+  loadProductTab(); saveStackMeta();
+}
+// Reorder groups (top-level only). Window listeners — see stackDragStart.
+function groupDragStart(e, handle) {
+  e.preventDefault(); e.stopPropagation();
+  const item = handle.closest('[data-group]'), list = item.parentElement;
+  item.classList.add('stack-dragging');
+  const ghost = dragGhost('▣ ' + item.dataset.group);
+  const move = ev => {
+    if (ev.pointerId !== e.pointerId) return;
+    ev.preventDefault();
+    ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 8) + 'px';
+    if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
+    const sibs = [...list.children].filter(c => c !== item && c.dataset.group);
+    const before = sibs.find(c => { const r = c.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+    if (before) list.insertBefore(item, before);
+    else { const last = sibs[sibs.length - 1]; if (last) last.after(item); }
+  };
+  const up = ev => {
+    if (ev.pointerId !== e.pointerId) return;
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    ghost.remove(); item.classList.remove('stack-dragging');
+    STACK_GROUPS.order = [...list.children].map(c => c.dataset.group).filter(Boolean);
+    loadProductTab(); saveStackMeta();
+  };
+  window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+  move(e);
+}
+function dragGhost(text) {
+  const ghost = document.createElement('div');
+  ghost.textContent = text;
+  ghost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:4px 10px;border-radius:6px;background:var(--surface);border:1px solid #8ab4f8;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:11px;font-weight:700;';
+  document.body.appendChild(ghost);
+  return ghost;
 }
 function allStackNames() {
   const seen = new Map();
@@ -3280,6 +3346,7 @@ async function renameProductStackUi(btn) {
   STACK_ORDER = STACK_ORDER.map(s => s === from ? to : s);
   EMPTY_STACKS = EMPTY_STACKS.filter(s => s !== from);
   keepStack(to);
+  if (STACK_GROUPS.map[from]) { STACK_GROUPS.map[to] = STACK_GROUPS.map[from]; delete STACK_GROUPS.map[from]; }
   if (GROUPS_OPEN['prodstack-' + from]) GROUPS_OPEN['prodstack-' + to] = 1;
   loadProductTab(); await saveStackMeta();
   if (failures.length) alert(`Renamed with ${failures.length} failure(s) — those products keep the old name:\n\n` + failures.join('\n'));
@@ -3292,6 +3359,7 @@ async function deleteProductStackUi(btn) {
   const failures = await moveProductsToStack(ids, '');
   STACK_ORDER = STACK_ORDER.filter(s => s !== name);
   EMPTY_STACKS = EMPTY_STACKS.filter(s => s !== name);
+  delete STACK_GROUPS.map[name];
   loadProductTab(); await saveStackMeta();
   if (failures.length) alert(`${failures.length} product(s) could not be moved:\n\n` + failures.join('\n'));
 }
@@ -3336,38 +3404,60 @@ function stackSort(order) {
 // Pointer-based drag (works with a finger on phones, unlike HTML5 drag-and-drop).
 // Listeners go on window, not the handle: moving the group in the DOM (insertBefore)
 // releases the handle's pointer capture, which froze the drag after the first swap.
+// Over a group → the stack goes into that group (appended if it's collapsed);
+// below the last group → ungrouped (top level). In the gaps between groups nothing
+// moves, so the stack doesn't jump to the bottom while crossing a margin.
 function stackDragStart(e, handle) {
   e.preventDefault(); e.stopPropagation();
-  const item = handle.closest('[data-stack]'), list = item.parentElement;
+  const item = handle.closest('[data-stack]'), root = document.getElementById('productListBody');
   item.classList.add('stack-dragging');
-  const ghost = document.createElement('div');
-  ghost.textContent = '⠿ ' + item.dataset.stack;
-  ghost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:4px 10px;border-radius:6px;background:var(--surface);border:1px solid #8ab4f8;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:11px;font-weight:700;';
-  document.body.appendChild(ghost);
+  const ghost = dragGhost('⠿ ' + item.dataset.stack);
+  let target = null;
+  const setTarget = el => { if (target === el) return; if (target) target.classList.remove('cluster-drop'); target = el; if (target) target.classList.add('cluster-drop'); };
+  const place = (box, y) => {
+    const sibs = [...box.children].filter(c => c !== item && c.dataset.stack && c.dataset.stack !== 'No Stack');
+    const before = sibs.find(c => { const r = c.getBoundingClientRect(); return y < r.top + r.height / 2; });
+    if (before) { if (item.nextElementSibling !== before) box.insertBefore(item, before); return; }
+    const none = box === root ? [...box.children].find(c => c.dataset.stack === 'No Stack') : null;
+    if (none) { if (item.nextElementSibling !== none) box.insertBefore(item, none); }
+    else if (box.lastElementChild !== item) box.appendChild(item);
+  };
   const move = ev => {
     if (ev.pointerId !== e.pointerId) return;
     ev.preventDefault();
     ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 8) + 'px';
     if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
-    const sibs = [...list.children].filter(c => c !== item && c.dataset.stack && c.dataset.stack !== 'No Stack');
-    const before = sibs.find(c => { const r = c.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
-    if (before) list.insertBefore(item, before);
-    else { const none = [...list.children].find(c => c.dataset.stack === 'No Stack'); none ? list.insertBefore(item, none) : list.appendChild(item); }
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    const grp = under && under.closest('#productListBody [data-group]');
+    if (grp) {
+      setTarget(grp);
+      const box = grp.querySelector(':scope > .kwgbody');
+      if (grp.classList.contains('open')) place(box, ev.clientY);
+      else if (item.parentElement !== box) box.appendChild(item);
+      return;
+    }
+    setTarget(null);
+    const groupsEls = [...root.children].filter(c => c.dataset.group);
+    const last = groupsEls[groupsEls.length - 1];
+    if (!last || ev.clientY > last.getBoundingClientRect().bottom) place(root, ev.clientY);
   };
   const up = ev => {
     if (ev.pointerId !== e.pointerId) return;
     window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
-    ghost.remove();
+    ghost.remove(); setTarget(null);
     item.classList.remove('stack-dragging');
-    const shown = [...list.children].map(c => c.dataset.stack).filter(x => x && x !== 'No Stack');
+    const stack = item.dataset.stack, grp = item.parentElement.closest('[data-group]');
+    if (grp) { STACK_GROUPS.map[stack] = grp.dataset.group; GROUPS_OPEN['prodgroup-' + grp.dataset.group] = 1; }
+    else delete STACK_GROUPS.map[stack];
+    const shown = [...root.querySelectorAll('[data-stack]')].map(c => c.dataset.stack).filter(x => x && x !== 'No Stack');
     STACK_ORDER = shown.concat(STACK_ORDER.filter(x => !shown.includes(x)));   // keep stacks not on screen, after
-    saveStackMeta();
+    loadProductTab(); saveStackMeta();
   };
   window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
   move(e);
 }
 function stackHandle(stack) {
-  return stack === 'No Stack' ? '' : `<span class="stack-handle" title="Drag to reorder stacks" onpointerdown="stackDragStart(event, this)" onclick="event.stopPropagation()">⠿</span>`;
+  return stack === 'No Stack' ? '' : `<span class="stack-handle" title="Drag to reorder stacks, or into / out of a group" onpointerdown="stackDragStart(event, this)" onclick="event.stopPropagation()">⠿</span>`;
 }
 function groupByStack(items, keyOf, fallback) {
   const groups = {}, order = [];
@@ -3388,7 +3478,7 @@ async function loadProductTab() {
     EMPTY_STACKS.forEach(s => { if (!groups[s]) { groups[s] = []; rawOrder.push(s); } });
     if (!groups['No Stack']) { groups['No Stack'] = []; rawOrder.push('No Stack'); }   // always a drop target
     const order = stackSort(rawOrder);
-    body.innerHTML = order.map(stack => `
+    const stackBlock = stack => `
       <div class="kwgroup" data-stack="${esc(stack)}" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;">
         <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span>${stack === 'No Stack' ? '' : `<span class="kwbtns"><button class="iconbtn" title="Rename this stack" onclick="event.stopPropagation();renameProductStackUi(this)">✎</button><button class="iconbtn" title="Delete this stack (its products move to No Stack)" onclick="event.stopPropagation();deleteProductStackUi(this)">✕</button></span>`}</div>
         <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row">
@@ -3403,7 +3493,18 @@ async function loadProductTab() {
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
             <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">✕</button>
           </span></div></div>`).join('') || `<div class="loadnote">${stack === 'No Stack' ? 'Drop a product here to take it out of its stack.' : 'Empty — drag products here.'}</div>`}</div>
-      </div>`).join('');
+      </div>`;
+    const groupOf = s => STACK_GROUPS.order.includes(STACK_GROUPS.map[s]) ? STACK_GROUPS.map[s] : null;
+    const groupsHtml = STACK_GROUPS.order.map(g => {
+      const stacks = order.filter(s => s !== 'No Stack' && groupOf(s) === g);
+      const nProducts = stacks.reduce((n, s) => n + groups[s].length, 0);
+      return `
+      <div class="kwgroup" data-group="${esc(g)}" data-ckey="prodgroup-${esc(g)}" style="--kwc:#f6ad55;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="stack-handle" title="Drag to reorder groups" onpointerdown="groupDragStart(event, this)" onclick="event.stopPropagation()">⠿</span><span class="kwarrow">▸</span>▣ ${esc(g)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stacks.length} stack${stacks.length === 1 ? '' : 's'} · ${nProducts} product${nProducts === 1 ? '' : 's'})</span><span class="kwbtns"><button class="iconbtn" title="Rename this group" onclick="event.stopPropagation();renameProductGroupUi(this)">✎</button><button class="iconbtn" title="Delete this group (its stacks become ungrouped)" onclick="event.stopPropagation();deleteProductGroupUi(this)">✕</button></span></div>
+        <div class="kwgbody" style="padding-left:6px;">${stacks.map(stackBlock).join('') || '<div class="loadnote">Empty — drag stacks here by their ⠿.</div>'}</div>
+      </div>`;
+    }).join('');
+    body.innerHTML = groupsHtml + order.filter(s => !groupOf(s)).map(stackBlock).join('');
     applyCollapseState(body);
     updateProductBulkBar();
   } catch (e) {
@@ -3456,8 +3557,15 @@ async function openProductModal(productId) {
 function closeProductModal() { document.getElementById('productModal').classList.remove('open'); }
 function stackOptions(selected) {
   const stacks = allStackNames().sort();
-  return `<option value="__none__" ${!selected ? 'selected' : ''}>— No Stack —</option>` +
-    stacks.map(s => `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`).join('') +
+  const opt = s => `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`;
+  const grouped = new Set();
+  const gHtml = STACK_GROUPS.order.map(g => {
+    const ss = stacks.filter(s => STACK_GROUPS.map[s] === g); ss.forEach(s => grouped.add(s));
+    return ss.length ? `<optgroup label="${esc(g)}">${ss.map(opt).join('')}</optgroup>` : '';
+  }).join('');
+  const rest = stacks.filter(s => !grouped.has(s)).map(opt).join('');
+  return `<option value="__none__" ${!selected ? 'selected' : ''}>— No Stack —</option>` + gHtml +
+    (grouped.size && rest ? `<optgroup label="Ungrouped">${rest}</optgroup>` : rest) +
     `<option value="__new__">+ New stack…</option>`;
 }
 function renderProductModalStack() {

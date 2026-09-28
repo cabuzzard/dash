@@ -39587,17 +39587,34 @@ ${assemblyManifest}`;
         // `empty` = stacks the operator created/kept that may hold zero products
         // (a stack otherwise only exists while some product carries its label).
         // Only written when passed, so microsites that just reorder never wipe it.
-        const key = "stackorder:" + cid, ekey = "stackempty:" + cid;
+        // `groups` = {order:[group names], map:{stack: group}} — purely organizing
+        // layer above stacks (Group → Stack → Product); products never carry it
+        // and nothing in the research flow reads it.
+        const key = "stackorder:" + cid, ekey = "stackempty:" + cid, gkey = "stackgroups:" + cid;
         const clean = a => (Array.isArray(a) ? a : []).map(x => String(x).trim().slice(0, 120)).filter(Boolean).slice(0, 200);
         if (body.action === "saveStackOrder") {
           const order = clean(body.order);
           await env.TRADES.put(key, JSON.stringify(order));
-          let empty;
+          let empty, groups;
           if (Array.isArray(body.empty)) { empty = clean(body.empty); await env.TRADES.put(ekey, JSON.stringify(empty)); }
-          return json({ ok: true, order, empty });
+          if (body.groups && typeof body.groups === "object") {
+            const gorder = clean(body.groups.order), map = {};
+            Object.entries(body.groups.map || {}).slice(0, 400).forEach(([st, g]) => {
+              st = String(st).trim().slice(0, 120); g = String(g || "").trim().slice(0, 120);
+              if (st && gorder.includes(g)) map[st] = g;
+            });
+            groups = { order: gorder, map };
+            await env.TRADES.put(gkey, JSON.stringify(groups));
+          }
+          return json({ ok: true, order, empty, groups });
         }
-        let order = [], empty = []; try { order = (await env.TRADES.get(key, "json")) || []; empty = (await env.TRADES.get(ekey, "json")) || []; } catch (e) {}
-        return json({ ok: true, order, empty });
+        let order = [], empty = [], groups = { order: [], map: {} };
+        try {
+          order = (await env.TRADES.get(key, "json")) || [];
+          empty = (await env.TRADES.get(ekey, "json")) || [];
+          groups = (await env.TRADES.get(gkey, "json")) || groups;
+        } catch (e) {}
+        return json({ ok: true, order, empty, groups });
       }
 
       if (body.action === "hyperframesReel") {
