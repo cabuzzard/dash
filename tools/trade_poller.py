@@ -3,6 +3,11 @@
 Trade Poller — fetches live prices via yfinance and pushes updates to the
 Hermes Cloudflare Worker (updateTrade action).
 
+SUPERSEDED 2026-09-28: price tracking now runs in the worker itself
+(runTradePoll on the */4 cron, bar-based highs/lows). The DashTradePoller
+scheduled task is disabled. Kept only as a manual fallback — running it
+alongside the worker cron is harmless but redundant.
+
 Run continuously:   python trade_poller.py
 Run once:           python trade_poller.py --once
 """
