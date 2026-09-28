@@ -3370,6 +3370,8 @@ function productDragStart(e, handle, id) {
   try { handle.setPointerCapture(e.pointerId); } catch (x) {}
   const prod = CAMPAIGN_PRODUCTS.find(p => p.id === id);
   const ids = SELECTED_PRODUCTS.has(id) && SELECTED_PRODUCTS.size > 1 ? [...SELECTED_PRODUCTS] : [id];
+  const emptyNone = document.querySelector('#productListBody .nostack-empty');
+  if (emptyNone) emptyNone.style.display = '';   // empty No Stack appears only while dragging
   const ghost = document.createElement('div');
   ghost.textContent = '⠿ ' + (ids.length > 1 ? ids.length + ' products' : (prod ? prod.name : 'product'));
   ghost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:4px 10px;border-radius:6px;background:var(--surface);border:1px solid #8ab4f8;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:11px;font-weight:700;';
@@ -3386,6 +3388,7 @@ function productDragStart(e, handle, id) {
     handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
     ghost.remove();
     const t = target; setTarget(null);
+    if (emptyNone) emptyNone.style.display = 'none';
     if (!t) return;
     const stack = t.dataset.stack;
     GROUPS_OPEN['prodstack-' + stack] = 1;   // open the stack it landed in
@@ -3476,10 +3479,10 @@ async function loadProductTab() {
     await Promise.all([ensureProductResearchState(), ensureStackOrder()]);
     const { groups, order: rawOrder } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
     EMPTY_STACKS.forEach(s => { if (!groups[s]) { groups[s] = []; rawOrder.push(s); } });
-    if (!groups['No Stack']) { groups['No Stack'] = []; rawOrder.push('No Stack'); }   // always a drop target
+    if (!groups['No Stack']) { groups['No Stack'] = []; rawOrder.push('No Stack'); }   // hidden while empty; shown as a drop target during a product drag
     const order = stackSort(rawOrder);
     const stackBlock = stack => `
-      <div class="kwgroup" data-stack="${esc(stack)}" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;">
+      <div class="kwgroup${stack === 'No Stack' && !groups[stack].length ? ' nostack-empty' : ''}" data-stack="${esc(stack)}" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;${stack === 'No Stack' && !groups[stack].length ? 'display:none;' : ''}">
         <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span>${stack === 'No Stack' ? '' : `<span class="kwbtns"><button class="iconbtn" title="Rename this stack" onclick="event.stopPropagation();renameProductStackUi(this)">✎</button><button class="iconbtn" title="Delete this stack (its products move to No Stack)" onclick="event.stopPropagation();deleteProductStackUi(this)">✕</button></span>`}</div>
         <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row">
             <span class="stack-handle" title="Drag onto another stack (checked products move together)" onpointerdown="productDragStart(event, this, '${esc(p.id)}')" onclick="event.stopPropagation()">⠿</span>
