@@ -42808,7 +42808,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
   },
 
   async scheduled(event, env, ctx) {
-    if (event.cron === "*/5 12-16 * * 1-5") {
+    if (event.cron === "*/5 12-16 * * MON-FRI") {
+      // MON-FRI, not 1-5: Cloudflare numbers weekdays 1=Sunday, so "1-5" ran
+      // Sun-Thu and silently skipped every Friday session.
       // ORB_MOMENTUM_001 — morning screen (08:00-09:30 ET) + opening-range
       // breakout monitor (10:00-11:30 ET). runOrbStrategy no-ops outside those
       // windows, so the 5-min cadence is cheap the rest of the time.

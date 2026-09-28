@@ -14203,7 +14203,7 @@ async function glHubFormsPullLists() {
 // job is added, removed, or re-timed there, update this array to match.
 // `cron` is the raw 5-field expression; `when` is the human reading (UTC).
 const CRON_REGISTRY = [
-  { fn: 'runOrbStrategy', cron: '*/5 12-16 * * 1-5', when: 'Every 5 min · Mon–Fri 12:00–16:59 UTC', group: 'Trading',
+  { fn: 'runOrbStrategy', cron: '*/5 12-16 * * MON-FRI', when: 'Every 5 min · Mon–Fri 12:00–16:59 UTC', group: 'Trading',
     what: 'ORB_MOMENTUM_001 — morning screen (08:00–09:30 ET) then opening-range-breakout monitor (10:00–11:30 ET). Self-no-ops outside those windows, so the 5-min cadence is cheap the rest of the day.',
     io: 'KV: orb:* · writes 🎯 ORB paper signals' },
   { fn: 'enrichUnprocessedSavedPosts', cron: '*/30 * * * *', when: 'Every 30 min', group: 'Links / content',
