@@ -26539,6 +26539,7 @@ Return ONLY a JSON object with these exact keys:
             palette:           rt(null, "Palette"),
             fonts:             rt(null, "Fonts"),
             campaignGoal:      cp["Campaign Goal"]?.rich_text?.map(t => t.plain_text).join("") || "",
+            targetAudience:    cp["Target Audience"]?.rich_text?.map(t => t.plain_text).join("") || "",
             painPoints:        cp["Pain Points"]?.rich_text?.map(t => t.plain_text).join("") || "",
             campaignKeyMessage:cp["Key Message"]?.rich_text?.map(t => t.plain_text).join("") || "",
           }
@@ -30555,9 +30556,9 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
       // side-effect" flow.
       if (body.action === "regeneratePositioningField") {
         const { campaignId, field, instructions, omit } = body;
-        const FIELD_MAP = { campaignGoal: "Campaign Goal", painPoints: "Pain Points", keyMessage: "Key Message" };
+        const FIELD_MAP = { campaignGoal: "Campaign Goal", painPoints: "Pain Points", keyMessage: "Key Message", targetAudience: "Target Audience" };
         const notionField = FIELD_MAP[field];
-        if (!campaignId || !notionField) return json({ error: "campaignId and a valid field (campaignGoal/painPoints/keyMessage) required" }, 400);
+        if (!campaignId || !notionField) return json({ error: "campaignId and a valid field (campaignGoal/painPoints/keyMessage/targetAudience) required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const cp = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
@@ -30567,15 +30568,21 @@ Call the submit_campaign_refresh tool with all five fields filled in — every f
         const resRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }).catch(() => []);
         const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
         const scoreR = r => ["Statement", "Unique Opportunity", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
-        const research = resRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
+        // The exact Research record the operator edited wins over "the richest one".
+        const wantId = String(body.researchId || "").replace(/-/g, "");
+        const research = (wantId && resRows.find(r => r.id.replace(/-/g, "") === wantId)) || resRows.slice().sort((a, b) => scoreR(b) - scoreR(a))[0] || null;
         const mainKeywords = rtx(research, "Keywords") || keywords;
+        const demand = await kwDemandBlock(env, mainKeywords || "", { related: 20 }).catch(() => "");
 
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are refreshing ONE field of a campaign's core positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
 
 MAIN KEYWORDS (dominant signal): "${mainKeywords || '(none set)'}"
-CURRENT ${notionField}: "${crt(notionField) || '(none set)'}"
-${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
-Rewrite ${notionField} (1-2 sentences) so it genuinely follows the keywords above — don't just restate the old value. Output ONLY the field's text, no preamble, no field name, no markdown.`;
+${demand}
+WHO ACTUALLY SEARCHES THESE KEYWORDS? Decide this FIRST, from the keywords themselves and the search data — not from the current field, the product, or the campaign's history. Industry/trade terms (e.g. \"construction management firm/services\") are typed by commercial/B2B buyers; consumer phrasing (\"someone to oversee my home build\") by consumers; \"software/solution/platform/tool\" terms and very high bids point to software buyers; \"top/best X companies\" pulls in job seekers and researchers too. The CURRENT value below may predate a keyword pivot: if its audience does not match who searches these keywords, REPLACE the audience entirely — do not keep it and polish around it.
+
+CURRENT ${notionField} (possibly stale — see above): "${crt(notionField) || '(none set)'}"
+${notionField !== "Target Audience" && crt("Target Audience") ? `Current Target Audience on file (also possibly stale — the keywords win): "${crt("Target Audience")}"\n` : ""}${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
+Rewrite ${notionField} (1-2 sentences) for the people who actually search these keywords. Output ONLY the field's text, no preamble, no field name, no markdown.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -30606,14 +30613,18 @@ Rewrite ${notionField} (1-2 sentences) so it genuinely follows the keywords abov
         const rProps = rp?.properties || {};
         const rrt = k => (rProps[k]?.rich_text || []).map(t => t.plain_text).join("");
         const keywords = rrt("Keywords");
+        const demand = await kwDemandBlock(env, keywords || "", { related: 20 }).catch(() => "");
         const otherField = field === "statement" ? "Unique Opportunity" : "Statement";
         const otherVal = rrt(otherField);
 
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are refreshing ONE field of a campaign's core research positioning, to bring it into line with the campaign's CURRENT keywords (the dominant, most-recent signal).
 
 MAIN KEYWORDS (dominant signal): "${keywords || '(none set)'}"
-CURRENT ${notionField}: "${rrt(notionField) || '(none set)'}"
-${otherField} (context — don't restate it, just stay consistent with it): "${otherVal || '(none set)'}"
+${demand}
+WHO ACTUALLY SEARCHES THESE KEYWORDS? Decide this FIRST, from the keywords themselves and the search data — not from the current field, the product, or the campaign's history. Industry/trade terms (e.g. \"construction management firm/services\") are typed by commercial/B2B buyers; consumer phrasing (\"someone to oversee my home build\") by consumers; \"software/solution/platform/tool\" terms and very high bids point to software buyers; \"top/best X companies\" pulls in job seekers and researchers too. The CURRENT value below may predate a keyword pivot: if its audience does not match who searches these keywords, REPLACE the audience entirely — do not keep it and polish around it.
+
+CURRENT ${notionField} (possibly stale — see above): "${rrt(notionField) || '(none set)'}"
+${otherField} (context — stay consistent with it only where it matches the keywords' real audience): "${otherVal || '(none set)'}"
 ${instructions ? `\nOPERATOR STEER (follow this): ${instructions}\n` : ""}${omitBlock(omit)}
 ${field === "statement" ? "Write the positioning statement — 2-3 sentences naming who this is for and what it does for them." : "Write the unique opportunity — 2-3 sentences on why this beats every alternative, the differentiator no one else can say."} Rewrite it so it genuinely follows the keywords above — don't just restate the old value. Output ONLY the field's text, no preamble, no field name, no markdown.`;
 
@@ -30995,7 +31006,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       if (body.action === "updateCampaignField") {
         const { campaignId, field, value } = body;
         if (!campaignId || !field) return json({ error: "campaignId and field required" }, 400);
-        const allowed = { keyMessage: "Key Message", painPoints: "Pain Points", campaignGoal: "Campaign Goal", notes: "Notes" };
+        const allowed = { keyMessage: "Key Message", painPoints: "Pain Points", campaignGoal: "Campaign Goal", targetAudience: "Target Audience", notes: "Notes" };
         const notionField = allowed[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);
         const dashed = campaignId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");

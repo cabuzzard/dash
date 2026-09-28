@@ -2357,6 +2357,7 @@ const RESEARCH_MODULES = [
 // touched here. Same stage/save discipline as RESEARCH_MODULES; commits
 // via the pre-existing updateCampaignField action.
 const POSITIONING_FIELDS = [
+  { key: 'targetAudience', label: 'Target Audience' },
   { key: 'campaignGoal', label: 'Campaign Goal' },
   { key: 'painPoints', label: 'Pain Points' },
   { key: 'campaignKeyMessage', label: 'Key Message', serverField: 'keyMessage' },
@@ -2383,7 +2384,7 @@ function renderPositioningFields() {
 async function runPositioningField(key, steer, omit) {
   const f = POSITIONING_FIELDS.find(x => x.key === key);
   if (!f) return;
-  const r = await w('regeneratePositioningField', { campaignId: CAMPAIGN_ID, field: f.serverField || f.key, instructions: steer || undefined, omit: omit || undefined });
+  const r = await w('regeneratePositioningField', { campaignId: CAMPAIGN_ID, researchId: RESEARCH_ID || (window.RESEARCH_RECORD && window.RESEARCH_RECORD.id) || undefined, field: f.serverField || f.key, instructions: steer || undefined, omit: omit || undefined });
   POSITIONING_STAGE[key] = r.text || '';
   renderPositioningFields();
 }
