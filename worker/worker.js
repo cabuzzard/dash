@@ -39309,6 +39309,21 @@ ${assemblyManifest}`;
       // current Post Caption + Hashtags (falls back to the saved properties).
       // -- hyperframesReel {assetId, op: "render"|"check"} — render a HyperFrames
       // Reel asset on HeyGen, or check/finish a render in flight.
+      // -- getStackOrder / saveStackOrder {campaignId, order?:[stack names]} — the
+      // operator's drag order for Product Stack groups on a microsite (KV, per campaign).
+      if (body.action === "getStackOrder" || body.action === "saveStackOrder") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const key = "stackorder:" + cid;
+        if (body.action === "saveStackOrder") {
+          const order = (Array.isArray(body.order) ? body.order : []).map(x => String(x).slice(0, 120)).filter(Boolean).slice(0, 200);
+          await env.TRADES.put(key, JSON.stringify(order));
+          return json({ ok: true, order });
+        }
+        let order = []; try { order = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+        return json({ ok: true, order });
+      }
+
       if (body.action === "hyperframesReel") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         if (!aid) return json({ error: "assetId required" }, 400);

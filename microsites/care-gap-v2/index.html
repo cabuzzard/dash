@@ -133,6 +133,9 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .kwcol h4{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--ink3);margin:0 0 8px;}
 .kwgroup{border-left:3px solid var(--kwc,var(--border2));padding-left:9px;margin-bottom:12px;}
 .kwghd{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--kwc,var(--ink2));margin-bottom:5px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.stack-handle{cursor:grab;touch-action:none;user-select:none;padding:0 6px 0 0;font-size:14px;color:var(--ink3);line-height:1;}
+.stack-handle:active{cursor:grabbing;}
+.stack-dragging{opacity:.55;outline:2px dashed var(--kwc,var(--border2));outline-offset:2px;}
 .kwbtns{margin-left:auto;display:flex;gap:4px;flex-wrap:nowrap;flex-shrink:0;}
 .kwbtns .btn{font-size:9.5px;padding:2px 7px;}
 .kwgbody{display:none;font-size:12px;color:var(--ink);padding-top:6px;}
@@ -3094,6 +3097,43 @@ async function runBulkProductResearch(steer, omit) {
   loadProductTab();
   if (failures.length) alert(`Bulk run finished with ${failures.length} failure(s):\n\n` + failures.join('\n'));
 }
+// ── Product Stack drag order (per campaign, worker KV getStackOrder/saveStackOrder).
+// Saved stacks first in the saved order, unknown stacks after (A→Z), "No Stack" last.
+let STACK_ORDER = [];
+let _stackOrderLoaded = null;
+function ensureStackOrder() {
+  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID }).then(r => { STACK_ORDER = r.order || []; }).catch(() => {});
+  return _stackOrderLoaded;
+}
+function stackSort(order) {
+  const idx = s => { const i = STACK_ORDER.indexOf(s); return i < 0 ? 1e6 : i; };
+  return order.slice().sort((a, b) => (a === 'No Stack') - (b === 'No Stack') || idx(a) - idx(b) || a.localeCompare(b));
+}
+// Pointer-based drag (works with a finger on phones, unlike HTML5 drag-and-drop).
+function stackDragStart(e, handle) {
+  e.preventDefault(); e.stopPropagation();
+  const item = handle.closest('[data-stack]'), list = item.parentElement;
+  item.classList.add('stack-dragging');
+  try { handle.setPointerCapture(e.pointerId); } catch (x) {}
+  const move = ev => {
+    if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
+    const sibs = [...list.children].filter(c => c !== item && c.dataset.stack && c.dataset.stack !== 'No Stack');
+    const before = sibs.find(c => { const r = c.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+    if (before) list.insertBefore(item, before);
+    else { const none = [...list.children].find(c => c.dataset.stack === 'No Stack'); none ? list.insertBefore(item, none) : list.appendChild(item); }
+  };
+  const up = () => {
+    handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
+    item.classList.remove('stack-dragging');
+    const shown = [...list.children].map(c => c.dataset.stack).filter(x => x && x !== 'No Stack');
+    STACK_ORDER = shown.concat(STACK_ORDER.filter(x => !shown.includes(x)));   // keep stacks not on screen, after
+    w('saveStackOrder', { campaignId: CAMPAIGN_ID, order: STACK_ORDER }).catch(e2 => alert('Could not save the stack order: ' + e2.message));
+  };
+  handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+}
+function stackHandle(stack) {
+  return stack === 'No Stack' ? '' : `<span class="stack-handle" title="Drag to reorder stacks" onpointerdown="stackDragStart(event, this)" onclick="event.stopPropagation()">⠿</span>`;
+}
 function groupByStack(items, keyOf, fallback) {
   const groups = {}, order = [];
   items.forEach(item => {
@@ -3108,11 +3148,12 @@ async function loadProductTab() {
   try {
     if (!CAMPAIGN_PRODUCTS.length) { const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = r.products || []; }
     if (!CAMPAIGN_PRODUCTS.length) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
-    await ensureProductResearchState();
-    const { groups, order } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
+    await Promise.all([ensureProductResearchState(), ensureStackOrder()]);
+    const { groups, order: rawOrder } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
+    const order = stackSort(rawOrder);
     body.innerHTML = order.map(stack => `
-      <div class="kwgroup" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span></div>
+      <div class="kwgroup" data-stack="${esc(stack)}" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span></div>
         <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row">
             <input type="checkbox" class="prod-select-cb" ${SELECTED_PRODUCTS.has(p.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleProductSelect('${esc(p.id)}', this.checked)" style="margin-right:6px;">
             <span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
@@ -3903,7 +3944,7 @@ const TITLE_STAGES = ["Planning","Development","Writing","Review","Approved","Ex
 // relative position drift between the two views since it depends on which
 // title happens to hit that stack first in each subset. Sorting here makes
 // both views agree regardless of which titles are in each subset.
-const sortGroupOrder = (order, none) => order.slice().sort((a, b) => (a === none ? 1 : 0) - (b === none ? 1 : 0) || a.localeCompare(b));
+const sortGroupOrder = (order, none) => none === 'No Stack' ? stackSort(order) : order.slice().sort((a, b) => (a === none ? 1 : 0) - (b === none ? 1 : 0) || a.localeCompare(b));
 function buildTitleTree(titles) {
   const stackByProductId = {}; CAMPAIGN_PRODUCTS.forEach(p => { stackByProductId[p.id] = p.stack || 'No Stack'; });
   const { groups: byStack, order: stackOrderRaw } = groupByStack(titles, t => (t.productId && t.productId !== '__none__') ? stackByProductId[t.productId] : 'No Stack');
@@ -3927,6 +3968,7 @@ async function loadTitleAndAssetTab() {
   const assetBody = document.getElementById('assetTree');
   titleBody.innerHTML = '<div class="loadnote">Loading…</div>';
   assetBody.innerHTML = '<div class="loadnote">Loading…</div>';
+  await ensureStackOrder();   // stack groups follow the operator's drag order (Product Research tab)
   SELECTED_TITLE_IDS.clear(); SELECTED_ASSET_IDS.clear();
   document.getElementById('titleBulkBar').style.display = 'none';
   document.getElementById('assetBulkBar').style.display = 'none';
