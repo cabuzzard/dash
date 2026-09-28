@@ -5454,7 +5454,17 @@ function renderLinks() {
     ? '<button onclick="integrateAllLinks()" style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;margin-left:12px;">✓ Integrate all transcribed (' + nUnmined + ')</button>'
     : '';
 
-  el.innerHTML = '<div id="ltBulk" style="margin-bottom:10px;font-size:11px;color:var(--text3);">' + nUnmined + ' transcribed, not yet mined' + bulkBtn + '</div>' + LINKS_POSTS.map(p => {
+  const untranscribed = LINKS_POSTS.filter(p => p.status !== 'Done');
+  LT_SELECTED.forEach(id => { if (!untranscribed.some(p => p.id === id)) LT_SELECTED.delete(id); });
+  const allSel = untranscribed.length && untranscribed.every(p => LT_SELECTED.has(p.id));
+  const transcribeBar = untranscribed.length
+    ? '<div style="margin-top:6px;display:flex;align-items:center;gap:10px;">'
+      + '<label style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" ' + (allSel ? 'checked' : '') + ' onchange="ltSelectAll(this.checked)"> Select all untranscribed (' + untranscribed.length + ')</label>'
+      + '<button onclick="transcribeSelectedLinks(this)" ' + (LT_SELECTED.size ? '' : 'disabled ') + 'style="font-size:11px;font-weight:600;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:' + (LT_SELECTED.size ? 'var(--accent)' : 'transparent') + ';color:' + (LT_SELECTED.size ? 'var(--bg)' : 'var(--text3)') + ';cursor:' + (LT_SELECTED.size ? 'pointer' : 'default') + ';">⚡ Transcribe selected (' + LT_SELECTED.size + ')</button>'
+      + '</div>'
+    : '';
+
+  el.innerHTML = '<div id="ltBulk" style="margin-bottom:10px;font-size:11px;color:var(--text3);">' + nUnmined + ' transcribed, not yet mined' + bulkBtn + transcribeBar + '</div>' + LINKS_POSTS.map(p => {
     const dateStr = p.dateSaved ? new Date(p.dateSaved).toLocaleDateString() : '';
     const errorBlock = p.error ? '<div style="margin-top:6px;font-size:12px;color:#ff6b6b;">⚠ ' + esc(p.error) + '</div>' : '';
     const notesBlock = p.notes ? '<div style="margin-top:6px;font-size:12px;color:var(--text2);line-height:1.5;">' + esc(p.notes) + '</div>' : '';
@@ -5483,6 +5493,7 @@ function renderLinks() {
     return '<div id="linkRow_' + p.id + '" style="padding:10px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--surface);">'
       + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">'
       +   '<div style="display:flex;align-items:center;gap:8px;min-width:0;flex:1;">'
+      +     (p.status !== 'Done' ? '<input type="checkbox" title="Select for bulk transcribe" ' + (LT_SELECTED.has(p.id) ? 'checked ' : '') + 'onchange="ltToggleSelect(\'' + p.id + '\',this.checked)" style="margin:0;cursor:pointer;flex-shrink:0;">' : '')
       +     platformBadge
       +     '<span style="font-size:11px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + (p.account ? '@' + esc(p.account) : '') + (dateStr ? (p.account ? ' · ' : '') + dateStr : '') + '</span>'
       +   '</div>'
@@ -5645,6 +5656,33 @@ async function bulkLinksNightlyRun(btn) {
 async function bulkLinksNightlyReset() {
   if (!confirm('Clear the re-mine tracker? Phase 3 will then re-mine every transcribed link once more over the coming nights (refreshes their ⛏️ Link Mining rows).')) return;
   try { await call('bulkLinksNightlyReset', {}); bulkLinksNightlyRefresh(); } catch (e) { alert('Error: ' + e.message); }
+}
+
+// Bulk transcribe: checkbox on each not-yet-Done row → one retrySavedPost
+// call per link, sequential (each call is its own worker request, so no
+// shared subrequest budget), then a single reload.
+const LT_SELECTED = new Set();
+function ltToggleSelect(id, on) { on ? LT_SELECTED.add(id) : LT_SELECTED.delete(id); renderLinks(); }
+function ltSelectAll(on) {
+  LINKS_POSTS.filter(p => p.status !== 'Done').forEach(p => on ? LT_SELECTED.add(p.id) : LT_SELECTED.delete(p.id));
+  renderLinks();
+}
+async function transcribeSelectedLinks(btn) {
+  const ids = [...LT_SELECTED];
+  if (!ids.length) return;
+  if (btn) btn.disabled = true;
+  let ok = 0, fail = 0;
+  for (let i = 0; i < ids.length; i++) {
+    if (btn) btn.textContent = 'Transcribing ' + (i + 1) + '/' + ids.length + '…';
+    const row = document.getElementById('linkRow_' + ids[i]);
+    if (row) row.style.opacity = '0.5';
+    try {
+      const r = await call('retrySavedPost', { id: ids[i] });
+      if (r.ok) { ok++; LT_SELECTED.delete(ids[i]); } else fail++;
+    } catch (e) { fail++; }
+  }
+  showToast('Transcribed ' + ok + '/' + ids.length + (fail ? ' · ' + fail + ' failed' : '') , fail ? 'error' : 'success');
+  await loadLinks();
 }
 
 async function retryLinkRow(id) {
