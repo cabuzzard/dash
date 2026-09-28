@@ -1356,7 +1356,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: PRODUCT RESEARCH ══════════════════════ -->
   <div class="panel" data-panel="product">
-    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="btn primary" style="margin-left:auto;" onclick="openAddProductModal()">+ Add Product</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
+    <div class="stage-hd"><h2>Product Research</h2><span class="stagetag">stage 2</span><button class="btn" style="margin-left:auto;" onclick="newProductStack()">+ New Stack</button><button class="btn primary" onclick="openAddProductModal()">+ Add Product</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-product','Product Research tab','product')">📝 Tab note</button></div>
     <p class="stage-sub">Every product on this campaign, nested by Product Stack. Click a product to open its 11 🔬 Product Research fields, each with its own regen — staged for review before Save. Check one or more products below to bulk-run all 11 fields across all of them in one pass — each field writes straight to Notion as it's regenerated (too many fields across too many products to stage and review one at a time).</p>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
       <button class="btn" onclick="selectAllProducts()">Select all</button>
@@ -3232,10 +3232,102 @@ async function runBulkProductResearch(steer, omit) {
 // ── Product Stack drag order (per campaign, worker KV getStackOrder/saveStackOrder).
 // Saved stacks first in the saved order, unknown stacks after (A→Z), "No Stack" last.
 let STACK_ORDER = [];
+let EMPTY_STACKS = [];   // stacks kept even with zero products (KV, alongside the order)
 let _stackOrderLoaded = null;
 function ensureStackOrder() {
-  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID }).then(r => { STACK_ORDER = r.order || []; }).catch(() => {});
+  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID }).then(r => { STACK_ORDER = r.order || []; EMPTY_STACKS = r.empty || []; }).catch(() => {});
   return _stackOrderLoaded;
+}
+function saveStackMeta() {
+  return w('saveStackOrder', { campaignId: CAMPAIGN_ID, order: STACK_ORDER, empty: EMPTY_STACKS }).catch(e => alert('Could not save stacks: ' + e.message));
+}
+function allStackNames() {
+  const seen = new Map();
+  CAMPAIGN_PRODUCTS.map(p => p.stack).concat(EMPTY_STACKS).forEach(s => { s = (s || '').trim(); if (s && s !== 'No Stack' && !seen.has(s.toLowerCase())) seen.set(s.toLowerCase(), s); });
+  return [...seen.values()];
+}
+// Keep a stack visible once its last product leaves it (only delete removes a stack).
+function keepStack(name) { if (name && name !== 'No Stack' && !EMPTY_STACKS.includes(name)) EMPTY_STACKS.push(name); }
+async function moveProductsToStack(ids, stack) {
+  stack = (stack || '').trim(); if (stack === 'No Stack') stack = '';
+  const failures = [];
+  for (const id of ids) {
+    const prod = CAMPAIGN_PRODUCTS.find(p => p.id === id);
+    if (!prod || (prod.stack || '') === stack) continue;
+    try { await w('setProductStack', { productId: id, stack }); keepStack(prod.stack); prod.stack = stack || null; }
+    catch (e) { failures.push((prod.name || id) + ': ' + e.message); }
+  }
+  return failures;
+}
+function newProductStack() {
+  const name = (prompt('New stack name:') || '').trim();
+  if (!name) return;
+  if (name === 'No Stack' || allStackNames().some(s => s.toLowerCase() === name.toLowerCase())) return alert('A stack with that name already exists.');
+  EMPTY_STACKS.push(name);
+  GROUPS_OPEN['prodstack-' + name] = 1;
+  loadProductTab(); saveStackMeta();
+}
+// Campaign-scoped rename: rewrites Product Stack on this campaign's products only
+// (the worker's renameProductStack renames across every campaign).
+async function renameProductStackUi(btn) {
+  const from = btn.closest('[data-stack]').dataset.stack;
+  const to = (prompt(`Rename stack "${from}" to:`, from) || '').trim();
+  if (!to || to === from) return;
+  if (to === 'No Stack' || allStackNames().some(s => s.toLowerCase() === to.toLowerCase() && s !== from)) return alert('A stack with that name already exists.');
+  btn.disabled = true;
+  const ids = CAMPAIGN_PRODUCTS.filter(p => p.stack === from).map(p => p.id);
+  const failures = await moveProductsToStack(ids, to);
+  STACK_ORDER = STACK_ORDER.map(s => s === from ? to : s);
+  EMPTY_STACKS = EMPTY_STACKS.filter(s => s !== from);
+  keepStack(to);
+  if (GROUPS_OPEN['prodstack-' + from]) GROUPS_OPEN['prodstack-' + to] = 1;
+  loadProductTab(); await saveStackMeta();
+  if (failures.length) alert(`Renamed with ${failures.length} failure(s) — those products keep the old name:\n\n` + failures.join('\n'));
+}
+async function deleteProductStackUi(btn) {
+  const name = btn.closest('[data-stack]').dataset.stack;
+  const ids = CAMPAIGN_PRODUCTS.filter(p => p.stack === name).map(p => p.id);
+  if (!confirm(`Delete stack "${name}"?` + (ids.length ? ` Its ${ids.length} product${ids.length === 1 ? '' : 's'} move to No Stack (nothing is archived).` : ''))) return;
+  btn.disabled = true;
+  const failures = await moveProductsToStack(ids, '');
+  STACK_ORDER = STACK_ORDER.filter(s => s !== name);
+  EMPTY_STACKS = EMPTY_STACKS.filter(s => s !== name);
+  loadProductTab(); await saveStackMeta();
+  if (failures.length) alert(`${failures.length} product(s) could not be moved:\n\n` + failures.join('\n'));
+}
+// Drag a product onto a stack (pointer events — works by finger on phones).
+// Dragging a checked product moves every checked product.
+function productDragStart(e, handle, id) {
+  e.preventDefault(); e.stopPropagation();
+  try { handle.setPointerCapture(e.pointerId); } catch (x) {}
+  const prod = CAMPAIGN_PRODUCTS.find(p => p.id === id);
+  const ids = SELECTED_PRODUCTS.has(id) && SELECTED_PRODUCTS.size > 1 ? [...SELECTED_PRODUCTS] : [id];
+  const ghost = document.createElement('div');
+  ghost.textContent = '⠿ ' + (ids.length > 1 ? ids.length + ' products' : (prod ? prod.name : 'product'));
+  ghost.style.cssText = 'position:fixed;z-index:9999;pointer-events:none;padding:4px 10px;border-radius:6px;background:var(--surface);border:1px solid #8ab4f8;box-shadow:0 4px 14px rgba(0,0,0,.2);font-size:11px;font-weight:700;';
+  document.body.appendChild(ghost);
+  let target = null;
+  const setTarget = el => { if (target === el) return; if (target) target.classList.remove('cluster-drop'); target = el; if (target) target.classList.add('cluster-drop'); };
+  const move = ev => {
+    ghost.style.left = (ev.clientX + 12) + 'px'; ghost.style.top = (ev.clientY + 8) + 'px';
+    if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
+    const under = document.elementFromPoint(ev.clientX, ev.clientY);
+    setTarget(under && under.closest('#productListBody [data-stack]'));
+  };
+  const up = async () => {
+    handle.removeEventListener('pointermove', move); handle.removeEventListener('pointerup', up); handle.removeEventListener('pointercancel', up);
+    ghost.remove();
+    const t = target; setTarget(null);
+    if (!t) return;
+    const stack = t.dataset.stack;
+    GROUPS_OPEN['prodstack-' + stack] = 1;   // open the stack it landed in
+    const failures = await moveProductsToStack(ids, stack);
+    if (ids.length > 1) SELECTED_PRODUCTS.clear();
+    loadProductTab(); saveStackMeta();
+    if (failures.length) alert(`${failures.length} product(s) could not be moved:\n\n` + failures.join('\n'));
+  };
+  handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
+  move(e);
 }
 function stackSort(order) {
   const idx = s => { const i = STACK_ORDER.indexOf(s); return i < 0 ? 1e6 : i; };
@@ -3259,7 +3351,7 @@ function stackDragStart(e, handle) {
     item.classList.remove('stack-dragging');
     const shown = [...list.children].map(c => c.dataset.stack).filter(x => x && x !== 'No Stack');
     STACK_ORDER = shown.concat(STACK_ORDER.filter(x => !shown.includes(x)));   // keep stacks not on screen, after
-    w('saveStackOrder', { campaignId: CAMPAIGN_ID, order: STACK_ORDER }).catch(e2 => alert('Could not save the stack order: ' + e2.message));
+    saveStackMeta();
   };
   handle.addEventListener('pointermove', move); handle.addEventListener('pointerup', up); handle.addEventListener('pointercancel', up);
 }
@@ -3282,11 +3374,14 @@ async function loadProductTab() {
     if (!CAMPAIGN_PRODUCTS.length) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
     await Promise.all([ensureProductResearchState(), ensureStackOrder()]);
     const { groups, order: rawOrder } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
+    EMPTY_STACKS.forEach(s => { if (!groups[s]) { groups[s] = []; rawOrder.push(s); } });
+    if (!groups['No Stack']) { groups['No Stack'] = []; rawOrder.push('No Stack'); }   // always a drop target
     const order = stackSort(rawOrder);
     body.innerHTML = order.map(stack => `
       <div class="kwgroup" data-stack="${esc(stack)}" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span></div>
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span>${stack === 'No Stack' ? '' : `<span class="kwbtns"><button class="iconbtn" title="Rename this stack" onclick="event.stopPropagation();renameProductStackUi(this)">✎</button><button class="iconbtn" title="Delete this stack (its products move to No Stack)" onclick="event.stopPropagation();deleteProductStackUi(this)">✕</button></span>`}</div>
         <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row">
+            <span class="stack-handle" title="Drag onto another stack (checked products move together)" onpointerdown="productDragStart(event, this, '${esc(p.id)}')" onclick="event.stopPropagation()">⠿</span>
             <input type="checkbox" class="prod-select-cb" ${SELECTED_PRODUCTS.has(p.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleProductSelect('${esc(p.id)}', this.checked)" style="margin-right:6px;">
             <span class="idea-title" title="${esc(p.name)}">${esc(p.name)}</span>
             ${researchStateBadge(p.id)}
@@ -3296,7 +3391,7 @@ async function loadProductTab() {
             <button class="iconbtn" title="Create Product — write the real deliverable (ebook, coaching package, spreadsheet, etc.), not just the record" onclick="openCreateProductModal('${esc(p.id)}', '${esc(p.name.replace(/'/g,"\\'"))}')">🏗️ Create</button>
             <a class="kwlink" href="${notionUrl(p.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
             <button class="iconbtn" title="Archive this product" onclick="archiveProduct('${esc(p.id)}', this)">✕</button>
-          </span></div></div>`).join('')}</div>
+          </span></div></div>`).join('') || `<div class="loadnote">${stack === 'No Stack' ? 'Drop a product here to take it out of its stack.' : 'Empty — drag products here.'}</div>`}</div>
       </div>`).join('');
     applyCollapseState(body);
     updateProductBulkBar();
@@ -3349,7 +3444,7 @@ async function openProductModal(productId) {
 }
 function closeProductModal() { document.getElementById('productModal').classList.remove('open'); }
 function stackOptions(selected) {
-  const stacks = [...new Set(CAMPAIGN_PRODUCTS.map(p => p.stack).filter(Boolean))].sort();
+  const stacks = allStackNames().sort();
   return `<option value="__none__" ${!selected ? 'selected' : ''}>— No Stack —</option>` +
     stacks.map(s => `<option value="${esc(s)}" ${s === selected ? 'selected' : ''}>${esc(s)}</option>`).join('') +
     `<option value="__new__">+ New stack…</option>`;
@@ -3374,9 +3469,9 @@ async function savePmStack() {
   if (stack === '__new__') stack = (document.getElementById('productModalNewStack').value || '').trim();
   if (stack === '__none__') stack = '';
   try {
-    await w('setProductStack', { productId: PRODUCT_MODAL_ID, stack: stack || 'No Stack' });
+    await w('setProductStack', { productId: PRODUCT_MODAL_ID, stack });
     const prod = CAMPAIGN_PRODUCTS.find(p => p.id === PRODUCT_MODAL_ID);
-    if (prod) prod.stack = stack || null;
+    if (prod) { keepStack(prod.stack); prod.stack = stack || null; saveStackMeta(); }
     renderProductModalStack();
     loadProductTab();
   } catch (e) { alert('Save failed: ' + e.message); }

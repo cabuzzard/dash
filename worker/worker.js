@@ -13385,12 +13385,13 @@ Return ONLY this JSON, no other text, no fences:
       // creation-race reasoning as setProductType.
       if (body.action === "setProductStack") {
         const { productId, stack } = body;
-        if (!productId || !stack) return json({ error: "productId and stack required" }, 400);
+        if (!productId || stack == null) return json({ error: "productId and stack required" }, 400);
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Product Stack": { rich_text: [{ type: "text", text: { content: String(stack).slice(0, 100) } }] } } }),
+          // "" (or the legacy literal "No Stack") clears the property → product shows under No Stack
+          body: JSON.stringify({ properties: { "Product Stack": { rich_text: (String(stack).trim() && String(stack).trim() !== "No Stack") ? [{ type: "text", text: { content: String(stack).trim().slice(0, 100) } }] : [] } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
@@ -39583,14 +39584,20 @@ ${assemblyManifest}`;
       if (body.action === "getStackOrder" || body.action === "saveStackOrder") {
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (!cid) return json({ error: "campaignId required" }, 400);
-        const key = "stackorder:" + cid;
+        // `empty` = stacks the operator created/kept that may hold zero products
+        // (a stack otherwise only exists while some product carries its label).
+        // Only written when passed, so microsites that just reorder never wipe it.
+        const key = "stackorder:" + cid, ekey = "stackempty:" + cid;
+        const clean = a => (Array.isArray(a) ? a : []).map(x => String(x).trim().slice(0, 120)).filter(Boolean).slice(0, 200);
         if (body.action === "saveStackOrder") {
-          const order = (Array.isArray(body.order) ? body.order : []).map(x => String(x).slice(0, 120)).filter(Boolean).slice(0, 200);
+          const order = clean(body.order);
           await env.TRADES.put(key, JSON.stringify(order));
-          return json({ ok: true, order });
+          let empty;
+          if (Array.isArray(body.empty)) { empty = clean(body.empty); await env.TRADES.put(ekey, JSON.stringify(empty)); }
+          return json({ ok: true, order, empty });
         }
-        let order = []; try { order = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
-        return json({ ok: true, order });
+        let order = [], empty = []; try { order = (await env.TRADES.get(key, "json")) || []; empty = (await env.TRADES.get(ekey, "json")) || []; } catch (e) {}
+        return json({ ok: true, order, empty });
       }
 
       if (body.action === "hyperframesReel") {
