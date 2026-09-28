@@ -14203,6 +14203,9 @@ async function glHubFormsPullLists() {
 // job is added, removed, or re-timed there, update this array to match.
 // `cron` is the raw 5-field expression; `when` is the human reading (UTC).
 const CRON_REGISTRY = [
+  { fn: 'runSwingStrategies', cron: '*/5 12-16 * * MON-FRI', when: 'Once per session ~09:45 ET (self-gated on the ORB cron)', group: 'Trading',
+    what: 'ETF_MOMENTUM_V1 (top 3 of 10 asset ETFs by 3-mo return, re-picked every 20 sessions) + FEAR_DIP_V1 (RSI(2)<10 above SMA200, only when VIX>20; exit signal close>SMA5 or 20 sessions, recorded on the trade meta). Rules as backtested in tools/backtest. Picks written as swing calls via the ORB contract picker; tracked by runTradePoll.',
+    io: 'KV: swing:* · writes trades:* paper signals' },
   { fn: 'runOrbStrategy', cron: '*/5 12-16 * * MON-FRI', when: 'Every 5 min · Mon–Fri 12:00–16:59 UTC', group: 'Trading',
     what: 'ORB_MOMENTUM_001 — morning screen (08:00–09:30 ET) then opening-range-breakout monitor (10:00–11:30 ET). Self-no-ops outside those windows, so the 5-min cadence is cheap the rest of the day.',
     io: 'KV: orb:* · writes 🎯 ORB paper signals' },
@@ -18439,8 +18442,13 @@ const TRADE_COL_DEFS = [
   { id:'status',  label:'Status',   sortVal: t => t.expired?2:t.strike_reached?1:0,
     cell: t => { if(t.archive_failed)return`<span class="tr-badge-exp" style="background:#3a1a00;color:#ff8844;border-color:#ff884466;cursor:pointer;" onclick="event.stopPropagation();retryArchive('${t.id}')" title="Notion archive failed\n${t.archive_error||''}">⚠ Retry</span>`; if(t.expired)return'<span class="tr-badge-exp">Expired</span>'; if(t.strike_reached)return'<span class="tr-badge-struck">★ Hit</span>'; return'<span class="tr-badge-open">Open</span>'; } },
 ];
-const TRADE_DEFAULT_ORDER = ['symbol','strategy','date','entryU','entryC','strike','expiry','hiU','loU','hiC','loC','maxDay','curU','curC','plU','plC','status'];
+const TRADE_DEFAULT_ORDER = ['symbol','date','entryU','entryC','strike','expiry','hiU','loU','hiC','loC','maxDay','curU','curC','plU','plC','status','strategy'];
 let tradeColOrder = JSON.parse(localStorage.getItem('tradeColOrder')||'null') || [...TRADE_DEFAULT_ORDER];
+// One-time move of Strategy to the far-right column (2026-09-28) for saved orders.
+if (!localStorage.getItem('tradeColStrategyRight')) {
+  tradeColOrder = tradeColOrder.filter(id => id !== 'strategy').concat('strategy');
+  try { localStorage.setItem('tradeColOrder', JSON.stringify(tradeColOrder)); localStorage.setItem('tradeColStrategyRight', '1'); } catch (e) {}
+}
 let tradesSortCol = null;
 let tradesSortDir = 1;
 let _tradeDragSrc = null;

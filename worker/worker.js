@@ -5660,6 +5660,189 @@ async function archiveExpiredTrade(env, id, updated) {
   }
 }
 
+// ── SWING STRATEGIES: ETF_MOMENTUM_V1 + FEAR_DIP_V1 (2026-09-28) ──────────
+// Two daily paper-signal generators, rules exactly as backtested in
+// tools/backtest (bt.py — momentum lookback=63/top 3/multi-asset, and
+// meanrev RSI(2)<10 + VIX>20, exit SMA5 / 20 days). Signals use COMPLETED
+// daily closes; the job runs once per session at ~09:45 ET (the backtest's
+// "fill at next open"). Each pick is expressed as a swing CALL chosen by the
+// same picker as ORB (~42 DTE, ~0.675Δ, no-bid/sub-$0.05 rejected) and
+// written as a normal `trades:{id}` record — tracking (underlying + option
+// max high/low from bars) is runTradePoll, identical to every other trade.
+// The strategies' own exit signals are only recorded on the trade's `meta`;
+// they never alter tracking. Params are frozen: tune in tools/backtest first.
+const SWING_MOM = {
+  id: 'ETF_MOMENTUM_V1', universe: ['SPY', 'QQQ', 'IWM', 'EFA', 'EEM', 'TLT', 'IEF', 'GLD', 'DBC', 'VNQ'],
+  lookback: 63, topK: 3, stepDays: 20,
+};
+const SWING_DIP = {
+  id: 'FEAR_DIP_V1', universe: ['SPY', 'QQQ', 'IWM', 'DIA', 'XLB', 'XLE', 'XLF', 'XLI', 'XLK', 'XLP', 'XLU', 'XLV', 'XLY'],
+  rsiN: 2, rsiTh: 10, vixMin: 20, trendSma: 200, exitSma: 5, slots: 5, maxHold: 20,
+};
+const SWING_RUN_MIN = 9 * 60 + 45;   // 09:45 ET — after the open, chains are live
+
+// Completed daily bars (split/dividend-adjusted closes, like the backtest).
+// Today's in-progress bar is dropped until the 16:00 ET close.
+async function swingDaily(sym, et) {
+  const j = await orbFetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=2y`);
+  const res = j?.chart?.result?.[0];
+  if (!res) throw new Error(`${sym}: no daily data`);
+  const ts = res.timestamp || [];
+  const raw = res.indicators?.quote?.[0]?.close || [];
+  const adj = res.indicators?.adjclose?.[0]?.adjclose || raw;
+  const out = [];
+  for (let i = 0; i < ts.length; i++) {
+    const c = adj[i] ?? raw[i];
+    if (c == null) continue;
+    const date = new Date(ts[i] * 1000 - 5 * 3600e3).toISOString().slice(0, 10);   // ET session date
+    out.push({ date, c });
+  }
+  if (out.length && out[out.length - 1].date === et.dateStr && et.minutes < 16 * 60) out.pop();
+  return out;
+}
+
+// Wilder RSI via the same recursion as pandas ewm(alpha=1/n, adjust=False).
+function swingRsi(closes, n) {
+  const a = 1 / n, out = new Array(closes.length).fill(null);
+  let up = null, dn = null;
+  for (let i = 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    const u = Math.max(d, 0), w = Math.max(-d, 0);
+    if (up === null) { up = u; dn = w; } else { up = (1 - a) * up + a * u; dn = (1 - a) * dn + a * w; }
+    out[i] = dn > 0 ? 100 - 100 / (1 + up / dn) : null;
+  }
+  return out;
+}
+const swingSma = (arr, n, i) => (i + 1 < n ? null : arr.slice(i - n + 1, i + 1).reduce((s, x) => s + x, 0) / n);
+
+// Writes one swing-call paper trade (same record shape as ORB's).
+async function swingOpenTrade(env, strategyId, sym, notes, meta) {
+  let pick = null;
+  try { pick = await orbPickSwingContract(sym, 'C'); } catch { pick = null; }
+  if (!pick || pick.price == null) return { sym, skipped: 'no_tradeable_contract' };
+  const nowIso = new Date().toISOString();
+  const id = `${sym}_${nowIso.replace(/[-:T.Z]/g, '').slice(0, 14)}_${strategyId.slice(0, 3)}`;
+  const trade = {
+    id, ticker: sym, strike: pick.strike, expiry: pick.expiry, direction: 'C',
+    strategy: strategyId, notes: `${notes} · swing C $${pick.strike} exp ${pick.expiry} ~${pick.dte}d ~${(pick.delta ?? 0).toFixed(2)}Δ`,
+    entry_time: nowIso,
+    entry_price: null, price_captured: false,        // runTradePoll fills it from the entry bar's open
+    current_price: null, current_pct: null,
+    max_high: null, max_high_time: null, max_low: null, max_low_time: null,
+    strike_reached: false, strike_reached_time: null,
+    last_updated: null, expired: false,
+    entry_contract: pick.price, contract_captured: true,
+    current_contract: null, contract_pct: null,
+    contract_max_high: null, contract_max_high_time: null,
+    contract_max_low: null, contract_max_low_time: null,
+    auto_created: true,
+    meta: { strategy_id: strategyId, ticker: sym, signal_ts: nowIso, ...meta,
+            contract: { type: 'C', strike: pick.strike, expiry: pick.expiry, delta: pick.delta, dte: pick.dte, entry_price: pick.price },
+            params_version: 'V1' },
+  };
+  await env.TRADES.put(`trades:${id}`, JSON.stringify(trade));
+  return { sym, id, strike: pick.strike, expiry: pick.expiry, price: pick.price };
+}
+
+async function runSwingStrategies(env, { force = false } = {}) {
+  const et = orbNowET();
+  if (!force) {
+    if (et.isWeekend) return { ran: false, reason: 'weekend' };
+    if (et.minutes < SWING_RUN_MIN || et.minutes > 12 * 60) return { ran: false, reason: 'outside 09:45-12:00 ET run window' };
+    if (await env.TRADES.get(`swing:ran:${et.dateStr}`)) return { ran: false, reason: 'already ran today' };
+  }
+  await env.TRADES.put(`swing:ran:${et.dateStr}`, new Date().toISOString(), { expirationTtl: 3 * 86400 });
+
+  const syms = [...new Set([...SWING_MOM.universe, ...SWING_DIP.universe, '^VIX'])];
+  const bars = {};
+  const dataErrors = [];
+  await Promise.all(syms.map(async s => {
+    try { bars[s] = await swingDaily(s, et); } catch (e) { dataErrors.push(`${s}: ${e.message}`); }
+  }));
+  const spy = bars.SPY || [];
+  const asof = spy.length ? spy[spy.length - 1].date : null;
+  const out = { ran: true, asof, momentum: null, dip: null, dataErrors };
+  if (!asof) return { ...out, ran: false, reason: 'no SPY data' };
+
+  // ── ETF_MOMENTUM_V1: re-pick every 20 completed sessions ──
+  const momState = (await env.TRADES.get('swing:mom:state', 'json')) || null;
+  const sessionsSince = momState?.lastRebalance ? spy.filter(b => b.date > momState.lastRebalance).length : Infinity;
+  if (sessionsSince >= SWING_MOM.stepDays) {
+    const scored = [];
+    for (const s of SWING_MOM.universe) {
+      const b = bars[s];
+      if (!b || b.length <= SWING_MOM.lookback || b[b.length - 1].date !== asof) continue;
+      const ret = b[b.length - 1].c / b[b.length - 1 - SWING_MOM.lookback].c - 1;
+      scored.push({ s, ret });
+    }
+    scored.sort((a, b) => b.ret - a.ret);
+    const picks = scored.filter(x => x.ret > 0).slice(0, SWING_MOM.topK);   // absolute-momentum filter; empty slots = cash
+    const opened = [];
+    for (const p of picks) {
+      opened.push(await swingOpenTrade(env, SWING_MOM.id, p.s,
+        `ETF Momentum re-pick ${asof} · rank ${scored.indexOf(p) + 1}/${scored.length} · 3-mo return ${(p.ret * 100).toFixed(1)}%`,
+        { signal_close_date: asof, momentum_63d_pct: +(p.ret * 100).toFixed(2), rank: scored.indexOf(p) + 1,
+          ranking: scored.map(x => ({ s: x.s, pct: +(x.ret * 100).toFixed(2) })), exit_rule: `re-pick after ${SWING_MOM.stepDays} sessions` }));
+    }
+    await env.TRADES.put('swing:mom:state', JSON.stringify({ lastRebalance: asof, holdings: picks.map(p => p.s), at: new Date().toISOString() }));
+    out.momentum = { rebalanced: true, picks: opened, ranking: scored.map(x => `${x.s} ${(x.ret * 100).toFixed(1)}%`) };
+  } else {
+    out.momentum = { rebalanced: false, holdings: momState.holdings, nextInSessions: SWING_MOM.stepDays - sessionsSince };
+  }
+
+  // ── FEAR_DIP_V1: exits first (recorded on the trade meta only), then entries ──
+  const open = (await env.TRADES.get('swing:dip:open', 'json')) || [];
+  const stillOpen = [], exited = [];
+  for (const pos of open) {
+    const b = bars[pos.sym];
+    if (!b) { stillOpen.push(pos); continue; }
+    const closes = b.map(x => x.c);
+    let exitAt = null, held = 0;
+    for (let i = 0; i < b.length; i++) {
+      if (b[i].date <= pos.signalDate) continue;
+      held++;
+      const sma = swingSma(closes, SWING_DIP.exitSma, i);
+      if ((sma != null && b[i].c > sma) || held >= SWING_DIP.maxHold) {
+        exitAt = { date: b[i].date, close: +b[i].c.toFixed(2), reason: held >= SWING_DIP.maxHold ? 'max_hold' : 'close_above_sma5' };
+        break;
+      }
+    }
+    if (!exitAt) { stillOpen.push(pos); continue; }
+    exited.push({ ...pos, ...exitAt });
+    const t = pos.tradeId ? await env.TRADES.get(`trades:${pos.tradeId}`, 'json') : null;
+    if (t) await env.TRADES.put(`trades:${pos.tradeId}`, JSON.stringify({ ...t, meta: { ...(t.meta || {}), exit_signal: exitAt } }));
+  }
+
+  const vixBars = bars['^VIX'] || [];
+  const vix = vixBars.length ? vixBars[vixBars.length - 1].c : null;
+  const entries = [], setups = [];
+  for (const s of SWING_DIP.universe) {
+    const b = bars[s];
+    if (!b || b.length < SWING_DIP.trendSma + 1 || b[b.length - 1].date !== asof) continue;
+    const closes = b.map(x => x.c), i = closes.length - 1;
+    const r = swingRsi(closes, SWING_DIP.rsiN)[i];
+    const trend = swingSma(closes, SWING_DIP.trendSma, i);
+    if (r != null && trend != null && closes[i] > trend && r < SWING_DIP.rsiTh) setups.push({ s, rsi: r });
+  }
+  setups.sort((a, b) => a.rsi - b.rsi);
+  const fearOk = vix != null && vix > SWING_DIP.vixMin;
+  if (fearOk) {
+    const free = SWING_DIP.slots - stillOpen.length;
+    for (const st of setups.filter(x => !stillOpen.some(p => p.sym === x.s)).slice(0, Math.max(free, 0))) {
+      const r = await swingOpenTrade(env, SWING_DIP.id, st.s,
+        `Fear Dip ${asof} · RSI(2) ${st.rsi.toFixed(1)} < ${SWING_DIP.rsiTh} · above SMA200 · VIX ${vix.toFixed(1)} > ${SWING_DIP.vixMin}`,
+        { signal_close_date: asof, rsi2: +st.rsi.toFixed(2), vix: +vix.toFixed(2), exit_rule: `close > SMA${SWING_DIP.exitSma} or ${SWING_DIP.maxHold} sessions` });
+      entries.push(r);
+      if (r.id) stillOpen.push({ sym: st.s, signalDate: asof, tradeId: r.id });
+    }
+  }
+  await env.TRADES.put('swing:dip:open', JSON.stringify(stillOpen));
+  out.dip = { vix: vix != null ? +vix.toFixed(2) : null, fearOk, entries, exited, open: stillOpen.map(p => p.sym),
+              setupsWaitingOnVix: fearOk ? [] : setups.map(x => `${x.s} RSI2 ${x.rsi.toFixed(1)}`) };
+  await env.TRADES.put('swing:last', JSON.stringify({ at: new Date().toISOString(), ...out }));
+  return out;
+}
+
 const orbHhmm = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
 
 // STAGE 2 — watch candidates for a qualified opening-range breakout.
@@ -32937,6 +33120,12 @@ RULES: TopVideos must be real URLs copied exactly from the indexed lists. Pick t
         return json({ success: true, id });
       }
 
+      if (body.action === 'runSwingStrategiesNow') return json(await runSwingStrategies(env, { force: true }));
+      if (body.action === 'getSwingStatus') {
+        const [last, mom, dip] = await Promise.all(['swing:last', 'swing:mom:state', 'swing:dip:open'].map(k => env.TRADES.get(k, 'json')));
+        return json({ last, momentum: mom, dipOpen: dip || [] });
+      }
+
       if (body.action === 'runTradePollNow') {
         return json(await runTradePoll(env, { force: true, limit: Math.min(Number(body.limit) || TRADE_POLL_BATCH, 40) }));
       }
@@ -43014,6 +43203,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // breakout monitor (10:00-11:30 ET). runOrbStrategy no-ops outside those
       // windows, so the 5-min cadence is cheap the rest of the time.
       ctx.waitUntil(runOrbStrategy(env).catch(e => console.error('runOrbStrategy failed:', e.message)));
+      // ETF_MOMENTUM_V1 + FEAR_DIP_V1 — once per session at ~09:45 ET (self-gated).
+      ctx.waitUntil(runSwingStrategies(env).catch(e => console.error('runSwingStrategies failed:', e.message)));
       return;
     }
     if (event.cron === "*/30 * * * *") {
