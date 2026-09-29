@@ -9835,6 +9835,7 @@ export default {
           else if (ojson[pageSlug]) { url = `./offers/${pageSlug}/`; hasIndex = true; }
           else url = siteUrl || card?.ctaUrl || contentUrl || "";
           cards.push({
+            ...(body.withIds ? { id: r.id.replace(/-/g, "") } : {}),   // opt-in: care-gap Hub tab "Sections" list
             kicker:  String(card?.kicker || "").trim(),
             title:   oname,
             excerpt: String(card?.promise || bodyProp || "").trim().slice(0, 240),
@@ -9957,6 +9958,7 @@ export default {
           else if (pjson[pageSlug]) { url = `./blog/${pageSlug}/`; hasIndex = true; }
           else if (contentUrl) { url = contentUrl; }
           return {
+            ...(body.withIds ? { id: r.id.replace(/-/g, "") } : {}),   // opt-in: care-gap Hub tab "Sections" list
             kicker:  hubSectionOf(p) === "news" ? "News analysis" : "Article",
             title:   platformTitle || assetTitle || "Untitled",
             excerpt: String(pjson[pageSlug]?.intro || bodyProp).slice(0, 240),
@@ -10013,6 +10015,7 @@ export default {
         const projectExperience = rows.slice(0, lim).map(r => {
           const p = r.properties || {};
           return {
+            ...(body.withIds ? { id: r.id.replace(/-/g, "") } : {}),   // opt-in: care-gap Hub tab "Sections" list
             name:  (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim(),
             title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim(),
             blurb: (p["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim(),

@@ -4411,6 +4411,7 @@ function buildTitleTree(titles) {
   });
 }
 async function loadTitleAndAssetTab() {
+  if (document.getElementById('hubAssetSections')) loadHubAssetSections();   // Hub tab "Sections" mirrors these rows
   const titleBody = document.getElementById('titleListBody');
   const assetBody = document.getElementById('assetTree');
   titleBody.innerHTML = '<div class="loadnote">Loading…</div>';
@@ -5701,12 +5702,17 @@ async function hfReel(btn) {
   } catch (e) { btn.disabled = false; btn.textContent = '🎬 Render'; alert('Reel render: ' + e.message); }
 }
 let PUB_ASSET_CACHE = {};
+// One asset row — shared by the Assets section and the Hub tab's Sections list.
+function renderAssetRowHtml(a, t) {
+  PUB_ASSET_CACHE[a.id] = a;
+  return `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">📤 Push to Hub</button>` : ''}${/hyperframes/i.test(a.type || '') ? (a.videoUrl ? `<a class="kwlink" href="${esc(a.videoUrl)}" target="_blank" rel="noopener" title="The rendered Reel (MP4)">▶ Reel</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render again on HeyGen (replaces the Video URL)" onclick="event.stopPropagation();hfReel(this)">↻</button>` : `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render this Reel on HeyGen's cloud (~1-3 min); the MP4 lands on Video URL" onclick="event.stopPropagation();hfReel(this)">🎬 Render</button>`) : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`;
+}
 function renderAssetTitleNode(t, data) {
   const assets = (data && data.assets) || [];
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
   assets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">📤 Push to Hub</button>` : ''}${/hyperframes/i.test(a.type || '') ? (a.videoUrl ? `<a class="kwlink" href="${esc(a.videoUrl)}" target="_blank" rel="noopener" title="The rendered Reel (MP4)">▶ Reel</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render again on HeyGen (replaces the Video URL)" onclick="event.stopPropagation();hfReel(this)">↻</button>` : `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render this Reel on HeyGen's cloud (~1-3 min); the MP4 lands on Video URL" onclick="event.stopPropagation();hfReel(this)">🎬 Render</button>`) : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => renderAssetRowHtml(a, t)).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
@@ -7029,6 +7035,14 @@ async function loadHubTab() {
         <button class="btn primary" onclick="openHubTextModal()">✎ Edit section text</button>
       </div>
     </section>
+    <section class="card" data-ckey="card-hub-sectionassets">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Sections</h3><span class="tag fresh">live</span></div>
+      <div class="card-body">
+        <p style="font-size:11.5px;color:var(--ink2);margin:0 0 10px;">Only the assets that are actually showing on <b>${esc(HUB_SLUG)}</b>, grouped by the hub section they're in (exactly what the live hub loads). Same rows and buttons as the Assets section.</p>
+        <div id="hubAssetSections"><div class="loadnote">Loading…</div></div>
+        <button class="btn" style="margin-top:8px;" onclick="loadHubAssetSections()">↻ Reload</button>
+      </div>
+    </section>
     <section class="card" data-ckey="card-hub-dynsections">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Page sections &amp; what they pull from</h3><span class="tag fresh">live</span></div>
       <div class="card-body">
@@ -7040,6 +7054,40 @@ async function loadHubTab() {
   `;
   applyCollapseState(body);
   loadHubSections();
+  loadHubAssetSections();
+}
+// ── Hub tab "Sections": assets per hub section. Membership comes from the same
+// public actions the hub page calls (withIds), so it matches the live hub exactly;
+// the rows are the Assets section's own (full getTitles asset shape).
+async function loadHubAssetSections() {
+  const el = document.getElementById('hubAssetSections');
+  if (!el || !HUB_SLUG) return;
+  el.innerHTML = '<div class="loadnote">Loading…</div>';
+  try {
+    const order = await ensureHubSectionOrder();
+    const secs = order.filter(id => HUB_SECTION_INFO[id] && HUB_SECTION_INFO[id].dynamic && id !== 'elsewhere');
+    const [titlesRes, ...lists] = await Promise.all([
+      w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES }),
+      ...secs.map(id => { const info = HUB_SECTION_INFO[id]; return w(info.action, { campaignId: HUB_PAGE_CAMPAIGN, slug: HUB_SLUG, kind: info.kind, withIds: true }).catch(e => ({ error: e.message })); }),
+    ]);
+    const byId = {};
+    (titlesRes.titles || []).forEach(t => (t.assets || []).forEach(a => { byId[String(a.id).replace(/-/g, '')] = { a, t }; }));
+    el.innerHTML = secs.map((id, i) => {
+      const info = HUB_SECTION_INFO[id], n = hubSectionNumber(id), res = lists[i] || {};
+      const items = res[info.key] || [];
+      const rows = items.map(it => {
+        const hit = it.id && byId[String(it.id).replace(/-/g, '')];
+        if (hit) return renderAssetRowHtml(hit.a, hit.t);
+        return `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;"><span style="flex:1;">${esc(it.title || it.name || 'Untitled')}</span><span style="color:var(--ink3);font-size:10px;">not on a loaded title</span>${it.id ? `<a class="kwlink" href="${notionUrl(it.id)}" target="_blank" rel="noopener">↗</a>` : ''}</div></div>`;
+      }).join('');
+      return `<div class="kwgroup" data-ckey="hubsecassets-${esc(HUB_SLUG)}-${esc(id)}" style="--kwc:#f6ad55;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${n ? 'Section ' + n + ' · ' : ''}${esc(info.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${items.length}${items.length ? '' : ' · hidden on the hub'})</span></div>
+        <div class="kwgbody">${res.error ? `<div class="errnote">${esc(res.error)}</div>` : rows || '<div class="loadnote">No assets in this section — it\'s hidden on the live hub.</div>'}</div>
+      </div>`;
+    }).join('') + (order.includes('elsewhere') ? `<div style="font-size:11px;color:var(--ink3);margin-top:4px;">Section ${hubSectionNumber('elsewhere')} · Social row lists Logins, not assets.</div>` : '');
+    applyCollapseState(el);
+    refreshNoteMarks();
+  } catch (e) { el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`; }
 }
 // ── Hub page sections — per hub (whatever HUB_SLUG this template is showing).
 // Order comes from the hub's own live index.html; counts from the same public
