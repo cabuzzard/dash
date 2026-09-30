@@ -837,6 +837,10 @@
         <span style="display:flex;align-items:center;gap:8px;">
           <button onclick="event.stopPropagation();hamBackfillMethods(this)" title="Stamp the producing Method onto every Asset that has none (from its title's method, else its Asset Type). Idempotent — safe to re-run; also catches skill-path assets." style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⟳ backfill methods</button>
           <button onclick="event.stopPropagation();hamRevertPublishedTitles(this)" title="One-time data fix (2026-09-11): a dozen+ old asset-generation branches used to flip a title's own Status to Publish the moment its first asset was created. That's removed now — this reverts every title still stuck at Publish back to Development. Never touches Assets. Idempotent — safe to re-run." style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⟳ revert titles</button>
+          <span onclick="event.stopPropagation()" style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;font-size:10.5px;">
+            <button id="hamViewAll" onclick="hamSetView('all')" title="Everything to date: Development titles / Publish / Published assets" style="padding:2px 8px;border:0;background:transparent;color:var(--text2);cursor:pointer;">All to date</button>
+            <button id="hamViewWeek" onclick="hamSetView('week')" title="This week (Monday start): assets Published this week / this week's goal (goals set on each hub's care-gap Output board)" style="padding:2px 8px;border:0;border-left:1px solid var(--border2);background:transparent;color:var(--text2);cursor:pointer;">This week</button>
+          </span>
           <button onclick="event.stopPropagation();hamAddMethod()" title="Create a new method (adds a column)" style="font-size:11px;padding:2px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+ method</button>
           <span id="hubAssetMatrixToggleIcon" style="font-size:11px;color:var(--text3);">▸</span>
         </span>
@@ -16361,7 +16365,22 @@ try { hamColOrder = JSON.parse(localStorage.getItem('hamColOrder') || '[]'); } c
 function hamSaveColOrder() { try { localStorage.setItem('hamColOrder', JSON.stringify(hamColOrder)); } catch(e) {} }
 function hamSortCols(cols) {
   const pos = id => { const i = hamColOrder.indexOf(id); return i < 0 ? 1e6 : i; };
-  return cols.slice().sort((a, b) => pos(a.id) - pos(b.id) || a.name.localeCompare(b.name));
+  const sorted = cols.slice().sort((a, b) => pos(a.id) - pos(b.id) || a.name.localeCompare(b.name));
+  // Pin every column where it sits now, so renaming a method (names come live from the
+  // Method record — e.g. renamed on a care-gap Output board) never moves its column.
+  if (sorted.some(c => !hamColOrder.includes(c.id))) { hamColOrder = sorted.map(c => c.id).concat(hamColOrder.filter(id => !sorted.some(c => c.id === id))); hamSaveColOrder(); }
+  return sorted;
+}
+let hamView = 'all';
+try { hamView = localStorage.getItem('hamView') === 'week' ? 'week' : 'all'; } catch(e) {}
+function hamWeekStart() {
+  const d = new Date(); const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7);
+  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+}
+function hamSetView(v) {
+  hamView = v; try { localStorage.setItem('hamView', v); } catch(e) {}
+  if (HAM_DATA && v === 'week' && (!HAM_DATA.week || HAM_DATA.week.start !== hamWeekStart())) { loadHubAssetMatrix(); return; }
+  renderHubAssetMatrix();
 }
 let _hamDragCol = null, _hamDragging = false;
 function hamColDragStart(id, e) { _hamDragCol = id; _hamDragging = true; if (e && e.dataTransfer) e.dataTransfer.effectAllowed = 'move'; }
@@ -16428,7 +16447,7 @@ async function loadHubAssetMatrix() {
   const body = document.getElementById('hubAssetMatrixBody');
   if (body && !HAM_DATA) body.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   try {
-    const r = await call('getHubMethodMatrix');
+    const r = await call('getHubMethodMatrix', { weekStart: hamWeekStart() });
     HAM_DATA = r;
     renderHubAssetMatrix();
   } catch(e) {
@@ -16471,7 +16490,18 @@ function renderHubAssetMatrix() {
     let tds = `<td style="background:var(--bg);padding:2px 4px 2px 2px;font-size:10px;color:${isLp ? 'var(--accent)' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${esc(isLp ? 'landing page · ' + (h.keyword || h.slug) : h.slug)}">${esc(rowLabel)}</td>`
       + hubLink(msUrl, 'Admin microsite ↗')
       + hubLink(hubUrl, isLp ? 'Live landing page ↗' : 'Live content hub ↗');
+    const wk = (HAM_DATA.week && HAM_DATA.week.cells && HAM_DATA.week.cells[h.slug]) || {};
     cols.forEach(c => {
+      if (hamView === 'week') {
+        const wc = wk[c.id] || { goal: 0, produced: 0 };
+        totDev += wc.goal; totPubd += wc.produced; if (wc.goal && wc.produced >= wc.goal) totPub++;
+        const bg = wc.goal ? (wc.produced >= wc.goal ? 'rgba(95,191,124,.22)' : wc.produced ? 'rgba(217,164,65,.20)' : 'rgba(224,82,82,.14)') : 'transparent';
+        tds += `<td title="${esc(c.name)} · this week: ${wc.produced} published / goal ${wc.goal || '—'}" style="padding:1px 2px;text-align:center;border-left:1px solid var(--border);font-size:10px;white-space:nowrap;background:${bg};">`
+          + (!wc.goal && !wc.produced ? '<span style="color:var(--text3);">·</span>'
+            : `<span style="color:#5fbf7c;font-weight:700;">${wc.produced}</span><span style="color:var(--text3);">/${wc.goal || '–'}</span>`)
+          + `</td>`;
+        return;
+      }
       const cell = hc[c.id] || { dev: 0, pub: 0, pubd: 0 };
       const cd = cell.dev || 0, cp = cell.pub || 0, cpd = cell.pubd || 0;
       totDev += cd; totPub += cp; totPubd += cpd;
@@ -16487,12 +16517,16 @@ function renderHubAssetMatrix() {
     });
     rows += `<tr>${tds}</tr>`;
   });
-  if (summary) summary.textContent = `— ${totDev} development · ${totPub} publish · ${totPubd} published assets · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
+  if (summary) summary.textContent = hamView === 'week'
+    ? `— this week: ${totPubd} published of ${totDev} goal · ${totPub} goal${totPub === 1 ? '' : 's'} met`
+    : `— ${totDev} development · ${totPub} publish · ${totPubd} published assets · ${cols.length} method${cols.length === 1 ? '' : 's'}`;
+  ['all', 'week'].forEach(v => { const b2 = document.getElementById(v === 'all' ? 'hamViewAll' : 'hamViewWeek'); if (b2) { b2.style.background = hamView === v ? 'var(--accent)' : 'transparent'; b2.style.color = hamView === v ? '#fff' : 'var(--text2)'; } });
   const corner = `<th style="background:var(--bg);"></th>`
     + `<th title="Admin microsite" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">ms</th>`
     + `<th title="Live content hub" style="background:var(--bg);font-size:7px;font-weight:400;color:var(--text3);vertical-align:bottom;padding:0 0 3px;">hub</th>`;
   body.innerHTML = `<div style="overflow-x:auto;"><table style="table-layout:fixed;border-collapse:separate;border-spacing:0;">${colgroup}<thead><tr>${corner}${headRow}</tr></thead><tbody>${rows}</tbody></table></div>`
-    + `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> titles / <span style="color:#d9a441;">Publish</span> / <span style="color:#5fbf7c;">Published</span> assets per hub × method (an asset is attributed through the title it was made from) · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder, drag a header's right edge to resize it</div>`;
+    + (hamView === 'week' ? `<div style="font-size:10px;color:var(--text3);margin-top:6px;">This week (from Monday ${esc((HAM_DATA.week || {}).start || '')}): <span style="color:#5fbf7c;">published</span> / goal per hub × method · goals are set on each hub's care-gap Hub tab → Output · green = met · amber = some · red = none yet</div>` : '')
+    + (hamView === 'week' ? '' : `<div style="font-size:10px;color:var(--text3);margin-top:6px;"><span style="color:#5aa6db;">Development</span> titles / <span style="color:#d9a441;">Publish</span> / <span style="color:#5fbf7c;">Published</span> assets per hub × method (an asset is attributed through the title it was made from) · every method is a column, header tinted by its <b>Type</b> (unset = no tint) · ↗ ms / hub links per row · click a header to edit name / status / type / notes, open Notion, or archive · drag headers to reorder, drag a header's right edge to resize it</div>`);
 }
 let matEditingId = null;
 async function openMatTypeModal(methodId) {

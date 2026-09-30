@@ -14876,7 +14876,33 @@ ${bodyText.slice(0, 6000)}`;
           if (slug) cellFor(slug, mId)[bucket]++;
           if (lpSlug) cellFor(lpSlug, mId)[bucket]++;
         });
-        return json({ success: true, columns, counts, allTypes,
+        // "This week" view: per hub × method, that week's goal (care-gap Output board,
+        // hubout:goals:<slug>) vs Published assets dated in the week (Publishing Date,
+        // else the Output board's ledger). weekStart = the operator's local Monday.
+        let week = null;
+        const ws = String(body.weekStart || "");
+        if (/^\d{4}-\d{2}-\d{2}$/.test(ws)) {
+          const we = new Date(Date.parse(ws + "T00:00:00Z") + 7 * 864e5).toISOString().slice(0, 10);
+          week = { start: ws, cells: {} };
+          const wcell = (slug, mId) => ((week.cells[slug] = week.cells[slug] || {})[mId] = week.cells[slug][mId] || { goal: 0, produced: 0 });
+          const ledgers = {};
+          await Promise.all(HUB_SITES.map(async h => {
+            try { const g = await env.TRADES.get(`hubout:goals:${h.slug}`, "json"); Object.entries(((g || {}).weeks || {})[ws] || {}).forEach(([mId, n]) => { if (colIds.has(mId)) wcell(h.slug, mId).goal = n; }); } catch (e) {}
+            try { ledgers[h.slug] = (await env.TRADES.get(`hubout:ledger:${h.slug}`, "json")) || {}; } catch (e) { ledgers[h.slug] = {}; }
+          }));
+          assetRows.forEach(a => {
+            const p = a.properties || {};
+            if ((p["Asset Status"]?.select?.name || "") !== "Published") return;
+            const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
+            const mId = norm((p["Method"]?.relation || [])[0]?.id) || titleMethodById[titleId];
+            if (!mId || !colIds.has(mId)) return;
+            const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || p["Content Hub"]?.select?.name || "";
+            if (!slug) return;
+            const d = String(p["Publishing Date"]?.date?.start || (ledgers[slug] || {})[norm(a.id)] || "").slice(0, 10);
+            if (d && d >= ws && d < we) wcell(slug, mId).produced++;
+          });
+        }
+        return json({ success: true, columns, counts, allTypes, week,
           hubs: HUB_SITES.map(h => ({ slug: h.slug }))
             .concat(LP_REG.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
         });
