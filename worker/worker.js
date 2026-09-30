@@ -9474,12 +9474,12 @@ export default {
           await env.MEDIA.put(key, request.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } });
           const vurl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
           const nh = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-          await ensureAssetsDbProperties(nh, { "Video URL": { type: "url" } });
-          const { url: pageUrl, page } = await lfLoadAsset(aid);
+          const { url: pageUrl, page } = await lfLoadAsset(aid);   // "Video URL" already exists (generateLongformScript ensures it)
           const props = { "Video URL": { url: vurl } };
           if ((page.properties["Asset Status"]?.select?.name || "") === "Development") props["Asset Status"] = { select: { name: "Publish" } };
-          await fetch(pageUrl, { method: "PATCH", headers: { ...nh, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
-          await setSt({ status: "done", url: vurl, size: len, msg: "" });
+          const pr = await fetch(pageUrl, { method: "PATCH", headers: { ...nh, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+          if (!pr.ok) console.error("lfdone patch", aid, (await pr.text()).slice(0, 300));
+          await setSt({ status: "done", url: vurl, size: len, msg: pr.ok ? "" : "video stored but the asset's Video URL didn't save" });
           return new Response(JSON.stringify({ ok: true, url: vurl }), { headers: { "Content-Type": "application/json" } });
         } catch (e) {
           console.error("lf", lfKind, aid, e.message);

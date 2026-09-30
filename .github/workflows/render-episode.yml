@@ -47,7 +47,9 @@ jobs:
       - name: Upload to the asset
         run: |
           ls -la episode.mp4
-          curl -fsS -X POST -H "Content-Type: video/mp4" --data-binary @episode.mp4 "$W/?lfdone=1&a=$A&s=$S"
+          code=$(curl -sS -o upload.txt -w "%{http_code}" -X POST -H "Content-Type: video/mp4" --data-binary @episode.mp4 "$W/?lfdone=1&a=$A&s=$S")
+          echo "HTTP $code"; cat upload.txt; echo "UPLOAD HTTP $code: $(head -c 400 upload.txt)" >> render.log
+          [ "$code" = "200" ]
       - name: Report failure
         if: failure()
         run: |
