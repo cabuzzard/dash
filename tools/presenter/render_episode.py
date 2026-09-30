@@ -84,11 +84,19 @@ def cues(srt):
 def build_audio(ep, work):
     voice = ep.get("voice") or {}
     pcm, timeline, caps, t = [], [], [], 0.0
+    # Voice every segment first, 4 at a time (long segments take minutes each on edge-tts).
+    from concurrent.futures import ThreadPoolExecutor
+    jobs = [(i, (seg.get("text") or "").strip()) for i, seg in enumerate(ep["segments"])]
+    def one(job):
+        i, text = job
+        if text: tts(text, voice, os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt"))
+        return i
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        for i in ex.map(one, jobs): print(f"voiced {i + 1}/{len(jobs)}", flush=True)
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
         if not text: continue
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
-        tts(text, voice, mp3, srt)
         a = decode(mp3); dur = len(a) / SR
         timeline.append((t, t + dur, seg))
         caps += [(t + s, t + e, c) for s, e, c in cues(srt)]
@@ -267,12 +275,17 @@ def main(ep_path, out, work):
     n = int((len(a) / SR + 0.6) * FPS)
     print(f"rendering {n} frames ({n / FPS / 60:.1f} min)", flush=True)
     p = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-                          "-i", wav, "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-tune", "animation", "-pix_fmt", "yuv420p",
+                          "-i", wav, "-af", "apad", "-c:v", "libx264", "-preset", "veryfast", "-crf", "24", "-tune", "animation", "-pix_fmt", "yuv420p",
                           "-c:a", "aac", "-b:a", "128k", "-shortest", "-movflags", "+faststart", out], stdin=subprocess.PIPE)
     for i in range(n):
-        p.stdin.write(frame(i).tobytes())
+        try:
+            p.stdin.write(frame(i).tobytes())
+        except BrokenPipeError:
+            print(f"encoder closed at frame {i}/{n}", flush=True); break
         if i % (FPS * 30) == 0: print(f"  {i / FPS / 60:.1f}/{n / FPS / 60:.1f} min", flush=True)
-    p.stdin.close(); p.wait()
+    try: p.stdin.close()
+    except BrokenPipeError: pass
+    p.wait()
     if p.returncode: raise SystemExit("ffmpeg failed")
     print("done", out, os.path.getsize(out) // 1024, "KB")
 
