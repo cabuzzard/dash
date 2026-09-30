@@ -7112,6 +7112,7 @@ function renderHubOutput() {
   const hid = new Set(O.hidden || []);
   const ids = [...new Set([...withGoal, ...Object.keys(cells)])].filter(id => !hid.has(id))
     .sort((a, b) => pos(a) - pos(b) || goal(b, thisWk) - goal(a, thisWk) || nameOf(a).localeCompare(nameOf(b)));
+  const tdName = 'max-width:320px;';
   const n = (id, wk) => ((cells[id] || {})[wk] || []).length;
   const goalRows = ids.filter(id => goal(id, thisWk) > 0);
   const met = goalRows.filter(id => n(id, thisWk) >= goal(id, thisWk));
@@ -7132,21 +7133,33 @@ function renderHubOutput() {
     return `<td title="${esc(list)}" style="padding:5px 6px;text-align:center;white-space:nowrap;background:${bg};color:${col};${isCur ? 'outline:2px solid #f6ad55;outline-offset:-2px;' : ''}"><b>${c}</b>${g ? `<span style="color:var(--ink3);"> / ${g}</span>` : ''}</td>`;
   };
   const rows = ids.map(id => `<tr data-mid="${esc(id)}" style="border-top:1px solid var(--border);">
-      <td style="padding:5px 6px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(nameOf(id))}"><span class="stack-handle" title="Drag to reorder" onpointerdown="hoRowDragStart(event, this)">⠿</span>${esc(nameOf(id))}</td>
+      <td style="padding:5px 6px;${tdName}white-space:nowrap;"><span class="stack-handle" title="Drag to reorder" onpointerdown="hoRowDragStart(event, this)">⠿</span>${id === '__none__' ? esc(nameOf(id)) : `<span class="ho-name" style="cursor:text;border-bottom:1px dotted var(--border2);" title="Click to rename (renames the method everywhere)" onclick="hoRenameStart(this, '${esc(id)}')">${esc(nameOf(id))}</span>`}${byId[id] && byId[id].needsBuild ? ` <span class="fbadge stale" title="${esc('Needs a code session to build.' + (byId[id].brief ? ' Brief: ' + byId[id].brief : ''))}">🛠 needs build</span>` : ''}</td>
+      <td style="padding:5px 6px;min-width:160px;">${id === '__none__' ? '' : `<input type="text" class="finput" value="${esc(((O.notes || {})[id]) || '')}" placeholder="notes…" title="Notes for this method on this hub" style="width:100%;min-width:150px;font-size:11px;padding:2px 5px;" onchange="setHubOutputNote('${esc(id)}', this.value)">`}</td>
       <td style="padding:5px 6px;">${id === '__none__' ? '' : `<input type="number" min="0" max="99" value="${goal(id, thisWk) || ''}" placeholder="0" class="finput" title="This week's goal" style="width:52px;padding:2px 4px;font-size:11px;" onchange="setHubOutputGoal('${esc(id)}', this.value)">`}</td>
       ${weeks.map(wk => cell(id, wk)).join('')}
       <td style="padding:5px 4px;">${id === '__none__' ? '' : `<button class="iconbtn" title="Remove this method from this hub's board (clears this week's goal; add it back any time)" onclick="removeHubOutputRow('${esc(id)}')">✕</button>`}</td>
     </tr>`).join('');
-  const addable = O.methods.filter(m => (m.status === 'Live' || hid.has(m.id)) && !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const statusOrder = ['Live', 'Development', 'Migrate'];
+  const groupsSt = [...new Set(addable.map(m => m.status || 'No status'))].sort((a, b) => ((statusOrder.indexOf(a) + 1) || 99) - ((statusOrder.indexOf(b) + 1) || 99) || a.localeCompare(b));
+  const addOpts = groupsSt.map(st => `<optgroup label="${esc(st)}">${addable.filter(m => (m.status || 'No status') === st).map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.needsBuild ? ' 🛠' : ''}</option>`).join('')}</optgroup>`).join('');
   el.innerHTML = summary + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11.5px;width:100%;">
-      <thead><tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">This wk goal</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}<th></th></tr></thead>
-      <tbody id="hoRows">${rows || `<tr><td colspan="${weeks.length + 3}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks and no goals set.</td></tr>`}</tbody>
+      <thead><tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">Notes</th><th style="padding:4px 6px;">This wk goal</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}<th></th></tr></thead>
+      <tbody id="hoRows">${rows || `<tr><td colspan="${weeks.length + 4}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks and no goals set.</td></tr>`}</tbody>
     </table></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11px;">
       ${lastHas ? `<button class="btn" onclick="copyLastWeekGoals()">⧉ Copy last week's goals</button>` : ''}
-      <select id="hoAddMethod" class="finput" style="width:auto;max-width:260px;font-size:11px;"><option value="">+ add a Live method to this week…</option>${addable.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>
+      <select id="hoAddMethod" class="finput" style="width:auto;max-width:280px;font-size:11px;"><option value="">+ add an existing method to this week…</option>${addOpts}</select>
       <button class="btn" onclick="const v=document.getElementById('hoAddMethod').value; if(v) setHubOutputGoal(v, 1)">Add (goal 1)</button>
+      <button class="btn" onclick="document.getElementById('hoNewForm').style.display='flex'">✚ New method</button>
       <button class="btn" onclick="loadHubOutput()">↻ Reload</button>
+      <div id="hoNewForm" style="display:none;flex-direction:column;gap:6px;width:100%;margin:6px 0;padding:10px;border:1px dashed var(--border2);border-radius:8px;">
+        <input id="hoNewName" class="finput" placeholder="Method name (e.g. YouTube Longform — Question-Led)" style="font-size:12px;">
+        <textarea id="hoNewBrief" class="finput" rows="3" placeholder="What should this method produce? (desired goal — becomes the build brief for the code session)" style="font-size:12px;"></textarea>
+        <div style="display:flex;gap:6px;align-items:center;"><span>Goal this week</span><input id="hoNewGoal" type="number" min="0" max="99" value="1" class="finput" style="width:56px;font-size:11px;">
+          <button class="btn primary" onclick="hoCreateMethod(this)">Create + flag for development</button><button class="btn" onclick="document.getElementById('hoNewForm').style.display='none'">cancel</button></div>
+        <span style="color:var(--ink3);">Creates the method in Notion (Status Development + ☑ Needs Build — the build queue for a code session) and puts it on this hub's board.</span>
+      </div>
       <span style="color:var(--ink3);">Cell = published that week / that week's goal. Goals are set per week. Hover a cell for the assets and their publish dates. Green = met · amber = some · red = none (past weeks).</span>
     </div>`;
   HO_THIS_WEEK = thisWk; HO_LAST_WEEK = lastWk;
@@ -7156,6 +7169,47 @@ async function saveHoWeek(week, goals) {
   const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, week, goals });
   HUB_OUTPUT.goals = r.goals || HUB_OUTPUT.goals;
   renderHubOutput();
+}
+async function hoCreateMethod(btn) {
+  const name = document.getElementById('hoNewName').value.trim();
+  const brief = document.getElementById('hoNewBrief').value.trim();
+  const g = Math.max(0, Math.min(99, Math.round(+document.getElementById('hoNewGoal').value || 0)));
+  if (!name) return alert('Name the method.');
+  if (HUB_OUTPUT.methods.some(m => m.name.toLowerCase() === name.toLowerCase())) return alert('A method with that name already exists — add it from the list instead.');
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    const r = await w('createMethod', { title: name, notes: brief, needsBuild: true });
+    HUB_OUTPUT.methods.push({ id: r.id, name, status: 'Development', needsBuild: true, brief });
+    if (g) await setHubOutputGoal(r.id, g);
+    else { const goals = Object.assign({}, (HUB_OUTPUT.goals || {})[HO_THIS_WEEK] || {}); await saveHoWeek(HO_THIS_WEEK, goals); }
+  } catch (e) { alert('Not created: ' + e.message); btn.disabled = false; btn.textContent = 'Create + flag for development'; }
+}
+// Inline rename — renames the Method record itself (every hub, every modal).
+function hoRenameStart(span, methodId) {
+  const m = HUB_OUTPUT.methods.find(x => x.id === methodId); if (!m) return;
+  const inp = document.createElement('input');
+  inp.className = 'finput'; inp.value = m.name; inp.style.cssText = 'width:240px;font-size:11px;padding:2px 4px;';
+  span.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async save => {
+    if (done) return; done = true;
+    const v = inp.value.trim();
+    if (!save || !v || v === m.name) return renderHubOutput();
+    if (m.status === 'Live' && !confirm(`Rename the LIVE method "${m.name}" → "${v}"?
+
+This renames it everywhere (every hub, every modal). Some generators pick their code path from the method's name, so a Live method can generate differently after a rename.`)) return renderHubOutput();
+    try { await w('updateMethod', { methodId, name: v }); m.name = v; } catch (e) { alert('Rename failed: ' + e.message); }
+    renderHubOutput();
+  };
+  inp.addEventListener('keydown', e => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') finish(false); });
+  inp.addEventListener('blur', () => finish(true));
+}
+async function setHubOutputNote(methodId, text) {
+  const notes = Object.assign({}, HUB_OUTPUT.notes || {});
+  const v = String(text || '').trim().slice(0, 500);
+  if (v) notes[methodId] = v; else delete notes[methodId];
+  try { const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, notes }); HUB_OUTPUT.notes = r.notes || notes; }
+  catch (e) { alert('Note not saved: ' + e.message); }
 }
 async function saveHoHidden(hidden) {
   const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, hidden });

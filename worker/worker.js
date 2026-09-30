@@ -14175,6 +14175,19 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
       if (body.action === "createMethod") {
         const { title } = body;
         if (!title) return json({ error: "title required" }, 400);
+        // Output board "+ New method": needsBuild ticks the "Needs Build" checkbox — the
+        // queue of methods that still need a code session to build (Status stays
+        // Development, which alone also means "parked"). notes = the operator's build brief.
+        const extra = {};
+        if (body.needsBuild) {
+          try {
+            const hdrM = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+            const db = await fetch(`https://api.notion.com/v1/databases/${METHODS_DB}`, { headers: hdrM }).then(r => r.json());
+            if (!db.properties?.["Needs Build"]) await fetch(`https://api.notion.com/v1/databases/${METHODS_DB}`, { method: "PATCH", headers: hdrM, body: JSON.stringify({ properties: { "Needs Build": { checkbox: {} } } }) });
+          } catch (e) { /* best-effort */ }
+          extra["Needs Build"] = { checkbox: true };
+        }
+        if (body.notes) extra["Notes"] = { rich_text: [{ type: "text", text: { content: String(body.notes).slice(0, 1990) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -14183,7 +14196,7 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
             // New methods start in Development — Live is a deliberate,
             // explicit promotion once a method is actually built out, not
             // the default for "just typed a name in."
-            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: "Development" } } }
+            properties: { Name: { title: [{ type: "text", text: { content: title } }] }, "Status": { select: { name: "Development" } }, ...extra }
           }),
         });
         const result = await resp.json();
@@ -14782,13 +14795,17 @@ ${bodyText.slice(0, 6000)}`;
         const readGoals = async () => { let g = null; try { g = await env.TRADES.get(gkey, "json"); } catch (e) {} return (g && g.weeks) ? g : { weeks: {} }; };
         if (body.action === "saveHubOutputGoals") {
           const week = String(body.week || "");
-          if (!week && (Array.isArray(body.order) || Array.isArray(body.hidden))) {   // row order / removed rows (per hub)
+          if (!week && (Array.isArray(body.order) || Array.isArray(body.hidden) || (body.notes && typeof body.notes === "object"))) {   // row order / removed rows / row notes (per hub)
             const all = await readGoals();
             const ids = a2 => a2.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
             if (Array.isArray(body.order)) all.order = ids(body.order);
             if (Array.isArray(body.hidden)) all.hidden = ids(body.hidden);
+            if (body.notes && typeof body.notes === "object") {
+              const nt = {}; Object.entries(body.notes).slice(0, 300).forEach(([k, v]) => { const t = String(v || "").trim().slice(0, 500); if (t) nt[String(k).slice(0, 40)] = t; });
+              all.notes = nt;
+            }
             await env.TRADES.put(gkey, JSON.stringify(all));
-            return json({ success: true, order: all.order || [], hidden: all.hidden || [] });
+            return json({ success: true, order: all.order || [], hidden: all.hidden || [], notes: all.notes || {} });
           }
           if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return json({ error: "week (YYYY-MM-DD Monday) required" }, 400);
           const clean = {};
@@ -14817,10 +14834,12 @@ ${bodyText.slice(0, 6000)}`;
           id: norm(r.id),
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           status: r.properties?.Status?.select?.name || "",
+          needsBuild: !!r.properties?.["Needs Build"]?.checkbox,
+          brief: (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("").slice(0, 400),
         })).filter(m => m.name);
         let ledger = null;
         try { ledger = await env.TRADES.get(lkey, "json"); } catch (e) {}
-        const goalsAll = await readGoals(), goals = goalsAll.weeks, order = goalsAll.order || [], hidden = goalsAll.hidden || [];
+        const goalsAll = await readGoals(), goals = goalsAll.weeks, order = goalsAll.order || [], hidden = goalsAll.hidden || [], notes = goalsAll.notes || {};
         const firstBuild = !ledger; ledger = ledger || {};
         let changed = false;
         const today = new Date().toISOString().slice(0, 10);
@@ -14850,7 +14869,7 @@ ${bodyText.slice(0, 6000)}`;
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Publishing Date": { date: { start: d } } } }) }).catch(() => {});
         }
-        return json({ success: true, slug, today, methods, goals, order, hidden, assets, backfilled: firstBuild });
+        return json({ success: true, slug, today, methods, goals, order, hidden, notes, assets, backfilled: firstBuild });
       }
 
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
