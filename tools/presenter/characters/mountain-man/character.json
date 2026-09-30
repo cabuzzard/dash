@@ -1,0 +1,12 @@
+{
+  "id": "mountain-man",
+  "name": "Mountain Man (Mountainwize)",
+  "cutout": "cutout.png",
+  "thumb": "thumb.png",
+  "defaultScene": { "file": "scene-trail.jpg", "crop": [870, 250, 1536, 625] },
+  "style": "detailed illustrated comic / graphic-novel style: bold ink outlines, cel shading, hand-drawn texture, warm natural palette",
+  "mouth": { "x": 815, "y": 272, "maxOpen": 7, "halfWidth": 72, "jawBottom": 332 },
+  "eyes": [[787, 197], [855, 206]],
+  "place": { "right": 50, "bottomOverhang": 30, "figureRightEdge": 1180 },
+  "defaultVoice": { "engine": "edge", "id": "en-US-AndrewNeural", "rate": "-6%", "pitch": "-4Hz" }
+}
