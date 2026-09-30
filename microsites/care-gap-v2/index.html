@@ -7270,8 +7270,16 @@ function renderHubOutput() {
   const ord = O.order || [];
   const pos = id => { const i = ord.indexOf(id); return i < 0 ? 1e6 : i; };
   const hid = new Set(O.hidden || []);
-  const ids = [...new Set([...withGoal, ...Object.keys(cells)])].filter(id => !hid.has(id))
-    .sort((a, b) => pos(a) - pos(b) || goal(b, thisWk) - goal(a, thisWk) || nameOf(a).localeCompare(nameOf(b)));
+  // Rows are ONE shared list for every hub (which methods, in what order — KV hubout:rows);
+  // goals / counts / notes stay per hub. First run seeds it from this hub's current rows.
+  if (!Array.isArray(O.rows)) {
+    O.rows = [...new Set([...withGoal, ...Object.keys(cells)])].filter(id => id !== '__none__' && !hid.has(id))
+      .sort((a, b) => pos(a) - pos(b) || goal(b, thisWk) - goal(a, thisWk) || nameOf(a).localeCompare(nameOf(b)));
+    hoSaveRows(O.rows);
+  }
+  const ids = O.rows.filter(id => byId[id]);
+  if (cells['__none__']) ids.push('__none__');
+  const offList = Object.keys(cells).filter(id => id !== '__none__' && byId[id] && !O.rows.includes(id));
   const tdName = 'max-width:320px;';
   const n = (id, wk) => ((cells[id] || {})[wk] || []).length;
   const goalRows = ids.filter(id => goal(id, thisWk) > 0);
@@ -7299,7 +7307,7 @@ function renderHubOutput() {
       ${weeks.map(wk => cell(id, wk)).join('')}
       <td style="padding:5px 4px;">${id === '__none__' ? '' : `<button class="iconbtn" title="Remove this method from this hub's board (clears this week's goal; add it back any time)" onclick="removeHubOutputRow('${esc(id)}')">✕</button>`}</td>
     </tr>`).join('');
-  const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));   // anything not on the shared list
   const statusOrder = ['Live', 'Development', 'Migrate'];
   const groupsSt = [...new Set(addable.map(m => m.status || 'No status'))].sort((a, b) => ((statusOrder.indexOf(a) + 1) || 99) - ((statusOrder.indexOf(b) + 1) || 99) || a.localeCompare(b));
   const addOpts = groupsSt.map(st => `<optgroup label="${esc(st)}">${addable.filter(m => (m.status || 'No status') === st).map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.needsBuild ? ' 🛠' : ''}</option>`).join('')}</optgroup>`).join('');
@@ -7307,10 +7315,11 @@ function renderHubOutput() {
       <thead><tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">Notes</th><th style="padding:4px 6px;">This wk goal</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}<th></th></tr></thead>
       <tbody id="hoRows">${rows || `<tr><td colspan="${weeks.length + 4}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks and no goals set.</td></tr>`}</tbody>
     </table></div>
+    ${offList.length ? `<div style="font-size:11px;color:var(--ink3);margin-top:6px;">Also published here in these weeks, not on the shared list: ${offList.map(id => `<b>${esc(nameOf(id))}</b> (${weeks.reduce((t, wk) => t + n(id, wk), 0)}) <button class="iconbtn" style="font-size:10px;" onclick="hoAddRow('${esc(id)}')">+ add</button>`).join(' · ')}</div>` : ''}
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11px;">
       ${lastHas ? `<button class="btn" onclick="copyLastWeekGoals()">⧉ Copy last week's goals</button>` : ''}
       <select id="hoAddMethod" class="finput" style="width:auto;max-width:280px;font-size:11px;"><option value="">+ add an existing method to this week…</option>${addOpts}</select>
-      <button class="btn" onclick="const v=document.getElementById('hoAddMethod').value; if(v) setHubOutputGoal(v, 1)">Add (goal 1)</button>
+      <button class="btn" onclick="const v=document.getElementById('hoAddMethod').value; if(v) hoAddRow(v, 1)">Add (goal 1 here)</button>
       <button class="btn" onclick="document.getElementById('hoNewForm').style.display='flex'">✚ New method</button>
       <button class="btn" onclick="loadHubOutput()">↻ Reload</button>
       <div id="hoNewForm" style="display:none;flex-direction:column;gap:6px;width:100%;margin:6px 0;padding:10px;border:1px dashed var(--border2);border-radius:8px;">
@@ -7320,7 +7329,7 @@ function renderHubOutput() {
           <button class="btn primary" onclick="hoCreateMethod(this)">Create + flag for development</button><button class="btn" onclick="document.getElementById('hoNewForm').style.display='none'">cancel</button></div>
         <span style="color:var(--ink3);">Creates the method in Notion (Status Development + ☑ Needs Build — the build queue for a code session) and puts it on this hub's board.</span>
       </div>
-      <span style="color:var(--ink3);">Cell = published that week / that week's goal. Goals are set per week. Hover a cell for the assets and their publish dates. Green = met · amber = some · red = none (past weeks).</span>
+      <span style="color:var(--ink3);">Rows + order are shared by every hub (add / ✕ / drag here changes them everywhere); goals, counts and notes are this hub's. Cell = published that week / that week's goal. Goals are set per week. Hover a cell for the assets and their publish dates. Green = met · amber = some · red = none (past weeks).</span>
     </div>`;
   HO_THIS_WEEK = thisWk; HO_LAST_WEEK = lastWk;
 }
@@ -7340,8 +7349,7 @@ async function hoCreateMethod(btn) {
   try {
     const r = await w('createMethod', { title: name, notes: brief, needsBuild: true });
     HUB_OUTPUT.methods.push({ id: r.id, name, status: 'Development', needsBuild: true, brief });
-    if (g) await setHubOutputGoal(r.id, g);
-    else { const goals = Object.assign({}, (HUB_OUTPUT.goals || {})[HO_THIS_WEEK] || {}); await saveHoWeek(HO_THIS_WEEK, goals); }
+    await hoAddRow(r.id, g);
   } catch (e) { alert('Not created: ' + e.message); btn.disabled = false; btn.textContent = 'Create + flag for development'; }
 }
 // Inline rename — renames the Method record itself (every hub, every modal).
@@ -7377,15 +7385,21 @@ async function saveHoHidden(hidden) {
 }
 async function removeHubOutputRow(methodId) {
   const m = HUB_OUTPUT.methods.find(x => x.id === methodId);
-  if (!confirm(`Remove "${m ? m.name : methodId}" from ${HUB_SLUG}'s Output board? This week's goal for it is cleared. Add it back from the "+ add" list any time.`)) return;
+  if (!confirm(`Remove "${m ? m.name : methodId}" from the Output board on EVERY hub? (Goals already set stay stored; add it back from the list any time.)`)) return;
   try {
-    const goals = Object.assign({}, (HUB_OUTPUT.goals || {})[HO_THIS_WEEK] || {}); delete goals[methodId];
-    await saveHoHidden([...new Set([...(HUB_OUTPUT.hidden || []), methodId])]);
-    await saveHoWeek(HO_THIS_WEEK, goals);
+    HUB_OUTPUT.rows = (HUB_OUTPUT.rows || []).filter(x => x !== methodId);
+    await hoSaveRows(HUB_OUTPUT.rows);
+    renderHubOutput();
   } catch (e) { alert('Not removed: ' + e.message); }
 }
+async function hoSaveRows(rows) {
+  try { await w('saveHubOutputGoals', { slug: HUB_SLUG, rows }); } catch (e) { alert('Row list not saved: ' + e.message); }
+}
+async function hoAddRow(methodId, goal) {
+  if (!(HUB_OUTPUT.rows || []).includes(methodId)) { HUB_OUTPUT.rows = [...(HUB_OUTPUT.rows || []), methodId]; await hoSaveRows(HUB_OUTPUT.rows); }
+  if (goal) await setHubOutputGoal(methodId, goal); else renderHubOutput();
+}
 async function setHubOutputGoal(methodId, value) {
-  if ((HUB_OUTPUT.hidden || []).includes(methodId)) { try { await saveHoHidden(HUB_OUTPUT.hidden.filter(x => x !== methodId)); } catch (e) {} }
   const goals = Object.assign({}, (HUB_OUTPUT.goals || {})[HO_THIS_WEEK] || {});
   const v = Math.max(0, Math.min(99, Math.round(+value || 0)));
   if (v) goals[methodId] = v; else delete goals[methodId];
@@ -7413,9 +7427,9 @@ function hoRowDragStart(e, handle) {
     if (ev.pointerId !== e.pointerId) return;
     window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
     row.classList.remove('stack-dragging');
-    const shown = [...body.children].map(c => c.dataset.mid).filter(Boolean);
-    HUB_OUTPUT.order = shown.concat((HUB_OUTPUT.order || []).filter(x => !shown.includes(x)));
-    w('saveHubOutputGoals', { slug: HUB_SLUG, order: HUB_OUTPUT.order }).catch(e2 => alert('Order not saved: ' + e2.message));
+    const shown = [...body.children].map(c => c.dataset.mid).filter(x => x && x !== '__none__');
+    HUB_OUTPUT.rows = shown.concat((HUB_OUTPUT.rows || []).filter(x => !shown.includes(x)));
+    hoSaveRows(HUB_OUTPUT.rows);
   };
   window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
 }

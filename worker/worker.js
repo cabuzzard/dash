@@ -15188,7 +15188,12 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const readGoals = async () => { let g = null; try { g = await env.TRADES.get(gkey, "json"); } catch (e) {} return (g && g.weeks) ? g : { weeks: {} }; };
         if (body.action === "saveHubOutputGoals") {
           const week = String(body.week || "");
-          if (!week && (Array.isArray(body.order) || Array.isArray(body.hidden) || (body.notes && typeof body.notes === "object"))) {   // row order / removed rows / row notes (per hub)
+          if (!week && Array.isArray(body.rows)) {   // the SHARED row list (which methods, in what order) — every hub
+            const rows = body.rows.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
+            await env.TRADES.put("hubout:rows", JSON.stringify(rows));
+            return json({ success: true, rows });
+          }
+          if (!week && (Array.isArray(body.order) || Array.isArray(body.hidden) || (body.notes && typeof body.notes === "object"))) {   // legacy order/hidden + per-hub row notes
             const all = await readGoals();
             const ids = a2 => a2.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
             if (Array.isArray(body.order)) all.order = ids(body.order);
@@ -15233,6 +15238,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         let ledger = null;
         try { ledger = await env.TRADES.get(lkey, "json"); } catch (e) {}
         const goalsAll = await readGoals(), goals = goalsAll.weeks, order = goalsAll.order || [], hidden = goalsAll.hidden || [], notes = goalsAll.notes || {};
+        let rows = null; try { rows = await env.TRADES.get("hubout:rows", "json"); } catch (e) {}
         const firstBuild = !ledger; ledger = ledger || {};
         let changed = false;
         const today = new Date().toISOString().slice(0, 10);
@@ -15262,7 +15268,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Publishing Date": { date: { start: d } } } }) }).catch(() => {});
         }
-        return json({ success: true, slug, today, methods, goals, order, hidden, notes, assets, backfilled: firstBuild });
+        return json({ success: true, slug, today, methods, goals, order, hidden, notes, rows, assets, backfilled: firstBuild });
       }
 
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
