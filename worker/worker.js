@@ -1019,6 +1019,20 @@ function hubSectionOf(props) {
   if (/\boffer\b/i.test(at)) return "offers";
   return null;
 }
+// "Publishing Date" = the day an asset first went Published. Every path that flips
+// Asset Status → Published calls this; it never overwrites an existing date (a
+// re-publish keeps the original), so it costs one read + at most one write.
+async function stampPublishingDate(assetId) {
+  try {
+    const x = String(assetId || "").replace(/-/g, "");
+    if (x.length !== 32) return;
+    const url = `https://api.notion.com/v1/pages/${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`;
+    const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+    const pg = await fetch(url, { headers: hdr }).then(r => r.json());
+    if (pg?.properties?.["Publishing Date"]?.date?.start) return;
+    await fetch(url, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Publishing Date": { date: { start: new Date().toISOString().slice(0, 10) } } } }) });
+  } catch (e) { console.error("stampPublishingDate:", e.message); }
+}
 // The hub-relative link of an asset's published page, whichever dir it lives in.
 function hubPagePath(props) {
   for (const k of ["Content URL", "Site URL"]) {
@@ -14764,11 +14778,24 @@ ${bodyText.slice(0, 6000)}`;
         const hub = HUB_SITES.find(h => h.slug === slug);
         if (!hub) return json({ error: "unknown hub" }, 400);
         const gkey = `hubout:goals:${slug}`, lkey = `hubout:ledger:${slug}`;
+        // goals: { weeks: { "YYYY-MM-DD" (Monday): { methodId: n } } } — set per week, never standing.
+        const readGoals = async () => { let g = null; try { g = await env.TRADES.get(gkey, "json"); } catch (e) {} return (g && g.weeks) ? g : { weeks: {} }; };
         if (body.action === "saveHubOutputGoals") {
-          const goals = {};
-          Object.entries(body.goals || {}).slice(0, 300).forEach(([k, v]) => { const n = Math.max(0, Math.min(99, Math.round(Number(v) || 0))); if (n) goals[String(k).slice(0, 40)] = n; });
-          await env.TRADES.put(gkey, JSON.stringify({ goals }));
-          return json({ success: true, goals });
+          const week = String(body.week || "");
+          if (Array.isArray(body.order) && !week) {   // row drag order only (per hub)
+            const all = await readGoals();
+            all.order = body.order.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
+            await env.TRADES.put(gkey, JSON.stringify(all));
+            return json({ success: true, order: all.order });
+          }
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return json({ error: "week (YYYY-MM-DD Monday) required" }, 400);
+          const clean = {};
+          Object.entries(body.goals || {}).slice(0, 300).forEach(([k, v]) => { const n = Math.max(0, Math.min(99, Math.round(Number(v) || 0))); if (n) clean[String(k).slice(0, 40)] = n; });
+          const all = await readGoals();
+          if (Object.keys(clean).length) all.weeks[week] = clean; else delete all.weeks[week];
+          const keep = Object.keys(all.weeks).sort().slice(-60); all.weeks = Object.fromEntries(keep.map(k => [k, all.weeks[k]]));
+          await env.TRADES.put(gkey, JSON.stringify(all));
+          return json({ success: true, goals: all.weeks });
         }
         const norm = s2 => (s2 || "").replace(/-/g, "");
         const dash = s2 => { const x = norm(s2); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
@@ -14789,31 +14816,39 @@ ${bodyText.slice(0, 6000)}`;
           name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
           status: r.properties?.Status?.select?.name || "",
         })).filter(m => m.name);
-        let ledger = null, goals = {};
+        let ledger = null;
         try { ledger = await env.TRADES.get(lkey, "json"); } catch (e) {}
-        try { goals = ((await env.TRADES.get(gkey, "json")) || {}).goals || {}; } catch (e) {}
+        const goalsAll = await readGoals(), goals = goalsAll.weeks, order = goalsAll.order || [];
         const firstBuild = !ledger; ledger = ledger || {};
         let changed = false;
         const today = new Date().toISOString().slice(0, 10);
+        const stampBack = [];   // newly seen Published with no Publishing Date → make it real in Notion
         const assets = assetRows.map(a => {
           const pr = a.properties || {};
           const id = norm(a.id);
+          const pd = String(pr["Publishing Date"]?.date?.start || "").slice(0, 10);
           if (!ledger[id]) {
-            const pd = pr["Publishing Date"]?.date?.start;
             ledger[id] = String(pd || (firstBuild ? a.created_time : a.last_edited_time) || today).slice(0, 10);
             if (ledger[id] > today) ledger[id] = today;
             changed = true;
+            if (!pd && !firstBuild) stampBack.push([a.id, ledger[id]]);   // backfill guesses stay off Notion
           }
+          if (pd) ledger[id] = pd;   // a real Publishing Date always wins
           const titleId = norm((pr["Content Strategy"]?.relation || [])[0]?.id);
           return {
-            id, date: ledger[id],
+            id, date: ledger[id], real: !!pd,
             methodId: norm((pr.Method?.relation || [])[0]?.id) || titleMethod[titleId] || "",
             type: pr["Asset Type"]?.select?.name || "",
             title: (pr["Asset Title"]?.title || []).map(t => t.plain_text).join(""),
           };
         });
         if (changed) await env.TRADES.put(lkey, JSON.stringify(ledger));
-        return json({ success: true, slug, today, methods, goals, assets, backfilled: firstBuild });
+        for (const [pid, d] of stampBack.slice(0, 15)) {   // capped: subrequest budget
+          await fetch(`https://api.notion.com/v1/pages/${dash(pid)}`, { method: "PATCH",
+            headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Publishing Date": { date: { start: d } } } }) }).catch(() => {});
+        }
+        return json({ success: true, slug, today, methods, goals, order, assets, backfilled: firstBuild });
       }
 
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
@@ -20466,6 +20501,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             platformTitle: p["Platform Title"]?.rich_text?.map(x => x.plain_text).join("") || "",
             thumbnailText: p["Thumbnail Text"]?.rich_text?.map(x => x.plain_text).join("") || "",
             hubSection: (p["Hub Section"]?.select?.name || "").toLowerCase(),
+            publishingDate: p["Publishing Date"]?.date?.start || "",
             // Listing method fields — Etsy is canonical (title/body
             // above), these are the derived cross-posts + Etsy's own
             // tags, plus the accumulated product photos.
@@ -31360,6 +31396,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // same "Asset Status" select property, same allowed values.
       if (body.action === "updatePublishFields") {
         const { videoUrl } = body;
+        let stampAfter = false;
         const { assetId, title, designLink, productLink, hashtags, postCaption, status, platformTitle, etsyTags, craigslistListing, fbMarketplaceListing, contentHub, thumbnail, postImage, instagramBackground, thumbnailSource, postImageSource, instagramBackgroundSource, hubSection } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
@@ -31463,6 +31500,14 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           if (!validStatus.includes(status)) return json({ error: "Invalid status: " + status }, 400);
           props["Asset Status"] = { select: { name: status } };
         }
+        // Publish modal's "Published on" — an explicit edit wins; "" clears it.
+        if (body.publishingDate !== undefined) {
+          const pdv = String(body.publishingDate || "").trim();
+          if (pdv && !/^\d{4}-\d{2}-\d{2}$/.test(pdv)) return json({ error: "publishingDate must be YYYY-MM-DD" }, 400);
+          props["Publishing Date"] = { date: pdv ? { start: pdv } : null };
+        } else if (status === "Published") {
+          stampAfter = true;
+        }
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
@@ -31470,6 +31515,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         });
         const result2 = await resp.json();
         if (!resp.ok) return json({ error: result2.message || "Update failed" }, resp.status);
+        if (stampAfter) await stampPublishingDate(assetId);
 
         // ── Content Hub asset → Published = build the chassis. Fires
         // scaffoldHub in the background (self-call so the heavy Claude +
@@ -31854,6 +31900,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: notionProps }),
         }).catch(() => {});
+        await stampPublishingDate(assetId);
 
         return json({ success: true, productId: product.id, editUrl, productLink, isLive, shopId: shop.id, variantCount: variantIds.length });
       }
@@ -32277,6 +32324,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         const pUrl = "https://api.notion.com/v1/pages/" + dId(assetId);
         const ar = await fetch(pUrl, { method: "PATCH", headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Status": { select: { name: status } } } }) });
         if (!ar.ok) { const e = await ar.json(); return json({ error: e.message || "Failed" }, ar.status); }
+        if (status === "Published") await stampPublishingDate(assetId);
         // Content Hub / Landing Page asset → Published = build the site.
         // Same self-call trigger as updatePublishFields — this is the path
         // the main dashboard's status badge uses, so it needs it too.
@@ -39873,6 +39921,7 @@ ${assemblyManifest}`;
             headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Published" } } } }) });
           statusSet = up.ok;
+          if (up.ok) await stampPublishingDate(assetId);
           if (!up.ok) console.error("sendAssetToBuffer: status flip failed", up.status, (await up.text()).slice(0, 200));
         } catch (e) { console.error("sendAssetToBuffer: status flip failed", e.message); }
         return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId,
@@ -43321,6 +43370,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
               "Asset Status": { select: { name: "Published" } },
             }}),
           });
+          await stampPublishingDate(assetId);
           return json({ success: true, listingId, listingUrl: liveUrl });
         } catch (e) { return json({ error: e.message }, 500); }
       }
