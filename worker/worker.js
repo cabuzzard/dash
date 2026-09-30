@@ -9467,7 +9467,7 @@ export default {
         const setSt = async (o) => { let cur = {}; try { cur = (await env.TRADES.get(kvKey, "json")) || {}; } catch (e) {} await env.TRADES.put(kvKey, JSON.stringify({ ...cur, ...o, at: Date.now() })); };
         try {
           if (lfKind === "spec") return new Response(JSON.stringify(await lfBuildEpisode(env, aid)), { headers: { "Content-Type": "application/json" } });
-          if (lfKind === "status") { await setSt({ status: String(u.searchParams.get("st") || "running").slice(0, 20), msg: String(u.searchParams.get("msg") || "").slice(0, 300) }); return new Response("ok"); }
+          if (lfKind === "status") { await setSt({ status: String(u.searchParams.get("st") || "running").slice(0, 20), msg: String(u.searchParams.get("msg") || "").slice(0, 1500) }); return new Response("ok"); }
           const len = +(request.headers.get("content-length") || 0);
           if (!len) return new Response("empty", { status: 400 });
           const key = `videos/${aid}/longform-${Date.now().toString(36)}.mp4`;
@@ -15033,7 +15033,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment" },
           n: { type: "integer" }, name: { type: "string" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
           pay: { type: "string", description: "on-screen range like '$45K – $65K / year' (omit if not relevant)" }, payPct: { type: "number", description: "0-1 bar fill vs the other items" },
-          score: { type: "number" }, tier: { type: "string" }, label: { type: "string", description: "ask segments: the on-screen pill text" } } };
+          score: { type: "number" }, tier: { type: "string" }, label: { type: "string", description: "ask segments: the short viewer-facing on-screen pill, e.g. '👍 Like if this helps', '💬 Which one fits you?', '🔔 Subscribe for part 2' — never a placeholder like 'Like Ask'" } } };
         const sr = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 16000, messages: [{ role: "user", content: sPrompt }],
@@ -15124,6 +15124,39 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         if (!gr.ok) return json({ error: `GitHub wouldn't start the render (${gr.status}): ${(await gr.text()).slice(0, 200)}` }, 502);
         await env.TRADES.put("lfrender:" + aid, JSON.stringify({ status: "queued", at: Date.now(), started: Date.now() }));
         return json({ success: true, status: "queued" });
+      }
+      // elevenLabsVoiceAudit — read-only: the account's own voices (cloned / designed / added
+      // from the library) + every voice actually used in the generation history, with counts.
+      if (body.action === "elevenLabsVoiceAudit") {
+        const k = (env.ELEVENLABS_API_KEY || "").trim();
+        if (!k) return json({ error: "ELEVENLABS_API_KEY not set on the worker" }, 500);
+        const get = async u => { const r = await fetch(u, { headers: { "xi-api-key": k } }); const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.detail?.message || j.detail || r.status); return j; };
+        const out = { voices: [], used: [], generations: 0 };
+        try {
+          const v = await get("https://api.elevenlabs.io/v1/voices");
+          out.voices = (v.voices || []).map(x => ({ id: x.voice_id, name: x.name, category: x.category, labels: x.labels || {}, preview: x.preview_url || "" }));
+        } catch (e) { out.voicesError = String(e.message || e); }
+        try {
+          const uses = {}; let after = null;
+          for (let i = 0; i < 5; i++) {
+            const h = await get("https://api.elevenlabs.io/v1/history?page_size=1000" + (after ? "&start_after_history_item_id=" + after : ""));
+            const items = h.history || [];
+            for (const it of items) {
+              const u2 = uses[it.voice_id] = uses[it.voice_id] || { id: it.voice_id, name: it.voice_name, count: 0, last: 0, sample: (it.text || "").slice(0, 90) };
+              u2.count++; u2.last = Math.max(u2.last, it.date_unix || 0); out.generations++;
+            }
+            if (!h.has_more || !items.length) break;
+            after = items[items.length - 1].history_item_id;
+          }
+          out.used = Object.values(uses).sort((a2, b2) => b2.count - a2.count);
+        } catch (e) { out.historyError = String(e.message || e); }
+        return json({ success: true, ...out });
+      }
+
+      // getLongformEpisode — the exact episode file the render job pulls (for local re-renders / debugging).
+      if (body.action === "getLongformEpisode") {
+        try { return json({ success: true, episode: await lfBuildEpisode(env, String(body.assetId || "").replace(/-/g, "")) }); }
+        catch (e) { return json({ error: e.message }, 400); }
       }
       if (body.action === "longformRenderStatus") {
         const aid = String(body.assetId || "").replace(/-/g, "");

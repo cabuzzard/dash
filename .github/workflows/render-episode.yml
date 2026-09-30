@@ -41,11 +41,15 @@ jobs:
       - name: Fetch episode
         run: curl -fsS "$W/?lfspec=1&a=$A&s=$S" -o episode.json && python -c "import json;e=json.load(open('episode.json'));print(e['title'],'-',len(e['segments']),'segments')"
       - name: Render
-        run: python tools/presenter/render_episode.py episode.json episode.mp4 --work work
+        run: |
+          set -o pipefail
+          python -u tools/presenter/render_episode.py episode.json episode.mp4 --work work 2>&1 | tee render.log
       - name: Upload to the asset
         run: |
           ls -la episode.mp4
           curl -fsS -X POST -H "Content-Type: video/mp4" --data-binary @episode.mp4 "$W/?lfdone=1&a=$A&s=$S"
       - name: Report failure
         if: failure()
-        run: curl -fsS -X POST "$W/?lfstatus=1&a=$A&s=$S&st=failed&msg=render%20failed%20-%20see%20GitHub%20Actions%20log" || true
+        run: |
+          MSG=$(python -c "import urllib.parse,os;t=open('render.log',errors='replace').read()[-1200:] if os.path.exists('render.log') else 'failed before render';print(urllib.parse.quote(t))")
+          curl -fsS -X POST "$W/?lfstatus=1&a=$A&s=$S&st=failed&msg=$MSG" || true
