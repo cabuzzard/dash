@@ -14751,6 +14751,71 @@ ${bodyText.slice(0, 6000)}`;
         });
       }
 
+      // ── getHubOutput / saveHubOutputGoals ── care-gap Hub tab "Output": one hub,
+      // rows = methods (Hub Method Matrix flipped — same asset→method attribution:
+      // asset.Method, falling back to its title's method), columns = weeks (Mon start),
+      // cells = PUBLISHED assets that week vs the method's standing weekly goal.
+      // Notion keeps no "published at", so a per-hub KV ledger (hubout:ledger:<slug>)
+      // dates each asset the first time it's seen Published: on the first build,
+      // Publishing Date || created time (backfill); afterwards Publishing Date ||
+      // last edited at first sight (≈ the edit that flipped it). Goals: hubout:goals:<slug>.
+      if (body.action === "getHubOutput" || body.action === "saveHubOutputGoals") {
+        const slug = String(body.slug || "").trim();
+        const hub = HUB_SITES.find(h => h.slug === slug);
+        if (!hub) return json({ error: "unknown hub" }, 400);
+        const gkey = `hubout:goals:${slug}`, lkey = `hubout:ledger:${slug}`;
+        if (body.action === "saveHubOutputGoals") {
+          const goals = {};
+          Object.entries(body.goals || {}).slice(0, 300).forEach(([k, v]) => { const n = Math.max(0, Math.min(99, Math.round(Number(v) || 0))); if (n) goals[String(k).slice(0, 40)] = n; });
+          await env.TRADES.put(gkey, JSON.stringify({ goals }));
+          return json({ success: true, goals });
+        }
+        const norm = s2 => (s2 || "").replace(/-/g, "");
+        const dash = s2 => { const x = norm(s2); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
+        const camp = dash(hub.campaignId);
+        const [assetRows, titleRows, methodRows] = await Promise.all([
+          notionQuery(ASSETS_DB, { filter: { and: [
+            { property: "Asset Status", select: { equals: "Published" } },
+            { or: [ { property: "Campaign", relation: { contains: camp } }, { property: "Content Hub", select: { equals: slug } } ] },
+          ] } }).catch(e => { console.error("getHubOutput assets:", e.message); return null; }),
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: camp } } }).catch(() => []),
+          notionQuery(METHODS_DB, {}).catch(() => []),
+        ]);
+        if (!assetRows) return json({ error: "Couldn't read the Assets DB" }, 502);
+        const titleMethod = {};
+        titleRows.forEach(t => { const m = norm((t.properties?.method?.relation || [])[0]?.id); if (m) titleMethod[norm(t.id)] = m; });
+        const methods = methodRows.map(r => ({
+          id: norm(r.id),
+          name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
+          status: r.properties?.Status?.select?.name || "",
+        })).filter(m => m.name);
+        let ledger = null, goals = {};
+        try { ledger = await env.TRADES.get(lkey, "json"); } catch (e) {}
+        try { goals = ((await env.TRADES.get(gkey, "json")) || {}).goals || {}; } catch (e) {}
+        const firstBuild = !ledger; ledger = ledger || {};
+        let changed = false;
+        const today = new Date().toISOString().slice(0, 10);
+        const assets = assetRows.map(a => {
+          const pr = a.properties || {};
+          const id = norm(a.id);
+          if (!ledger[id]) {
+            const pd = pr["Publishing Date"]?.date?.start;
+            ledger[id] = String(pd || (firstBuild ? a.created_time : a.last_edited_time) || today).slice(0, 10);
+            if (ledger[id] > today) ledger[id] = today;
+            changed = true;
+          }
+          const titleId = norm((pr["Content Strategy"]?.relation || [])[0]?.id);
+          return {
+            id, date: ledger[id],
+            methodId: norm((pr.Method?.relation || [])[0]?.id) || titleMethod[titleId] || "",
+            type: pr["Asset Type"]?.select?.name || "",
+            title: (pr["Asset Title"]?.title || []).map(t => t.plain_text).join(""),
+          };
+        });
+        if (changed) await env.TRADES.put(lkey, JSON.stringify(ledger));
+        return json({ success: true, slug, today, methods, goals, assets, backfilled: firstBuild });
+      }
+
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
       // rows = the same hubs/landing pages (and order) as the Hub Method
       // Matrix above, columns fully operator-defined (add/rename/delete/

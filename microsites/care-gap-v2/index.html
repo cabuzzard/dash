@@ -7035,6 +7035,13 @@ async function loadHubTab() {
         <button class="btn primary" onclick="openHubTextModal()">✎ Edit section text</button>
       </div>
     </section>
+    <section class="card" data-ckey="card-hub-output">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Output</h3><span class="tag fresh">live</span></div>
+      <div class="card-body">
+        <p style="font-size:11.5px;color:var(--ink2);margin:0 0 8px;">Published assets on <b>${esc(HUB_SLUG)}</b> per method per week (Monday start) against each method's weekly goal — the Hub Method Matrix flipped for one hub. Set a goal and the method stays on the board; the rest show only when something published.</p>
+        <div id="hubOutputBody"><div class="loadnote">Loading…</div></div>
+      </div>
+    </section>
     <section class="card" data-ckey="card-hub-sectionassets">
       <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Sections</h3><span class="tag fresh">live</span></div>
       <div class="card-body">
@@ -7055,6 +7062,85 @@ async function loadHubTab() {
   applyCollapseState(body);
   loadHubSections();
   loadHubAssetSections();
+  loadHubOutput();
+}
+// ── Hub tab "Output": methods × weeks, published vs weekly goal (per hub) ──
+let HUB_OUTPUT = null;
+const HO_WEEKS = 8;
+function hoWeekStart(d) {            // local Monday 00:00 for a Date
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  x.setDate(x.getDate() - (x.getDay() + 6) % 7);
+  return x;
+}
+function hoKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+async function loadHubOutput() {
+  const el = document.getElementById('hubOutputBody');
+  if (!el || !HUB_SLUG) return;
+  el.innerHTML = '<div class="loadnote">Loading…</div>';
+  try { HUB_OUTPUT = await w('getHubOutput', { slug: HUB_SLUG }); renderHubOutput(); }
+  catch (e) { el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`; }
+}
+function renderHubOutput() {
+  const el = document.getElementById('hubOutputBody'), O = HUB_OUTPUT;
+  if (!el || !O) return;
+  const cur = hoWeekStart(new Date());
+  const weeks = [];
+  for (let i = HO_WEEKS - 1; i >= 0; i--) { const d = new Date(cur); d.setDate(d.getDate() - 7 * i); weeks.push(hoKey(d)); }
+  const byId = {}; O.methods.forEach(m => { byId[m.id] = m; });
+  const cells = {};   // methodId → weekKey → [asset]
+  O.assets.forEach(a => {
+    const [y, mo, da] = a.date.split('-').map(Number);
+    const wk = hoKey(hoWeekStart(new Date(y, mo - 1, da)));
+    if (!weeks.includes(wk)) return;
+    const mid = byId[a.methodId] ? a.methodId : '__none__';
+    ((cells[mid] = cells[mid] || {})[wk] = cells[mid][wk] || []).push(a);
+  });
+  const goal = id => +(O.goals[id] || 0);
+  const ids = [...new Set([...Object.keys(O.goals).filter(id => byId[id] && goal(id) > 0), ...Object.keys(cells)])];
+  const nameOf = id => id === '__none__' ? '(no method on the asset)' : byId[id].name;
+  ids.sort((a, b) => goal(b) - goal(a) || nameOf(a).localeCompare(nameOf(b)));
+  const thisWk = weeks[weeks.length - 1];
+  const n = (id, wk) => ((cells[id] || {})[wk] || []).length;
+  const goalRows = ids.filter(id => goal(id) > 0);
+  const met = goalRows.filter(id => n(id, thisWk) >= goal(id));
+  const behind = goalRows.filter(id => n(id, thisWk) < goal(id)).sort((a, b) => (n(a, thisWk) / goal(a)) - (n(b, thisWk) / goal(b)));
+  const summary = goalRows.length
+    ? `<div style="font-size:12px;margin:0 0 10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface2);"><b>This week: ${met.length} of ${goalRows.length} goals met.</b>${behind.length ? ' Behind: ' + behind.map(id => `<b>${esc(nameOf(id))}</b> ${n(id, thisWk)}/${goal(id)}`).join(' · ') : ' Everything is on pace. 🎯'}</div>`
+    : '<div style="font-size:12px;margin:0 0 10px;color:var(--ink3);">No goals yet — add a method below and give it a weekly number.</div>';
+  const fmt = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+  const cell = (id, wk) => {
+    const c = n(id, wk), g = goal(id), isCur = wk === thisWk;
+    const list = ((cells[id] || {})[wk] || []).map(a => `• ${a.title || 'Untitled'} (${a.type || 'no type'})`).join('\n');
+    let bg = 'transparent', col = 'var(--ink)';
+    if (g) {
+      if (c >= g) { bg = 'rgba(74,222,128,.18)'; }
+      else if (!isCur) { bg = c ? 'rgba(246,173,85,.18)' : 'rgba(248,113,113,.15)'; }
+    } else if (!c) col = 'var(--ink3)';
+    return `<td title="${esc(list)}" style="padding:5px 6px;text-align:center;white-space:nowrap;background:${bg};color:${col};${isCur ? 'outline:2px solid #f6ad55;outline-offset:-2px;' : ''}"><b>${c}</b>${g ? `<span style="color:var(--ink3);"> / ${g}</span>` : ''}</td>`;
+  };
+  const rows = ids.map(id => `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:5px 6px;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(nameOf(id))}">${esc(nameOf(id))}</td>
+      <td style="padding:5px 6px;">${id === '__none__' ? '' : `<input type="number" min="0" max="99" value="${goal(id) || ''}" placeholder="0" class="finput" style="width:52px;padding:2px 4px;font-size:11px;" onchange="setHubOutputGoal('${esc(id)}', this.value)">`}</td>
+      ${weeks.map(wk => cell(id, wk)).join('')}
+    </tr>`).join('');
+  const addable = O.methods.filter(m => m.status === 'Live' && !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
+  el.innerHTML = summary + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11.5px;width:100%;">
+      <tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">Goal / wk</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}</tr>
+      ${rows || `<tr><td colspan="${weeks.length + 2}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks.</td></tr>`}
+    </table></div>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11px;">
+      <select id="hoAddMethod" class="finput" style="width:auto;max-width:260px;font-size:11px;"><option value="">+ add a Live method to track…</option>${addable.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>
+      <button class="btn" onclick="const v=document.getElementById('hoAddMethod').value; if(v) setHubOutputGoal(v, 1)">Add (goal 1)</button>
+      <button class="btn" onclick="loadHubOutput()">↻ Reload</button>
+      <span style="color:var(--ink3);">Cell = published that week / goal. Hover a cell for the assets. Green = met · amber = some · red = none (past weeks).${O.backfilled ? ' Past weeks were dated from each asset\'s Publishing Date or creation date (first build).' : ''}</span>
+    </div>`;
+}
+async function setHubOutputGoal(methodId, value) {
+  const goals = Object.assign({}, HUB_OUTPUT.goals);
+  const v = Math.max(0, Math.min(99, Math.round(+value || 0)));
+  if (v) goals[methodId] = v; else delete goals[methodId];
+  try { const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, goals }); HUB_OUTPUT.goals = r.goals || goals; renderHubOutput(); }
+  catch (e) { alert('Goal not saved: ' + e.message); }
 }
 // ── Hub tab "Sections": assets per hub section. Membership comes from the same
 // public actions the hub page calls (withIds), so it matches the live hub exactly;
