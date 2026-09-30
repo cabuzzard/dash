@@ -179,6 +179,7 @@ def main(ep_path, out, work):
     fonts = ep.get("fonts") or {}
     dpath = google_ttf(fonts.get("display"), 700, work); bpath = google_ttf(fonts.get("body"), 600, work)
     F_BIG, F_TTL, F_TXT, F_SM, F_CAP = font(dpath, 118), font(dpath, 56), font(bpath, 32), font(bpath, 29), font(bpath, 40)
+    F_TTL2 = font(dpath, 44)
 
     audio, timeline, caps, wav = build_audio(ep, work)
     a = audio.astype(np.float32) / 32768
@@ -206,13 +207,52 @@ def main(ep_path, out, work):
 
     pl = P.c["place"]; chx = W - pl["figureRightEdge"] - pl["right"]
     fmt = ep.get("format", "ranked")
+    cap_w = chx + pl.get("figureLeftEdge", 330) - 80 - 40   # captions run up to the presenter
+
+    # ── scene images: shown in a framed stage on the left when their cue words are spoken ──
+    STAGE = (80, 120, 840, 700)   # x0, y0, x1, y1
+    sw_, sh_ = STAGE[2] - STAGE[0], STAGE[3] - STAGE[1]
+    norm = lambda x: re.sub(r"[^a-z0-9 ]+", "", str(x).lower()).split()
+    shots = []   # (start, end, PIL image sized 1.12x the stage)
+    for t0, t1, seg in timeline:
+        imgs = [im for im in (seg.get("images") or []) if im.get("url")]
+        if not imgs: continue
+        seg_caps = [(s_, c) for s_, e_, c in caps if t0 - 0.05 <= s_ <= t1]
+        starts = []
+        for k, im in enumerate(imgs):
+            cue = norm(im.get("cue", ""))[:4]
+            at = next((s_ for s_, c in seg_caps if cue and " ".join(cue) in " ".join(norm(c))), None)
+            if at is None: at = t0 + (t1 - t0) * (0.25 + 0.45 * k / max(1, len(imgs)))
+            starts.append((at, im))
+        starts.sort(key=lambda x: x[0])
+        stop = t1 - 0.25 * (t1 - t0) if seg.get("kind") in ("item", "point") else t1 - 0.2
+        for k, (at, im) in enumerate(starts):
+            end = min(starts[k + 1][0] if k + 1 < len(starts) else stop, stop)
+            if end - at < 2.5: continue
+            try:
+                pic = Image.open(io.BytesIO(fetch(im["url"]))).convert("RGB")
+                tw_, th_ = int(sw_ * 1.12), int(sh_ * 1.12)
+                r_ = max(tw_ / pic.width, th_ / pic.height)
+                pic = pic.resize((int(pic.width * r_) + 1, int(pic.height * r_) + 1), Image.LANCZOS)
+                l_, t_ = (pic.width - tw_) // 2, (pic.height - th_) // 2
+                shots.append((at, end, pic.crop((l_, t_, l_ + tw_, t_ + th_))))
+            except Exception as e:
+                print("image skipped:", str(e)[:120], flush=True)
+    print(f"scene images: {len(shots)}", flush=True)
+    stage_mask = Image.new("L", (sw_, sh_), 0); ImageDraw.Draw(stage_mask).rounded_rectangle([0, 0, sw_ - 1, sh_ - 1], 26, fill=255)
+    def shot_at(t):
+        for s_, e_, pic in shots:
+            if s_ <= t <= e_ + 0.35: return s_, e_, pic
+        return None
 
     def item_card(seg, k, t0, t1, t):
         card = Image.new("RGBA", (760, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
         cd.rounded_rectangle([0, 0, 759, 599], 28, fill=PANEL + (228,), outline=ACC, width=3)
         y = 26
         if seg.get("n") is not None: cd.text((40, y), f"#{seg['n']}", font=F_BIG, fill=ACC); y += 140
-        for ln in wrap(cd, seg.get("name", ""), F_TTL, 680)[:2]: cd.text((40, y), ln, font=F_TTL, fill=INK); y += 66
+        nm = wrap(cd, seg.get("name", ""), F_TTL, 680); fnm, lh = F_TTL, 66
+        if len(nm) > 2: nm = wrap(cd, seg.get("name", ""), F_TTL2, 680); fnm, lh = F_TTL2, 52
+        for ln in nm[:3]: cd.text((40, y), ln, font=fnm, fill=INK); y += lh
         y += 8
         for ln in wrap(cd, seg.get("blurb", ""), F_SM, 680)[:3]: cd.text((42, y), ln, font=F_SM, fill=SUB); y += 38
         p = (t - t0) / max(0.1, (t1 - t0))
@@ -253,7 +293,8 @@ def main(ep_path, out, work):
             k_in, k_out = ease((t - t0) / 0.45), ease((t - t1) / 0.4)
             x = int(-800 + (80 + 800) * k_in - 900 * k_out)
             if kind in ("item", "point"):
-                fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, 120))
+                if shot_at(t) is None:
+                    fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, 120))
             elif kind == "hook" and ep.get("title"):
                 ttl = Image.new("RGBA", (900, 420), (0, 0, 0, 0)); td = ImageDraw.Draw(ttl)
                 yy = 0
@@ -263,9 +304,22 @@ def main(ep_path, out, work):
                 tw = d.textlength(seg["label"], font=F_TXT)
                 d.rounded_rectangle([x, 150, x + tw + 60, 222], 36, fill=ACC)
                 d.text((x + 30, 186), seg["label"], font=F_TXT, fill=PANEL, anchor="lm")
+        sh = shot_at(t)
+        if sh:
+            s_, e_, pic = sh
+            a_in, a_out = ease((t - s_) / 0.35), 1 - ease((t - e_) / 0.35) if t > e_ else 1
+            zoom = 1.0 + 0.10 * min(1, (t - s_) / max(2.5, e_ - s_))      # slow push-in across the hold
+            vw, vh = int(sw_ * 1.12 / zoom), int(sh_ * 1.12 / zoom)
+            l_, t_ = (pic.width - vw) // 2, (pic.height - vh) // 2
+            view = pic.crop((l_, t_, l_ + vw, t_ + vh)).resize((sw_, sh_), Image.BILINEAR).convert("RGBA")
+            view.putalpha(stage_mask.point(lambda v: int(v * a_in * a_out)))
+            frame_bg = Image.new("RGBA", (sw_ + 12, sh_ + 12), (0, 0, 0, 0))
+            ImageDraw.Draw(frame_bg).rounded_rectangle([0, 0, sw_ + 11, sh_ + 11], 30, fill=ACC + (int(255 * a_in * a_out),))
+            fr.alpha_composite(frame_bg, (STAGE[0] - 6, STAGE[1] - 6))
+            fr.alpha_composite(view, (STAGE[0], STAGE[1]))
         cur = next((c for s_, e_, c in caps if s_ - 0.05 <= t <= e_ + 0.2), "")
         if cur:
-            lines = wrap(d, cur, F_CAP, chx - 140)[:2]
+            lines = wrap(d, cur, F_CAP, cap_w)[:2]
             for li, ln in enumerate(lines):
                 tw = d.textlength(ln, font=F_CAP); x = 80; y = 930 - (len(lines) - 1 - li) * 62
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + 54], 12, fill=(10, 14, 12, 190))

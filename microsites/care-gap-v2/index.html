@@ -809,6 +809,14 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" id="pubLfBgBtn" onclick="pubLfGenBackground(this)">✨ Generate background</button>
               <span style="color:var(--ink3);">No background = the presenter's default scene.</span>
             </div></div>
+          <div style="margin-top:10px;">
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">🖼 <b>Scene images</b> <span style="color:var(--ink3);">(shown in a frame when their cue words are spoken)</span>
+              <button class="btn" type="button" id="pubLfPlanBtn" onclick="pubLfPlanImages(this)" style="font-size:10.5px;">Plan image slots</button>
+              <button class="btn" type="button" id="pubLfGenAllBtn" onclick="pubLfGenAll(this)" style="font-size:10.5px;">✨ Generate all missing</button>
+              <span id="pubLfImgMsg" style="color:var(--ink3);"></span></div>
+            <div id="pubLfScenes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px;"></div>
+            <input type="file" id="pubLfImgFile" accept="image/*" style="display:none;" onchange="pubLfUploadPicked(this)">
+          </div>
           <div style="margin-top:6px;color:var(--ink3);">Fonts + colors: this campaign's hub design (automatic).</div>
           <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
             <button class="btn primary" type="button" id="pubLfRenderBtn" onclick="pubLfRender(this)">🎬 Render episode</button>
@@ -6004,8 +6012,69 @@ async function pubLfLoad(assetId, token) {
   vs.onchange = () => pubLfSave({ voice: vs.value });
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || '-4%'; rt.onchange = () => pubLfSave({ rate: rt.value });
   pubLfShowBg(r.background);
+  PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();
   pubLfShowJob(r.job, r.videoUrl);
   if (r.job && /queued|running/.test(r.job.status)) pubLfPoll();
+}
+function pubLfRenderScenes() {
+  const el = document.getElementById('pubLfScenes'); if (!el || !PUB_LF) return;
+  const slots = [];
+  (PUB_LF.scenes || []).forEach(sc => (sc.images || []).forEach((im, ii) => slots.push({ seg: sc.i, idx: ii, sc, im })));
+  document.getElementById('pubLfPlanBtn').textContent = slots.length ? '↻ Re-plan empty slots' : 'Plan image slots';
+  const missing = slots.filter(x => !x.im.url).length;
+  document.getElementById('pubLfGenAllBtn').style.display = missing ? '' : 'none';
+  document.getElementById('pubLfGenAllBtn').textContent = `✨ Generate all missing (${missing})`;
+  el.innerHTML = slots.map(x => `<div style="border:1px solid var(--border);border-radius:8px;padding:6px;font-size:10.5px;">
+      <div style="color:var(--ink3);margin-bottom:3px;">${x.sc.kind === 'hook' ? 'Opening' : '#' + esc(String(x.sc.i)) + ' ' + esc(x.sc.name || '')}</div>
+      ${x.im.url ? `<a href="${esc(x.im.url)}" target="_blank" rel="noopener"><img src="${esc(x.im.url)}" alt="" style="width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:6px;"></a>` : '<div style="width:100%;aspect-ratio:4/3;border:1px dashed var(--border2);border-radius:6px;display:flex;align-items:center;justify-content:center;color:var(--ink3);">no image yet</div>'}
+      <div title="Appears when these words are spoken" style="margin-top:4px;"><i>“${esc(x.im.cue)}”</i></div>
+      <div style="color:var(--ink2);">${esc(x.im.subject)}</div>
+      <div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap;">
+        <button class="iconbtn" style="font-size:9.5px;" title="Generate with Grok" onclick="pubLfGenOne(${x.seg},${x.idx},this)">${x.im.url ? '↻' : '✨'}</button>
+        <button class="iconbtn" style="font-size:9.5px;" title="Use your own image" onclick="pubLfUploadStart(${x.seg},${x.idx})">⬆</button>
+        ${x.im.url ? `<button class="iconbtn" style="font-size:9.5px;" title="Remove this image (keeps the slot)" onclick="pubLfClearOne(${x.seg},${x.idx})">✕</button>` : ''}
+      </div></div>`).join('') || '<div style="color:var(--ink3);">No image slots yet — Plan image slots picks 1–3 moments per item from the script.</div>';
+}
+async function pubLfReloadScenes() {
+  const r = await w('getLongformRender', { assetId: PUB_LF.assetId }); PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();
+}
+async function pubLfPlanImages(btn) {
+  const msg = document.getElementById('pubLfImgMsg'); btn.disabled = true; msg.textContent = 'Choosing moments from the script…';
+  try { const r = await w('planLongformImages', { assetId: PUB_LF.assetId }); await pubLfReloadScenes(); msg.textContent = `${r.slots} image slots.`; }
+  catch (e) { msg.textContent = 'Not planned: ' + e.message; }
+  btn.disabled = false;
+}
+async function pubLfGenOne(seg, idx, btn) {
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try { await w('generateLongformImage', { assetId: PUB_LF.assetId, seg, idx }); await pubLfReloadScenes(); return true; }
+  catch (e) { document.getElementById('pubLfImgMsg').textContent = 'Image failed: ' + e.message; if (btn) { btn.disabled = false; btn.textContent = '✨'; } return false; }
+}
+async function pubLfGenAll(btn) {
+  const msg = document.getElementById('pubLfImgMsg');
+  const todo = []; (PUB_LF.scenes || []).forEach(sc => (sc.images || []).forEach((im, ii) => { if (!im.url) todo.push([sc.i, ii]); }));
+  btn.disabled = true; let ok = 0;
+  for (let k = 0; k < todo.length; k++) {
+    msg.textContent = `Generating ${k + 1} of ${todo.length}…`;
+    if (await pubLfGenOne(todo[k][0], todo[k][1])) ok++;
+  }
+  msg.textContent = `✓ ${ok} of ${todo.length} generated.`; btn.disabled = false;
+}
+let PUB_LF_UPLOAD = null;
+function pubLfUploadStart(seg, idx) { PUB_LF_UPLOAD = { seg, idx }; document.getElementById('pubLfImgFile').click(); }
+function pubLfUploadPicked(inp) {
+  const f = inp.files && inp.files[0]; inp.value = '';
+  if (!f || !PUB_LF_UPLOAD) return;
+  const rd = new FileReader();
+  rd.onload = async () => {
+    const msg = document.getElementById('pubLfImgMsg'); msg.textContent = 'Uploading…';
+    try { await w('saveLongformImage', { assetId: PUB_LF.assetId, seg: PUB_LF_UPLOAD.seg, idx: PUB_LF_UPLOAD.idx, fileData: rd.result, contentType: f.type || 'image/png' }); await pubLfReloadScenes(); msg.textContent = '✓ Uploaded.'; }
+    catch (e) { msg.textContent = 'Upload failed: ' + e.message; }
+  };
+  rd.readAsDataURL(f);
+}
+async function pubLfClearOne(seg, idx) {
+  try { await w('saveLongformImage', { assetId: PUB_LF.assetId, seg, idx, clear: true }); await pubLfReloadScenes(); }
+  catch (e) { alert('Not removed: ' + e.message); }
 }
 function pubLfShowBg(url) {
   const img = document.getElementById('pubLfBg');

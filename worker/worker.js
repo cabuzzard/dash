@@ -15021,6 +15021,7 @@ STRUCTURE (the Shane Hummus model — the narrator is an animated presenter; the
 2. ITEMS: each item is ONE segment of ~60-90 s of narration, always in this order: name → "if you've ever wondered who…" → what it actually is → a vivid analogy → pay/cost range with where it comes from → skills or requirements → one proof story (a real-sounding but NOT invented-specific example: "people in forums report…", never a fake named person) → two or three pros and cons → the score/tier and why.
 3. ASKS: after item 1 or 2 a like ask; mid-way a comment question ("which one fits you?"); once, a free-resource mention; before the last item a subscribe ask. Each ask is its own short segment.
 4. OUTRO (~20 s): recap in one line, point to the next video. No long goodbye.
+5. PICTURES: the hook and every item get 1-3 "images" — concrete scenes that illustrate what is being said at that moment (a person doing the job, the place, the tool). Each image's "cue" is 4-8 words copied exactly from that segment's narration, in its first 70%.
 Narration is spoken English: short sentences, contractions, numbers written out as words. Never invent statistics — only use figures in the research below or widely known published ranges, and say "around".
 
 RESEARCH:
@@ -15033,6 +15034,9 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment" },
           n: { type: "integer" }, name: { type: "string" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
           pay: { type: "string", description: "on-screen range like '$45K – $65K / year' (omit if not relevant)" }, payPct: { type: "number", description: "0-1 bar fill vs the other items" },
+          images: { type: "array", maxItems: 3, description: "hook/item segments: 1-3 pictures shown in a framed stage while this segment plays", items: { type: "object", required: ["cue", "subject"], properties: {
+            cue: { type: "string", description: "4-8 words copied EXACTLY from this segment's narration — the image appears when these words are spoken; pick words in the first 70% of the segment" },
+            subject: { type: "string", description: "what the picture shows: one concrete, visual scene (people, places, objects), no text, charts or logos" } } } },
           score: { type: "number" }, tier: { type: "string" }, label: { type: "string", description: "ask segments: the short viewer-facing on-screen pill, e.g. '👍 Like if this helps', '💬 Which one fits you?', '🔔 Subscribe for part 2' — never a placeholder like 'Like Ask'" } } };
         const sr = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -15051,6 +15055,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const segs = o.segments.filter(x => S(x.text)).map(x => {
           const k = { kind: x.kind, text: S(x.text) };
           for (const f of ["n", "name", "blurb", "pay", "payPct", "score", "tier", "label"]) if (x[f] !== undefined && x[f] !== "") k[f] = x[f];
+          if (Array.isArray(x.images) && x.images.length) k.images = x.images.slice(0, 3).map(im => ({ cue: S(im.cue), subject: S(im.subject) })).filter(im => im.cue && im.subject);
           return k;
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
@@ -15107,7 +15112,8 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
         return json({ success: true, render: spec.render || {}, format: spec.format, question: spec.question, segments: spec.segments.length,
           words: spec.segments.reduce((n2, x) => n2 + String(x.text || "").split(/\s+/).length, 0),
-          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", voices: LF_VOICES, job });
+          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", voices: LF_VOICES, job,
+          scenes: spec.segments.map((x, i) => ({ i, kind: x.kind, name: x.name || "", images: x.images || [] })).filter(x => x.kind === "hook" || x.kind === "item") });
       }
 
       if (body.action === "renderLongform") {
@@ -15162,6 +15168,96 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const aid = String(body.assetId || "").replace(/-/g, "");
         let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
         return json({ success: true, job });
+      }
+
+      // ── Scene images (framed stage, shown when their cue words are spoken) ──
+      // planLongformImages {assetId}: add 1-3 image slots {cue, subject} to each hook/item of an
+      // existing script. generateLongformImage {assetId, seg, idx}: Grok plate for one slot (hub
+      // image spec + presenter art style) → R2 → spec.segments[seg].images[idx].url.
+      // saveLongformImage {assetId, seg, idx, fileData?|clear?}: your own picture, or remove it.
+      if (body.action === "planLongformImages") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { spec } = await lfLoadAsset(aid);
+        if (!spec) return json({ error: "No script on this asset" }, 400);
+        const list = spec.segments.map((x, i) => ({ i, kind: x.kind, name: x.name || "", text: x.text })).filter(x => x.kind === "hook" || x.kind === "item");
+        const planPrompt = "For each video segment below, choose 1-3 pictures to show in a framed area while it's narrated: concrete visual scenes (a person doing the job, the place, the tool) — no text, charts or logos. For each give \"cue\": 4-8 words copied EXACTLY from that segment's text, from its first 70%, where the picture should appear; and \"subject\": what the picture shows.\n\n"
+          + list.map(x => "SEGMENT " + x.i + " (" + x.kind + (x.name ? ": " + x.name : "") + "):\n" + x.text).join("\n\n") + "\n\nCall submit_images.";
+        const pr = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: planPrompt }],
+            tools: [{ name: "submit_images", description: "Image slots per segment.", input_schema: { type: "object", required: ["segments"], properties: { segments: { type: "array", items: { type: "object", required: ["i", "images"], properties: {
+              i: { type: "integer" }, images: { type: "array", maxItems: 3, items: { type: "object", required: ["cue", "subject"], properties: { cue: { type: "string" }, subject: { type: "string" } } } } } } } } } }],
+            tool_choice: { type: "tool", name: "submit_images" } }) });
+        const pd = await pr.json();
+        if (!pr.ok) return json({ error: pd.error?.message || "Claude API error" }, 502);
+        const out = (((pd.content || []).find(b => b.type === "tool_use") || {}).input || {}).segments || [];
+        let n = 0;
+        for (const o of out) {
+          const sg = spec.segments[o.i]; if (!sg || !Array.isArray(o.images)) continue;
+          const keep = (sg.images || []).filter(im => im.url);   // never drop an image already made
+          sg.images = keep.concat(o.images.slice(0, 3 - keep.length).map(im => ({ cue: String(im.cue || "").trim(), subject: String(im.subject || "").trim() })).filter(im => im.cue && im.subject));
+          n += sg.images.length;
+        }
+        await lfSaveSpec(aid, spec);
+        return json({ success: true, slots: n });
+      }
+
+      if (body.action === "generateLongformImage" || body.action === "saveLongformImage") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const si = parseInt(body.seg), ii = parseInt(body.idx);
+        const { spec } = await lfLoadAsset(aid);
+        const slot = spec && spec.segments && spec.segments[si] && (spec.segments[si].images || [])[ii];
+        if (!slot) return json({ error: "No such image slot" }, 400);
+        const putR2 = async (bytes, ct) => {
+          const ext = /jpe?g/i.test(ct) ? "jpg" : /webp/i.test(ct) ? "webp" : "png";
+          const key = "images/longform/" + aid + "/s" + si + "-i" + ii + "-" + Date.now().toString(36) + "." + ext;
+          await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } });
+          return String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+        };
+        if (body.action === "saveLongformImage") {
+          if (body.clear) delete slot.url;
+          else if (body.fileData) {
+            const b64 = String(body.fileData).replace(/^data:[^,]+,/, "").replace(/\s/g, "");
+            const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+            if (bin.length > 12 * 1024 * 1024) return json({ error: "Image is over 12 MB" }, 413);
+            slot.url = await putR2(bin, String(body.contentType || "image/png")); slot.source = "upload";
+          }
+          if (body.cue !== undefined) slot.cue = String(body.cue).trim().slice(0, 200);
+          if (body.subject !== undefined) slot.subject = String(body.subject).trim().slice(0, 400);
+          await lfSaveSpec(aid, spec);
+          return json({ success: true, slot });
+        }
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        if (body.subject) slot.subject = String(body.subject).trim().slice(0, 400);
+        const brief = await assembleImageBrief(env, { assetId: aid });
+        let ispec = brief.storedSpec && brief.storedSpec.length > 200 ? brief.storedSpec : "";
+        if (!ispec) { try { ispec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        let charStyle = "";
+        try { const cj = await fetch("https://cabuzzard.github.io/dash/tools/presenter/characters/" + String((spec.render && spec.render.character) || "mountain-man").replace(/[^a-z0-9-]/g, "") + "/character.json").then(r => r.json()); charStyle = cj.style || ""; } catch (e) {}
+        const cp = "You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — 50-100 words, one paragraph.\n\n"
+          + "WHAT IT IS: a 4:3 illustration shown in a framed panel of a YouTube explainer while the narrator says: \"" + String(spec.segments[si].text || "").slice(0, 600) + "\"\n"
+          + "THE PICTURE MUST SHOW: " + slot.subject + "\n"
+          + "WORDLESS — no text, letters, numbers, charts, logos or UI.\n"
+          + (charStyle ? "ART STYLE (match the presenter): " + charStyle + "\n" : "")
+          + "Keep the hub's palette and \"Never\" rules from this spec:\n" + ispec.slice(0, 4000) + "\n\nEnd with: \"No text, no letters, no logos, no watermarks.\"";
+        const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 500, messages: [{ role: "user", content: cp }] }) });
+        const ad = await ar.json();
+        if (!ar.ok) return json({ error: (ad.error && ad.error.message) || "Claude API error" }, 502);
+        const prompt = ((ad.content && ad.content[0] && ad.content[0].text) || "").trim();
+        const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST",
+          headers: { "Authorization": "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "4:3", resolution: "1k" }) });
+        const xd = await xr.json().catch(() => ({}));
+        const gurl = xd.data && xd.data[0] && xd.data[0].url;
+        if (!xr.ok || !gurl) return json({ error: (xd.error && (xd.error.message || xd.error)) || ("xAI image error (" + xr.status + ")") }, 502);
+        const img = await fetch(gurl);
+        if (!img.ok) return json({ error: "Couldn't fetch the rendered image" }, 502);
+        slot.url = await putR2(new Uint8Array(await img.arrayBuffer()), (img.headers.get("content-type") || "image/png").split(";")[0]);
+        slot.source = "grok"; slot.prompt = prompt.slice(0, 800);
+        await lfSaveSpec(aid, spec);
+        return json({ success: true, slot });
       }
 
       // 16:9 wordless plate behind the presenter — the same hub image-spec → Claude-writes-the-prompt
