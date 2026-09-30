@@ -7109,7 +7109,8 @@ function renderHubOutput() {
   const nameOf = id => id === '__none__' ? '(no method on the asset)' : byId[id].name;
   const ord = O.order || [];
   const pos = id => { const i = ord.indexOf(id); return i < 0 ? 1e6 : i; };
-  const ids = [...new Set([...withGoal, ...Object.keys(cells)])]
+  const hid = new Set(O.hidden || []);
+  const ids = [...new Set([...withGoal, ...Object.keys(cells)])].filter(id => !hid.has(id))
     .sort((a, b) => pos(a) - pos(b) || goal(b, thisWk) - goal(a, thisWk) || nameOf(a).localeCompare(nameOf(b)));
   const n = (id, wk) => ((cells[id] || {})[wk] || []).length;
   const goalRows = ids.filter(id => goal(id, thisWk) > 0);
@@ -7134,11 +7135,12 @@ function renderHubOutput() {
       <td style="padding:5px 6px;max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(nameOf(id))}"><span class="stack-handle" title="Drag to reorder" onpointerdown="hoRowDragStart(event, this)">⠿</span>${esc(nameOf(id))}</td>
       <td style="padding:5px 6px;">${id === '__none__' ? '' : `<input type="number" min="0" max="99" value="${goal(id, thisWk) || ''}" placeholder="0" class="finput" title="This week's goal" style="width:52px;padding:2px 4px;font-size:11px;" onchange="setHubOutputGoal('${esc(id)}', this.value)">`}</td>
       ${weeks.map(wk => cell(id, wk)).join('')}
+      <td style="padding:5px 4px;">${id === '__none__' ? '' : `<button class="iconbtn" title="Remove this method from this hub's board (clears this week's goal; add it back any time)" onclick="removeHubOutputRow('${esc(id)}')">✕</button>`}</td>
     </tr>`).join('');
-  const addable = O.methods.filter(m => m.status === 'Live' && !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
+  const addable = O.methods.filter(m => (m.status === 'Live' || hid.has(m.id)) && !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
   el.innerHTML = summary + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11.5px;width:100%;">
-      <thead><tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">This wk goal</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}</tr></thead>
-      <tbody id="hoRows">${rows || `<tr><td colspan="${weeks.length + 2}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks and no goals set.</td></tr>`}</tbody>
+      <thead><tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">This wk goal</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}<th></th></tr></thead>
+      <tbody id="hoRows">${rows || `<tr><td colspan="${weeks.length + 3}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks and no goals set.</td></tr>`}</tbody>
     </table></div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:11px;">
       ${lastHas ? `<button class="btn" onclick="copyLastWeekGoals()">⧉ Copy last week's goals</button>` : ''}
@@ -7155,7 +7157,21 @@ async function saveHoWeek(week, goals) {
   HUB_OUTPUT.goals = r.goals || HUB_OUTPUT.goals;
   renderHubOutput();
 }
+async function saveHoHidden(hidden) {
+  const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, hidden });
+  HUB_OUTPUT.hidden = r.hidden || hidden;
+}
+async function removeHubOutputRow(methodId) {
+  const m = HUB_OUTPUT.methods.find(x => x.id === methodId);
+  if (!confirm(`Remove "${m ? m.name : methodId}" from ${HUB_SLUG}'s Output board? This week's goal for it is cleared. Add it back from the "+ add" list any time.`)) return;
+  try {
+    const goals = Object.assign({}, (HUB_OUTPUT.goals || {})[HO_THIS_WEEK] || {}); delete goals[methodId];
+    await saveHoHidden([...new Set([...(HUB_OUTPUT.hidden || []), methodId])]);
+    await saveHoWeek(HO_THIS_WEEK, goals);
+  } catch (e) { alert('Not removed: ' + e.message); }
+}
 async function setHubOutputGoal(methodId, value) {
+  if ((HUB_OUTPUT.hidden || []).includes(methodId)) { try { await saveHoHidden(HUB_OUTPUT.hidden.filter(x => x !== methodId)); } catch (e) {} }
   const goals = Object.assign({}, (HUB_OUTPUT.goals || {})[HO_THIS_WEEK] || {});
   const v = Math.max(0, Math.min(99, Math.round(+value || 0)));
   if (v) goals[methodId] = v; else delete goals[methodId];

@@ -14782,11 +14782,13 @@ ${bodyText.slice(0, 6000)}`;
         const readGoals = async () => { let g = null; try { g = await env.TRADES.get(gkey, "json"); } catch (e) {} return (g && g.weeks) ? g : { weeks: {} }; };
         if (body.action === "saveHubOutputGoals") {
           const week = String(body.week || "");
-          if (Array.isArray(body.order) && !week) {   // row drag order only (per hub)
+          if (!week && (Array.isArray(body.order) || Array.isArray(body.hidden))) {   // row order / removed rows (per hub)
             const all = await readGoals();
-            all.order = body.order.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
+            const ids = a2 => a2.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
+            if (Array.isArray(body.order)) all.order = ids(body.order);
+            if (Array.isArray(body.hidden)) all.hidden = ids(body.hidden);
             await env.TRADES.put(gkey, JSON.stringify(all));
-            return json({ success: true, order: all.order });
+            return json({ success: true, order: all.order || [], hidden: all.hidden || [] });
           }
           if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return json({ error: "week (YYYY-MM-DD Monday) required" }, 400);
           const clean = {};
@@ -14818,7 +14820,7 @@ ${bodyText.slice(0, 6000)}`;
         })).filter(m => m.name);
         let ledger = null;
         try { ledger = await env.TRADES.get(lkey, "json"); } catch (e) {}
-        const goalsAll = await readGoals(), goals = goalsAll.weeks, order = goalsAll.order || [];
+        const goalsAll = await readGoals(), goals = goalsAll.weeks, order = goalsAll.order || [], hidden = goalsAll.hidden || [];
         const firstBuild = !ledger; ledger = ledger || {};
         let changed = false;
         const today = new Date().toISOString().slice(0, 10);
@@ -14848,7 +14850,7 @@ ${bodyText.slice(0, 6000)}`;
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Publishing Date": { date: { start: d } } } }) }).catch(() => {});
         }
-        return json({ success: true, slug, today, methods, goals, order, assets, backfilled: firstBuild });
+        return json({ success: true, slug, today, methods, goals, order, hidden, assets, backfilled: firstBuild });
       }
 
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
