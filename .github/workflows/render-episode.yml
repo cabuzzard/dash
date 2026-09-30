@@ -1,0 +1,51 @@
+# Renders a "YouTube Longform — Question-Led" episode (faceless presenter + cards + captions).
+# Started by the worker's renderLongform action (repository_dispatch "render-episode") with
+# {assetId, sig, worker}; every call back to the worker is signed per asset (HMAC "lf:"+assetId).
+# Pulls the episode from ?lfspec, reports ?lfstatus, uploads the MP4 to ?lfdone → R2 → Video URL.
+name: Render longform episode
+
+on:
+  repository_dispatch:
+    types: [render-episode]
+  workflow_dispatch:
+    inputs:
+      assetId: { description: "Asset id (32 hex)", required: true }
+      sig: { description: "HMAC signature from the worker", required: true }
+      worker: { description: "Worker origin", required: true, default: "https://jolly-darkness-5dcc.trailnotes2026.workers.dev" }
+
+concurrency:
+  group: render-${{ github.event.client_payload.assetId || inputs.assetId }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      A: ${{ github.event.client_payload.assetId || inputs.assetId }}
+      S: ${{ github.event.client_payload.sig || inputs.sig }}
+      W: ${{ github.event.client_payload.worker || inputs.worker }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/presenter
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Tools
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg fonts-dejavu-core >/dev/null
+          pip install -q edge-tts numpy pillow
+      - name: Mark running
+        run: curl -fsS -X POST "$W/?lfstatus=1&a=$A&s=$S&st=running&msg=rendering%20on%20GitHub" || true
+      - name: Fetch episode
+        run: curl -fsS "$W/?lfspec=1&a=$A&s=$S" -o episode.json && python -c "import json;e=json.load(open('episode.json'));print(e['title'],'-',len(e['segments']),'segments')"
+      - name: Render
+        run: python tools/presenter/render_episode.py episode.json episode.mp4 --work work
+      - name: Upload to the asset
+        run: |
+          ls -la episode.mp4
+          curl -fsS -X POST -H "Content-Type: video/mp4" --data-binary @episode.mp4 "$W/?lfdone=1&a=$A&s=$S"
+      - name: Report failure
+        if: failure()
+        run: curl -fsS -X POST "$W/?lfstatus=1&a=$A&s=$S&st=failed&msg=render%20failed%20-%20see%20GitHub%20Actions%20log" || true

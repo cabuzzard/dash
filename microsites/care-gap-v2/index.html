@@ -526,6 +526,20 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           </select>
           <input id="caQaTypeCustom" class="finput" type="text" placeholder="e.g. video course, swipe file, template pack" style="width:100%;box-sizing:border-box;margin-top:6px;display:none;">
         </div>
+        <!-- YouTube Longform — Question-Led: 1st Generate finds real questions (Google + YouTube
+             autocomplete, YouTube outliers, keyword demand); pick one + format; 2nd Generate writes
+             the episode script onto a new YouTube Longform asset (Video Spec). -->
+        <div id="caLfRow" style="display:none;font-size:11px;color:var(--ink2);">
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
+            <input id="caLfSeed" class="finput" type="text" placeholder="Seed topic (optional — defaults to this title + Main Keywords)" style="flex:1;font-size:12px;">
+            <button class="btn" type="button" onclick="caLfFindQuestions(this)">🔎 Find questions</button>
+          </div>
+          <div id="caLfQuestions" style="max-height:260px;overflow-y:auto;"></div>
+          <div id="caLfPickRow" style="display:none;gap:8px;align-items:center;margin-top:6px;">
+            Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;"><option value="ranked">Ranked list (score /10)</option><option value="tier">Tier list (S–D)</option><option value="verdict">Verdict (is it worth it?)</option></select>
+            Items <input id="caLfItems" type="number" min="3" max="12" value="9" class="finput" style="width:56px;font-size:11px;">
+          </div>
+        </div>
         <div id="caQaInterviewRow" style="display:none;">
           <div style="font-size:11px;color:var(--ink3);margin-bottom:6px;">QA interviews you before writing — hit Generate to get the first question, answer one at a time, then Generate again once done to actually write it.</div>
           <div id="caQaQuestions"></div>
@@ -778,6 +792,28 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <option value="Published">Published</option>
           </select>
         </label>
+        <div id="pubLongform" style="display:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11px;color:var(--ink2);">
+          <div style="font-weight:700;margin-bottom:6px;">🎬 Longform episode <span id="pubLfInfo" style="font-weight:400;color:var(--ink3);"></span></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+            <div style="flex:1;min-width:180px;">Presenter
+              <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div>
+            <div style="flex:1;min-width:180px;">Voice
+              <select id="pubLfVoice" class="finput" style="width:100%;margin-top:4px;font-size:11px;"></select>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-10%">slower</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
+              <button class="btn" type="button" onclick="pubLfPreviewVoice(this)" style="font-size:10px;">▶ sample</button></div></div>
+          </div>
+          <div style="margin-top:8px;">Background <span style="color:var(--ink3);">(Grok, from the campaign's image spec, matched to the presenter's art style)</span>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
+              <img id="pubLfBg" alt="" style="display:none;width:160px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);">
+              <button class="btn" type="button" id="pubLfBgBtn" onclick="pubLfGenBackground(this)">✨ Generate background</button>
+              <span style="color:var(--ink3);">No background = the presenter's default scene.</span>
+            </div></div>
+          <div style="margin-top:6px;color:var(--ink3);">Fonts + colors: this campaign's hub design (automatic).</div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+            <button class="btn primary" type="button" id="pubLfRenderBtn" onclick="pubLfRender(this)">🎬 Render episode</button>
+            <span id="pubLfStatus"></span>
+          </div>
+        </div>
         <label style="font-size:11px;color:var(--ink2);">Published on <span style="color:var(--ink3);">(stamped automatically the first time it goes Published — edit to correct)</span>
           <input type="date" id="pubPublishingDate" class="finput" style="width:auto;margin-top:4px;">
         </label>
@@ -5299,6 +5335,9 @@ function caOnMethodChange() {
   document.getElementById('caQaProductRow').style.display = isQaMethod ? 'block' : 'none';
   document.getElementById('caQaTypeRow').style.display = isQaProductMethod ? 'block' : 'none';
   document.getElementById('caQaInterviewRow').style.display = isQaMethod ? 'block' : 'none';
+  const isLf = /question[\s-]*led/i.test(name);
+  document.getElementById('caLfRow').style.display = isLf ? 'block' : 'none';
+  if (isLf && CA_LF.titleId !== (CA_TITLE ? CA_TITLE.id : null)) { CA_LF = { titleId: CA_TITLE ? CA_TITLE.id : null, questions: [], pick: -1 }; caLfRender(); }
   // Reset only when THIS title's QA state actually belongs to a
   // different method — not on every method-set call (that was the bug:
   // caSetMethod calls this even when re-picking the SAME method on
@@ -5470,6 +5509,34 @@ function caQaRenderForm() {
     </label>`).join('') + '<button type="button" class="btn" onclick="caQaSaveToResearch()" style="margin-top:4px;">💾 Save to Product Research</button><div id="caQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
+let CA_LF = { titleId: null, questions: [], pick: -1 };
+async function caLfFindQuestions(btn) {
+  const resEl = document.getElementById('caResult');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Searching…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Pulling real searches, YouTube outliers and keyword demand…';
+  try {
+    const r = await w('longformQuestions', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE ? CA_TITLE.id : undefined, seed: document.getElementById('caLfSeed').value.trim() || undefined });
+    CA_LF = { titleId: CA_TITLE ? CA_TITLE.id : null, questions: r.questions || [], pick: -1, outliers: r.outliers || [], auto: r.autocompleteCount || 0 };
+    caLfRender();
+    resEl.style.color = 'var(--fresh)'; resEl.textContent = `${CA_LF.questions.length} questions from ${CA_LF.auto} real searches + ${CA_LF.outliers.length} outlier videos. Pick one, then Generate.`;
+  } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
+function caLfRender() {
+  const el = document.getElementById('caLfQuestions'); if (!el) return;
+  const fmtLbl = { ranked: 'ranked', tier: 'tier list', verdict: 'verdict' };
+  el.innerHTML = CA_LF.questions.map((q, i) => `<label style="display:block;padding:6px 8px;margin-bottom:4px;border:1px solid ${i === CA_LF.pick ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:6px;cursor:pointer;">
+      <input type="radio" name="caLfQ" ${i === CA_LF.pick ? 'checked' : ''} onchange="caLfPick(${i})" style="margin-right:6px;"><b>${esc(q.question)}</b>
+      <div style="color:var(--ink3);margin:2px 0 0 20px;">🎬 ${esc(q.title)} · <i>${esc(fmtLbl[q.format] || q.format)}</i>${q.evidence ? ` · ${esc(q.evidence)}` : ''}${(q.sources || []).length ? ` · ${esc(q.sources.join(', '))}` : ''}</div></label>`).join('');
+  document.getElementById('caLfPickRow').style.display = CA_LF.pick >= 0 ? 'flex' : 'none';
+}
+function caLfPick(i) {
+  CA_LF.pick = i;
+  const f = CA_LF.questions[i].format || 'ranked';
+  document.getElementById('caLfFormat').value = f;
+  document.getElementById('caLfItems').value = f === 'verdict' ? 7 : 9;
+  caLfRender();
+}
 async function runCreateAsset() {
   if (!CA_TITLE) return;
   const btn = document.getElementById('caGenBtn');
@@ -5485,6 +5552,24 @@ async function runCreateAsset() {
   // (no questions fetched yet) asks and renders every question as its own
   // text box (see caQaRenderForm) — fill in whichever apply, then Generate
   // again to actually write it.
+  // YouTube Longform — Question-Led: questions first, then the script.
+  if (/question[\s-]*led/i.test(methodName)) {
+    if (!CA_LF.questions.length) return caLfFindQuestions(btn);
+    const q = CA_LF.questions[CA_LF.pick];
+    if (!q) { resEl.style.color = 'var(--danger)'; resEl.textContent = 'Pick a question above.'; return; }
+    const o = btn.textContent; btn.disabled = true; btn.textContent = 'Writing…';
+    resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Writing the episode script (about a minute)…';
+    try {
+      const r = await w('generateLongformScript', { titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId, question: q.question,
+        format: document.getElementById('caLfFormat').value, items: +document.getElementById('caLfItems').value || undefined,
+        productId: CA_TITLE.productId || undefined });
+      resEl.style.color = 'var(--fresh)';
+      resEl.textContent = `✓ Script written — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to pick the presenter, voice and background, then 🎬 Render.`;
+      await loadTitleAndAssetTab();
+    } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
+    btn.disabled = false; btn.textContent = o;
+    return;
+  }
   const qaMethodMatch = /^QA\s*[–-]\s*(Product|Sales|Story)$/i.exec(methodName.trim());
   if (qaMethodMatch) {
     const o = btn.textContent;
@@ -5744,6 +5829,8 @@ function openPublishAssetModal(assetId) {
   document.getElementById('pubStatus').value = (data.status === 'Published') ? 'Published' : 'Publish';
   document.getElementById('pubPublishingDate').value = data.publishingDate || '';
   PUB_LOADED_PD = data.publishingDate || '';
+  document.getElementById('pubLongform').style.display = 'none';
+  if (/\byoutube\b/i.test(data.type || '')) pubLfLoad(assetId, myToken);
   document.getElementById('pubTitle').value = data.assetTitle || data.title || '';
   document.getElementById('pubPlatformTitle').value = data.platformTitle || '';
   document.getElementById('pubDesignLink').value = data.designLink || '';
@@ -5895,6 +5982,79 @@ function openPublishAssetModal(assetId) {
     if (d.text) document.getElementById('pubPostBody').value = d.text;
     else if (!data.body) document.getElementById('pubPostBody').value = '';
   }).catch(() => { if (myToken === PUB_OPEN_TOKEN && !data.body) document.getElementById('pubPostBody').value = ''; });
+}
+// ── Longform episode render (YouTube Longform — Question-Led) ──
+let PUB_LF = null, PUB_LF_POLL = null;
+async function pubLfLoad(assetId, token) {
+  let r;
+  try { r = await w('getLongformRender', { assetId }); } catch (e) { return; }   // no Video Spec → not a Question-Led episode
+  if (token !== PUB_OPEN_TOKEN) return;
+  PUB_LF = { assetId, ...r };
+  document.getElementById('pubLongform').style.display = 'block';
+  document.getElementById('pubLfInfo').textContent = `· ${r.format} · ${r.segments} segments · ~${Math.round(r.words / 150)} min`;
+  let chars = [];
+  try { chars = await fetch('../../tools/presenter/characters/index.json?t=' + Date.now()).then(x => x.json()); } catch (e) {}
+  const cur = r.render.character || 'mountain-man';
+  document.getElementById('pubLfChars').innerHTML = chars.map(c => `<label style="cursor:pointer;text-align:center;border:2px solid ${c.id === cur ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:8px;padding:4px;width:84px;">
+      <input type="radio" name="pubLfChar" value="${esc(c.id)}" ${c.id === cur ? 'checked' : ''} style="display:none;" onchange="pubLfSave({ character: this.value })">
+      <img src="../../tools/presenter/characters/${esc(c.thumb)}" style="width:72px;height:72px;object-fit:contain;display:block;margin:auto;"><div style="font-size:9.5px;">${esc(c.name)}</div></label>`).join('') || '<span style="color:var(--ink3);">No presenters yet.</span>';
+  const vs = document.getElementById('pubLfVoice');
+  vs.innerHTML = (r.voices || []).map(v => `<option value="${esc(v.id)}" ${v.id === (r.render.voice || '') ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+  vs.onchange = () => pubLfSave({ voice: vs.value });
+  const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || '-4%'; rt.onchange = () => pubLfSave({ rate: rt.value });
+  pubLfShowBg(r.background);
+  pubLfShowJob(r.job, r.videoUrl);
+  if (r.job && /queued|running/.test(r.job.status)) pubLfPoll();
+}
+function pubLfShowBg(url) {
+  const img = document.getElementById('pubLfBg');
+  if (url) { img.src = url; img.style.display = 'block'; } else img.style.display = 'none';
+}
+async function pubLfSave(patch) {
+  try { const r = await w('saveLongformRender', { assetId: PUB_LF.assetId, ...patch }); PUB_LF.render = r.render; if (patch.character) pubLfLoad(PUB_LF.assetId, PUB_OPEN_TOKEN); }
+  catch (e) { alert('Not saved: ' + e.message); }
+}
+function pubLfPreviewVoice(btn) {
+  const txt = 'Here is how this voice sounds reading your episode.';
+  try { const u = new SpeechSynthesisUtterance(txt); speechSynthesis.cancel(); speechSynthesis.speak(u); } catch (e) {}
+  btn.title = 'Browser preview — the render uses the selected neural voice';
+}
+async function pubLfGenBackground(btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = '✨ Generating…';
+  try {
+    const g = await w('generateLongformBackground', { assetId: PUB_LF.assetId });
+    const s2 = await w('saveOfferImage', { assetId: PUB_LF.assetId, kind: 'longform-background', imageUrl: g.imageUrl, prompt: g.prompt, background: true });
+    pubLfShowBg(s2.url || g.imageUrl);
+  } catch (e) { alert('Background failed: ' + e.message); }
+  btn.disabled = false; btn.textContent = o;
+}
+function pubLfShowJob(job, videoUrl) {
+  const st = document.getElementById('pubLfStatus'), btn = document.getElementById('pubLfRenderBtn');
+  const vid = (job && job.url) || videoUrl || '';
+  const link = vid ? ` <a class="kwlink" href="${esc(vid)}" target="_blank" rel="noopener">▶ watch the render</a>` : '';
+  if (!job) { st.innerHTML = vid ? link : '<span style="color:var(--ink3);">Not rendered yet — takes about as long as the episode runs.</span>'; btn.disabled = false; btn.textContent = vid ? '🎬 Re-render' : '🎬 Render episode'; return; }
+  const mins = Math.round((Date.now() - (job.started || job.at)) / 60000);
+  if (job.status === 'queued') { st.innerHTML = `⏳ Queued on GitHub (${mins} min)…`; btn.disabled = true; }
+  else if (job.status === 'running') { st.innerHTML = `🎞 Rendering on GitHub (${mins} min)… you can close this; it keeps going.`; btn.disabled = true; }
+  else if (job.status === 'done') { st.innerHTML = `<span style="color:var(--fresh);">✓ Rendered.</span>${link}`; btn.disabled = false; btn.textContent = '🎬 Re-render'; }
+  else { st.innerHTML = `<span style="color:var(--stale);">✕ ${esc(job.msg || 'Render failed')}</span>`; btn.disabled = false; btn.textContent = '🎬 Try again'; }
+}
+function pubLfPoll() {
+  clearInterval(PUB_LF_POLL);
+  const aid = PUB_LF.assetId;
+  PUB_LF_POLL = setInterval(async () => {
+    if (!PUB_LF || PUB_LF.assetId !== aid || !document.getElementById('publishAssetModal').classList.contains('open')) return clearInterval(PUB_LF_POLL);
+    try { const r = await w('longformRenderStatus', { assetId: aid }); pubLfShowJob(r.job); if (r.job && !/queued|running/.test(r.job.status)) { clearInterval(PUB_LF_POLL); if (r.job.status === 'done') loadTitleAndAssetTab(); } } catch (e) {}
+  }, 20000);
+}
+async function pubLfRender(btn) {
+  btn.disabled = true;
+  try {
+    await w('saveLongformRender', { assetId: PUB_LF.assetId, voice: document.getElementById('pubLfVoice').value, rate: document.getElementById('pubLfRate').value });
+    await w('renderLongform', { assetId: PUB_LF.assetId });
+    pubLfShowJob({ status: 'queued', started: Date.now(), at: Date.now() });
+    pubLfPoll();
+  } catch (e) { btn.disabled = false; document.getElementById('pubLfStatus').innerHTML = `<span style="color:var(--stale);">✕ ${esc(e.message)}</span>`; }
 }
 function closePublishAssetModal() {
   document.getElementById('publishAssetModal').classList.remove('open');

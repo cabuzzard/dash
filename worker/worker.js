@@ -1132,6 +1132,75 @@ const HF_TEMPLATES = {
     bodyFonts: ["Hanken Grotesk", "Inter", "IBM Plex Sans", "Libre Franklin", "Space Grotesk", "Archivo"],
   },
 };
+// ── YouTube Longform — Question-Led (faceless presenter episodes) ──
+// Script = episode JSON on the asset's "Video Spec" ({v, question, format, title, segments,
+// render:{character, voice}}); background plate on "Longform Background". The render runs on
+// GitHub Actions (.github/workflows/render-episode.yml → tools/presenter/render_episode.py),
+// which pulls the episode from ?lfspec, reports ?lfstatus, and POSTs the MP4 to ?lfdone —
+// every call HMAC-signed per asset ("lf:"+assetId). KV lfrender:<assetId> = job status.
+const LF_REPO = "cabuzzard/dash";
+const LF_VOICES = [
+  { id: "en-US-AndrewNeural", label: "Andrew — warm, confident (US)" },
+  { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
+  { id: "en-US-ChristopherNeural", label: "Christopher — authoritative (US)" },
+  { id: "en-US-GuyNeural", label: "Guy — passionate (US)" },
+  { id: "en-US-EricNeural", label: "Eric — rational (US)" },
+  { id: "en-US-RogerNeural", label: "Roger — lively (US)" },
+  { id: "en-US-SteffanNeural", label: "Steffan — calm (US)" },
+  { id: "en-US-AvaNeural", label: "Ava — expressive (US)" },
+  { id: "en-US-EmmaNeural", label: "Emma — cheerful (US)" },
+  { id: "en-US-JennyNeural", label: "Jenny — friendly (US)" },
+  { id: "en-US-AriaNeural", label: "Aria — confident (US)" },
+  { id: "en-GB-RyanNeural", label: "Ryan — steady (UK)" },
+  { id: "en-GB-SoniaNeural", label: "Sonia — clear (UK)" },
+  { id: "en-AU-WilliamNeural", label: "William — relaxed (AU)" },
+];
+function lfReadRich(p) { return (p?.rich_text || []).map(t => t.plain_text).join(""); }
+function lfRich(str) { const out = []; const x = String(str || ""); for (let i = 0; i < x.length && out.length < 95; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; }
+async function lfLoadAsset(assetId) {
+  const x = String(assetId || "").replace(/-/g, "");
+  const url = `https://api.notion.com/v1/pages/${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`;
+  const pg = await fetch(url, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+  if (!pg.properties) throw new Error(pg.message || "Asset not found");
+  let spec = null; try { spec = JSON.parse(lfReadRich(pg.properties["Video Spec"]) || "null"); } catch (e) {}
+  return { url, page: pg, spec };
+}
+async function lfSaveSpec(assetId, spec) {
+  const x = String(assetId).replace(/-/g, "");
+  await fetch(`https://api.notion.com/v1/pages/${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`, {
+    method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Video Spec": { rich_text: lfRich(JSON.stringify(spec)) } } }),
+  });
+}
+// The episode file the renderer reads: script + chosen presenter/voice + the plate + the
+// campaign's own fonts/palette (hub design, same source the hub pages use).
+async function lfBuildEpisode(env, assetId) {
+  const { page, spec } = await lfLoadAsset(assetId);
+  if (!spec || !Array.isArray(spec.segments) || !spec.segments.length) throw new Error("No script on this asset yet");
+  const pr = page.properties;
+  const campaignId = (pr.Campaign?.relation || [])[0]?.id || "";
+  const slug = hubSlugForCampaign(campaignId);
+  let fonts = { display: "Bitter", body: "Inter" }, palette = {};
+  if (slug) {
+    try {
+      const d = await fetch("https://cabuzzard.github.io/dash/web/hub/hubs.design.json", { cf: { cacheTtl: 300 } }).then(r => r.json());
+      const h = (d.hubs || {})[slug] || {};
+      if (h.fonts) fonts = { display: h.fonts.display || fonts.display, body: h.fonts.body || fonts.body };
+      const t = h.tokens || {};
+      palette = { accent: t.accent || "", ink: t["deep-ink"] || "", panel: t.deep || "" };
+    } catch (e) {}
+  }
+  const r = spec.render || {};
+  return {
+    title: spec.title || lfReadRich(pr["Platform Title"]) || "",
+    format: spec.format || "ranked",
+    character: r.character || "mountain-man",
+    voice: { engine: "edge", id: r.voice || "en-US-AndrewNeural", rate: r.rate || "-4%", pitch: r.pitch || "+0Hz" },
+    background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
+    fonts, palette,
+    segments: spec.segments,
+  };
+}
 async function hmacHex(secret, msg) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
@@ -9385,6 +9454,41 @@ export default {
       catch (e) { console.error("hfhook", aid, e.message); return new Response("error", { status: 500 }); }
     }
 
+    // ── Longform render job (GitHub Actions) — signed per asset: HMAC("lf:"+assetId) ──
+    // GET ?lfspec=1  → the episode JSON · POST ?lfstatus=1&st=running|failed&msg=
+    // POST ?lfdone=1 (body = the MP4) → R2 videos/<id>/ → asset "Video URL".
+    {
+      const u = new URL(request.url);
+      const lfKind = u.searchParams.get("lfspec") ? "spec" : u.searchParams.get("lfstatus") ? "status" : u.searchParams.get("lfdone") ? "done" : "";
+      if (lfKind) {
+        const aid = (u.searchParams.get("a") || "").replace(/[^0-9a-f]/gi, "");
+        if (!aid || u.searchParams.get("s") !== await hmacHex(HMAC_SECRET, "lf:" + aid)) return new Response("bad signature", { status: 401 });
+        const kvKey = "lfrender:" + aid;
+        const setSt = async (o) => { let cur = {}; try { cur = (await env.TRADES.get(kvKey, "json")) || {}; } catch (e) {} await env.TRADES.put(kvKey, JSON.stringify({ ...cur, ...o, at: Date.now() })); };
+        try {
+          if (lfKind === "spec") return new Response(JSON.stringify(await lfBuildEpisode(env, aid)), { headers: { "Content-Type": "application/json" } });
+          if (lfKind === "status") { await setSt({ status: String(u.searchParams.get("st") || "running").slice(0, 20), msg: String(u.searchParams.get("msg") || "").slice(0, 300) }); return new Response("ok"); }
+          const len = +(request.headers.get("content-length") || 0);
+          if (!len) return new Response("empty", { status: 400 });
+          const key = `videos/${aid}/longform-${Date.now().toString(36)}.mp4`;
+          await env.MEDIA.put(key, request.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } });
+          const vurl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+          const nh = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          await ensureAssetsDbProperties(nh, { "Video URL": { type: "url" } });
+          const { url: pageUrl, page } = await lfLoadAsset(aid);
+          const props = { "Video URL": { url: vurl } };
+          if ((page.properties["Asset Status"]?.select?.name || "") === "Development") props["Asset Status"] = { select: { name: "Publish" } };
+          await fetch(pageUrl, { method: "PATCH", headers: { ...nh, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+          await setSt({ status: "done", url: vurl, size: len, msg: "" });
+          return new Response(JSON.stringify({ ok: true, url: vurl }), { headers: { "Content-Type": "application/json" } });
+        } catch (e) {
+          console.error("lf", lfKind, aid, e.message);
+          if (lfKind !== "spec") { try { await setSt({ status: "failed", msg: e.message }); } catch (x) {} }
+          return new Response("error: " + e.message, { status: 500 });
+        }
+      }
+    }
+
     // ── Image proxy for canvas compositing (Preview & Edit) ──
     // POST ?imgproxy=1, X-Hermes-Token, body {url}. The browser can only draw
     // a cross-origin image into an exportable canvas if the host sends CORS
@@ -14776,6 +14880,269 @@ ${bodyText.slice(0, 6000)}`;
           hubs: HUB_SITES.map(h => ({ slug: h.slug }))
             .concat(LP_REG.map(l => ({ slug: l.slug, kind: "landing", name: l.name, keyword: l.keyword || "" }))),
         });
+      }
+
+      // ── YouTube Longform — Question-Led ──
+      // longformQuestions {campaignId, titleId?, seed?} → a ranked bank of real questions
+      // (Google + YouTube autocomplete, YouTube outlier videos, the keyword store's demand)
+      // with a suggested format each. generateLongformScript {titleId, campaignId, methodId,
+      // question, format, items} → one "YouTube Longform" asset whose Video Spec holds the
+      // episode script. getLongformRender / saveLongformRender / renderLongform /
+      // longformRenderStatus / generateLongformBackground drive the Publish modal.
+      if (body.action === "longformQuestions") {
+        const { campaignId, titleId } = body;
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
+        const hdrQ = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const [resRows, titlePage] = await Promise.all([
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: nd(campaignId) } } }).catch(() => []),
+          titleId ? fetch(`https://api.notion.com/v1/pages/${nd(titleId)}`, { headers: hdrQ }).then(r => r.json()).catch(() => null) : null,
+        ]);
+        const rt2 = (r, k) => lfReadRich(r?.properties?.[k]);
+        const research = resRows.slice().sort((a, b) => rt2(b, "Keywords").length - rt2(a, "Keywords").length)[0];
+        const keywords = rt2(research, "Keywords");
+        const titleText = titlePage ? Object.values(titlePage.properties || {}).find(v => v.type === "title")?.title?.map(t => t.plain_text).join("") || "" : "";
+        const seedList = [String(body.seed || "").trim(), titleText, ...keywords.split(/[,\n]+/).map(x => x.trim())].filter(Boolean);
+        const seeds = [...new Set(seedList.map(x => x.toLowerCase()))].slice(0, 3);
+        if (!seeds.length) return json({ error: "No seed — give the title a name or add Main Keywords" }, 400);
+        // autocomplete: Google + YouTube, plain + question prefixes
+        const suggest = async (q, yt) => {
+          try {
+            const r = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox${yt ? "&ds=yt" : ""}&q=${encodeURIComponent(q)}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+            const j = await r.json(); return (j[1] || []).slice(0, 10);
+          } catch (e) { return []; }
+        };
+        const jobs = [];
+        for (const sd of seeds) for (const pre of ["", "how to ", "is ", "best "]) for (const yt of [false, true]) {
+          if (jobs.length >= 20) break;
+          jobs.push(suggest(pre + sd, yt).then(list => list.map(q2 => ({ q: q2, src: yt ? "YouTube search" : "Google search" }))));
+        }
+        const auto = (await Promise.all(jobs)).flat();
+        const autoUniq = [...new Map(auto.map(x => [x.q.toLowerCase(), x])).values()].slice(0, 120);
+        // YouTube outliers: videos pulling far above their channel's average
+        let outliers = [];
+        const YT_KEY = (env.YOUTUBE_API_KEY || "").trim();
+        if (YT_KEY) {
+          try {
+            const sr = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&maxResults=25&q=${encodeURIComponent(seeds[0])}&key=${YT_KEY}`).then(r => r.json());
+            const vids = (sr.items || []).map(i => ({ id: i.id?.videoId, ch: i.snippet?.channelId, title: i.snippet?.title || "" })).filter(v2 => v2.id);
+            const [vs, cs] = await Promise.all([
+              fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${vids.map(v2 => v2.id).join(",")}&key=${YT_KEY}`).then(r => r.json()),
+              fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${[...new Set(vids.map(v2 => v2.ch))].join(",")}&key=${YT_KEY}`).then(r => r.json()),
+            ]);
+            const vv = {}; (vs.items || []).forEach(i => { vv[i.id] = +(i.statistics?.viewCount || 0); });
+            const ca = {}; (cs.items || []).forEach(i => { const n2 = +(i.statistics?.videoCount || 0); ca[i.id] = n2 ? +(i.statistics?.viewCount || 0) / n2 : 0; });
+            outliers = vids.map(v2 => ({ title: v2.title.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&"), views: vv[v2.id] || 0, ratio: ca[v2.ch] ? (vv[v2.id] || 0) / ca[v2.ch] : 0 }))
+              .filter(o2 => o2.views > 2000).sort((a, b) => b.ratio - a.ratio).slice(0, 10);
+          } catch (e) { console.error("longformQuestions outliers:", e.message); }
+        }
+        const demand = await kwDemandBlock(env, keywords || seeds.join(", ")).catch(() => "");
+        const qPrompt = `${body.__voice || ""}You pick video topics for a faceless long-form YouTube channel that answers the questions its audience is already asking (Shane Hummus model: real questions → ranked lists, tier lists, or "is it worth it" verdicts).
+
+CAMPAIGN KEYWORDS: ${keywords.slice(0, 1500) || "(none)"}
+TITLE / SEED: ${titleText || body.seed || "(none)"}
+
+REAL SEARCHES (autocomplete — people type these):
+${autoUniq.map(x => `- ${x.q} [${x.src}]`).join("\n").slice(0, 6000)}
+
+YOUTUBE OUTLIERS (videos pulling N× their channel's average — proven demand):
+${outliers.map(o2 => `- "${o2.title}" — ${o2.views.toLocaleString("en-US")} views, ${o2.ratio.toFixed(1)}× channel avg`).join("\n") || "(none)"}
+${demand ? `\nSEARCH DEMAND (Google Ads keyword data):\n${demand.slice(0, 3000)}\n` : ""}
+Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show up in more than one source, have real demand, and carry money intent (someone would pay to have it answered). Phrase each as the viewer would ask it. For each choose the format: "ranked" (which X should I… → N items scored /10), "tier" (which are best/worst → items placed S/A/B/C/D), or "verdict" (is X worth it → one deep answer in 6-8 points). Give a YouTube title in that format (the Shane formulas: "[N] [Unappealing] But [Payoff] [Things] (Always Hiring)", "[Category] Tier List", "Top N [Things] That Are Actually Worth It", "Is [X] Worth It?"). Call submit_questions.`;
+        const qr = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: qPrompt }],
+            tools: [{ name: "submit_questions", description: "The ranked question bank.", input_schema: { type: "object", required: ["questions"], properties: { questions: { type: "array", items: { type: "object", required: ["question", "format", "title"], properties: {
+              question: { type: "string" }, format: { type: "string", enum: ["ranked", "tier", "verdict"] }, title: { type: "string" },
+              sources: { type: "array", items: { type: "string" } }, evidence: { type: "string", description: "one line: why this has demand" } } } } } } }],
+            tool_choice: { type: "tool", name: "submit_questions" } }),
+        });
+        const qd = await qr.json();
+        if (!qr.ok) return json({ error: qd.error?.message || "Claude API error" }, 502);
+        const qs = (((qd.content || []).find(b => b.type === "tool_use") || {}).input || {}).questions || [];
+        return json({ success: true, questions: qs.slice(0, 12), outliers, autocompleteCount: autoUniq.length });
+      }
+
+      if (body.action === "generateLongformScript") {
+        const { titleId, campaignId, methodId, question } = body;
+        const format = ["ranked", "tier", "verdict"].includes(body.format) ? body.format : "ranked";
+        const items = Math.min(Math.max(parseInt(body.items) || (format === "verdict" ? 7 : 9), 3), 12);
+        if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
+        const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
+        const hdrS = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const hasMethod = methodId && methodId !== "__none__";
+        const productId = body.productId && body.productId !== "__none__" ? body.productId : "";
+        const [methodText, pillar, researchRec, brief] = await Promise.all([
+          hasMethod ? extractBlocksTextRecursive(hdrS, nd(methodId)).catch(() => "") : "",
+          extractPillarContent(hdrS, nd(titleId)).catch(() => ""),
+          productId ? findBestProductResearchRecord(hdrS, nd(productId)).catch(() => null) : null,
+          assembleImageBrief(env, { campaignId }).catch(() => null),
+        ]);
+        const prodFacts = researchRec ? STRATEGY_FIELDS.map(f => { const v = lfReadRich(researchRec.properties?.[f]); return v && `${f}: ${v}`; }).filter(Boolean).join("\n") : "";
+        const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
+        const fmtRule = format === "tier"
+          ? `TIER LIST: ${items} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`
+          : format === "verdict"
+          ? `VERDICT: ${items} points that build to a clear yes/no/"only if" answer; each point is an item with a short "name" (the point) and no pay/score unless genuinely relevant.`
+          : `RANKED LIST: ${items} items, each with an opportunity "score" out of 10 (one decimal) and the reason.`;
+        const sPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}Write a complete 12-15 minute faceless YouTube episode script answering this viewer question:
+
+QUESTION: ${String(question).trim()}
+FORMAT — ${fmtRule}
+${hasMethod && methodText ? `\nMETHOD (follow it):\n${methodText.slice(0, 5000)}\n` : ""}
+STRUCTURE (the Shane Hummus model — the narrator is an animated presenter; the words are spoken aloud):
+1. HOOK (~40 s): a contrarian premise sentence, a specific promise (numbers, "no degree", "weeks not years"), an authority line built on sourcing ("every number here is sourced"), one soft ask to like the video, then "let's jump into it".
+2. ITEMS: each item is ONE segment of ~60-90 s of narration, always in this order: name → "if you've ever wondered who…" → what it actually is → a vivid analogy → pay/cost range with where it comes from → skills or requirements → one proof story (a real-sounding but NOT invented-specific example: "people in forums report…", never a fake named person) → two or three pros and cons → the score/tier and why.
+3. ASKS: after item 1 or 2 a like ask; mid-way a comment question ("which one fits you?"); once, a free-resource mention; before the last item a subscribe ask. Each ask is its own short segment.
+4. OUTRO (~20 s): recap in one line, point to the next video. No long goodbye.
+Narration is spoken English: short sentences, contractions, numbers written out as words. Never invent statistics — only use figures in the research below or widely known published ranges, and say "around".
+
+RESEARCH:
+${prodFacts || ""}
+${campFacts}
+${pillar ? `PILLAR (stay faithful):\n${pillar.slice(0, 5000)}` : ""}
+
+Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTitles", 3 "thumbnailText" options (2-5 words), a 2-paragraph YouTube "description", 12 "tags", ≤3 "hashtags". Call submit_episode.`;
+        const segSchema = { type: "object", required: ["kind", "text"], properties: {
+          kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment" },
+          n: { type: "integer" }, name: { type: "string" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
+          pay: { type: "string", description: "on-screen range like '$45K – $65K / year' (omit if not relevant)" }, payPct: { type: "number", description: "0-1 bar fill vs the other items" },
+          score: { type: "number" }, tier: { type: "string" }, label: { type: "string", description: "ask segments: the on-screen pill text" } } };
+        const sr = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 16000, messages: [{ role: "user", content: sPrompt }],
+            tools: [{ name: "submit_episode", description: "The episode.", input_schema: { type: "object", required: ["title", "segments", "description"], properties: {
+              title: { type: "string" }, altTitles: { type: "array", items: { type: "string" } }, thumbnailText: { type: "array", items: { type: "string" } },
+              description: { type: "string" }, tags: { type: "array", items: { type: "string" } }, hashtags: { type: "array", items: { type: "string" } },
+              segments: { type: "array", items: segSchema } } } }],
+            tool_choice: { type: "tool", name: "submit_episode" } }),
+        });
+        const sd2 = await sr.json();
+        if (!sr.ok) return json({ error: sd2.error?.message || "Claude API error" }, 502);
+        const o = ((sd2.content || []).find(b => b.type === "tool_use") || {}).input;
+        if (!o || !Array.isArray(o.segments) || o.segments.length < 3) return json({ error: "No script came back — try again" }, 502);
+        const S = v => String(v || "").trim();
+        const segs = o.segments.filter(x => S(x.text)).map(x => {
+          const k = { kind: x.kind, text: S(x.text) };
+          for (const f of ["n", "name", "blurb", "pay", "payPct", "score", "tier", "label"]) if (x[f] !== undefined && x[f] !== "") k[f] = x[f];
+          return k;
+        });
+        const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
+        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, render: { character: "mountain-man", voice: "en-US-AndrewNeural" } };
+        const hashtags = (o.hashtags || []).map(S).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
+        const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
+        const h2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: lfRich(t) } });
+        const para = t => ({ object: "block", type: "paragraph", paragraph: { rich_text: lfRich(t) } });
+        const blocks = [h2(`🎬 ${S(o.title)}`), para(`Question: ${S(question)} · Format: ${format} · ${segs.length} segments · ~${Math.round(words / 150)} min`),
+          para(`Alt titles: ${(o.altTitles || []).map(S).join("  |  ")}`), para(`Thumbnail text: ${(o.thumbnailText || []).map(S).join("  |  ")}`)];
+        for (const x of segs) {
+          const head = x.kind === "item" ? `#${x.n ?? ""} ${x.name || ""}${x.score != null ? ` — ${x.score}/10` : ""}${x.tier ? ` — ${x.tier} tier` : ""}` : x.kind.toUpperCase() + (x.label ? ` — ${x.label}` : "");
+          blocks.push({ object: "block", type: "heading_3", heading_3: { rich_text: lfRich(head) } }, para(x.text));
+        }
+        blocks.push(h2("Tags"), para(tags.join(", ")));
+        await ensureAssetsDbProperties(hdrS, { "Video Spec": { type: "rich_text" }, "Video URL": { type: "url" }, "Longform Background": { type: "url" }, "Thumbnail Text": { type: "rich_text" } });
+        const mProp = await assetMethodProp(methodId, "YouTube Longform");
+        const props = {
+          "Asset Title": { title: [{ text: { content: `YouTube — ${S(o.title)}`.slice(0, 200) } }] },
+          "Asset Status": { select: { name: "Development" } },
+          "Asset Type": { select: { name: "YouTube Longform" } },
+          "Platform Title": { rich_text: lfRich(S(o.title)) },
+          "Post Caption": { rich_text: lfRich(`${S(o.description)}${hashtags ? `\n\n${hashtags}` : ""}`) },
+          "Body": { rich_text: lfRich(segs.map(x => x.text).join("\n\n").slice(0, 1990)) },
+          "Video Spec": { rich_text: lfRich(JSON.stringify(spec)) },
+          "Thumbnail Text": { rich_text: lfRich((o.thumbnailText || []).map(S).join(" | ")) },
+          "Content Strategy": { relation: [{ id: nd(titleId) }] },
+          "Campaign": { relation: [{ id: nd(campaignId) }] },
+          "Platform Name": { select: { name: "YouTube" } },
+          ...mProp,
+        };
+        if (hashtags) props["Hashtags"] = { rich_text: lfRich(hashtags) };
+        if (productId) props["Product"] = { relation: [{ id: nd(productId) }] };
+        const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdrS, "Content-Type": "application/json" },
+          body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props, children: blocks.slice(0, 95) }) });
+        const cd = await cr.json().catch(() => ({}));
+        if (!cr.ok) return json({ error: "Couldn't create the asset: " + (cd.message || cr.status) }, 502);
+        for (let i = 95; i < blocks.length; i += 95) await fetch(`https://api.notion.com/v1/blocks/${cd.id}/children`, { method: "PATCH", headers: { ...hdrS, "Content-Type": "application/json" }, body: JSON.stringify({ children: blocks.slice(i, i + 95) }) }).catch(() => {});
+        return json({ success: true, assetId: cd.id.replace(/-/g, ""), title: S(o.title), segments: segs.length, minutes: Math.round(words / 150) });
+      }
+
+      if (body.action === "getLongformRender" || body.action === "saveLongformRender") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        if (aid.length !== 32) return json({ error: "assetId required" }, 400);
+        const { spec, page } = await lfLoadAsset(aid);
+        if (!spec) return json({ error: "This asset has no longform script (Video Spec)" }, 400);
+        if (body.action === "saveLongformRender") {
+          spec.render = spec.render || {};
+          if (body.character) spec.render.character = String(body.character).replace(/[^a-z0-9-]/g, "").slice(0, 60);
+          if (body.voice) spec.render.voice = String(body.voice).replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
+          if (body.rate !== undefined) spec.render.rate = /^[+-]\d{1,2}%$/.test(body.rate) ? body.rate : "-4%";
+          await lfSaveSpec(aid, spec);
+        }
+        let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
+        return json({ success: true, render: spec.render || {}, format: spec.format, question: spec.question, segments: spec.segments.length,
+          words: spec.segments.reduce((n2, x) => n2 + String(x.text || "").split(/\s+/).length, 0),
+          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", voices: LF_VOICES, job });
+      }
+
+      if (body.action === "renderLongform") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        if (aid.length !== 32) return json({ error: "assetId required" }, 400);
+        await lfBuildEpisode(env, aid);   // throws if there's no script
+        const GT = (env.GITHUB_TOKEN || "").trim();
+        if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 500);
+        const sig = await hmacHex(HMAC_SECRET, "lf:" + aid);
+        const origin = new URL(request.url).origin;
+        const gr = await fetch(`https://api.github.com/repos/${LF_REPO}/dispatches`, { method: "POST",
+          headers: { Authorization: `Bearer ${GT}`, Accept: "application/vnd.github+json", "User-Agent": "dash-worker", "Content-Type": "application/json" },
+          body: JSON.stringify({ event_type: "render-episode", client_payload: { assetId: aid, sig, worker: origin } }) });
+        if (!gr.ok) return json({ error: `GitHub wouldn't start the render (${gr.status}): ${(await gr.text()).slice(0, 200)}` }, 502);
+        await env.TRADES.put("lfrender:" + aid, JSON.stringify({ status: "queued", at: Date.now(), started: Date.now() }));
+        return json({ success: true, status: "queued" });
+      }
+      if (body.action === "longformRenderStatus") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
+        return json({ success: true, job });
+      }
+
+      // 16:9 wordless plate behind the presenter — the same hub image-spec → Claude-writes-the-prompt
+      // → Grok Imagine path as the offer/thumbnail plates; saveOfferImage kind "longform-background" keeps it.
+      if (body.action === "generateLongformBackground") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const { spec, page } = await lfLoadAsset(aid);
+        const brief = await assembleImageBrief(env, { assetId: aid });
+        let ispec = "";
+        if (brief.storedSpec && brief.storedSpec.length > 200) ispec = brief.storedSpec;
+        else { try { ispec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
+        ispec += approvedPlateBlock(brief);
+        let charStyle = "";
+        try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${(spec?.render?.character || "mountain-man").replace(/[^a-z0-9-]/g, "")}/character.json`).then(r => r.json()); charStyle = cj.style || ""; } catch (e) {}
+        const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
+        const cPrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — 60-110 words, one paragraph.
+
+WHAT IT IS: a WIDE 16:9 background scene for a talking-presenter YouTube video. An illustrated presenter stands over the RIGHT ~40% and info cards sit over the LEFT ~45%, so keep the whole frame calm, low-detail and uncluttered with a clear horizon — a setting, not a subject. WORDLESS — no text, letters, numbers, logos, UI or signage. No people.
+${charStyle ? `ART STYLE (must match the presenter so it doesn't look pasted on): ${charStyle}\n` : ""}
+Obey this hub's image spec — palette, subjects, light, the "Never" list:
+${ispec}
+
+THE EPISODE'S TOPIC (pick a scene from the spec's world that suits it — don't put its words in the image): ${topic}
+
+End with: "No people, no text, no letters, no logos, no watermarks."`;
+        const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: plateContent(cPrompt, brief) }] }) });
+        const ad = await ar.json();
+        if (!ar.ok) return json({ error: ad.error?.message || "Claude API error" }, 502);
+        const prompt = (ad.content?.[0]?.text || "").trim();
+        const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST",
+          headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }) });
+        const xd = await xr.json().catch(() => ({}));
+        if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+        const imageUrl = xd.data?.[0]?.url || "";
+        if (!imageUrl) return json({ error: "xAI returned no image" }, 502);
+        return json({ imageUrl, prompt, kind: "longform-background", sync: true });
       }
 
       // ── getHubOutput / saveHubOutputGoals ── care-gap Hub tab "Output": one hub,
@@ -23849,7 +24216,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // sponsor/integrated-read slot). Title/alt titles/thumbnail text/description
         // with chapters/tags/hashtags on the asset; the outline itself as page blocks.
         // The method's Notion body is the methodology (read here, never copied).
-        if (/\byoutube\b/i.test(assetType) && /long\s*-?\s*form|outline/i.test(assetType)) {
+        if (/\byoutube\b/i.test(assetType) && /long\s*-?\s*form|outline/i.test(assetType) && !/question/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
           const minutes = Math.min(Math.max(parseInt(body.minutes) || 25, 12), 40);
           const [prodPage, researchRec, methodFrameworkText, pillarContent] = await Promise.all([
@@ -27859,6 +28226,7 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
           "ig-background":  { prop: "Instagram Background", suffix: "ig-background",  promptProp: "Image Prompt (IG Background)", srcProp: "Instagram Background Source" },
           "blog-thumbnail": { prop: "Thumbnail",           suffix: "blog-thumbnail", promptProp: "Image Prompt (Blog Thumbnail)", srcProp: "Thumbnail Source" },
           "post-image":     { prop: "Post Image",           suffix: "post-image",     promptProp: null, srcProp: "Post Image Source" },
+          "longform-background": { prop: "Longform Background", suffix: "longform-bg", promptProp: null, srcProp: null },
         };
         if (!assetId || !SLOT[kind] || (!imageUrl && !fileData)) return json({ error: "assetId, a valid kind, and imageUrl or fileData required" }, 400);
         if (imageUrl && !/^https:\/\//i.test(String(imageUrl))) return json({ error: "imageUrl must be https" }, 400);
