@@ -208,9 +208,12 @@ def main(ep_path, out, work):
     pl = P.c["place"]; chx = W - pl["figureRightEdge"] - pl["right"]
     fmt = ep.get("format", "ranked")
     cap_w = chx + pl.get("figureLeftEdge", 330) - 80 - 40   # captions run up to the presenter
+    STAGE_LAYOUT = ep.get("layout") == "stage"                  # "Text & Images": no presenter, big centred frame
+    BX = (W - 760) // 2 if STAGE_LAYOUT else 80                  # where cards / titles / pills rest
+    if STAGE_LAYOUT: cap_w = 1560
 
     # ── scene images: shown in a framed stage on the left when their cue words are spoken ──
-    STAGE = (80, 120, 840, 700)   # x0, y0, x1, y1
+    STAGE = (240, 50, 1680, 860) if STAGE_LAYOUT else (80, 120, 840, 700)   # x0, y0, x1, y1
     sw_, sh_ = STAGE[2] - STAGE[0], STAGE[3] - STAGE[1]
     norm = lambda x: re.sub(r"[^a-z0-9 ]+", "", str(x).lower()).split()
     shots = []   # (start, end, PIL image sized 1.12x the stage)
@@ -284,22 +287,25 @@ def main(ep_path, out, work):
         dx = int(40 * math.sin(t / 23)); dy = int(18 * math.sin(t / 31))
         ox, oy = (sc.width - W) // 2 + dx, max(0, (sc.height - H) // 2 + dy)
         fr = sc.crop((ox, oy, ox + W, oy + H)).convert("RGBA")
-        ch = P.variant(jaw[i] if i < len(jaw) else 0, blink_at.get(i, 0))
-        fr.alpha_composite(ch, (chx, H - ch.height + pl.get("bottomOverhang", 30) + int(round(3 * math.sin(t * 2 * math.pi * 0.23)))))
+        if not STAGE_LAYOUT:
+            ch = P.variant(jaw[i] if i < len(jaw) else 0, blink_at.get(i, 0))
+            fr.alpha_composite(ch, (chx, H - ch.height + pl.get("bottomOverhang", 30) + int(round(3 * math.sin(t * 2 * math.pi * 0.23)))))
         d = ImageDraw.Draw(fr)
         for t0, t1, seg in timeline:
             if not (t0 - 0.1 <= t <= t1 + 0.5): continue
             kind = seg.get("kind")
             k_in, k_out = ease((t - t0) / 0.45), ease((t - t1) / 0.4)
-            x = int(-800 + (80 + 800) * k_in - 900 * k_out)
+            x = int(-800 + (BX + 800) * k_in - (900 + BX) * k_out)
             if kind in ("item", "point"):
                 if shot_at(t) is None:
                     fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, 120))
             elif kind == "hook" and ep.get("title"):
                 ttl = Image.new("RGBA", (900, 420), (0, 0, 0, 0)); td = ImageDraw.Draw(ttl)
                 yy = 0
-                for ln in wrap(td, ep["title"], F_TTL, 860)[:4]: td.text((0, yy), ln, font=F_TTL, fill=INK, stroke_width=3, stroke_fill=PANEL); yy += 70
-                fr.alpha_composite(ttl, (x, 170))
+                for ln in wrap(td, ep["title"], F_TTL, 860)[:4]:
+                    lx = (900 - int(td.textlength(ln, font=F_TTL))) // 2 if STAGE_LAYOUT else 0
+                    td.text((lx, yy), ln, font=F_TTL, fill=INK, stroke_width=3, stroke_fill=PANEL); yy += 70
+                fr.alpha_composite(ttl, (x - (70 if STAGE_LAYOUT else 0), 170))
             elif kind == "ask" and seg.get("label"):
                 tw = d.textlength(seg["label"], font=F_TXT)
                 d.rounded_rectangle([x, 150, x + tw + 60, 222], 36, fill=ACC)
@@ -321,7 +327,7 @@ def main(ep_path, out, work):
         if cur:
             lines = wrap(d, cur, F_CAP, cap_w)[:2]
             for li, ln in enumerate(lines):
-                tw = d.textlength(ln, font=F_CAP); x = 80; y = 930 - (len(lines) - 1 - li) * 62
+                tw = d.textlength(ln, font=F_CAP); x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80; y = 930 - (len(lines) - 1 - li) * 62
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + 54], 12, fill=(10, 14, 12, 190))
                 d.text((x, y), ln, font=F_CAP, fill=INK)
         return fr.convert("RGB")

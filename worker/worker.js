@@ -1195,6 +1195,7 @@ async function lfBuildEpisode(env, assetId) {
     title: spec.title || lfReadRich(pr["Platform Title"]) || "",
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
+    layout: r.layout === "stage" ? "stage" : "presenter",
     voice: { engine: "edge", id: r.voice || "en-US-AndrewNeural", rate: r.rate || "-4%", pitch: r.pitch || "+0Hz" },
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
@@ -14989,9 +14990,32 @@ Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show u
         return json({ success: true, questions: qs.slice(0, 12), outliers, autocompleteCount: autoUniq.length });
       }
 
+      // longformInterview {campaignId, question, titleId?} → 3-5 questions that pull the channel
+      // owner's OWN experience on this viewer question (Shane's "Claude interviews you" step).
+      if (body.action === "longformInterview") {
+        const q = String(body.question || "").trim();
+        if (!q) return json({ error: "question required" }, 400);
+        const brief = body.campaignId ? await assembleImageBrief(env, { campaignId: body.campaignId }).catch(() => null) : null;
+        const camp = brief ? brief.facts.filter(f => /^Campaign Research/.test(f)).join("\n").slice(0, 3000) : "";
+        const ir = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content:
+            "You are a ghostwriter interviewing the owner of a YouTube channel before writing an episode that answers this viewer question:\n\nQUESTION: " + q + "\n\n" + (camp ? "WHAT THE CHANNEL/BUSINESS IS ABOUT:\n" + camp + "\n\n" : "")
+            + "Ask 3-5 short, specific questions that draw out THEIR OWN experience: stories, clients or people they've seen, mistakes, numbers they actually know, strong opinions, what most advice gets wrong. No generic questions the internet could answer. Each answerable in 2-4 sentences. Call submit_questions." }],
+            tools: [{ name: "submit_questions", description: "Interview questions.", input_schema: { type: "object", required: ["questions"], properties: { questions: { type: "array", minItems: 3, maxItems: 5, items: { type: "string" } } } } }],
+            tool_choice: { type: "tool", name: "submit_questions" } }) });
+        const idd = await ir.json();
+        if (!ir.ok) return json({ error: (idd.error && idd.error.message) || "Claude API error" }, 502);
+        const qs = ((((idd.content || []).find(b => b.type === "tool_use") || {}).input || {}).questions || []).map(x => String(x).trim()).filter(Boolean);
+        if (!qs.length) return json({ error: "No interview questions came back — try again" }, 502);
+        return json({ success: true, questions: qs });
+      }
+
       if (body.action === "generateLongformScript") {
         const { titleId, campaignId, methodId, question } = body;
         const format = ["ranked", "tier", "verdict"].includes(body.format) ? body.format : "ranked";
+        const layout = body.layout === "stage" ? "stage" : "presenter";
+        const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         const items = Math.min(Math.max(parseInt(body.items) || (format === "verdict" ? 7 : 9), 3), 12);
         if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
         const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
@@ -15024,7 +15048,10 @@ STRUCTURE (the Shane Hummus model — the narrator is an animated presenter; the
 5. PICTURES: the hook and every item get 1-3 "images" — concrete scenes that illustrate what is being said at that moment (a person doing the job, the place, the tool). Each image's "cue" is 4-8 words copied exactly from that segment's narration, in its first 70%.
 Narration is spoken English: short sentences, contractions, numbers written out as words. Never invent statistics — only use figures in the research below or widely known published ranges, and say "around".
 
-RESEARCH:
+${interview.length ? `THE NARRATOR'S OWN EXPERIENCE (from an interview with the channel owner — build the episode on this: use their specifics, examples and opinions, keep their phrasing where it's strong, and speak as someone who has lived it; NEVER invent personal experiences, clients or numbers beyond what they said):
+${interview.map((x, i) => `Q${i + 1}: ${x.q}\nA${i + 1}: ${x.a}`).join("\n\n")}
+
+` : ""}RESEARCH:
 ${prodFacts || ""}
 ${campFacts}
 ${pillar ? `PILLAR (stay faithful):\n${pillar.slice(0, 5000)}` : ""}
@@ -15059,7 +15086,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           return k;
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
-        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, render: { character: "mountain-man", voice: "en-US-AndrewNeural" } };
+        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: "en-US-AndrewNeural", layout } };
         const hashtags = (o.hashtags || []).map(S).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
         const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         const h2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: lfRich(t) } });
@@ -15106,6 +15133,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           spec.render = spec.render || {};
           if (body.character) spec.render.character = String(body.character).replace(/[^a-z0-9-]/g, "").slice(0, 60);
           if (body.voice) spec.render.voice = String(body.voice).replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
+          if (body.layout) spec.render.layout = body.layout === "stage" ? "stage" : "presenter";
           if (body.rate !== undefined) spec.render.rate = /^[+-]\d{1,2}%$/.test(body.rate) ? body.rate : "-4%";
           await lfSaveSpec(aid, spec);
         }

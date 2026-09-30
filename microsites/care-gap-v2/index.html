@@ -536,6 +536,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <button class="btn" type="button" onclick="caLfFindQuestions(this)">🔎 Find questions</button>
           </div>
           <div id="caLfQuestions" style="max-height:260px;overflow-y:auto;"></div>
+          <div id="caLfInterview" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:8px;">
+            <div style="font-weight:700;margin-bottom:4px;">🎙 Interview — your own experience</div>
+            <div style="color:var(--ink3);margin-bottom:6px;">The script is built on your answers. Skip any you can't answer; leave all blank to write from research only.</div>
+            <div id="caLfInterviewQs"></div>
+          </div>
           <div id="caLfPickRow" style="display:none;gap:8px;align-items:center;margin-top:6px;">
             Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;"><option value="ranked">Ranked list (score /10)</option><option value="tier">Tier list (S–D)</option><option value="verdict">Verdict (is it worth it?)</option></select>
             Items <input id="caLfItems" type="number" min="3" max="12" value="9" class="finput" style="width:56px;font-size:11px;">
@@ -796,8 +801,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="pubLongform" style="display:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11px;color:var(--ink2);">
           <div style="font-weight:700;margin-bottom:6px;">🎬 Longform episode <span id="pubLfInfo" style="font-weight:400;color:var(--ink3);"></span></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
-            <div style="flex:1;min-width:180px;">Presenter
-              <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div>
+            <div style="flex:1;min-width:180px;">Layout
+              <select id="pubLfLayout" class="finput" style="width:100%;margin-top:4px;font-size:11px;"><option value="presenter">Avatar — presenter + image box</option><option value="stage">Text &amp; images — big image frame, no avatar</option></select>
+              <div id="pubLfCharsWrap" style="margin-top:6px;">Presenter
+              <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div></div>
             <div style="flex:1;min-width:180px;">Voice
               <select id="pubLfVoice" class="finput" style="width:100%;margin-top:4px;font-size:11px;"></select>
               <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-10%">slower</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
@@ -5541,6 +5548,7 @@ function caLfRender() {
 }
 function caLfPick(i) {
   CA_LF.pick = i;
+  CA_LF.iv = null; document.getElementById('caLfInterview').style.display = 'none';
   const f = CA_LF.questions[i].format || 'ranked';
   document.getElementById('caLfFormat').value = f;
   document.getElementById('caLfItems').value = f === 'verdict' ? 7 : 9;
@@ -5566,11 +5574,25 @@ async function runCreateAsset() {
     if (!CA_LF.questions.length) return caLfFindQuestions(btn);
     const q = CA_LF.questions[CA_LF.pick];
     if (!q) { resEl.style.color = 'var(--danger)'; resEl.textContent = 'Pick a question above.'; return; }
+    if (!CA_LF.iv || CA_LF.iv.forPick !== CA_LF.pick) {
+      const o0 = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing interview…';
+      try {
+        const r = await w('longformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: q.question });
+        CA_LF.iv = { forPick: CA_LF.pick, qs: r.questions || [] };
+        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;"></textarea></label>`).join('');
+        document.getElementById('caLfInterview').style.display = 'block';
+        resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer the interview above (a few sentences each), then Generate to write the script.';
+      } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
+      btn.disabled = false; btn.textContent = o0;
+      return;
+    }
+    const interview = CA_LF.iv.qs.map((iq, k) => ({ q: iq, a: ((document.getElementById('caLfIvA' + k) || {}).value || '').trim() })).filter(x => x.a);
     const o = btn.textContent; btn.disabled = true; btn.textContent = 'Writing…';
     resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Writing the episode script (about a minute)…';
     try {
       const r = await w('generateLongformScript', { titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId, question: q.question,
         format: document.getElementById('caLfFormat').value, items: +document.getElementById('caLfItems').value || undefined,
+        interview, layout: /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter',
         productId: CA_TITLE.productId || undefined });
       resEl.style.color = 'var(--fresh)';
       resEl.textContent = `✓ Script written — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to pick the presenter, voice and background, then 🎬 Render.`;
@@ -6011,6 +6033,9 @@ async function pubLfLoad(assetId, token) {
   vs.innerHTML = (r.voices || []).map(v => `<option value="${esc(v.id)}" ${v.id === (r.render.voice || '') ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
   vs.onchange = () => pubLfSave({ voice: vs.value });
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || '-4%'; rt.onchange = () => pubLfSave({ rate: rt.value });
+  const ly = document.getElementById('pubLfLayout'); ly.value = r.render.layout === 'stage' ? 'stage' : 'presenter';
+  document.getElementById('pubLfCharsWrap').style.display = ly.value === 'stage' ? 'none' : '';
+  ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'stage' ? 'none' : ''; pubLfSave({ layout: ly.value }); };
   pubLfShowBg(r.background);
   PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();
   pubLfShowJob(r.job, r.videoUrl);
