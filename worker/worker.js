@@ -15586,8 +15586,19 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         if (!cid) return json({ error: "campaignId required" }, 400);
         let ch = null; try { ch = await env.TRADES.get("yt:chan:" + cid, "json"); } catch (e) {}
         const tok = await env.TRADES.get("yt:tok:" + cid);
+        let chErr = "";
+        if (tok && !(ch && ch.id)) {   // channel unknown (e.g. the API was still switching on at sign-in) — look it up now
+          try {
+            const at = await ytAccessToken(env, cid);
+            const cr = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: "Bearer " + at } });
+            const cd = await cr.json().catch(() => ({}));
+            const c0 = (cd.items || [])[0];
+            if (c0) { ch = { id: c0.id, title: c0.snippet?.title || "(channel)", at: Date.now() }; await env.TRADES.put("yt:chan:" + cid, JSON.stringify(ch)); }
+            else chErr = cd.error?.message || "no channel on that sign-in";
+          } catch (e) { chErr = e.message; }
+        }
         const origin = new URL(request.url).origin;
-        return json({ ok: true, configured: !!(env.YT_OAUTH_CLIENT_ID || "").trim(), connected: !!tok, channel: ch,
+        return json({ ok: true, configured: !!(env.YT_OAUTH_CLIENT_ID || "").trim(), connected: !!tok, channel: ch, channelError: chErr,
           connectUrl: `${origin}/?ytauth=start&c=${cid}&s=${await hmacHex(HMAC_SECRET, "yt:" + cid)}`, redirectUri: `${origin}/?ytauth=cb` });
       }
       // publishYouTube {assetId, privacy: private|unlisted|public, publishAt?} → uploads the asset's Video URL to the
