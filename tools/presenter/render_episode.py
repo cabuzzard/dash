@@ -191,7 +191,7 @@ def make_jingle(text, work, key="jingle", voice=None, sfx=""):
         out = np.zeros(max(len(wet), at + len(rv)), np.int32); out[:len(wet)] += wet; out[at:at + len(rv)] += rv
         wet = np.clip(out, -32768, 32767).astype(np.int16)
     return wet
-def add_ambience(audio, amb):
+def add_ambience(audio, amb, intro_end=0.0):
     """Room tone under the whole episode. "wind" = airy pink noise 400-2500 Hz (audible on phones, no rumble) with a
     slow natural swell, set `db` below the narration's average level (operator standard: barely there, -40 dB)."""
     if (amb or {}).get("type") != "wind" or not len(audio): return audio
@@ -205,9 +205,16 @@ def add_ambience(audio, amb):
     v = audio.astype(np.float32)
     rms = lambda x: np.sqrt(np.mean(x ** 2)) + 1e-9
     wind *= rms(v) * 10 ** (float(amb.get("db", -40)) / 20) / rms(wind)
+    # under the episode itself (after the channel intro) the wind can sit lower: bodyDb (operator: 80% lower = -54)
+    if amb.get("bodyDb") is not None and intro_end > 0:
+        g = 10 ** ((float(amb["bodyDb"]) - float(amb.get("db", -40))) / 20)
+        i0, fl = int(intro_end * SR), int(1.5 * SR)
+        gain = np.ones(n, np.float32); seg = gain[i0:i0 + fl]
+        gain[i0:i0 + len(seg)] = np.linspace(1, g, len(seg)); gain[i0 + fl:] = g
+        wind *= gain
     f_in, f_out = min(n, 2 * SR), min(n, 3 * SR)
     wind[:f_in] *= np.linspace(0, 1, f_in); wind[n - f_out:] *= np.linspace(1, 0, f_out)
-    print(f"ambience: wind {float(amb.get('db', -40)):+.0f} dB under the narration", flush=True)
+    print(f"ambience: wind {float(amb.get('db', -40)):+.0f} dB" + (f", {float(amb['bodyDb']):+.0f} dB after the intro ({intro_end:.1f}s)" if amb.get("bodyDb") is not None and intro_end > 0 else "") + " vs the narration", flush=True)
     return np.clip(v + wind, -32768, 32767).astype(np.int16)
 def para_marks(text, cs):
     """Times (s) where each paragraph of `text` ends, found by counting words through the caption cues."""
@@ -303,7 +310,8 @@ def build_audio(ep, work):
         t += dur + seg_gap
         print(f"tts {i + 1}/{len(ep['segments'])} {t - t_start:.1f}s", flush=True)
     audio = np.concatenate(pcm) if pcm else np.zeros(SR, np.int16)
-    audio = add_ambience(audio, ep.get("ambience") or {})
+    intro_end = max([t1 for t0, t1, sg in timeline if sg.get("kind") in ("intro", "jingle", "topic")] or [0.0])
+    audio = add_ambience(audio, ep.get("ambience") or {}, intro_end)
     wav = os.path.join(work, "voice.wav")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", wav], input=audio.tobytes(), check=True)
     return audio, timeline, caps, wav, mute
