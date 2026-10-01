@@ -1339,12 +1339,38 @@ function lfCleanBoxes(b) {
   }
   return Object.keys(out).length ? out : null;
 }
+// 🎙 Channel intro (per campaign, KV lfintro:<cid>): fixed welcome → jingle (announcer, last word stretched,
+// big echo — made in the renderer) → "In today's video, we're going to talk about {topic}." → the episode.
+// {topic} = spec.topic (editable in 📝 Script & cards), written once from the question and cached.
+function lfCleanIntro(x) {
+  x = x && typeof x === "object" ? x : {};
+  return { enabled: x.enabled !== false, channel: String(x.channel || "").slice(0, 120), text: String(x.text || "").slice(0, 1500),
+    jingle: String(x.jingle || "").slice(0, 80), topicLine: String(x.topicLine || "In today's video, we're going to talk about {topic}.").slice(0, 300) };
+}
+async function lfTopicPhrase(env, question) {
+  const q = String(question || "").trim(); if (!q || !env.ANTHROPIC_API_KEY) return "";
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 120, messages: [{ role: "user", content:
+      `Rewrite this viewer question as a short spoken topic phrase that completes the sentence "In today's video, we're going to talk about ___". Lowercase start, no question mark, no quotes, 14 words or fewer, natural when said aloud. Output only the phrase.\n\nQUESTION: ${q}` }] }) });
+  const d = await r.json().catch(() => ({}));
+  return String(d.content?.[0]?.text || "").trim().replace(/^["'“]|["'”.]$/g, "").slice(0, 160);
+}
 async function lfBuildEpisode(env, assetId) {
   const { page, spec } = await lfLoadAsset(assetId);
   if (!spec || !Array.isArray(spec.segments) || !spec.segments.length) throw new Error("No script on this asset yet");
   const pr = page.properties;
   const campaignId = (pr.Campaign?.relation || [])[0]?.id || "";
   const slug = hubSlugForCampaign(campaignId);
+  let intro = null;
+  if (campaignId) { try { const raw = await env.TRADES.get("lfintro:" + campaignId.replace(/-/g, ""), "json"); if (raw) intro = lfCleanIntro(raw); } catch (e) {} }
+  let introSegs = [];
+  if (intro && intro.enabled && intro.text.trim()) {
+    if (!spec.topic) { const tp = await lfTopicPhrase(env, spec.question || spec.title).catch(() => ""); if (tp) { spec.topic = tp; await lfSaveSpec(assetId, spec).catch(() => {}); } }
+    introSegs = [{ kind: "intro", text: intro.text.trim() }];
+    if (intro.jingle.trim()) introSegs.push({ kind: "jingle", text: intro.jingle.trim() });
+    if (spec.topic) introSegs.push({ kind: "topic", text: intro.topicLine.replace("{topic}", spec.topic) });
+  }
   let boxes = lfCleanBoxes(spec.render && spec.render.boxes);
   if (!boxes && campaignId) { try { boxes = lfCleanBoxes(await env.TRADES.get("lflayout:" + campaignId.replace(/-/g, ""), "json")); } catch (e) {} }
   let fonts = { display: "Bitter", body: "Inter" }, palette = {};
@@ -1367,10 +1393,11 @@ async function lfBuildEpisode(env, assetId) {
       const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
       return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}), ...(v && v.paraScale && rate === v.rate ? { paraScale: v.paraScale } : {}) }; })(),
     ...(boxes ? { boxes } : {}),
+    ...(introSegs.length ? { channel: intro.channel || "" } : {}),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
-    segments: spec.segments,
+    segments: introSegs.concat(spec.segments),
   };
 }
 async function hmacHex(secret, msg) {
@@ -15419,7 +15446,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const ch = String(ep.character || "mountain-man").replace(/[^a-z0-9-]/g, "");
         let defaultScene = "", defaultCrop = null;
         try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${ch}/character.json`).then(r => r.json()); if (cj.defaultScene?.file) { defaultScene = `../../tools/presenter/characters/${ch}/${cj.defaultScene.file}`; defaultCrop = cj.defaultScene.crop || null; } } catch (e) {}
-        return json({ success: true, title: spec.title || "", format: spec.format || "", layout: ep.layout, character: ch,
+        return json({ success: true, title: spec.title || "", topic: spec.topic || "", format: spec.format || "", layout: ep.layout, character: ch,
           background: ep.background?.url || "", defaultScene, defaultCrop, palette: ep.palette || {}, fonts: ep.fonts || {},
           segments: spec.segments.map((x, i) => ({ i, kind: x.kind, n: x.n, name: x.name || "", blurb: x.blurb || "", ask: x.ask || "", text: x.text || "", label: x.label || "",
             pay: x.pay || "", score: x.score, tier: x.tier || "", images: (x.images || []).length })) });
@@ -15442,6 +15469,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
             if (nv) seg[f] = nv; else delete seg[f];
           }
         }
+        if (typeof body.topic === "string" && body.topic.trim() !== String(spec.topic || "")) { spec.topic = body.topic.trim().slice(0, 160); edits.push({ field: "topic line", before: "", after: spec.topic }); }
         if (!edits.length && !body.force) return json({ ok: true, saved: 0, learned: 0 });
         await lfSaveSpec(aid, spec);
         const cid = page.properties["Campaign"]?.relation?.[0]?.id || "";
@@ -15450,6 +15478,16 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       }
       // longformLayout {assetId, op: "get" | "save", boxes?, campaignDefault?} — the 📐 Layout editor.
       // get → this episode's boxes, the campaign default, and which one is in effect.
+      // longformIntro {assetId, op: "get" | "save", intro?} — the campaign's 🎙 channel intro.
+      if (body.action === "longformIntro") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { page } = await lfLoadAsset(aid);
+        const cid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+        if (!cid) return json({ error: "This asset has no campaign" }, 400);
+        if (body.op === "save") { const x = lfCleanIntro(body.intro); await env.TRADES.put("lfintro:" + cid, JSON.stringify(x)); return json({ ok: true, intro: x }); }
+        let x = null; try { x = await env.TRADES.get("lfintro:" + cid, "json"); } catch (e) {}
+        return json({ ok: true, intro: x ? lfCleanIntro(x) : null });
+      }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         const { spec, page } = await lfLoadAsset(aid);

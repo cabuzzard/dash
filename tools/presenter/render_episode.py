@@ -124,6 +124,30 @@ def tempo_pcm(a, cs, tempo):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", "-filter:a", f"atempo={tempo:.4f}",
                           "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=a.tobytes(), capture_output=True).stdout
     return np.frombuffer(raw, np.int16), [(s / tempo, e / tempo, c) for s, e, c in cs]
+def trim_silence(a, floor=0.04):
+    """Cut leading/trailing near-silence (edge-tts pads every clip)."""
+    if not len(a): return a
+    env_ = np.abs(a.astype(np.int32)); thr = max(200, int(floor * env_.max()))
+    idx = np.where(env_ > thr)[0]
+    return a[max(0, idx[0] - int(0.02 * SR)):min(len(a), idx[-1] + int(0.05 * SR))] if len(idx) else a[:0]
+def make_jingle(text, work, key="jingle"):
+    """Channel sting: the phrase in an announcer voice, its LAST word stretched ~2.2× (pitch kept) so it
+    rings out ("THE MOUNTAIN MAAAN!"), then a big multi-tap echo and a tail. Returns int16 PCM."""
+    words = str(text or "").strip().split()
+    if not words: return np.zeros(0, np.int16)
+    head, last = " ".join(words[:-1]), words[-1]
+    v = {"engine": "edge", "id": "en-US-GuyNeural", "rate": "-12%", "pitch": "-6Hz"}
+    parts = []
+    if head:
+        tts(head, v, os.path.join(work, f"{key}_a.mp3"), os.path.join(work, f"{key}_a.srt")); parts += [trim_silence(decode(os.path.join(work, f"{key}_a.mp3"))), np.zeros(int(0.06 * SR), np.int16)]
+    tts(last, v, os.path.join(work, f"{key}_b.mp3"), os.path.join(work, f"{key}_b.srt"))
+    b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)           # stretch the last word 2x ("maaan"); atempo minimum is 0.5
+    parts.append(b)
+    dry = np.concatenate(parts + [np.zeros(int(1.3 * SR), np.int16)])               # room for the echo tail
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
+                          "-filter:a", "aecho=0.8:0.88:140|300|520|780:0.55|0.42|0.3|0.2,volume=1.3,alimiter=limit=0.95",
+                          "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=dry.tobytes(), capture_output=True).stdout
+    return np.frombuffer(raw, np.int16)
 def para_marks(text, cs):
     """Times (s) where each paragraph of `text` ends, found by counting words through the caption cues."""
     paras = [p_ for p_ in re.split(r"\n\s*\n", text.strip()) if p_.strip()]
@@ -173,7 +197,7 @@ def build_audio(ep, work):
     pcm, timeline, caps, t, mute = [], [], [], 0.0, []
     # Voice every segment first, 4 at a time (long segments take minutes each on edge-tts).
     from concurrent.futures import ThreadPoolExecutor
-    jobs = [(f"s{i}", (seg.get("text") or "").strip(), voice) for i, seg in enumerate(ep["segments"])]
+    jobs = [(f"s{i}", (seg.get("text") or "").strip(), voice) for i, seg in enumerate(ep["segments"]) if seg.get("kind") != "jingle"]
     if voice2: jobs += [(f"q{i}", (seg.get("ask") or "").strip(), voice2) for i, seg in enumerate(ep["segments"]) if (seg.get("ask") or "").strip()]
     def one(job):
         key, text, v = job
@@ -187,6 +211,7 @@ def build_audio(ep, work):
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
         if not text: continue
+        if seg.get("kind") == "jingle": seg_audio[i] = (make_jingle(text, work, f"jingle{i}"), []); continue
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
         cs0 = cues(srt)
         a, cs = stretch_pauses(decode(mp3), cs0, float(voice.get("pauseScale") or 1),
@@ -210,6 +235,7 @@ def build_audio(ep, work):
             t += dq + ASK_GAP
         a, cs = seg_audio[i]
         dur = len(a) / SR
+        if seg.get("kind") == "jingle": mute.append((t, t + dur))
         timeline.append((t_start, t + dur, seg))
         caps += [(t + s, t + e, c) for s, e, c in cs]
         pcm += [a, np.zeros(int(seg_gap * SR), np.int16)]
@@ -458,6 +484,15 @@ def main(ep_path, out, work):
             if kind in ("item", "point"):
                 if shot_at(t) is None:
                     fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, CY))
+            elif kind == "intro" and ep.get("channel"):
+                fr.alpha_composite(title_card(ep["channel"]), (x, CY))
+            elif kind == "topic" and ep.get("title"):
+                fr.alpha_composite(title_card(ep["title"]), (x, CY))
+            elif kind == "jingle":
+                pop = ease((t - t0) / 0.35); jt = (seg.get("text") or "").upper()
+                fj = font(dpath, max(20, int(150 * (0.6 + 0.4 * pop))))
+                tw = d.textlength(jt, font=fj); jx, jy = (W - tw) / 2, H * 0.56   # lower half: clear of the presenter's face
+                d.text((jx, jy), jt, font=fj, fill=ACC, stroke_width=6, stroke_fill=PANEL)
             elif kind == "hook" and ep.get("title"):
                 fr.alpha_composite(title_card(ep["title"]), (x, CY))
             elif kind == "ask" and seg.get("label"):
@@ -481,6 +516,10 @@ def main(ep_path, out, work):
         cur = cue[2] if cue else ""
         if cur:
             lines = wrap(d, cur, F_CAP, cap_w)
+            if len(lines) > 2:   # balance the pages so the last one isn't a lone word
+                pages = (len(lines) + 1) // 2
+                bal = wrap(d, cur, F_CAP, max(200, int(d.textlength(cur, font=F_CAP) / (pages * 2) * 1.12)))
+                if len(bal) <= pages * 2: lines = bal
             if len(lines) > 2:   # long cue: show it two lines at a time, in step with the speech
                 chunks = [lines[k:k + 2] for k in range(0, len(lines), 2)]
                 frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
