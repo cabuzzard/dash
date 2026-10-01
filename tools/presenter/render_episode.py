@@ -151,7 +151,19 @@ def pitch_glide(a, start_semis, end_semis, pieces=12):
         sh = pitch_shift(seg.astype(np.int16), st).astype(np.float32)[:len(seg)]
         out[s0:s0 + len(seg)] += sh * h[:len(seg)]; wsum[s0:s0 + len(seg)] += h[:len(seg)]
     return np.clip(out[:n] / np.maximum(wsum[:n], 1e-3), -32768, 32767).astype(np.int16)
-def make_jingle(text, work, key="jingle", voice=None):
+def raven_calls(n=3, gap=0.62):
+    """A raven far away: one caw (sfx/raven-caw.wav) repeated n times, each a touch different in pitch and a little
+    quieter, filtered for distance with a short valley echo."""
+    path = os.path.join(HERE, "sfx", "raven-caw.wav")
+    if not os.path.exists(path): return np.zeros(0, np.int16)
+    caw = decode(path); step = int(gap * SR); out = np.zeros(step * (n - 1) + len(caw) + int(1.2 * SR), np.float32)
+    for k, (st, g) in enumerate([(0.0, 1.0), (-0.4, 0.85), (0.3, 0.72), (-0.2, 0.6)][:n]):
+        c = pitch_shift(caw, st).astype(np.float32) * g; out[k * step:k * step + len(c)] += c
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
+                          "-filter:a", "highpass=f=350,lowpass=f=3200,aecho=0.8:0.6:190|380:0.32|0.16,volume=0.55",
+                          "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=np.clip(out, -32768, 32767).astype(np.int16).tobytes(), capture_output=True).stdout
+    return np.frombuffer(raw, np.int16)
+def make_jingle(text, work, key="jingle", voice=None, sfx=""):
     """Channel sting in the NARRATOR's own voice (operator: "the same voice, just with a little more resonance and
     echo"): read as a statement so it falls ("…MAAAN."), last word drawn out 2× (pitch kept), a warm low-mid lift
     for chest resonance, a touch of presence, then the echo."""
@@ -167,12 +179,18 @@ def make_jingle(text, work, key="jingle", voice=None):
     tts(last, v, os.path.join(work, f"{key}_b.mp3"), os.path.join(work, f"{key}_b.srt"))
     b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)   # draw the last word out ("maaan")
     parts.append(b)
+    spoken = sum(len(p_) for p_ in parts)
     dry = np.concatenate(parts + [np.zeros(int(1.6 * SR), np.int16)])                       # room for the (longer) echo tail
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
                           "-filter:a", "equalizer=f=160:t=q:w=1.0:g=4,equalizer=f=2600:t=q:w=1.2:g=1.5,"
                           "aecho=0.8:0.85:200|430|720:0.42|0.3|0.18,volume=1.15,alimiter=limit=0.95",
                           "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=dry.tobytes(), capture_output=True).stdout
-    return np.frombuffer(raw, np.int16)
+    wet = np.frombuffer(raw, np.int16)
+    if sfx == "raven":   # distant "kaw… kaw… kaw" as the echo dies away
+        rv = raven_calls(); at = spoken + int(0.75 * SR)
+        out = np.zeros(max(len(wet), at + len(rv)), np.int32); out[:len(wet)] += wet; out[at:at + len(rv)] += rv
+        wet = np.clip(out, -32768, 32767).astype(np.int16)
+    return wet
 def para_marks(text, cs):
     """Times (s) where each paragraph of `text` ends, found by counting words through the caption cues."""
     paras = [p_ for p_ in re.split(r"\n\s*\n", text.strip()) if p_.strip()]
@@ -236,7 +254,7 @@ def build_audio(ep, work):
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
         if not text: continue
-        if seg.get("kind") == "jingle": seg_audio[i] = (make_jingle(text, work, f"jingle{i}", voice), []); continue
+        if seg.get("kind") == "jingle": seg_audio[i] = (make_jingle(text, work, f"jingle{i}", voice, seg.get("sfx", "")), []); continue
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
         cs0 = cues(srt)
         a, cs = stretch_pauses(decode(mp3), cs0, float(voice.get("pauseScale") or 1),
