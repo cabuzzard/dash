@@ -6333,11 +6333,11 @@ function lfFrame(ctx, k, D, B, c) {
     ctx.fillStyle = ACC; ctx.beginPath(); ctx.roundRect(CX, CY + 30, tw + 60, 72, 36); ctx.fill();
     ctx.fillStyle = PANEL; ctx.textBaseline = 'middle'; ctx.fillText(c.pill, CX + 30, CY + 66); ctx.textBaseline = 'top'; }
   const capb = B.caption, CAPS = capb.s / 100, capX = capb.x * W / 100, capW = capb.w * W / 100, CLH = 62 * CAPS;
-  const capY = (capb.y + capb.h) * H / 100 - CLH;
+  const capTop = capb.y * H / 100 + 8;   // captions hang from the top of their box
   rects.caption = { x: capX, y: capb.y * H / 100, w: capW, h: capb.h * H / 100 };
   if (c.caption) { ctx.font = `600 ${Math.round(40 * CAPS)}px ${BF}`;
     const ls = lfsWrap(ctx, c.caption, capW).slice(0, 2);
-    ls.forEach((l, li) => { const tw = ctx.measureText(l).width, x = stage ? capX + (capW - tw) / 2 : capX, y = capY - (ls.length - 1 - li) * CLH;
+    ls.forEach((l, li) => { const tw = ctx.measureText(l).width, x = stage ? capX + (capW - tw) / 2 : capX, y = capTop + li * CLH;
       ctx.fillStyle = lfHexA(capb.color, capb.opacity); ctx.beginPath(); ctx.roundRect(x - 20, y - 8, tw + 40, 62 * CAPS, 12); ctx.fill();
       ctx.fillStyle = INK; ctx.fillText(l, x, y); }); }
   ctx.restore();

@@ -293,7 +293,8 @@ def main(ep_path, out, work):
     F_CAP = font(bpath, max(12, round(40 * CAPS))); CLH = round(62 * CAPS)
     if "w" in capb: cap_w = int(float(capb["w"]) * W / 100)
     CAPX = int(float(capb["x"]) * W / 100) if "x" in capb else None
-    if "y" in capb: CAP_Y = int((float(capb["y"]) + float(capb.get("h", 12.2))) * H / 100) - CLH
+    # captions hang from the TOP of their box (operator 2026-10-01): line 1 at the top, line 2 below it
+    CAP_TOP = int(float(capb["y"]) * H / 100) + 8 if "y" in capb else CAP_Y - 62 * 1
     CAP_FILL = hexa(capb.get("color"), capb.get("opacity", 75), (10, 14, 12)) if capb.get("color") else (10, 14, 12, 190)
     if pb and "h" in pb:
         P.scale = max(0.2, float(pb["h"]) * H / 100 / P.base.height)
@@ -439,7 +440,7 @@ def main(ep_path, out, work):
                 tw = d.textlength(ln, font=F_CAP)
                 if CAPX is None: x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80
                 else: x = CAPX + (cap_w - int(tw)) // 2 if STAGE_LAYOUT else CAPX
-                y = CAP_Y - (len(lines) - 1 - li) * CLH
+                y = CAP_TOP + li * CLH
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + round(54 * CAPS)], 12, fill=CAP_FILL)
                 d.text((x, y), ln, font=F_CAP, fill=INK)
         return fr.convert("RGB")
