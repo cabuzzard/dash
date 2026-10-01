@@ -15609,16 +15609,30 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const pr = page.properties, cid = (pr["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
         const videoUrl = pr["Video URL"]?.url || "";
         if (!videoUrl) return json({ error: "Render the episode first — there's no video on this asset yet" }, 400);
-        const token = await ytAccessToken(env, cid);
+        const token = body.op === "preview" ? "" : await ytAccessToken(env, cid);
         const txt = k => (pr[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-        const title = (txt("Platform Title") || spec?.title || (pr["Asset Title"]?.title || []).map(t => t.plain_text).join("").replace(/^YouTube — /, "")).slice(0, 100);
-        const description = (body.description != null ? String(body.description) : txt("Post Caption")).slice(0, 4900);
+        const noAngle = v => String(v || "").replace(/[<>]/g, "");            // YouTube rejects < and > in title/description
+        // Title ← Platform Title (fallback: script title / asset title), max 100 chars
+        const title = noAngle(txt("Platform Title") || spec?.title || (pr["Asset Title"]?.title || []).map(t => t.plain_text).join("").replace(/^YouTube — /, "")).trim().slice(0, 100);
+        // Description ← Post Caption, + the Hashtags field at the end (YouTube reads hashtags from the description;
+        // more than 15 and it ignores them all, so cap at 15)
+        let description = noAngle(body.description != null ? String(body.description) : txt("Post Caption"));
+        const have = new Set((description.match(/#[\p{L}\p{N}_]+/gu) || []).map(h => h.toLowerCase()));
+        const extra = (txt("Hashtags").match(/#?[\p{L}\p{N}_]+/gu) || []).map(h => h.startsWith("#") ? h : "#" + h).filter(h => !have.has(h.toLowerCase()));
+        if (extra.length) description = description.replace(/\s+$/, "") + "\n\n" + extra.join(" ");
+        let nTags = 0;
+        description = description.replace(/#[\p{L}\p{N}_]+/gu, h => (++nTags > 15 ? h.slice(1) : h)).slice(0, 4900);
         let tags = Array.isArray(spec?.tags) ? spec.tags : [];
         if (!tags.length) {   // older episodes: the "Tags" heading on the asset page
           const bl = await fetch(`https://api.notion.com/v1/blocks/${pageUrl.split("/").pop()}/children?page_size=100`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => ({}));
           const res = bl.results || []; const k = res.findIndex(b => b.type === "heading_2" && (b.heading_2.rich_text || []).map(t => t.plain_text).join("").trim() === "Tags");
           if (k >= 0 && res[k + 1]?.paragraph) tags = (res[k + 1].paragraph.rich_text || []).map(t => t.plain_text).join("").split(",").map(t => t.trim()).filter(Boolean);
         }
+        // Tags ← the script's tags, YouTube limit 500 characters in total
+        const cleanTags = []; let tagLen = 0;
+        for (const t0 of tags.map(t => noAngle(t).trim()).filter(Boolean)) { const add = t0.length + (t0.includes(" ") ? 2 : 0) + 1; if (tagLen + add > 500) break; cleanTags.push(t0); tagLen += add; }
+        if (body.op === "preview") return json({ ok: true, preview: { title, description, tags: cleanTags, hashtags: (description.match(/#[\p{L}\p{N}_]+/gu) || []).slice(0, 15),
+          thumbnail: pr["Thumbnail"]?.url || "", video: videoUrl, sources: { title: txt("Platform Title") ? "Platform Title" : "script title", description: "Post Caption" + (extra.length ? " + Hashtags" : ""), tags: "script tags" } } });
         const privacy = ["private", "unlisted", "public"].includes(body.privacy) ? body.privacy : "private";
         const status = { privacyStatus: body.publishAt ? "private" : privacy, selfDeclaredMadeForKids: false };
         if (body.publishAt) status.publishAt = new Date(body.publishAt).toISOString();
@@ -15629,7 +15643,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         else { const vr = await fetch(videoUrl); if (!vr.ok) return json({ error: "Couldn't read the video (" + vr.status + ")" }, 502); size = +vr.headers.get("content-length") || 0; bodyStream = vr.body; }
         const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", { method: "POST",
           headers: { Authorization: "Bearer " + token, "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": "video/mp4", ...(size ? { "X-Upload-Content-Length": String(size) } : {}) },
-          body: JSON.stringify({ snippet: { title, description, tags: tags.slice(0, 30), categoryId: "22" }, status }) });
+          body: JSON.stringify({ snippet: { title, description, tags: cleanTags, categoryId: "22" }, status }) });
         if (!init.ok) { const e = await init.json().catch(() => ({})); return json({ error: "YouTube refused the upload: " + (e.error?.message || init.status) }, 502); }
         const up = await fetch(init.headers.get("location"), { method: "PUT", headers: { "Content-Type": "video/mp4", ...(size ? { "Content-Length": String(size) } : {}) }, body: bodyStream });
         const vd = await up.json().catch(() => ({}));

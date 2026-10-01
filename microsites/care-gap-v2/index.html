@@ -6395,7 +6395,11 @@ async function pubYtPublish(btn) {
   const msg = document.getElementById('pubYtMsg');
   if (!PUB_YT || !PUB_YT.connected) { msg.textContent = 'Connect YouTube first.'; return; }
   const when = document.getElementById('pubYtWhen').value, privacy = document.getElementById('pubYtPrivacy').value;
-  if (!confirm(when ? `Upload and schedule this episode on YouTube for ${new Date(when).toLocaleString()}?` : `Upload this episode to YouTube as ${privacy}?`)) return;
+  let pv;
+  try { pv = (await w('publishYouTube', { assetId: PUB_LF.assetId, op: 'preview' })).preview; }
+  catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Could not build the YouTube post: ' + e.message; return; }
+  const sum = `TITLE (from ${pv.sources.title}):\n${pv.title}\n\nDESCRIPTION (from ${pv.sources.description}):\n${pv.description.length > 600 ? pv.description.slice(0, 600) + '…' : pv.description}\n\nHASHTAGS: ${pv.hashtags.join(' ') || '(none)'}\nTAGS (${pv.tags.length}): ${pv.tags.join(', ').slice(0, 300) || '(none)'}\nTHUMBNAIL: ${pv.thumbnail ? 'yes' : 'none set'}\n\n`;
+  if (!confirm(sum + (when ? `Upload and schedule for ${new Date(when).toLocaleString()}?` : `Upload to YouTube as ${privacy}?`))) return;
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Uploading…'; msg.style.color = 'var(--ink3)'; msg.textContent = 'Uploading the video to YouTube — a minute or two for a long episode…';
   try {
     const r = await w('publishYouTube', { assetId: PUB_LF.assetId, privacy, ...(when ? { publishAt: new Date(when).toISOString() } : {}) });
