@@ -15599,7 +15599,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           const f = cj.defaultScene && cj.defaultScene.file;
           if (f) { const du = `https://cabuzzard.github.io/dash/tools/presenter/characters/${ch}/${f}`; if (!lib.some(x => x.url === du)) lib.push({ url: du, at: 0, source: "presenter default scene", assetId: "" }); }
         } catch (e) {}
-        let dir = ""; try { dir = (await env.TRADES.get("lfbg:dir:" + cid)) || ""; } catch (e) {}
+        let dir = ""; try { dir = (await env.TRADES.get((body.target === "thumb" ? "lfthumb:dir:" : "lfbg:dir:") + cid)) || ""; } catch (e) {}
         return json({ ok: true, current: cur, library: lib, direction: dir });
       }
 
@@ -28087,6 +28087,8 @@ End the prompt with: "No people, no text, no letters, no logos, no watermarks."`
           if (/^Thumbnail text:/i.test(t)) { thumbOpts = t.replace(/^Thumbnail text:\s*/i, ""); break; }
         }
         const thumbText = (thumbOpts.split("|")[0] || "").trim();
+        const thumbDir = String(body.direction || "").trim().slice(0, 600);
+        if (typeof body.direction === "string") await env.TRADES.put("lfthumb:dir:" + campaignId, thumbDir).catch(() => {});
         const outline = (blocksResp.results || []).slice(0, 12).map(b => ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 1500);
 
         const brief = await assembleImageBrief(env, { campaignId, assetId });
@@ -28107,7 +28109,7 @@ Title: ${videoTitle}
 Thumbnail words that will go on the left: ${thumbText || "(short, punchy)"}
 Outline opening:
 ${outline}
-
+${thumbDir ? `\nOPERATOR'S DIRECTION FOR THIS THUMBNAIL (follow it; where it conflicts with the spec or the video, the operator wins — still wordless, still leave the left side for the words):\n${thumbDir}\n` : ""}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -28830,12 +28832,13 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
         } catch (e) {}
         // Longform backgrounds also join a CAMPAIGN-wide library (lfbg:lib:<cid>) so any episode
         // can reuse an earlier one (Publish modal → 🖼 Background…).
-        if (kind === "longform-background" && campaignId) {
+        const isYtThumb = kind === "blog-thumbnail" && /youtube/i.test(assetPage.properties["Asset Type"]?.select?.name || "");
+        if ((kind === "longform-background" || isYtThumb) && campaignId) {
           try {
             const lk = "lfbg:lib:" + campaignId;
             let lib = (await env.TRADES.get(lk, "json")) || [];
             lib = lib.filter(x => x.url !== url);
-            lib.unshift({ url, at: Date.now(), source: fileData ? "upload" : "generated", direction: String(body.direction || "").slice(0, 300), assetId: String(assetId).replace(/-/g, "") });
+            lib.unshift({ url, at: Date.now(), source: (isYtThumb ? "thumbnail · " : "") + (fileData ? "upload" : "generated"), direction: String(body.direction || "").slice(0, 300), assetId: String(assetId).replace(/-/g, "") });
             await env.TRADES.put(lk, JSON.stringify(lib.slice(0, 40)));
           } catch (e) {}
         }

@@ -977,6 +977,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
                 <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
                 <button class="btn" id="pubThumbnailEditBtn" onclick="openTextEditor('thumbnail')" style="display:none;">🎯 Preview &amp; Edit</button>
+                <button class="btn" type="button" onclick="pubLfBgModal('thumb')" title="Upload, reuse a campaign background (incl. the episode's video background), or generate with your own direction">🖼 Background…</button>
                 <span id="pubBlogThumbStatus" style="font-size:10.5px;"></span>
               </div>
               <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
@@ -6507,45 +6508,77 @@ async function pubLfScriptSave(btn) {
   btn.disabled = false;
 }
 // 🖼 Background… — upload your own, reuse an earlier one (campaign library), or steer the generator.
-function pubLfBgModal() {
+function pubLfBgModal(target) {
   document.getElementById('lfBgModal')?.remove();
+  LFBG.target = target === 'thumb' ? 'thumb' : 'video';
+  LFBG.assetId = LFBG.target === 'thumb' ? pubAssetId : PUB_LF.assetId;
+  const isT = LFBG.target === 'thumb';
   const ov = document.createElement('div');
   ov.className = 'modaloverlay open'; ov.id = 'lfBgModal'; ov.style.zIndex = '400';
   ov.onclick = e => { if (e.target === ov) ov.remove(); };
   ov.innerHTML = `<div class="modalbox" style="max-width:640px;">
-    <div class="mtitle">Episode background</div>
+    <div class="mtitle">${isT ? 'YouTube thumbnail background' : 'Episode background'}</div>
+    ${isT ? '<div style="font-size:11px;color:var(--ink3);margin-bottom:6px;">Sets the thumbnail\'s wordless image — then 🔤 Add title text / 🎯 Preview & Edit put the words on it.</div>' : ''}
     <div class="mfield">Current <img id="lfBgCur" alt="" style="display:none;width:160px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);vertical-align:middle;margin-left:6px;"></div>
     <div style="font-weight:700;margin:6px 0 4px;">✎ Direction <span style="color:var(--ink3);font-weight:400;">(optional — overrides the image spec; remembered for this campaign)</span></div>
     <textarea id="lfBgDir" rows="3" style="min-height:70px;" placeholder="e.g. a quiet alpine lake at dawn, pine ridge on the far left, warm mist — keep the left side soft and empty"></textarea>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 12px;">
-      <button class="btn" type="button" onclick="pubLfGenBackground(this, document.getElementById('lfBgDir').value)">✨ Generate with this direction</button>
+      <button class="btn" type="button" onclick="${isT ? 'pubThumbGenDir' : 'pubLfGenBackground'}(this, document.getElementById('lfBgDir').value)">✨ Generate with this direction</button>
       <label class="btn" style="cursor:pointer;">⬆ Upload background<input type="file" accept="image/*" style="display:none;" onchange="pubLfUploadBg(this)"></label>
       <span id="lfBgMsg" style="color:var(--ink3);font-size:11px;align-self:center;"></span>
     </div>
-    <div style="font-weight:700;margin-bottom:4px;">🗂 Earlier backgrounds <span style="color:var(--ink3);font-weight:400;">(this campaign — click one to use it)</span></div>
+    <div style="font-weight:700;margin-bottom:4px;">🗂 Earlier images <span style="color:var(--ink3);font-weight:400;">(this campaign's video backgrounds and thumbnails — click one to use it)</span></div>
     <div id="lfBgLib" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;">Loading…</div>
     <div class="modalrow" style="display:flex;justify-content:flex-end;margin-top:10px;"><button class="btn" type="button" onclick="document.getElementById('lfBgModal').remove()">Done</button></div>
   </div>`;
   document.body.appendChild(ov);
   pubLfBgModalLoad(true);
 }
+const LFBG = { target: 'video' };
 async function pubLfBgModalLoad(fillDir) {
   const lib = document.getElementById('lfBgLib'); if (!lib) return;
   try {
-    const r = await w('longformBackgrounds', { assetId: PUB_LF.assetId, op: 'list' });
+    const r = await w('longformBackgrounds', { assetId: LFBG.assetId, op: 'list', target: LFBG.target });
+    if (LFBG.target === 'thumb') r.current = document.getElementById('pubThumbBgSource').value || '';
     const cur = document.getElementById('lfBgCur');
     if (r.current) { cur.src = r.current; cur.style.display = 'inline-block'; } else cur.style.display = 'none';
     if (fillDir && r.direction) document.getElementById('lfBgDir').value = r.direction;
-    PUB_LF.bgLib = r.library || [];
+    PUB_LF.bgLib = (r.library || []).filter(b => LFBG.target !== 'thumb' || !/default scene/.test(b.source || ''));
     lib.innerHTML = PUB_LF.bgLib.length ? PUB_LF.bgLib.map((b, i) => `<button type="button" onclick="pubLfUseBg(${i})" title="${esc(b.direction || b.source || '')}" style="padding:0;border:2px solid ${b.url === r.current ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:8px;background:none;cursor:pointer;text-align:left;">
         <img src="${esc(b.url)}" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;display:block;border-radius:6px 6px 0 0;">
         <div style="font-size:10px;padding:3px 5px;color:var(--ink3);">${b.url === r.current ? '✓ in use · ' : ''}${esc(b.source || '')}${b.at ? ' · ' + new Date(b.at).toLocaleDateString() : ''}</div></button>`).join('')
       : '<span style="color:var(--ink3);">No backgrounds yet for this campaign — generate or upload one above.</span>';
   } catch (e) { lib.textContent = 'Could not load: ' + e.message; }
 }
+// thumbnail target: put a picture on the thumbnail's clean-background slot, same fields _offerImgFinish fills
+async function pubThumbApply(save) {
+  const s = await w('saveOfferImage', { assetId: pubAssetId, kind: 'blog-thumbnail', background: true, ...save });
+  document.getElementById('pubThumbnail').value = s.url;
+  document.getElementById('pubThumbBgSource').value = s.url;
+  renderPubThumbnailPreview(s.url);
+  if (PUB_ASSET_CACHE[pubAssetId]) { PUB_ASSET_CACHE[pubAssetId].thumbnail = s.url; PUB_ASSET_CACHE[pubAssetId].thumbnailSource = s.url; }
+  document.getElementById('pubThumbnailTextBtn').style.display = '';
+  document.getElementById('pubThumbnailEditBtn').style.display = '';
+  return s.url;
+}
+async function pubThumbGenDir(btn, direction) {
+  const o = btn.textContent, msg = document.getElementById('lfBgMsg'); btn.disabled = true; btn.textContent = '✨ Generating…'; msg.textContent = '';
+  try {
+    const r = await w('generateYouTubeThumbnail', { assetId: pubAssetId, direction: direction || '' });
+    if (!r.imageUrl) throw new Error(r.error || 'No image returned');
+    await pubThumbApply({ imageUrl: r.imageUrl, prompt: r.prompt });
+    msg.textContent = '✓ New thumbnail background — add the title text when ready.'; pubLfBgModalLoad();
+  } catch (e) { msg.textContent = 'Thumbnail failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
 async function pubLfUseBg(i) {
   const b = (PUB_LF.bgLib || [])[i]; if (!b) return;
   const msg = document.getElementById('lfBgMsg'); msg.textContent = 'Setting…';
+  if (LFBG.target === 'thumb') {
+    try { await pubThumbApply({ imageUrl: b.url }); msg.textContent = '✓ Using that image for the thumbnail — add the title text when ready.'; pubLfBgModalLoad(); }
+    catch (e) { msg.textContent = 'Not set: ' + e.message; }
+    return;
+  }
   try { const r = await w('longformBackgrounds', { assetId: PUB_LF.assetId, op: 'use', url: b.url }); pubLfShowBg(r.cleared ? '' : b.url); msg.textContent = r.cleared ? "✓ Back to the presenter's default scene." : '✓ Using that background.'; pubLfBgModalLoad(); }
   catch (e) { msg.textContent = 'Not set: ' + e.message; }
 }
@@ -6556,6 +6589,7 @@ async function pubLfUploadBg(inp) {
   msg.textContent = 'Uploading…';
   try {
     const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(f); });
+    if (LFBG.target === 'thumb') { await pubThumbApply({ fileData: dataUrl, contentType: f.type || 'image/jpeg' }); msg.textContent = '✓ Uploaded as the thumbnail background — add the title text when ready.'; pubLfBgModalLoad(); inp.value = ''; return; }
     const s2 = await w('saveOfferImage', { assetId: PUB_LF.assetId, kind: 'longform-background', fileData: dataUrl, contentType: f.type || 'image/jpeg', background: true });
     pubLfShowBg(s2.url); msg.textContent = '✓ Uploaded and in use. Best at 16:9 (1920×1080).'; pubLfBgModalLoad();
   } catch (e) { msg.textContent = 'Upload failed: ' + e.message; }
