@@ -1215,13 +1215,13 @@ const LF_FORMATS = {
     beats: "the point → why it matters → evidence → who it applies to → how it tips the verdict" },
 };
 const LF_FORMAT_KEYS = Object.keys(LF_FORMATS).filter(k => !LF_FORMATS[k].legacy);
-// Interview-format length plan. Target 20 min: 16-30 min videos beat their channel's median
+// Interview-format length plan (pace re-based to the -10% default: 185 wpm at -4% → ~173). Target 20 min: 16-30 min videos beat their channel's median
 // (1.1-1.3x) on the benchmark channels, Shane Hummus peaks at 20-30 min (1.6x) and sits at
 // ~0.5x for 9-13 min (docs/longform-formats.md). Pace 185 wpm (Mwz 106 over a full episode),
 // a light edit keeps ~85% of the words, ~3 s lead-in + gap per question, ~92 s of hook/asks/outro.
 // Questions needed come from the operator's OWN average answer length (voice:samples), so
 // longer answers → fewer questions.
-const LF_PLAN = { targetSecs: 1200, wpm: 185, keep: 0.85, perQuestionSecs: 3, frameSecs: 92, fallbackWords: 98 };
+const LF_PLAN = { targetSecs: 1200, wpm: 173, keep: 0.85, perQuestionSecs: 3, frameSecs: 92, fallbackWords: 98 };
 async function lfInterviewPlan(env, campaignId) {
   const cid = String(campaignId || "").replace(/-/g, "");
   const get = async k => { try { return (await env.TRADES.get(k, "json")) || []; } catch (e) { return []; } };
@@ -1236,6 +1236,7 @@ async function lfInterviewPlan(env, campaignId) {
 // engine "elevenlabs" voices render via ElevenLabs on GitHub Actions (repo secret ELEVENLABS_API_KEY);
 // the rest are free edge-tts. Mwz 106 = Mountainwize narrator, remixed from the measured channel average.
 const LF_DEFAULT_VOICE = "GDy9DZAjVXkKzjkBkH0d";
+const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a little" (was -4%)
 const LF_VOICES = [
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs" },
@@ -1296,7 +1297,7 @@ async function lfBuildEpisode(env, assetId) {
     character: r.character || "mountain-man",
     layout: r.layout === "stage" ? "stage" : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
-      return { engine: (v && v.engine) || "edge", id, rate: r.rate || "-4%", pitch: r.pitch || "+0Hz" }; })(),
+      return { engine: (v && v.engine) || "edge", id, rate: r.rate || LF_DEFAULT_RATE, pitch: r.pitch || "+0Hz" }; })(),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
     segments: spec.segments,

@@ -814,7 +814,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div></div>
             <div style="flex:1;min-width:180px;">Voice
               <select id="pubLfVoice" class="finput" style="width:100%;margin-top:4px;font-size:11px;"></select>
-              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-10%">slower</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-16%">slow</option><option value="-10%">relaxed (default)</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
               <button class="btn" type="button" onclick="pubLfPreviewVoice(this)" style="font-size:10px;">▶ sample</button></div></div>
           </div>
           <div style="margin-top:8px;">Background <span style="color:var(--ink3);">(Grok, from the campaign's image spec, matched to the presenter's art style)</span>
@@ -6137,7 +6137,7 @@ async function pubLfLoad(assetId, token) {
   const vs = document.getElementById('pubLfVoice');
   vs.innerHTML = (r.voices || []).map(v => `<option value="${esc(v.id)}" ${v.id === (r.render.voice || '') ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
   vs.onchange = () => pubLfSave({ voice: vs.value });
-  const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || '-4%'; rt.onchange = () => pubLfSave({ rate: rt.value });
+  const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || '-10%'; rt.onchange = () => pubLfSave({ rate: rt.value });
   const ly = document.getElementById('pubLfLayout'); ly.value = r.render.layout === 'stage' ? 'stage' : 'presenter';
   document.getElementById('pubLfCharsWrap').style.display = ly.value === 'stage' ? 'none' : '';
   ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'stage' ? 'none' : ''; pubLfSave({ layout: ly.value }); };
