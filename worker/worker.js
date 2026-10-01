@@ -1139,7 +1139,11 @@ const HF_TEMPLATES = {
 // which pulls the episode from ?lfspec, reports ?lfstatus, and POSTs the MP4 to ?lfdone —
 // every call HMAC-signed per asset ("lf:"+assetId). KV lfrender:<assetId> = job status.
 const LF_REPO = "cabuzzard/dash";
+// engine "elevenlabs" voices render via ElevenLabs on GitHub Actions (repo secret ELEVENLABS_API_KEY);
+// the rest are free edge-tts. Mwz 106 = Mountainwize narrator, remixed from the measured channel average.
+const LF_DEFAULT_VOICE = "GDy9DZAjVXkKzjkBkH0d";
 const LF_VOICES = [
+  { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "en-US-AndrewNeural", label: "Andrew — warm, confident (US)" },
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
   { id: "en-US-ChristopherNeural", label: "Christopher — authoritative (US)" },
@@ -1196,7 +1200,8 @@ async function lfBuildEpisode(env, assetId) {
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
     layout: r.layout === "stage" ? "stage" : "presenter",
-    voice: { engine: "edge", id: r.voice || "en-US-AndrewNeural", rate: r.rate || "-4%", pitch: r.pitch || "+0Hz" },
+    voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
+      return { engine: (v && v.engine) || "edge", id, rate: r.rate || "-4%", pitch: r.pitch || "+0Hz" }; })(),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
     segments: spec.segments,
@@ -15086,7 +15091,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           return k;
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
-        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: "en-US-AndrewNeural", layout } };
+        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout } };
         const hashtags = (o.hashtags || []).map(S).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
         const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         const h2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: lfRich(t) } });

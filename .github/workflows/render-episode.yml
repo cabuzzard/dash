@@ -41,6 +41,8 @@ jobs:
       - name: Fetch episode
         run: curl -fsS "$W/?lfspec=1&a=$A&s=$S" -o episode.json && python -c "import json;e=json.load(open('episode.json'));print(e['title'],'-',len(e['segments']),'segments')"
       - name: Render
+        env:
+          ELEVENLABS_API_KEY: ${{ secrets.ELEVENLABS_API_KEY }}
         run: |
           set -o pipefail
           python -u tools/presenter/render_episode.py episode.json episode.mp4 --work work 2>&1 | tee render.log

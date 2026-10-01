@@ -7,6 +7,7 @@ episode.json (built by the worker's renderSpec, or by hand):
   "title": "...", "format": "ranked" | "tier" | "verdict",
   "character": "mountain-man",
   "voice": {"engine": "edge", "id": "en-US-AndrewNeural", "rate": "-6%", "pitch": "-4Hz"},
+           # or {"engine": "elevenlabs", "id": "<voice_id>", "rate": "-4%"} (needs ELEVENLABS_API_KEY)
   "background": {"url": "https://..."},            # optional; else the character's default scene
   "fonts": {"display": "Fraunces", "body": "Inter"},  # Google Fonts families (campaign Fonts)
   "palette": {"accent": "#e8b234", "ink": "#f6eede", "panel": "#121a16"},   # optional
@@ -64,6 +65,7 @@ def font(path, size):
 
 # ── narration: one TTS call per segment, stitched with gaps; sentence cues for captions ──
 def tts(seg_text, voice, mp3, srt):
+    if voice.get("engine") == "elevenlabs": return tts_eleven(seg_text, voice, mp3, srt)
     cmd = [sys.executable, "-m", "edge_tts", "--voice", voice.get("id", "en-US-AndrewNeural"),
            f"--rate={voice.get('rate', '+0%')}", f"--pitch={voice.get('pitch', '+0Hz')}",
            "--text", seg_text, "--write-media", mp3, "--write-subtitles", srt]
@@ -71,6 +73,39 @@ def tts(seg_text, voice, mp3, srt):
         r = subprocess.run(cmd, capture_output=True, text=True)
         if r.returncode == 0 and os.path.exists(mp3) and os.path.getsize(mp3) > 1000: return
     raise RuntimeError("TTS failed: " + r.stderr[-400:])
+
+# ElevenLabs: character-timestamped TTS → mp3 + sentence-level SRT (same cue shape edge-tts writes).
+def srt_time(s): ms = int(round(s * 1000)); return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d},{ms % 1000:03d}"
+def tts_eleven(seg_text, voice, mp3, srt):
+    import base64, time
+    key = os.environ.get("ELEVENLABS_API_KEY", "").strip()
+    if not key: raise RuntimeError("ELEVENLABS_API_KEY is not set")
+    rate = re.match(r"([+-]?\d+)%", str(voice.get("rate", "+0%")))
+    speed = max(0.7, min(1.2, 1 + (int(rate.group(1)) / 100 if rate else 0)))
+    body = json.dumps({"text": seg_text, "model_id": voice.get("model", "eleven_multilingual_v2"),
+                       "voice_settings": {"stability": 0.5, "similarity_boost": 0.75, "speed": speed}}).encode()
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice['id']}/with-timestamps?output_format=mp3_44100_128"
+    for attempt in range(5):
+        try:
+            req = urllib.request.Request(url, data=body, headers={"xi-api-key": key, "content-type": "application/json"})
+            with urllib.request.urlopen(req, timeout=300) as r: j = json.load(r)
+            break
+        except urllib.error.HTTPError as e:
+            msg = e.read()[:300].decode("utf-8", "replace")
+            if e.code in (429, 500, 502, 503) and attempt < 4: time.sleep(5 * (attempt + 1)); continue
+            raise RuntimeError(f"ElevenLabs TTS {e.code}: {msg}")
+    open(mp3, "wb").write(base64.b64decode(j["audio_base64"]))
+    al = j.get("normalized_alignment") or j.get("alignment") or {}
+    chars, st, en = al.get("characters", []), al.get("character_start_times_seconds", []), al.get("character_end_times_seconds", [])
+    cues_, buf, t0, words = [], "", None, 0
+    for c, a, b in zip(chars, st, en):
+        if t0 is None and not c.isspace(): t0 = a
+        buf += c
+        if c == " ": words += 1
+        if t0 is not None and (c in ".!?" or (c == " " and words >= 14 and buf.rstrip()[-1:] in ",;:")):
+            cues_.append((t0, b, buf.strip())); buf, t0, words = "", None, 0
+    if buf.strip() and t0 is not None: cues_.append((t0, en[-1] if en else t0 + 1, buf.strip()))
+    open(srt, "w", encoding="utf-8").write("".join(f"{k + 1}\n{srt_time(a)} --> {srt_time(b)}\n{c}\n\n" for k, (a, b, c) in enumerate(cues_)))
 
 def decode(mp3):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-i", mp3, "-f", "s16le", "-ac", "1", "-ar", str(SR), "-"], capture_output=True).stdout
@@ -91,7 +126,7 @@ def build_audio(ep, work):
         i, text = job
         if text: tts(text, voice, os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt"))
         return i
-    with ThreadPoolExecutor(max_workers=4) as ex:
+    with ThreadPoolExecutor(max_workers=3 if voice.get("engine") == "elevenlabs" else 4) as ex:
         for i in ex.map(one, jobs): print(f"voiced {i + 1}/{len(jobs)}", flush=True)
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
