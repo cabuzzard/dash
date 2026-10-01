@@ -15029,6 +15029,18 @@ Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show u
       // saveLongformInterview {campaignId, titleId, question, interview:[{q,a}]} → keeps the
       // answers with the title (KV lfiv:<titleId>, restored by longformInterview for the same
       // question) and feeds them to the voice-learning engine as the operator's own words.
+      // getLastInterviewAnswers {campaignId} → the most recent batch of interview answers
+      // logged for this campaign (voice:samples:<cid>), questions included — the recovery path
+      // when a page reload lost the boxes.
+      if (body.action === "getLastInterviewAnswers") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        let list = []; try { list = (await env.TRADES.get("voice:samples:" + cid, "json")) || []; } catch (e) {}
+        list = list.filter(x => /interview/i.test(x.source || ""));
+        if (!list.length) return json({ ok: true, qs: [], answers: [] });
+        const ts = list[list.length - 1].ts, batch = list.filter(x => x.ts === ts);
+        return json({ ok: true, qs: batch.map(x => x.q), answers: batch.map(x => x.a), at: ts });
+      }
+
       if (body.action === "saveLongformInterview") {
         const titleId = String(body.titleId || "").replace(/-/g, ""), q = String(body.question || "").trim();
         if (!titleId || !q) return json({ error: "titleId and question required" }, 400);

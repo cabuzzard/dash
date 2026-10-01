@@ -542,6 +542,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div id="caLfInterviewQs"></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <button class="btn" type="button" onclick="caLfSaveInterview(this)">💾 Save answers</button>
+              <button class="btn" type="button" onclick="caLfLoadLastAnswers(this)" title="Bring back the last interview answers you saved or wrote a script from on this campaign (questions included)">↩ Load my last answers</button>
               <span id="caLfIvMsg" style="color:var(--ink3);font-size:11px;">Saves them with this title and teaches your voice profile how you talk.</span>
             </div>
           </div>
@@ -5561,6 +5562,24 @@ function caLfIvDraftPut() {
   try { localStorage.setItem(k, JSON.stringify({ qs: CA_LF.iv.qs, answers: CA_LF.iv.qs.map((_, i) => (document.getElementById('caLfIvA' + i) || {}).value || ''), at: Date.now() })); } catch (e) {}
 }
 function caLfIvDraftGet() { const k = caLfIvDraftKey(); if (!k) return null; try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+async function caLfLoadLastAnswers(btn) {
+  const msg = document.getElementById('caLfIvMsg');
+  if (!CA_LF.iv) { msg.textContent = 'Open the interview first.'; return; }
+  const typed = CA_LF.iv.qs.some((_, k) => ((document.getElementById('caLfIvA' + k) || {}).value || '').trim());
+  if (typed && !confirm('Replace what is in the boxes now with your last saved answers?')) return;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Loading…';
+  try {
+    const r = await w('getLastInterviewAnswers', { campaignId: CAMPAIGN_ID });
+    if (!(r.qs || []).length) { msg.textContent = 'No saved answers found for this campaign.'; }
+    else {
+      CA_LF.iv.qs = r.qs;
+      document.getElementById('caLfInterviewQs').innerHTML = r.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(r.answers[k] || '')}</textarea></label>`).join('');
+      caLfIvDraftPut();
+      msg.textContent = `↩ Loaded ${r.qs.length} answers from ${new Date(r.at).toLocaleString()}. Press 💾 Save answers to keep them with this title.`;
+    }
+  } catch (e) { msg.textContent = 'Load failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
 async function caLfSaveInterview(btn) {
   const msg = document.getElementById('caLfIvMsg');
   if (!CA_LF.iv || !CA_TITLE) { msg.textContent = 'Prepare the interview first.'; return; }
