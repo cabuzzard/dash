@@ -15460,7 +15460,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
         return json({ success: true, render: spec.render || {}, format: spec.format, question: spec.question, segments: spec.segments.length,
           words: spec.segments.reduce((n2, x) => n2 + String(x.text || "").split(/\s+/).length, 0),
-          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", voices: LF_VOICES, job,
+          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", youtubeUrl: page.properties["YouTube URL"]?.url || "", voices: LF_VOICES, job,
           scenes: spec.segments.map((x, i) => ({ i, kind: x.kind, name: x.name || "", images: x.images || [] })).filter(x => x.kind === "hook" || x.kind === "item") });
       }
 
