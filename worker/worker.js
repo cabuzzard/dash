@@ -1324,12 +1324,29 @@ async function lfSaveSpec(assetId, spec) {
 }
 // The episode file the renderer reads: script + chosen presenter/voice + the plate + the
 // campaign's own fonts/palette (hub design, same source the hub pages use).
+// 📐 Layout boxes (care-gap layout editor): card / caption / presenter, percentages of the 1920×1080 frame
+// + text size, box colour, opacity, max chars. Episode's own (spec.render.boxes) → campaign default
+// (KV lflayout:<cid>) → none (renderer's built-in design).
+function lfCleanBoxes(b) {
+  if (!b || typeof b !== "object") return null;
+  const out = {}, num = (v, lo, hi) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n * 100) / 100)) : undefined; };
+  for (const k of ["card", "caption", "presenter"]) {
+    const x = b[k]; if (!x || typeof x !== "object") continue;
+    const o = {};
+    for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
+    if (/^#[0-9a-f]{6}$/i.test(String(x.color || ""))) o.color = String(x.color).toLowerCase();
+    if (Object.keys(o).length) out[k] = o;
+  }
+  return Object.keys(out).length ? out : null;
+}
 async function lfBuildEpisode(env, assetId) {
   const { page, spec } = await lfLoadAsset(assetId);
   if (!spec || !Array.isArray(spec.segments) || !spec.segments.length) throw new Error("No script on this asset yet");
   const pr = page.properties;
   const campaignId = (pr.Campaign?.relation || [])[0]?.id || "";
   const slug = hubSlugForCampaign(campaignId);
+  let boxes = lfCleanBoxes(spec.render && spec.render.boxes);
+  if (!boxes && campaignId) { try { boxes = lfCleanBoxes(await env.TRADES.get("lflayout:" + campaignId.replace(/-/g, ""), "json")); } catch (e) {} }
   let fonts = { display: "Bitter", body: "Inter" }, palette = {};
   if (slug) {
     try {
@@ -1349,6 +1366,7 @@ async function lfBuildEpisode(env, assetId) {
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
       const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
       return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}) }; })(),
+    ...(boxes ? { boxes } : {}),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
@@ -15429,6 +15447,25 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const cid = page.properties["Campaign"]?.relation?.[0]?.id || "";
         const learned = await voiceLogEdits(env, ctx, cid, "longform script", edits).catch(() => 0);
         return json({ ok: true, saved: edits.length, learned });
+      }
+      // longformLayout {assetId, op: "get" | "save", boxes?, campaignDefault?} — the 📐 Layout editor.
+      // get → this episode's boxes, the campaign default, and which one is in effect.
+      if (body.action === "longformLayout") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { spec, page } = await lfLoadAsset(aid);
+        if (!spec) return json({ error: "No script on this asset yet" }, 400);
+        const cid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+        let camp = null; try { camp = lfCleanBoxes(await env.TRADES.get("lflayout:" + cid, "json")); } catch (e) {}
+        if (body.op === "save") {
+          const b = lfCleanBoxes(body.boxes);
+          spec.render = spec.render || {};
+          if (b) spec.render.boxes = b; else delete spec.render.boxes;
+          await lfSaveSpec(aid, spec);
+          if (body.campaignDefault && cid) { if (b) await env.TRADES.put("lflayout:" + cid, JSON.stringify(b)); else await env.TRADES.delete("lflayout:" + cid); camp = b; }
+          return json({ ok: true, boxes: b, campaignBoxes: camp });
+        }
+        const own = lfCleanBoxes(spec.render && spec.render.boxes);
+        return json({ ok: true, boxes: own, campaignBoxes: camp, inEffect: own ? "episode" : camp ? "campaign" : "design" });
       }
       if (body.action === "getLongformEpisode") {
         try { return json({ success: true, episode: await lfBuildEpisode(env, String(body.assetId || "").replace(/-/g, "")) }); }

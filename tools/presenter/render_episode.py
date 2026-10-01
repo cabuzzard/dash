@@ -215,6 +215,8 @@ class Presenter:
                     lg.line([(ex - half, y), (ex + half, y)], fill=col + (255,))
                 im.alpha_composite(lid.filter(ImageFilter.GaussianBlur(1.8)))
                 ImageDraw.Draw(im).arc([ex - 16, bot - 7, ex + 16, bot + 3], 25, 155, fill=(58, 34, 24, 230), width=3)
+        if getattr(self, "scale", 1) != 1:
+            im = im.resize((max(1, int(im.width * self.scale)), max(1, int(im.height * self.scale))), Image.LANCZOS)
         self.cache[k] = im
         return im
 
@@ -277,6 +279,26 @@ def main(ep_path, out, work):
     CAP_Y = 840                                                  # baseline row of the last caption line (was 930 — too low)
     BX = (W - 760) // 2 if STAGE_LAYOUT else 80                  # where cards / titles / pills rest
     if STAGE_LAYOUT: cap_w = 1560
+    BOXES = ep.get("boxes") or {}
+    def hexa(h, a, d):
+        rgb = hexrgb(h or "", d); return rgb + (int(max(0, min(100, float(a))) * 2.55),)
+    cb, capb, pb = BOXES.get("card") or {}, BOXES.get("caption") or {}, BOXES.get("presenter") or {}
+    CS = max(0.4, min(2.5, float(cb.get("s", 100)) / 100))                      # card scale (text size)
+    CX = int(float(cb["x"]) * W / 100) if "x" in cb else BX
+    CY = int(float(cb["y"]) * H / 100) if "y" in cb else 120
+    NW = max(420, int((float(cb["w"]) * W / 100 if "w" in cb else 760 * CS) / CS))   # card width before scaling
+    CARD_FILL = hexa(cb.get("color"), cb.get("opacity", 89), PANEL) if cb.get("color") else PANEL + (228,)
+    CARD_MAX = int(cb.get("maxChars") or 0)
+    CAPS = max(0.4, min(2.5, float(capb.get("s", 100)) / 100))
+    F_CAP = font(bpath, max(12, round(40 * CAPS))); CLH = round(62 * CAPS)
+    if "w" in capb: cap_w = int(float(capb["w"]) * W / 100)
+    CAPX = int(float(capb["x"]) * W / 100) if "x" in capb else None
+    if "y" in capb: CAP_Y = int((float(capb["y"]) + float(capb.get("h", 12.2))) * H / 100) - CLH
+    CAP_FILL = hexa(capb.get("color"), capb.get("opacity", 75), (10, 14, 12)) if capb.get("color") else (10, 14, 12, 190)
+    if pb and "h" in pb:
+        P.scale = max(0.2, float(pb["h"]) * H / 100 / P.base.height)
+        chx = int(float(pb.get("x", chx * 100 / W)) * W / 100)
+    PY = int(float(pb["y"]) * H / 100) if pb and "y" in pb else None
 
     # ── scene images: shown in a framed stage on the left when their cue words are spoken ──
     STAGE = (240, 50, 1680, 860) if STAGE_LAYOUT else (80, 120, 840, 700)   # x0, y0, x1, y1
@@ -315,30 +337,33 @@ def main(ep_path, out, work):
         return None
 
     def card_panel(layer, h):
-        out = Image.new("RGBA", (760, h), (0, 0, 0, 0))
-        ImageDraw.Draw(out).rounded_rectangle([0, 0, 759, h - 1], 24, fill=PANEL + (228,), outline=ACC, width=3)
-        out.alpha_composite(layer.crop((0, 0, 760, h)))
+        out = Image.new("RGBA", (NW, h), (0, 0, 0, 0))
+        ImageDraw.Draw(out).rounded_rectangle([0, 0, NW - 1, h - 1], 24, fill=CARD_FILL, outline=ACC, width=3)
+        out.alpha_composite(layer.crop((0, 0, NW, h)))
+        if CS != 1: out = out.resize((max(1, int(NW * CS)), max(1, int(h * CS))), Image.LANCZOS)
         return out
+    def clip_txt(t):
+        t = str(t or ""); return (t[:CARD_MAX - 1].rstrip() + "…") if CARD_MAX and len(t) > CARD_MAX else t
 
     def title_card(text):
-        lay = Image.new("RGBA", (760, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
+        lay = Image.new("RGBA", (NW, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
         y = 22
-        lines = wrap(td, text, F_TTL, 680); f_, lh = F_TTL, 64
-        if len(lines) > 3: lines = wrap(td, text, F_TTL2, 680); f_, lh = F_TTL2, 52
+        lines = wrap(td, text, F_TTL, NW - 80); f_, lh = F_TTL, 64
+        if len(lines) > 3: lines = wrap(td, text, F_TTL2, NW - 80); f_, lh = F_TTL2, 52
         for ln in lines[:4]:
-            lx = (760 - int(td.textlength(ln, font=f_))) // 2 if STAGE_LAYOUT else 40
+            lx = (NW - int(td.textlength(ln, font=f_))) // 2 if STAGE_LAYOUT else 40
             td.text((lx, y), ln, font=f_, fill=INK); y += lh
         return card_panel(lay, y + 20)
 
     def item_card(seg, k, t0, t1, t):
-        card = Image.new("RGBA", (760, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
+        card = Image.new("RGBA", (NW, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
         y = 20
         if seg.get("n") is not None: cd.text((40, y), f"#{seg['n']}", font=F_NUM, fill=ACC); y += 84
-        nm = wrap(cd, seg.get("name", ""), F_TTL, 680); fnm, lh = F_TTL, 66
-        if len(nm) > 2: nm = wrap(cd, seg.get("name", ""), F_TTL2, 680); fnm, lh = F_TTL2, 52
+        nm = wrap(cd, clip_txt(seg.get("name", "")), F_TTL, NW - 80); fnm, lh = F_TTL, 66
+        if len(nm) > 2: nm = wrap(cd, clip_txt(seg.get("name", "")), F_TTL2, NW - 80); fnm, lh = F_TTL2, 52
         for ln in nm[:3]: cd.text((40, y), ln, font=fnm, fill=INK); y += lh
         y += 8
-        for ln in wrap(cd, seg.get("blurb", ""), F_SM, 680)[:3]: cd.text((42, y), ln, font=F_SM, fill=SUB); y += 38
+        for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80)[:3]: cd.text((42, y), ln, font=F_SM, fill=SUB); y += 38
         # final height is fixed up front (room for the pay bar / score that animate in) so the card never grows mid-shot
         full_h = y + (104 if seg.get("pay") else 0) + (76 if (seg.get("score") is not None or seg.get("tier")) else 0) + 18
         p = (t - t0) / max(0.1, (t1 - t0))
@@ -346,8 +371,8 @@ def main(ep_path, out, work):
             kp = ease((p - 0.28) / 0.12)
             if kp > 0:
                 y += 14; cd.text((42, y), "PAY", font=F_TXT, fill=SUB)
-                cd.rounded_rectangle([150, y + 6, 718, y + 38], 16, fill=(50, 60, 55))
-                cd.rounded_rectangle([150, y + 6, 150 + int(568 * float(seg.get("payPct", 0.6)) * kp), y + 38], 16, fill=ACC)
+                cd.rounded_rectangle([150, y + 6, NW - 42, y + 38], 16, fill=(50, 60, 55))
+                cd.rounded_rectangle([150, y + 6, 150 + int((NW - 192) * float(seg.get("payPct", 0.6)) * kp), y + 38], 16, fill=ACC)
                 cd.text((150, y + 44), seg["pay"], font=F_TXT, fill=INK); y += 90
         ks = ease((p - 0.72) / 0.1)
         if ks > 0 and (seg.get("score") is not None or seg.get("tier")):
@@ -362,7 +387,7 @@ def main(ep_path, out, work):
                 for n_ in range(10):
                     full = n_ + 1 <= sc_ * ks
                     cd.rounded_rectangle([190 + n_ * 44, y + 2, 224 + n_ * 44, y + 34], 6, fill=ACC if full else (50, 60, 55))
-                if ks >= 1: cd.text((718, y), f"{sc_:g}", font=F_TXT, fill=INK, anchor="ra")
+                if ks >= 1: cd.text((NW - 42, y), f"{sc_:g}", font=F_TXT, fill=INK, anchor="ra")
         return card_panel(card, min(600, full_h))
 
     def frame(i):
@@ -372,22 +397,23 @@ def main(ep_path, out, work):
         fr = sc.crop((ox, oy, ox + W, oy + H)).convert("RGBA")
         if not STAGE_LAYOUT:
             ch = P.variant(jaw[i] if i < len(jaw) else 0, blink_at.get(i, 0))
-            fr.alpha_composite(ch, (chx, H - ch.height + pl.get("bottomOverhang", 30) + int(round(3 * math.sin(t * 2 * math.pi * 0.23)))))
+            bob = int(round(3 * math.sin(t * 2 * math.pi * 0.23)))
+            fr.alpha_composite(ch, (chx, (PY if PY is not None else H - ch.height + pl.get("bottomOverhang", 30)) + bob))
         d = ImageDraw.Draw(fr)
         for t0, t1, seg in timeline:
             if not (t0 - 0.1 <= t <= t1 + 0.5): continue
             kind = seg.get("kind")
             k_in, k_out = ease((t - t0) / 0.45), ease((t - t1) / 0.4)
-            x = int(-800 + (BX + 800) * k_in - (900 + BX) * k_out)
+            x = int(-NW * CS - 40 + (CX + NW * CS + 40) * k_in - (W + 100) * k_out)
             if kind in ("item", "point"):
                 if shot_at(t) is None:
-                    fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, 120))
+                    fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, CY))
             elif kind == "hook" and ep.get("title"):
-                fr.alpha_composite(title_card(ep["title"]), (x, 120))
+                fr.alpha_composite(title_card(ep["title"]), (x, CY))
             elif kind == "ask" and seg.get("label"):
                 tw = d.textlength(seg["label"], font=F_TXT)
-                d.rounded_rectangle([x, 150, x + tw + 60, 222], 36, fill=ACC)
-                d.text((x + 30, 186), seg["label"], font=F_TXT, fill=PANEL, anchor="lm")
+                d.rounded_rectangle([x, CY + 30, x + tw + 60, CY + 102], 36, fill=ACC)
+                d.text((x + 30, CY + 66), seg["label"], font=F_TXT, fill=PANEL, anchor="lm")
         sh = shot_at(t)
         if sh:
             s_, e_, pic = sh
@@ -410,8 +436,11 @@ def main(ep_path, out, work):
                 frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
                 lines = chunks[min(len(chunks) - 1, max(0, int(frac * len(chunks))))]
             for li, ln in enumerate(lines):
-                tw = d.textlength(ln, font=F_CAP); x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80; y = CAP_Y - (len(lines) - 1 - li) * 62
-                d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + 54], 12, fill=(10, 14, 12, 190))
+                tw = d.textlength(ln, font=F_CAP)
+                if CAPX is None: x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80
+                else: x = CAPX + (cap_w - int(tw)) // 2 if STAGE_LAYOUT else CAPX
+                y = CAP_Y - (len(lines) - 1 - li) * CLH
+                d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + round(54 * CAPS)], 12, fill=CAP_FILL)
                 d.text((x, y), ln, font=F_CAP, fill=INK)
         return fr.convert("RGB")
 
