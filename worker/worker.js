@@ -1174,31 +1174,31 @@ const LF_REPO = "cabuzzard/dash";
 // verdict videos underperformed (0.6-0.9x) — kept as legacy only. docs/longform-formats.md.
 // Every format renders with the same item cards (#n, name, blurb; pay/score/tier optional).
 const LF_FORMATS = {
-  ranked: { label: "Ranked list (scored /10)", items: 9, use: "the viewer is choosing between options — which X should I pick",
+  ranked: { label: "Ranked list (scored /10)", items: 10, use: "the viewer is choosing between options — which X should I pick",
     titles: '"[N] [Things] That [Payoff]", "The Best [Things] For [Who], Ranked", "The Most [Adjective] [Things]"',
     rule: n => `RANKED LIST: ${n} items, each with an opportunity "score" out of 10 (one decimal) and the reason; count down so the best comes last.`,
     beats: "name → \"if you've ever wondered who…\" → what it actually is → a vivid analogy → cost, pay or time range with where it comes from (only if relevant) → requirements → one proof story (\"people in forums report…\", never a fake named person) → two or three pros and cons → the score and why" },
-  explainer: { label: "Explainer (how / why it really works)", items: 6, use: "the viewer wants to understand why or how something happens",
+  explainer: { label: "Explainer (how / why it really works)", items: 8, use: "the viewer wants to understand why or how something happens",
     titles: '"Why [X] [Surprising Thing]", "How [X] Actually Works", "What [X] Does To Your [Brain / Body / Business]"',
     rule: n => `EXPLAINER: ${n} chapters, each answering one sub-question that builds toward the full answer; the last chapter lands the "so what" for the viewer. No scores.`,
     beats: "chapter title as a short sub-question → the plain answer in one sentence → a vivid analogy → the mechanism or evidence behind it → one real, recognizable example → what it means for the viewer" },
-  whatif: { label: "What happens if… (scenario timeline)", items: 7, use: "the question imagines doing, stopping or facing something — what happens if / what would happen",
+  whatif: { label: "What happens if… (scenario timeline)", items: 9, use: "the question imagines doing, stopping or facing something — what happens if / what would happen",
     titles: '"What Happens If You [X] For [Time]", "What If [X]?", "[X] Hour By Hour"',
     rule: n => `WHAT-IF TIMELINE: ${n} stages that move forward in time or escalate (e.g. "First hour", "Day 3", "Week 2", "Month 6", "Year 1"); each item's "name" is the stage marker. No scores.`,
     beats: "the stage marker → what changes at this point → why it happens (the mechanism) → what it feels like from the inside → the turning point that leads to the next stage" },
-  theory: { label: "Theory / book breakdown", items: 6, use: "the answer is best told through a named theory, book, thinker or framework",
+  theory: { label: "Theory / book breakdown", items: 8, use: "the answer is best told through a named theory, book, thinker or framework",
     titles: '"[Thinker]\'s Theory of [X]", "The Psychology of [X]", "[Book] Summary: [Payoff]"',
     rule: n => `THEORY BREAKDOWN: ${n} key ideas from a REAL, well-known theory, book, thinker or framework (name it in the hook; never invent a source or a quote). No scores.`,
     beats: "the idea's name → the idea in one plain sentence → where it comes from and the context → a modern, everyday example → how the viewer applies it this week → the common misreading of it" },
-  story: { label: "Story / case study (rise & fall)", items: 7, use: "the answer is best shown through what happened to a real person, company or event — or the narrator's own story",
+  story: { label: "Story / case study (rise & fall)", items: 9, use: "the answer is best shown through what happened to a real person, company or event — or the narrator's own story",
     titles: '"The Rise and Fall of [X]", "What Really Happened to [X]", "How [X] Went From [A] to [B]"',
     rule: n => `STORY: ${n} chronological chapters about a REAL, documented person, company or event — or the narrator's own story from the interview. Never invent named people, quotes or numbers. No scores.`,
     beats: "chapter title → the scene (where and when) → the decision or turning point → what it led to → the lesson the viewer can use" },
-  myths: { label: "Myth-busting (the truth about…)", items: 7, use: "the viewer has absorbed common advice or beliefs that are wrong or incomplete",
+  myths: { label: "Myth-busting (the truth about…)", items: 9, use: "the viewer has absorbed common advice or beliefs that are wrong or incomplete",
     titles: '"[N] Lies You\'ve Been Told About [X]", "The Truth About [X]", "[X] Is Not What You Think"',
     rule: n => `MYTH-BUSTING: ${n} myths, weakest to most damaging; each item's "name" is the myth as people say it. No scores.`,
     beats: "the myth, phrased the way people say it → why people believe it → what's actually true and the evidence → what to do instead → a one-line verdict" },
-  playbook: { label: "Playbook (how I'd do it, step by step)", items: 7, use: "the viewer wants a plan — how do I / how would you; best when the interview has real experience",
+  playbook: { label: "Playbook (how I'd do it, step by step)", items: 9, use: "the viewer wants a plan — how do I / how would you; best when the interview has real experience",
     titles: '"How I\'d [Goal] If I Started Over", "The [N]-Day Plan To [X]", "[X]: Just Copy Me"',
     rule: n => `PLAYBOOK: ${n} steps or phases in order, built on the narrator's own experience from the interview where possible; each item's "name" is the step. No scores.`,
     beats: "the step name → exactly what to do in this step → why it matters → a concrete example or number from the narrator's experience (never invented) → the mistake to avoid → how you know it worked" },
@@ -15075,7 +15075,7 @@ ${autoUniq.map(x => `- ${x.q} [${x.src}]`).join("\n").slice(0, 6000)}
 YOUTUBE OUTLIERS (videos pulling N× their channel's average — proven demand):
 ${outliers.map(o2 => `- "${o2.title}" — ${o2.views.toLocaleString("en-US")} views, ${o2.ratio.toFixed(1)}× channel avg`).join("\n") || "(none)"}
 ${demand ? `\nSEARCH DEMAND (Google Ads keyword data):\n${demand.slice(0, 3000)}\n` : ""}
-Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show up in more than one source, have real demand, and carry money intent (someone would pay to have it answered). Phrase each as the viewer would ask it. For each choose the format that fits the question best — spread across formats when several fit:
+Pick the 12 best QUESTIONS for ~20 minute videos. Prefer questions that show up in more than one source, have real demand, and carry money intent (someone would pay to have it answered). Phrase each as the viewer would ask it. For each choose the format that fits the question best — spread across formats when several fit:
 ${LF_FORMAT_KEYS.map(k => `- "${k}": ${LF_FORMATS[k].label} — use when ${LF_FORMATS[k].use}. Title patterns: ${LF_FORMATS[k].titles}`).join("\n")}
 Give a YouTube title in that format. Call submit_questions.`;
         const qr = await fetch("https://api.anthropic.com/v1/messages", {
@@ -15155,7 +15155,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         const layout = body.layout === "stage" ? "stage" : "presenter";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
-        const items = format === "interview" ? interview.length : Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 12);
+        const items = format === "interview" ? interview.length : Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 15);
         if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
         if (interview.length) await voiceLogSamples(env, ctx, campaignId, "longform interview", interview).catch(e => console.error("voiceLogSamples", e.message));
         const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
@@ -15171,14 +15171,14 @@ Give a YouTube title in that format. Call submit_questions.`;
         const prodFacts = researchRec ? STRATEGY_FIELDS.map(f => { const v = lfReadRich(researchRec.properties?.[f]); return v && `${f}: ${v}`; }).filter(Boolean).join("\n") : "";
         const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
         const fmtRule = LF_FORMATS[format].rule(items);
-        const sPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}${format === "interview" ? "Write a faceless YouTube episode built from the channel owner's interview answers below — its length follows the answers — answering this viewer question:" : "Write a complete 12-15 minute faceless YouTube episode script answering this viewer question:"}
+        const sPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}${format === "interview" ? "Write a faceless YouTube episode built from the channel owner's interview answers below — its length follows the answers — answering this viewer question:" : "Write a complete ~20 minute (18-22 min) faceless YouTube episode script answering this viewer question — 16-30 minute videos perform best for this kind of channel, so give every item real depth rather than padding:"}
 
 QUESTION: ${String(question).trim()}
 FORMAT — ${fmtRule}
 ${hasMethod && methodText ? `\nMETHOD (follow it):\n${methodText.slice(0, 5000)}\n` : ""}
 STRUCTURE (the Shane Hummus model — the narrator is an animated presenter; the words are spoken aloud):
 1. HOOK (~40 s): a contrarian premise sentence, a specific promise (numbers, "no degree", "weeks not years"), an authority line built on sourcing ("every number here is sourced"), one soft ask to like the video, then "let's jump into it".
-2. ITEMS: each item is ONE segment of ~60-90 s of narration, always in this order: ${LF_FORMATS[format].beats}. Give each item "n" (1, 2, 3…), a short "name" for the on-screen card and a "blurb"; "pay"/"payPct" only when a money or time range is genuinely part of the point, "score"/"tier" only when the format calls for it.
+2. ITEMS: each item is ONE segment of ~90-120 s of narration, always in this order: ${LF_FORMATS[format].beats}. Give each item "n" (1, 2, 3…), a short "name" for the on-screen card and a "blurb"; "pay"/"payPct" only when a money or time range is genuinely part of the point, "score"/"tier" only when the format calls for it.
 3. ASKS: after item 1 or 2 a like ask; mid-way a comment question that fits the format (e.g. "which one fits you?", "have you been through this stage?", "which myth did you believe?"); once, a free-resource mention; before the last item a subscribe ask. Each ask is its own short segment.
 4. OUTRO (~20 s): recap in one line, point to the next video. No long goodbye.
 5. PICTURES: the hook and every item get 1-3 "images" — concrete scenes that illustrate what is being said at that moment (a person doing the job, the place, the tool). Each image's "cue" is 4-8 words copied exactly from that segment's narration, in its first 70%.
