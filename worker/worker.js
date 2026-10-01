@@ -1222,6 +1222,51 @@ const LF_FORMAT_KEYS = Object.keys(LF_FORMATS).filter(k => !LF_FORMATS[k].legacy
 // Questions needed come from the operator's OWN average answer length (voice:samples), so
 // longer answers → fewer questions.
 const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 6, frameSecs: 92, fallbackWords: 98 };   // 6 s = the customer's ≤15-word question (second voice) + pauses
+// Anthropic Messages call with stream:true, reassembled into the normal (non-stream) message shape.
+// Long single replies (a 20-min episode script) take >100 s; non-streamed, Anthropic's edge answers
+// "error code: 524" (HTML) and res.json() throws. Streaming keeps bytes flowing. Returns a
+// Response-like {ok, status, json()} so call sites read it exactly like a fetch() result.
+async function claudeStream(env, payload) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ ...payload, stream: true }) });
+  const res = (ok, status, data) => ({ ok, status, json: async () => data });
+  if (!r.ok) {
+    const t = await r.text(); let d;
+    try { d = JSON.parse(t); } catch (e) { d = { error: { message: `Claude API HTTP ${r.status}: ${t.slice(0, 200)}` } }; }
+    return res(false, r.status, d);
+  }
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", stop = null, err = null; const blocks = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n\n")) >= 0) {
+      const ev = buf.slice(0, i); buf = buf.slice(i + 2);
+      const line = ev.split("\n").find(l => l.startsWith("data:"));
+      if (!line) continue;
+      let e; try { e = JSON.parse(line.slice(5).trim()); } catch (x) { continue; }
+      if (e.type === "content_block_start") blocks[e.index] = { ...e.content_block, _json: "" };
+      else if (e.type === "content_block_delta" && blocks[e.index]) {
+        if (e.delta.type === "input_json_delta") blocks[e.index]._json += e.delta.partial_json || "";
+        else if (e.delta.type === "text_delta") blocks[e.index].text = (blocks[e.index].text || "") + (e.delta.text || "");
+      } else if (e.type === "message_delta") stop = (e.delta && e.delta.stop_reason) || stop;
+      else if (e.type === "error") err = e.error;
+    }
+  }
+  if (err) return res(false, 500, { error: err });
+  let broken = false;
+  const content = blocks.filter(Boolean).map(b => {
+    const { _json, ...rest } = b;
+    if (b.type !== "tool_use") return rest;
+    let input = {}; try { input = JSON.parse(_json || "{}"); } catch (x) { broken = true; }
+    return { ...rest, input };
+  });
+  if (broken) return res(false, 502, { error: { message: stop === "max_tokens" ? "The reply hit the length limit before it finished — try fewer items or shorter answers" : "The reply came back incomplete — try again" } });
+  return res(true, 200, { content, stop_reason: stop });
+}
 async function lfInterviewPlan(env, campaignId) {
   const cid = String(campaignId || "").replace(/-/g, "");
   const get = async k => { try { return (await env.TRADES.get(k, "json")) || []; } catch (e) { return []; } };
@@ -15223,15 +15268,13 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
             cue: { type: "string", description: "4-8 words copied EXACTLY from this segment's narration — the image appears when these words are spoken; pick words in the first 70% of the segment" },
             subject: { type: "string", description: "what the picture shows: one concrete, visual scene (people, places, objects), no text, charts or logos" } } } },
           score: { type: "number" }, tier: { type: "string" }, label: { type: "string", description: "ask segments: the short viewer-facing on-screen pill, e.g. '👍 Like if this helps', '💬 Which one fits you?', '🔔 Subscribe for part 2' — never a placeholder like 'Like Ask'" } } };
-        const sr = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 16000, messages: [{ role: "user", content: sPrompt }],
+        const sr = await claudeStream(env, {
+            model: "claude-sonnet-4-6", max_tokens: 20000, messages: [{ role: "user", content: sPrompt }],
             tools: [{ name: "submit_episode", description: "The episode.", input_schema: { type: "object", required: ["title", "segments", "description"], properties: {
               title: { type: "string" }, altTitles: { type: "array", items: { type: "string" } }, thumbnailText: { type: "array", items: { type: "string" } },
               description: { type: "string" }, tags: { type: "array", items: { type: "string" } }, hashtags: { type: "array", items: { type: "string" } },
               segments: { type: "array", items: segSchema } } } }],
-            tool_choice: { type: "tool", name: "submit_episode" } }),
-        });
+            tool_choice: { type: "tool", name: "submit_episode" } });
         const sd2 = await sr.json();
         if (!sr.ok) return json({ error: sd2.error?.message || "Claude API error" }, 502);
         const o = ((sd2.content || []).find(b => b.type === "tool_use") || {}).input;
