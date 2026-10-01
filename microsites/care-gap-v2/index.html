@@ -6373,6 +6373,11 @@ async function pubLfIntroModal() {
     <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Welcome (spoken by the narrator)<textarea id="lfiText" rows="4" style="width:100%;box-sizing:border-box;margin-top:3px;min-height:80px;"></textarea></label>
     <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Jingle (announcer, last word drawn out, big echo, shown big on screen)<input id="lfiJingle" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
     <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Topic line — {topic} becomes each episode's topic (edit it per episode in 📝 Script & cards)<input id="lfiTopic" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--ink3);margin-top:10px;">
+      <label>After the jingle <select id="lfiSfx" class="finput" style="width:auto;font-size:11px;"><option value="raven">🐦‍⬛ distant raven (kaw ×3)</option><option value="none">nothing</option></select></label>
+      <label>Ambience (whole episode) <select id="lfiAmb" class="finput" style="width:auto;font-size:11px;"><option value="wind">🌬 soft wind</option><option value="none">none</option></select></label>
+      <label>Level <input id="lfiAmbDb" type="number" min="-60" max="-10" step="1" class="finput" style="width:56px;font-size:11px;"> dB under the voice</label>
+    </div>
     <div id="lfiMsg" style="font-size:11.5px;color:var(--ink3);min-height:14px;margin-top:8px;">Loading…</div>
     <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;">
       <button class="btn" type="button" onclick="document.getElementById('lfIntroModal').remove()">Close</button>
@@ -6385,6 +6390,8 @@ async function pubLfIntroModal() {
     document.getElementById('lfiOn').checked = !!x.enabled && !!r.intro;
     document.getElementById('lfiChannel').value = x.channel; document.getElementById('lfiText').value = x.text;
     document.getElementById('lfiJingle').value = x.jingle; document.getElementById('lfiTopic').value = x.topicLine;
+    document.getElementById('lfiSfx').value = x.sfx || 'raven'; document.getElementById('lfiAmb').value = x.ambience || 'wind';
+    document.getElementById('lfiAmbDb').value = x.ambienceDb != null ? x.ambienceDb : -40;
     document.getElementById('lfiMsg').textContent = r.intro ? '' : 'No intro set for this campaign yet.';
   } catch (e) { document.getElementById('lfiMsg').textContent = 'Could not load: ' + e.message; }
 }
@@ -6393,7 +6400,8 @@ async function pubLfIntroSave(btn) {
   try {
     await w('longformIntro', { assetId: PUB_LF.assetId, op: 'save', intro: { enabled: document.getElementById('lfiOn').checked,
       channel: document.getElementById('lfiChannel').value, text: document.getElementById('lfiText').value,
-      jingle: document.getElementById('lfiJingle').value, topicLine: document.getElementById('lfiTopic').value } });
+      jingle: document.getElementById('lfiJingle').value, topicLine: document.getElementById('lfiTopic').value,
+      sfx: document.getElementById('lfiSfx').value, ambience: document.getElementById('lfiAmb').value, ambienceDb: parseFloat(document.getElementById('lfiAmbDb').value) } });
     msg.textContent = '✓ Saved for every episode in this campaign — re-render to hear it.';
   } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
   btn.disabled = false;

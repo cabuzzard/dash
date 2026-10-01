@@ -1345,7 +1345,11 @@ function lfCleanBoxes(b) {
 function lfCleanIntro(x) {
   x = x && typeof x === "object" ? x : {};
   return { enabled: x.enabled !== false, channel: String(x.channel || "").slice(0, 120), text: String(x.text || "").slice(0, 1500),
-    jingle: String(x.jingle || "").slice(0, 80), topicLine: String(x.topicLine || "In today's video, we're going to talk about {topic}.").slice(0, 300) };
+    jingle: String(x.jingle || "").slice(0, 80), topicLine: String(x.topicLine || "In today's video, we're going to talk about {topic}.").slice(0, 300),
+    // method standard (operator 2026-10-01): a distant raven after the jingle, and barely-there wind under every episode
+    sfx: ["raven", "none"].includes(x.sfx) ? x.sfx : "raven",
+    ambience: ["wind", "none"].includes(x.ambience) ? x.ambience : "wind",
+    ambienceDb: Number.isFinite(+x.ambienceDb) && x.ambienceDb !== "" && x.ambienceDb !== null ? Math.max(-60, Math.min(-10, +x.ambienceDb)) : -40 };
 }
 async function lfTopicPhrase(env, question) {
   const q = String(question || "").trim(); if (!q || !env.ANTHROPIC_API_KEY) return "";
@@ -1368,7 +1372,7 @@ async function lfBuildEpisode(env, assetId) {
   if (intro && intro.enabled && intro.text.trim()) {
     if (!spec.topic) { const tp = await lfTopicPhrase(env, spec.question || spec.title).catch(() => ""); if (tp) { spec.topic = tp; await lfSaveSpec(assetId, spec).catch(() => {}); } }
     introSegs = [{ kind: "intro", text: intro.text.trim() }];
-    if (intro.jingle.trim()) introSegs.push({ kind: "jingle", text: intro.jingle.trim() });
+    if (intro.jingle.trim()) introSegs.push({ kind: "jingle", text: intro.jingle.trim(), ...(intro.sfx !== "none" ? { sfx: intro.sfx } : {}) });
     if (spec.topic) introSegs.push({ kind: "topic", text: intro.topicLine.replace("{topic}", spec.topic) });
   }
   let boxes = lfCleanBoxes(spec.render && spec.render.boxes);
@@ -1394,6 +1398,8 @@ async function lfBuildEpisode(env, assetId) {
       return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}), ...(v && v.paraScale && rate === v.rate ? { paraScale: v.paraScale } : {}) }; })(),
     ...(boxes ? { boxes } : {}),
     ...(introSegs.length ? { channel: intro.channel || "" } : {}),
+    // ambience is the method standard for every longform episode (campaign intro setting can turn it off / set the level)
+    ...((intro ? intro.ambience : "wind") === "wind" ? { ambience: { type: "wind", db: intro ? intro.ambienceDb : -40 } } : {}),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,

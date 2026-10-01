@@ -191,6 +191,24 @@ def make_jingle(text, work, key="jingle", voice=None, sfx=""):
         out = np.zeros(max(len(wet), at + len(rv)), np.int32); out[:len(wet)] += wet; out[at:at + len(rv)] += rv
         wet = np.clip(out, -32768, 32767).astype(np.int16)
     return wet
+def add_ambience(audio, amb):
+    """Room tone under the whole episode. "wind" = airy pink noise 400-2500 Hz (audible on phones, no rumble) with a
+    slow natural swell, set `db` below the narration's average level (operator standard: barely there, -40 dB)."""
+    if (amb or {}).get("type") != "wind" or not len(audio): return audio
+    n = len(audio); dur = n / SR
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", f"anoisesrc=color=pink:amplitude=0.6:duration={dur + 1:.2f}:sample_rate={SR}:seed=7",
+                          "-af", "highpass=f=400,lowpass=f=2500", "-f", "s16le", "-ac", "1", "-ar", str(SR), "-"], capture_output=True).stdout
+    noise = np.frombuffer(raw, np.int16).astype(np.float32)[:n]
+    if len(noise) < n: noise = np.pad(noise, (0, n - len(noise)))
+    t = np.arange(n) / SR
+    wind = noise * (0.55 + 0.30 * np.sin(2 * np.pi * t / 17.0) + 0.15 * np.sin(2 * np.pi * t / 6.3 + 1.3))
+    v = audio.astype(np.float32)
+    rms = lambda x: np.sqrt(np.mean(x ** 2)) + 1e-9
+    wind *= rms(v) * 10 ** (float(amb.get("db", -40)) / 20) / rms(wind)
+    f_in, f_out = min(n, 2 * SR), min(n, 3 * SR)
+    wind[:f_in] *= np.linspace(0, 1, f_in); wind[n - f_out:] *= np.linspace(1, 0, f_out)
+    print(f"ambience: wind {float(amb.get('db', -40)):+.0f} dB under the narration", flush=True)
+    return np.clip(v + wind, -32768, 32767).astype(np.int16)
 def para_marks(text, cs):
     """Times (s) where each paragraph of `text` ends, found by counting words through the caption cues."""
     paras = [p_ for p_ in re.split(r"\n\s*\n", text.strip()) if p_.strip()]
@@ -285,6 +303,7 @@ def build_audio(ep, work):
         t += dur + seg_gap
         print(f"tts {i + 1}/{len(ep['segments'])} {t - t_start:.1f}s", flush=True)
     audio = np.concatenate(pcm) if pcm else np.zeros(SR, np.int16)
+    audio = add_ambience(audio, ep.get("ambience") or {})
     wav = os.path.join(work, "voice.wav")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", wav], input=audio.tobytes(), check=True)
     return audio, timeline, caps, wav, mute
