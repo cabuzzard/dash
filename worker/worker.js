@@ -1205,7 +1205,7 @@ const LF_FORMATS = {
   interview: { label: "Interview (your answers, lightly edited)", items: 0, use: "the best answer is the narrator's own experience and opinions, told in their words",
     titles: '"I [Did X] For [N] Years — Here\'s What Nobody Tells You", "[Expert] Answers Your [Topic] Questions", "What I Learned From [Experience]"',
     rule: n => `INTERVIEW: exactly ${n} items, one per answered interview question below, in the order given. The episode IS the narrator's answers.`,
-    beats: "a one-line spoken lead-in that poses the question in the narrator's voice → THE NARRATOR'S ANSWER, LIGHTLY EDITED: fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
+    beats: "a spoken lead-in of 12 words or fewer that poses the question in the narrator's voice (never read the full interview question — it is long; distill it) → THE NARRATOR'S ANSWER, LIGHTLY EDITED: fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
   // legacy (no longer offered): kept so older episodes regenerate the same way
   tier: { legacy: true, label: "Tier list (S–D)", items: 9, use: "", titles: "",
     rule: n => `TIER LIST: ${n} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`,
@@ -1218,10 +1218,10 @@ const LF_FORMAT_KEYS = Object.keys(LF_FORMATS).filter(k => !LF_FORMATS[k].legacy
 // Interview-format length plan (pace follows the default voice's default rate: 185 wpm measured at -4%). Target 20 min: 16-30 min videos beat their channel's median
 // (1.1-1.3x) on the benchmark channels, Shane Hummus peaks at 20-30 min (1.6x) and sits at
 // ~0.5x for 9-13 min (docs/longform-formats.md). Pace 185 wpm (Mwz 106 over a full episode),
-// a light edit keeps ~85% of the words, ~3 s lead-in + gap per question, ~92 s of hook/asks/outro.
+// a light edit keeps ~85% of the words, ~5.5 s lead-in (≤12 words, never the full question) + gap per question, ~92 s of hook/asks/outro.
 // Questions needed come from the operator's OWN average answer length (voice:samples), so
 // longer answers → fewer questions.
-const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 3, frameSecs: 92, fallbackWords: 98 };
+const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 5.5, frameSecs: 92, fallbackWords: 98 };   // 5.5 s = ≤12-word spoken lead-in + segment gap
 async function lfInterviewPlan(env, campaignId) {
   const cid = String(campaignId || "").replace(/-/g, "");
   const get = async k => { try { return (await env.TRADES.get(k, "json")) || []; } catch (e) { return []; } };
