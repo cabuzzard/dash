@@ -828,6 +828,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" onclick="pubLfScriptModal()">📝 Script & cards…</button>
               <button class="btn" type="button" onclick="pubLfLayoutModal()">📐 Layout…</button>
               <button class="btn" type="button" onclick="pubLfIntroModal()">🎙 Intros…</button>
+              <button class="btn" type="button" onclick="pubFactModal()">🔎 Fact check…</button>
               <span style="color:var(--ink3);">Upload, earlier backgrounds, your own direction. None = the presenter's default scene.</span>
             </div>
             <div id="pubYtBlock" style="margin-top:10px;padding:8px;border:1px solid var(--border);border-radius:8px;">
@@ -6374,6 +6375,61 @@ async function lfsLoadAssets(r) {
 
 // 🎙 Channel intro… — the campaign's fixed opening for every longform episode:
 // welcome (narrator) → jingle (announcer, last word stretched, big echo) → topic line → the episode.
+// 🔎 Fact check… — your claims vs the dominant expert view (live web search). Opinions stay yours; fixes are the
+// smallest wording change and only replace the quoted words. The finding is saved on the asset page.
+async function pubFactModal() {
+  document.getElementById('factModal')?.remove();
+  const ov = document.createElement('div');
+  ov.className = 'modaloverlay open'; ov.id = 'factModal'; ov.style.zIndex = '400';
+  ov.innerHTML = `<div class="modalbox" style="max-width:860px;">
+    <div class="mtitle">Fact check</div>
+    <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px;">Checks the script's claims against the dominant expert view, with sources. Your opinions and stories stay yours. Suggested fixes are the smallest change that makes a claim accurate — tick the ones you want; only those exact words change.</div>
+    <div id="factBody">Loading…</div>
+    <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center;">
+      <span id="factMsg" style="color:var(--ink3);font-size:11px;margin-right:auto;"></span>
+      <button class="btn" type="button" onclick="factRun(this)">🔎 Run fact check</button>
+      <button class="btn" type="button" onclick="factSources(this)">📎 Add sources to YouTube description</button>
+      <button class="btn primary" type="button" onclick="factApply(this)">✓ Apply ticked fixes</button>
+      <button class="btn" type="button" onclick="document.getElementById('factModal').remove()">Close</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  try { const r = await w('getFactCheck', { assetId: PUB_LF.assetId }); factRender(r.report); }
+  catch (e) { document.getElementById('factBody').textContent = 'Could not load: ' + e.message; }
+}
+function factRender(rep) {
+  const el = document.getElementById('factBody'); if (!el) return;
+  if (!rep) { el.innerHTML = '<div style="color:var(--ink3);">No fact check yet for this episode. Press 🔎 Run fact check (takes a couple of minutes — it searches the web).</div>'; return; }
+  const col = { 'supported': 'var(--fresh)', 'mostly supported': 'var(--fresh)', 'contested': '#d69e2e', 'contradicted': 'var(--stale)', 'opinion': 'var(--ink3)' };
+  el.innerHTML = `<div style="margin-bottom:8px;"><b>${esc(rep.status)}</b> · ${esc(new Date(rep.at).toLocaleString())}<br>${esc(rep.summary)}</div>`
+    + rep.items.map(x => `<div style="border-top:1px solid var(--border);padding:8px 0;">
+      <div><b style="color:${col[x.verdict] || 'var(--ink2)'};text-transform:uppercase;font-size:11px;">${esc(x.verdict)}</b>${x.applied ? ' <span style="color:var(--fresh);font-size:11px;">✓ fix applied</span>' : ''}</div>
+      <div style="margin:3px 0;">“${esc(x.quote)}”</div>
+      <div style="color:var(--ink2);font-size:12px;">${esc(x.expert_view)}</div>
+      ${x.sources && x.sources.length ? `<div style="font-size:11px;margin-top:2px;">${x.sources.map(sr => `<a class="kwlink" href="${esc(sr.url)}" target="_blank" rel="noopener">${esc(sr.title || sr.url)}</a>`).join(' · ')}</div>` : ''}
+      ${x.fix && !x.applied ? `<label style="display:block;margin-top:4px;font-size:12px;"><input type="checkbox" class="factFix" value="${esc(x.id)}" ${/contested|contradicted/.test(x.verdict) ? 'checked' : ''}> Smallest fix: <i>“${esc(x.fix)}”</i></label>` : ''}
+    </div>`).join('');
+}
+async function factRun(btn) {
+  const msg = document.getElementById('factMsg'); btn.disabled = true; msg.textContent = 'Checking claims against expert sources — a couple of minutes…';
+  try { const r = await w('generateFactCheck', { assetId: PUB_LF.assetId }); factRender(r.report); msg.textContent = '✓ Done — the finding is also saved on the asset page.'; }
+  catch (e) { msg.textContent = 'Fact check failed: ' + e.message; }
+  btn.disabled = false;
+}
+async function factApply(btn) {
+  const ids = [...document.querySelectorAll('#factModal .factFix:checked')].map(x => x.value);
+  const msg = document.getElementById('factMsg');
+  if (!ids.length) { msg.textContent = 'Tick at least one fix first.'; return; }
+  btn.disabled = true;
+  try { const r = await w('applyFactFixes', { assetId: PUB_LF.assetId, ids }); factRender(r.report); msg.textContent = `✓ Applied ${r.applied} fix${r.applied === 1 ? '' : 'es'}${r.missed.length ? ` (${r.missed.length} couldn't be matched in the script)` : ''} — re-render to hear them.`; }
+  catch (e) { msg.textContent = 'Not applied: ' + e.message; }
+  btn.disabled = false;
+}
+async function factSources(btn) {
+  const msg = document.getElementById('factMsg'); btn.disabled = true;
+  try { const r = await w('addFactSources', { assetId: PUB_LF.assetId }); msg.textContent = `✓ Added ${r.added} source${r.added === 1 ? '' : 's'} to the YouTube description (before the hashtags).`; }
+  catch (e) { msg.textContent = 'Not added: ' + e.message; }
+  btn.disabled = false;
+}
 // ▶ YouTube — direct upload (Buffer can't post long-form YouTube)
 let PUB_YT = null;
 async function pubYtStatus() {

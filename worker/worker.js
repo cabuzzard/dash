@@ -1242,9 +1242,9 @@ const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 6, fram
 // Long single replies (a 20-min episode script) take >100 s; non-streamed, Anthropic's edge answers
 // "error code: 524" (HTML) and res.json() throws. Streaming keeps bytes flowing. Returns a
 // Response-like {ok, status, json()} so call sites read it exactly like a fetch() result.
-async function claudeStream(env, payload) {
+async function claudeStream(env, payload, extraHeaders) {
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
-    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(extraHeaders || {}) },
     body: JSON.stringify({ ...payload, stream: true }) });
   const res = (ok, status, data) => ({ ok, status, json: async () => data });
   if (!r.ok) {
@@ -15663,6 +15663,103 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           body: JSON.stringify({ properties: { "YouTube URL": { url: ytUrl }, "Asset Status": { select: { name: "Published" } } } }) }).catch(() => {});
         await stampPublishingDate(aid);
         return json({ ok: true, videoId: vd.id, url: ytUrl, privacy: status.privacyStatus, publishAt: status.publishAt || null, thumbnail: thumb, uploadStatus: vd.status?.uploadStatus || "" });
+      }
+      // ── 🔎 Fact check (longform scripts) ── operator 2026-10-01: "without overly rewriting my voice, fact check my
+      // ideas against dominant expert opinions and publish a finding". Pass 1 pulls the checkable claims (exact quotes);
+      // pass 2 checks each against expert consensus with live web search and proposes the SMALLEST wording change.
+      // Saved in KV lffact:<assetId>, written to the asset page (🔎 Fact check section) + "Fact Check" status.
+      if (body.action === "generateFactCheck") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { url: pageUrl, page, spec } = await lfLoadAsset(aid);
+        if (!spec || !Array.isArray(spec.segments)) return json({ error: "No script on this asset yet" }, 400);
+        const script = spec.segments.map((x, i) => ({ i, kind: x.kind, text: String(x.text || "") })).filter(x => x.text.trim());
+        const topic = spec.question || spec.title || "";
+        // pass 1 — claims (no web)
+        const cr = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content:
+`You are preparing a fact check of a YouTube episode script about: ${topic}
+The narration is the channel owner's own voice and experience. List the CLAIMS a careful viewer could check — factual statements, numbers, how-the-body/brain/business-works explanations, and advice that implies an outcome. Also list strong opinions, but mark them "opinion" (they will not be judged). Skip greetings, asks, and pure personal anecdotes ("I've seen founders…") unless they generalize into a factual claim.
+For each: "seg" (segment index), "quote" (the EXACT words from the script, 4-30 words, copied character for character), "claim" (one plain sentence of what is being asserted), "type" (fact | number | mechanism | advice | opinion). At most 18, most consequential first.
+
+SCRIPT (seg: text):
+${script.map(x => `[${x.i}] ${x.text}`).join("\n\n").slice(0, 60000)}
+
+Return ONLY a JSON array.` }] });
+        const cd = await cr.json();
+        if (!cr.ok) return json({ error: cd.error?.message || "Claude error (claims)" }, 502);
+        const craw = (cd.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        let claims = []; try { claims = JSON.parse(craw.slice(craw.indexOf("["), craw.lastIndexOf("]") + 1)); } catch (e) { return json({ error: "Couldn't read the claim list — try again" }, 502); }
+        claims = claims.filter(c => c && c.quote && c.claim).slice(0, 18).map((c, k) => ({ id: "c" + (k + 1), seg: +c.seg, quote: String(c.quote), claim: String(c.claim), type: String(c.type || "fact") }));
+        const checkable = claims.filter(c => c.type !== "opinion");
+        // pass 2 — expert consensus with web search
+        const vr = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 12000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 14 }], messages: [{ role: "user", content:
+`Fact-check these claims from a coaching YouTube episode against the DOMINANT EXPERT VIEW — major medical/psychology/scientific bodies, systematic reviews and peer-reviewed research, recognized institutions. Search as needed. Be fair: practical wisdom that experts broadly accept counts as supported even if phrased casually.
+For each claim return: "id", "verdict" (supported | mostly supported | contested | contradicted), "expert_view" (1-2 plain sentences: what the evidence/experts actually say), "sources" (1-3 {"title","url"} you actually found), and "fix": the SMALLEST change to the quoted words that would make it accurate while keeping the speaker's voice — usually a short qualifier ("for many people", "research suggests", "in my experience") or one swapped word; return the full corrected version of the quote, or "" if no change is needed. Never rewrite style, never add jargon, never lengthen by more than ~8 words.
+
+CLAIMS:
+${checkable.map(c => `${c.id} | ${c.type} | "${c.quote}" → ${c.claim}`).join("\n")}
+
+Then give "summary": 2-3 sentences on how well the episode holds up overall.
+Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic-beta": "web-search-2025-03-05" });
+        const vd = await vr.json();
+        if (!vr.ok) return json({ error: vd.error?.message || "Claude error (verification)" }, 502);
+        const vraw = (vd.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        let res = {}; try { res = JSON.parse(vraw.slice(vraw.indexOf("{"), vraw.lastIndexOf("}") + 1)); } catch (e) { return json({ error: "Couldn't read the fact-check results — try again" }, 502); }
+        const byId = Object.fromEntries((res.results || []).map(r => [r.id, r]));
+        const items = claims.map(c => c.type === "opinion" ? { ...c, verdict: "opinion", expert_view: "Your opinion — kept as yours, not judged.", sources: [], fix: "" }
+          : { ...c, verdict: String(byId[c.id]?.verdict || "unchecked"), expert_view: String(byId[c.id]?.expert_view || ""), sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || "") });
+        const needs = items.filter(x => /contested|contradicted/.test(x.verdict)).length;
+        const report = { at: Date.now(), topic, summary: String(res.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
+        await env.TRADES.put("lffact:" + aid, JSON.stringify(report));
+        // publish the finding on the asset page + a status property
+        try {
+          const hdrN = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+          await ensureAssetsDbProperties(hdrN, { "Fact Check": { type: "select" } }).catch(() => {});
+          await fetch(pageUrl, { method: "PATCH", headers: hdrN, body: JSON.stringify({ properties: { "Fact Check": { select: { name: report.status } } } }) });
+          const R = t => [{ type: "text", text: { content: String(t).slice(0, 1990) } }];
+          const icon = v => ({ "supported": "✅", "mostly supported": "🟢", "contested": "🟡", "contradicted": "🔴", "opinion": "💬" }[v] || "•");
+          const kids = [{ object: "block", type: "heading_2", heading_2: { rich_text: R(`🔎 Fact check — ${new Date(report.at).toISOString().slice(0, 10)} — ${report.status}`) } },
+            { object: "block", type: "paragraph", paragraph: { rich_text: R(report.summary) } }];
+          for (const x of items) {
+            kids.push({ object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: R(`${icon(x.verdict)} ${x.verdict.toUpperCase()} — "${x.quote}"`), children: [
+              { object: "block", type: "paragraph", paragraph: { rich_text: R(x.expert_view) } },
+              ...(x.fix ? [{ object: "block", type: "paragraph", paragraph: { rich_text: R("Smallest fix: " + x.fix) } }] : []),
+              ...x.sources.map(src => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: String(src.title || src.url).slice(0, 300), link: { url: src.url } } }] } })) ] } });
+          }
+          await fetch(`https://api.notion.com/v1/blocks/${pageUrl.split("/").pop()}/children`, { method: "PATCH", headers: hdrN, body: JSON.stringify({ children: kids.slice(0, 100) }) });
+        } catch (e) { console.error("fact check publish:", e.message); }
+        return json({ ok: true, report });
+      }
+      // getFactCheck {assetId} → the last report · applyFactFixes {assetId, ids:[...]} → swaps ONLY the quoted words
+      // in the script for the accepted fixes · addFactSources {assetId} → a short Sources list at the end of the
+      // YouTube description (Post Caption).
+      if (body.action === "getFactCheck" || body.action === "applyFactFixes" || body.action === "addFactSources") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        let report = null; try { report = await env.TRADES.get("lffact:" + aid, "json"); } catch (e) {}
+        if (body.action === "getFactCheck") return json({ ok: true, report });
+        if (!report) return json({ error: "Run the fact check first" }, 400);
+        const { url: pageUrl, page, spec } = await lfLoadAsset(aid);
+        if (body.action === "applyFactFixes") {
+          const want = new Set(Array.isArray(body.ids) ? body.ids : []); let applied = 0; const missed = [];
+          for (const x of report.items) {
+            if (!want.has(x.id) || !x.fix) continue;
+            const seg = spec.segments[x.seg];
+            if (seg && String(seg.text || "").includes(x.quote)) { seg.text = seg.text.replace(x.quote, x.fix); x.applied = true; applied++; }
+            else { const k = spec.segments.findIndex(sg => String(sg.text || "").includes(x.quote)); if (k >= 0) { spec.segments[k].text = spec.segments[k].text.replace(x.quote, x.fix); x.applied = true; applied++; } else missed.push(x.id); }
+          }
+          await lfSaveSpec(aid, spec); await env.TRADES.put("lffact:" + aid, JSON.stringify(report));
+          return json({ ok: true, applied, missed, report });
+        }
+        const srcs = []; const seen = new Set();
+        for (const x of report.items) for (const sr of (x.sources || [])) if (!seen.has(sr.url) && /supported/.test(x.verdict)) { seen.add(sr.url); srcs.push(sr); }
+        if (!srcs.length) return json({ error: "No sources to add (no supported claims with sources)" }, 400);
+        const cap = (page.properties["Post Caption"]?.rich_text || []).map(t => t.plain_text).join("");
+        const block = "Sources:\n" + srcs.slice(0, 6).map(sr => `• ${String(sr.title || "").slice(0, 80)} — ${sr.url}`).join("\n");
+        const tagM = cap.match(/\n\n(#[^\n]+)\s*$/);   // keep hashtags last
+        const base = cap.replace(/\n\nSources:[\s\S]*?(?=\n\n#|$)/, "");
+        const next = tagM ? base.replace(/\n\n#[^\n]+\s*$/, "") + "\n\n" + block + "\n\n" + tagM[1] : base + "\n\n" + block;
+        await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Post Caption": { rich_text: lfRich(next.slice(0, 4900)) } } }) });
+        return json({ ok: true, added: Math.min(6, srcs.length) });
       }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");
