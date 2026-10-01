@@ -1022,6 +1022,22 @@ function hubSectionOf(props) {
 // "Publishing Date" = the day an asset first went Published. Every path that flips
 // Asset Status → Published calls this; it never overwrites an existing date (a
 // re-publish keeps the original), so it costs one read + at most one write.
+// ── YouTube direct publishing (Buffer only supports Shorts) ───────────────────
+// One-time OAuth per campaign: ?ytauth=start (signed) → Google consent → ?ytauth=cb → refresh token AES-GCM-encrypted
+// (same key as Buffer: BUFFER_KEY_ENC) in KV yt:tok:<cid>, channel in yt:chan:<cid>. Secrets: YT_OAUTH_CLIENT_ID /
+// YT_OAUTH_CLIENT_SECRET (a Google Cloud "Web application" OAuth client; redirect URI = <worker>/?ytauth=cb).
+const YT_SCOPES = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly";
+function ytRedirect(request) { const u = new URL(request.url); return `${u.origin}/?ytauth=cb`; }
+async function ytAccessToken(env, cid) {
+  const rec = await env.TRADES.get("yt:tok:" + cid, "json");
+  if (!rec) throw new Error("YouTube isn't connected for this campaign yet — press Connect YouTube");
+  const refresh = await bufferDecrypt(env, rec);
+  const r = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ client_id: (env.YT_OAUTH_CLIENT_ID || "").trim(), client_secret: (env.YT_OAUTH_CLIENT_SECRET || "").trim(), refresh_token: refresh, grant_type: "refresh_token" }) });
+  const d = await r.json().catch(() => ({}));
+  if (!d.access_token) throw new Error("YouTube sign-in expired — press Connect YouTube again (" + (d.error_description || d.error || r.status) + ")");
+  return d.access_token;
+}
 async function stampPublishingDate(assetId) {
   try {
     const x = String(assetId || "").replace(/-/g, "");
@@ -9677,6 +9693,37 @@ export default {
       catch (e) { console.error("hfhook", aid, e.message); return new Response("error", { status: 500 }); }
     }
 
+    // ── YouTube OAuth: ?ytauth=start&c=<cid>&s=<HMAC("yt:"+cid)> → Google; ?ytauth=cb&code&state → store the token ──
+    {
+      const u = new URL(request.url), ya = u.searchParams.get("ytauth");
+      if (ya) {
+        const page = (msg, ok) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font:16px system-ui;padding:40px;text-align:center">${ok ? "✅" : "⚠️"} ${msg}<br><br><span style="color:#888">You can close this tab and go back to care-gap.</span></body>`, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        if (!(env.YT_OAUTH_CLIENT_ID || "").trim()) return page("YouTube publishing isn't set up yet (missing the Google OAuth client).", false);
+        if (ya === "start") {
+          const cid = (u.searchParams.get("c") || "").replace(/[^0-9a-f]/gi, "");
+          if (!cid || u.searchParams.get("s") !== await hmacHex(HMAC_SECRET, "yt:" + cid)) return page("That link has expired — press Connect YouTube again.", false);
+          const q = new URLSearchParams({ client_id: env.YT_OAUTH_CLIENT_ID.trim(), redirect_uri: ytRedirect(request), response_type: "code", scope: YT_SCOPES,
+            access_type: "offline", prompt: "consent", include_granted_scopes: "true", state: cid + "." + (await hmacHex(HMAC_SECRET, "ytstate:" + cid)) });
+          return Response.redirect("https://accounts.google.com/o/oauth2/v2/auth?" + q, 302);
+        }
+        if (ya === "cb") {
+          const [cid, sig] = String(u.searchParams.get("state") || "").split(".");
+          if (!cid || sig !== await hmacHex(HMAC_SECRET, "ytstate:" + cid)) return page("Sign-in couldn't be verified — try Connect YouTube again.", false);
+          if (u.searchParams.get("error")) return page("Google sign-in was cancelled (" + u.searchParams.get("error") + ").", false);
+          const tr = await fetch("https://oauth2.googleapis.com/token", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ code: u.searchParams.get("code") || "", client_id: env.YT_OAUTH_CLIENT_ID.trim(), client_secret: (env.YT_OAUTH_CLIENT_SECRET || "").trim(), redirect_uri: ytRedirect(request), grant_type: "authorization_code" }) });
+          const td = await tr.json().catch(() => ({}));
+          if (!td.refresh_token) return page("Google didn't return a long-lived sign-in (" + (td.error_description || td.error || tr.status) + "). Try Connect YouTube again.", false);
+          await env.TRADES.put("yt:tok:" + cid, JSON.stringify(await bufferEncrypt(env, td.refresh_token)));
+          const ch = await fetch("https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true", { headers: { Authorization: "Bearer " + td.access_token } }).then(r => r.json()).catch(() => ({}));
+          const c0 = (ch.items || [])[0];
+          await env.TRADES.put("yt:chan:" + cid, JSON.stringify({ id: c0?.id || "", title: c0?.snippet?.title || "(channel)", at: Date.now() }));
+          return page(`YouTube connected: <b>${(c0?.snippet?.title || "your channel").replace(/[<>&]/g, "")}</b>`, true);
+        }
+        return page("Unknown YouTube step.", false);
+      }
+    }
+
     // ── Longform render job (GitHub Actions) — signed per asset: HMAC("lf:"+assetId) ──
     // GET ?lfspec=1  → the episode JSON · POST ?lfstatus=1&st=running|failed&msg=
     // POST ?lfdone=1 (body = the MP4) → R2 videos/<id>/ → asset "Video URL".
@@ -10447,7 +10494,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -15358,6 +15405,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
         const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout } };
+        spec.tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         const hashtags = (o.hashtags || []).map(S).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
         const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         const h2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: lfRich(t) } });
@@ -15531,6 +15579,65 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         if (body.op === "setDefault" && cid) await env.TRADES.put("lfintro:default:" + cid, String(body.id || "none").slice(0, 60));
         let def = ""; try { def = (cid && (await env.TRADES.get("lfintro:default:" + cid))) || ""; } catch (e) {}
         return json({ ok: true, intros: lib, campaignDefault: def, episode: (spec && spec.render && spec.render.intro) || "" });
+      }
+      // youTubeStatus {campaignId} → connected channel + a signed Connect link.
+      if (body.action === "youTubeStatus") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        let ch = null; try { ch = await env.TRADES.get("yt:chan:" + cid, "json"); } catch (e) {}
+        const tok = await env.TRADES.get("yt:tok:" + cid);
+        const origin = new URL(request.url).origin;
+        return json({ ok: true, configured: !!(env.YT_OAUTH_CLIENT_ID || "").trim(), connected: !!tok, channel: ch,
+          connectUrl: `${origin}/?ytauth=start&c=${cid}&s=${await hmacHex(HMAC_SECRET, "yt:" + cid)}`, redirectUri: `${origin}/?ytauth=cb` });
+      }
+      // publishYouTube {assetId, privacy: private|unlisted|public, publishAt?} → uploads the asset's Video URL to the
+      // campaign's YouTube channel (resumable upload, streamed from R2), sets the thumbnail, stamps the asset Published.
+      if (body.action === "publishYouTube") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { url: pageUrl, page, spec } = await lfLoadAsset(aid);
+        const pr = page.properties, cid = (pr["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+        const videoUrl = pr["Video URL"]?.url || "";
+        if (!videoUrl) return json({ error: "Render the episode first — there's no video on this asset yet" }, 400);
+        const token = await ytAccessToken(env, cid);
+        const txt = k => (pr[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+        const title = (txt("Platform Title") || spec?.title || (pr["Asset Title"]?.title || []).map(t => t.plain_text).join("").replace(/^YouTube — /, "")).slice(0, 100);
+        const description = (body.description != null ? String(body.description) : txt("Post Caption")).slice(0, 4900);
+        let tags = Array.isArray(spec?.tags) ? spec.tags : [];
+        if (!tags.length) {   // older episodes: the "Tags" heading on the asset page
+          const bl = await fetch(`https://api.notion.com/v1/blocks/${pageUrl.split("/").pop()}/children?page_size=100`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => ({}));
+          const res = bl.results || []; const k = res.findIndex(b => b.type === "heading_2" && (b.heading_2.rich_text || []).map(t => t.plain_text).join("").trim() === "Tags");
+          if (k >= 0 && res[k + 1]?.paragraph) tags = (res[k + 1].paragraph.rich_text || []).map(t => t.plain_text).join("").split(",").map(t => t.trim()).filter(Boolean);
+        }
+        const privacy = ["private", "unlisted", "public"].includes(body.privacy) ? body.privacy : "private";
+        const status = { privacyStatus: body.publishAt ? "private" : privacy, selfDeclaredMadeForKids: false };
+        if (body.publishAt) status.publishAt = new Date(body.publishAt).toISOString();
+        // the video bytes: straight from R2 when it's ours, else fetched
+        const base = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "");
+        let bodyStream, size;
+        if (env.MEDIA && base && videoUrl.startsWith(base + "/")) { const obj = await env.MEDIA.get(videoUrl.slice(base.length + 1)); if (!obj) return json({ error: "The video file wasn't found in storage" }, 404); bodyStream = obj.body; size = obj.size; }
+        else { const vr = await fetch(videoUrl); if (!vr.ok) return json({ error: "Couldn't read the video (" + vr.status + ")" }, 502); size = +vr.headers.get("content-length") || 0; bodyStream = vr.body; }
+        const init = await fetch("https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status", { method: "POST",
+          headers: { Authorization: "Bearer " + token, "Content-Type": "application/json; charset=UTF-8", "X-Upload-Content-Type": "video/mp4", ...(size ? { "X-Upload-Content-Length": String(size) } : {}) },
+          body: JSON.stringify({ snippet: { title, description, tags: tags.slice(0, 30), categoryId: "22" }, status }) });
+        if (!init.ok) { const e = await init.json().catch(() => ({})); return json({ error: "YouTube refused the upload: " + (e.error?.message || init.status) }, 502); }
+        const up = await fetch(init.headers.get("location"), { method: "PUT", headers: { "Content-Type": "video/mp4", ...(size ? { "Content-Length": String(size) } : {}) }, body: bodyStream });
+        const vd = await up.json().catch(() => ({}));
+        if (!up.ok || !vd.id) return json({ error: "Upload failed: " + (vd.error?.message || up.status) }, 502);
+        const ytUrl = "https://www.youtube.com/watch?v=" + vd.id;
+        let thumb = "skipped";
+        const tUrl = pr["Thumbnail"]?.url || "";
+        if (tUrl) {
+          try {
+            const ti = await fetch(tUrl); const tb = await ti.arrayBuffer();
+            const ts = await fetch(`https://www.googleapis.com/upload/youtube/v3/thumbnails/set?videoId=${vd.id}`, { method: "POST", headers: { Authorization: "Bearer " + token, "Content-Type": ti.headers.get("content-type") || "image/png" }, body: tb });
+            thumb = ts.ok ? "set" : "not set (" + ((await ts.json().catch(() => ({}))).error?.message || ts.status) + ")";
+          } catch (e) { thumb = "not set (" + e.message + ")"; }
+        }
+        await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "YouTube URL": { type: "url" } }).catch(() => {});
+        await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "YouTube URL": { url: ytUrl }, "Asset Status": { select: { name: "Published" } } } }) }).catch(() => {});
+        await stampPublishingDate(aid);
+        return json({ ok: true, videoId: vd.id, url: ytUrl, privacy: status.privacyStatus, publishAt: status.publishAt || null, thumbnail: thumb, uploadStatus: vd.status?.uploadStatus || "" });
       }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");
