@@ -815,7 +815,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div></div>
             <div style="flex:1;min-width:180px;">Voice
               <select id="pubLfVoice" class="finput" style="width:100%;margin-top:4px;font-size:11px;"></select>
-              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-21%">Andrew default</option><option value="-23%">slow (mwz3 default)</option><option value="-16%">slower</option><option value="-10%">relaxed (default)</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
+              <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-13%">Andrew default</option><option value="-23%">slow (mwz3 default)</option><option value="-16%">slower</option><option value="-10%">relaxed (default)</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
               <button class="btn" type="button" onclick="pubLfPreviewVoice(this)" style="font-size:10px;">▶ sample</button></div></div>
           </div>
           <div style="margin-top:8px;">Background <span style="color:var(--ink3);">(Grok, from the campaign's image spec, matched to the presenter's art style)</span>
@@ -823,6 +823,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <img id="pubLfBg" alt="" style="display:none;width:160px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);">
               <button class="btn" type="button" id="pubLfBgBtn" onclick="pubLfGenBackground(this)">✨ Generate background</button>
               <button class="btn" type="button" onclick="pubLfBgModal()">🖼 Background…</button>
+              <button class="btn" type="button" onclick="pubLfScriptModal()">📝 Script & cards…</button>
               <span style="color:var(--ink3);">Upload, earlier backgrounds, your own direction. None = the presenter's default scene.</span>
             </div></div>
           <div style="margin-top:10px;">
@@ -6237,6 +6238,123 @@ async function pubLfGenBackground(btn, direction) {
   } catch (e) { alert('Background failed: ' + e.message); }
   btn.disabled = false; btn.textContent = o;
 }
+// 📝 Script & cards… — edit every segment (card heading / key point / customer question / narration /
+// on-screen asks) with a live preview drawn in the render's real layout (renderer constants mirrored:
+// 1920×1080, card x 80 (stage: centred) y 120 w 760, fitted height; presenter cutout at x 690 y 86;
+// captions baseline 840). Saving writes the Video Spec; changed lines go to voice learning.
+const LFS = { W: 1920, H: 1080, CARD_X: 80, CARD_Y: 120, CARD_W: 760, CAP_Y: 840, CH_X: 690, CH_Y: 86 };
+async function pubLfScriptModal() {
+  document.getElementById('lfScriptModal')?.remove();
+  const ov = document.createElement('div');
+  ov.className = 'modaloverlay open'; ov.id = 'lfScriptModal'; ov.style.zIndex = '400';
+  ov.innerHTML = `<div class="modalbox" style="max-width:1100px;">
+    <div class="mtitle">Script & cards</div>
+    <div class="mfield" style="font-size:12px;font-weight:400;color:var(--ink3);">Edit any text — the preview shows how it lands on screen. Edits feed your voice profile.</div>
+    <div id="lfsBody">Loading…</div>
+    <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;align-items:center;">
+      <span id="lfsMsg" style="color:var(--ink3);font-size:11px;margin-right:auto;"></span>
+      <button class="btn" type="button" onclick="document.getElementById('lfScriptModal').remove()">Close</button>
+      <button class="btn" type="button" style="background:var(--accent,#f6ad55);" onclick="pubLfScriptSave(this)">💾 Save script</button>
+    </div></div>`;
+  document.body.appendChild(ov);
+  try {
+    const r = await w('getLongformScript', { assetId: PUB_LF.assetId });
+    LFS.data = r; LFS.stage = r.layout === 'stage';
+    const fam = [r.fonts?.display, r.fonts?.body].filter(Boolean);
+    if (fam.length) {
+      const l = document.createElement('link'); l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/css2?' + fam.map(f => 'family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700').join('&') + '&display=swap';
+      document.head.appendChild(l);
+      try { await Promise.all(fam.map(f => document.fonts.load(`700 40px "${f}"`))); } catch (e) {}
+    }
+    const load = src => new Promise(res => { if (!src) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
+    [LFS.bg, LFS.cut] = await Promise.all([load(r.background || r.defaultScene), LFS.stage ? null : load(`../../tools/presenter/characters/${r.character}/cutout.png`)]);
+    const kindLbl = { hook: '🎬 Hook', item: '', ask: '📣 Ask', outro: '👋 Outro' };
+    const ta = (k, i, v, rows, ph) => `<textarea data-i="${i}" data-f="${k}" rows="${rows}" oninput="pubLfScriptDraw(${i})" placeholder="${ph}" style="width:100%;box-sizing:border-box;min-height:${rows * 20}px;font-size:12px;margin-top:3px;">${esc(v)}</textarea>`;
+    const inp = (k, i, v, ph) => `<input data-i="${i}" data-f="${k}" class="finput" value="${esc(v)}" oninput="pubLfScriptDraw(${i})" placeholder="${ph}" style="width:100%;box-sizing:border-box;font-size:12px;margin-top:3px;">`;
+    document.getElementById('lfsBody').innerHTML = `<label style="display:block;font-weight:700;margin-bottom:8px;">Episode title (hook card)${inp('title', -1, r.title, 'Episode title')}</label>`
+      + r.segments.map(sg => `<div style="display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:12px;border-top:1px solid var(--border);padding:10px 0;">
+        <div><div style="font-weight:700;">${sg.kind === 'item' ? '#' + (sg.n ?? '') + ' Section' : (kindLbl[sg.kind] || sg.kind)}${sg.images ? ` <span style="color:var(--ink3);font-weight:400;">· ${sg.images} image slot${sg.images === 1 ? '' : 's'}</span>` : ''}</div>
+          ${sg.kind === 'item' ? `<div style="font-size:11px;color:var(--ink3);margin-top:4px;">Card heading</div>${inp('name', sg.i, sg.name, 'Card heading')}<div style="font-size:11px;color:var(--ink3);margin-top:4px;">Key point</div>${inp('blurb', sg.i, sg.blurb, 'One line under the heading')}` : ''}
+          ${sg.kind === 'ask' ? `<div style="font-size:11px;color:var(--ink3);margin-top:4px;">On-screen label</div>${inp('label', sg.i, sg.label, 'e.g. 👍 Like if this helps')}` : ''}
+          ${sg.kind === 'item' && (sg.ask || r.format === 'interview') ? `<div style="font-size:11px;color:var(--ink3);margin-top:4px;">Customer's question (Brian)</div>${ta('ask', sg.i, sg.ask, 2, 'First person, 15 words or fewer')}` : ''}
+          <div style="font-size:11px;color:var(--ink3);margin-top:4px;">Narration</div>${ta('text', sg.i, sg.text, sg.kind === 'item' ? 7 : 3, 'Spoken words')}
+        </div>
+        <canvas id="lfsC${sg.i}" width="400" height="225" style="width:400px;height:225px;border-radius:8px;border:1px solid var(--border2);align-self:start;"></canvas>
+      </div>`).join('');
+    r.segments.forEach(sg => pubLfScriptDraw(sg.i));
+  } catch (e) { document.getElementById('lfsBody').textContent = 'Could not load the script: ' + e.message; }
+}
+function lfsVal(i, f) { const el = document.querySelector(`#lfScriptModal [data-i="${i}"][data-f="${f}"]`); return el ? el.value : ''; }
+function lfsWrap(ctx, text, width) {
+  const words = String(text || '').split(/\s+/).filter(Boolean), lines = []; let cur = '';
+  for (const wd of words) { const t = (cur + ' ' + wd).trim(); if (ctx.measureText(t).width <= width) cur = t; else { if (cur) lines.push(cur); cur = wd; } }
+  if (cur) lines.push(cur); return lines;
+}
+function lfsHex(h, d) { return /^#[0-9a-f]{6}$/i.test(h || '') ? h : d; }
+function pubLfScriptDraw(i) {
+  if (i === -1) { (LFS.data?.segments || []).filter(s => s.kind === 'hook').forEach(s => pubLfScriptDraw(s.i)); return; }
+  const cv = document.getElementById('lfsC' + i); if (!cv || !LFS.data) return;
+  const sg = LFS.data.segments.find(s => s.i === i), ctx = cv.getContext('2d'), k = cv.width / LFS.W;
+  const pal = LFS.data.palette || {}, ACC = lfsHex(pal.accent, '#e8b234'), INK = lfsHex(pal.ink, '#f6eede'), PANEL = lfsHex(pal.panel, '#121a16');
+  const DF = `"${LFS.data.fonts?.display || 'Georgia'}", Georgia, serif`, BF = `"${LFS.data.fonts?.body || 'Segoe UI'}", "Segoe UI", sans-serif`;
+  ctx.save(); ctx.scale(k, k);
+  ctx.fillStyle = '#26302b'; ctx.fillRect(0, 0, LFS.W, LFS.H);
+  if (LFS.bg) {   // the presenter's default scene is cropped exactly as the renderer crops it
+    const cr = (!LFS.data.background && LFS.data.defaultCrop) || [0, 0, LFS.bg.width, LFS.bg.height];
+    const sw0 = cr[2] - cr[0], sh0 = cr[3] - cr[1], s = Math.max(LFS.W / sw0, LFS.H / sh0) * 1.12, bw = sw0 * s, bh = sh0 * s;
+    ctx.filter = 'blur(4px)'; ctx.drawImage(LFS.bg, cr[0], cr[1], sw0, sh0, (LFS.W - bw) / 2, (LFS.H - bh) / 2, bw, bh); ctx.filter = 'none'; }
+  ctx.fillStyle = 'rgba(10,18,14,.28)'; ctx.fillRect(0, 0, LFS.W, LFS.H);
+  if (LFS.cut) ctx.drawImage(LFS.cut, LFS.CH_X, LFS.CH_Y);
+  const cx = LFS.stage ? (LFS.W - LFS.CARD_W) / 2 : LFS.CARD_X;
+  const card = draw => {   // measure pass then draw pass, so the panel fits its content
+    const h = draw(false); ctx.globalAlpha = .894; ctx.fillStyle = PANEL;
+    ctx.beginPath(); ctx.roundRect(cx, LFS.CARD_Y, LFS.CARD_W, h, 24); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.lineWidth = 3; ctx.strokeStyle = ACC; ctx.stroke(); draw(true);
+  };
+  ctx.textBaseline = 'top';
+  if (sg.kind === 'hook') card(paint => {
+    let f = 56, lh = 64; ctx.font = `700 ${f}px ${DF}`; let ls = lfsWrap(ctx, lfsVal(-1, 'title'), 680);
+    if (ls.length > 3) { f = 44; lh = 52; ctx.font = `700 ${f}px ${DF}`; ls = lfsWrap(ctx, lfsVal(-1, 'title'), 680); }
+    let y = 22; ls.slice(0, 4).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.fillText(l, LFS.stage ? cx + (LFS.CARD_W - ctx.measureText(l).width) / 2 : cx + 40, LFS.CARD_Y + y); } y += lh; });
+    return y + 20;
+  });
+  if (sg.kind === 'item') card(paint => {
+    let y = 20;
+    if (sg.n != null) { ctx.font = `700 72px ${DF}`; if (paint) { ctx.fillStyle = ACC; ctx.fillText('#' + sg.n, cx + 40, LFS.CARD_Y + y); } y += 84; }
+    let f = 56, lh = 66; ctx.font = `700 ${f}px ${DF}`; let ls = lfsWrap(ctx, lfsVal(i, 'name'), 680);
+    if (ls.length > 2) { f = 44; lh = 52; ctx.font = `700 ${f}px ${DF}`; ls = lfsWrap(ctx, lfsVal(i, 'name'), 680); }
+    ls.slice(0, 3).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.fillText(l, cx + 40, LFS.CARD_Y + y); } y += lh; });
+    y += 8; ctx.font = `600 29px ${BF}`;
+    lfsWrap(ctx, lfsVal(i, 'blurb'), 680).slice(0, 3).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.globalAlpha = .8; ctx.fillText(l, cx + 42, LFS.CARD_Y + y); ctx.globalAlpha = 1; } y += 38; });
+    return y + (sg.pay ? 104 : 0) + (sg.score != null || sg.tier ? 76 : 0) + 18;
+  });
+  if (sg.kind === 'ask' && lfsVal(i, 'label')) {
+    ctx.font = `600 32px ${BF}`; const lb = lfsVal(i, 'label'), tw = ctx.measureText(lb).width;
+    ctx.fillStyle = ACC; ctx.beginPath(); ctx.roundRect(cx, 150, tw + 60, 72, 36); ctx.fill();
+    ctx.fillStyle = PANEL; ctx.textBaseline = 'middle'; ctx.fillText(lb, cx + 30, 186); ctx.textBaseline = 'top';
+  }
+  // first caption the viewer sees in this segment (the customer's question for interview sections)
+  const ask = sg.kind === 'item' ? lfsVal(i, 'ask') : '';
+  const first = ask ? 'Q: ' + ask : ((lfsVal(i, 'text').match(/^[^.!?]+[.!?]?/) || [''])[0]);
+  if (first) {
+    ctx.font = `600 40px ${BF}`; const capW = LFS.stage ? 1560 : LFS.CH_X + 330 - 120;
+    let ls = lfsWrap(ctx, first, capW).slice(0, 2);
+    ls.forEach((l, li) => { const tw = ctx.measureText(l).width, x = LFS.stage ? (LFS.W - tw) / 2 : 80, y = LFS.CAP_Y - (ls.length - 1 - li) * 62;
+      ctx.fillStyle = 'rgba(10,14,12,.75)'; ctx.beginPath(); ctx.roundRect(x - 20, y - 8, tw + 40, 62, 12); ctx.fill();
+      ctx.fillStyle = INK; ctx.fillText(l, x, y); });
+  }
+  ctx.restore();
+}
+async function pubLfScriptSave(btn) {
+  const msg = document.getElementById('lfsMsg'); btn.disabled = true; msg.textContent = 'Saving…';
+  try {
+    const segs = (LFS.data?.segments || []).map(sg => { const o = { i: sg.i }; ['name', 'blurb', 'ask', 'text', 'label'].forEach(f => { const el = document.querySelector(`#lfScriptModal [data-i="${sg.i}"][data-f="${f}"]`); if (el) o[f] = el.value; }); return o; });
+    const r = await w('saveLongformScript', { assetId: PUB_LF.assetId, title: lfsVal(-1, 'title'), segments: segs });
+    msg.textContent = r.saved ? `✓ Saved ${r.saved} change${r.saved === 1 ? '' : 's'}${r.learned ? ` · ${r.learned} taught to your voice profile` : ''}. Re-render to see them.` : 'No changes to save.';
+  } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
+  btn.disabled = false;
+}
 // 🖼 Background… — upload your own, reuse an earlier one (campaign library), or steer the generator.
 function pubLfBgModal() {
   document.getElementById('lfBgModal')?.remove();
@@ -6277,7 +6395,7 @@ async function pubLfBgModalLoad(fillDir) {
 async function pubLfUseBg(i) {
   const b = (PUB_LF.bgLib || [])[i]; if (!b) return;
   const msg = document.getElementById('lfBgMsg'); msg.textContent = 'Setting…';
-  try { await w('longformBackgrounds', { assetId: PUB_LF.assetId, op: 'use', url: b.url }); pubLfShowBg(b.url); msg.textContent = '✓ Using that background.'; pubLfBgModalLoad(); }
+  try { const r = await w('longformBackgrounds', { assetId: PUB_LF.assetId, op: 'use', url: b.url }); pubLfShowBg(r.cleared ? '' : b.url); msg.textContent = r.cleared ? "✓ Back to the presenter's default scene." : '✓ Using that background.'; pubLfBgModalLoad(); }
   catch (e) { msg.textContent = 'Not set: ' + e.message; }
 }
 async function pubLfUploadBg(inp) {

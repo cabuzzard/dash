@@ -1288,7 +1288,7 @@ const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a
 // be the voice of my customer") — a younger male voice, operator's pick of three free voices.
 const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
-  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep & slow (free)", rate: "-21%", pitch: "-10Hz", pauseScale: 1.1, wpm: 165, legacyRates: ["-28%"] },   // operator 2026-10-01: "speed him up ten percent but keep the pause length" (was -28%, sounded "almost drunk") → speech 10% faster, sentence pauses stretched back ×1.1
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.21, wpm: 180, legacyRates: ["-28%", "-21%"] },   // 2026-10-01 second step: "make him 10% faster, same pause length, as default" — speech 0.87× (from 0.72×), sentence pauses ×1.21 back to their original length   // operator 2026-10-01: "speed him up ten percent but keep the pause length" (was -28%, sounded "almost drunk") → speech 10% faster, sentence pauses stretched back ×1.1
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
@@ -15390,6 +15390,46 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       }
 
       // getLongformEpisode — the exact episode file the render job pulls (for local re-renders / debugging).
+      // getLongformScript {assetId} → everything the 📝 Script & cards editor needs: the episode
+      // segments (editable) + what the render will draw them over (background, palette, fonts,
+      // layout, presenter) so the page can preview each card in the real layout.
+      if (body.action === "getLongformScript") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { spec } = await lfLoadAsset(aid);
+        if (!spec || !Array.isArray(spec.segments)) return json({ error: "No script on this asset yet" }, 400);
+        const ep = await lfBuildEpisode(env, aid);
+        const ch = String(ep.character || "mountain-man").replace(/[^a-z0-9-]/g, "");
+        let defaultScene = "", defaultCrop = null;
+        try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${ch}/character.json`).then(r => r.json()); if (cj.defaultScene?.file) { defaultScene = `../../tools/presenter/characters/${ch}/${cj.defaultScene.file}`; defaultCrop = cj.defaultScene.crop || null; } } catch (e) {}
+        return json({ success: true, title: spec.title || "", format: spec.format || "", layout: ep.layout, character: ch,
+          background: ep.background?.url || "", defaultScene, defaultCrop, palette: ep.palette || {}, fonts: ep.fonts || {},
+          segments: spec.segments.map((x, i) => ({ i, kind: x.kind, n: x.n, name: x.name || "", blurb: x.blurb || "", ask: x.ask || "", text: x.text || "", label: x.label || "",
+            pay: x.pay || "", score: x.score, tier: x.tier || "", images: (x.images || []).length })) });
+      }
+      // saveLongformScript {assetId, title?, segments:[{i, name?, blurb?, ask?, text?, label?}]} → writes the
+      // edits into the Video Spec the render reads; every changed line also goes to voice learning.
+      if (body.action === "saveLongformScript") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { spec, page } = await lfLoadAsset(aid);
+        if (!spec || !Array.isArray(spec.segments)) return json({ error: "No script on this asset yet" }, 400);
+        const edits = [], clip = (v, n) => String(v).replace(/\s+$/g, "").slice(0, n);
+        if (typeof body.title === "string" && body.title.trim() !== String(spec.title || "").trim()) { edits.push({ field: "episode title", before: spec.title || "", after: body.title.trim() }); spec.title = clip(body.title.trim(), 200); }
+        for (const e of (Array.isArray(body.segments) ? body.segments : [])) {
+          const seg = spec.segments[e.i]; if (!seg) continue;
+          for (const [f, max, label] of [["name", 200, "card heading"], ["blurb", 300, "card key point"], ["ask", 400, "customer question"], ["text", 6000, "narration"], ["label", 120, "on-screen ask"]]) {
+            if (typeof e[f] !== "string") continue;
+            const nv = clip(e[f].trim(), max), ov = String(seg[f] || "");
+            if (nv === ov) continue;
+            if (ov && nv) edits.push({ field: label, before: ov, after: nv });
+            if (nv) seg[f] = nv; else delete seg[f];
+          }
+        }
+        if (!edits.length && !body.force) return json({ ok: true, saved: 0, learned: 0 });
+        await lfSaveSpec(aid, spec);
+        const cid = page.properties["Campaign"]?.relation?.[0]?.id || "";
+        const learned = await voiceLogEdits(env, ctx, cid, "longform script", edits).catch(() => 0);
+        return json({ ok: true, saved: edits.length, learned });
+      }
       if (body.action === "getLongformEpisode") {
         try { return json({ success: true, episode: await lfBuildEpisode(env, String(body.assetId || "").replace(/-/g, "")) }); }
         catch (e) { return json({ error: e.message }, 400); }
@@ -15503,9 +15543,11 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         let lib = []; try { lib = (await env.TRADES.get(lk, "json")) || []; } catch (e) {}
         if (body.op === "use") {
           const u = String(body.url || "");
-          if (!lib.some(x => x.url === u) && !/^https:\/\/cabuzzard\.github\.io\/dash\/tools\/presenter\/characters\/[a-z0-9-]+\/[\w.-]+$/.test(u)) return json({ error: "That background isn't in this campaign's library" }, 400);
+          const isDefault = /^https:\/\/cabuzzard\.github\.io\/dash\/tools\/presenter\/characters\/[a-z0-9-]+\/[\w.-]+$/.test(u);
+          if (!lib.some(x => x.url === u) && !isDefault) return json({ error: "That background isn't in this campaign's library" }, 400);
           const pr = await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Longform Background": { url: u } } }) });
+            body: JSON.stringify({ properties: { "Longform Background": { url: isDefault ? null : u } } }) });
+          if (pr.ok && isDefault) return json({ ok: true, url: "", cleared: true });
           if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: e.message || "Couldn't set the background" }, 502); }
           return json({ ok: true, url: u });
         }
