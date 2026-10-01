@@ -1205,7 +1205,7 @@ const LF_FORMATS = {
   interview: { label: "Interview (your answers, lightly edited)", items: 0, use: "the best answer is the narrator's own experience and opinions, told in their words",
     titles: '"I [Did X] For [N] Years — Here\'s What Nobody Tells You", "[Expert] Answers Your [Topic] Questions", "What I Learned From [Experience]"',
     rule: n => `INTERVIEW: exactly ${n} items, one per answered interview question below, in the order given. The episode IS the narrator's answers.`,
-    beats: "a spoken lead-in of 12 words or fewer that poses the question in the narrator's voice (never read the full interview question — it is long; distill it) → THE NARRATOR'S ANSWER, LIGHTLY EDITED: fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
+    beats: "\"ask\": THE CUSTOMER asking, in a second voice — 15 words or fewer, first person, in the customer's own words and situation (use the Customer, Pain Points, Emotions and Characters in the research: e.g. \"I snap at my team every afternoon. What's actually going on?\"); distill the long interview question, never read it, never sound like a host or an interviewer → \"text\": THE NARRATOR'S ANSWER ONLY, speaking to that customer (it must not repeat or restate the question), LIGHTLY EDITED: fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
   // legacy (no longer offered): kept so older episodes regenerate the same way
   tier: { legacy: true, label: "Tier list (S–D)", items: 9, use: "", titles: "",
     rule: n => `TIER LIST: ${n} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`,
@@ -1221,7 +1221,7 @@ const LF_FORMAT_KEYS = Object.keys(LF_FORMATS).filter(k => !LF_FORMATS[k].legacy
 // a light edit keeps ~85% of the words, ~5.5 s lead-in (≤12 words, never the full question) + gap per question, ~92 s of hook/asks/outro.
 // Questions needed come from the operator's OWN average answer length (voice:samples), so
 // longer answers → fewer questions.
-const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 5.5, frameSecs: 92, fallbackWords: 98 };   // 5.5 s = ≤12-word spoken lead-in + segment gap
+const LF_PLAN = { targetSecs: 1200, wpm: 0, keep: 0.85, perQuestionSecs: 6, frameSecs: 92, fallbackWords: 98 };   // 6 s = the customer's ≤15-word question (second voice) + pauses
 async function lfInterviewPlan(env, campaignId) {
   const cid = String(campaignId || "").replace(/-/g, "");
   const get = async k => { try { return (await env.TRADES.get(k, "json")) || []; } catch (e) { return []; } };
@@ -1239,6 +1239,9 @@ async function lfInterviewPlan(env, campaignId) {
 // the rest are free edge-tts. Mwz 106 = Mountainwize narrator, remixed from the measured channel average.
 const LF_DEFAULT_VOICE = "en-US-AndrewNeural";   // operator 2026-09-30: free Andrew, slowed + deeper, is the mountain-man narrator (mwz3 106 = paid alternative)
 const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a little" (was -4%)
+// Interview format: the questions are asked by THE CUSTOMER (operator 2026-09-30: "the interview voice should
+// be the voice of my customer") — a younger male voice, operator's pick of three free voices.
+const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
   { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep & slow (free)", rate: "-28%", pitch: "-10Hz", wpm: 155 },   // -28% matches mwz3's 156 wpm on the same text
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
@@ -1300,6 +1303,7 @@ async function lfBuildEpisode(env, assetId) {
     layout: r.layout === "stage" ? "stage" : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
       return { engine: (v && v.engine) || "edge", id, rate: r.rate || (v && v.rate) || LF_DEFAULT_RATE, pitch: r.pitch || (v && v.pitch) || "+0Hz" }; })(),
+    ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
     segments: spec.segments,
@@ -15201,7 +15205,7 @@ ${pillar ? `PILLAR (stay faithful):\n${pillar.slice(0, 5000)}` : ""}
 Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTitles", 3 "thumbnailText" options (2-5 words), a 2-paragraph YouTube "description", 12 "tags", ≤3 "hashtags". Call submit_episode.`;
         const segSchema = { type: "object", required: ["kind", "text"], properties: {
           kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment" },
-          n: { type: "integer" }, name: { type: "string" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
+          n: { type: "integer" }, name: { type: "string" }, ask: { type: "string", description: "interview format only: THE CUSTOMER's spoken question — first person, their words, 15 words or fewer (a second voice reads it before the narrator's answer)" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
           pay: { type: "string", description: "on-screen range like '$45K – $65K / year' (omit if not relevant)" }, payPct: { type: "number", description: "0-1 bar fill vs the other items" },
           images: { type: "array", maxItems: 3, description: "hook/item segments: 1-3 pictures shown in a framed stage while this segment plays", items: { type: "object", required: ["cue", "subject"], properties: {
             cue: { type: "string", description: "4-8 words copied EXACTLY from this segment's narration — the image appears when these words are spoken; pick words in the first 70% of the segment" },
@@ -15223,7 +15227,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const S = v => String(v || "").trim();
         const segs = o.segments.filter(x => S(x.text)).map(x => {
           const k = { kind: x.kind, text: S(x.text) };
-          for (const f of ["n", "name", "blurb", "pay", "payPct", "score", "tier", "label"]) if (x[f] !== undefined && x[f] !== "") k[f] = x[f];
+          for (const f of ["n", "name", "ask", "blurb", "pay", "payPct", "score", "tier", "label"]) if (x[f] !== undefined && x[f] !== "") k[f] = x[f];
           if (Array.isArray(x.images) && x.images.length) k.images = x.images.slice(0, 3).map(im => ({ cue: S(im.cue), subject: S(im.subject) })).filter(im => im.cue && im.subject);
           return k;
         });

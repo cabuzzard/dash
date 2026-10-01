@@ -8,6 +8,7 @@ episode.json (built by the worker's renderSpec, or by hand):
   "character": "mountain-man",
   "voice": {"engine": "edge", "id": "en-US-AndrewNeural", "rate": "-6%", "pitch": "-4Hz"},
            # or {"engine": "elevenlabs", "id": "<voice_id>", "rate": "-4%"} (needs ELEVENLABS_API_KEY)
+  "voice2": {"engine": "edge", "id": "en-US-BrianNeural"},   # optional: interviewer voice for item "ask" lines
   "background": {"url": "https://..."},            # optional; else the character's default scene
   "fonts": {"display": "Fraunces", "body": "Inter"},  # Google Fonts families (campaign Fonts)
   "palette": {"accent": "#e8b234", "ink": "#f6eede", "panel": "#121a16"},   # optional
@@ -116,32 +117,43 @@ def cues(srt):
     txt = open(srt, encoding="utf-8").read() if os.path.exists(srt) else ""
     return [(secs(a), secs(b), c.strip().replace("\n", " ")) for a, b, c in re.findall(r"(\S+) --> (\S+)\n(.+?)(?:\n\n|\Z)", txt, re.S)]
 
+ASK_GAP = 0.3                                # pause between the interviewer's question and the answer (s)
 def build_audio(ep, work):
     voice = ep.get("voice") or {}
-    pcm, timeline, caps, t = [], [], [], 0.0
+    voice2 = ep.get("voice2")                # interview format: a second voice asks seg["ask"]
+    pcm, timeline, caps, t, mute = [], [], [], 0.0, []
     # Voice every segment first, 4 at a time (long segments take minutes each on edge-tts).
     from concurrent.futures import ThreadPoolExecutor
-    jobs = [(i, (seg.get("text") or "").strip()) for i, seg in enumerate(ep["segments"])]
+    jobs = [(f"s{i}", (seg.get("text") or "").strip(), voice) for i, seg in enumerate(ep["segments"])]
+    if voice2: jobs += [(f"q{i}", (seg.get("ask") or "").strip(), voice2) for i, seg in enumerate(ep["segments"]) if (seg.get("ask") or "").strip()]
     def one(job):
-        i, text = job
-        if text: tts(text, voice, os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt"))
-        return i
+        key, text, v = job
+        if text: tts(text, v, os.path.join(work, f"{key}.mp3"), os.path.join(work, f"{key}.srt"))
+        return key
     with ThreadPoolExecutor(max_workers=3 if voice.get("engine") == "elevenlabs" else 4) as ex:
-        for i in ex.map(one, jobs): print(f"voiced {i + 1}/{len(jobs)}", flush=True)
+        for k, key in enumerate(ex.map(one, jobs)): print(f"voiced {k + 1}/{len(jobs)}", flush=True)
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
         if not text: continue
+        t_start = t
+        qmp3 = os.path.join(work, f"q{i}.mp3")
+        if voice2 and os.path.exists(qmp3):
+            q = decode(qmp3); dq = len(q) / SR
+            caps += [(t + s, t + e, "Q: " + c) for s, e, c in cues(os.path.join(work, f"q{i}.srt"))]
+            mute.append((t, t + dq))
+            pcm += [q, np.zeros(int(ASK_GAP * SR), np.int16)]
+            t += dq + ASK_GAP
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
         a = decode(mp3); dur = len(a) / SR
-        timeline.append((t, t + dur, seg))
+        timeline.append((t_start, t + dur, seg))
         caps += [(t + s, t + e, c) for s, e, c in cues(srt)]
         pcm += [a, np.zeros(int(GAP * SR), np.int16)]
         t += dur + GAP
-        print(f"tts {i + 1}/{len(ep['segments'])} {dur:.1f}s", flush=True)
+        print(f"tts {i + 1}/{len(ep['segments'])} {t - t_start:.1f}s", flush=True)
     audio = np.concatenate(pcm) if pcm else np.zeros(SR, np.int16)
     wav = os.path.join(work, "voice.wav")
     subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", wav], input=audio.tobytes(), check=True)
-    return audio, timeline, caps, wav
+    return audio, timeline, caps, wav, mute
 
 # ── character with jaw/mouth/blink variants ──
 class Presenter:
@@ -216,10 +228,11 @@ def main(ep_path, out, work):
     F_BIG, F_TTL, F_TXT, F_SM, F_CAP = font(dpath, 118), font(dpath, 56), font(bpath, 32), font(bpath, 29), font(bpath, 40)
     F_TTL2 = font(dpath, 44)
 
-    audio, timeline, caps, wav = build_audio(ep, work)
+    audio, timeline, caps, wav, mute = build_audio(ep, work)
     a = audio.astype(np.float32) / 32768
     spf = SR // FPS; N = int(len(a) / spf) + FPS
     rms = np.array([np.sqrt(np.mean(a[i * spf:(i + 1) * spf] ** 2)) if i * spf < len(a) else 0 for i in range(N)])
+    for s_, e_ in mute: rms[int(s_ * FPS):int(e_ * FPS) + 1] = 0      # presenter's mouth stays shut while the interviewer talks
     ref = np.percentile(rms[rms > 0.01], 90) if (rms > 0.01).any() else 1
     op = np.clip((rms - 0.012) / (ref - 0.012), 0, 1)
     env, jaw = 0.0, []
@@ -364,7 +377,7 @@ def main(ep_path, out, work):
             for li, ln in enumerate(lines):
                 tw = d.textlength(ln, font=F_CAP); x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80; y = 930 - (len(lines) - 1 - li) * 62
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + 54], 12, fill=(10, 14, 12, 190))
-                d.text((x, y), ln, font=F_CAP, fill=INK)
+                d.text((x, y), ln, font=F_CAP, fill=ACC if cur.startswith("Q: ") else INK)
         return fr.convert("RGB")
 
     n = int((len(a) / SR + 0.6) * FPS)
