@@ -1051,6 +1051,8 @@
         <span style="color:var(--text3);">or</span>
         <input id="kwSendName" placeholder="name (optional)" style="width:150px;">
         <button class="kw-btn" onclick="kwSend('campaign')" title="Create a new campaign (Status: Planning) with a Research record whose Main Keywords are the selection">+ New campaign</button>
+        <span style="color:var(--text3);">|</span>
+        <button class="kw-btn" onclick="kwCopySel()" title="Copy the selected keywords, one per line">📋 Copy keywords</button>
         <span class="kw-x" onclick="kwClearSel()" title="Clear selection">✕ clear</span>
         <span id="kwSendMsg" style="color:var(--text3);"></span>
       </div>
@@ -5206,6 +5208,15 @@ function kwFilterIntent(k) {
 const kwDefaultDir = col => (col === 'keyword' || col === 'intent' || col === 'depth') ? 'asc' : 'desc';
 function kwSel(cb, kw) { cb.checked ? KW.selected.add(kw) : KW.selected.delete(kw); kwRenderSendBar(); }
 function kwSelPage(on) { for (const k of KW.pageRows || []) on ? KW.selected.add(k) : KW.selected.delete(k); kwLoadResults(KW.offset); }
+// Selected keywords → clipboard, one per line (in the table's current sort order).
+async function kwCopySel() {
+  const msg = document.getElementById('kwSendMsg');
+  const order = kwCoreSort((KW.rows || []).filter(r => KW.selected.has(r.keyword)), KW.sorts).map(r => r.keyword);
+  const list = [...new Set([...order, ...KW.selected])];
+  if (!list.length) { msg.textContent = 'Select some keywords first.'; return; }
+  await navigator.clipboard.writeText(list.join('\n'));
+  msg.textContent = `✓ Copied ${list.length} keyword${list.length === 1 ? '' : 's'}`;
+}
 function kwClearSel() { KW.selected.clear(); kwLoadResults(KW.offset); }
 async function kwRenderSendBar() {
   const bar = document.getElementById('kwSendBar');
