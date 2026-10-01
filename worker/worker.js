@@ -1288,7 +1288,7 @@ const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a
 // be the voice of my customer") — a younger male voice, operator's pick of three free voices.
 const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
-  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3471, tempo: 0.99435, paraScale: 1.12, wpm: 169, legacyRates: ["-28%", "-21%"] },   // tune vs the approved -13% voice: speech ×0.97 ×1.005 ×1.02 = tempo 0.99435 (atempo, pitch kept); real pauses ×1.3548 (stretch = pauses × tempo, since atempo also scales them by 1/tempo); paragraph breaks + section gaps ×1.12 more
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3471, tempo: 0.99435, paraScale: 1.12, wpm: 169, legacyRates: ["-28%", "-21%", "-10%", "-4%"] },   // legacyRates: old generic defaults saved on earlier episodes → use this voice's tuned pace   // tune vs the approved -13% voice: speech ×0.97 ×1.005 ×1.02 = tempo 0.99435 (atempo, pitch kept); real pauses ×1.3548 (stretch = pauses × tempo, since atempo also scales them by 1/tempo); paragraph breaks + section gaps ×1.12 more
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
