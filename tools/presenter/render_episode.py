@@ -515,8 +515,11 @@ def main(ep_path, out, work):
             lines = wrap(d, cur, F_CAP, cap_w)
             if len(lines) > 2:   # balance the pages so the last one isn't a lone word
                 pages = (len(lines) + 1) // 2
-                bal = wrap(d, cur, F_CAP, max(200, int(d.textlength(cur, font=F_CAP) / (pages * 2) * 1.12)))
-                if len(bal) <= pages * 2: lines = bal
+                full = d.textlength(cur, font=F_CAP)
+                for f_ in (1.05, 1.12, 1.2, 1.3, 1.45, 1.6):   # widest even split that still fits the box
+                    w_ = min(cap_w, max(200, int(full / (pages * 2) * f_)))
+                    bal = wrap(d, cur, F_CAP, w_)
+                    if len(bal) <= pages * 2 and (len(bal) % 2 == 0 or len(bal[-1].split()) > 2): lines = bal; break
             if len(lines) > 2:   # long cue: show it two lines at a time, in step with the speech
                 chunks = [lines[k:k + 2] for k in range(0, len(lines), 2)]
                 frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
