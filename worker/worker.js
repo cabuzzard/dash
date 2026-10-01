@@ -1288,7 +1288,7 @@ const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a
 // be the voice of my customer") — a younger male voice, operator's pick of three free voices.
 const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
-  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3471, tempo: 0.99435, paraScale: 1.12, wpm: 169, legacyRates: ["-28%", "-21%", "-10%", "-4%"] },   // legacyRates: old generic defaults saved on earlier episodes → use this voice's tuned pace   // tune vs the approved -13% voice: speech ×0.97 ×1.005 ×1.02 = tempo 0.99435 (atempo, pitch kept); real pauses ×1.3548 (stretch = pauses × tempo, since atempo also scales them by 1/tempo); paragraph breaks + section gaps ×1.12 more
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3471, tempo: 0.99435, paraScale: 1.12, wpm: 169, ambience: { type: "wind", db: -40 }, legacyRates: ["-28%", "-21%", "-10%", "-4%"] },   // legacyRates: old generic defaults saved on earlier episodes → use this voice's tuned pace   // tune vs the approved -13% voice: speech ×0.97 ×1.005 ×1.02 = tempo 0.99435 (atempo, pitch kept); real pauses ×1.3548 (stretch = pauses × tempo, since atempo also scales them by 1/tempo); paragraph breaks + section gaps ×1.12 more
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
@@ -1344,12 +1344,31 @@ function lfCleanBoxes(b) {
 // {topic} = spec.topic (editable in 📝 Script & cards), written once from the question and cached.
 function lfCleanIntro(x) {
   x = x && typeof x === "object" ? x : {};
-  return { enabled: x.enabled !== false, channel: String(x.channel || "").slice(0, 120), text: String(x.text || "").slice(0, 1500),
+  const name = String(x.name || x.channel || "Intro").slice(0, 80);
+  return { id: String(x.id || name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "intro").slice(0, 60), name,
+    enabled: x.enabled !== false, channel: String(x.channel || "").slice(0, 120), text: String(x.text || "").slice(0, 1500),
     jingle: String(x.jingle || "").slice(0, 80), topicLine: String(x.topicLine || "In today's video, we're going to talk about {topic}.").slice(0, 300),
-    // method standard (operator 2026-10-01): a distant raven after the jingle, and barely-there wind under every episode
-    sfx: ["raven", "none"].includes(x.sfx) ? x.sfx : "raven",
-    ambience: ["wind", "none"].includes(x.ambience) ? x.ambience : "wind",
-    ambienceDb: Number.isFinite(+x.ambienceDb) && x.ambienceDb !== "" && x.ambienceDb !== null ? Math.max(-60, Math.min(-10, +x.ambienceDb)) : -40 };
+    // after the jingle (operator 2026-10-01): a distant raven by default
+    sfx: ["raven", "none"].includes(x.sfx) ? x.sfx : "raven" };
+}
+// 🎙 Intro library (KV lfintros) — a menu of intros, like the voices. An episode picks one (spec.render.intro = id,
+// or "none"); unset → the campaign default (KV lfintro:default:<cid> = id) → the legacy per-campaign intro.
+async function lfIntroLibrary(env) {
+  let lib = []; try { lib = (await env.TRADES.get("lfintros", "json")) || []; } catch (e) {}
+  return lib.map(lfCleanIntro);
+}
+async function lfResolveIntro(env, spec, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, ""), sel = spec.render && spec.render.intro;
+  if (sel === "none") return null;
+  const lib = await lfIntroLibrary(env);
+  if (sel) return lib.find(x => x.id === sel) || null;
+  if (cid) {
+    let def = ""; try { def = (await env.TRADES.get("lfintro:default:" + cid)) || ""; } catch (e) {}
+    if (def === "none") return null;
+    if (def) { const hit = lib.find(x => x.id === def); if (hit) return hit; }
+    try { const raw = await env.TRADES.get("lfintro:" + cid, "json"); if (raw) return lfCleanIntro(raw); } catch (e) {}
+  }
+  return null;
 }
 async function lfTopicPhrase(env, question) {
   const q = String(question || "").trim(); if (!q || !env.ANTHROPIC_API_KEY) return "";
@@ -1366,8 +1385,7 @@ async function lfBuildEpisode(env, assetId) {
   const pr = page.properties;
   const campaignId = (pr.Campaign?.relation || [])[0]?.id || "";
   const slug = hubSlugForCampaign(campaignId);
-  let intro = null;
-  if (campaignId) { try { const raw = await env.TRADES.get("lfintro:" + campaignId.replace(/-/g, ""), "json"); if (raw) intro = lfCleanIntro(raw); } catch (e) {} }
+  const intro = await lfResolveIntro(env, spec, campaignId);
   let introSegs = [];
   if (intro && intro.enabled && intro.text.trim()) {
     if (!spec.topic) { const tp = await lfTopicPhrase(env, spec.question || spec.title).catch(() => ""); if (tp) { spec.topic = tp; await lfSaveSpec(assetId, spec).catch(() => {}); } }
@@ -1398,8 +1416,8 @@ async function lfBuildEpisode(env, assetId) {
       return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}), ...(v && v.paraScale && rate === v.rate ? { paraScale: v.paraScale } : {}) }; })(),
     ...(boxes ? { boxes } : {}),
     ...(introSegs.length ? { channel: intro.channel || "" } : {}),
-    // ambience is the method standard for every longform episode (campaign intro setting can turn it off / set the level)
-    ...((intro ? intro.ambience : "wind") === "wind" ? { ambience: { type: "wind", db: intro ? intro.ambienceDb : -40 } } : {}),
+    // ambience comes with the VOICE (each voice carries its own background sound + level)
+    ...(() => { const vv = LF_VOICES.find(x => x.id === (r.voice || LF_DEFAULT_VOICE)); return vv && vv.ambience ? { ambience: vv.ambience } : {}; })(),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
@@ -15387,6 +15405,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           if (body.character) spec.render.character = String(body.character).replace(/[^a-z0-9-]/g, "").slice(0, 60);
           if (body.voice) spec.render.voice = String(body.voice).replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
           if (body.layout) spec.render.layout = body.layout === "stage" ? "stage" : "presenter";
+          if (body.intro !== undefined) { const v = String(body.intro || "").slice(0, 60); if (v) spec.render.intro = v; else delete spec.render.intro; }
           if (body.rate !== undefined) spec.render.rate = /^[+-]\d{1,2}%$/.test(body.rate) ? body.rate : "-4%";
           await lfSaveSpec(aid, spec);
         }
@@ -15485,14 +15504,33 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       // longformLayout {assetId, op: "get" | "save", boxes?, campaignDefault?} — the 📐 Layout editor.
       // get → this episode's boxes, the campaign default, and which one is in effect.
       // longformIntro {assetId, op: "get" | "save", intro?} — the campaign's 🎙 channel intro.
-      if (body.action === "longformIntro") {
+      // longformIntros {assetId, op: "list" | "save" | "delete" | "setDefault", intro?, id?} — the 🎙 intro menu.
+      // list → every intro + this campaign's default + this episode's choice. The legacy per-campaign intro is moved
+      // into the library the first time the list is opened.
+      if (body.action === "longformIntros" || body.action === "longformIntro") {
         const aid = String(body.assetId || "").replace(/-/g, "");
-        const { page } = await lfLoadAsset(aid);
+        const { page, spec } = await lfLoadAsset(aid);
         const cid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
-        if (!cid) return json({ error: "This asset has no campaign" }, 400);
-        if (body.op === "save") { const x = lfCleanIntro(body.intro); await env.TRADES.put("lfintro:" + cid, JSON.stringify(x)); return json({ ok: true, intro: x }); }
-        let x = null; try { x = await env.TRADES.get("lfintro:" + cid, "json"); } catch (e) {}
-        return json({ ok: true, intro: x ? lfCleanIntro(x) : null });
+        let lib = await lfIntroLibrary(env);
+        if (cid) {
+          let legacy = null; try { legacy = await env.TRADES.get("lfintro:" + cid, "json"); } catch (e) {}
+          if (legacy && !legacy.migrated) {
+            const x = lfCleanIntro({ ...legacy, name: legacy.name || ((legacy.channel || "Channel") + " — " + (String(legacy.jingle || "").replace(/[!.?]/g, "") || "intro")) });
+            if (!lib.some(i => i.id === x.id)) lib.push(x);
+            await env.TRADES.put("lfintros", JSON.stringify(lib));
+            await env.TRADES.put("lfintro:default:" + cid, x.id);
+            await env.TRADES.put("lfintro:" + cid, JSON.stringify({ ...legacy, migrated: true }));
+          }
+        }
+        if (body.op === "save") {
+          const x = lfCleanIntro(body.intro); const i = lib.findIndex(y => y.id === x.id);
+          if (i >= 0) lib[i] = x; else lib.push(x);
+          await env.TRADES.put("lfintros", JSON.stringify(lib));
+        }
+        if (body.op === "delete" && body.id) { lib = lib.filter(y => y.id !== body.id); await env.TRADES.put("lfintros", JSON.stringify(lib)); }
+        if (body.op === "setDefault" && cid) await env.TRADES.put("lfintro:default:" + cid, String(body.id || "none").slice(0, 60));
+        let def = ""; try { def = (cid && (await env.TRADES.get("lfintro:default:" + cid))) || ""; } catch (e) {}
+        return json({ ok: true, intros: lib, campaignDefault: def, episode: (spec && spec.render && spec.render.intro) || "" });
       }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");

@@ -815,6 +815,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div></div>
             <div style="flex:1;min-width:180px;">Voice
               <select id="pubLfVoice" class="finput" style="width:100%;margin-top:4px;font-size:11px;"></select>
+              <div style="margin-top:6px;">Intro <span style="color:var(--ink3);">(the voice brings its own background sound)</span>
+                <select id="pubLfIntro" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLfSave({ intro: this.value })"><option value="">Loading…</option></select></div>
               <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-13%">Andrew default</option><option value="-23%">slow (mwz3 default)</option><option value="-16%">slower</option><option value="-10%">relaxed (default)</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
               <button class="btn" type="button" onclick="pubLfPreviewVoice(this)" style="font-size:10px;">▶ sample</button></div></div>
           </div>
@@ -825,7 +827,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" onclick="pubLfBgModal()">🖼 Background…</button>
               <button class="btn" type="button" onclick="pubLfScriptModal()">📝 Script & cards…</button>
               <button class="btn" type="button" onclick="pubLfLayoutModal()">📐 Layout…</button>
-              <button class="btn" type="button" onclick="pubLfIntroModal()">🎙 Channel intro…</button>
+              <button class="btn" type="button" onclick="pubLfIntroModal()">🎙 Intros…</button>
               <span style="color:var(--ink3);">Upload, earlier backgrounds, your own direction. None = the presenter's default scene.</span>
             </div></div>
           <div style="margin-top:10px;">
@@ -6149,6 +6151,7 @@ async function pubLfLoad(assetId, token) {
       <img src="../../tools/presenter/characters/${esc(c.thumb)}" style="width:72px;height:72px;object-fit:contain;display:block;margin:auto;"><div style="font-size:9.5px;">${esc(c.name)}</div></label>`).join('') || '<span style="color:var(--ink3);">No presenters yet.</span>';
   const vs = document.getElementById('pubLfVoice');
   vs.innerHTML = (r.voices || []).map(v => `<option value="${esc(v.id)}" ${v.id === (r.render.voice || '') ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+  pubLfIntroOptions();
   vs.onchange = () => { const dv = ((r.voices || []).find(v => v.id === vs.value) || {}).rate; if (dv) rt.value = dv; pubLfSave({ voice: vs.value, ...(dv ? { rate: dv } : {}) }); };
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || ((r.voices || []).find(v => v.id === (r.render.voice || (r.voices || [])[0]?.id)) || {}).rate || '-10%'; rt.onchange = () => pubLfSave({ rate: rt.value });
   const ly = document.getElementById('pubLfLayout'); ly.value = r.render.layout === 'stage' ? 'stage' : 'presenter';
@@ -6361,50 +6364,83 @@ async function lfsLoadAssets(r) {
 
 // 🎙 Channel intro… — the campaign's fixed opening for every longform episode:
 // welcome (narrator) → jingle (announcer, last word stretched, big echo) → topic line → the episode.
+async function pubLfIntroOptions() {
+  const sel = document.getElementById('pubLfIntro'); if (!sel || !PUB_LF.assetId) return;
+  try {
+    const r = await w('longformIntros', { assetId: PUB_LF.assetId, op: 'list' });
+    LFI.lib = r.intros || []; LFI.def = r.campaignDefault || '';
+    const defName = LFI.def === 'none' ? 'no intro' : ((LFI.lib.find(x => x.id === LFI.def) || {}).name || 'none set');
+    sel.innerHTML = `<option value="">Campaign default (${esc(defName)})</option>` + LFI.lib.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('') + '<option value="none">No intro</option>';
+    sel.value = r.episode || '';
+  } catch (e) { sel.innerHTML = '<option value="">(intros unavailable)</option>'; }
+}
+// 🎙 Intros… — the intro menu (like the voices): pick one to edit, add new ones, set the campaign default.
+// Background sound is NOT here — it belongs to the voice.
+const LFI = { lib: [], def: '', cur: null };
 async function pubLfIntroModal() {
   document.getElementById('lfIntroModal')?.remove();
   const ov = document.createElement('div');
   ov.className = 'modaloverlay open'; ov.id = 'lfIntroModal'; ov.style.zIndex = '400';
   ov.innerHTML = `<div class="modalbox" style="max-width:640px;">
-    <div class="mtitle">Channel intro</div>
-    <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px;">Plays at the start of every longform episode in this campaign: welcome → jingle → topic line → the episode.</div>
-    <label style="display:flex;gap:6px;align-items:center;margin-bottom:8px;"><input type="checkbox" id="lfiOn"> Use the channel intro</label>
-    <label style="display:block;font-size:11px;color:var(--ink3);">Channel name (title card during the welcome)<input id="lfiChannel" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
-    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Welcome (spoken by the narrator)<textarea id="lfiText" rows="4" style="width:100%;box-sizing:border-box;margin-top:3px;min-height:80px;"></textarea></label>
-    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Jingle (announcer, last word drawn out, big echo, shown big on screen)<input id="lfiJingle" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
-    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Topic line — {topic} becomes each episode's topic (edit it per episode in 📝 Script & cards)<input id="lfiTopic" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
-    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--ink3);margin-top:10px;">
-      <label>After the jingle <select id="lfiSfx" class="finput" style="width:auto;font-size:11px;"><option value="raven">🐦‍⬛ distant raven (kaw ×3)</option><option value="none">nothing</option></select></label>
-      <label>Ambience (whole episode) <select id="lfiAmb" class="finput" style="width:auto;font-size:11px;"><option value="wind">🌬 soft wind</option><option value="none">none</option></select></label>
-      <label>Level <input id="lfiAmbDb" type="number" min="-60" max="-10" step="1" class="finput" style="width:56px;font-size:11px;"> dB under the voice</label>
+    <div class="mtitle">Intros</div>
+    <div style="font-size:11.5px;color:var(--ink3);margin-bottom:8px;">A menu of intros, like the voices. Each episode picks one in the Intro dropdown (or the campaign default). Background sound comes with the voice.</div>
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+      <select id="lfiPick" class="finput" style="flex:1;font-size:12px;" onchange="lfiLoad(this.value)"></select>
+      <button class="btn" type="button" onclick="lfiLoad('')">+ New intro</button>
     </div>
+    <label style="display:block;font-size:11px;color:var(--ink3);">Name (shown in the menu)<input id="lfiName" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
+    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Channel name (title card during the welcome)<input id="lfiChannel" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
+    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Welcome (spoken by the narrator)<textarea id="lfiText" rows="4" style="width:100%;box-sizing:border-box;margin-top:3px;min-height:80px;"></textarea></label>
+    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Jingle (narrator's voice, extra resonance + long echo, last word drawn out)<input id="lfiJingle" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
+    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">Topic line — {topic} becomes each episode's topic<input id="lfiTopic" class="finput" style="width:100%;box-sizing:border-box;margin-top:3px;"></label>
+    <label style="display:block;font-size:11px;color:var(--ink3);margin-top:8px;">After the jingle <select id="lfiSfx" class="finput" style="width:auto;font-size:11px;"><option value="raven">🐦‍⬛ distant raven (kaw ×3)</option><option value="none">nothing</option></select></label>
     <div id="lfiMsg" style="font-size:11.5px;color:var(--ink3);min-height:14px;margin-top:8px;">Loading…</div>
-    <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;">
+    <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;">
+      <button class="btn" type="button" style="margin-right:auto;" onclick="lfiSetDefault()">⭐ Make campaign default</button>
       <button class="btn" type="button" onclick="document.getElementById('lfIntroModal').remove()">Close</button>
-      <button class="btn primary" type="button" onclick="pubLfIntroSave(this)">✓ Save intro</button>
+      <button class="btn" type="button" onclick="lfiSave(false)">💾 Save</button>
+      <button class="btn primary" type="button" onclick="lfiSave(true)">✓ Save & use for this episode</button>
     </div></div>`;
   document.body.appendChild(ov);
   try {
-    const r = await w('longformIntro', { assetId: PUB_LF.assetId, op: 'get' });
-    const x = r.intro || { enabled: false, channel: '', text: '', jingle: '', topicLine: "In today's video, we're going to talk about {topic}." };
-    document.getElementById('lfiOn').checked = !!x.enabled && !!r.intro;
-    document.getElementById('lfiChannel').value = x.channel; document.getElementById('lfiText').value = x.text;
-    document.getElementById('lfiJingle').value = x.jingle; document.getElementById('lfiTopic').value = x.topicLine;
-    document.getElementById('lfiSfx').value = x.sfx || 'raven'; document.getElementById('lfiAmb').value = x.ambience || 'wind';
-    document.getElementById('lfiAmbDb').value = x.ambienceDb != null ? x.ambienceDb : -40;
-    document.getElementById('lfiMsg').textContent = r.intro ? '' : 'No intro set for this campaign yet.';
+    const r = await w('longformIntros', { assetId: PUB_LF.assetId, op: 'list' });
+    LFI.lib = r.intros || []; LFI.def = r.campaignDefault || '';
+    const start = r.episode && r.episode !== 'none' ? r.episode : (LFI.def && LFI.def !== 'none' ? LFI.def : (LFI.lib[0] || {}).id || '');
+    lfiFillPick(start); lfiLoad(start);
   } catch (e) { document.getElementById('lfiMsg').textContent = 'Could not load: ' + e.message; }
 }
-async function pubLfIntroSave(btn) {
-  const msg = document.getElementById('lfiMsg'); btn.disabled = true; msg.textContent = 'Saving…';
+function lfiFillPick(sel) {
+  document.getElementById('lfiPick').innerHTML = LFI.lib.map(x => `<option value="${esc(x.id)}" ${x.id === sel ? 'selected' : ''}>${esc(x.name)}${x.id === LFI.def ? ' ⭐' : ''}</option>`).join('') || '<option value="">(no intros yet)</option>';
+}
+function lfiLoad(id) {
+  const x = LFI.lib.find(y => y.id === id) || { id: '', name: '', channel: '', text: '', jingle: '', topicLine: "In today's video, we're going to talk about {topic}.", sfx: 'raven' };
+  LFI.cur = x.id;
+  document.getElementById('lfiName').value = x.name; document.getElementById('lfiChannel').value = x.channel;
+  document.getElementById('lfiText').value = x.text; document.getElementById('lfiJingle').value = x.jingle;
+  document.getElementById('lfiTopic').value = x.topicLine; document.getElementById('lfiSfx').value = x.sfx || 'raven';
+  document.getElementById('lfiMsg').textContent = x.id ? (x.id === LFI.def ? '⭐ This campaign\'s default intro.' : '') : 'New intro — give it a name, then Save.';
+}
+async function lfiSave(useHere) {
+  const msg = document.getElementById('lfiMsg');
+  const name = document.getElementById('lfiName').value.trim();
+  if (!name) { msg.textContent = 'Give the intro a name first.'; return; }
+  const intro = { id: LFI.cur || undefined, name, channel: document.getElementById('lfiChannel').value, text: document.getElementById('lfiText').value,
+    jingle: document.getElementById('lfiJingle').value, topicLine: document.getElementById('lfiTopic').value, sfx: document.getElementById('lfiSfx').value };
+  msg.textContent = 'Saving…';
   try {
-    await w('longformIntro', { assetId: PUB_LF.assetId, op: 'save', intro: { enabled: document.getElementById('lfiOn').checked,
-      channel: document.getElementById('lfiChannel').value, text: document.getElementById('lfiText').value,
-      jingle: document.getElementById('lfiJingle').value, topicLine: document.getElementById('lfiTopic').value,
-      sfx: document.getElementById('lfiSfx').value, ambience: document.getElementById('lfiAmb').value, ambienceDb: parseFloat(document.getElementById('lfiAmbDb').value) } });
-    msg.textContent = '✓ Saved for every episode in this campaign — re-render to hear it.';
+    const r = await w('longformIntros', { assetId: PUB_LF.assetId, op: 'save', intro });
+    LFI.lib = r.intros || []; const saved = LFI.lib.find(x => x.name === name) || {}; LFI.cur = saved.id;
+    lfiFillPick(saved.id);
+    if (useHere) await w('saveLongformRender', { assetId: PUB_LF.assetId, intro: saved.id });
+    await pubLfIntroOptions();
+    msg.textContent = useHere ? '✓ Saved and set for this episode — re-render to hear it.' : '✓ Saved to the intro menu.';
   } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
-  btn.disabled = false;
+}
+async function lfiSetDefault() {
+  const msg = document.getElementById('lfiMsg');
+  if (!LFI.cur) { msg.textContent = 'Save the intro first.'; return; }
+  try { const r = await w('longformIntros', { assetId: PUB_LF.assetId, op: 'setDefault', id: LFI.cur }); LFI.def = r.campaignDefault; lfiFillPick(LFI.cur); await pubLfIntroOptions(); msg.textContent = '⭐ Now the campaign default intro.'; }
+  catch (e) { msg.textContent = 'Not set: ' + e.message; }
 }
 // 📐 Layout… — one set of draggable boxes (cards, captions, presenter) for the whole render, with the same
 // controls as the image text editor (text size, max chars, X/Y/W/H, box colour, opacity). Pre-filled with the
