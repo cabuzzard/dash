@@ -1788,9 +1788,9 @@ function switchTo(key) {
 async function w(action, extra = {}) {
   const payload = { action, token: SESSION_TOKEN, ...extra };
   const r = await fetch(WORKER_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
-  let d;
-  try { d = await r.json(); }
-  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status})`); }
+  let d, raw = '';
+  try { raw = await r.text(); d = JSON.parse(raw); }
+  catch (e) { throw new Error(`Server returned an unexpected response (HTTP ${r.status}${raw ? ': ' + raw.replace(/\s+/g, ' ').slice(0, 140) : ', empty body'})`); }
   if (r.status === 401) { lockApp('Session expired — enter your PIN again.'); throw new Error('Session expired — log in again.'); }
   if (d.error) throw new Error(d.error);
   return d;
@@ -5554,6 +5554,13 @@ function caLfRender() {
       <div style="color:var(--ink3);margin:2px 0 0 20px;">🎬 ${esc(q.title)} · <i>${esc(fmtLbl[q.format] || q.format)}</i>${q.evidence ? ` · ${esc(q.evidence)}` : ''}${(q.sources || []).length ? ` · ${esc(q.sources.join(', '))}` : ''}</div></label>`).join('');
   document.getElementById('caLfPickRow').style.display = CA_LF.pick >= 0 ? 'flex' : 'none';
 }
+// Draft of the interview answers in this browser (survives refresh / failed saves).
+function caLfIvDraftKey() { return CA_TITLE && CA_LF.iv ? 'lfivdraft:' + CA_TITLE.id + ':' + (CA_LF.iv.question || '') : ''; }
+function caLfIvDraftPut() {
+  const k = caLfIvDraftKey(); if (!k) return;
+  try { localStorage.setItem(k, JSON.stringify({ qs: CA_LF.iv.qs, answers: CA_LF.iv.qs.map((_, i) => (document.getElementById('caLfIvA' + i) || {}).value || ''), at: Date.now() })); } catch (e) {}
+}
+function caLfIvDraftGet() { const k = caLfIvDraftKey(); if (!k) return null; try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
 async function caLfSaveInterview(btn) {
   const msg = document.getElementById('caLfIvMsg');
   if (!CA_LF.iv || !CA_TITLE) { msg.textContent = 'Prepare the interview first.'; return; }
@@ -5563,7 +5570,7 @@ async function caLfSaveInterview(btn) {
   try {
     const r = await w('saveLongformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: CA_LF.iv.question, interview });
     msg.textContent = `✓ Saved ${r.saved} answer${r.saved === 1 ? '' : 's'}` + (r.learned ? ` · ${r.learned} new to your voice profile` : ' · already in your voice profile');
-  } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
+  } catch (e) { caLfIvDraftPut(); msg.textContent = 'Save failed: ' + e.message + ' — your answers are still here and kept in this browser.'; }
   btn.disabled = false; btn.textContent = o;
 }
 function caLfPick(i) {
@@ -5599,8 +5606,12 @@ async function runCreateAsset() {
       try {
         const r = await w('longformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: q.question });
         CA_LF.iv = { forPick: CA_LF.pick, qs: r.questions || [], question: q.question };
-        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc((r.answers || [])[k] || '')}</textarea></label>`).join('');
-        document.getElementById('caLfIvMsg').textContent = r.savedAt ? 'Restored your saved answers from ' + new Date(r.savedAt).toLocaleString() + '.' : 'Saves them with this title and teaches your voice profile how you talk.';
+        const draft = caLfIvDraftGet();
+        const useDraft = draft && draft.qs && draft.qs.join('|') === CA_LF.iv.qs.join('|') && draft.answers.join('').length > (r.answers || []).join('').length;
+        const prefill = useDraft ? draft.answers : (r.answers || []);
+        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(prefill[k] || '')}</textarea></label>`).join('');
+        document.getElementById('caLfIvMsg').textContent = useDraft ? 'Restored your unsaved draft from this browser — press 💾 Save answers.'
+          : r.savedAt ? 'Restored your saved answers from ' + new Date(r.savedAt).toLocaleString() + '.' : 'Answers are kept in this browser as you type. 💾 Save answers stores them with the title and teaches your voice profile.';
         document.getElementById('caLfInterview').style.display = 'block';
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer the interview above (a few sentences each), then Generate to write the script.';
       } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
