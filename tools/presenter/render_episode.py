@@ -130,20 +130,42 @@ def trim_silence(a, floor=0.04):
     env_ = np.abs(a.astype(np.int32)); thr = max(200, int(floor * env_.max()))
     idx = np.where(env_ > thr)[0]
     return a[max(0, idx[0] - int(0.02 * SR)):min(len(a), idx[-1] + int(0.05 * SR))] if len(idx) else a[:0]
+def pitch_shift(a, semis):
+    """Shift pitch by `semis` semitones, same duration (asetrate + atempo — available in every ffmpeg)."""
+    if abs(semis) < 0.01 or not len(a): return a
+    r = 2 ** (semis / 12)
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
+                          "-filter:a", f"asetrate={int(SR * r)},aresample={SR},atempo={1 / r:.5f}", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"],
+                         input=a.tobytes(), capture_output=True).stdout
+    b = np.frombuffer(raw, np.int16)
+    return b[:len(a)] if len(b) >= len(a) else np.concatenate([b, np.zeros(len(a) - len(b), np.int16)])
+def pitch_glide(a, start_semis, end_semis, pieces=12):
+    """Pitch falls (or rises) smoothly across the clip: overlapping pieces, each shifted a little further, Hann overlap-add."""
+    if not len(a): return a
+    n = len(a); hop = max(1, n // pieces); win = 2 * hop
+    out = np.zeros(n + win, np.float32); wsum = np.zeros(n + win, np.float32); h = np.hanning(win).astype(np.float32)
+    for k in range(pieces + 1):
+        s0 = k * hop; seg = a[s0:s0 + win]
+        if not len(seg): break
+        st = start_semis + (end_semis - start_semis) * min(1.0, k / pieces)
+        sh = pitch_shift(seg.astype(np.int16), st).astype(np.float32)[:len(seg)]
+        out[s0:s0 + len(seg)] += sh * h[:len(seg)]; wsum[s0:s0 + len(seg)] += h[:len(seg)]
+    return np.clip(out[:n] / np.maximum(wsum[:n], 1e-3), -32768, 32767).astype(np.int16)
 def make_jingle(text, work, key="jingle"):
-    """Channel sting: the phrase in an announcer voice, its LAST word stretched ~2.2× (pitch kept) so it
-    rings out ("THE MOUNTAIN MAAAN!"), then a big multi-tap echo and a tail. Returns int16 PCM."""
-    words = str(text or "").strip().split()
+    """Channel sting: a deep, burly statement (not an excited exclamation) — the phrase a little lower, its LAST
+    word stretched 2× and gliding DOWN ~3 semitones as it rings out ("THE MOUNTAIN MAAAN."), then a big echo."""
+    words = str(text or "").strip().rstrip("!?.").split()
     if not words: return np.zeros(0, np.int16)
-    head, last = " ".join(words[:-1]), words[-1]
-    v = {"engine": "edge", "id": "en-US-GuyNeural", "rate": "-12%", "pitch": "-6Hz"}
+    head, last = " ".join(words[:-1]), words[-1] + "."
+    v = {"engine": "edge", "id": "en-US-ChristopherNeural", "rate": "-8%", "pitch": "-15Hz"}
     parts = []
     if head:
-        tts(head, v, os.path.join(work, f"{key}_a.mp3"), os.path.join(work, f"{key}_a.srt")); parts += [trim_silence(decode(os.path.join(work, f"{key}_a.mp3"))), np.zeros(int(0.06 * SR), np.int16)]
+        tts(head, v, os.path.join(work, f"{key}_a.mp3"), os.path.join(work, f"{key}_a.srt"))
+        parts += [pitch_shift(trim_silence(decode(os.path.join(work, f"{key}_a.mp3"))), -2), np.zeros(int(0.06 * SR), np.int16)]
     tts(last, v, os.path.join(work, f"{key}_b.mp3"), os.path.join(work, f"{key}_b.srt"))
-    b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)           # stretch the last word 2x ("maaan"); atempo minimum is 0.5
-    parts.append(b)
-    dry = np.concatenate(parts + [np.zeros(int(1.3 * SR), np.int16)])               # room for the echo tail
+    b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)   # stretch the last word 2x ("maaan")
+    parts.append(pitch_glide(b, -2, -5))                                                     # ...and let it fall
+    dry = np.concatenate(parts + [np.zeros(int(1.3 * SR), np.int16)])                       # room for the echo tail
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
                           "-filter:a", "aecho=0.8:0.88:140|300|520|780:0.55|0.42|0.3|0.2,volume=1.3,alimiter=limit=0.95",
                           "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=dry.tobytes(), capture_output=True).stdout
