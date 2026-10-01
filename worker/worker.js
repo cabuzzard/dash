@@ -1056,6 +1056,26 @@ function hashtagsFromNotes(notes) {
 // The copy writers (single post, HyperFrames Reel) read voiceBlock() on every
 // run, so each round of edits shapes the next draft. KV: voice:edits:all /
 // voice:edits:<cid> (recent pairs), voice:profile:global / voice:profile:<cid>.
+// The operator's OWN unprompted words (longform interview answers) are a second
+// source: voiceLogSamples → voice:samples:all / voice:samples:<cid>, read by the
+// same relearn pass as "how they naturally talk".
+async function voiceLogSamples(env, ctx, campaignId, source, samples) {
+  const cid = String(campaignId || "").replace(/-/g, "");
+  const real = (samples || []).map(x => ({ q: String(x.q || "").trim().slice(0, 300), a: String(x.a || "").trim().slice(0, 1500) })).filter(x => x.a.length >= 20);
+  if (!real.length || !env.TRADES) return 0;
+  const stamp = { ts: Date.now(), cid, source: String(source || "") };
+  const push = async (key, max) => {
+    let list = []; try { list = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+    const seen = new Set(list.map(x => x.a));
+    list.push(...real.filter(x => !seen.has(x.a)).map(x => ({ ...stamp, ...x })));
+    await env.TRADES.put(key, JSON.stringify(list.slice(-max)));
+  };
+  await push("voice:samples:all", 40);
+  if (cid) await push("voice:samples:" + cid, 30);
+  const job = voiceRelearn(env, cid).catch(e => console.error("voiceRelearn", e.message));
+  if (ctx && ctx.waitUntil) ctx.waitUntil(job); else await job;
+  return real.length;
+}
 async function voiceLogEdits(env, ctx, campaignId, assetType, edits) {
   const cid = String(campaignId || "").replace(/-/g, "");
   const real = (edits || []).map(e => ({ field: e.field, before: String(e.before || "").trim(), after: String(e.after || "").trim() }))
@@ -1076,11 +1096,13 @@ async function voiceLogEdits(env, ctx, campaignId, assetType, edits) {
 async function voiceRelearn(env, cid) {
   if (!env.ANTHROPIC_API_KEY) return;
   const get = async k => { try { return await env.TRADES.get(k, "json"); } catch (e) { return null; } };
-  const [all, mine, pg, pc] = await Promise.all([get("voice:edits:all"), cid ? get("voice:edits:" + cid) : null, get("voice:profile:global"), cid ? get("voice:profile:" + cid) : null]);
+  const [all, mine, pg, pc, sAll, sMine] = await Promise.all([get("voice:edits:all"), cid ? get("voice:edits:" + cid) : null, get("voice:profile:global"), cid ? get("voice:profile:" + cid) : null,
+    get("voice:samples:all"), cid ? get("voice:samples:" + cid) : null]);
+  const fmtS = list => (list || []).slice(-12).map(x => `[${x.source || "interview"}] Q: ${x.q}\nTHEIR ANSWER: ${x.a}`).join("\n\n");
   const fmt = list => (list || []).slice(-30).map(e => `[${e.field}${e.assetType ? " · " + e.assetType : ""}]\nBEFORE: ${e.before}\nAFTER:  ${e.after}`).join("\n\n");
-  const prompt = `You maintain the operator's VOICE PROFILE, learned from how they rewrite AI-written social copy. Each pair is the AI draft (BEFORE) and the operator's final (AFTER).
+  const prompt = `You maintain the operator's VOICE PROFILE, learned from two sources: (1) how they rewrite AI-written copy — each pair is the AI draft (BEFORE) and the operator's final (AFTER); (2) their OWN unprompted words — answers they typed in interviews about their own experience, which show how they naturally talk.
 
-Infer DURABLE preferences — word choice, length, rhythm, tone, punctuation, what they cut, what they add, how they open and close, hashtag style. Update both profiles: keep rules that still hold, add new ones the edits show, drop or soften ones the edits contradict. Ignore one-off factual fixes. Each profile: at most 12 short imperative bullets ("- Cut ...", "- Prefer ..."), concrete enough to follow, each backed by the edits. Empty string if the edits show nothing yet.
+Infer DURABLE preferences — word choice, length, rhythm, tone, punctuation, what they cut, what they add, how they open and close, hashtag style. From their own words also infer how they naturally speak: recurring phrases and vocabulary, sentence length, how plainly or colorfully they put things, how they tell a story or make a point, humor, and the convictions they keep returning to. Update both profiles: keep rules that still hold, add new ones the edits show, drop or soften ones the edits contradict. Ignore one-off factual fixes. Each profile: at most 15 short imperative bullets ("- Cut ...", "- Prefer ..."), concrete enough to follow, each backed by the edits. Empty string if the edits show nothing yet.
 
 CURRENT GLOBAL PROFILE (across every campaign):
 ${(pg && pg.text) || "(none yet)"}
@@ -1093,6 +1115,12 @@ ${fmt(all) || "(none)"}
 
 RECENT EDITS, THIS CAMPAIGN:
 ${fmt(mine) || "(none)"}
+
+THEIR OWN WORDS, ALL CAMPAIGNS (interview answers):
+${fmtS(sAll) || "(none)"}
+
+THEIR OWN WORDS, THIS CAMPAIGN:
+${fmtS(sMine) || "(none)"}
 
 Return ONLY a JSON object: {"global":"- ...\\n- ...","campaign":"- ...\\n- ..."}. "global" = patterns that show up across campaigns; "campaign" = patterns specific to this campaign.`;
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
@@ -15024,6 +15052,7 @@ Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show u
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         const items = Math.min(Math.max(parseInt(body.items) || (format === "verdict" ? 7 : 9), 3), 12);
         if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
+        if (interview.length) await voiceLogSamples(env, ctx, campaignId, "longform interview", interview).catch(e => console.error("voiceLogSamples", e.message));
         const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
         const hdrS = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const hasMethod = methodId && methodId !== "__none__";
@@ -28276,8 +28305,10 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
           if (cid && typeof body.campaign === "string") await env.TRADES.put("voice:profile:" + cid, JSON.stringify({ text: body.campaign.slice(0, 3000), updatedAt: now, manual: true, manualAt: now }));
         }
         const get = async k => { try { return await env.TRADES.get(k, "json"); } catch (e) { return null; } };
-        const [g, c, all, mine] = await Promise.all([get("voice:profile:global"), cid ? get("voice:profile:" + cid) : null, get("voice:edits:all"), cid ? get("voice:edits:" + cid) : null]);
-        return json({ ok: true, global: g, campaign: c, edits: { all: (all || []).length, campaign: (mine || []).length }, recent: (mine || []).slice(-8).reverse() });
+        const [g, c, all, mine, sAll, sMine] = await Promise.all([get("voice:profile:global"), cid ? get("voice:profile:" + cid) : null, get("voice:edits:all"), cid ? get("voice:edits:" + cid) : null,
+          get("voice:samples:all"), cid ? get("voice:samples:" + cid) : null]);
+        return json({ ok: true, global: g, campaign: c, edits: { all: (all || []).length, campaign: (mine || []).length }, recent: (mine || []).slice(-8).reverse(),
+          samples: { all: (sAll || []).length, campaign: (sMine || []).length }, recentSamples: (sMine || []).slice(-5).reverse() });
       }
 
       if (body.action === "getSinglePostFields") {

@@ -3158,10 +3158,14 @@ async function loadVoiceProfile(force) {
     const r = await w('getVoiceProfile', { campaignId: CAMPAIGN_ID });
     document.getElementById('voiceGlobal').value = (r.global && r.global.text) || '';
     document.getElementById('voiceCampaign').value = (r.campaign && r.campaign.text) || '';
-    document.getElementById('voiceEditsTag').textContent = `${r.edits.campaign} edit${r.edits.campaign === 1 ? '' : 's'} here · ${r.edits.all} total`;
-    document.getElementById('voiceRecent').innerHTML = (r.recent || []).length
+    const sm = r.samples || { all: 0, campaign: 0 };
+    document.getElementById('voiceEditsTag').textContent = `${r.edits.campaign} edit${r.edits.campaign === 1 ? '' : 's'} + ${sm.campaign} interview answer${sm.campaign === 1 ? '' : 's'} here · ${r.edits.all + sm.all} total`;
+    document.getElementById('voiceRecent').innerHTML = ((r.recent || []).length
       ? '<b>Recent edits here:</b>' + r.recent.map(e => `<div style="margin-top:4px;"><span style="color:var(--ink2);">${esc(e.field)}</span>: <s>${esc(e.before)}</s> → ${esc(e.after)}</div>`).join('')
-      : 'No edits logged for this campaign yet.';
+      : 'No edits logged for this campaign yet.')
+      + ((r.recentSamples || []).length
+      ? '<div style="margin-top:8px;"><b>Your own words (interview answers):</b>' + r.recentSamples.map(x => `<div style="margin-top:4px;"><span style="color:var(--ink2);">${esc(x.q)}</span><br>${esc(x.a.length > 240 ? x.a.slice(0, 240) + '…' : x.a)}</div>`).join('') + '</div>'
+      : '');
     msg.textContent = (r.campaign && r.campaign.updatedAt) ? 'Updated ' + new Date(r.campaign.updatedAt).toLocaleString() : '';
     VOICE_LOADED = true;
   } catch (e) { msg.textContent = 'Load failed: ' + e.message; }
