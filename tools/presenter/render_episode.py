@@ -167,10 +167,10 @@ def make_jingle(text, work, key="jingle", voice=None):
     tts(last, v, os.path.join(work, f"{key}_b.mp3"), os.path.join(work, f"{key}_b.srt"))
     b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)   # draw the last word out ("maaan")
     parts.append(b)
-    dry = np.concatenate(parts + [np.zeros(int(1.2 * SR), np.int16)])                       # room for the echo tail
+    dry = np.concatenate(parts + [np.zeros(int(1.6 * SR), np.int16)])                       # room for the (longer) echo tail
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
                           "-filter:a", "equalizer=f=160:t=q:w=1.0:g=4,equalizer=f=2600:t=q:w=1.2:g=1.5,"
-                          "aecho=0.8:0.85:110|240|400:0.42|0.3|0.18,volume=1.15,alimiter=limit=0.95",
+                          "aecho=0.8:0.85:200|430|720:0.42|0.3|0.18,volume=1.15,alimiter=limit=0.95",
                           "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=dry.tobytes(), capture_output=True).stdout
     return np.frombuffer(raw, np.int16)
 def para_marks(text, cs):
