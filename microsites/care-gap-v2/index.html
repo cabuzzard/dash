@@ -539,15 +539,17 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div id="caLfInterview" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:8px;">
             <div style="font-weight:700;margin-bottom:4px;">🎙 Interview — your own experience</div>
             <div style="color:var(--ink3);margin-bottom:6px;">The script is built on your answers. Skip any you can't answer; leave all blank to write from research only.</div>
+            <div id="caLfIvMeter" style="display:none;margin-bottom:6px;font-size:11.5px;"></div>
             <div id="caLfInterviewQs"></div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <button class="btn" type="button" onclick="caLfSaveInterview(this)">💾 Save answers</button>
+              <button class="btn" type="button" id="caLfMoreQs" style="display:none;" onclick="caLfMoreQuestions(this)">➕ More questions</button>
               <button class="btn" type="button" onclick="caLfLoadLastAnswers(this)" title="Bring back the last interview answers you saved or wrote a script from on this campaign (questions included)">↩ Load my last answers</button>
               <span id="caLfIvMsg" style="color:var(--ink3);font-size:11px;">Saves them with this title and teaches your voice profile how you talk.</span>
             </div>
           </div>
           <div id="caLfPickRow" style="display:none;gap:8px;align-items:center;margin-top:6px;">
-            Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;" onchange="document.getElementById('caLfItems').value = (CA_LF_FORMATS[this.value] || {}).items || 7"></select>
+            Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;" onchange="document.getElementById('caLfItems').value = (CA_LF_FORMATS[this.value] || {}).items || 7; document.getElementById('caLfItems').disabled = this.value === 'interview'; caLfIvMeter()"></select>
             Items <input id="caLfItems" type="number" min="3" max="12" value="9" class="finput" style="width:56px;font-size:11px;">
           </div>
         </div>
@@ -5562,6 +5564,38 @@ function caLfIvDraftPut() {
   try { localStorage.setItem(k, JSON.stringify({ qs: CA_LF.iv.qs, answers: CA_LF.iv.qs.map((_, i) => (document.getElementById('caLfIvA' + i) || {}).value || ''), at: Date.now() })); } catch (e) {}
 }
 function caLfIvDraftGet() { const k = caLfIvDraftKey(); if (!k) return null; try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+// Interview format: estimated episode length from what's typed so far vs the target.
+function caLfIvMeter() {
+  const el = document.getElementById('caLfIvMeter'), more = document.getElementById('caLfMoreQs');
+  const p = CA_LF.iv && CA_LF.iv.plan;
+  if (!el) return;
+  if (!p || document.getElementById('caLfFormat').value !== 'interview') { el.style.display = 'none'; if (more) more.style.display = 'none'; return; }
+  const words = CA_LF.iv.qs.map((_, k) => ((document.getElementById('caLfIvA' + k) || {}).value || '').split(/\s+/).filter(Boolean).length);
+  const answered = words.filter(n => n >= 5).length;
+  const secs = p.frameSecs + words.reduce((a, n) => a + (n >= 5 ? n * p.keep / p.wpm * 60 + p.perQuestionSecs : 0), 0);
+  const left = Math.max(0, p.targetSecs - secs), perQ = p.secsPerQuestion;
+  const mm = t => Math.floor(t / 60) + ':' + String(Math.round(t % 60)).padStart(2, '0');
+  const pct = Math.min(100, Math.round(secs / p.targetSecs * 100));
+  el.style.display = ''; if (more) more.style.display = '';
+  el.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;"><b>⏱ ≈ ${mm(secs)} of ${mm(p.targetSecs)} target</b><span style="color:var(--ink3);">${answered}/${CA_LF.iv.qs.length} answered</span></div>
+    <div style="height:6px;border-radius:3px;background:var(--border);margin:4px 0;"><div style="height:6px;border-radius:3px;width:${pct}%;background:${pct >= 100 ? 'var(--fresh)' : 'var(--accent,#f6ad55)'};"></div></div>
+    <div style="color:var(--ink3);">${left > 0 ? `About ${Math.ceil(left / perQ)} more answers at your usual length (${p.avgWords} words each)` : 'Target reached — Generate when ready.'} · Longer answers mean fewer questions. Target: 16–30 min videos perform best on the benchmark channels.</div>`;
+}
+async function caLfMoreQuestions(btn) {
+  if (!CA_LF.iv || !CA_TITLE) return;
+  const keep = CA_LF.iv.qs.map((_, k) => (document.getElementById('caLfIvA' + k) || {}).value || '');
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Adding…';
+  try {
+    const r = await w('longformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: CA_LF.iv.question, format: 'interview', existing: CA_LF.iv.qs, count: 5, fresh: true });
+    const add = (r.questions || []).filter(x => !CA_LF.iv.qs.includes(x));
+    CA_LF.iv.qs = CA_LF.iv.qs.concat(add);
+    if (r.plan) CA_LF.iv.plan = r.plan;
+    document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut();caLfIvMeter()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(keep[k] || '')}</textarea></label>`).join('');
+    caLfIvDraftPut(); caLfIvMeter();
+    document.getElementById('caLfIvMsg').textContent = `➕ Added ${add.length} question${add.length === 1 ? '' : 's'} at the bottom.`;
+  } catch (e) { document.getElementById('caLfIvMsg').textContent = 'Could not add questions: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
 async function caLfLoadLastAnswers(btn) {
   const msg = document.getElementById('caLfIvMsg');
   if (!CA_LF.iv) { msg.textContent = 'Open the interview first.'; return; }
@@ -5573,8 +5607,8 @@ async function caLfLoadLastAnswers(btn) {
     if (!(r.qs || []).length) { msg.textContent = 'No saved answers found for this campaign.'; }
     else {
       CA_LF.iv.qs = r.qs;
-      document.getElementById('caLfInterviewQs').innerHTML = r.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(r.answers[k] || '')}</textarea></label>`).join('');
-      caLfIvDraftPut();
+      document.getElementById('caLfInterviewQs').innerHTML = r.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut();caLfIvMeter()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(r.answers[k] || '')}</textarea></label>`).join('');
+      caLfIvDraftPut(); caLfIvMeter();
       msg.textContent = `↩ Loaded ${r.qs.length} answers from ${new Date(r.at).toLocaleString()}. Press 💾 Save answers to keep them with this title.`;
     }
   } catch (e) { msg.textContent = 'Load failed: ' + e.message; }
@@ -5601,6 +5635,7 @@ const CA_LF_FORMATS = {
   story: { label: 'Story / case study (rise & fall)', items: 7 },
   myths: { label: 'Myth-busting (the truth about…)', items: 7 },
   playbook: { label: "Playbook (how I'd do it, step by step)", items: 7 },
+  interview: { label: 'Interview (your answers, lightly edited)', items: 0 },
 };
 const CA_LF_LEGACY = { tier: { label: 'Tier list (S–D) — legacy', items: 9 }, verdict: { label: 'Verdict (is it worth it?) — legacy', items: 7 } };
 function caLfFormatOptions(cur) {
@@ -5639,14 +5674,17 @@ async function runCreateAsset() {
     if (!CA_LF.iv || CA_LF.iv.forPick !== CA_LF.pick) {
       const o0 = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing interview…';
       try {
-        const r = await w('longformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: q.question });
-        CA_LF.iv = { forPick: CA_LF.pick, qs: r.questions || [], question: q.question };
+        const fmtNow = document.getElementById('caLfFormat').value;
+        btn.textContent = fmtNow === 'interview' ? 'Preparing interview (enough questions for the target length)…' : 'Preparing interview…';
+        const r = await w('longformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: q.question, format: fmtNow });
+        CA_LF.iv = { forPick: CA_LF.pick, qs: r.questions || [], question: q.question, plan: r.plan || null };
         const draft = caLfIvDraftGet();
         const useDraft = draft && draft.qs && draft.qs.join('|') === CA_LF.iv.qs.join('|') && draft.answers.join('').length > (r.answers || []).join('').length;
         const prefill = useDraft ? draft.answers : (r.answers || []);
-        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(prefill[k] || '')}</textarea></label>`).join('');
+        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut();caLfIvMeter()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(prefill[k] || '')}</textarea></label>`).join('');
         document.getElementById('caLfIvMsg').textContent = useDraft ? 'Restored your unsaved draft from this browser — press 💾 Save answers.'
           : r.savedAt ? 'Restored your saved answers from ' + new Date(r.savedAt).toLocaleString() + '.' : 'Answers are kept in this browser as you type. 💾 Save answers stores them with the title and teaches your voice profile.';
+        caLfIvMeter();
         document.getElementById('caLfInterview').style.display = 'block';
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer the interview above (a few sentences each), then Generate to write the script.';
       } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }

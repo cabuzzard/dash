@@ -46,3 +46,18 @@ and default item count; all render with the same item cards (#n, name, blurb; pa
 
 Re-run: scratchpad scripts `fetch.py` (yt-dlp) + `classify.py` (patterns + scoring) — rebuild if the
 benchmark list changes.
+
+## Video length (same data)
+
+Median views vs channel norm by length: 5-7 min 1.10× (recent 0.78×), 7-9 0.91×, 9-11 0.94×, **11-13 0.79×**,
+13-16 0.94×, **16-20 1.09× (recent 1.16×), 20-30 1.26× (recent 1.27×)**, 30+ 1.09×. Shane Hummus: 9-13 min ≈ 0.5×,
+16-20 1.21×, **20-30 1.58×**. → target ~20 min (the old 12-15 min target sits in the weakest band).
+
+## Interview format (`interview`)
+
+The episode IS the operator's interview answers, lightly edited (grammar, filler, run-ons; ≥85% of their wording
+kept, nothing added); Claude writes only the hook (from their strongest lines), one-line lead-ins, asks and outro.
+Questions asked = enough to reach the 20-min target at the operator's own average answer length
+(`lfInterviewPlan`: voice:samples interview answers → avg words; 185 wpm (Mwz 106 over a full episode); 85% kept;
++3 s per question; 92 s framing). First measured: 98-word answers → 30 s per question → **37 questions**.
+Longer answers → fewer questions. care-gap shows a live ⏱ length meter and ➕ More questions.

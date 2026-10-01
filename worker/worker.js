@@ -1202,6 +1202,10 @@ const LF_FORMATS = {
     titles: '"How I\'d [Goal] If I Started Over", "The [N]-Day Plan To [X]", "[X]: Just Copy Me"',
     rule: n => `PLAYBOOK: ${n} steps or phases in order, built on the narrator's own experience from the interview where possible; each item's "name" is the step. No scores.`,
     beats: "the step name → exactly what to do in this step → why it matters → a concrete example or number from the narrator's experience (never invented) → the mistake to avoid → how you know it worked" },
+  interview: { label: "Interview (your answers, lightly edited)", items: 0, use: "the best answer is the narrator's own experience and opinions, told in their words",
+    titles: '"I [Did X] For [N] Years — Here\'s What Nobody Tells You", "[Expert] Answers Your [Topic] Questions", "What I Learned From [Experience]"',
+    rule: n => `INTERVIEW: exactly ${n} items, one per answered interview question below, in the order given. The episode IS the narrator's answers.`,
+    beats: "a one-line spoken lead-in that poses the question in the narrator's voice → THE NARRATOR'S ANSWER, LIGHTLY EDITED: fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
   // legacy (no longer offered): kept so older episodes regenerate the same way
   tier: { legacy: true, label: "Tier list (S–D)", items: 9, use: "", titles: "",
     rule: n => `TIER LIST: ${n} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`,
@@ -1211,6 +1215,24 @@ const LF_FORMATS = {
     beats: "the point → why it matters → evidence → who it applies to → how it tips the verdict" },
 };
 const LF_FORMAT_KEYS = Object.keys(LF_FORMATS).filter(k => !LF_FORMATS[k].legacy);
+// Interview-format length plan. Target 20 min: 16-30 min videos beat their channel's median
+// (1.1-1.3x) on the benchmark channels, Shane Hummus peaks at 20-30 min (1.6x) and sits at
+// ~0.5x for 9-13 min (docs/longform-formats.md). Pace 185 wpm (Mwz 106 over a full episode),
+// a light edit keeps ~85% of the words, ~3 s lead-in + gap per question, ~92 s of hook/asks/outro.
+// Questions needed come from the operator's OWN average answer length (voice:samples), so
+// longer answers → fewer questions.
+const LF_PLAN = { targetSecs: 1200, wpm: 185, keep: 0.85, perQuestionSecs: 3, frameSecs: 92, fallbackWords: 98 };
+async function lfInterviewPlan(env, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, "");
+  const get = async k => { try { return (await env.TRADES.get(k, "json")) || []; } catch (e) { return []; } };
+  let xs = (await get("voice:samples:" + cid)).filter(x => /interview/i.test(x.source || ""));
+  if (xs.length < 3) xs = xs.concat((await get("voice:samples:all")).filter(x => /interview/i.test(x.source || "") && x.cid !== cid));
+  const words = xs.map(x => String(x.a || "").split(/\s+/).filter(Boolean).length).filter(n => n >= 5);
+  const avgWords = words.length ? Math.round(words.reduce((a, b) => a + b, 0) / words.length) : LF_PLAN.fallbackWords;
+  const secsPerQuestion = avgWords * LF_PLAN.keep / LF_PLAN.wpm * 60 + LF_PLAN.perQuestionSecs;
+  const needed = Math.min(40, Math.max(6, Math.ceil((LF_PLAN.targetSecs - LF_PLAN.frameSecs) / secsPerQuestion)));
+  return { ...LF_PLAN, avgWords, fromAnswers: words.length, secsPerQuestion: Math.round(secsPerQuestion * 10) / 10, needed };
+}
 // engine "elevenlabs" voices render via ElevenLabs on GitHub Actions (repo secret ELEVENLABS_API_KEY);
 // the rest are free edge-tts. Mwz 106 = Mountainwize narrator, remixed from the measured channel average.
 const LF_DEFAULT_VOICE = "GDy9DZAjVXkKzjkBkH0d";
@@ -15099,24 +15121,32 @@ Give a YouTube title in that format. Call submit_questions.`;
       if (body.action === "longformInterview") {
         const q = String(body.question || "").trim();
         if (!q) return json({ error: "question required" }, 400);
-        if (body.titleId && !body.fresh) {
+        const isIv = body.format === "interview";
+        const plan = isIv ? await lfInterviewPlan(env, body.campaignId) : null;
+        const existing = (Array.isArray(body.existing) ? body.existing : []).map(x => String(x).trim()).filter(Boolean).slice(0, 60);
+        if (body.titleId && !body.fresh && !existing.length) {
           let sv = null; try { sv = await env.TRADES.get("lfiv:" + String(body.titleId).replace(/-/g, ""), "json"); } catch (e) {}
-          if (sv && sv.question === q && (sv.qs || []).length) return json({ success: true, questions: sv.qs, answers: sv.answers || [], savedAt: sv.at });
+          if (sv && sv.question === q && (sv.qs || []).length) return json({ success: true, questions: sv.qs, answers: sv.answers || [], savedAt: sv.at, plan });
         }
+        const want = isIv ? Math.min(40, Math.max(3, parseInt(body.count) || plan.needed)) : 0;
         const brief = body.campaignId ? await assembleImageBrief(env, { campaignId: body.campaignId }).catch(() => null) : null;
         const camp = brief ? brief.facts.filter(f => /^Campaign Research/.test(f)).join("\n").slice(0, 3000) : "";
         const ir = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1500, messages: [{ role: "user", content:
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: isIv ? 4000 : 1500, messages: [{ role: "user", content:
             "You are a ghostwriter interviewing the owner of a YouTube channel before writing an episode that answers this viewer question:\n\nQUESTION: " + q + "\n\n" + (camp ? "WHAT THE CHANNEL/BUSINESS IS ABOUT:\n" + camp + "\n\n" : "")
-            + "Ask 3-5 short, specific questions that draw out THEIR OWN experience: stories, clients or people they've seen, mistakes, numbers they actually know, strong opinions, what most advice gets wrong. No generic questions the internet could answer. Each answerable in 2-4 sentences. Call submit_questions." }],
-            tools: [{ name: "submit_questions", description: "Interview questions.", input_schema: { type: "object", required: ["questions"], properties: { questions: { type: "array", minItems: 3, maxItems: 5, items: { type: "string" } } } } }],
+            + (isIv
+              ? `This episode will BE the interview: their answers, lightly edited, are the whole script. Ask exactly ${want} questions that together make a complete ${Math.round(plan.targetSecs / 60)}-minute episode, ordered the way the episode should flow: open with why this matters to them, then go deep — stories, clients or people they've seen, mistakes, turning points, numbers they actually know, strong opinions, what most advice gets wrong, what they'd tell someone starting today. Each question opens one thing up and invites a full paragraph. No generic questions the internet could answer; no two questions that cover the same ground.`
+                + (existing.length ? `\n\nALREADY ASKED (don't repeat or overlap; go further or into what's missing):\n${existing.map(x => "- " + x).join("\n")}` : "")
+              : "Ask 3-5 short, specific questions that draw out THEIR OWN experience: stories, clients or people they've seen, mistakes, numbers they actually know, strong opinions, what most advice gets wrong. No generic questions the internet could answer. Each answerable in 2-4 sentences.")
+            + " Call submit_questions." }],
+            tools: [{ name: "submit_questions", description: "Interview questions.", input_schema: { type: "object", required: ["questions"], properties: { questions: { type: "array", minItems: isIv ? Math.min(3, want) : 3, maxItems: isIv ? want : 5, items: { type: "string" } } } } }],
             tool_choice: { type: "tool", name: "submit_questions" } }) });
         const idd = await ir.json();
         if (!ir.ok) return json({ error: (idd.error && idd.error.message) || "Claude API error" }, 502);
         const qs = ((((idd.content || []).find(b => b.type === "tool_use") || {}).input || {}).questions || []).map(x => String(x).trim()).filter(Boolean);
         if (!qs.length) return json({ error: "No interview questions came back — try again" }, 502);
-        return json({ success: true, questions: qs });
+        return json({ success: true, questions: qs, plan });
       }
 
       if (body.action === "generateLongformScript") {
@@ -15124,7 +15154,8 @@ Give a YouTube title in that format. Call submit_questions.`;
         const format = LF_FORMATS[body.format] ? body.format : "ranked";
         const layout = body.layout === "stage" ? "stage" : "presenter";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
-        const items = Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 12);
+        if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
+        const items = format === "interview" ? interview.length : Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 12);
         if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
         if (interview.length) await voiceLogSamples(env, ctx, campaignId, "longform interview", interview).catch(e => console.error("voiceLogSamples", e.message));
         const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
@@ -15140,7 +15171,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         const prodFacts = researchRec ? STRATEGY_FIELDS.map(f => { const v = lfReadRich(researchRec.properties?.[f]); return v && `${f}: ${v}`; }).filter(Boolean).join("\n") : "";
         const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
         const fmtRule = LF_FORMATS[format].rule(items);
-        const sPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}Write a complete 12-15 minute faceless YouTube episode script answering this viewer question:
+        const sPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}${format === "interview" ? "Write a faceless YouTube episode built from the channel owner's interview answers below — its length follows the answers — answering this viewer question:" : "Write a complete 12-15 minute faceless YouTube episode script answering this viewer question:"}
 
 QUESTION: ${String(question).trim()}
 FORMAT — ${fmtRule}
@@ -15153,7 +15184,10 @@ STRUCTURE (the Shane Hummus model — the narrator is an animated presenter; the
 5. PICTURES: the hook and every item get 1-3 "images" — concrete scenes that illustrate what is being said at that moment (a person doing the job, the place, the tool). Each image's "cue" is 4-8 words copied exactly from that segment's narration, in its first 70%.
 Narration is spoken English: short sentences, contractions, numbers written out as words. Never invent statistics — only use figures in the research below or widely known published ranges, and say "around".
 
-${interview.length ? `THE NARRATOR'S OWN EXPERIENCE (from an interview with the channel owner — build the episode on this: use their specifics, examples and opinions, keep their phrasing where it's strong, and speak as someone who has lived it; NEVER invent personal experiences, clients or numbers beyond what they said):
+${interview.length && format === "interview" ? `THE INTERVIEW — these answers ARE the episode (one item each, in this order, lightly edited as described above; the hook is built from their strongest lines; asks and outro are the only other narration):
+${interview.map((x, i) => `Q${i + 1}: ${x.q}\nA${i + 1}: ${x.a}`).join("\n\n")}
+
+` : interview.length ? `THE NARRATOR'S OWN EXPERIENCE (from an interview with the channel owner — build the episode on this: use their specifics, examples and opinions, keep their phrasing where it's strong, and speak as someone who has lived it; NEVER invent personal experiences, clients or numbers beyond what they said):
 ${interview.map((x, i) => `Q${i + 1}: ${x.q}\nA${i + 1}: ${x.a}`).join("\n\n")}
 
 ` : ""}RESEARCH:
