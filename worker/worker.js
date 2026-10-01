@@ -1144,6 +1144,7 @@ const LF_REPO = "cabuzzard/dash";
 const LF_DEFAULT_VOICE = "GDy9DZAjVXkKzjkBkH0d";
 const LF_VOICES = [
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
+  { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs" },
   { id: "en-US-AndrewNeural", label: "Andrew — warm, confident (US)" },
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
   { id: "en-US-ChristopherNeural", label: "Christopher — authoritative (US)" },
