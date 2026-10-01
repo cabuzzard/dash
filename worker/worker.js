@@ -1288,7 +1288,7 @@ const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a
 // be the voice of my customer") — a younger male voice, operator's pick of three free voices.
 const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
-  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3207, tempo: 0.97485, wpm: 168, legacyRates: ["-28%", "-21%"] },   // 2026-10-01 tune vs the approved -13% voice: speech 3% slower then 0.5% faster (atempo 0.97×1.005 = 0.97485, pitch kept); real pauses +8%, +12%, +12% = ×1.3548 — silences stretched ×1.3548×0.97485 = 1.3207 because atempo also lengthens them by 1/tempo   // 2026-10-01 second step: "make him 10% faster, same pause length, as default" — speech 0.87× (from 0.72×), sentence pauses ×1.21 back to their original length   // operator 2026-10-01: "speed him up ten percent but keep the pause length" (was -28%, sounded "almost drunk") → speech 10% faster, sentence pauses stretched back ×1.1
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3207, tempo: 0.97485, paraScale: 1.12, wpm: 166, legacyRates: ["-28%", "-21%"] },   // paraScale: paragraph breaks + gaps between sections pause 12% longer than sentence pauses (operator 2026-10-01)   // 2026-10-01 tune vs the approved -13% voice: speech 3% slower then 0.5% faster (atempo 0.97×1.005 = 0.97485, pitch kept); real pauses +8%, +12%, +12% = ×1.3548 — silences stretched ×1.3548×0.97485 = 1.3207 because atempo also lengthens them by 1/tempo   // 2026-10-01 second step: "make him 10% faster, same pause length, as default" — speech 0.87× (from 0.72×), sentence pauses ×1.21 back to their original length   // operator 2026-10-01: "speed him up ten percent but keep the pause length" (was -28%, sounded "almost drunk") → speech 10% faster, sentence pauses stretched back ×1.1
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
@@ -1365,7 +1365,7 @@ async function lfBuildEpisode(env, assetId) {
     layout: r.layout === "stage" ? "stage" : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
       const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
-      return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}) }; })(),
+      return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}), ...(v && v.paraScale && rate === v.rate ? { paraScale: v.paraScale } : {}) }; })(),
     ...(boxes ? { boxes } : {}),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
@@ -15280,7 +15280,7 @@ ${pillar ? `PILLAR (stay faithful):\n${pillar.slice(0, 5000)}` : ""}
 
 Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTitles", 3 "thumbnailText" options (2-5 words), a 2-paragraph YouTube "description", 12 "tags", ≤3 "hashtags". Call submit_episode.`;
         const segSchema = { type: "object", required: ["kind", "text"], properties: {
-          kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment" },
+          kind: { type: "string", enum: ["hook", "item", "ask", "outro"] }, text: { type: "string", description: "the spoken narration for this segment — put a blank line between paragraphs (keep the narrator's own paragraph breaks); paragraph breaks get a longer pause in the voice-over" },
           n: { type: "integer" }, name: { type: "string" }, ask: { type: "string", description: "interview format only: THE CUSTOMER's spoken question — first person, their words, 15 words or fewer (a second voice reads it before the narrator's answer)" }, blurb: { type: "string", description: "≤12 words for the on-screen card" },
           pay: { type: "string", description: "on-screen range like '$45K – $65K / year' (omit if not relevant)" }, payPct: { type: "number", description: "0-1 bar fill vs the other items" },
           images: { type: "array", maxItems: 3, description: "hook/item segments: 1-3 pictures shown in a framed stage while this segment plays", items: { type: "object", required: ["cue", "subject"], properties: {

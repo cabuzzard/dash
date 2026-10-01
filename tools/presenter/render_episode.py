@@ -124,11 +124,22 @@ def tempo_pcm(a, cs, tempo):
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", "-filter:a", f"atempo={tempo:.4f}",
                           "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=a.tobytes(), capture_output=True).stdout
     return np.frombuffer(raw, np.int16), [(s / tempo, e / tempo, c) for s, e, c in cs]
-def stretch_pauses(a, cs, scale, min_sil=0.12):
+def para_marks(text, cs):
+    """Times (s) where each paragraph of `text` ends, found by counting words through the caption cues."""
+    paras = [p_ for p_ in re.split(r"\n\s*\n", text.strip()) if p_.strip()]
+    if len(paras) < 2 or not cs: return []
+    ends, acc = [], 0
+    for p_ in paras[:-1]: acc += len(p_.split()); ends.append(acc)
+    marks, run, k = [], 0, 0
+    for s_, e_, c in cs:
+        run += len(c.split())
+        while k < len(ends) and run >= ends[k]: marks.append(e_); k += 1
+    return marks
+def stretch_pauses(a, cs, scale, min_sil=0.12, marks=None, mark_scale=1.0, stats=None):
     """Lengthen the real silences inside the speech by `scale` and shift the caption cues to match.
     Silences are found in the audio itself (10 ms frames below a loudness floor, at least `min_sil` long,
     not at the very start/end) — caption cues butt up against each other, so their gaps can't be used."""
-    if scale <= 1.001 or len(a) < SR // 2: return a, cs
+    if (scale <= 1.001 and not marks) or len(a) < SR // 2: return a, cs
     fr = int(0.01 * SR); n = len(a) // fr
     rms = np.sqrt(np.mean(a[:n * fr].astype(np.float32).reshape(n, fr) ** 2, axis=1))
     thr = max(150.0, 0.06 * float(np.percentile(rms, 95)))
@@ -142,9 +153,16 @@ def stretch_pauses(a, cs, scale, min_sil=0.12):
             k = j
         else: k += 1
     if not runs: return a, cs
+    # each paragraph end claims the silence nearest to it (within 0.8 s) — that one gets the longer pause
+    para = set()
+    for m in (marks or []):
+        best = min(range(len(runs)), key=lambda r: abs((runs[r][0] + runs[r][1]) / 2 / SR - m))
+        if abs((runs[best][0] + runs[best][1]) / 2 / SR - m) < 0.8: para.add(best)
     out, last, ins = [], 0, []
-    for s0, s1 in runs:
-        mid = (s0 + s1) // 2; extra = int((s1 - s0) * (scale - 1))
+    for r_, (s0, s1) in enumerate(runs):
+        f_ = scale * (mark_scale if r_ in para else 1.0)
+        mid = (s0 + s1) // 2; extra = int((s1 - s0) * (f_ - 1))
+        if stats is not None and r_ not in para and (s1 - s0) >= 0.25 * SR: stats.append((s1 - s0) * f_ / SR)
         out += [a[last:mid], np.zeros(extra, np.int16)]; ins.append((mid / SR, extra / SR)); last = mid
     out.append(a[last:])
     shift = lambda t: t + sum(e for at, e in ins if at <= t)
@@ -163,6 +181,22 @@ def build_audio(ep, work):
         return key
     with ThreadPoolExecutor(max_workers=3 if voice.get("engine") == "elevenlabs" else 4) as ex:
         for k, key in enumerate(ex.map(one, jobs)): print(f"voiced {k + 1}/{len(jobs)}", flush=True)
+    # pass 1: every narration segment's audio, with sentence pauses and the longer paragraph pauses
+    tempo, para_scale = float(voice.get("tempo") or 1), float(voice.get("paraScale") or 1)
+    seg_audio, sent_pauses = {}, []
+    for i, seg in enumerate(ep["segments"]):
+        text = (seg.get("text") or "").strip()
+        if not text: continue
+        mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
+        cs0 = cues(srt)
+        a, cs = stretch_pauses(decode(mp3), cs0, float(voice.get("pauseScale") or 1),
+                               marks=para_marks(text, cs0), mark_scale=para_scale, stats=sent_pauses)
+        seg_audio[i] = tempo_pcm(a, cs, tempo)   # applied after: it scales pauses by 1/tempo too
+    # between sections: a paragraph-length pause (typical sentence pause × paraScale), never shorter than GAP
+    seg_gap = GAP
+    if para_scale > 1.001 and sent_pauses:
+        seg_gap = max(GAP, float(np.median(sent_pauses)) / tempo * para_scale)
+    print(f"pauses: sentence ~{(float(np.median(sent_pauses)) / tempo if sent_pauses else 0):.2f}s, paragraph/section ~{seg_gap:.2f}s", flush=True)
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
         if not text: continue
@@ -174,14 +208,12 @@ def build_audio(ep, work):
             mute.append((t, t + dq))
             pcm += [q, np.zeros(int(ASK_GAP * SR), np.int16)]
             t += dq + ASK_GAP
-        mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
-        a, cs = stretch_pauses(decode(mp3), cues(srt), float(voice.get("pauseScale") or 1))
-        a, cs = tempo_pcm(a, cs, float(voice.get("tempo") or 1))   # applied after: it scales pauses by 1/tempo too
+        a, cs = seg_audio[i]
         dur = len(a) / SR
         timeline.append((t_start, t + dur, seg))
         caps += [(t + s, t + e, c) for s, e, c in cs]
-        pcm += [a, np.zeros(int(GAP * SR), np.int16)]
-        t += dur + GAP
+        pcm += [a, np.zeros(int(seg_gap * SR), np.int16)]
+        t += dur + seg_gap
         print(f"tts {i + 1}/{len(ep['segments'])} {t - t_start:.1f}s", flush=True)
     audio = np.concatenate(pcm) if pcm else np.zeros(SR, np.int16)
     wav = os.path.join(work, "voice.wav")
