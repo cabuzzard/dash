@@ -15491,6 +15491,30 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
 
       // 16:9 wordless plate behind the presenter — the same hub image-spec → Claude-writes-the-prompt
       // → Grok Imagine path as the offer/thumbnail plates; saveOfferImage kind "longform-background" keeps it.
+      // longformBackgrounds {assetId, op: "list" | "use", url?} → the campaign's background library
+      // (every generated or uploaded longform background) + the remembered direction; "use" puts a
+      // library background on this asset.
+      if (body.action === "longformBackgrounds") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { url: pageUrl, page } = await lfLoadAsset(aid);
+        const cid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+        const lk = "lfbg:lib:" + cid;
+        let lib = []; try { lib = (await env.TRADES.get(lk, "json")) || []; } catch (e) {}
+        if (body.op === "use") {
+          const u = String(body.url || "");
+          if (!lib.some(x => x.url === u)) return json({ error: "That background isn't in this campaign's library" }, 400);
+          const pr = await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Longform Background": { url: u } } }) });
+          if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: e.message || "Couldn't set the background" }, 502); }
+          return json({ ok: true, url: u });
+        }
+        // seed the library with this asset's current background if it predates the library
+        const cur = page.properties["Longform Background"]?.url || "";
+        if (cur && !lib.some(x => x.url === cur)) lib.push({ url: cur, at: 0, source: "earlier", assetId: aid });
+        let dir = ""; try { dir = (await env.TRADES.get("lfbg:dir:" + cid)) || ""; } catch (e) {}
+        return json({ ok: true, current: cur, library: lib, direction: dir });
+      }
+
       if (body.action === "generateLongformBackground") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
@@ -15504,6 +15528,9 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${(spec?.render?.character || "mountain-man").replace(/[^a-z0-9-]/g, "")}/character.json`).then(r => r.json()); charStyle = cj.style || ""; } catch (e) {}
         const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
         const stageLayout = spec?.render?.layout === "stage";
+        const bgCid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
+        const direction = String(body.direction || "").trim().slice(0, 600);
+        if (bgCid && typeof body.direction === "string") await env.TRADES.put("lfbg:dir:" + bgCid, direction).catch(() => {});
         const cPrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — 60-110 words, one paragraph.
 
 WHAT IT IS: a WIDE 16:9 background scene for a ${stageLayout ? "faceless YouTube video" : "talking-presenter YouTube video"}. WHERE THINGS SIT ON TOP OF IT (the renderer's real layout):
@@ -15520,7 +15547,7 @@ Obey this hub's image spec — palette, subjects, light, the "Never" list:
 ${ispec}
 
 THE EPISODE'S TOPIC (pick a scene from the spec's world that suits it — don't put its words in the image): ${topic}
-
+${direction ? `\nOPERATOR'S DIRECTION FOR THIS BACKGROUND (follow it; where it conflicts with the spec or the topic, the operator wins — but still keep the text zones calm, wordless and free of people):\n${direction}\n` : ""}
 End with: "No people, no text, no letters, no logos, no watermarks."`;
         const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -15535,7 +15562,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
         const imageUrl = xd.data?.[0]?.url || "";
         if (!imageUrl) return json({ error: "xAI returned no image" }, 502);
-        return json({ imageUrl, prompt, kind: "longform-background", sync: true });
+        return json({ imageUrl, prompt, direction, kind: "longform-background", sync: true });
       }
 
       // ── getHubOutput / saveHubOutputGoals ── care-gap Hub tab "Output": one hub,
@@ -28713,6 +28740,17 @@ End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`
           hist.unshift({ url, timestamp: Date.now(), background: !!body.background });
           await env.TRADES.put(histKey, JSON.stringify(hist.slice(0, 12)));
         } catch (e) {}
+        // Longform backgrounds also join a CAMPAIGN-wide library (lfbg:lib:<cid>) so any episode
+        // can reuse an earlier one (Publish modal → 🖼 Background…).
+        if (kind === "longform-background" && campaignId) {
+          try {
+            const lk = "lfbg:lib:" + campaignId;
+            let lib = (await env.TRADES.get(lk, "json")) || [];
+            lib = lib.filter(x => x.url !== url);
+            lib.unshift({ url, at: Date.now(), source: fileData ? "upload" : "generated", direction: String(body.direction || "").slice(0, 300), assetId: String(assetId).replace(/-/g, "") });
+            await env.TRADES.put(lk, JSON.stringify(lib.slice(0, 40)));
+          } catch (e) {}
+        }
 
         // A fresh blog thumbnail on an asset that's ALREADY live gets pushed
         // straight to the live page — without this, a newly-generated
