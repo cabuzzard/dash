@@ -115,7 +115,8 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
   .modaloverlay > .modalbox{margin:0 auto;max-height:none !important;overflow:visible !important;}
   .modaloverlay .modalbox [style*="max-height:70vh"]{max-height:none !important;overflow:visible !important;}
 }
-.modalbox{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+.modalbox{background:var(--surface);border:1px solid var(--border2);border-radius:14px;padding:20px;max-width:520px;width:100%;box-shadow:0 12px 40px rgba(0,0,0,.25);max-height:calc(100vh - 40px);overflow-y:auto;overscroll-behavior:contain;}
+.modalbox .modalrow{position:sticky;bottom:-20px;z-index:2;background:var(--surface);padding:10px 0 12px;margin-bottom:-12px;}
 .modalbox .mtitle{font-size:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:.07em;color:var(--global);font-weight:700;margin-bottom:4px;}
 .modalbox .mfield{font-size:15px;font-weight:700;margin-bottom:12px;line-height:1.35;}
 .modalbox textarea{width:100%;min-height:130px;font-family:var(--sans);font-size:13px;line-height:1.5;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:10px;padding:11px 13px;resize:vertical;outline:none;box-sizing:border-box;}
