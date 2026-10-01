@@ -840,6 +840,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="btn" type="button" id="pubYtBtn" onclick="pubYtPublish(this)">▶ Publish to YouTube</button>
               </div>
               <div id="pubYtLink" style="display:none;font-size:12px;margin-top:6px;"></div>
+              <div id="pubYtWatch" style="font-size:12px;margin-top:6px;"></div>
+              <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:11px;">
+                <span style="color:var(--ink3);">Uploaded by hand in YouTube Studio? Paste its link:</span>
+                <input id="pubYtPaste" class="finput" placeholder="https://www.youtube.com/watch?v=…" style="flex:1;min-width:200px;font-size:11px;">
+                <button class="btn" type="button" style="font-size:11px;" onclick="pubYtSetUrl(this)">Save link</button>
+              </div>
               <div id="pubYtMsg" style="font-size:11px;margin-top:4px;color:var(--ink3);">Uploads the rendered video with its title, description, tags and thumbnail straight to the channel (Buffer only handles Shorts).</div>
             </div></div>
           <div style="margin-top:10px;">
@@ -6163,7 +6169,7 @@ async function pubLfLoad(assetId, token) {
       <img src="../../tools/presenter/characters/${esc(c.thumb)}" style="width:72px;height:72px;object-fit:contain;display:block;margin:auto;"><div style="font-size:9.5px;">${esc(c.name)}</div></label>`).join('') || '<span style="color:var(--ink3);">No presenters yet.</span>';
   const vs = document.getElementById('pubLfVoice');
   vs.innerHTML = (r.voices || []).map(v => `<option value="${esc(v.id)}" ${v.id === (r.render.voice || '') ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
-  pubLfIntroOptions(); pubYtStatus(); pubYtShowLink(r.youtubeUrl);
+  pubLfIntroOptions(); pubYtStatus(); pubYtShowLink(r.youtubeUrl); pubYtShowWatch(r.watchLink);
   vs.onchange = () => { const dv = ((r.voices || []).find(v => v.id === vs.value) || {}).rate; if (dv) rt.value = dv; pubLfSave({ voice: vs.value, ...(dv ? { rate: dv } : {}) }); };
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || ((r.voices || []).find(v => v.id === (r.render.voice || (r.voices || [])[0]?.id)) || {}).rate || '-10%'; rt.onchange = () => pubLfSave({ rate: rt.value });
   const ly = document.getElementById('pubLfLayout'); ly.value = r.render.layout === 'stage' ? 'stage' : 'presenter';
@@ -6450,6 +6456,19 @@ function pubYtShowLink(url) {
   if (url) { el.innerHTML = `▶ On YouTube: <a class="kwlink" href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a>`; el.style.display = ''; }
   else { el.innerHTML = ''; el.style.display = 'none'; }
 }
+function pubYtShowWatch(url) {
+  const el = document.getElementById('pubYtWatch'); if (!el) return;
+  el.innerHTML = url ? `🔗 Stable link (always opens the current YouTube video — share this one): <a class="kwlink" href="${esc(url)}" target="_blank" rel="noopener">${esc(url)}</a> <button class="iconbtn" title="Copy" onclick="navigator.clipboard.writeText('${esc(url)}');this.textContent='✓'">📋</button>`
+    : '<span style="color:var(--ink3);">🔗 A stable share link is created the first time this episode goes to YouTube.</span>';
+}
+async function pubYtSetUrl(btn) {
+  const v = document.getElementById('pubYtPaste').value.trim(), msg = document.getElementById('pubYtMsg');
+  if (!v) { msg.textContent = 'Paste the YouTube video link first.'; return; }
+  btn.disabled = true;
+  try { const r = await w('setYouTubeUrl', { assetId: PUB_LF.assetId, url: v }); pubYtShowLink(r.youtubeUrl); pubYtShowWatch(r.watchLink); document.getElementById('pubYtPaste').value = ''; msg.style.color = 'var(--fresh)'; msg.textContent = '✓ Saved — the stable link now opens this video.'; }
+  catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
+  btn.disabled = false;
+}
 function pubYtConnect() {
   if (!PUB_YT || !PUB_YT.connectUrl) return;
   window.open(PUB_YT.connectUrl, '_blank', 'noopener');
@@ -6468,7 +6487,7 @@ async function pubYtPublish(btn) {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Uploading…'; msg.style.color = 'var(--ink3)'; msg.textContent = 'Uploading the video to YouTube — a minute or two for a long episode…';
   try {
     const r = await w('publishYouTube', { assetId: PUB_LF.assetId, privacy, ...(when ? { publishAt: new Date(when).toISOString() } : {}) });
-    pubYtShowLink(r.url);
+    pubYtShowLink(r.url); pubYtShowWatch(r.watchLink);
     msg.style.color = 'var(--fresh)';
     msg.innerHTML = `✓ Uploaded (${esc(r.publishAt ? 'scheduled ' + new Date(r.publishAt).toLocaleString() : r.privacy)}) — <a class="kwlink" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.url)}</a> · thumbnail ${esc(r.thumbnail)}`;
   } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'YouTube upload failed: ' + e.message; }

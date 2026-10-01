@@ -1028,6 +1028,23 @@ function hubSectionOf(props) {
 // YT_OAUTH_CLIENT_SECRET (a Google Cloud "Web application" OAuth client; redirect URI = <worker>/?ytauth=cb).
 const YT_SCOPES = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly";
 function ytRedirect(request) { const u = new URL(request.url); return `${u.origin}/?ytauth=cb`; }
+// 🔗 Stable watch links (YouTube Longform assets): <worker>/w/<slug> → 302 to the asset's CURRENT YouTube video,
+// so re-uploads never break shared links (YouTube itself can't redirect old video URLs). KV w:<slug> = {assetId, url};
+// asset property "Watch Link". 302 not 301: browsers cache a 301 forever, which would pin viewers to an old video.
+async function lfWatchLink(env, origin, aid, props, targetUrl) {
+  aid = String(aid || "").replace(/-/g, "");
+  let slug = ""; try { slug = (await env.TRADES.get("w:asset:" + aid)) || ""; } catch (e) {}
+  if (!slug) {
+    const t = (props?.["Platform Title"]?.rich_text || []).map(x => x.plain_text).join("") || (props?.["Asset Title"]?.title || []).map(x => x.plain_text).join("").replace(/^YouTube — /, "");
+    const base = (String(t).toLowerCase().replace(/&/g, " and ").replace(/[^a-z0-9]+/g, "-").replace(/^(the|a|an)-/, "").replace(/^-+|-+$/g, "").slice(0, 60).replace(/-+$/, "")) || "episode";
+    slug = base;
+    for (let k = 2; k < 50; k++) { const hit = await env.TRADES.get("w:" + slug, "json").catch(() => null); if (!hit || hit.assetId === aid) break; slug = `${base}-${k}`; }
+    await env.TRADES.put("w:asset:" + aid, slug);
+  }
+  const prev = await env.TRADES.get("w:" + slug, "json").catch(() => null);
+  await env.TRADES.put("w:" + slug, JSON.stringify({ assetId: aid, url: targetUrl || prev?.url || "", at: Date.now() }));
+  return `${origin}/w/${slug}`;
+}
 async function ytAccessToken(env, cid) {
   const rec = await env.TRADES.get("yt:tok:" + cid, "json");
   if (!rec) throw new Error("YouTube isn't connected for this campaign yet — press Connect YouTube");
@@ -9693,6 +9710,17 @@ export default {
       catch (e) { console.error("hfhook", aid, e.message); return new Response("error", { status: 500 }); }
     }
 
+    // ── 🔗 /w/<slug> → the episode's current YouTube video (302) ──
+    {
+      const u = new URL(request.url);
+      const m = u.pathname.match(/^\/w\/([a-z0-9-]{1,80})\/?$/);
+      if (m && request.method === "GET") {
+        const rec = await env.TRADES.get("w:" + m[1], "json").catch(() => null);
+        if (rec && rec.url) return new Response(null, { status: 302, headers: { Location: rec.url, "Cache-Control": "no-store" } });
+        return new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font:16px system-ui;padding:40px;text-align:center">${rec ? "This video is coming soon." : "Video not found."}</body>`, { status: rec ? 200 : 404, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" } });
+      }
+    }
+
     // ── YouTube OAuth: ?ytauth=start&c=<cid>&s=<HMAC("yt:"+cid)> → Google; ?ytauth=cb&code&state → store the token ──
     {
       const u = new URL(request.url), ya = u.searchParams.get("ytauth");
@@ -15460,7 +15488,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
         return json({ success: true, render: spec.render || {}, format: spec.format, question: spec.question, segments: spec.segments.length,
           words: spec.segments.reduce((n2, x) => n2 + String(x.text || "").split(/\s+/).length, 0),
-          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", youtubeUrl: page.properties["YouTube URL"]?.url || "", voices: LF_VOICES, job,
+          background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", youtubeUrl: page.properties["YouTube URL"]?.url || "", watchLink: page.properties["Watch Link"]?.url || "", voices: LF_VOICES, job,
           scenes: spec.segments.map((x, i) => ({ i, kind: x.kind, name: x.name || "", images: x.images || [] })).filter(x => x.kind === "hook" || x.kind === "item") });
       }
 
@@ -15658,11 +15686,12 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
             thumb = ts.ok ? "set" : "not set (" + ((await ts.json().catch(() => ({}))).error?.message || ts.status) + ")";
           } catch (e) { thumb = "not set (" + e.message + ")"; }
         }
-        await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "YouTube URL": { type: "url" } }).catch(() => {});
+        const watch = await lfWatchLink(env, new URL(request.url).origin, aid, pr, ytUrl);
+        await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "YouTube URL": { type: "url" }, "Watch Link": { type: "url" } }).catch(() => {});
         await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "YouTube URL": { url: ytUrl }, "Asset Status": { select: { name: "Published" } } } }) }).catch(() => {});
+          body: JSON.stringify({ properties: { "YouTube URL": { url: ytUrl }, "Watch Link": { url: watch }, "Asset Status": { select: { name: "Published" } } } }) }).catch(() => {});
         await stampPublishingDate(aid);
-        return json({ ok: true, videoId: vd.id, url: ytUrl, privacy: status.privacyStatus, publishAt: status.publishAt || null, thumbnail: thumb, uploadStatus: vd.status?.uploadStatus || "" });
+        return json({ ok: true, videoId: vd.id, url: ytUrl, watchLink: watch, privacy: status.privacyStatus, publishAt: status.publishAt || null, thumbnail: thumb, uploadStatus: vd.status?.uploadStatus || "" });
       }
       // ── 🔎 Fact check (longform scripts) ── operator 2026-10-01: "without overly rewriting my voice, fact check my
       // ideas against dominant expert opinions and publish a finding". Pass 1 pulls the checkable claims (exact quotes);
@@ -15768,6 +15797,24 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { "Post Caption": { rich_text: lfRich(next.slice(0, 4900)) } } }) });
         return json({ ok: true, added: Math.min(6, srcs.length) });
+      }
+      // setYouTubeUrl {assetId, url?} → saves a YouTube link uploaded by hand (Studio) and points the stable watch
+      // link at it; with no url it just makes sure the watch link exists.
+      if (body.action === "setYouTubeUrl") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { url: pageUrl, page } = await lfLoadAsset(aid);
+        const raw = String(body.url || "").trim();
+        let yt = "";
+        if (raw) {
+          const id = (raw.match(/(?:v=|youtu\.be\/|shorts\/|live\/|embed\/)([A-Za-z0-9_-]{11})/) || [])[1];
+          if (!id) return json({ error: "That doesn't look like a YouTube video link" }, 400);
+          yt = "https://www.youtube.com/watch?v=" + id;
+        }
+        const watch = await lfWatchLink(env, new URL(request.url).origin, aid, page.properties, yt || page.properties["YouTube URL"]?.url || "");
+        await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "YouTube URL": { type: "url" }, "Watch Link": { type: "url" } }).catch(() => {});
+        await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ properties: { "Watch Link": { url: watch }, ...(yt ? { "YouTube URL": { url: yt } } : {}) } }) });
+        return json({ ok: true, watchLink: watch, youtubeUrl: yt || page.properties["YouTube URL"]?.url || "" });
       }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");
