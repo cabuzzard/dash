@@ -5603,13 +5603,17 @@ async function caLfLoadLastAnswers(btn) {
   if (typed && !confirm('Replace what is in the boxes now with your last saved answers?')) return;
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Loading…';
   try {
-    const r = await w('getLastInterviewAnswers', { campaignId: CAMPAIGN_ID });
+    const r = await w('getLastInterviewAnswers', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE ? CA_TITLE.id : undefined });
     if (!(r.qs || []).length) { msg.textContent = 'No saved answers found for this campaign.'; }
     else {
       CA_LF.iv.qs = r.qs;
+      if (r.question) CA_LF.iv.question = r.question;   // the title's saved interview belongs to its own episode question
       document.getElementById('caLfInterviewQs').innerHTML = r.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut();caLfIvMeter()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(r.answers[k] || '')}</textarea></label>`).join('');
       caLfIvDraftPut(); caLfIvMeter();
-      msg.textContent = `↩ Loaded ${r.qs.length} answers from ${new Date(r.at).toLocaleString()}. Press 💾 Save answers to keep them with this title.`;
+      const n = r.answers.filter(a => String(a || '').trim()).length;
+      msg.textContent = r.source === 'title'
+        ? `↩ Loaded this title's saved interview: ${n} answers (saved ${new Date(r.at).toLocaleString()}) for “${r.question}”.`
+        : `↩ Loaded your last interview session: ${n} answers (latest ${new Date(r.at).toLocaleString()}). Press 💾 Save answers to keep them with this title.`;
     }
   } catch (e) { msg.textContent = 'Load failed: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
@@ -5683,7 +5687,9 @@ async function runCreateAsset() {
         const prefill = useDraft ? draft.answers : (r.answers || []);
         document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" oninput="caLfIvDraftPut();caLfIvMeter()" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc(prefill[k] || '')}</textarea></label>`).join('');
         document.getElementById('caLfIvMsg').textContent = useDraft ? 'Restored your unsaved draft from this browser — press 💾 Save answers.'
-          : r.savedAt ? 'Restored your saved answers from ' + new Date(r.savedAt).toLocaleString() + '.' : 'Answers are kept in this browser as you type. 💾 Save answers stores them with the title and teaches your voice profile.';
+          : r.savedAt ? 'Restored your saved answers from ' + new Date(r.savedAt).toLocaleString() + '.'
+          : r.savedOther ? `This title already has a saved interview — ${r.savedOther.count} answers for “${r.savedOther.question}”. Press ↩ Load my last answers to bring it back.`
+          : 'Answers are kept in this browser as you type. 💾 Save answers stores them with the title and teaches your voice profile.';
         caLfIvMeter();
         document.getElementById('caLfInterview').style.display = 'block';
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer the interview above (a few sentences each), then Generate to write the script.';

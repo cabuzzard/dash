@@ -15105,16 +15105,25 @@ Give a YouTube title in that format. Call submit_questions.`;
       // saveLongformInterview {campaignId, titleId, question, interview:[{q,a}]} → keeps the
       // answers with the title (KV lfiv:<titleId>, restored by longformInterview for the same
       // question) and feeds them to the voice-learning engine as the operator's own words.
-      // getLastInterviewAnswers {campaignId} → the most recent batch of interview answers
-      // logged for this campaign (voice:samples:<cid>), questions included — the recovery path
-      // when a page reload lost the boxes.
+      // getLastInterviewAnswers {campaignId, titleId?} → the recovery path when a reload lost the
+      // boxes. 1) the title's own saved interview (lfiv:<titleId>, from 💾 Save answers) — the whole
+      // interview + its episode question; 2) else the latest interview SESSION logged for the
+      // campaign (voice:samples:<cid>: answers less than 90 min apart, latest answer per question).
       if (body.action === "getLastInterviewAnswers") {
         const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (body.titleId) {
+          let sv = null; try { sv = await env.TRADES.get("lfiv:" + String(body.titleId).replace(/-/g, ""), "json"); } catch (e) {}
+          if (sv && (sv.answers || []).some(a => String(a || "").trim())) return json({ ok: true, source: "title", question: sv.question, qs: sv.qs, answers: sv.answers, at: sv.at });
+        }
         let list = []; try { list = (await env.TRADES.get("voice:samples:" + cid, "json")) || []; } catch (e) {}
-        list = list.filter(x => /interview/i.test(x.source || ""));
+        list = list.filter(x => /interview/i.test(x.source || "")).sort((a, b) => a.ts - b.ts);
         if (!list.length) return json({ ok: true, qs: [], answers: [] });
-        const ts = list[list.length - 1].ts, batch = list.filter(x => x.ts === ts);
-        return json({ ok: true, qs: batch.map(x => x.q), answers: batch.map(x => x.a), at: ts });
+        let i = list.length - 1;
+        while (i > 0 && list[i].ts - list[i - 1].ts < 90 * 60 * 1000) i--;
+        const byQ = new Map();
+        for (const x of list.slice(i)) byQ.set(x.q, x);   // later answer to the same question wins
+        const sess = [...byQ.values()];
+        return json({ ok: true, source: "session", qs: sess.map(x => x.q), answers: sess.map(x => x.a), at: list[list.length - 1].ts });
       }
 
       if (body.action === "saveLongformInterview") {
@@ -15135,6 +15144,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         if (body.titleId && !body.fresh && !existing.length) {
           let sv = null; try { sv = await env.TRADES.get("lfiv:" + String(body.titleId).replace(/-/g, ""), "json"); } catch (e) {}
           if (sv && sv.question === q && (sv.qs || []).length) return json({ success: true, questions: sv.qs, answers: sv.answers || [], savedAt: sv.at, plan });
+          if (sv && (sv.answers || []).some(a => String(a || "").trim())) body.__savedOther = { question: sv.question, count: (sv.answers || []).filter(a => String(a || "").trim()).length, at: sv.at };
         }
         const want = isIv ? Math.min(40, Math.max(3, parseInt(body.count) || plan.needed)) : 0;
         const brief = body.campaignId ? await assembleImageBrief(env, { campaignId: body.campaignId }).catch(() => null) : null;
@@ -15154,7 +15164,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         if (!ir.ok) return json({ error: (idd.error && idd.error.message) || "Claude API error" }, 502);
         const qs = ((((idd.content || []).find(b => b.type === "tool_use") || {}).input || {}).questions || []).map(x => String(x).trim()).filter(Boolean);
         if (!qs.length) return json({ error: "No interview questions came back — try again" }, 502);
-        return json({ success: true, questions: qs, plan });
+        return json({ success: true, questions: qs, plan, savedOther: body.__savedOther || null });
       }
 
       if (body.action === "generateLongformScript") {
