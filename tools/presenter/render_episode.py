@@ -118,21 +118,37 @@ def cues(srt):
     return [(secs(a), secs(b), c.strip().replace("\n", " ")) for a, b, c in re.findall(r"(\S+) --> (\S+)\n(.+?)(?:\n\n|\Z)", txt, re.S)]
 
 ASK_GAP = 0.3                                # pause between the interviewer's question and the answer (s)
-def stretch_pauses(a, cs, scale):
-    """Lengthen the silences between caption cues by `scale` (cut at each gap's midpoint) and shift the cues.
-    Lets a voice be sped up while its pauses keep their old length (voice.pauseScale)."""
-    if scale <= 1.001 or len(cs) < 2: return a, cs
-    out, new, shift, last = [], [], 0.0, 0
-    for k, (s, e, c) in enumerate(cs):
-        if k > 0:
-            ps, gap = cs[k - 1][1], s - cs[k - 1][1]
-            if gap > 0.04:
-                mid = min(len(a), int((ps + gap / 2) * SR))
-                out.append(a[last:mid]); last = mid
-                extra = gap * (scale - 1); out.append(np.zeros(int(extra * SR), np.int16)); shift += extra
-        new.append((s + shift, e + shift, c))
+def tempo_pcm(a, cs, tempo):
+    """Pitch-preserving speed change (ffmpeg atempo) for exact, non-integer steps; cue times follow."""
+    if not tempo or abs(tempo - 1) < 0.001: return a, cs
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-", "-filter:a", f"atempo={tempo:.4f}",
+                          "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=a.tobytes(), capture_output=True).stdout
+    return np.frombuffer(raw, np.int16), [(s / tempo, e / tempo, c) for s, e, c in cs]
+def stretch_pauses(a, cs, scale, min_sil=0.12):
+    """Lengthen the real silences inside the speech by `scale` and shift the caption cues to match.
+    Silences are found in the audio itself (10 ms frames below a loudness floor, at least `min_sil` long,
+    not at the very start/end) — caption cues butt up against each other, so their gaps can't be used."""
+    if scale <= 1.001 or len(a) < SR // 2: return a, cs
+    fr = int(0.01 * SR); n = len(a) // fr
+    rms = np.sqrt(np.mean(a[:n * fr].astype(np.float32).reshape(n, fr) ** 2, axis=1))
+    thr = max(150.0, 0.06 * float(np.percentile(rms, 95)))
+    quiet = rms < thr
+    runs, k = [], 0
+    while k < n:
+        if quiet[k]:
+            j = k
+            while j < n and quiet[j]: j += 1
+            if j - k >= int(min_sil * 100) and k > 0 and j < n: runs.append((k * fr, j * fr))
+            k = j
+        else: k += 1
+    if not runs: return a, cs
+    out, last, ins = [], 0, []
+    for s0, s1 in runs:
+        mid = (s0 + s1) // 2; extra = int((s1 - s0) * (scale - 1))
+        out += [a[last:mid], np.zeros(extra, np.int16)]; ins.append((mid / SR, extra / SR)); last = mid
     out.append(a[last:])
-    return np.concatenate(out), new
+    shift = lambda t: t + sum(e for at, e in ins if at <= t)
+    return np.concatenate(out), [(shift(s0), shift(e0), c) for s0, e0, c in cs]
 def build_audio(ep, work):
     voice = ep.get("voice") or {}
     voice2 = ep.get("voice2")                # interview format: a second voice asks seg["ask"]
@@ -160,6 +176,7 @@ def build_audio(ep, work):
             t += dq + ASK_GAP
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
         a, cs = stretch_pauses(decode(mp3), cues(srt), float(voice.get("pauseScale") or 1))
+        a, cs = tempo_pcm(a, cs, float(voice.get("tempo") or 1))   # applied after: it scales pauses by 1/tempo too
         dur = len(a) / SR
         timeline.append((t_start, t + dur, seg))
         caps += [(t + s, t + e, c) for s, e, c in cs]
