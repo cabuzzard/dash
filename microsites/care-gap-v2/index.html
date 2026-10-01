@@ -547,7 +547,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             </div>
           </div>
           <div id="caLfPickRow" style="display:none;gap:8px;align-items:center;margin-top:6px;">
-            Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;"><option value="ranked">Ranked list (score /10)</option><option value="tier">Tier list (S–D)</option><option value="verdict">Verdict (is it worth it?)</option></select>
+            Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;" onchange="document.getElementById('caLfItems').value = (CA_LF_FORMATS[this.value] || {}).items || 7"></select>
             Items <input id="caLfItems" type="number" min="3" max="12" value="9" class="finput" style="width:56px;font-size:11px;">
           </div>
         </div>
@@ -5549,7 +5549,7 @@ async function caLfFindQuestions(btn) {
 }
 function caLfRender() {
   const el = document.getElementById('caLfQuestions'); if (!el) return;
-  const fmtLbl = { ranked: 'ranked', tier: 'tier list', verdict: 'verdict' };
+  const fmtLbl = Object.fromEntries(Object.entries({ ...CA_LF_FORMATS, ...CA_LF_LEGACY }).map(([k, v]) => [k, v.label.replace(/ — legacy$/, '')]));
   el.innerHTML = CA_LF.questions.map((q, i) => `<label style="display:block;padding:6px 8px;margin-bottom:4px;border:1px solid ${i === CA_LF.pick ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:6px;cursor:pointer;">
       <input type="radio" name="caLfQ" ${i === CA_LF.pick ? 'checked' : ''} onchange="caLfPick(${i})" style="margin-right:6px;"><b>${esc(q.question)}</b>
       <div style="color:var(--ink3);margin:2px 0 0 20px;">🎬 ${esc(q.title)} · <i>${esc(fmtLbl[q.format] || q.format)}</i>${q.evidence ? ` · ${esc(q.evidence)}` : ''}${(q.sources || []).length ? ` · ${esc(q.sources.join(', '))}` : ''}</div></label>`).join('');
@@ -5592,12 +5592,28 @@ async function caLfSaveInterview(btn) {
   } catch (e) { caLfIvDraftPut(); msg.textContent = 'Save failed: ' + e.message + ' — your answers are still here and kept in this browser.'; }
   btn.disabled = false; btn.textContent = o;
 }
+// Mirrors worker LF_FORMATS (live ones; tier/verdict are legacy and only shown for old picks).
+const CA_LF_FORMATS = {
+  ranked: { label: 'Ranked list (scored /10)', items: 9 },
+  explainer: { label: 'Explainer (how / why it really works)', items: 6 },
+  whatif: { label: 'What happens if… (scenario timeline)', items: 7 },
+  theory: { label: 'Theory / book breakdown', items: 6 },
+  story: { label: 'Story / case study (rise & fall)', items: 7 },
+  myths: { label: 'Myth-busting (the truth about…)', items: 7 },
+  playbook: { label: "Playbook (how I'd do it, step by step)", items: 7 },
+};
+const CA_LF_LEGACY = { tier: { label: 'Tier list (S–D) — legacy', items: 9 }, verdict: { label: 'Verdict (is it worth it?) — legacy', items: 7 } };
+function caLfFormatOptions(cur) {
+  const all = { ...CA_LF_FORMATS, ...(CA_LF_LEGACY[cur] ? { [cur]: CA_LF_LEGACY[cur] } : {}) };
+  document.getElementById('caLfFormat').innerHTML = Object.entries(all).map(([k, v]) => `<option value="${k}" ${k === cur ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
+}
+caLfFormatOptions('ranked');
 function caLfPick(i) {
   CA_LF.pick = i;
   CA_LF.iv = null; document.getElementById('caLfInterview').style.display = 'none';
   const f = CA_LF.questions[i].format || 'ranked';
-  document.getElementById('caLfFormat').value = f;
-  document.getElementById('caLfItems').value = f === 'verdict' ? 7 : 9;
+  caLfFormatOptions(f);
+  document.getElementById('caLfItems').value = ({ ...CA_LF_FORMATS, ...CA_LF_LEGACY }[f] || {}).items || 7;
   caLfRender();
 }
 async function runCreateAsset() {

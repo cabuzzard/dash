@@ -1167,6 +1167,50 @@ const HF_TEMPLATES = {
 // which pulls the episode from ?lfspec, reports ?lfstatus, and POSTs the MP4 to ?lfdone —
 // every call HMAC-signed per asset ("lf:"+assetId). KV lfrender:<assetId> = job status.
 const LF_REPO = "cabuzzard/dash";
+// Episode formats. Picked from a 2026-09-30 study of ~5,200 long videos on 17 faceless
+// explainer channels (views vs each channel's own median): what-if 1.5-1.8x, theory/book
+// breakdowns 1.1-1.2x, story/rise-and-fall 1.2x, ranked lists 1.1-1.3x, myth-busting 1.0x
+// with a high top-10% share, playbooks top-10% 31% recently; tier lists, versus and
+// verdict videos underperformed (0.6-0.9x) — kept as legacy only. docs/longform-formats.md.
+// Every format renders with the same item cards (#n, name, blurb; pay/score/tier optional).
+const LF_FORMATS = {
+  ranked: { label: "Ranked list (scored /10)", items: 9, use: "the viewer is choosing between options — which X should I pick",
+    titles: '"[N] [Things] That [Payoff]", "The Best [Things] For [Who], Ranked", "The Most [Adjective] [Things]"',
+    rule: n => `RANKED LIST: ${n} items, each with an opportunity "score" out of 10 (one decimal) and the reason; count down so the best comes last.`,
+    beats: "name → \"if you've ever wondered who…\" → what it actually is → a vivid analogy → cost, pay or time range with where it comes from (only if relevant) → requirements → one proof story (\"people in forums report…\", never a fake named person) → two or three pros and cons → the score and why" },
+  explainer: { label: "Explainer (how / why it really works)", items: 6, use: "the viewer wants to understand why or how something happens",
+    titles: '"Why [X] [Surprising Thing]", "How [X] Actually Works", "What [X] Does To Your [Brain / Body / Business]"',
+    rule: n => `EXPLAINER: ${n} chapters, each answering one sub-question that builds toward the full answer; the last chapter lands the "so what" for the viewer. No scores.`,
+    beats: "chapter title as a short sub-question → the plain answer in one sentence → a vivid analogy → the mechanism or evidence behind it → one real, recognizable example → what it means for the viewer" },
+  whatif: { label: "What happens if… (scenario timeline)", items: 7, use: "the question imagines doing, stopping or facing something — what happens if / what would happen",
+    titles: '"What Happens If You [X] For [Time]", "What If [X]?", "[X] Hour By Hour"',
+    rule: n => `WHAT-IF TIMELINE: ${n} stages that move forward in time or escalate (e.g. "First hour", "Day 3", "Week 2", "Month 6", "Year 1"); each item's "name" is the stage marker. No scores.`,
+    beats: "the stage marker → what changes at this point → why it happens (the mechanism) → what it feels like from the inside → the turning point that leads to the next stage" },
+  theory: { label: "Theory / book breakdown", items: 6, use: "the answer is best told through a named theory, book, thinker or framework",
+    titles: '"[Thinker]\'s Theory of [X]", "The Psychology of [X]", "[Book] Summary: [Payoff]"',
+    rule: n => `THEORY BREAKDOWN: ${n} key ideas from a REAL, well-known theory, book, thinker or framework (name it in the hook; never invent a source or a quote). No scores.`,
+    beats: "the idea's name → the idea in one plain sentence → where it comes from and the context → a modern, everyday example → how the viewer applies it this week → the common misreading of it" },
+  story: { label: "Story / case study (rise & fall)", items: 7, use: "the answer is best shown through what happened to a real person, company or event — or the narrator's own story",
+    titles: '"The Rise and Fall of [X]", "What Really Happened to [X]", "How [X] Went From [A] to [B]"',
+    rule: n => `STORY: ${n} chronological chapters about a REAL, documented person, company or event — or the narrator's own story from the interview. Never invent named people, quotes or numbers. No scores.`,
+    beats: "chapter title → the scene (where and when) → the decision or turning point → what it led to → the lesson the viewer can use" },
+  myths: { label: "Myth-busting (the truth about…)", items: 7, use: "the viewer has absorbed common advice or beliefs that are wrong or incomplete",
+    titles: '"[N] Lies You\'ve Been Told About [X]", "The Truth About [X]", "[X] Is Not What You Think"',
+    rule: n => `MYTH-BUSTING: ${n} myths, weakest to most damaging; each item's "name" is the myth as people say it. No scores.`,
+    beats: "the myth, phrased the way people say it → why people believe it → what's actually true and the evidence → what to do instead → a one-line verdict" },
+  playbook: { label: "Playbook (how I'd do it, step by step)", items: 7, use: "the viewer wants a plan — how do I / how would you; best when the interview has real experience",
+    titles: '"How I\'d [Goal] If I Started Over", "The [N]-Day Plan To [X]", "[X]: Just Copy Me"',
+    rule: n => `PLAYBOOK: ${n} steps or phases in order, built on the narrator's own experience from the interview where possible; each item's "name" is the step. No scores.`,
+    beats: "the step name → exactly what to do in this step → why it matters → a concrete example or number from the narrator's experience (never invented) → the mistake to avoid → how you know it worked" },
+  // legacy (no longer offered): kept so older episodes regenerate the same way
+  tier: { legacy: true, label: "Tier list (S–D)", items: 9, use: "", titles: "",
+    rule: n => `TIER LIST: ${n} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`,
+    beats: "name → what it actually is → a vivid analogy → requirements → one proof story → pros and cons → the tier and why" },
+  verdict: { legacy: true, label: "Verdict (is it worth it?)", items: 7, use: "", titles: "",
+    rule: n => `VERDICT: ${n} points that build to a clear yes/no/"only if" answer; each point is an item with a short "name" (the point) and no pay/score unless genuinely relevant.`,
+    beats: "the point → why it matters → evidence → who it applies to → how it tips the verdict" },
+};
+const LF_FORMAT_KEYS = Object.keys(LF_FORMATS).filter(k => !LF_FORMATS[k].legacy);
 // engine "elevenlabs" voices render via ElevenLabs on GitHub Actions (repo secret ELEVENLABS_API_KEY);
 // the rest are free edge-tts. Mwz 106 = Mountainwize narrator, remixed from the measured channel average.
 const LF_DEFAULT_VOICE = "GDy9DZAjVXkKzjkBkH0d";
@@ -15009,12 +15053,14 @@ ${autoUniq.map(x => `- ${x.q} [${x.src}]`).join("\n").slice(0, 6000)}
 YOUTUBE OUTLIERS (videos pulling N× their channel's average — proven demand):
 ${outliers.map(o2 => `- "${o2.title}" — ${o2.views.toLocaleString("en-US")} views, ${o2.ratio.toFixed(1)}× channel avg`).join("\n") || "(none)"}
 ${demand ? `\nSEARCH DEMAND (Google Ads keyword data):\n${demand.slice(0, 3000)}\n` : ""}
-Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show up in more than one source, have real demand, and carry money intent (someone would pay to have it answered). Phrase each as the viewer would ask it. For each choose the format: "ranked" (which X should I… → N items scored /10), "tier" (which are best/worst → items placed S/A/B/C/D), or "verdict" (is X worth it → one deep answer in 6-8 points). Give a YouTube title in that format (the Shane formulas: "[N] [Unappealing] But [Payoff] [Things] (Always Hiring)", "[Category] Tier List", "Top N [Things] That Are Actually Worth It", "Is [X] Worth It?"). Call submit_questions.`;
+Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show up in more than one source, have real demand, and carry money intent (someone would pay to have it answered). Phrase each as the viewer would ask it. For each choose the format that fits the question best — spread across formats when several fit:
+${LF_FORMAT_KEYS.map(k => `- "${k}": ${LF_FORMATS[k].label} — use when ${LF_FORMATS[k].use}. Title patterns: ${LF_FORMATS[k].titles}`).join("\n")}
+Give a YouTube title in that format. Call submit_questions.`;
         const qr = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: qPrompt }],
             tools: [{ name: "submit_questions", description: "The ranked question bank.", input_schema: { type: "object", required: ["questions"], properties: { questions: { type: "array", items: { type: "object", required: ["question", "format", "title"], properties: {
-              question: { type: "string" }, format: { type: "string", enum: ["ranked", "tier", "verdict"] }, title: { type: "string" },
+              question: { type: "string" }, format: { type: "string", enum: LF_FORMAT_KEYS }, title: { type: "string" },
               sources: { type: "array", items: { type: "string" } }, evidence: { type: "string", description: "one line: why this has demand" } } } } } } }],
             tool_choice: { type: "tool", name: "submit_questions" } }),
         });
@@ -15075,10 +15121,10 @@ Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show u
 
       if (body.action === "generateLongformScript") {
         const { titleId, campaignId, methodId, question } = body;
-        const format = ["ranked", "tier", "verdict"].includes(body.format) ? body.format : "ranked";
+        const format = LF_FORMATS[body.format] ? body.format : "ranked";
         const layout = body.layout === "stage" ? "stage" : "presenter";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
-        const items = Math.min(Math.max(parseInt(body.items) || (format === "verdict" ? 7 : 9), 3), 12);
+        const items = Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 12);
         if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
         if (interview.length) await voiceLogSamples(env, ctx, campaignId, "longform interview", interview).catch(e => console.error("voiceLogSamples", e.message));
         const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
@@ -15093,11 +15139,7 @@ Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show u
         ]);
         const prodFacts = researchRec ? STRATEGY_FIELDS.map(f => { const v = lfReadRich(researchRec.properties?.[f]); return v && `${f}: ${v}`; }).filter(Boolean).join("\n") : "";
         const campFacts = brief ? brief.facts.filter(f => /^MAIN KEYWORDS|^Campaign Research/.test(f)).join("\n").slice(0, 6000) : "";
-        const fmtRule = format === "tier"
-          ? `TIER LIST: ${items} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`
-          : format === "verdict"
-          ? `VERDICT: ${items} points that build to a clear yes/no/"only if" answer; each point is an item with a short "name" (the point) and no pay/score unless genuinely relevant.`
-          : `RANKED LIST: ${items} items, each with an opportunity "score" out of 10 (one decimal) and the reason.`;
+        const fmtRule = LF_FORMATS[format].rule(items);
         const sPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}Write a complete 12-15 minute faceless YouTube episode script answering this viewer question:
 
 QUESTION: ${String(question).trim()}
@@ -15105,8 +15147,8 @@ FORMAT — ${fmtRule}
 ${hasMethod && methodText ? `\nMETHOD (follow it):\n${methodText.slice(0, 5000)}\n` : ""}
 STRUCTURE (the Shane Hummus model — the narrator is an animated presenter; the words are spoken aloud):
 1. HOOK (~40 s): a contrarian premise sentence, a specific promise (numbers, "no degree", "weeks not years"), an authority line built on sourcing ("every number here is sourced"), one soft ask to like the video, then "let's jump into it".
-2. ITEMS: each item is ONE segment of ~60-90 s of narration, always in this order: name → "if you've ever wondered who…" → what it actually is → a vivid analogy → pay/cost range with where it comes from → skills or requirements → one proof story (a real-sounding but NOT invented-specific example: "people in forums report…", never a fake named person) → two or three pros and cons → the score/tier and why.
-3. ASKS: after item 1 or 2 a like ask; mid-way a comment question ("which one fits you?"); once, a free-resource mention; before the last item a subscribe ask. Each ask is its own short segment.
+2. ITEMS: each item is ONE segment of ~60-90 s of narration, always in this order: ${LF_FORMATS[format].beats}. Give each item "n" (1, 2, 3…), a short "name" for the on-screen card and a "blurb"; "pay"/"payPct" only when a money or time range is genuinely part of the point, "score"/"tier" only when the format calls for it.
+3. ASKS: after item 1 or 2 a like ask; mid-way a comment question that fits the format (e.g. "which one fits you?", "have you been through this stage?", "which myth did you believe?"); once, a free-resource mention; before the last item a subscribe ask. Each ask is its own short segment.
 4. OUTRO (~20 s): recap in one line, point to the next video. No long goodbye.
 5. PICTURES: the hook and every item get 1-3 "images" — concrete scenes that illustrate what is being said at that moment (a person doing the job, the place, the tool). Each image's "cue" is 4-8 words copied exactly from that segment's narration, in its first 70%.
 Narration is spoken English: short sentences, contractions, numbers written out as words. Never invent statistics — only use figures in the research below or widely known published ranges, and say "around".
