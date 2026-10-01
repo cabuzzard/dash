@@ -118,6 +118,21 @@ def cues(srt):
     return [(secs(a), secs(b), c.strip().replace("\n", " ")) for a, b, c in re.findall(r"(\S+) --> (\S+)\n(.+?)(?:\n\n|\Z)", txt, re.S)]
 
 ASK_GAP = 0.3                                # pause between the interviewer's question and the answer (s)
+def stretch_pauses(a, cs, scale):
+    """Lengthen the silences between caption cues by `scale` (cut at each gap's midpoint) and shift the cues.
+    Lets a voice be sped up while its pauses keep their old length (voice.pauseScale)."""
+    if scale <= 1.001 or len(cs) < 2: return a, cs
+    out, new, shift, last = [], [], 0.0, 0
+    for k, (s, e, c) in enumerate(cs):
+        if k > 0:
+            ps, gap = cs[k - 1][1], s - cs[k - 1][1]
+            if gap > 0.04:
+                mid = min(len(a), int((ps + gap / 2) * SR))
+                out.append(a[last:mid]); last = mid
+                extra = gap * (scale - 1); out.append(np.zeros(int(extra * SR), np.int16)); shift += extra
+        new.append((s + shift, e + shift, c))
+    out.append(a[last:])
+    return np.concatenate(out), new
 def build_audio(ep, work):
     voice = ep.get("voice") or {}
     voice2 = ep.get("voice2")                # interview format: a second voice asks seg["ask"]
@@ -144,9 +159,10 @@ def build_audio(ep, work):
             pcm += [q, np.zeros(int(ASK_GAP * SR), np.int16)]
             t += dq + ASK_GAP
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
-        a = decode(mp3); dur = len(a) / SR
+        a, cs = stretch_pauses(decode(mp3), cues(srt), float(voice.get("pauseScale") or 1))
+        dur = len(a) / SR
         timeline.append((t_start, t + dur, seg))
-        caps += [(t + s, t + e, c) for s, e, c in cues(srt)]
+        caps += [(t + s, t + e, c) for s, e, c in cs]
         pcm += [a, np.zeros(int(GAP * SR), np.int16)]
         t += dur + GAP
         print(f"tts {i + 1}/{len(ep['segments'])} {t - t_start:.1f}s", flush=True)
@@ -227,6 +243,7 @@ def main(ep_path, out, work):
     dpath = google_ttf(fonts.get("display"), 700, work); bpath = google_ttf(fonts.get("body"), 600, work)
     F_BIG, F_TTL, F_TXT, F_SM, F_CAP = font(dpath, 118), font(dpath, 56), font(bpath, 32), font(bpath, 29), font(bpath, 40)
     F_TTL2 = font(dpath, 44)
+    F_NUM = font(dpath, 72)
 
     audio, timeline, caps, wav, mute = build_audio(ep, work)
     a = audio.astype(np.float32) / 32768
@@ -257,6 +274,7 @@ def main(ep_path, out, work):
     fmt = ep.get("format", "ranked")
     cap_w = chx + pl.get("figureLeftEdge", 330) - 80 - 40   # captions run up to the presenter
     STAGE_LAYOUT = ep.get("layout") == "stage"                  # "Text & Images": no presenter, big centred frame
+    CAP_Y = 840                                                  # baseline row of the last caption line (was 930 — too low)
     BX = (W - 760) // 2 if STAGE_LAYOUT else 80                  # where cards / titles / pills rest
     if STAGE_LAYOUT: cap_w = 1560
 
@@ -296,16 +314,33 @@ def main(ep_path, out, work):
             if s_ <= t <= e_ + 0.35: return s_, e_, pic
         return None
 
+    def card_panel(layer, h):
+        out = Image.new("RGBA", (760, h), (0, 0, 0, 0))
+        ImageDraw.Draw(out).rounded_rectangle([0, 0, 759, h - 1], 24, fill=PANEL + (228,), outline=ACC, width=3)
+        out.alpha_composite(layer.crop((0, 0, 760, h)))
+        return out
+
+    def title_card(text):
+        lay = Image.new("RGBA", (760, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
+        y = 22
+        lines = wrap(td, text, F_TTL, 680); f_, lh = F_TTL, 64
+        if len(lines) > 3: lines = wrap(td, text, F_TTL2, 680); f_, lh = F_TTL2, 52
+        for ln in lines[:4]:
+            lx = (760 - int(td.textlength(ln, font=f_))) // 2 if STAGE_LAYOUT else 40
+            td.text((lx, y), ln, font=f_, fill=INK); y += lh
+        return card_panel(lay, y + 20)
+
     def item_card(seg, k, t0, t1, t):
         card = Image.new("RGBA", (760, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
-        cd.rounded_rectangle([0, 0, 759, 599], 28, fill=PANEL + (228,), outline=ACC, width=3)
-        y = 26
-        if seg.get("n") is not None: cd.text((40, y), f"#{seg['n']}", font=F_BIG, fill=ACC); y += 140
+        y = 20
+        if seg.get("n") is not None: cd.text((40, y), f"#{seg['n']}", font=F_NUM, fill=ACC); y += 84
         nm = wrap(cd, seg.get("name", ""), F_TTL, 680); fnm, lh = F_TTL, 66
         if len(nm) > 2: nm = wrap(cd, seg.get("name", ""), F_TTL2, 680); fnm, lh = F_TTL2, 52
         for ln in nm[:3]: cd.text((40, y), ln, font=fnm, fill=INK); y += lh
         y += 8
         for ln in wrap(cd, seg.get("blurb", ""), F_SM, 680)[:3]: cd.text((42, y), ln, font=F_SM, fill=SUB); y += 38
+        # final height is fixed up front (room for the pay bar / score that animate in) so the card never grows mid-shot
+        full_h = y + (104 if seg.get("pay") else 0) + (76 if (seg.get("score") is not None or seg.get("tier")) else 0) + 18
         p = (t - t0) / max(0.1, (t1 - t0))
         if seg.get("pay"):
             kp = ease((p - 0.28) / 0.12)
@@ -328,7 +363,7 @@ def main(ep_path, out, work):
                     full = n_ + 1 <= sc_ * ks
                     cd.rounded_rectangle([190 + n_ * 44, y + 2, 224 + n_ * 44, y + 34], 6, fill=ACC if full else (50, 60, 55))
                 if ks >= 1: cd.text((718, y), f"{sc_:g}", font=F_TXT, fill=INK, anchor="ra")
-        return card
+        return card_panel(card, min(600, full_h))
 
     def frame(i):
         t = i / FPS
@@ -348,12 +383,7 @@ def main(ep_path, out, work):
                 if shot_at(t) is None:
                     fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, 120))
             elif kind == "hook" and ep.get("title"):
-                ttl = Image.new("RGBA", (900, 420), (0, 0, 0, 0)); td = ImageDraw.Draw(ttl)
-                yy = 0
-                for ln in wrap(td, ep["title"], F_TTL, 860)[:4]:
-                    lx = (900 - int(td.textlength(ln, font=F_TTL))) // 2 if STAGE_LAYOUT else 0
-                    td.text((lx, yy), ln, font=F_TTL, fill=INK, stroke_width=3, stroke_fill=PANEL); yy += 70
-                fr.alpha_composite(ttl, (x - (70 if STAGE_LAYOUT else 0), 170))
+                fr.alpha_composite(title_card(ep["title"]), (x, 120))
             elif kind == "ask" and seg.get("label"):
                 tw = d.textlength(seg["label"], font=F_TXT)
                 d.rounded_rectangle([x, 150, x + tw + 60, 222], 36, fill=ACC)
@@ -380,9 +410,9 @@ def main(ep_path, out, work):
                 frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
                 lines = chunks[min(len(chunks) - 1, max(0, int(frac * len(chunks))))]
             for li, ln in enumerate(lines):
-                tw = d.textlength(ln, font=F_CAP); x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80; y = 930 - (len(lines) - 1 - li) * 62
+                tw = d.textlength(ln, font=F_CAP); x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80; y = CAP_Y - (len(lines) - 1 - li) * 62
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + 54], 12, fill=(10, 14, 12, 190))
-                d.text((x, y), ln, font=F_CAP, fill=ACC if cur.startswith("Q: ") else INK)
+                d.text((x, y), ln, font=F_CAP, fill=INK)
         return fr.convert("RGB")
 
     n = int((len(a) / SR + 0.6) * FPS)

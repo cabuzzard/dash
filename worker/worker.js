@@ -1288,7 +1288,7 @@ const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a
 // be the voice of my customer") — a younger male voice, operator's pick of three free voices.
 const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
-  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep & slow (free)", rate: "-28%", pitch: "-10Hz", wpm: 155 },   // -28% matches mwz3's 156 wpm on the same text
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep & slow (free)", rate: "-21%", pitch: "-10Hz", pauseScale: 1.1, wpm: 165, legacyRates: ["-28%"] },   // operator 2026-10-01: "speed him up ten percent but keep the pause length" (was -28%, sounded "almost drunk") → speech 10% faster, sentence pauses stretched back ×1.1
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
@@ -1347,7 +1347,8 @@ async function lfBuildEpisode(env, assetId) {
     character: r.character || "mountain-man",
     layout: r.layout === "stage" ? "stage" : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
-      return { engine: (v && v.engine) || "edge", id, rate: r.rate || (v && v.rate) || LF_DEFAULT_RATE, pitch: r.pitch || (v && v.pitch) || "+0Hz" }; })(),
+      const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
+      return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}) }; })(),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
@@ -15548,7 +15549,7 @@ ${stageLayout
   : `- an illustrated presenter stands over the RIGHT ~40%, from the bottom edge up to about 85% of the height
 - text cards (number, heading, key point) sit over the LEFT ~45%, from about 11% to 67% of the height
 - the hook title is drawn over the left-centre near the top`}
-- captions run across the BOTTOM ~15% of the frame on every shot
+- captions run across the lower third, about 70% to 85% of the height, on every shot
 So keep those zones calm, low-detail and low-contrast (soft sky, haze, distant land, plain ground) and let any interest live in the remaining edges and the far distance; a clear horizon, a setting, not a subject. WORDLESS — no text, letters, numbers, logos, UI or signage. No people.
 ${charStyle ? `ART STYLE (must match the presenter so it doesn't look pasted on): ${charStyle}\n` : ""}
 Obey this hub's image spec — palette, subjects, light, the "Never" list:
