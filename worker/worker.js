@@ -10330,7 +10330,8 @@ export default {
     // space every 15s, then the action's JSON. JSON.parse ignores the leading
     // whitespace, so callers need no change. HTTP status is always 200 here —
     // errors arrive as {error} like every other action.
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
+    // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
