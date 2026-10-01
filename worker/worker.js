@@ -15503,9 +15503,18 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         let charStyle = "";
         try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${(spec?.render?.character || "mountain-man").replace(/[^a-z0-9-]/g, "")}/character.json`).then(r => r.json()); charStyle = cj.style || ""; } catch (e) {}
         const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
+        const stageLayout = spec?.render?.layout === "stage";
         const cPrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — 60-110 words, one paragraph.
 
-WHAT IT IS: a WIDE 16:9 background scene for a talking-presenter YouTube video. An illustrated presenter stands over the RIGHT ~40% and info cards sit over the LEFT ~45%, so keep the whole frame calm, low-detail and uncluttered with a clear horizon — a setting, not a subject. WORDLESS — no text, letters, numbers, logos, UI or signage. No people.
+WHAT IT IS: a WIDE 16:9 background scene for a ${stageLayout ? "faceless YouTube video" : "talking-presenter YouTube video"}. WHERE THINGS SIT ON TOP OF IT (the renderer's real layout):
+${stageLayout
+  ? `- a large framed picture/text panel covers the CENTRE (about 75% of the width, from 5% to 80% of the height) — only the outer margins of the background stay visible
+- the title is drawn centred near the top`
+  : `- an illustrated presenter stands over the RIGHT ~40%, from the bottom edge up to about 85% of the height
+- text cards (number, heading, key point) sit over the LEFT ~45%, from about 11% to 67% of the height
+- the hook title is drawn over the left-centre near the top`}
+- captions run across the BOTTOM ~15% of the frame on every shot
+So keep those zones calm, low-detail and low-contrast (soft sky, haze, distant land, plain ground) and let any interest live in the remaining edges and the far distance; a clear horizon, a setting, not a subject. WORDLESS — no text, letters, numbers, logos, UI or signage. No people.
 ${charStyle ? `ART STYLE (must match the presenter so it doesn't look pasted on): ${charStyle}\n` : ""}
 Obey this hub's image spec — palette, subjects, light, the "Never" list:
 ${ispec}
