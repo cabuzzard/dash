@@ -998,6 +998,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="iconbtn" onclick="openPublishFieldLink('pubThumbBgSource')" title="Open the wordless background">↗</button>
                 <button class="iconbtn" onclick="copyPublishField('pubThumbBgSource', this)" title="Copy the wordless background link">📋</button>
                 <button class="iconbtn" onclick="openBackgroundPicker('thumbnail')" title="Choose a previously saved background">🖼️ Choose</button>
+                <label class="iconbtn" style="cursor:pointer;" title="Upload your own picture as the thumbnail background (16:9, 1280×720 or larger)">⬆ Upload<input type="file" accept="image/*" style="display:none;" onchange="pubThumbUpload(this)"></label>
                 <input type="hidden" id="pubThumbBgSource">
               </div>
               <textarea id="pubBlogThumbPrompt" rows="2" readonly placeholder="Prompt appears here after Generate" style="display:none;width:100%;margin-top:5px;font-size:10.5px;opacity:.85;"></textarea>
@@ -6560,6 +6561,18 @@ async function pubThumbApply(save) {
   document.getElementById('pubThumbnailTextBtn').style.display = '';
   document.getElementById('pubThumbnailEditBtn').style.display = '';
   return s.url;
+}
+async function pubThumbUpload(inp) {
+  const f = inp.files && inp.files[0]; if (!f) return;
+  const st = document.getElementById('pubBlogThumbStatus');
+  if (f.size > 14 * 1024 * 1024) { st.textContent = 'That image is over 14 MB — pick a smaller one.'; inp.value = ''; return; }
+  st.style.color = 'var(--ink3)'; st.textContent = 'Uploading…';
+  try {
+    const dataUrl = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(f); });
+    await pubThumbApply({ fileData: dataUrl, contentType: f.type || 'image/jpeg' });
+    st.style.color = 'var(--fresh)'; st.textContent = '✓ Uploaded — 🔤 Add title text or 🎯 Preview & Edit to put the words on it.';
+  } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Upload failed: ' + e.message; }
+  inp.value = '';
 }
 async function pubThumbGenDir(btn, direction) {
   const o = btn.textContent, msg = document.getElementById('lfBgMsg'); btn.disabled = true; btn.textContent = '✨ Generating…'; msg.textContent = '';
