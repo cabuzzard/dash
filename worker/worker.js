@@ -1229,19 +1229,20 @@ async function lfInterviewPlan(env, campaignId) {
   if (xs.length < 3) xs = xs.concat((await get("voice:samples:all")).filter(x => /interview/i.test(x.source || "") && x.cid !== cid));
   const words = xs.map(x => String(x.a || "").split(/\s+/).filter(Boolean).length).filter(n => n >= 5);
   const avgWords = words.length ? Math.round(words.reduce((a, b) => a + b, 0) / words.length) : LF_PLAN.fallbackWords;
-  const wpm = Math.round(185 / 0.96 * (1 + parseInt((LF_VOICES.find(v => v.id === LF_DEFAULT_VOICE) || {}).rate || LF_DEFAULT_RATE) / 100));
+  const dv = LF_VOICES.find(v => v.id === LF_DEFAULT_VOICE) || {};
+  const wpm = dv.wpm || Math.round(185 / 0.96 * (1 + parseInt(dv.rate || LF_DEFAULT_RATE) / 100));
   const secsPerQuestion = avgWords * LF_PLAN.keep / wpm * 60 + LF_PLAN.perQuestionSecs;
   const needed = Math.min(40, Math.max(6, Math.ceil((LF_PLAN.targetSecs - LF_PLAN.frameSecs) / secsPerQuestion)));
   return { ...LF_PLAN, wpm, avgWords, fromAnswers: words.length, secsPerQuestion: Math.round(secsPerQuestion * 10) / 10, needed };
 }
 // engine "elevenlabs" voices render via ElevenLabs on GitHub Actions (repo secret ELEVENLABS_API_KEY);
 // the rest are free edge-tts. Mwz 106 = Mountainwize narrator, remixed from the measured channel average.
-const LF_DEFAULT_VOICE = "2Yjj2F9TinkmgvAoo6ul";   // mwz3 106 — operator 2026-09-30: "I'm gonna use MW three for these"
+const LF_DEFAULT_VOICE = "en-US-AndrewNeural";   // operator 2026-09-30: free Andrew, slowed + deeper, is the mountain-man narrator (mwz3 106 = paid alternative)
 const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a little" (was -4%)
 const LF_VOICES = [
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep & slow (free)", rate: "-28%", pitch: "-10Hz", wpm: 155 },   // -28% matches mwz3's 156 wpm on the same text
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
-  { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%" },   // default -10% then "another 15%" slower → 0.9 × 0.85
-  { id: "en-US-AndrewNeural", label: "Andrew — warm, confident (US)" },
+  { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
   { id: "en-US-ChristopherNeural", label: "Christopher — authoritative (US)" },
   { id: "en-US-GuyNeural", label: "Guy — passionate (US)" },
@@ -1298,7 +1299,7 @@ async function lfBuildEpisode(env, assetId) {
     character: r.character || "mountain-man",
     layout: r.layout === "stage" ? "stage" : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
-      return { engine: (v && v.engine) || "edge", id, rate: r.rate || (v && v.rate) || LF_DEFAULT_RATE, pitch: r.pitch || "+0Hz" }; })(),
+      return { engine: (v && v.engine) || "edge", id, rate: r.rate || (v && v.rate) || LF_DEFAULT_RATE, pitch: r.pitch || (v && v.pitch) || "+0Hz" }; })(),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
     fonts, palette,
     segments: spec.segments,
