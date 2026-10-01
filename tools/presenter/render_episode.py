@@ -488,11 +488,8 @@ def main(ep_path, out, work):
                 fr.alpha_composite(title_card(ep["channel"]), (x, CY))
             elif kind == "topic" and ep.get("title"):
                 fr.alpha_composite(title_card(ep["title"]), (x, CY))
-            elif kind == "jingle":
-                pop = ease((t - t0) / 0.35); jt = (seg.get("text") or "").upper()
-                fj = font(dpath, max(20, int(150 * (0.6 + 0.4 * pop))))
-                tw = d.textlength(jt, font=fj); jx, jy = (W - tw) / 2, H * 0.56   # lower half: clear of the presenter's face
-                d.text((jx, jy), jt, font=fj, fill=ACC, stroke_width=6, stroke_fill=PANEL)
+            elif kind == "jingle" and seg.get("text"):   # same card formatting as everything else (📐 Layout card box)
+                fr.alpha_composite(title_card(seg["text"]), (x, CY))
             elif kind == "hook" and ep.get("title"):
                 fr.alpha_composite(title_card(ep["title"]), (x, CY))
             elif kind == "ask" and seg.get("label"):
