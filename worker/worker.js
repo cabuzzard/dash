@@ -15026,9 +15026,25 @@ Pick the 12 best QUESTIONS for 12-15 minute videos. Prefer questions that show u
 
       // longformInterview {campaignId, question, titleId?} → 3-5 questions that pull the channel
       // owner's OWN experience on this viewer question (Shane's "Claude interviews you" step).
+      // saveLongformInterview {campaignId, titleId, question, interview:[{q,a}]} → keeps the
+      // answers with the title (KV lfiv:<titleId>, restored by longformInterview for the same
+      // question) and feeds them to the voice-learning engine as the operator's own words.
+      if (body.action === "saveLongformInterview") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""), q = String(body.question || "").trim();
+        if (!titleId || !q) return json({ error: "titleId and question required" }, 400);
+        const rows = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || "").trim().slice(0, 400), a: String(x.a || "").trim().slice(0, 3000) })).filter(x => x.q);
+        await env.TRADES.put("lfiv:" + titleId, JSON.stringify({ question: q, qs: rows.map(x => x.q), answers: rows.map(x => x.a), at: Date.now() }));
+        const learned = await voiceLogSamples(env, ctx, body.campaignId, "longform interview", rows.filter(x => x.a)).catch(e => { console.error("voiceLogSamples", e.message); return 0; });
+        return json({ ok: true, saved: rows.filter(x => x.a).length, learned });
+      }
+
       if (body.action === "longformInterview") {
         const q = String(body.question || "").trim();
         if (!q) return json({ error: "question required" }, 400);
+        if (body.titleId && !body.fresh) {
+          let sv = null; try { sv = await env.TRADES.get("lfiv:" + String(body.titleId).replace(/-/g, ""), "json"); } catch (e) {}
+          if (sv && sv.question === q && (sv.qs || []).length) return json({ success: true, questions: sv.qs, answers: sv.answers || [], savedAt: sv.at });
+        }
         const brief = body.campaignId ? await assembleImageBrief(env, { campaignId: body.campaignId }).catch(() => null) : null;
         const camp = brief ? brief.facts.filter(f => /^Campaign Research/.test(f)).join("\n").slice(0, 3000) : "";
         const ir = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",

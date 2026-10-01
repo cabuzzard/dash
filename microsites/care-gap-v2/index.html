@@ -540,6 +540,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="font-weight:700;margin-bottom:4px;">🎙 Interview — your own experience</div>
             <div style="color:var(--ink3);margin-bottom:6px;">The script is built on your answers. Skip any you can't answer; leave all blank to write from research only.</div>
             <div id="caLfInterviewQs"></div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <button class="btn" type="button" onclick="caLfSaveInterview(this)">💾 Save answers</button>
+              <span id="caLfIvMsg" style="color:var(--ink3);font-size:11px;">Saves them with this title and teaches your voice profile how you talk.</span>
+            </div>
           </div>
           <div id="caLfPickRow" style="display:none;gap:8px;align-items:center;margin-top:6px;">
             Format <select id="caLfFormat" class="finput" style="width:auto;font-size:11px;"><option value="ranked">Ranked list (score /10)</option><option value="tier">Tier list (S–D)</option><option value="verdict">Verdict (is it worth it?)</option></select>
@@ -5550,6 +5554,18 @@ function caLfRender() {
       <div style="color:var(--ink3);margin:2px 0 0 20px;">🎬 ${esc(q.title)} · <i>${esc(fmtLbl[q.format] || q.format)}</i>${q.evidence ? ` · ${esc(q.evidence)}` : ''}${(q.sources || []).length ? ` · ${esc(q.sources.join(', '))}` : ''}</div></label>`).join('');
   document.getElementById('caLfPickRow').style.display = CA_LF.pick >= 0 ? 'flex' : 'none';
 }
+async function caLfSaveInterview(btn) {
+  const msg = document.getElementById('caLfIvMsg');
+  if (!CA_LF.iv || !CA_TITLE) { msg.textContent = 'Prepare the interview first.'; return; }
+  const interview = CA_LF.iv.qs.map((iq, k) => ({ q: iq, a: ((document.getElementById('caLfIvA' + k) || {}).value || '').trim() }));
+  if (!interview.some(x => x.a)) { msg.textContent = 'Answer at least one question first.'; return; }
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const r = await w('saveLongformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: CA_LF.iv.question, interview });
+    msg.textContent = `✓ Saved ${r.saved} answer${r.saved === 1 ? '' : 's'}` + (r.learned ? ` · ${r.learned} new to your voice profile` : ' · already in your voice profile');
+  } catch (e) { msg.textContent = 'Save failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
 function caLfPick(i) {
   CA_LF.pick = i;
   CA_LF.iv = null; document.getElementById('caLfInterview').style.display = 'none';
@@ -5582,8 +5598,9 @@ async function runCreateAsset() {
       const o0 = btn.textContent; btn.disabled = true; btn.textContent = 'Preparing interview…';
       try {
         const r = await w('longformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: q.question });
-        CA_LF.iv = { forPick: CA_LF.pick, qs: r.questions || [] };
-        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;"></textarea></label>`).join('');
+        CA_LF.iv = { forPick: CA_LF.pick, qs: r.questions || [], question: q.question };
+        document.getElementById('caLfInterviewQs').innerHTML = CA_LF.iv.qs.map((iq, k) => `<label style="display:block;margin-bottom:6px;">${esc(iq)}<textarea id="caLfIvA${k}" class="finput" rows="3" style="width:100%;box-sizing:border-box;margin-top:3px;font-size:12px;">${esc((r.answers || [])[k] || '')}</textarea></label>`).join('');
+        document.getElementById('caLfIvMsg').textContent = r.savedAt ? 'Restored your saved answers from ' + new Date(r.savedAt).toLocaleString() + '.' : 'Saves them with this title and teaches your voice profile how you talk.';
         document.getElementById('caLfInterview').style.display = 'block';
         resEl.style.color = 'var(--fresh)'; resEl.textContent = 'Answer the interview above (a few sentences each), then Generate to write the script.';
       } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
