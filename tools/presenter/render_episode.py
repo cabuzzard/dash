@@ -371,9 +371,14 @@ def main(ep_path, out, work):
             ImageDraw.Draw(frame_bg).rounded_rectangle([0, 0, sw_ + 11, sh_ + 11], 30, fill=ACC + (int(255 * a_in * a_out),))
             fr.alpha_composite(frame_bg, (STAGE[0] - 6, STAGE[1] - 6))
             fr.alpha_composite(view, (STAGE[0], STAGE[1]))
-        cur = next((c for s_, e_, c in caps if s_ - 0.05 <= t <= e_ + 0.2), "")
+        cue = next(((s_, e_, c) for s_, e_, c in caps if s_ - 0.05 <= t <= e_ + 0.2), None)
+        cur = cue[2] if cue else ""
         if cur:
-            lines = wrap(d, cur, F_CAP, cap_w)[:2]
+            lines = wrap(d, cur, F_CAP, cap_w)
+            if len(lines) > 2:   # long cue: show it two lines at a time, in step with the speech
+                chunks = [lines[k:k + 2] for k in range(0, len(lines), 2)]
+                frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
+                lines = chunks[min(len(chunks) - 1, max(0, int(frac * len(chunks))))]
             for li, ln in enumerate(lines):
                 tw = d.textlength(ln, font=F_CAP); x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80; y = 930 - (len(lines) - 1 - li) * 62
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + 54], 12, fill=(10, 14, 12, 190))

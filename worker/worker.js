@@ -15502,7 +15502,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         let lib = []; try { lib = (await env.TRADES.get(lk, "json")) || []; } catch (e) {}
         if (body.op === "use") {
           const u = String(body.url || "");
-          if (!lib.some(x => x.url === u)) return json({ error: "That background isn't in this campaign's library" }, 400);
+          if (!lib.some(x => x.url === u) && !/^https:\/\/cabuzzard\.github\.io\/dash\/tools\/presenter\/characters\/[a-z0-9-]+\/[\w.-]+$/.test(u)) return json({ error: "That background isn't in this campaign's library" }, 400);
           const pr = await fetch(pageUrl, { method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Longform Background": { url: u } } }) });
           if (!pr.ok) { const e = await pr.json().catch(() => ({})); return json({ error: e.message || "Couldn't set the background" }, 502); }
@@ -15511,6 +15511,14 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         // seed the library with this asset's current background if it predates the library
         const cur = page.properties["Longform Background"]?.url || "";
         if (cur && !lib.some(x => x.url === cur)) lib.push({ url: cur, at: 0, source: "earlier", assetId: aid });
+        // the presenter's own default scene (used when an episode has no background) — always offered
+        const { spec: bgSpec } = await lfLoadAsset(aid).catch(() => ({}));
+        const ch = String(bgSpec?.render?.character || "mountain-man").replace(/[^a-z0-9-]/g, "");
+        try {
+          const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${ch}/character.json`).then(r => r.json());
+          const f = cj.defaultScene && cj.defaultScene.file;
+          if (f) { const du = `https://cabuzzard.github.io/dash/tools/presenter/characters/${ch}/${f}`; if (!lib.some(x => x.url === du)) lib.push({ url: du, at: 0, source: "presenter default scene", assetId: "" }); }
+        } catch (e) {}
         let dir = ""; try { dir = (await env.TRADES.get("lfbg:dir:" + cid)) || ""; } catch (e) {}
         return json({ ok: true, current: cur, library: lib, direction: dir });
       }
