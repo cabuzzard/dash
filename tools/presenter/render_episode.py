@@ -151,23 +151,26 @@ def pitch_glide(a, start_semis, end_semis, pieces=12):
         sh = pitch_shift(seg.astype(np.int16), st).astype(np.float32)[:len(seg)]
         out[s0:s0 + len(seg)] += sh * h[:len(seg)]; wsum[s0:s0 + len(seg)] += h[:len(seg)]
     return np.clip(out[:n] / np.maximum(wsum[:n], 1e-3), -32768, 32767).astype(np.int16)
-def make_jingle(text, work, key="jingle"):
-    """Channel sting: a deep, burly statement (not an excited exclamation) — the phrase a little lower, its LAST
-    word stretched 2× and gliding DOWN ~3 semitones as it rings out ("THE MOUNTAIN MAAAN."), then a big echo."""
+def make_jingle(text, work, key="jingle", voice=None):
+    """Channel sting in the NARRATOR's own voice (operator: "the same voice, just with a little more resonance and
+    echo"): read as a statement so it falls ("…MAAAN."), last word drawn out 2× (pitch kept), a warm low-mid lift
+    for chest resonance, a touch of presence, then the echo."""
     words = str(text or "").strip().rstrip("!?.").split()
     if not words: return np.zeros(0, np.int16)
+    v = dict(voice or {"engine": "edge", "id": "en-US-AndrewNeural", "rate": "-13%", "pitch": "-10Hz"})
+    v = {k_: v[k_] for k_ in ("engine", "id", "rate", "pitch", "model") if k_ in v}
     head, last = " ".join(words[:-1]), words[-1] + "."
-    v = {"engine": "edge", "id": "en-US-ChristopherNeural", "rate": "-8%", "pitch": "-15Hz"}
     parts = []
     if head:
         tts(head, v, os.path.join(work, f"{key}_a.mp3"), os.path.join(work, f"{key}_a.srt"))
-        parts += [pitch_shift(trim_silence(decode(os.path.join(work, f"{key}_a.mp3"))), -2), np.zeros(int(0.06 * SR), np.int16)]
+        parts += [trim_silence(decode(os.path.join(work, f"{key}_a.mp3"))), np.zeros(int(0.06 * SR), np.int16)]
     tts(last, v, os.path.join(work, f"{key}_b.mp3"), os.path.join(work, f"{key}_b.srt"))
-    b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)   # stretch the last word 2x ("maaan")
-    parts.append(pitch_glide(b, -2, -5))                                                     # ...and let it fall
-    dry = np.concatenate(parts + [np.zeros(int(1.3 * SR), np.int16)])                       # room for the echo tail
+    b, _ = tempo_pcm(trim_silence(decode(os.path.join(work, f"{key}_b.mp3"))), [], 0.5)   # draw the last word out ("maaan")
+    parts.append(b)
+    dry = np.concatenate(parts + [np.zeros(int(1.2 * SR), np.int16)])                       # room for the echo tail
     raw = subprocess.run(["ffmpeg", "-v", "error", "-f", "s16le", "-ar", str(SR), "-ac", "1", "-i", "-",
-                          "-filter:a", "aecho=0.8:0.88:140|300|520|780:0.55|0.42|0.3|0.2,volume=1.3,alimiter=limit=0.95",
+                          "-filter:a", "equalizer=f=160:t=q:w=1.0:g=4,equalizer=f=2600:t=q:w=1.2:g=1.5,"
+                          "aecho=0.8:0.85:110|240|400:0.42|0.3|0.18,volume=1.15,alimiter=limit=0.95",
                           "-f", "s16le", "-ar", str(SR), "-ac", "1", "-"], input=dry.tobytes(), capture_output=True).stdout
     return np.frombuffer(raw, np.int16)
 def para_marks(text, cs):
@@ -233,7 +236,7 @@ def build_audio(ep, work):
     for i, seg in enumerate(ep["segments"]):
         text = (seg.get("text") or "").strip()
         if not text: continue
-        if seg.get("kind") == "jingle": seg_audio[i] = (make_jingle(text, work, f"jingle{i}"), []); continue
+        if seg.get("kind") == "jingle": seg_audio[i] = (make_jingle(text, work, f"jingle{i}", voice), []); continue
         mp3, srt = os.path.join(work, f"s{i}.mp3"), os.path.join(work, f"s{i}.srt")
         cs0 = cues(srt)
         a, cs = stretch_pauses(decode(mp3), cs0, float(voice.get("pauseScale") or 1),
