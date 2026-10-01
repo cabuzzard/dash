@@ -6407,7 +6407,9 @@ function factRender(rep) {
       <div style="margin:3px 0;">“${esc(x.quote)}”</div>
       <div style="color:var(--ink2);font-size:12px;">${esc(x.expert_view)}</div>
       ${x.sources && x.sources.length ? `<div style="font-size:11px;margin-top:2px;">${x.sources.map(sr => `<a class="kwlink" href="${esc(sr.url)}" target="_blank" rel="noopener">${esc(sr.title || sr.url)}</a>`).join(' · ')}</div>` : ''}
-      ${x.fix && !x.applied ? `<label style="display:block;margin-top:4px;font-size:12px;"><input type="checkbox" class="factFix" value="${esc(x.id)}" ${/contested|contradicted/.test(x.verdict) ? 'checked' : ''}> Smallest fix: <i>“${esc(x.fix)}”</i></label>` : ''}
+      ${(x.fix || /contested|contradicted/.test(x.verdict)) && !x.applied ? `<label style="display:block;margin-top:4px;font-size:12px;"><input type="checkbox" class="factFix" value="${esc(x.id)}" ${/contested|contradicted/.test(x.verdict) ? 'checked' : ''}> ${x.fix ? `Smallest fix: <i>“${esc(x.fix)}”</i>` : 'Fix it in your words:'}</label>
+      <textarea class="factOwn" data-id="${esc(x.id)}" rows="2" placeholder="${x.fix ? 'Your own wording (optional) — leave empty to use the fix above' : 'Write the corrected line in your voice'}" style="width:100%;box-sizing:border-box;margin-top:4px;font-size:12px;min-height:44px;" oninput="if (this.value.trim()) { const c = document.querySelector('#factModal .factFix[value=&quot;${esc(x.id)}&quot;]'); if (c) c.checked = true; }"></textarea>` : ''}
+      ${x.applied && x.appliedText ? `<div style="font-size:12px;margin-top:3px;color:var(--fresh);">Now reads: “${esc(x.appliedText)}”${x.byOperator ? ' (your wording)' : ''}</div>` : ''}
     </div>`).join('');
 }
 async function factRun(btn) {
@@ -6418,10 +6420,11 @@ async function factRun(btn) {
 }
 async function factApply(btn) {
   const ids = [...document.querySelectorAll('#factModal .factFix:checked')].map(x => x.value);
+  const overrides = Object.fromEntries([...document.querySelectorAll('#factModal .factOwn')].map(t => [t.dataset.id, t.value.trim()]).filter(([, v]) => v));
   const msg = document.getElementById('factMsg');
   if (!ids.length) { msg.textContent = 'Tick at least one fix first.'; return; }
   btn.disabled = true;
-  try { const r = await w('applyFactFixes', { assetId: PUB_LF.assetId, ids }); factRender(r.report); msg.textContent = `✓ Applied ${r.applied} fix${r.applied === 1 ? '' : 'es'}${r.missed.length ? ` (${r.missed.length} couldn't be matched in the script)` : ''} — re-render to hear them.`; }
+  try { const r = await w('applyFactFixes', { assetId: PUB_LF.assetId, ids, overrides }); factRender(r.report); msg.textContent = `✓ Applied ${r.applied} fix${r.applied === 1 ? '' : 'es'}${Object.keys(overrides).length ? ` (${Object.keys(overrides).length} in your words${r.learned ? ', taught to your voice profile' : ''})` : ''}${r.missed.length ? ` · ${r.missed.length} couldn't be matched in the script` : ''} — re-render to hear them.`; }
   catch (e) { msg.textContent = 'Not applied: ' + e.message; }
   btn.disabled = false;
 }

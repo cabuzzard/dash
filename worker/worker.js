@@ -15739,15 +15739,23 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         if (!report) return json({ error: "Run the fact check first" }, 400);
         const { url: pageUrl, page, spec } = await lfLoadAsset(aid);
         if (body.action === "applyFactFixes") {
-          const want = new Set(Array.isArray(body.ids) ? body.ids : []); let applied = 0; const missed = [];
+          // overrides {id: text}: the operator's own wording wins; empty → the suggested fix
+          const want = new Set(Array.isArray(body.ids) ? body.ids : []), ov = body.overrides && typeof body.overrides === "object" ? body.overrides : {};
+          let applied = 0; const missed = [], voiceEdits = [];
           for (const x of report.items) {
-            if (!want.has(x.id) || !x.fix) continue;
-            const seg = spec.segments[x.seg];
-            if (seg && String(seg.text || "").includes(x.quote)) { seg.text = seg.text.replace(x.quote, x.fix); x.applied = true; applied++; }
-            else { const k = spec.segments.findIndex(sg => String(sg.text || "").includes(x.quote)); if (k >= 0) { spec.segments[k].text = spec.segments[k].text.replace(x.quote, x.fix); x.applied = true; applied++; } else missed.push(x.id); }
+            if (!want.has(x.id)) continue;
+            const own = String(ov[x.id] || "").trim().slice(0, 1500), text = own || x.fix;
+            if (!text) continue;
+            let k = spec.segments[x.seg] && String(spec.segments[x.seg].text || "").includes(x.quote) ? x.seg : spec.segments.findIndex(sg => String(sg.text || "").includes(x.quote));
+            if (k < 0) { missed.push(x.id); continue; }
+            spec.segments[k].text = spec.segments[k].text.replace(x.quote, text);
+            x.applied = true; x.appliedText = text; x.byOperator = !!own; applied++;
+            if (own && x.fix && own !== x.fix) voiceEdits.push({ field: "fact-check fix", before: x.fix, after: own });
           }
           await lfSaveSpec(aid, spec); await env.TRADES.put("lffact:" + aid, JSON.stringify(report));
-          return json({ ok: true, applied, missed, report });
+          const cidF = page.properties["Campaign"]?.relation?.[0]?.id || "";
+          const learned = voiceEdits.length ? await voiceLogEdits(env, ctx, cidF, "longform fact-check", voiceEdits).catch(() => 0) : 0;
+          return json({ ok: true, applied, missed, learned, report });
         }
         const srcs = []; const seen = new Set();
         for (const x of report.items) for (const sr of (x.sources || [])) if (!seen.has(sr.url) && /supported/.test(x.verdict)) { seen.add(sr.url); srcs.push(sr); }
