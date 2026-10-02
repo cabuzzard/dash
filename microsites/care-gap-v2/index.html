@@ -1482,6 +1482,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <button class="btn" style="color:var(--stale);" onclick="bulkDeleteTitles()">✕ Delete</button>
           <button class="btn" onclick="clearTitleSelection()">Clear</button>
         </div>
+        <div style="display:flex;gap:4px;align-items:center;font-size:11px;margin-bottom:8px;"><span style="color:var(--ink3);">Group titles &amp; assets by:</span>
+          <button class="btn agrp-btn" data-v="default" style="font-size:10.5px;padding:2px 8px;" onclick="setAssetGrouping('default')">Stack → Product (default)</button>
+          <button class="btn agrp-btn" data-v="method" style="font-size:10.5px;padding:2px 8px;" onclick="setAssetGrouping('method')">Method → Stack</button></div>
         <div id="titleListBody"><div class="loadnote">Loading…</div></div>
       </div>
       <div class="kwcol">
@@ -1493,9 +1496,6 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <button class="btn" onclick="clearAssetSelection()">Clear</button>
           <span id="assetBulkStatus" style="font-size:10.5px;color:var(--ink3);"></span>
         </div>
-        <div style="display:flex;gap:4px;align-items:center;font-size:11px;margin-bottom:8px;"><span style="color:var(--ink3);">Group by:</span>
-          <button class="btn agrp-btn" data-v="default" style="font-size:10.5px;padding:2px 8px;" onclick="setAssetGrouping('default')">Stack → Product (default)</button>
-          <button class="btn agrp-btn" data-v="method" style="font-size:10.5px;padding:2px 8px;" onclick="setAssetGrouping('method')">Method → Stack</button></div>
         <div id="assetTree"><div class="loadnote">Loading…</div></div>
       </div>
     </div>
@@ -4539,22 +4539,8 @@ async function loadTitleAndAssetTab() {
     const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES });
     CAMPAIGN_TITLES = r.titles || [];
     if (!CAMPAIGN_TITLES.length) { titleBody.innerHTML = assetBody.innerHTML = '<div class="loadnote">No titles on this campaign yet.</div>'; return; }
-    const tree = buildTitleTree(CAMPAIGN_TITLES);
 
-    titleBody.innerHTML = tree.map(stack => `
-      <div class="kwgroup" data-ckey="titlestack-${esc(stack.name)}" style="--kwc:#4ade80;">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
-        <div class="kwgbody">${stack.products.map(prod => `
-          <div style="margin-bottom:8px;">
-            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
-            ${prod.strategies.map(strat => strat.name !== 'No Strategy' ? `
-              <div class="kwgroup" data-ckey="titlestrat-${esc(stack.name)}-${esc(prod.name)}-${esc(strat.name)}" style="--kwc:var(--border2);margin:0 0 6px 8px;">
-                <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;"><span class="kwarrow">▸</span><span style="font-style:italic;">${esc(strat.name)}</span></div>
-                <div class="kwgbody">${strat.titles.map(renderTitleRow).join('')}</div>
-              </div>` : `
-              <div style="margin:0 0 6px 8px;">${strat.titles.map(renderTitleRow).join('')}</div>`).join('')}
-          </div>`).join('')}</div>
-      </div>`).join('');
+    titleBody.innerHTML = renderTitleTreeHtml(CAMPAIGN_TITLES);
     applyCollapseState(titleBody);
     refreshNoteMarks();
 
@@ -4583,6 +4569,33 @@ function setAssetGrouping(v) {
   document.querySelectorAll('.agrp-btn').forEach(b => b.classList.toggle('primary', b.dataset.v === v));
   const el = document.getElementById('assetTree');
   if (el && LAST_ASSET_TITLES.length) { el.innerHTML = renderAssetTreeHtml(LAST_ASSET_TITLES); applyCollapseState(el); refreshNoteMarks(); }
+  const tb = document.getElementById('titleListBody');
+  if (tb && CAMPAIGN_TITLES.length) { tb.innerHTML = renderTitleTreeHtml(CAMPAIGN_TITLES); applyCollapseState(tb); refreshNoteMarks(); }
+}
+function renderTitleStackTree(titles, keyPrefix) {
+  return buildTitleTree(titles).map(stack => `
+      <div class="kwgroup" data-ckey="${keyPrefix}titlestack-${esc(stack.name)}" style="--kwc:#4ade80;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
+        <div class="kwgbody">${stack.products.map(prod => `
+          <div style="margin-bottom:8px;">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:4px;">${esc(prod.name)}</div>
+            ${prod.strategies.map(strat => strat.name !== 'No Strategy' ? `
+              <div class="kwgroup" data-ckey="${keyPrefix}titlestrat-${esc(stack.name)}-${esc(prod.name)}-${esc(strat.name)}" style="--kwc:var(--border2);margin:0 0 6px 8px;">
+                <div class="kwghd" onclick="toggleGrp(this.parentElement)" style="text-transform:none;letter-spacing:0;"><span class="kwarrow">▸</span><span style="font-style:italic;">${esc(strat.name)}</span></div>
+                <div class="kwgbody">${strat.titles.map(renderTitleRow).join('')}</div>
+              </div>` : `
+              <div style="margin:0 0 6px 8px;">${strat.titles.map(renderTitleRow).join('')}</div>`).join('')}
+          </div>`).join('')}</div>
+      </div>`).join('');
+}
+// Titles: Method = the title's preferred method.
+function renderTitleTreeHtml(titles) {
+  if (ASSET_GROUPING !== 'method') return renderTitleStackTree(titles, '');
+  const by = {};
+  titles.forEach(t => { const m = t.methodName && t.methodName !== '?' && t.methodName !== 'No Method' ? t.methodName : 'No Method'; (by[m] = by[m] || []).push(t); });
+  return Object.keys(by).sort((a, b) => (a === 'No Method') - (b === 'No Method') || a.localeCompare(b)).map(m => `<div class="kwgroup" data-ckey="titlemethod-${esc(m)}" style="--kwc:#c084fc;">
+      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(m)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${by[m].length})</span></div>
+      <div class="kwgbody">${renderTitleStackTree(by[m], 'm-' + m + '-')}</div></div>`).join('');
 }
 function renderAssetStackTree(titles, keyPrefix) {
   const byId = {}; titles.forEach(t => { byId[t.id] = { assets: t.assets || [] }; });
