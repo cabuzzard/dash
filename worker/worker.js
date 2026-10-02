@@ -28744,6 +28744,17 @@ STAGED DESIGN — AUTHORITATIVE, overrides anything above that conflicts:
 ` : "");
         }
         let prompt = rawPrompt;
+        // ✎ Guidance & regenerate (Design tab, per plate): the operator's note on a plate they've seen + the prompt
+        // that made it → a new prompt that keeps what worked and changes what they asked.
+        const guidance = String(body.guidance || "").trim().slice(0, 2000), prevPrompt = String(body.previousPrompt || "").trim().slice(0, 3000);
+        const lfGuide = guidance ? `
+
+REGENERATION — the operator looked at an earlier test plate and wants changes.${prevPrompt ? `
+The earlier plate was rendered from this prompt:
+"""${prevPrompt}"""
+Keep what they didn't object to.` : ""}
+OPERATOR GUIDANCE — follow it exactly; it overrides the spec and research above where they conflict:
+${guidance}` : "";
         if (!prompt) {
         const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words, one vivid paragraph.
 
@@ -28756,7 +28767,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt + lfGuide }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);

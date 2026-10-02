@@ -3135,7 +3135,19 @@ function addDesignTestPlate(r, label) {
   const ap = document.createElement('button'); ap.className = 'btn'; ap.style.cssText = 'font-size:10px;padding:3px 6px;';
   ap.textContent = '✓ approve as campaign plate'; ap.title = 'Store this render + its Grok prompt on the Research record. Every asset-level Grok render (offers, single posts, backgrounds, thumbnails) then matches its LOOK.';
   ap.onclick = () => approveCampaignPlate(r.imageUrl, r.prompt || '', ap);
-  cell.appendChild(a); cell.appendChild(b); cell.appendChild(ap);
+  // ✎ Guidance → ⟳ Regenerate plate: a new render from the same direction + this plate's prompt + your note
+  const gb = document.createElement('button'); gb.className = 'btn'; gb.style.cssText = 'font-size:10px;padding:3px 6px;';
+  gb.textContent = '✎ guidance & regenerate'; gb.title = 'Tell Grok what to change about this plate, then render a new one';
+  const gw = document.createElement('div'); gw.style.cssText = 'display:none;flex-direction:column;gap:4px;width:200px;';
+  gw.innerHTML = `<textarea rows="4" class="finput" placeholder="What should change? e.g. warmer light, an older caregiver, kitchen not living room, less blue…" style="font-size:11px;width:100%;"></textarea>
+    <button class="btn" style="font-size:10px;padding:3px 6px;">⟳ Regenerate plate</button>`;
+  gb.onclick = () => { gw.style.display = gw.style.display === 'none' ? 'flex' : 'none'; if (gw.style.display === 'flex') gw.querySelector('textarea').focus(); };
+  gw.querySelector('button').onclick = () => {
+    const g = gw.querySelector('textarea').value.trim();
+    if (!g) { gw.querySelector('textarea').focus(); return; }
+    testDesignOnGrok(g, r.prompt || '');
+  };
+  cell.appendChild(a); cell.appendChild(b); cell.appendChild(ap); cell.appendChild(gb); cell.appendChild(gw);
   const strip = document.getElementById('designTests'); strip.insertBefore(cell, strip.firstChild);
 }
 async function copyDesignGptPrompt(btn) {
@@ -3217,7 +3229,7 @@ async function saveVoiceProfile(btn) {
 }
 // ✨ Test on Grok — the direction/palette as shown (staged wins over live)
 // → renderSpecTest → one wordless plate. Session-only strip, nothing saved.
-async function testDesignOnGrok() {
+async function testDesignOnGrok(guidance, previousPrompt) {
   const btn = document.getElementById('designTestBtn'), msg = document.getElementById('designTestMsg');
   const staged = DESIGN_STAGE.register != null;
   const direction = {
@@ -3228,9 +3240,10 @@ async function testDesignOnGrok() {
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Rendering… (~20s)';
   msg.style.color = 'var(--ink3)'; msg.textContent = 'Grok is rendering a test plate from the ' + (staged ? 'STAGED' : 'live') + ' direction…';
   try {
-    const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, direction, palette: DESIGN_STAGE.palette || DESIGN_LIVE.palette || undefined, aspect: '3:4' });
+    const r = await w('renderSpecTest', { campaignId: CAMPAIGN_ID, direction, palette: DESIGN_STAGE.palette || DESIGN_LIVE.palette || undefined, aspect: '3:4',
+      guidance: typeof guidance === 'string' ? guidance : undefined, previousPrompt: typeof guidance === 'string' ? previousPrompt : undefined });
     if (r.error) throw new Error(r.error);
-    addDesignTestPlate(r, staged ? 'staged direction' : 'live direction');
+    addDesignTestPlate(r, (staged ? 'staged direction' : 'live direction') + (typeof guidance === 'string' ? ' + guidance: ' + guidance.slice(0, 60) : ''));
     msg.textContent = 'Rendered from the ' + (staged ? 'staged' : 'live') + ' direction — newest first; hover for the prompt.';
   } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Grok test failed: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
