@@ -6153,7 +6153,6 @@ function renderAssetTitleNode(t, data) {
       <span style="font-size:10px;color:var(--ink3);">${assets.length} asset(s)</span>
       <button class="iconbtn" title="Create asset" onclick="event.stopPropagation();openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a>
-      <button class="iconbtn" style="font-size:9.5px;padding:2px 7px;color:var(--stale);" title="Delete this TITLE (not one of the assets below) — archives it and everything under it from view" onclick="event.stopPropagation();deleteTitleRow('${esc(t.id)}','${esc(t.title)}')">✕</button>
       <button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-title-${esc(t.id)}','${esc(t.title)}','asset')">📝</button>
     </span></div><div class="rbody">${body}</div></div>`;
 }

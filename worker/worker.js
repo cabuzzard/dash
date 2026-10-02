@@ -17200,6 +17200,16 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         return json({ success: true });
       }
 
+      // restoreTitle {titleId} — undo deleteTitle (takes the title out of Notion's trash; its assets come back with it)
+      if (body.action === "restoreTitle") {
+        const id = String(body.titleId || "").replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const r = await fetch("https://api.notion.com/v1/pages/" + id, { method: "PATCH",
+          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          body: JSON.stringify({ archived: false }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ error: d.message || "Could not restore" }, 502);
+        return json({ success: true, title: (d.properties?.Title?.title || []).map(t => t.plain_text).join("") });
+      }
       if (body.action === "deleteTitle") {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
