@@ -15413,8 +15413,44 @@ Give a YouTube title in that format. Call submit_questions.`;
       }
 
       if (body.action === "generateLongformScript") {
-        const { titleId, campaignId, methodId, question } = body;
-        const format = LF_FORMATS[body.format] ? body.format : "ranked";
+        const { titleId, campaignId, methodId } = body;
+        let question = body.question;
+        // 📜 asIs: the title's own written script becomes the episode WORD FOR WORD (operator 2026-10-02: "load that
+        // into a long form YouTube asset as is and just use the existing script"). Each heading + its text = one
+        // chapter card; text before the first heading = the hook. Only the YouTube title/description/tags are written.
+        let asIsSegs = null;
+        if (body.asIs && titleId) {
+          const hdrA = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          const tid = String(titleId).replace(/-/g, "");
+          const pg = await fetch(`https://api.notion.com/v1/pages/${tid}`, { headers: hdrA }).then(r => r.json()).catch(() => ({}));
+          const tName = ((pg.properties?.Title?.title) || []).map(t => t.plain_text).join("").trim();
+          const blocks = []; let cur;
+          do {
+            const r = await fetch(`https://api.notion.com/v1/blocks/${tid}/children?page_size=100${cur ? "&start_cursor=" + cur : ""}`, { headers: hdrA }).then(x => x.json());
+            blocks.push(...(r.results || [])); cur = r.has_more ? r.next_cursor : null;
+          } while (cur);
+          const txt = b => ((b[b.type] && b[b.type].rich_text) || []).map(t => t.plain_text).join("").trim();
+          const secs = []; let pre = [], curSec = null;
+          for (const b of blocks) {
+            if (/^heading_[123]$/.test(b.type)) { const h = txt(b); if (h) { curSec = { head: h, body: [] }; secs.push(curSec); } continue; }
+            const t = txt(b); if (!t) continue;
+            if (/^(paragraph|bulleted_list_item|numbered_list_item|quote|callout|to_do)$/.test(b.type)) (curSec ? curSec.body : pre).push(t);
+          }
+          const filled = secs.filter(x => x.body.length);
+          if (!filled.length && !pre.length) return json({ error: "This title has no written script on its page yet" }, 400);
+          asIsSegs = [];
+          if (pre.length) asIsSegs.push({ kind: "hook", text: pre.join("\n\n") });
+          filled.forEach((x, i) => {
+            const m = x.head.match(/^\s*(\d+)[.)]\s*(.+)$/);
+            const name = (m ? m[2] : x.head).trim();
+            const text = x.body.join("\n\n");
+            const first = (text.match(/^.*?[.!?](\s|$)/) || [text])[0].trim();
+            asIsSegs.push({ kind: "item", n: m ? +m[1] : i + 1, name, blurb: first.length > 140 ? first.slice(0, 137).trim() + "…" : first, text });
+          });
+          if (!asIsSegs.some(x => x.kind === "hook")) asIsSegs[0] = { ...asIsSegs[0] };   // no intro paragraph: the channel intro + topic line open the episode
+          if (!String(question || "").trim()) question = String(body.topic || pg.properties?.["Core Idea"]?.rich_text?.map(t => t.plain_text).join("") || tName || "this episode").trim();
+        }
+        const format = body.asIs ? "explainer" : (LF_FORMATS[body.format] ? body.format : "ranked");
         const layout = body.layout === "stage" ? "stage" : "presenter";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
@@ -15467,6 +15503,24 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
             cue: { type: "string", description: "4-8 words copied EXACTLY from this segment's narration — the image appears when these words are spoken; pick words in the first 70% of the segment" },
             subject: { type: "string", description: "what the picture shows: one concrete, visual scene (people, places, objects), no text, charts or logos" } } } },
           score: { type: "number" }, tier: { type: "string" }, label: { type: "string", description: "ask segments: the short viewer-facing on-screen pill, e.g. '👍 Like if this helps', '💬 Which one fits you?', '🔔 Subscribe for part 2' — never a placeholder like 'Like Ask'" } } };
+        let o;
+        if (asIsSegs) {
+          // script stays as written — Claude only writes the YouTube packaging around it
+          const mr = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content:
+`A faceless YouTube episode is narrated from this script exactly as written (do NOT rewrite it). Write only its YouTube packaging.
+Episode: ${String(question).trim()}
+Chapters: ${asIsSegs.filter(x => x.kind === "item").map(x => x.name).join(" · ")}
+Opening of the script: ${asIsSegs[0].text.slice(0, 1200)}
+${campFacts ? "\nCampaign keywords/research (for search wording):\n" + campFacts.slice(0, 3000) : ""}
+Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options (2-5 words), a 2-paragraph "description" (end the first paragraph with a line listing what the episode covers), 12 "tags", ≤3 "hashtags". Call submit_meta.` }],
+            tools: [{ name: "submit_meta", description: "Packaging", input_schema: { type: "object", required: ["title", "description"], properties: {
+              title: { type: "string" }, altTitles: { type: "array", items: { type: "string" } }, thumbnailText: { type: "array", items: { type: "string" } },
+              description: { type: "string" }, tags: { type: "array", items: { type: "string" } }, hashtags: { type: "array", items: { type: "string" } } } } }],
+            tool_choice: { type: "tool", name: "submit_meta" } });
+          const md = await mr.json().catch(() => ({}));
+          const meta = (mr.ok && ((md.content || []).find(b => b.type === "tool_use") || {}).input) || {};
+          o = { title: meta.title || String(question).slice(0, 70), altTitles: meta.altTitles || [], thumbnailText: meta.thumbnailText || [], description: meta.description || "", tags: meta.tags || [], hashtags: meta.hashtags || [], segments: asIsSegs };
+        } else {
         const sr = await claudeStream(env, {
             model: "claude-sonnet-4-6", max_tokens: 20000, messages: [{ role: "user", content: sPrompt }],
             tools: [{ name: "submit_episode", description: "The episode.", input_schema: { type: "object", required: ["title", "segments", "description"], properties: {
@@ -15476,8 +15530,9 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
             tool_choice: { type: "tool", name: "submit_episode" } });
         const sd2 = await sr.json();
         if (!sr.ok) return json({ error: sd2.error?.message || "Claude API error" }, 502);
-        const o = ((sd2.content || []).find(b => b.type === "tool_use") || {}).input;
+        o = ((sd2.content || []).find(b => b.type === "tool_use") || {}).input;
         if (!o || !Array.isArray(o.segments) || o.segments.length < 3) return json({ error: "No script came back — try again" }, 502);
+        }
         const S = v => String(v || "").trim();
         const segs = o.segments.filter(x => S(x.text)).map(x => {
           const k = { kind: x.kind, text: S(x.text) };
@@ -15486,7 +15541,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           return k;
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
-        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout } };
+        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout }, ...(asIsSegs ? { asIs: true } : {}) };
         spec.tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         // ✍️ proofread the fresh script before it's saved (the render runs the pass again as a final check)
         try { const pf = await lfProofread(env, spec); if (pf.length) { spec.proofread = { at: Date.now(), fixes: pf.slice(0, 200) }; o.title = spec.title; } } catch (e) { console.error("proofread:", e.message); }

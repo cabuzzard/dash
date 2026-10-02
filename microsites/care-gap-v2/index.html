@@ -543,6 +543,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
             <input id="caLfSeed" class="finput" type="text" placeholder="Seed topic (optional — defaults to this title + Main Keywords)" style="flex:1;font-size:12px;">
             <button class="btn" type="button" onclick="caLfFindQuestions(this)">🔎 Find questions</button>
+            <button class="btn" type="button" onclick="caLfAsIs(this)" title="Already wrote the script on this title's page? Each heading + its text becomes one chapter, word for word (spelling still checked). Only the YouTube title, description and tags are written for you.">📜 Use this title's script as-is</button>
           </div>
           <div id="caLfQuestions" style="max-height:260px;overflow-y:auto;"></div>
           <div id="caLfInterview" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:8px;">
@@ -5681,6 +5682,25 @@ function caQaRenderForm() {
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
 let CA_LF = { titleId: null, questions: [], pick: -1 };
+// 📜 The title's own written script → episode, word for word (no questions, no interview).
+async function caLfAsIs(btn) {
+  if (!CA_TITLE) return;
+  const resEl = document.getElementById('caResult');
+  if (CA_LF.made && CA_LF.made.asIs && !confirm(`You already made an episode from this title's script: “${CA_LF.made.title}”.\n\nDoing it again creates a SECOND, separate asset. Continue?`)) return;
+  const methodId = document.getElementById('caMethod').value;
+  const methodName = document.getElementById('caMethod').dataset.name || '';
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Building…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = `Turning “${CA_TITLE.title}” into an episode — your words as written, one chapter per heading…`;
+  try {
+    const r = await w('generateLongformScript', { asIs: true, titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId,
+      layout: /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter', productId: CA_TITLE.productId || undefined });
+    CA_LF.made = { q: '__asis__', asIs: true, title: r.title, assetId: r.assetId };
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = `✓ Episode made from your script — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to pick presenter/voice/background (📝 Script & cards to check it), then 🎬 Render.`;
+    await loadTitleAndAssetTab();
+  } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
 async function caLfFindQuestions(btn) {
   const resEl = document.getElementById('caResult');
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Searching…';
