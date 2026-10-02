@@ -3445,6 +3445,7 @@ function ensureStackOrder() {
   return _stackOrderLoaded;
 }
 function saveStackMeta() {
+  try { if (typeof setAssetGrouping === 'function') setAssetGrouping(ASSET_GROUPING); } catch (e) {}   // redraw Titles/Assets with the new groups/order
   return w('saveStackOrder', { campaignId: CAMPAIGN_ID, order: STACK_ORDER, empty: EMPTY_STACKS, groups: STACK_GROUPS }).catch(e => alert('Could not save stacks: ' + e.message));
 }
 function newProductGroup() {
@@ -4589,8 +4590,21 @@ function setAssetGrouping(v) {
   const tb = document.getElementById('titleListBody');
   if (tb && CAMPAIGN_TITLES.length) { tb.innerHTML = renderTitleTreeHtml(CAMPAIGN_TITLES); applyCollapseState(tb); refreshNoteMarks(); }
 }
+// Group → Stack, same groups as the Products column (STACK_GROUPS, set on the Product list). Grouped stacks
+// nest under a collapsible ▣ group; ungrouped stacks follow at the top level.
+function wrapStackGroups(tree, keyPrefix, stackHtml) {
+  const groupOf = s => STACK_GROUPS.order.includes(STACK_GROUPS.map[s]) ? STACK_GROUPS.map[s] : null;
+  const out = STACK_GROUPS.order.map(g => {
+    const st = tree.filter(x => groupOf(x.name) === g); if (!st.length) return '';
+    const n = st.reduce((k, x) => k + x.count, 0);
+    return `<div class="kwgroup" data-ckey="${keyPrefix}grp-${esc(g)}" style="--kwc:#f6ad55;">
+      <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>▣ ${esc(g)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${st.length} stack${st.length === 1 ? '' : 's'} · ${n})</span></div>
+      <div class="kwgbody" style="padding-left:6px;">${st.map(stackHtml).join('')}</div></div>`;
+  }).join('');
+  return out + tree.filter(x => !groupOf(x.name)).map(stackHtml).join('');
+}
 function renderTitleStackTree(titles, keyPrefix) {
-  return buildTitleTree(titles).map(stack => `
+  return wrapStackGroups(buildTitleTree(titles), keyPrefix + 't', stack => `
       <div class="kwgroup" data-ckey="${keyPrefix}titlestack-${esc(stack.name)}" style="--kwc:#4ade80;">
         <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
         <div class="kwgbody">${stack.products.map(prod => `
@@ -4603,7 +4617,7 @@ function renderTitleStackTree(titles, keyPrefix) {
               </div>` : `
               <div style="margin:0 0 6px 8px;">${strat.titles.map(renderTitleRow).join('')}</div>`).join('')}
           </div>`).join('')}</div>
-      </div>`).join('');
+      </div>`);
 }
 // Titles: Method = the title's preferred method.
 function renderTitleTreeHtml(titles) {
@@ -4616,7 +4630,7 @@ function renderTitleTreeHtml(titles) {
 }
 function renderAssetStackTree(titles, keyPrefix) {
   const byId = {}; titles.forEach(t => { byId[t.id] = { assets: t.assets || [] }; });
-  return buildTitleTree(titles).map(stack => `
+  return wrapStackGroups(buildTitleTree(titles), keyPrefix + 'a', stack => `
       <div class="kwgroup" data-ckey="${keyPrefix}assetstack-${esc(stack.name)}" style="--kwc:#8ab4f8;">
         <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(stack.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stack.count})</span></div>
         <div class="kwgbody">${stack.products.map(prod => `
@@ -4629,7 +4643,7 @@ function renderAssetStackTree(titles, keyPrefix) {
               </div>` : `
               <div style="margin:0 0 6px 8px;">${strat.titles.map(t => renderAssetTitleNode(t, byId[t.id])).join('')}</div>`).join('')}
           </div>`).join('')}</div>
-      </div>`).join('');
+      </div>`);
 }
 function renderAssetTreeHtml(withAssets) {
   if (ASSET_GROUPING !== 'method') return renderAssetStackTree(withAssets, '');
