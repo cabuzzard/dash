@@ -853,6 +853,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" id="pubLfPlanBtn" onclick="pubLfPlanImages(this)" style="font-size:10.5px;">Plan image slots</button>
               <button class="btn" type="button" id="pubLfGenAllBtn" onclick="pubLfGenAll(this)" style="font-size:10.5px;">✨ Generate all missing</button>
               <span id="pubLfImgMsg" style="color:var(--ink3);"></span></div>
+            <div style="margin-top:8px;font-size:11px;">✎ <b>Chapter card text</b> <span style="color:var(--ink3);">— check the typing on any card and save before rendering</span></div>
+            <div id="pubLfCardChips" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;"></div>
+            <div id="pubLfCardEd" style="display:none;margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:11px;"></div>
             <div id="pubLfScenes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px;"></div>
             <input type="file" id="pubLfImgFile" accept="image/*" style="display:none;" onchange="pubLfUploadPicked(this)">
           </div>
@@ -6197,7 +6200,51 @@ function pubLfRenderScenes() {
         <button class="iconbtn" style="font-size:9.5px;" title="Generate with Grok" onclick="pubLfGenOne(${x.seg},${x.idx},this)">${x.im.url ? '↻' : '✨'}</button>
         <button class="iconbtn" style="font-size:9.5px;" title="Use your own image" onclick="pubLfUploadStart(${x.seg},${x.idx})">⬆</button>
         ${x.im.url ? `<button class="iconbtn" style="font-size:9.5px;" title="Remove this image (keeps the slot)" onclick="pubLfClearOne(${x.seg},${x.idx})">✕</button>` : ''}
+        <button class="iconbtn" style="font-size:9.5px;" title="Edit this card's text" onclick="pubLfCardOpen(${x.seg})">✎</button>
       </div></div>`).join('') || '<div style="color:var(--ink3);">No image slots yet — Plan image slots picks 1–3 moments per item from the script.</div>';
+  document.getElementById('pubLfCardChips').innerHTML = (PUB_LF.scenes || []).map(sc =>
+    `<button class="btn" type="button" style="font-size:10px;padding:2px 7px;" onclick="pubLfCardOpen(${sc.i})">${sc.kind === 'hook' ? 'Opening' : '#' + esc(String(sc.i)) + ' ' + esc((sc.name || '').slice(0, 28))}</button>`).join('');
+}
+// ✎ Chapter card text editor: heading / key point / customer question / narration for one card, a ✍️ spelling check
+// (suggests fixes into the boxes, nothing saved until 💾), saved through saveLongformScript (same as Script & cards).
+let PUB_LF_CARD = null;
+async function pubLfCardOpen(i) {
+  const ed = document.getElementById('pubLfCardEd'); ed.style.display = 'block'; ed.innerHTML = 'Loading card…';
+  try {
+    const r = await w('getLongformScript', { assetId: PUB_LF.assetId });
+    const seg = (r.segments || []).find(s => s.i === i); if (!seg) { ed.innerHTML = 'Card not found.'; return; }
+    PUB_LF_CARD = seg;
+    const box = (f, label, rows) => `<label style="display:block;margin-top:6px;color:var(--ink3);">${label}
+      <textarea id="pubLfCard_${f}" spellcheck="true" rows="${rows}" class="finput" style="width:100%;font-size:12px;margin-top:2px;">${esc(seg[f] || '')}</textarea></label>`;
+    ed.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;"><b>${seg.kind === 'hook' ? 'Opening' : '#' + esc(String(seg.i)) + ' ' + esc(seg.name || '')}</b>
+        <span class="iconbtn" style="cursor:pointer;" onclick="document.getElementById('pubLfCardEd').style.display='none'">✕</span></div>
+      ${seg.kind === 'item' ? box('name', 'Card heading', 1) + box('blurb', 'Card key point', 2) : ''}
+      ${seg.ask ? box('ask', 'Customer question (second voice)', 2) : ''}
+      ${box('text', 'Narration (spoken + captions)', 8)}
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap;">
+        <button class="btn" type="button" style="font-size:11px;" onclick="pubLfCardCheck(this)">✍️ Check spelling</button>
+        <button class="btn primary" type="button" style="font-size:11px;" onclick="pubLfCardSave(this)">💾 Save card</button>
+        <span id="pubLfCardMsg" style="color:var(--ink3);"></span></div>`;
+  } catch (e) { ed.innerHTML = 'Could not load: ' + esc(e.message); }
+}
+const pubLfCardFields = () => Object.fromEntries(['name', 'blurb', 'ask', 'text'].map(f => [f, document.getElementById('pubLfCard_' + f)]).filter(([, el]) => el).map(([f, el]) => [f, el.value]));
+async function pubLfCardCheck(btn) {
+  const msg = document.getElementById('pubLfCardMsg'); btn.disabled = true; msg.textContent = 'Checking…';
+  try {
+    const r = await w('proofreadLongformCard', { fields: pubLfCardFields() });
+    for (const [f, v] of Object.entries(r.fields || {})) { const el = document.getElementById('pubLfCard_' + f); if (el && typeof v === 'string') el.value = v; }
+    msg.textContent = r.fixes.length ? `Fixed in the boxes (not saved yet): ${r.fixes.join(' · ')}` : 'No spelling or grammar problems found.';
+  } catch (e) { msg.textContent = 'Check failed: ' + e.message; }
+  btn.disabled = false;
+}
+async function pubLfCardSave(btn) {
+  const msg = document.getElementById('pubLfCardMsg'); btn.disabled = true;
+  try {
+    const r = await w('saveLongformScript', { assetId: PUB_LF.assetId, segments: [{ i: PUB_LF_CARD.i, ...pubLfCardFields() }] });
+    msg.textContent = r.saved ? `✓ Saved — the next render uses this text.` : 'No changes to save.';
+    await pubLfReloadScenes();
+  } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
+  btn.disabled = false;
 }
 async function pubLfReloadScenes() {
   const r = await w('getLongformRender', { assetId: PUB_LF.assetId }); PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();

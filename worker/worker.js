@@ -15595,6 +15595,15 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       }
       // saveLongformScript {assetId, title?, segments:[{i, name?, blurb?, ask?, text?, label?}]} → writes the
       // edits into the Video Spec the render reads; every changed line also goes to voice learning.
+      // proofreadLongformCard {fields:{name,blurb,ask,text}} → the same fields with spelling/grammar fixed (NOT saved —
+      // the operator reviews them in the card editor, then saves with saveLongformScript).
+      if (body.action === "proofreadLongformCard") {
+        const f = body.fields || {}, seg = {};
+        for (const k of ["name", "blurb", "ask", "text", "label"]) if (typeof f[k] === "string" && f[k].trim()) seg[k] = f[k];
+        const mini = { segments: [{ kind: "item", ...seg }] };
+        const fixes = await lfProofread(env, mini);
+        return json({ ok: true, fields: mini.segments[0], fixes: fixes.map(x => `${x.from} → ${x.to}`) });
+      }
       if (body.action === "saveLongformScript") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         const { spec, page } = await lfLoadAsset(aid);
