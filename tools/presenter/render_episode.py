@@ -538,12 +538,12 @@ def main(ep_path, out, work):
 
     def frame(i):
         t = i / FPS
-        dx = int(40 * math.sin(t / 23)); dy = int(18 * math.sin(t / 31))
+        dx = int(40 * math.sin(t / 23)); dy = 0   # no vertical drift: it read as the presenter floating (operator 2026-10-02)
         ox, oy = (sc.width - W) // 2 + dx, max(0, (sc.height - H) // 2 + dy)
         fr = sc.crop((ox, oy, ox + W, oy + H)).convert("RGBA")
         if not STAGE_LAYOUT:
             ch = P.variant(jaw[i] if i < len(jaw) else 0, blink_at.get(i, 0))
-            bob = int(round(3 * math.sin(t * 2 * math.pi * 0.23)))
+            bob = 0   # idle bob removed — operator: "he seems to be floating up and down"
             fr.alpha_composite(ch, (chx, (PY if PY is not None else H - ch.height + pl.get("bottomOverhang", 30)) + bob))
         d = ImageDraw.Draw(fr)
         for t0, t1, seg in timeline:

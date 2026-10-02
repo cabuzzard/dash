@@ -6845,8 +6845,13 @@ async function pubLfRender(btn) {
   btn.disabled = true;
   try {
     await w('saveLongformRender', { assetId: PUB_LF.assetId, voice: document.getElementById('pubLfVoice').value, rate: document.getElementById('pubLfRate').value });
-    await w('renderLongform', { assetId: PUB_LF.assetId });
+    document.getElementById('pubLfStatus').innerHTML = '<span style="color:var(--ink3);">✍️ Proofreading the script, then starting the render…</span>';
+    const rr = await w('renderLongform', { assetId: PUB_LF.assetId });
     pubLfShowJob({ status: 'queued', started: Date.now(), at: Date.now() });
+    let pf = document.getElementById('pubLfProof');
+    if (!pf) { pf = document.createElement('div'); pf.id = 'pubLfProof'; pf.style.cssText = 'font-size:11px;color:var(--ink3);margin-top:4px;'; document.getElementById('pubLfStatus').after(pf); }
+    const fx = rr.proofread || [];
+    pf.textContent = fx.length ? `✍️ Fixed ${fx.length} spelling/grammar slip${fx.length === 1 ? '' : 's'} before rendering: ${fx.join(' · ')}` : '✍️ Proofread: no spelling or grammar fixes needed.';
     pubLfPoll();
   } catch (e) { btn.disabled = false; document.getElementById('pubLfStatus').innerHTML = `<span style="color:var(--stale);">✕ ${esc(e.message)}</span>`; }
 }

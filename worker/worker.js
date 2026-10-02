@@ -1238,7 +1238,7 @@ const LF_FORMATS = {
   interview: { label: "Interview (your answers, lightly edited)", items: 0, use: "the best answer is the narrator's own experience and opinions, told in their words",
     titles: '"I [Did X] For [N] Years — Here\'s What Nobody Tells You", "[Expert] Answers Your [Topic] Questions", "What I Learned From [Experience]"',
     rule: n => `INTERVIEW: exactly ${n} items, one per answered interview question below, in the order given. The episode IS the narrator's answers.`,
-    beats: "\"ask\": THE CUSTOMER asking, in a second voice — 15 words or fewer, first person, in the customer's own words and situation (use the Customer, Pain Points, Emotions and Characters in the research: e.g. \"I snap at my team every afternoon. What's actually going on?\"); distill the long interview question, never read it, never sound like a host or an interviewer → \"text\": THE NARRATOR'S ANSWER ONLY, speaking to that customer (it must not repeat or restate the question), LIGHTLY EDITED: fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
+    beats: "\"ask\": THE CUSTOMER asking, in a second voice — 15 words or fewer, first person, in the customer's own words and situation (use the Customer, Pain Points, Emotions and Characters in the research: e.g. \"I snap at my team every afternoon. What's actually going on?\"); distill the long interview question, never read it, never sound like a host or an interviewer → \"text\": THE NARRATOR'S ANSWER ONLY, speaking to that customer (it must not repeat or restate the question), LIGHTLY EDITED: fix EVERY spelling mistake and typo (they type fast — a misspelled word is never \"their wording\", always correct it), fix grammar and punctuation, cut filler, false starts and repetition, split run-on sentences, write numbers as words — keep their words, order, examples, opinions and tone (at least 85% of their wording survives); add NOTHING they didn't say. The item's \"name\" is the question shortened to 8 words or fewer; the \"blurb\" is their main point in their own words" },
   // legacy (no longer offered): kept so older episodes regenerate the same way
   tier: { legacy: true, label: "Tier list (S–D)", items: 9, use: "", titles: "",
     rule: n => `TIER LIST: ${n} items, each placed in a tier ("S","A","B","C" or "D") with the reason; order them so tiers build suspense (don't reveal every S first).`,
@@ -1321,7 +1321,7 @@ const LF_DEFAULT_RATE = "-10%";   // operator 2026-09-30: "slow down the voice a
 // be the voice of my customer") — a younger male voice, operator's pick of three free voices.
 const LF_INTERVIEWER = "en-US-BrianNeural";
 const LF_VOICES = [
-  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.3471, tempo: 0.99435, paraScale: 1.12, wpm: 169, ambience: { type: "wind", db: -40, bodyDb: -54 } /* wind: -40 dB in the channel intro, 80% lower (-54) under the episode */, legacyRates: ["-28%", "-21%", "-10%", "-4%"] },   // legacyRates: old generic defaults saved on earlier episodes → use this voice's tuned pace   // tune vs the approved -13% voice: speech ×0.97 ×1.005 ×1.02 = tempo 0.99435 (atempo, pitch kept); real pauses ×1.3548 (stretch = pauses × tempo, since atempo also scales them by 1/tempo); paragraph breaks + section gaps ×1.12 more
+  { id: "en-US-AndrewNeural", label: "Andrew — mountain man, deep (free)", rate: "-13%", pitch: "-10Hz", pauseScale: 1.48181, tempo: 1.093785, paraScale: 1.12, wpm: 186, /* 2026-10-02 operator: speech +10%, same pauses → tempo ×1.1 and pauseScale ×1.1 (atempo shrinks pauses by 1/tempo) */ ambience: { type: "wind", db: -40, bodyDb: -54 } /* wind: -40 dB in the channel intro, 80% lower (-54) under the episode */, legacyRates: ["-28%", "-21%", "-10%", "-4%"] },   // legacyRates: old generic defaults saved on earlier episodes → use this voice's tuned pace   // tune vs the approved -13% voice: speech ×0.97 ×1.005 ×1.02 = tempo 0.99435 (atempo, pitch kept); real pauses ×1.3548 (stretch = pauses × tempo, since atempo also scales them by 1/tempo); paragraph breaks + section gaps ×1.12 more
   { id: "GDy9DZAjVXkKzjkBkH0d", label: "Mwz 106 — Mountainwize narrator (ElevenLabs)", engine: "elevenlabs" },
   { id: "2Yjj2F9TinkmgvAoo6ul", label: "mwz3 106 — older, more gravelly (ElevenLabs)", engine: "elevenlabs", rate: "-23%", wpm: 156 },   // default -10% then "another 15%" slower → 0.9 × 0.85
   { id: "en-US-BrianNeural", label: "Brian — casual, sincere (US)" },
@@ -1347,6 +1347,39 @@ async function lfLoadAsset(assetId) {
   if (!pg.properties) throw new Error(pg.message || "Asset not found");
   let spec = null; try { spec = JSON.parse(lfReadRich(pg.properties["Video Spec"]) || "null"); } catch (e) {}
   return { url, page: pg, spec };
+}
+// ✍️ Proofread (operator 2026-10-02: "I have terrible typing… you have to correct grammar and spelling" — a typo in
+// "decision" made it all the way into a render). Runs before EVERY render, so it also catches text typed into the
+// Script & cards editor. Spelling, typos and plain grammar only — never style, never wording. Returns the fixes applied.
+async function lfProofread(env, spec) {
+  const F = ["text", "ask", "name", "blurb", "label", "pay"];
+  const items = [];
+  if (spec.title) items.push({ k: "title", t: String(spec.title) });
+  if (spec.topic) items.push({ k: "topic", t: String(spec.topic) });
+  (spec.segments || []).forEach((x, i) => { if (x.kind === "jingle") return; for (const f of F) if (x[f] && typeof x[f] === "string") items.push({ k: `${i}.${f}`, t: x[f] }); });
+  if (!items.length) return [];
+  const r = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content:
+`Proofread this video script. It is narrated aloud and shown on screen as captions and cards, in the speaker's own voice. The speaker types fast and makes typos.
+Find EVERY misspelled word, typo, wrong word from a slip of the fingers ("there/their", "decison"), doubled word, missing small word, and plain grammar error (agreement, tense slips).
+Do NOT change style, tone, slang, word choice, sentence order, or opinions. Do not "improve" anything that is already correct. Casual speech is fine.
+For each fix return {"k": the item key, "from": the EXACT wrong text copied character for character (include a word or two of context if the bare word appears more than once in that item), "to": the corrected text}.
+
+ITEMS (key: text):
+${items.map(x => `[${x.k}] ${x.t}`).join("\n").slice(0, 80000)}
+
+Return ONLY a JSON array (empty [] if nothing needs fixing).` }] });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error?.message || "proofread failed");
+  const raw = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+  let fixes = []; try { fixes = JSON.parse(raw.slice(raw.indexOf("["), raw.lastIndexOf("]") + 1)); } catch (e) { return []; }
+  const done = [];
+  for (const f of fixes) {
+    if (!f || !f.k || !f.from || f.to == null || f.from === f.to) continue;
+    if (f.k === "title" || f.k === "topic") { if (String(spec[f.k]).includes(f.from)) { spec[f.k] = String(spec[f.k]).replace(f.from, f.to); done.push(f); } continue; }
+    const [i, fld] = String(f.k).split("."); const seg = spec.segments[+i];
+    if (seg && F.includes(fld) && typeof seg[fld] === "string" && seg[fld].includes(f.from)) { seg[fld] = seg[fld].replace(f.from, String(f.to)); done.push(f); }
+  }
+  return done;
 }
 async function lfSaveSpec(assetId, spec) {
   const x = String(assetId).replace(/-/g, "");
@@ -15495,6 +15528,14 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       if (body.action === "renderLongform") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         if (aid.length !== 32) return json({ error: "assetId required" }, 400);
+        let proofed = [];
+        try {   // ✍️ spelling/grammar pass on the whole script before it's voiced (never blocks the render)
+          const { spec: ps } = await lfLoadAsset(aid);
+          if (ps && Array.isArray(ps.segments)) {
+            proofed = await lfProofread(env, ps);
+            if (proofed.length) { ps.proofread = { at: Date.now(), fixes: proofed.slice(0, 200) }; await lfSaveSpec(aid, ps); }
+          }
+        } catch (e) { console.error("proofread:", e.message); }
         await lfBuildEpisode(env, aid);   // throws if there's no script
         const GT = (env.GITHUB_TOKEN || "").trim();
         if (!GT) return json({ error: "GITHUB_TOKEN not set" }, 500);
@@ -15505,7 +15546,7 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
           body: JSON.stringify({ event_type: "render-episode", client_payload: { assetId: aid, sig, worker: origin } }) });
         if (!gr.ok) return json({ error: `GitHub wouldn't start the render (${gr.status}): ${(await gr.text()).slice(0, 200)}` }, 502);
         await env.TRADES.put("lfrender:" + aid, JSON.stringify({ status: "queued", at: Date.now(), started: Date.now() }));
-        return json({ success: true, status: "queued" });
+        return json({ success: true, status: "queued", proofread: proofed.map(f => `${f.from} → ${f.to}`) });
       }
       // elevenLabsVoiceAudit — read-only: the account's own voices (cloned / designed / added
       // from the library) + every voice actually used in the generation history, with counts.
