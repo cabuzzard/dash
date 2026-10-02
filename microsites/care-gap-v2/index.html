@@ -839,7 +839,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="btn" type="button" style="font-size:10px;" title="Remove the selected typeface from the list" onclick="pubLibDelete('fonts')">🗑</button></div></div>
             <div style="flex:1;min-width:240px;">📐 Layout preset
               <select id="pubLibLayouts" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLibLayoutPreview();pubLibUse('layouts')"></select>
-              <canvas id="pubLibLayoutPrev" width="240" height="135" style="margin-top:4px;width:240px;height:135px;border-radius:6px;display:block;"></canvas>
+              <canvas id="pubLibLayoutPrev" width="384" height="216" style="margin-top:4px;width:100%;max-width:384px;height:auto;border-radius:6px;display:block;"></canvas>
               <div id="pubLibLayoutNote" style="font-size:10.5px;color:var(--ink3);"></div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('layouts', this)">💬 Copy ChatGPT prompt</button>
@@ -6502,14 +6502,34 @@ function pubLibFontPreview() {
 function pubLibLayoutPreview() {
   const sel = document.getElementById('pubLibLayouts').value, it = PUB_LIB.layouts.find(x => x.id === sel);
   const cv = document.getElementById('pubLibLayoutPrev'); if (!cv) return;
-  const c = cv.getContext('2d'), W = cv.width, H = cv.height, ep = PUB_LIB.ep || {};
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height, k = W / 1920, ep = PUB_LIB.ep || {}, u = pubLibUses(ep);
   const B = lfBoxesFull({ palette: ep.palette, layout: ep.layout }, it ? it.boxes : (ep.boxes || null));
+  const fonts = (it && PUB_LIB.fonts.find(f => f.id === document.getElementById('pubLibFonts').value)) || ep.fonts || {};
+  const DF = `"${fonts.display || 'Georgia'}", Georgia, serif`, BF = `"${fonts.body || 'Inter'}", sans-serif`;
   c.fillStyle = '#3a4a40'; c.fillRect(0, 0, W, H);
-  const r = (b, fill, label, hh) => { if (!b) return; const x = b.x / 100 * W, y = b.y / 100 * H, w = (b.w || 20) / 100 * W, h = (hh != null ? hh : (b.h || 20)) / 100 * H; c.fillStyle = fill; c.fillRect(x, y, w, h); c.fillStyle = '#fff'; c.font = '10px sans-serif'; c.fillText(label, x + 4, y + 12); };
-  if (B.presenter && ep.layout !== 'stage') r({ ...B.presenter, w: B.presenter.h * 0.75 * H / W }, 'rgba(232,178,52,.45)', 'presenter');
-  r(B.card, lfHexA(B.card.color, B.card.opacity), 'card', 30 * (B.card.s || 100) / 100);
-  r(B.caption, lfHexA(B.caption.color, B.caption.opacity), 'captions');
-  document.getElementById('pubLibLayoutNote').textContent = it && it.note ? it.note : (sel === 'custom' ? 'Your own edits from 📐 Layout…' : '');
+  const wrapN = (t, maxW, n) => { const out = []; let cur = ''; for (const w_ of String(t).split(/\s+/)) { const tt = (cur + ' ' + w_).trim(); if (c.measureText(tt).width <= maxW || !cur) cur = tt; else { out.push(cur); cur = w_; } } if (cur) out.push(cur); return out; };
+  if (B.presenter && u.presenter) { const p = B.presenter, ph = p.h / 100 * H, pw = ph * 0.75; c.fillStyle = 'rgba(232,178,52,.35)'; c.fillRect(p.x / 100 * W, p.y / 100 * H, pw, ph); c.fillStyle = '#fff'; c.font = '9px sans-serif'; c.fillText('presenter', p.x / 100 * W + 3, p.y / 100 * H + 10); }
+  // card with the LONGEST real heading + key point, at native metrics scaled like the renderer
+  const cb = B.card, CS = (cb.s || 100) / 100, NW = Math.max(420, (cb.w || 40) / 100 * 1920 / CS), cx = cb.x / 100 * W, cy = cb.y / 100 * H;
+  c.save(); c.translate(cx, cy); c.scale(k * CS, k * CS);
+  let y = 20; const lines = [];
+  c.font = `700 56px ${DF}`; const nm = wrapN(u.longName || u.title, NW - 80, 9);
+  const big = nm.length > 2; c.font = `700 ${big ? 44 : 56}px ${DF}`; const nm2 = big ? wrapN(u.longName || u.title, NW - 80, 9) : nm;
+  if (u.numbered) y += 84; const nameLines = nm2.slice(0, 3); y += nameLines.length * (big ? 52 : 66) + 8;
+  c.font = `600 29px ${BF}`; const bl = wrapN(u.longBlurb, NW - 80, 9).slice(0, 3); y += bl.length * 38 + (u.pay ? 104 : 0) + (u.score ? 76 : 0) + 18;
+  c.fillStyle = lfHexA(cb.color, cb.opacity); c.fillRect(0, 0, NW, y);
+  let yy = 20; c.fillStyle = '#e8b234'; if (u.numbered) { c.font = `700 72px ${DF}`; c.fillText('#1', 40, yy + 60); yy += 84; }
+  c.fillStyle = '#f6eede'; c.font = `700 ${big ? 44 : 56}px ${DF}`; nameLines.forEach(l => { c.fillText(l, 40, yy + (big ? 44 : 56)); yy += big ? 52 : 66; });
+  if (nm2.length > 3) { c.fillStyle = '#ff6b6b'; c.fillText('…too long', 40, yy + 40); }
+  c.font = `600 29px ${BF}`; c.fillStyle = '#cfc6b4'; yy += 8; bl.forEach(l => { c.fillText(l, 42, yy + 30); yy += 38; });
+  c.restore();
+  // pictures take the card's spot (4:3, ≥560 px wide)
+  if (u.pictures && u.presenter) { const fw = Math.max(560, Math.min(1100, NW * CS)) * k, fh = fw * 0.763; c.strokeStyle = 'rgba(232,178,52,.9)'; c.setLineDash([4, 3]); c.strokeRect(cx, cy, fw, fh); c.setLineDash([]); c.fillStyle = '#e8b234'; c.font = '9px sans-serif'; c.fillText(`pictures (${u.pictures})`, cx + 3, cy + fh - 4); }
+  // captions: top-anchored, 2 lines
+  const cp = B.caption; c.fillStyle = lfHexA(cp.color, cp.opacity); c.fillRect(cp.x / 100 * W, cp.y / 100 * H, cp.w / 100 * W, (cp.h || 12) / 100 * H);
+  c.fillStyle = '#fff'; c.font = `600 ${Math.round(40 * k * (cp.s || 100) / 100)}px ${BF}`; c.fillText(u.qLines ? 'Q: the customer asks…' : 'Spoken words appear here…', cp.x / 100 * W + 4, cp.y / 100 * H + 12);
+  const notes = [u.items + ' cards', u.pay && 'pay bar', u.score && 'score row', u.asks.length && u.asks.length + ' ask pills', u.qLines && 'Q: lines', u.pictures && u.pictures + ' pictures'].filter(Boolean).join(' · ');
+  document.getElementById('pubLibLayoutNote').textContent = (it && it.note ? it.note + ' — ' : (sel === 'custom' ? 'Your own edits from 📐 Layout… — ' : '')) + 'this script uses: ' + notes;
 }
 async function pubLibUse(kind) {
   const sel = document.getElementById(kind === 'fonts' ? 'pubLibFonts' : 'pubLibLayouts').value;
@@ -6523,6 +6543,32 @@ async function pubLibUse(kind) {
     msg.style.color = 'var(--fresh)'; msg.textContent = '✓ ' + (kind === 'fonts' ? 'Typeface' : 'Layout') + ' set for this episode — used on the next 🎬 Render' + (kind === 'layouts' ? ' (fine-tune in 📐 Layout…).' : '.');
     pubLibDraw();
   } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
+}
+// What THIS episode puts on screen (from its script) — drives the layout prompt and the preview, so a layout is
+// designed for the text boxes the script writer actually used (cards, pay/score rows, ask pills, Q: lines, pictures).
+function pubLibUses(ep) {
+  const segs = (ep && ep.segments) || [], items = segs.filter(x => x.kind === 'item' || x.kind === 'point');
+  const longest = (arr, f) => arr.reduce((a, x) => String(x[f] || '').length > a.length ? String(x[f] || '') : a, '');
+  return {
+    items: items.length, numbered: items.some(x => x.n != null),
+    longName: longest(items, 'name'), longBlurb: longest(items, 'blurb'),
+    pay: items.some(x => x.pay), score: items.some(x => x.score != null || x.tier),
+    title: ep && ep.title || '', asks: segs.filter(x => x.kind === 'ask' && x.label).map(x => x.label),
+    qLines: segs.filter(x => x.ask).length, pictures: segs.reduce((n, x) => n + (x.images || []).length, 0),
+    presenter: ep && ep.layout !== 'stage', format: ep && ep.format || '',
+  };
+}
+function pubLibUsesText(u) {
+  return [
+    `- CHAPTER CARDS: ${u.items} of them${u.numbered ? ', each starting with a big "#N" number' : ''}. Longest heading: "${u.longName}" (${u.longName.length} chars — wraps to max 3 lines). Longest key-point line under it: "${u.longBlurb}" (${u.longBlurb.length} chars, max 3 lines).`,
+    u.pay ? '- The cards also show a PAY bar (adds ~10% of frame height to the card).' : '',
+    u.score ? '- The cards also show a SCORE / TIER row (adds ~7% of frame height).' : '',
+    `- TITLE CARD (same card box): "${u.title}" in the opening, plus the channel intro lines.`,
+    u.asks.length ? `- ASK PILLS (appear at the card's top-left): ${u.asks.slice(0, 4).map(a => '"' + a + '"').join(', ')}.` : '',
+    `- CAPTIONS: every spoken line, 2 lines at a time${u.qLines ? `; plus ${u.qLines} gold "Q:" lines where a second voice asks the customer's question` : ''}.`,
+    u.pictures ? `- PICTURES: ${u.pictures} scene images appear in a framed 4:3 panel that takes the CARD's place and position (width = card width, min 560 px) while shown.` : '- No scene pictures in this episode.',
+    u.presenter ? '- PRESENTER: the animated character is on screen the whole time.' : '- No presenter (text & images layout).',
+  ].filter(Boolean).join('\n');
 }
 function pubLibPrompt(kind) {
   const ep = PUB_LIB.ep || {}, f = ep.fonts || {}, pal = ep.palette || {};
@@ -6548,9 +6594,11 @@ Reply with ONLY this JSON (no other text), so it can be pasted straight into my 
 - "caption": the spoken-word captions (2 lines, hang from the TOP of the box). Fields: x, y, w, h (height %), s, color, opacity.
 - "presenter": the animated character${ep.layout === 'stage' ? ' (NOT used in this layout — omit it)' : ''}. Fields: x, y, h (height % of the frame; width follows the picture, about 0.75 × h in frame-height units).
 ${ctx}
+WHAT THIS EPISODE'S SCRIPT PUTS ON SCREEN (design for these — make sure the longest heading and line fit):
+${pubLibUsesText(pubLibUses(ep))}
 Current layout: ${JSON.stringify(D)}
 
-Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone.
+Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone; size the card (w and s) so the longest heading above fits in 3 lines and the pictures panel (if any) has room in the card's spot.
 
 Reply with ONLY this JSON (no other text), so it can be pasted straight into my dashboard:
 \`\`\`json

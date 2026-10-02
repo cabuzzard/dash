@@ -481,6 +481,10 @@ def main(ep_path, out, work):
 
     # ── scene images: shown in a framed stage on the left when their cue words are spoken ──
     STAGE = (240, 50, 1680, 860) if STAGE_LAYOUT else (80, 120, 840, 700)   # x0, y0, x1, y1
+    if not STAGE_LAYOUT and "x" in cb:   # a layout that moves the card moves the picture frame with it (same spot, 4:3)
+        fw = int(max(560, min(1100, NW * CS))); fh = int(fw * 0.763)
+        fx = max(20, min(W - fw - 20, CX)); fy = max(20, min(H - fh - 20, CY))
+        STAGE = (fx, fy, fx + fw, fy + fh)
     sw_, sh_ = STAGE[2] - STAGE[0], STAGE[3] - STAGE[1]
     norm = lambda x: re.sub(r"[^a-z0-9 ]+", "", str(x).lower()).split()
     shots = []   # (start, end, PIL image sized 1.12x the stage)
