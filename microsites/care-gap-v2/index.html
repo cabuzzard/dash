@@ -1785,6 +1785,7 @@ async function pp(d) {
           localStorage.setItem(REMEMBER_KEY, JSON.stringify({ token: SESSION_TOKEN, expires: Date.now() + 30*24*60*60*1000 }));
         }
         document.getElementById('pinScreen').classList.add('hidden');
+        if (typeof CA_LF !== 'undefined' && CA_LF.iv) caLfIvAutosave();   // retry the interview autosave that failed while locked
         init();
       } else { pinReset('incorrect code', true); }
     } catch(e) { pinReset(e.name === 'AbortError' ? 'timeout — retry' : 'connection error', true); }
@@ -5704,7 +5705,7 @@ function caLfIvAutosave() {
     if (!interview.some(x => x.a)) return;
     w('saveLongformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: CA_LF.iv.question, interview, autosave: true })
       .then(() => { const m = document.getElementById('caLfIvMsg'); if (m && !/Saved|Loaded|Restored/.test(m.textContent)) m.textContent = '☁ Autosaved to this title ' + new Date().toLocaleTimeString() + '.'; })
-      .catch(() => {});
+      .catch(e => { const m = document.getElementById('caLfIvMsg'); if (m) { m.style.color = 'var(--stale)'; m.textContent = '⚠ NOT saved to the server (' + e.message + ') — your answers are kept in this browser; log in again and they save automatically.'; } });
   }, 4000);
 }
 function caLfIvDraftPut() {
