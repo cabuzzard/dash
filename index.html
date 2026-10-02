@@ -1063,6 +1063,12 @@
         <button class="kw-btn" onclick="kwCopySel()" title="Copy the selected keywords, one per line">📋 Copy keywords</button>
         <button class="kw-btn" id="kwSelOnlyBtn" onclick="kwToggleSelOnly()" title="Hide everything you haven't selected (other filters are ignored while this is on)">👁 Show selected only</button>
         <button class="kw-btn" onclick="kwSelCsv()" title="Download the selected keywords with their metrics as a CSV worksheet">⬇ CSV</button>
+        <span style="color:var(--text3);">|</span>
+        <input id="kwGroupName" placeholder="group name (optional)" style="width:150px;">
+        <button class="kw-btn" onclick="kwSaveGroup(false)" title="Save the selection as a named group — it appears in the Runs list">💾 Save to runs</button>
+        <select id="kwGroupPick" class="kw-sel"><option value="">add to saved group…</option></select>
+        <button class="kw-btn" onclick="kwSaveGroup(true)" title="Add the selection to the chosen saved group (duplicates are skipped)">➕ Add to group</button>
+        <button class="kw-btn" id="kwRemoveGrpBtn" onclick="kwRemoveFromGroup()" style="display:none;" title="Take the selected keywords out of the group you're viewing">➖ Remove from this group</button>
         <span class="kw-x" onclick="kwClearSel()" title="Clear selection">✕ clear</span>
         <span id="kwSendMsg" style="color:var(--text3);"></span>
       </div>
@@ -5073,7 +5079,7 @@ async function kwLoadRuns() {
   try {
     const d = await call('kwRuns');
     KW.runsList = d.runs || []; KW.labels = d.labels || KW.labels;
-    const on = id => id === null ? !KW.view.length : KW.view.includes(id);
+    const on = id => !KW.group && (id === null ? !KW.view.length : KW.view.includes(id));
     const row = (id, name, meta, status) => `<div class="kw-run${on(id) ? ' active' : ''}" onclick="kwSelectRun(${id === null ? 'null' : id})" title="${id === null ? 'Show every keyword in the store' : 'Click = view this run alone · checkbox = add to a combined set'}">
         ${id !== null ? `<input type="checkbox" ${on(id) ? 'checked' : ''} onclick="event.stopPropagation();kwToggleRun(${id})" title="Combine with other checked runs">` : '<span style="width:13px;"></span>'}
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>
@@ -5081,14 +5087,63 @@ async function kwLoadRuns() {
         ${status ? `<span class="kw-st kw-st-${status}">${status}</span>` : ''}
         ${id !== null ? `<span class="kw-x" title="Delete run (keywords stay in the store)" onclick="event.stopPropagation();kwDeleteRun(${id})">✕</span>` : ''}
       </div>`;
-    el.innerHTML = row(null, 'All keywords in the store', '', '') + KW.runsList.map(r =>
+    try { KW.groups = (await call('kwGroups')).groups || []; } catch (e) { KW.groups = KW.groups || []; }
+    kwRenderGroupPick();
+    const grow = g => `<div class="kw-run${KW.group === g.id ? ' active' : ''}" onclick="kwSelectGroup('${g.id}')" title="Saved group — click to view just these keywords">
+        <span style="width:13px;">💾</span>
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span>
+        <span style="color:var(--text3);white-space:nowrap;">${kwNum(g.keywords.length)} kw · saved group · ${new Date(g.at).toISOString().slice(0, 10)}</span>
+        <span class="kw-x" title="Delete this saved group (keywords stay in the store)" onclick="event.stopPropagation();kwDeleteGroup('${g.id}')">✕</span>
+      </div>`;
+    el.innerHTML = row(null, 'All keywords in the store', '', '') + (KW.groups || []).map(grow).join('') + KW.runsList.map(r =>
       row(r.id, `#${r.id} ${r.name}`, `${r.keywords == null ? '–' : kwNum(r.keywords)} kw · ${r.api_calls} calls · ${(r.started_at || '').slice(0, 10)}${r.notes ? ' · ' + esc(r.notes) : ''}`, r.status)).join('');
     kwUpdateAddBtn();
   } catch (e) { el.innerHTML = '<div class="error-msg">' + esc(e.message) + '</div>'; }
 }
 
-function kwSelectRun(id) { KW.view = id === null ? [] : [id]; kwViewChanged(); }
-function kwToggleRun(id) { KW.view = KW.view.includes(id) ? KW.view.filter(x => x !== id) : [...KW.view, id]; kwViewChanged(); }
+function kwSelectRun(id) { KW.group = null; KW.view = id === null ? [] : [id]; kwViewChanged(); }
+function kwToggleRun(id) { if (KW.group) { KW.group = null; KW.view = []; } KW.view = KW.view.includes(id) ? KW.view.filter(x => x !== id) : [...KW.view, id]; kwViewChanged(); }
+
+// 💾 Saved groups — a named keyword list remembered with the runs it came from. Viewing one loads those runs'
+// snapshots (metrics stay current) and shows only the group's keywords.
+const kwGroupById = id => (KW.groups || []).find(g => g.id === id);
+function kwSelectGroup(id) { const g = kwGroupById(id); if (!g) return; KW.group = id; KW.selOnly = false; KW.view = (g.runIds || []).filter(r => (KW.runsList || []).some(x => x.id === r)); kwViewChanged(); }
+async function kwDeleteGroup(id) {
+  const g = kwGroupById(id); if (!g || !confirm(`Delete saved group "${g.name}"? (The keywords stay in the store.)`)) return;
+  await call('kwGroupDelete', { id });
+  if (KW.group === id) { KW.group = null; KW.view = []; kwLoadView(); }
+  kwLoadRuns();
+}
+function kwRenderGroupPick() {
+  const sel = document.getElementById('kwGroupPick'); if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">add to saved group…</option>' + (KW.groups || []).map(g => `<option value="${g.id}">${esc(g.name)} (${g.keywords.length})</option>`).join('');
+  if (cur && kwGroupById(cur)) sel.value = cur;
+}
+const kwSourceRuns = () => KW.view.length ? KW.view : (KW.viewSnaps || []).map(s => s.run.id);
+async function kwSaveGroup(toExisting) {
+  const msg = document.getElementById('kwSendMsg'), keywords = [...KW.selected];
+  if (!keywords.length) { msg.textContent = 'Select some keywords first.'; return; }
+  const id = toExisting ? document.getElementById('kwGroupPick').value : '';
+  if (toExisting && !id) { msg.textContent = 'Choose a saved group first.'; return; }
+  try {
+    const r = await call('kwGroupSave', { id, name: document.getElementById('kwGroupName').value, keywords, runIds: kwSourceRuns() });
+    KW.groups = r.groups;
+    msg.textContent = toExisting ? `✓ ${r.added} new keyword${r.added === 1 ? '' : 's'} added to "${r.group.name}" (${r.group.keywords.length} total)` : `✓ Saved "${r.group.name}" to Runs (${r.group.keywords.length} keywords)`;
+    document.getElementById('kwGroupName').value = '';
+    kwLoadRuns();
+  } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
+}
+async function kwRemoveFromGroup() {
+  const msg = document.getElementById('kwSendMsg'), g = kwGroupById(KW.group);
+  if (!g || !KW.selected.size) return;
+  try {
+    const r = await call('kwGroupRemove', { id: g.id, keywords: [...KW.selected] });
+    KW.groups = r.groups; KW.selected.clear();
+    msg.textContent = `✓ Removed from "${g.name}"`;
+    kwLoadRuns(); kwLoadResults(0);
+  } catch (e) { msg.textContent = 'Not removed: ' + e.message; }
+}
 function kwViewChanged() { KW.offset = 0; kwLoadRuns(); kwLoadView(); }
 
 // Fetch (once) the snapshots the current view needs, merge, then render locally.
@@ -5134,13 +5189,16 @@ function kwLoadResults(offset) {
   KW.offset = offset || 0;
   const el = document.getElementById('kwResults');
   if (KW.selOnly && !KW.selected.size) KW.selOnly = false;
-  const rows = kwCoreSort(KW.selOnly ? (KW.rows || []).filter(r => KW.selected.has(r.keyword)) : kwCoreFilter(KW.rows, kwFilters()), KW.sorts);
+  const grp = KW.group && kwGroupById(KW.group), gset = grp && new Set(grp.keywords);
+  const base = gset ? (KW.rows || []).filter(r => gset.has(r.keyword)) : KW.rows;
+  const rows = kwCoreSort(KW.selOnly ? (KW.rows || []).filter(r => KW.selected.has(r.keyword)) : kwCoreFilter(base, kwFilters()), KW.sorts);
+  const rfg = document.getElementById('kwRemoveGrpBtn'); if (rfg) rfg.style.display = grp ? '' : 'none';
   const sob = document.getElementById('kwSelOnlyBtn'); if (sob) sob.textContent = KW.selOnly ? '👁 Show all' : '👁 Show selected only';
   KW.filtered = rows; KW.total = rows.length;
   const page = rows.slice(KW.offset, KW.offset + KW.limit);
   const snaps = KW.viewSnaps || [], multi = snaps.length > 1;
   const one = snaps.length === 1 ? snaps[0].run : null, mk = one && one.market;
-  document.getElementById('kwResTitle').textContent = one
+  document.getElementById('kwResTitle').textContent = grp ? `— 💾 ${grp.name} · ${grp.keywords.length} saved keywords` : one
     ? `— #${one.id} ${one.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}`
     : multi ? `— ${KW.view.length ? snaps.length + ' runs combined (' + snaps.map(s => '#' + s.run.id).join(', ') + ')' : 'all keywords (' + snaps.length + ' runs)'} · duplicates merged` : '— all keywords';
   const cols = [['keyword', 'Keyword'], ['intent', 'Intent'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
@@ -5372,7 +5430,7 @@ async function kwStart() {
     kwLog(`Run #${run.id} "${run.name}" · ${mk.geoLabels.join(', ')} · ${mk.languageLabel}` + (disc
       ? ` · depth ≤${c.max_depth}, ${c.seeds_per_level} seeds/level, ≤${c.max_requests} API requests, ≤${c.max_keywords.toLocaleString()} keywords` : ' · quick search'));
     KW.runId = run.id;
-    KW.view = [run.id];
+    KW.view = [run.id]; KW.group = null;
     await kwLoop(run.id);
   } catch (e) { kwLog('✗ ' + e.message); }
 }
@@ -5391,7 +5449,7 @@ async function kwLoop(runId) {
       if (r.retryAfter) { await kwSleep(r.retryAfter * 1000); continue; }
       if (r.done) break;
       // live peek at the growing run every 5 steps (one uncached snapshot read)
-      if (++steps % 5 === 0) { delete KW.snaps['live:' + runId]; KW.view = [runId]; kwLoadView(); }
+      if (++steps % 5 === 0) { delete KW.snaps['live:' + runId]; KW.view = [runId]; KW.group = null; kwLoadView(); }
       await kwSleep(1200);   // client-side throttle — Keyword Planning is rate limited
     }
   } catch (e) { kwLog('✗ ' + e.message); }
@@ -5400,7 +5458,7 @@ async function kwLoop(runId) {
   document.getElementById('kwStopBtn').style.display = 'none';
   delete KW.snaps['live:' + runId]; delete KW.snaps[runId];
   KW.runId = runId;
-  KW.view = [runId];
+  KW.view = [runId]; KW.group = null;
   kwRefresh();
 }
 

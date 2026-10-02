@@ -45533,6 +45533,36 @@ async function handleKeywordAction(body, env) {
     return json(stats);
   }
 
+  // 💾 Saved keyword groups (Keywords tab "Save to runs"): KV kwgroups = [{id, name, keywords[], runIds[], at}].
+  // Only the keyword strings + the runs they came from are kept — metrics come from those runs' snapshots on view.
+  // kwGroups → list · kwGroupSave {id?, name?, keywords, runIds} → new group, or ADD to group id · kwGroupDelete {id}
+  // · kwGroupRemove {id, keywords} → take keywords out of a group.
+  if (a === "kwGroups" || a === "kwGroupSave" || a === "kwGroupDelete" || a === "kwGroupRemove") {
+    const groups = (await env.TRADES.get("kwgroups", "json")) || [];
+    const put = async () => { await env.TRADES.put("kwgroups", JSON.stringify(groups)); return json({ ok: true, groups }); };
+    if (a === "kwGroups") return json({ groups });
+    if (a === "kwGroupDelete") { const i = groups.findIndex(g => g.id === body.id); if (i >= 0) groups.splice(i, 1); return put(); }
+    const kws = [...new Set((Array.isArray(body.keywords) ? body.keywords : []).map(k => String(k).trim()).filter(Boolean))].slice(0, 20000);
+    if (a === "kwGroupRemove") {
+      const g = groups.find(x => x.id === body.id); if (!g) return json({ error: "Group not found" }, 404);
+      const drop = new Set(kws); g.keywords = g.keywords.filter(k => !drop.has(k)); g.at = Date.now(); return put();
+    }
+    if (!kws.length) return json({ error: "Select some keywords first" }, 400);
+    const runIds = (Array.isArray(body.runIds) ? body.runIds : []).map(Number).filter(Number.isFinite);
+    if (body.id) {
+      const g = groups.find(x => x.id === body.id); if (!g) return json({ error: "Group not found" }, 404);
+      const before = g.keywords.length;
+      g.keywords = [...new Set([...g.keywords, ...kws])]; g.runIds = [...new Set([...(g.runIds || []), ...runIds])]; g.at = Date.now();
+      await env.TRADES.put("kwgroups", JSON.stringify(groups));
+      return json({ ok: true, groups, group: g, added: g.keywords.length - before });
+    }
+    const name = String(body.name || "").trim().slice(0, 80) || `Group ${new Date().toISOString().slice(0, 10)} (${kws.length})`;
+    const g = { id: "g" + Date.now().toString(36), name, keywords: kws, runIds: [...new Set(runIds)], at: Date.now() };
+    groups.unshift(g);
+    await env.TRADES.put("kwgroups", JSON.stringify(groups));
+    return json({ ok: true, groups, group: g, added: kws.length });
+  }
+
   if (a === "kwRuns") {
     const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, r.keywords keywords_live "
       + "FROM kw_runs r ORDER BY r.id DESC LIMIT 100").all()).results;
