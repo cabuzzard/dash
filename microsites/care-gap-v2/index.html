@@ -239,9 +239,6 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <span id="contentHubsList"></span>
           </div>
         </details>
-        <span style="display:inline-flex;gap:3px;align-items:center;font-size:10.5px;" title="How the Titles and Assets sections are grouped"><span style="color:var(--ink3);">Group:</span>
-          <button class="btn agrp-btn" data-v="default" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('default')">Stack</button>
-          <button class="btn agrp-btn" data-v="method" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('method')">Method</button></span>
         <button class="notebtn" data-noteid="page-overall" onclick="openNoteModal('page-overall','Whole page','page')">📝 Page note</button>
         <button class="lockbtn" onclick="lockApp()">🔒 Lock</button>
       </div>
@@ -1468,7 +1465,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: STRATEGY · TITLES · ASSETS ══════════════════════ -->
   <div class="panel" data-panel="strategy">
-    <div class="stage-hd"><h2>Strategy · Titles · Assets</h2><span class="stagetag">stage 3-6</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
+    <div class="stage-hd"><h2>Strategy · Titles · Assets</h2><span class="stagetag">stage 3-6</span><span style="display:inline-flex;margin-left:10px;gap:3px;align-items:center;font-size:10.5px;" title="How the Titles and Assets sections are grouped"><span style="color:var(--ink3);">Group:</span>
+          <button class="btn agrp-btn" data-v="default" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('default')">Stack</button>
+          <button class="btn agrp-btn" data-v="method" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('method')">Method</button></span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
     <p class="stage-sub">Real 🚀 Growth Strategies (left) — nested Product Stack → Product → Arc — their Titles (middle), and Titles' Assets (right), all on one page. Titles/Assets nest Product Stack → Product → Strategy; Assets sub-group by Platform, the one level Titles don't carry.</p>
     <div class="kwgrid3">
       <div class="kwcol">
@@ -3694,7 +3693,7 @@ async function loadProductTab() {
     const order = stackSort(rawOrder);
     const stackBlock = stack => `
       <div class="kwgroup${stack === 'No Stack' && !groups[stack].length ? ' nostack-empty' : ''}" data-stack="${esc(stack)}" data-ckey="prodstack-${esc(stack)}" style="--kwc:#8ab4f8;${stack === 'No Stack' && !groups[stack].length ? 'display:none;' : ''}">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span>${stack === 'No Stack' ? '' : `<span class="kwbtns"><button class="iconbtn" title="Rename this stack" onclick="event.stopPropagation();renameProductStackUi(this)">✎</button><button class="iconbtn" title="Delete this stack (its products move to No Stack)" onclick="event.stopPropagation();deleteProductStackUi(this)">✕</button></span>`}</div>
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)">${stackHandle(stack)}<span class="kwarrow">▸</span>${esc(stack)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${groups[stack].length})</span>${stack === 'No Stack' ? '' : `<span class="kwbtns"><button class="iconbtn" title="Rename this stack" onclick="event.stopPropagation();renameProductStackUi(this)">✎ rename</button><button class="iconbtn" title="Delete this stack (its products move to No Stack)" onclick="event.stopPropagation();deleteProductStackUi(this)">✕</button></span>`}</div>
         <div class="kwgbody">${groups[stack].map(p => `<div class="idea-card"><div class="idea-row">
             <span class="stack-handle" title="Drag onto another stack (checked products move together)" onpointerdown="productDragStart(event, this, '${esc(p.id)}')" onclick="event.stopPropagation()">⠿</span>
             <input type="checkbox" class="prod-select-cb" ${SELECTED_PRODUCTS.has(p.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleProductSelect('${esc(p.id)}', this.checked)" style="margin-right:6px;">
@@ -3715,7 +3714,7 @@ async function loadProductTab() {
       const nProducts = stacks.reduce((n, s) => n + groups[s].length, 0);
       return `
       <div class="kwgroup" data-group="${esc(g)}" data-ckey="prodgroup-${esc(g)}" style="--kwc:#f6ad55;">
-        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="stack-handle" title="Drag to reorder groups" onpointerdown="groupDragStart(event, this)" onclick="event.stopPropagation()">⠿</span><span class="kwarrow">▸</span>▣ ${esc(g)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stacks.length} stack${stacks.length === 1 ? '' : 's'} · ${nProducts} product${nProducts === 1 ? '' : 's'})</span><span class="kwbtns"><button class="iconbtn" title="Rename this group" onclick="event.stopPropagation();renameProductGroupUi(this)">✎</button><button class="iconbtn" title="Delete this group (its stacks become ungrouped)" onclick="event.stopPropagation();deleteProductGroupUi(this)">✕</button></span></div>
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="stack-handle" title="Drag to reorder groups" onpointerdown="groupDragStart(event, this)" onclick="event.stopPropagation()">⠿</span><span class="kwarrow">▸</span>▣ ${esc(g)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${stacks.length} stack${stacks.length === 1 ? '' : 's'} · ${nProducts} product${nProducts === 1 ? '' : 's'})</span><span class="kwbtns"><button class="iconbtn" title="Rename this group" onclick="event.stopPropagation();renameProductGroupUi(this)">✎ rename</button><button class="iconbtn" title="Delete this group (its stacks become ungrouped)" onclick="event.stopPropagation();deleteProductGroupUi(this)">✕</button></span></div>
         <div class="kwgbody" style="padding-left:6px;">${stacks.map(stackBlock).join('') || '<div class="loadnote">Empty — drag stacks here by their ⠿.</div>'}</div>
       </div>`;
     }).join('');
