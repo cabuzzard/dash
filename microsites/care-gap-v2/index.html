@@ -5456,6 +5456,15 @@ async function openCreateAssetModal(titleId) {
   // checked against the QA state's own tracked title id, not CA_TITLE.
   const reopeningSameTitle = titleId === CA_QA_STATE_TITLE_ID;
   CA_TITLE = t;
+  // Longform questions + interview belong to ONE title. Opening another title always starts clean — before, the
+  // previous title's question/answers stayed in the window and saves/generate went to the newly opened title.
+  if (CA_LF.titleId !== titleId) {
+    clearTimeout(CA_LF_AUTOSAVE_T);
+    CA_LF = { titleId, questions: [], pick: -1 };
+    const ivBox = document.getElementById('caLfInterview'); if (ivBox) ivBox.style.display = 'none';
+    const ivQs = document.getElementById('caLfInterviewQs'); if (ivQs) ivQs.innerHTML = '';
+    if (typeof caLfRender === 'function') caLfRender();
+  }
   document.getElementById('caModalTitle').textContent = t.title;
   document.getElementById('caResult').textContent = '';
   document.getElementById('caOverride').value = '';
@@ -5499,7 +5508,7 @@ function caOnMethodChange() {
   document.getElementById('caQaInterviewRow').style.display = isQaMethod ? 'block' : 'none';
   const isLf = /question[\s-]*led/i.test(name);
   document.getElementById('caLfRow').style.display = isLf ? 'block' : 'none';
-  if (isLf && CA_LF.titleId !== (CA_TITLE ? CA_TITLE.id : null)) { CA_LF = { titleId: CA_TITLE ? CA_TITLE.id : null, questions: [], pick: -1 }; caLfRender(); }
+  if (isLf && CA_LF.titleId !== (CA_TITLE ? CA_TITLE.id : null)) { CA_LF = { titleId: CA_TITLE ? CA_TITLE.id : null, questions: [], pick: -1 }; document.getElementById('caLfInterview').style.display = 'none'; document.getElementById('caLfInterviewQs').innerHTML = ''; caLfRender(); }
   // Reset only when THIS title's QA state actually belongs to a
   // different method — not on every method-set call (that was the bug:
   // caSetMethod calls this even when re-picking the SAME method on
@@ -5700,11 +5709,11 @@ let CA_LF_AUTOSAVE_T = null;
 function caLfIvAutosave() {
   clearTimeout(CA_LF_AUTOSAVE_T);
   CA_LF_AUTOSAVE_T = setTimeout(() => {
-    if (!CA_LF.iv || !CA_TITLE) return;
+    if (!CA_LF.iv || !CA_TITLE || CA_LF.titleId !== CA_TITLE.id) return;
     const interview = CA_LF.iv.qs.map((iq, k) => ({ q: iq, a: ((document.getElementById('caLfIvA' + k) || {}).value || '').trim() }));
     if (!interview.some(x => x.a)) return;
     w('saveLongformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: CA_LF.iv.question, interview, autosave: true })
-      .then(() => { const m = document.getElementById('caLfIvMsg'); if (m && !/Saved|Loaded|Restored/.test(m.textContent)) m.textContent = '☁ Autosaved to this title ' + new Date().toLocaleTimeString() + '.'; })
+      .then(() => { const m = document.getElementById('caLfIvMsg'); if (m && !/Saved|Loaded|Restored/.test(m.textContent)) m.textContent = `☁ Autosaved to “${CA_TITLE ? CA_TITLE.title : 'this title'}” ${new Date().toLocaleTimeString()}.`; })
       .catch(e => { const m = document.getElementById('caLfIvMsg'); if (m) { m.style.color = 'var(--stale)'; m.textContent = '⚠ NOT saved to the server (' + e.message + ') — your answers are kept in this browser; log in again and they save automatically.'; } });
   }, 4000);
 }
@@ -5785,12 +5794,13 @@ Loading it replaces these questions with that episode's questions and answers, a
 async function caLfSaveInterview(btn) {
   const msg = document.getElementById('caLfIvMsg');
   if (!CA_LF.iv || !CA_TITLE) { msg.textContent = 'Prepare the interview first.'; return; }
+  if (CA_LF.titleId !== CA_TITLE.id) { msg.textContent = '⚠ This interview belongs to a different title — close and reopen the title you are answering for.'; return; }
   const interview = CA_LF.iv.qs.map((iq, k) => ({ q: iq, a: ((document.getElementById('caLfIvA' + k) || {}).value || '').trim() }));
   if (!interview.some(x => x.a)) { msg.textContent = 'Answer at least one question first.'; return; }
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Saving…';
   try {
     const r = await w('saveLongformInterview', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE.id, question: CA_LF.iv.question, interview });
-    msg.textContent = `✓ Saved ${r.saved} answer${r.saved === 1 ? '' : 's'}` + (r.learned ? ` · ${r.learned} new to your voice profile` : ' · already in your voice profile');
+    msg.textContent = `✓ Saved ${r.saved} answer${r.saved === 1 ? '' : 's'} to “${CA_TITLE.title}”` + (r.learned ? ` · ${r.learned} new to your voice profile` : ' · already in your voice profile');
   } catch (e) { caLfIvDraftPut(); msg.textContent = 'Save failed: ' + e.message + ' — your answers are still here and kept in this browser.'; }
   btn.disabled = false; btn.textContent = o;
 }
