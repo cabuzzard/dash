@@ -1053,6 +1053,8 @@
         <button class="kw-btn" onclick="kwSend('campaign')" title="Create a new campaign (Status: Planning) with a Research record whose Main Keywords are the selection">+ New campaign</button>
         <span style="color:var(--text3);">|</span>
         <button class="kw-btn" onclick="kwCopySel()" title="Copy the selected keywords, one per line">📋 Copy keywords</button>
+        <button class="kw-btn" id="kwSelOnlyBtn" onclick="kwToggleSelOnly()" title="Hide everything you haven't selected (other filters are ignored while this is on)">👁 Show selected only</button>
+        <button class="kw-btn" onclick="kwSelCsv()" title="Download the selected keywords with their metrics as a CSV worksheet">⬇ CSV</button>
         <span class="kw-x" onclick="kwClearSel()" title="Clear selection">✕ clear</span>
         <span id="kwSendMsg" style="color:var(--text3);"></span>
       </div>
@@ -5123,7 +5125,9 @@ const kwIntentLabel = k => (KW.meta && KW.meta[k] && KW.meta[k].label) || k || '
 function kwLoadResults(offset) {
   KW.offset = offset || 0;
   const el = document.getElementById('kwResults');
-  const rows = kwCoreSort(kwCoreFilter(KW.rows, kwFilters()), KW.sorts);
+  if (KW.selOnly && !KW.selected.size) KW.selOnly = false;
+  const rows = kwCoreSort(KW.selOnly ? (KW.rows || []).filter(r => KW.selected.has(r.keyword)) : kwCoreFilter(KW.rows, kwFilters()), KW.sorts);
+  const sob = document.getElementById('kwSelOnlyBtn'); if (sob) sob.textContent = KW.selOnly ? '👁 Show all' : '👁 Show selected only';
   KW.filtered = rows; KW.total = rows.length;
   const page = rows.slice(KW.offset, KW.offset + KW.limit);
   const snaps = KW.viewSnaps || [], multi = snaps.length > 1;
@@ -5216,6 +5220,22 @@ async function kwCopySel() {
   if (!list.length) { msg.textContent = 'Select some keywords first.'; return; }
   await navigator.clipboard.writeText(list.join('\n'));
   msg.textContent = `✓ Copied ${list.length} keyword${list.length === 1 ? '' : 's'}`;
+}
+// Filter the table down to the selection (toggle).
+function kwToggleSelOnly() { KW.selOnly = !KW.selOnly; kwLoadResults(0); }
+// Selected keywords + metrics → CSV download (current sort order).
+function kwSelCsv() {
+  const msg = document.getElementById('kwSendMsg');
+  const rows = kwCoreSort((KW.rows || []).filter(r => KW.selected.has(r.keyword)), KW.sorts);
+  if (!rows.length) { msg.textContent = 'Select some keywords first.'; return; }
+  const head = ['Keyword', 'Intent', 'Avg monthly searches', 'Competition', 'Competition index', 'Low top-of-page bid', 'High top-of-page bid', 'Avg CPC', '12-month trend %', 'Depth'];
+  const q = v => { const t = v == null ? '' : String(v); return /[",\r\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t; };
+  const lines = [head, ...rows.map(r => [r.keyword, r.intent ? kwIntentLabel(r.intent) : '', r.vol, r.comp, r.ci, r.lb, r.hb, r.cpc, r.trend, r.depth])].map(a => a.map(q).join(','));
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+  a.download = `keywords-${new Date().toISOString().slice(0, 10)}-${rows.length}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  msg.textContent = `✓ Downloaded ${rows.length} keywords as CSV`;
 }
 function kwClearSel() { KW.selected.clear(); kwLoadResults(KW.offset); }
 async function kwRenderSendBar() {
