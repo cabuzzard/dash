@@ -15467,6 +15467,8 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
         const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout } };
         spec.tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
+        // ✍️ proofread the fresh script before it's saved (the render runs the pass again as a final check)
+        try { const pf = await lfProofread(env, spec); if (pf.length) { spec.proofread = { at: Date.now(), fixes: pf.slice(0, 200) }; o.title = spec.title; } } catch (e) { console.error("proofread:", e.message); }
         const hashtags = (o.hashtags || []).map(S).filter(Boolean).map(t => t.startsWith("#") ? t : "#" + t.replace(/\s+/g, "")).slice(0, 3).join(" ");
         const tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         const h2 = t => ({ object: "block", type: "heading_2", heading_2: { rich_text: lfRich(t) } });
