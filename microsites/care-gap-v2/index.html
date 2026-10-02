@@ -5689,7 +5689,13 @@ function caLfIvMeter() {
   const el = document.getElementById('caLfIvMeter'), more = document.getElementById('caLfMoreQs');
   const p = CA_LF.iv && CA_LF.iv.plan;
   if (!el) return;
-  if (!p || document.getElementById('caLfFormat').value !== 'interview') { el.style.display = 'none'; if (more) more.style.display = 'none'; return; }
+  if (more) more.style.display = CA_LF.iv ? '' : 'none';   // more questions: any format
+  if (document.getElementById('caLfFormat').value !== 'interview' || !CA_LF.iv) { el.style.display = 'none'; return; }
+  if (!p) {   // prepared under another format → fetch the length plan, then draw
+    el.style.display = ''; el.textContent = '⏱ Loading the length target…';
+    if (!CA_LF.iv.planLoading) { CA_LF.iv.planLoading = true; w('longformPlan', { campaignId: CAMPAIGN_ID }).then(r => { CA_LF.iv.plan = r.plan; caLfIvMeter(); }).catch(() => { el.textContent = ''; }).finally(() => { if (CA_LF.iv) CA_LF.iv.planLoading = false; }); }
+    return;
+  }
   const words = CA_LF.iv.qs.map((_, k) => ((document.getElementById('caLfIvA' + k) || {}).value || '').split(/\s+/).filter(Boolean).length);
   const answered = words.filter(n => n >= 5).length;
   const secs = p.frameSecs + words.reduce((a, n) => a + (n >= 5 ? n * p.keep / p.wpm * 60 + p.perQuestionSecs : 0), 0);

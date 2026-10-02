@@ -15601,6 +15601,9 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       // proofreadLongformCard {fields:{name,blurb,ask,text}} → the same fields with spelling/grammar fixed (NOT saved —
       // the operator reviews them in the card editor, then saves with saveLongformScript).
       // proofreadLongformScript {assetId} → the same pass renderLongform runs, on demand: fixes saved to the script.
+      // longformPlan {campaignId} → the interview length plan (target, words/min, per-question time) on its own, for
+      // when the Format is switched to Interview after the questions were already prepared under another format.
+      if (body.action === "longformPlan") return json({ ok: true, plan: await lfInterviewPlan(env, body.campaignId) });
       if (body.action === "proofreadLongformScript") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         const { spec } = await lfLoadAsset(aid);
