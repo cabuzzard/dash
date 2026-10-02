@@ -467,6 +467,16 @@ def main(ep_path, out, work):
     NW = max(420, int((float(cb["w"]) * W / 100 if "w" in cb else 760 * CS) / CS))   # card width before scaling
     CARD_FILL = hexa(cb.get("color"), cb.get("opacity", 89), PANEL) if cb.get("color") else PANEL + (228,)
     CARD_MAX = int(cb.get("maxChars") or 0)
+    # optional layout boxes (a layout only lists the ones it needs; missing → they follow the card box)
+    tb, ab, picb = BOXES.get("title") or {}, BOXES.get("ask") or {}, BOXES.get("pictures") or {}
+    TCS = max(0.4, min(2.5, float(tb.get("s", cb.get("s", 100))) / 100))
+    TX = int(float(tb["x"]) * W / 100) if "x" in tb else CX
+    TY = int(float(tb["y"]) * H / 100) if "y" in tb else CY
+    TNW = max(420, int((float(tb["w"]) * W / 100) / TCS)) if "w" in tb else NW
+    TITLE_FILL = hexa(tb.get("color"), tb.get("opacity", 89), PANEL) if tb.get("color") else None
+    AX = int(float(ab["x"]) * W / 100) if "x" in ab else None
+    AY = int(float(ab["y"]) * H / 100) if "y" in ab else None
+    AS = max(0.5, min(2.5, float(ab.get("s", 100)) / 100))
     CAPS = max(0.4, min(2.5, float(capb.get("s", 100)) / 100))
     F_CAP = font(bpath, max(12, round(40 * CAPS))); CLH = round(62 * CAPS)
     if "w" in capb: cap_w = int(float(capb["w"]) * W / 100)
@@ -481,7 +491,11 @@ def main(ep_path, out, work):
 
     # ── scene images: shown in a framed stage on the left when their cue words are spoken ──
     STAGE = (240, 50, 1680, 860) if STAGE_LAYOUT else (80, 120, 840, 700)   # x0, y0, x1, y1
-    if not STAGE_LAYOUT and "x" in cb:   # a layout that moves the card moves the picture frame with it (same spot, 4:3)
+    if "x" in picb and "w" in picb:   # the layout's own pictures box
+        fw = int(float(picb["w"]) * W / 100); fh = int(float(picb["h"]) * H / 100) if "h" in picb else int(fw * 0.763)
+        fx = int(float(picb["x"]) * W / 100); fy = int(float(picb["y"]) * H / 100)
+        STAGE = (fx, fy, fx + fw, fy + fh)
+    elif not STAGE_LAYOUT and "x" in cb:   # a layout that moves the card moves the picture frame with it (same spot, 4:3)
         fw = int(max(560, min(1100, NW * CS))); fh = int(fw * 0.763)
         fx = max(20, min(W - fw - 20, CX)); fy = max(20, min(H - fh - 20, CY))
         STAGE = (fx, fy, fx + fw, fy + fh)
@@ -519,24 +533,25 @@ def main(ep_path, out, work):
             if s_ <= t <= e_ + 0.35: return s_, e_, pic
         return None
 
-    def card_panel(layer, h):
-        out = Image.new("RGBA", (NW, h), (0, 0, 0, 0))
-        ImageDraw.Draw(out).rounded_rectangle([0, 0, NW - 1, h - 1], 24, fill=CARD_FILL, outline=ACC, width=3)
-        out.alpha_composite(layer.crop((0, 0, NW, h)))
-        if CS != 1: out = out.resize((max(1, int(NW * CS)), max(1, int(h * CS))), Image.LANCZOS)
+    def card_panel(layer, h, nw=None, cs=None, fill=None):
+        nw = nw or NW; cs = cs or CS
+        out = Image.new("RGBA", (nw, h), (0, 0, 0, 0))
+        ImageDraw.Draw(out).rounded_rectangle([0, 0, nw - 1, h - 1], 24, fill=fill or CARD_FILL, outline=ACC, width=3)
+        out.alpha_composite(layer.crop((0, 0, nw, h)))
+        if cs != 1: out = out.resize((max(1, int(nw * cs)), max(1, int(h * cs))), Image.LANCZOS)
         return out
     def clip_txt(t):
         t = str(t or ""); return (t[:CARD_MAX - 1].rstrip() + "…") if CARD_MAX and len(t) > CARD_MAX else t
 
     def title_card(text):
-        lay = Image.new("RGBA", (NW, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
+        lay = Image.new("RGBA", (TNW, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
         y = 22
-        lines = wrap(td, text, F_TTL, NW - 80); f_, lh = F_TTL, 64
-        if len(lines) > 3: lines = wrap(td, text, F_TTL2, NW - 80); f_, lh = F_TTL2, 52
+        lines = wrap(td, text, F_TTL, TNW - 80); f_, lh = F_TTL, 64
+        if len(lines) > 3: lines = wrap(td, text, F_TTL2, TNW - 80); f_, lh = F_TTL2, 52
         for ln in lines[:4]:
-            lx = (NW - int(td.textlength(ln, font=f_))) // 2 if STAGE_LAYOUT else 40
+            lx = (TNW - int(td.textlength(ln, font=f_))) // 2 if STAGE_LAYOUT else 40
             td.text((lx, y), ln, font=f_, fill=INK); y += lh
-        return card_panel(lay, y + 20)
+        return card_panel(lay, y + 20, TNW, TCS, TITLE_FILL)
 
     def item_card(seg, k, t0, t1, t):
         card = Image.new("RGBA", (NW, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
@@ -588,21 +603,25 @@ def main(ep_path, out, work):
             kind = seg.get("kind")
             k_in, k_out = ease((t - t0) / 0.45), ease((t - t1) / 0.4)
             x = int(-NW * CS - 40 + (CX + NW * CS + 40) * k_in - (W + 100) * k_out)
+            xt = int(-TNW * TCS - 40 + (TX + TNW * TCS + 40) * k_in - (W + 100) * k_out)   # title box
             if kind in ("item", "point"):
                 if shot_at(t) is None:
                     fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, CY))
             elif kind == "intro" and ep.get("channel"):
-                fr.alpha_composite(title_card(ep["channel"]), (x, CY))
+                fr.alpha_composite(title_card(ep["channel"]), (xt, TY))
             elif kind == "topic" and ep.get("title"):
-                fr.alpha_composite(title_card(ep["title"]), (x, CY))
+                fr.alpha_composite(title_card(ep["title"]), (xt, TY))
             elif kind == "jingle" and seg.get("text"):   # same card formatting as everything else (📐 Layout card box)
-                fr.alpha_composite(title_card(seg["text"]), (x, CY))
+                fr.alpha_composite(title_card(seg["text"]), (xt, TY))
             elif kind == "hook" and ep.get("title"):
-                fr.alpha_composite(title_card(ep["title"]), (x, CY))
+                fr.alpha_composite(title_card(ep["title"]), (xt, TY))
             elif kind == "ask" and seg.get("label"):
-                tw = d.textlength(seg["label"], font=F_TXT)
-                d.rounded_rectangle([x, CY + 30, x + tw + 60, CY + 102], 36, fill=ACC)
-                d.text((x + 30, CY + 66), seg["label"], font=F_TXT, fill=PANEL, anchor="lm")
+                fa = F_TXT if AS == 1 else font(bpath, max(14, round(32 * AS)))
+                tw = d.textlength(seg["label"], font=fa); ph = int(72 * AS)
+                ax = x if AX is None else int(-tw - 100 + (AX + tw + 100) * k_in - (W + 100) * k_out)
+                ay = CY + 30 if AY is None else AY
+                d.rounded_rectangle([ax, ay, ax + tw + 60 * AS, ay + ph], ph // 2, fill=ACC)
+                d.text((ax + 30 * AS, ay + ph // 2), seg["label"], font=fa, fill=PANEL, anchor="lm")
         sh = shot_at(t)
         if sh:
             s_, e_, pic = sh

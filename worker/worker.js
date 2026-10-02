@@ -1396,7 +1396,9 @@ async function lfSaveSpec(assetId, spec) {
 function lfCleanBoxes(b) {
   if (!b || typeof b !== "object") return null;
   const out = {}, num = (v, lo, hi) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n * 100) / 100)) : undefined; };
-  for (const k of ["card", "caption", "presenter"]) {
+  // card / caption / presenter (📐 Layout editor) + optional boxes a layout preset can add: title (title cards),
+  // ask (the like/comment pills), pictures (the scene-image frame). Missing optional boxes follow the card.
+  for (const k of ["card", "caption", "presenter", "title", "ask", "pictures"]) {
     const x = b[k]; if (!x || typeof x !== "object") continue;
     const o = {};
     for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
@@ -16066,8 +16068,10 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const cid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
         let camp = null; try { camp = lfCleanBoxes(await env.TRADES.get("lflayout:" + cid, "json")); } catch (e) {}
         if (body.op === "save") {
-          const b = lfCleanBoxes(body.boxes);
+          let b = lfCleanBoxes(body.boxes);
           spec.render = spec.render || {};
+          const prevB = spec.render.boxes || {};
+          if (b) for (const k of ["title", "ask", "pictures"]) if (prevB[k] && !b[k]) b[k] = prevB[k];   // editor only edits card/caption/presenter
           if (b) spec.render.boxes = b; else delete spec.render.boxes;
           delete spec.render.layoutId;
           await lfSaveSpec(aid, spec);

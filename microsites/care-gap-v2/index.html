@@ -6525,11 +6525,14 @@ function pubLibLayoutPreview() {
   c.restore();
   // pictures take the card's spot (4:3, ≥560 px wide)
   if (u.pictures && u.presenter) { const fw = Math.max(560, Math.min(1100, NW * CS)) * k, fh = fw * 0.763; c.strokeStyle = 'rgba(232,178,52,.9)'; c.setLineDash([4, 3]); c.strokeRect(cx, cy, fw, fh); c.setLineDash([]); c.fillStyle = '#e8b234'; c.font = '9px sans-serif'; c.fillText(`pictures (${u.pictures})`, cx + 3, cy + fh - 4); }
+  const ob = (b, label, hh) => { if (!b || b.x == null) return; c.strokeStyle = 'rgba(255,255,255,.85)'; c.setLineDash([3, 3]); c.strokeRect(b.x / 100 * W, b.y / 100 * H, (b.w || 14) / 100 * W, (b.h || hh) / 100 * H); c.setLineDash([]); c.fillStyle = '#fff'; c.font = '9px sans-serif'; c.fillText(label, b.x / 100 * W + 3, b.y / 100 * H + 10); };
+  const own = (it && it.boxes) || ep.boxes || {};
+  ob(own.title, 'title', 9); ob(own.ask, 'ask pill', 6); if (own.pictures) ob(own.pictures, 'pictures', (own.pictures.w || 40) * 0.763 * 16 / 9);
   // captions: top-anchored, 2 lines
   const cp = B.caption; c.fillStyle = lfHexA(cp.color, cp.opacity); c.fillRect(cp.x / 100 * W, cp.y / 100 * H, cp.w / 100 * W, (cp.h || 12) / 100 * H);
   c.fillStyle = '#fff'; c.font = `600 ${Math.round(40 * k * (cp.s || 100) / 100)}px ${BF}`; c.fillText(u.qLines ? 'Q: the customer asks…' : 'Spoken words appear here…', cp.x / 100 * W + 4, cp.y / 100 * H + 12);
   const notes = [u.items + ' cards', u.pay && 'pay bar', u.score && 'score row', u.asks.length && u.asks.length + ' ask pills', u.qLines && 'Q: lines', u.pictures && u.pictures + ' pictures'].filter(Boolean).join(' · ');
-  document.getElementById('pubLibLayoutNote').textContent = (it && it.note ? it.note + ' — ' : (sel === 'custom' ? 'Your own edits from 📐 Layout… — ' : '')) + 'this script uses: ' + notes;
+  document.getElementById('pubLibLayoutNote').textContent = (it && it.note ? it.note + ' — ' : (sel === 'custom' ? 'Your own edits from 📐 Layout… — ' : '')) + (it ? 'boxes: ' + Object.keys(it.boxes).join(', ') + ' · ' : '') + 'this script uses: ' + notes;
 }
 async function pubLibUse(kind) {
   const sel = document.getElementById(kind === 'fonts' ? 'pubLibFonts' : 'pubLibLayouts').value;
@@ -6589,23 +6592,30 @@ Reply with ONLY this JSON (no other text), so it can be pasted straight into my 
 ]
 \`\`\``;
   const D = lfBoxesFull({ palette: pal, layout: ep.layout }, ep.boxes || null);
-  return `I make faceless long-form YouTube videos (1920×1080). Each frame has up to three boxes, positioned in PERCENT of the frame (x/y = top-left corner):
-- "card": the chapter card (heading + key point). Fields: x, y, w (width %), s (text size %, 100 = normal, 60-160), color (hex panel colour), opacity (0-100), maxChars (0 = no limit). Its height grows with the text.
-- "caption": the spoken-word captions (2 lines, hang from the TOP of the box). Fields: x, y, w, h (height %), s, color, opacity.
-- "presenter": the animated character${ep.layout === 'stage' ? ' (NOT used in this layout — omit it)' : ''}. Fields: x, y, h (height % of the frame; width follows the picture, about 0.75 × h in frame-height units).
+  return `I make faceless long-form YouTube videos (1920×1080). My renderer draws on-screen text in BOXES positioned in PERCENT of the frame (x/y = top-left corner). You decide which boxes this layout needs.
 ${ctx}
-WHAT THIS EPISODE'S SCRIPT PUTS ON SCREEN (design for these — make sure the longest heading and line fit):
+
+WHAT THIS EPISODE'S SCRIPT PUTS ON SCREEN:
 ${pubLibUsesText(pubLibUses(ep))}
+
+BOX TYPES YOU CAN USE (include only the ones your layout needs; anything you leave out falls back as noted):
+- "caption" (REQUIRED): spoken-word captions, 2 lines hanging from the TOP of the box. Fields: x, y, w, h, s (text size %, 100 = normal, 60-160), color (hex), opacity (0-100).
+- "card" (REQUIRED when there are chapter cards): the chapter card (#N, heading, key point${pubLibUses(ep).pay ? ', pay bar' : ''}${pubLibUses(ep).score ? ', score row' : ''}). Fields: x, y, w, s, color, opacity, maxChars (0 = no limit). Height grows with the text.
+- "presenter"${pubLibUses(ep).presenter ? ' (REQUIRED — the character is on screen)' : ' (DO NOT USE — no presenter in this layout)'}: Fields: x, y, h (height % of frame; width ≈ 0.75 × h in frame-height units).
+- "title" (optional — omit to use the card box): the episode title / intro title cards. Fields: x, y, w, s, color, opacity.
+- "ask" (optional — omit to put pills at the card's top-left): the "like / comment" pills. Fields: x, y, s.
+- "pictures" (optional — omit to show pictures in the card's spot): the framed 4:3 scene-image panel. Fields: x, y, w (h optional, default 4:3).
 Current layout: ${JSON.stringify(D)}
 
-Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone; size the card (w and s) so the longest heading above fits in 3 lines and the pictures panel (if any) has room in the card's spot.
+Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). For each, decide which boxes it needs and list them in "uses". Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone; size the card (w and s) so the longest heading above fits in 3 lines.
 
 Reply with ONLY this JSON (no other text), so it can be pasted straight into my dashboard:
 \`\`\`json
 [
-  { "name": "short label", "why": "one sentence", "boxes": {
-      "card": { "x": 4, "y": 11, "w": 40, "s": 100, "color": "#121a16", "opacity": 89, "maxChars": 0 },
+  { "name": "short label", "why": "one sentence", "uses": ["caption", "card", "presenter"],
+    "boxes": {
       "caption": { "x": 4, "y": 71, "w": 47, "h": 12, "s": 100, "color": "#0a0e0c", "opacity": 75 },
+      "card": { "x": 4, "y": 11, "w": 40, "s": 100, "color": "#121a16", "opacity": 89, "maxChars": 0 },
       "presenter": { "x": 36, "y": 8, "h": 95 } } }
 ]
 \`\`\``;
