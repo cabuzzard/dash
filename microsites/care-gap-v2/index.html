@@ -5745,6 +5745,14 @@ async function caLfLoadLastAnswers(btn) {
   try {
     const r = await w('getLastInterviewAnswers', { campaignId: CAMPAIGN_ID, titleId: CA_TITLE ? CA_TITLE.id : undefined });
     if (!(r.qs || []).length) { msg.textContent = 'No saved answers found for this campaign.'; }
+    else if (r.source !== 'title' && !confirm(`This title has no saved interview of its own.
+
+Your last interview session (${new Date(r.at).toLocaleString()}, ${r.qs.length} answers) belongs to a DIFFERENT episode — it starts:
+“${String(r.qs[0]).slice(0, 160)}”
+
+Loading it replaces these questions with that episode's questions and answers, and the script will be written from them. Load it anyway?`)) {
+      msg.textContent = 'Not loaded — answer the questions above for this episode instead.';
+    }
     else {
       CA_LF.iv.qs = r.qs;
       if (r.question) CA_LF.iv.question = r.question;   // the title's saved interview belongs to its own episode question
