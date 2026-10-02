@@ -853,7 +853,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" id="pubLfPlanBtn" onclick="pubLfPlanImages(this)" style="font-size:10.5px;">Plan image slots</button>
               <button class="btn" type="button" id="pubLfGenAllBtn" onclick="pubLfGenAll(this)" style="font-size:10.5px;">✨ Generate all missing</button>
               <span id="pubLfImgMsg" style="color:var(--ink3);"></span></div>
-            <div style="margin-top:8px;font-size:11px;">✎ <b>Chapter card text</b> <span style="color:var(--ink3);">— check the typing on any card and save before rendering</span></div>
+            <div style="margin-top:8px;font-size:11px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">✎ <b>Chapter card text</b> <span style="color:var(--ink3);">— check the typing on any card and save before rendering</span>
+              <button class="btn" type="button" style="font-size:10.5px;" onclick="pubLfProofAll(this)" title="Fix spelling, typos and grammar across the whole script and save (also runs automatically on every render)">✍️ Proofread whole script</button>
+              <span id="pubLfProofAllMsg" style="color:var(--ink3);"></span></div>
             <div id="pubLfCardChips" style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;"></div>
             <div id="pubLfCardEd" style="display:none;margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:8px;font-size:11px;"></div>
             <div id="pubLfScenes" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin-top:6px;"></div>
@@ -6221,6 +6223,15 @@ function pubLfRenderScenes() {
 // ✎ Chapter card text editor: heading / key point / customer question / narration for one card, a ✍️ spelling check
 // (suggests fixes into the boxes, nothing saved until 💾), saved through saveLongformScript (same as Script & cards).
 let PUB_LF_CARD = null;
+async function pubLfProofAll(btn) {
+  const msg = document.getElementById('pubLfProofAllMsg'); btn.disabled = true; msg.textContent = 'Proofreading (~20 s)…';
+  try {
+    const r = await w('proofreadLongformScript', { assetId: PUB_LF.assetId });
+    msg.textContent = r.fixes.length ? `✓ Fixed and saved ${r.fixes.length}: ${r.fixes.join(' · ')}` : '✓ No spelling or grammar problems found.';
+    await pubLfReloadScenes();
+  } catch (e) { msg.textContent = 'Proofread failed: ' + e.message; }
+  btn.disabled = false;
+}
 async function pubLfCardOpen(i) {
   const ed = document.getElementById('pubLfCardEd'); ed.style.display = 'block'; ed.innerHTML = 'Loading card…';
   try {
