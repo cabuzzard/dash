@@ -15365,7 +15365,17 @@ Give a YouTube title in that format. Call submit_questions.`;
         const titleId = String(body.titleId || "").replace(/-/g, ""), q = String(body.question || "").trim();
         if (!titleId || !q) return json({ error: "titleId and question required" }, 400);
         const rows = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || "").trim().slice(0, 400), a: String(x.a || "").trim().slice(0, 3000) })).filter(x => x.q);
-        await env.TRADES.put("lfiv:" + titleId, JSON.stringify({ question: q, qs: rows.map(x => x.q), answers: rows.map(x => x.a), at: Date.now() }));
+        const rec = { question: q, qs: rows.map(x => x.q), answers: rows.map(x => x.a), at: Date.now() };
+        // keep the version being replaced (last 10) — an overwrite is always recoverable
+        try {
+          const prev = await env.TRADES.get("lfiv:" + titleId, "json");
+          if (prev && (prev.answers || []).some(a => String(a || "").trim()) && JSON.stringify(prev.answers) !== JSON.stringify(rec.answers)) {
+            const hist = (await env.TRADES.get("lfiv:hist:" + titleId, "json")) || [];
+            hist.push(prev); await env.TRADES.put("lfiv:hist:" + titleId, JSON.stringify(hist.slice(-10)));
+          }
+        } catch (e) {}
+        await env.TRADES.put("lfiv:" + titleId, JSON.stringify(rec));
+        if (body.autosave) return json({ ok: true, saved: rows.filter(x => x.a).length, autosave: true });   // typing autosave: no voice learning
         const learned = await voiceLogSamples(env, ctx, body.campaignId, "longform interview", rows.filter(x => x.a)).catch(e => { console.error("voiceLogSamples", e.message); return 0; });
         return json({ ok: true, saved: rows.filter(x => x.a).length, learned });
       }
