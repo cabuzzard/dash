@@ -365,6 +365,35 @@ class Presenter:
         self.cache[k] = im
         return im
 
+# ── presenter from the dashboard's library (ep["presenter"]): image URL + clicked mouth/eye points ──
+# Builds a character dir like characters/<id>/ at render time: background removed (rembg) when the image has
+# no transparency, scaled to 1024 px tall, placement + mouth/jaw sizes derived from the figure and the eyes.
+def prepare_presenter(pr, work):
+    cdir = os.path.join(work, "presenter"); os.makedirs(cdir, exist_ok=True)
+    im = Image.open(io.BytesIO(fetch(pr["image"]))).convert("RGBA")
+    alpha = np.array(im.split()[-1])
+    if alpha.min() > 250:   # opaque → cut the person out
+        print("presenter: removing background (rembg)…", flush=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rembg", "onnxruntime"], check=True)
+        from rembg import remove
+        im = remove(im).convert("RGBA")
+    sx = sy = 1024.0 / im.height
+    W0 = float(pr.get("w") or im.width); H0 = float(pr.get("h") or im.height)   # coords were clicked on the original
+    kx, ky = im.width / W0, im.height / H0
+    im = im.resize((max(1, round(im.width * sx)), 1024), Image.LANCZOS)
+    P_ = lambda pt: (round(pt[0] * kx * sx), round(pt[1] * ky * sy))
+    mx, my = P_(pr["mouth"]); eyes = [list(P_(e)) for e in pr["eyes"]]
+    ed = max(20.0, math.dist(eyes[0], eyes[1]))
+    bb = im.split()[-1].point(lambda v: 255 if v > 40 else 0).getbbox() or (0, 0, im.width, im.height)
+    im.save(os.path.join(cdir, "cutout.png"))
+    cj = {"id": pr.get("id", "library"), "name": pr.get("name", "Presenter"), "cutout": "cutout.png", "style": pr.get("style", ""),
+          "mouth": {"x": mx, "y": my, "maxOpen": max(5, round(ed * 0.1)), "halfWidth": round(ed * 1.05), "jawBottom": round(my + ed * 0.9)},
+          "eyes": eyes,
+          "place": {"right": 50, "bottomOverhang": 30 + (im.height - bb[3]), "figureRightEdge": bb[2], "figureLeftEdge": bb[0]}}
+    json.dump(cj, open(os.path.join(cdir, "character.json"), "w", encoding="utf-8"))
+    print(f"presenter: {cj['name']} {im.size} mouth {mx},{my} eyes {eyes}", flush=True)
+    return cdir
+
 def ease(t): t = max(0.0, min(1.0, t)); return 1 - (1 - t) ** 3
 
 def wrap(draw, text, fnt, width):
@@ -381,7 +410,7 @@ def wrap(draw, text, fnt, width):
 def main(ep_path, out, work):
     ep = json.load(open(ep_path, encoding="utf-8"))
     os.makedirs(work, exist_ok=True)
-    cdir = os.path.join(HERE, "characters", ep.get("character", "mountain-man"))
+    cdir = prepare_presenter(ep["presenter"], work) if ep.get("presenter") else os.path.join(HERE, "characters", ep.get("character", "mountain-man"))
     P = Presenter(cdir)
     pal = ep.get("palette") or {}
     ACC, INK, PANEL = hexrgb(pal.get("accent", ""), (232, 178, 52)), hexrgb(pal.get("ink", ""), (246, 238, 222)), hexrgb(pal.get("panel", ""), (18, 26, 22))
@@ -412,8 +441,11 @@ def main(ep_path, out, work):
     if bg.get("url"):
         sc = Image.open(io.BytesIO(fetch(bg["url"]))).convert("RGB")
     else:
-        ds = P.c["defaultScene"]; sc = Image.open(os.path.join(cdir, ds["file"])).convert("RGB")
-        if ds.get("crop"): sc = sc.crop(tuple(ds["crop"]))
+        ds = P.c.get("defaultScene")
+        if ds:
+            sc = Image.open(os.path.join(cdir, ds["file"])).convert("RGB")
+            if ds.get("crop"): sc = sc.crop(tuple(ds["crop"]))
+        else: sc = Image.new("RGB", (W, H), (34, 44, 38))   # library presenter with no background set
     sw = int(W * 1.12); sc = sc.resize((sw, max(int(H * 1.12), int(sw * sc.height / sc.width))), Image.LANCZOS).filter(ImageFilter.GaussianBlur(4))
     sc = Image.blend(sc, Image.new("RGB", sc.size, (10, 18, 14)), 0.28)
 

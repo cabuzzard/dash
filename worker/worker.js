@@ -1445,6 +1445,15 @@ async function lfTopicPhrase(env, question) {
   const d = await r.json().catch(() => ({}));
   return String(d.content?.[0]?.text || "").trim().replace(/^["'“]|["'”.]$/g, "").slice(0, 160);
 }
+// 🧍 Presenter library (KV lfpresenters) — presenters added from the Publish modal: an image (uploaded or
+// generated on Grok) + the mouth and both eyes clicked on it. Kept forever as a history (archive hides one).
+// An episode's spec.render.character = "p-…" picks a library presenter; the renderer cuts it out and rigs it.
+async function lfPresenterList(env) { try { return (await env.TRADES.get("lfpresenters", "json")) || []; } catch (e) { return []; } }
+async function lfCharStyle(env, id) {
+  id = String(id || "mountain-man");
+  if (/^p-/.test(id)) { const p = (await lfPresenterList(env)).find(x => x.id === id); return (p && p.style) || ""; }
+  try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${id.replace(/[^a-z0-9-]/g, "")}/character.json`).then(r => r.json()); return cj.style || ""; } catch (e) { return ""; }
+}
 async function lfBuildEpisode(env, assetId) {
   const { page, spec } = await lfLoadAsset(assetId);
   if (!spec || !Array.isArray(spec.segments) || !spec.segments.length) throw new Error("No script on this asset yet");
@@ -1476,6 +1485,7 @@ async function lfBuildEpisode(env, assetId) {
     title: spec.title || lfReadRich(pr["Platform Title"]) || "",
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
+    ...(await (async () => { if (!/^p-/.test(r.character || "")) return {}; const p = (await lfPresenterList(env)).find(x => x.id === r.character); return p ? { presenter: p } : {}; })()),
     layout: r.layout === "stage" ? "stage" : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
       const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
@@ -15604,6 +15614,61 @@ Also give: "title" (≤70 chars, the searchable question/format title), 2 "altTi
       // longformPlan {campaignId} → the interview length plan (target, words/min, per-question time) on its own, for
       // when the Format is switched to Interview after the questions were already prepared under another format.
       if (body.action === "longformPlan") return json({ ok: true, plan: await lfInterviewPlan(env, body.campaignId) });
+      // lfPresenters {op: list | upload | generate | save | archive | restore} — the 🧍 presenter library.
+      if (body.action === "lfPresenters") {
+        const list = await lfPresenterList(env), op = body.op || "list";
+        const base = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "");
+        const putImg = async (bytes, ct) => {
+          const ext = /jpe?g/i.test(ct) ? "jpg" : /webp/i.test(ct) ? "webp" : "png";
+          const key = "presenters/" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 7) + "." + ext;
+          await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: ct, cacheControl: "public, max-age=31536000, immutable" } });
+          return base + "/" + key;
+        };
+        if (op === "list") return json({ ok: true, presenters: list });
+        if (op === "upload") {
+          const b64 = String(body.fileData || "").replace(/^data:[^,]+,/, "").replace(/\s/g, "");
+          if (!b64) return json({ error: "No image" }, 400);
+          const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+          if (bytes.length > 12e6) return json({ error: "Keep the image under 12 MB" }, 400);
+          return json({ ok: true, imageUrl: await putImg(bytes, String(body.contentType || "image/png")) });
+        }
+        if (op === "generate") {
+          if (!(env.XAI_API_KEY || "").trim()) return json({ error: "XAI_API_KEY not configured" }, 500);
+          const desc = String(body.description || "").trim().slice(0, 1200);
+          if (!desc) return json({ error: "Describe the presenter first" }, 400);
+          const style = String(body.style || "").trim() || "detailed illustrated comic / graphic-novel style: bold ink outlines, cel shading, hand-drawn texture, warm natural palette";
+          const prompt = `${desc}. A single person, waist-up portrait, standing on the right half of the frame, body and face turned toward the camera, mouth closed in a calm neutral expression, both eyes open and clearly visible, shoulders square, arms relaxed at the sides. Plain flat solid light-grey studio background with nothing else in it — no props, no scenery, no shadows on the wall. Art style: ${style}. No text, no letters, no logos, no watermarks.`;
+          const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST",
+            headers: { "Authorization": "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" },
+            body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt, n: 1, aspect_ratio: "4:3", resolution: "2k" }) });
+          const xd = await xr.json().catch(() => ({}));
+          const gurl = xd.data && xd.data[0] && xd.data[0].url;
+          if (!xr.ok || !gurl) return json({ error: (xd.error && (xd.error.message || xd.error)) || ("xAI image error (" + xr.status + ")") }, 502);
+          const img = await fetch(gurl);
+          if (!img.ok) return json({ error: "Couldn't fetch the rendered image" }, 502);
+          return json({ ok: true, imageUrl: await putImg(new Uint8Array(await img.arrayBuffer()), (img.headers.get("content-type") || "image/png").split(";")[0]), prompt, style });
+        }
+        if (op === "save") {
+          const pt = v => Array.isArray(v) && v.length === 2 && v.every(n => Number.isFinite(+n)) ? [Math.round(+v[0]), Math.round(+v[1])] : null;
+          const mouth = pt(body.mouth), eyes = (Array.isArray(body.eyes) ? body.eyes : []).map(pt).filter(Boolean).slice(0, 2);
+          const image = String(body.imageUrl || "");
+          if (!image.startsWith(base + "/presenters/")) return json({ error: "Upload or generate the image first" }, 400);
+          if (!mouth || eyes.length !== 2) return json({ error: "Click the mouth and both eyes on the image" }, 400);
+          eyes.sort((a, b) => a[0] - b[0]);
+          const rec = { id: "p-" + Date.now().toString(36), name: String(body.name || "Presenter").trim().slice(0, 60) || "Presenter", image,
+            w: Math.round(+body.w) || 0, h: Math.round(+body.h) || 0, mouth, eyes, style: String(body.style || "").slice(0, 400),
+            campaignId: String(body.campaignId || "").replace(/-/g, ""), source: body.source === "grok" ? "grok" : "upload", at: Date.now() };
+          list.unshift(rec); await env.TRADES.put("lfpresenters", JSON.stringify(list));
+          return json({ ok: true, presenter: rec, presenters: list });
+        }
+        if (op === "archive" || op === "restore") {
+          const p = list.find(x => x.id === body.id); if (!p) return json({ error: "Not found" }, 404);
+          if (op === "archive") p.archived = Date.now(); else delete p.archived;
+          await env.TRADES.put("lfpresenters", JSON.stringify(list));
+          return json({ ok: true, presenters: list });
+        }
+        return json({ error: "Unknown op" }, 400);
+      }
       if (body.action === "proofreadLongformScript") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         const { spec } = await lfLoadAsset(aid);
@@ -15970,8 +16035,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const brief = await assembleImageBrief(env, { assetId: aid });
         let ispec = brief.storedSpec && brief.storedSpec.length > 200 ? brief.storedSpec : "";
         if (!ispec) { try { ispec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
-        let charStyle = "";
-        try { const cj = await fetch("https://cabuzzard.github.io/dash/tools/presenter/characters/" + String((spec.render && spec.render.character) || "mountain-man").replace(/[^a-z0-9-]/g, "") + "/character.json").then(r => r.json()); charStyle = cj.style || ""; } catch (e) {}
+        const charStyle = await lfCharStyle(env, spec.render && spec.render.character);
         const cp = "You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — 50-100 words, one paragraph.\n\n"
           + "WHAT IT IS: a 4:3 illustration shown in a framed panel of a YouTube explainer while the narrator says: \"" + String(spec.segments[si].text || "").slice(0, 600) + "\"\n"
           + "THE PICTURE MUST SHOW: " + slot.subject + "\n"
@@ -16043,8 +16107,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         if (brief.storedSpec && brief.storedSpec.length > 200) ispec = brief.storedSpec;
         else { try { ispec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
         ispec += approvedPlateBlock(brief);
-        let charStyle = "";
-        try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${(spec?.render?.character || "mountain-man").replace(/[^a-z0-9-]/g, "")}/character.json`).then(r => r.json()); charStyle = cj.style || ""; } catch (e) {}
+        const charStyle = await lfCharStyle(env, spec?.render?.character);
         const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
         const stageLayout = spec?.render?.layout === "stage";
         const bgCid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");

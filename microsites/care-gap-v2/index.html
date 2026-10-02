@@ -6265,6 +6265,116 @@ function openPublishAssetModal(assetId) {
     else if (!data.body) document.getElementById('pubPostBody').value = '';
   }).catch(() => { if (myToken === PUB_OPEN_TOKEN && !data.body) document.getElementById('pubPostBody').value = ''; });
 }
+// ── 🧍 Presenters: built-in characters (tools/presenter/characters) + the library (worker lfPresenters, KV) ──
+// The library is the history: every presenter ever added stays there (✕ archives = hidden, 🗂 shows them again).
+let PRES_LIB = null, PRES_BUILTIN = null, PRES_SHOW_ARCHIVED = false;
+async function pubLfPresentersDraw() {
+  if (!PRES_BUILTIN) { try { PRES_BUILTIN = await fetch('../../tools/presenter/characters/index.json?t=' + Date.now()).then(x => x.json()); } catch (e) { PRES_BUILTIN = []; } }
+  if (!PRES_LIB) { try { PRES_LIB = (await w('lfPresenters', { op: 'list' })).presenters || []; } catch (e) { PRES_LIB = []; } }
+  const cur = PUB_LF.cur;
+  const tile = (id, img, name, extra) => `<label style="cursor:pointer;text-align:center;border:2px solid ${id === cur ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:8px;padding:4px;width:84px;position:relative;">
+      <input type="radio" name="pubLfChar" value="${esc(id)}" ${id === cur ? 'checked' : ''} style="display:none;" onchange="PUB_LF.cur=this.value;pubLfSave({ character: this.value });pubLfPresentersDraw()">
+      <img src="${esc(img)}" style="width:72px;height:72px;object-fit:contain;display:block;margin:auto;background:#d9d6cf;border-radius:4px;"><div style="font-size:9.5px;">${esc(name)}</div>${extra || ''}</label>`;
+  const libShown = PRES_LIB.filter(p => PRES_SHOW_ARCHIVED || !p.archived || p.id === cur);
+  const nArch = PRES_LIB.filter(p => p.archived).length;
+  document.getElementById('pubLfChars').innerHTML =
+    PRES_BUILTIN.map(c => tile(c.id, `../../tools/presenter/characters/${c.thumb}`, c.name)).join('')
+    + libShown.map(p => tile(p.id, p.image, p.name + (p.archived ? ' (archived)' : ''),
+        `<span title="${p.archived ? 'Restore' : 'Archive (hide from this list — stays in the history)'}" onclick="event.preventDefault();event.stopPropagation();presArchive('${esc(p.id)}', ${p.archived ? 'false' : 'true'})" style="position:absolute;top:1px;right:4px;font-size:10px;color:var(--ink3);">${p.archived ? '↺' : '✕'}</span>
+         <div style="font-size:8.5px;color:var(--ink3);">${new Date(p.at).toLocaleDateString()}</div>`)).join('')
+    + `<div onclick="presOpen()" style="cursor:pointer;text-align:center;border:2px dashed var(--border2);border-radius:8px;padding:4px;width:84px;display:flex;flex-direction:column;justify-content:center;font-size:10px;">➕<br>Add presenter</div>`
+    + (nArch ? `<div onclick="PRES_SHOW_ARCHIVED=!PRES_SHOW_ARCHIVED;pubLfPresentersDraw()" style="cursor:pointer;align-self:center;font-size:10px;color:var(--ink3);">🗂 ${PRES_SHOW_ARCHIVED ? 'hide' : 'show'} archived (${nArch})</div>` : '');
+}
+async function presArchive(id, archive) {
+  try { PRES_LIB = (await w('lfPresenters', { op: archive ? 'archive' : 'restore', id })).presenters; pubLfPresentersDraw(); } catch (e) { alert(e.message); }
+}
+// Add presenter: get an image (upload or ✨ Grok) → click mouth, left eye, right eye → name → save.
+let PRES_NEW = null;
+function presOpen() {
+  PRES_NEW = null;
+  let m = document.getElementById('presModal');
+  if (!m) { m = document.createElement('div'); m.className = 'modaloverlay'; m.id = 'presModal'; document.body.appendChild(m); }
+  m.innerHTML = `<div class="modalbox" style="max-width:760px;">
+    <div class="mtitle">➕ Add presenter</div>
+    <div style="font-size:11.5px;color:var(--ink2);margin-bottom:8px;">A waist-up picture of one person facing the camera. Any background is fine — it's removed at render time. Then click the mouth and both eyes so the mouth can move and the eyes can blink.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+      <button class="btn" type="button" onclick="document.getElementById('presFile').click()">⬆ Upload image</button>
+      <input type="file" id="presFile" accept="image/*" style="display:none;" onchange="presUpload(this)">
+      <span style="color:var(--ink3);font-size:11px;">or</span>
+      <input id="presDesc" class="finput" placeholder="Describe them — e.g. a weathered woman in her 50s, grey braid, canvas field jacket" style="flex:1;min-width:240px;font-size:12px;">
+      <button class="btn" type="button" onclick="presGenerate(this)">✨ Generate on Grok</button>
+    </div>
+    <input id="presStyle" class="finput" placeholder="Art style (optional) — default: illustrated comic style like the Mountain Man" style="width:100%;font-size:11px;margin-bottom:6px;">
+    <div id="presMsg" style="font-size:11.5px;color:var(--ink3);min-height:16px;margin-bottom:4px;"></div>
+    <canvas id="presCv" style="width:100%;max-height:420px;object-fit:contain;display:none;cursor:crosshair;border-radius:6px;background:#d9d6cf;" onclick="presClick(event)"></canvas>
+    <div style="display:flex;gap:6px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+      <input id="presName" class="finput" placeholder="Name" style="flex:1;min-width:140px;font-size:12px;">
+      <button class="btn" type="button" onclick="presReset()">↺ Re-click points</button>
+      <button class="btn" type="button" onclick="document.getElementById('presModal').classList.remove('open')">Cancel</button>
+      <button class="btn primary" type="button" onclick="presSave(this)">💾 Save presenter</button>
+    </div></div>`;
+  m.classList.add('open');
+}
+const PRES_STEPS = ['Click the CENTER OF THE MOUTH', 'Click the eye on the LEFT of the picture', 'Click the eye on the RIGHT of the picture'];
+function presShow(url, source, style) {
+  PRES_NEW = { step: 0, pts: [], url, source, style: style || '' };
+  const im = new Image(); im.crossOrigin = 'anonymous';
+  im.onload = () => { PRES_NEW.img = im; const cv = document.getElementById('presCv'); cv.width = im.width; cv.height = im.height; cv.style.display = 'block'; presDraw(); };
+  im.onerror = () => { document.getElementById('presMsg').textContent = 'Could not load the image.'; };
+  im.src = url;
+}
+function presDraw() {
+  const cv = document.getElementById('presCv'), c = cv.getContext('2d'), N = PRES_NEW;
+  c.drawImage(N.img, 0, 0);
+  const r = Math.max(8, N.img.width / 120);
+  N.pts.forEach((p, k) => { c.beginPath(); c.arc(p[0], p[1], r, 0, 7); c.fillStyle = k ? 'rgba(80,170,255,.85)' : 'rgba(255,90,70,.85)'; c.fill(); c.lineWidth = r / 3; c.strokeStyle = '#fff'; c.stroke(); });
+  document.getElementById('presMsg').textContent = N.step < 3 ? `👉 ${PRES_STEPS[N.step]}` : '✓ Mouth and eyes marked — name it and save (↺ to redo).';
+}
+function presClick(e) {
+  const N = PRES_NEW; if (!N || !N.img || N.step >= 3) return;
+  const cv = e.target, b = cv.getBoundingClientRect();
+  const sc = Math.min(b.width / cv.width, b.height / cv.height), ox = (b.width - cv.width * sc) / 2, oy = (b.height - cv.height * sc) / 2;
+  N.pts.push([Math.round((e.clientX - b.left - ox) / sc), Math.round((e.clientY - b.top - oy) / sc)]); N.step++; presDraw();
+}
+function presReset() { if (PRES_NEW && PRES_NEW.img) { PRES_NEW.pts = []; PRES_NEW.step = 0; presDraw(); } }
+function presUpload(input) {
+  const f = input.files && input.files[0]; if (!f) return;
+  if (f.size > 12e6) { alert('Keep the image under 12 MB.'); return; }
+  const msg = document.getElementById('presMsg'); msg.textContent = 'Uploading…';
+  const rd = new FileReader();
+  rd.onload = async () => {
+    try {
+      const r = await w('lfPresenters', { op: 'upload', fileData: rd.result, contentType: f.type || 'image/png' });
+      if (!document.getElementById('presName').value) document.getElementById('presName').value = f.name.replace(/\.[^.]+$/, '').slice(0, 40);
+      presShow(r.imageUrl, 'upload', document.getElementById('presStyle').value.trim());
+    } catch (e) { msg.textContent = 'Upload failed: ' + e.message; }
+  };
+  rd.readAsDataURL(f);
+}
+async function presGenerate(btn) {
+  const d = document.getElementById('presDesc').value.trim(), msg = document.getElementById('presMsg');
+  if (!d) { document.getElementById('presDesc').focus(); return; }
+  btn.disabled = true; msg.textContent = '✨ Grok is drawing the presenter (~20 s)…';
+  try {
+    const r = await w('lfPresenters', { op: 'generate', description: d, style: document.getElementById('presStyle').value.trim(), campaignId: CAMPAIGN_ID });
+    presShow(r.imageUrl, 'grok', r.style);
+  } catch (e) { msg.textContent = 'Not generated: ' + e.message; }
+  btn.disabled = false;
+}
+async function presSave(btn) {
+  const N = PRES_NEW, msg = document.getElementById('presMsg');
+  if (!N || !N.img) { msg.textContent = 'Upload or generate an image first.'; return; }
+  if (N.step < 3) { msg.textContent = `👉 ${PRES_STEPS[N.step]} first.`; return; }
+  btn.disabled = true;
+  try {
+    const r = await w('lfPresenters', { op: 'save', name: document.getElementById('presName').value.trim(), imageUrl: N.url, w: N.img.width, h: N.img.height,
+      mouth: N.pts[0], eyes: [N.pts[1], N.pts[2]], style: N.style || document.getElementById('presStyle').value.trim(), source: N.source, campaignId: CAMPAIGN_ID });
+    PRES_LIB = r.presenters;
+    document.getElementById('presModal').classList.remove('open');
+    if (PUB_LF) { PUB_LF.cur = r.presenter.id; await pubLfSave({ character: r.presenter.id }); pubLfPresentersDraw(); }
+  } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
+  btn.disabled = false;
+}
 // ── Longform episode render (YouTube Longform — Question-Led) ──
 let PUB_LF = null, PUB_LF_POLL = null;
 async function pubLfLoad(assetId, token) {
@@ -6274,12 +6384,8 @@ async function pubLfLoad(assetId, token) {
   PUB_LF = { assetId, ...r };
   document.getElementById('pubLongform').style.display = 'block';
   document.getElementById('pubLfInfo').textContent = `· ${r.format} · ${r.segments} segments · ~${Math.round(r.words / 150)} min`;
-  let chars = [];
-  try { chars = await fetch('../../tools/presenter/characters/index.json?t=' + Date.now()).then(x => x.json()); } catch (e) {}
-  const cur = r.render.character || 'mountain-man';
-  document.getElementById('pubLfChars').innerHTML = chars.map(c => `<label style="cursor:pointer;text-align:center;border:2px solid ${c.id === cur ? 'var(--accent,#f6ad55)' : 'var(--border)'};border-radius:8px;padding:4px;width:84px;">
-      <input type="radio" name="pubLfChar" value="${esc(c.id)}" ${c.id === cur ? 'checked' : ''} style="display:none;" onchange="pubLfSave({ character: this.value })">
-      <img src="../../tools/presenter/characters/${esc(c.thumb)}" style="width:72px;height:72px;object-fit:contain;display:block;margin:auto;"><div style="font-size:9.5px;">${esc(c.name)}</div></label>`).join('') || '<span style="color:var(--ink3);">No presenters yet.</span>';
+  PUB_LF.cur = r.render.character || 'mountain-man';
+  await pubLfPresentersDraw();
   const vs = document.getElementById('pubLfVoice');
   vs.innerHTML = (r.voices || []).map(v => `<option value="${esc(v.id)}" ${v.id === (r.render.voice || '') ? 'selected' : ''}>${esc(v.label)}</option>`).join('');
   pubLfIntroOptions(); pubYtStatus(); pubYtShowLink(r.youtubeUrl); pubYtShowWatch(r.watchLink);
@@ -6543,7 +6649,8 @@ async function lfsLoadAssets(r) {
     try { await Promise.all(fam.map(f => document.fonts.load(`700 40px "${f}"`))); } catch (e) {}
   }
   const load = src => new Promise(res => { if (!src) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
-  [LFS.bg, LFS.cut] = await Promise.all([load(r.background || r.defaultScene), r.layout === 'stage' ? null : load(`../../tools/presenter/characters/${r.character}/cutout.png`)]);
+  const lib = /^p-/.test(r.character || '') ? (PRES_LIB || []).find(x => x.id === r.character) : null;
+  [LFS.bg, LFS.cut] = await Promise.all([load(r.background || r.defaultScene), r.layout === 'stage' ? null : load(lib ? lib.image : `../../tools/presenter/characters/${r.character}/cutout.png`)]);
 }
 
 // 🎙 Channel intro… — the campaign's fixed opening for every longform episode:
