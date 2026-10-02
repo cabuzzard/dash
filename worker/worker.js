@@ -21690,7 +21690,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const dashify = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const [allProductRows, allMethodRows2, allStrategyRows] = await Promise.all([
           pIds.length ? notionQuery(PRODUCTS_DB, {}).catch(() => []) : [],
-          mIds.length ? notionQuery(METHODS_DB, {}).catch(() => []) : [],
+          notionQuery(METHODS_DB, {}).catch(() => []),   // always: assets carry their own Method (asset-level attribution)
           sIds.length ? notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []) : [],
         ]);
         const pNames = {}, pStacks = {}, pTiers = {};
@@ -21800,6 +21800,8 @@ Return ONLY a JSON array — no other text, no markdown fences:
             title: p["Asset Title"]?.title?.map(x => x.plain_text).join("") || "Untitled",
             platform: p["Platform Name"]?.select?.name || "",
             type: p["Asset Type"]?.select?.name || "",
+            methodId: (p["Method"]?.relation || [])[0]?.id?.replace(/-/g, "") || "",
+            methodName: mNames[(p["Method"]?.relation || [])[0]?.id?.replace(/-/g, "") || ""] || "",
             status: p["Asset Status"]?.select?.name || "",
             designLink: p["Design Link"]?.url || "",
             assemblyReviewPage: p["Assembly Review Page"]?.url || "",
