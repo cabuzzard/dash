@@ -1481,6 +1481,7 @@ async function lfBuildEpisode(env, assetId) {
     } catch (e) {}
   }
   const r = spec.render || {};
+  if (r.fonts && r.fonts.display) fonts = { display: String(r.fonts.display), body: String(r.fonts.body || fonts.body) };
   return {
     title: spec.title || lfReadRich(pr["Platform Title"]) || "",
     format: spec.format || "ranked",
@@ -16011,6 +16012,53 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           body: JSON.stringify({ properties: { "Watch Link": { url: watch }, ...(yt ? { "YouTube URL": { url: yt } } : {}) } }) });
         return json({ ok: true, watchLink: watch, youtubeUrl: yt || page.properties["YouTube URL"]?.url || "" });
       }
+      // 🔤 / 📐 Longform libraries (like the photo library): typefaces (KV lflib:fonts) and box layouts
+      // (KV lflib:layouts), shared by every campaign. The campaign default (hub fonts / campaign layout) is always
+      // the first option. Options come in by pasting a ChatGPT reply (the page writes the prompt + exact format).
+      // longformLibrary {kind: "fonts"|"layouts", op: list | add | delete | use, assetId?, items?, id?}
+      if (body.action === "longformLibrary") {
+        const kind = body.kind === "layouts" ? "layouts" : "fonts", key = "lflib:" + kind;
+        let lib = []; try { lib = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+        const op = body.op || "list";
+        const F = v => String(v || "").replace(/[^A-Za-z0-9 ]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
+        if (op === "add") {
+          const added = [];
+          for (const it of (Array.isArray(body.items) ? body.items : [body.items]).slice(0, 30)) {
+            if (!it || typeof it !== "object") continue;
+            const name = String(it.name || "").trim().slice(0, 60);
+            if (kind === "fonts") {
+              const display = F(it.display), bodyF = F(it.body);
+              if (!display) continue;
+              added.push({ id: "f-" + Date.now().toString(36) + added.length, name: name || `${display} + ${bodyF || "Inter"}`, display, body: bodyF || "Inter", note: String(it.why || it.note || "").slice(0, 300), at: Date.now() });
+            } else {
+              const boxes = lfCleanBoxes(it.boxes || it);
+              if (!boxes) continue;
+              added.push({ id: "l-" + Date.now().toString(36) + added.length, name: name || "Layout", boxes, note: String(it.why || it.note || "").slice(0, 300), at: Date.now() });
+            }
+          }
+          if (!added.length) return json({ error: kind === "fonts" ? "No typefaces found in that reply — it needs {\"name\", \"display\", \"body\"} items" : "No layouts found in that reply — it needs {\"name\", \"boxes\": {card, caption, presenter}} items" }, 400);
+          lib = added.concat(lib).slice(0, 200);
+          await env.TRADES.put(key, JSON.stringify(lib));
+          return json({ ok: true, added: added.length, items: lib });
+        }
+        if (op === "delete") { lib = lib.filter(x => x.id !== body.id); await env.TRADES.put(key, JSON.stringify(lib)); return json({ ok: true, items: lib }); }
+        let current = "default";
+        if (body.assetId) {
+          const aid = String(body.assetId).replace(/-/g, "");
+          const { spec } = await lfLoadAsset(aid);
+          if (!spec) return json({ error: "No script on this asset yet" }, 400);
+          spec.render = spec.render || {};
+          if (op === "use") {
+            const id = String(body.id || "default");
+            const it = lib.find(x => x.id === id);
+            if (kind === "fonts") { if (it) { spec.render.fonts = { display: it.display, body: it.body }; spec.render.fontSet = it.id; } else { delete spec.render.fonts; delete spec.render.fontSet; } }
+            else { if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; } else { delete spec.render.boxes; delete spec.render.layoutId; } }
+            await lfSaveSpec(aid, spec);
+          }
+          current = (kind === "fonts" ? spec.render.fontSet : spec.render.layoutId) || (kind === "layouts" && spec.render.boxes ? "custom" : "default");
+        }
+        return json({ ok: true, items: lib, current });
+      }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");
         const { spec, page } = await lfLoadAsset(aid);
@@ -16021,6 +16069,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           const b = lfCleanBoxes(body.boxes);
           spec.render = spec.render || {};
           if (b) spec.render.boxes = b; else delete spec.render.boxes;
+          delete spec.render.layoutId;
           await lfSaveSpec(aid, spec);
           if (body.campaignDefault && cid) { if (b) await env.TRADES.put("lflayout:" + cid, JSON.stringify(b)); else await env.TRADES.delete("lflayout:" + cid); camp = b; }
           return json({ ok: true, boxes: b, campaignBoxes: camp });

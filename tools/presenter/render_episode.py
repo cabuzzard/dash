@@ -48,7 +48,8 @@ def google_ttf(family, weight, work):
     path = os.path.join(work, f"{re.sub(r'[^A-Za-z0-9]', '', family)}-{weight}.ttf")
     if os.path.exists(path): return path
     try:
-        css = fetch(f"https://fonts.googleapis.com/css2?family={family.replace(' ', '+')}:wght@{weight}", ua="Mozilla/4.0").decode()
+        try: css = fetch(f"https://fonts.googleapis.com/css2?family={family.replace(' ', '+')}:wght@{weight}", ua="Mozilla/4.0").decode()
+        except Exception: css = fetch(f"https://fonts.googleapis.com/css2?family={family.replace(' ', '+')}", ua="Mozilla/4.0").decode()   # single-weight families
         m = re.search(r"url\((https://[^)]+\.ttf)\)", css)
         if not m: return None
         open(path, "wb").write(fetch(m.group(1)))

@@ -829,6 +829,31 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div style="display:flex;gap:6px;align-items:center;margin-top:4px;">Pace <select id="pubLfRate" class="finput" style="width:auto;font-size:11px;"><option value="-13%">Andrew default</option><option value="-23%">slow (mwz3 default)</option><option value="-16%">slower</option><option value="-10%">relaxed (default)</option><option value="-4%">natural</option><option value="+0%">normal</option><option value="+6%">brisk</option></select>
               <button class="btn" type="button" onclick="pubLfPreviewVoice(this)" style="font-size:10px;">▶ sample</button></div></div>
           </div>
+          <div style="margin-top:8px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
+            <div style="flex:1;min-width:240px;">🔤 Typeface
+              <select id="pubLibFonts" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLibFontPreview();pubLibUse('fonts')"></select>
+              <div id="pubLibFontPrev" style="margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#2c3a32;color:#f6eede;"></div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('fonts', this)">💬 Copy ChatGPT prompt</button>
+                <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('fonts')">📥 Paste reply</button>
+                <button class="btn" type="button" style="font-size:10px;" title="Remove the selected typeface from the list" onclick="pubLibDelete('fonts')">🗑</button></div></div>
+            <div style="flex:1;min-width:240px;">📐 Layout preset
+              <select id="pubLibLayouts" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLibLayoutPreview();pubLibUse('layouts')"></select>
+              <canvas id="pubLibLayoutPrev" width="240" height="135" style="margin-top:4px;width:240px;height:135px;border-radius:6px;display:block;"></canvas>
+              <div id="pubLibLayoutNote" style="font-size:10.5px;color:var(--ink3);"></div>
+              <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('layouts', this)">💬 Copy ChatGPT prompt</button>
+                <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('layouts')">📥 Paste reply</button>
+                <button class="btn" type="button" style="font-size:10px;" title="Save this episode's current layout (from 📐 Layout…) as a preset" onclick="pubLibSaveCurrentLayout(this)">＋ Save current</button>
+                <button class="btn" type="button" style="font-size:10px;" title="Remove the selected layout from the list" onclick="pubLibDelete('layouts')">🗑</button></div></div>
+          </div>
+          <div id="pubLibPasteBox" style="display:none;margin-top:6px;">
+            <div id="pubLibPasteLbl" style="font-size:11px;color:var(--ink2);"></div>
+            <textarea id="pubLibPaste" class="finput" rows="5" style="width:100%;font-size:11px;font-family:monospace;" placeholder="Paste the whole reply (the ```json block)"></textarea>
+            <div style="display:flex;gap:6px;margin-top:4px;"><button class="btn primary" type="button" style="font-size:11px;" onclick="pubLibAdd(this)">Add to list</button>
+              <button class="btn" type="button" style="font-size:11px;" onclick="document.getElementById('pubLibPasteBox').style.display='none'">Cancel</button></div>
+          </div>
+          <div id="pubLibMsg" style="font-size:11px;color:var(--ink3);min-height:14px;margin-top:4px;"></div>
           <div style="margin-top:8px;">Background <span style="color:var(--ink3);">(Grok, from the campaign's image spec, matched to the presenter's art style)</span>
             <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
               <img id="pubLfBg" alt="" style="display:none;width:160px;height:90px;object-fit:cover;border-radius:6px;border:1px solid var(--border2);">
@@ -6437,6 +6462,154 @@ async function presSave(btn) {
   } catch (e) { msg.textContent = 'Not saved: ' + e.message; }
   btn.disabled = false;
 }
+// ── 🔤 Typefaces + 📐 Layout presets (libraries shared by all campaigns, like the photo library) ──
+// Each kind: Campaign default + saved options; 💬 copies a ChatGPT prompt that spells out the exact JSON to send
+// back; 📥 paste the reply → options join the library. Picking one applies it to this episode.
+const PUB_LIB = { fonts: [], layouts: [], cur: { fonts: 'default', layouts: 'default' }, ep: null };
+async function pubLibLoad() {
+  if (!PUB_LF) return;
+  try {
+    const [f, l] = await Promise.all(['fonts', 'layouts'].map(kind => w('longformLibrary', { kind, assetId: PUB_LF.assetId })));
+    PUB_LIB.fonts = f.items || []; PUB_LIB.cur.fonts = f.current || 'default';
+    PUB_LIB.layouts = l.items || []; PUB_LIB.cur.layouts = l.current || 'default';
+  } catch (e) {}
+  try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {}
+  pubLibDraw();
+}
+function pubLibFontCss(fams) {
+  const want = [...new Set(fams.filter(Boolean))].filter(f => !document.querySelector(`link[data-gf="${CSS.escape(f)}"]`));
+  for (const f of want) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.gf = f; l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700&display=swap'; document.head.appendChild(l); }
+}
+function pubLibDraw() {
+  const ep = PUB_LIB.ep || {}, campFonts = (ep.fonts && !PUB_LF.render?.fonts) ? ep.fonts : null;
+  const fs = document.getElementById('pubLibFonts'), ls = document.getElementById('pubLibLayouts');
+  if (!fs || !ls) return;
+  fs.innerHTML = `<option value="default">Campaign default${campFonts ? ` (${esc(campFonts.display)} + ${esc(campFonts.body)})` : ''}</option>`
+    + PUB_LIB.fonts.map(x => `<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.display)} + ${esc(x.body)}</option>`).join('');
+  fs.value = PUB_LIB.fonts.some(x => x.id === PUB_LIB.cur.fonts) ? PUB_LIB.cur.fonts : 'default';
+  ls.innerHTML = `<option value="default">Campaign default</option>` + (PUB_LIB.cur.layouts === 'custom' ? '<option value="custom">Custom (edited in 📐 Layout…)</option>' : '')
+    + PUB_LIB.layouts.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+  ls.value = PUB_LIB.cur.layouts;
+  pubLibFontPreview(); pubLibLayoutPreview();
+}
+function pubLibFontPreview() {
+  const sel = document.getElementById('pubLibFonts').value, it = PUB_LIB.fonts.find(x => x.id === sel);
+  const ep = PUB_LIB.ep || {}, d = it ? it.display : (ep.fonts || {}).display, b = it ? it.body : (ep.fonts || {}).body;
+  pubLibFontCss([d, b]);
+  document.getElementById('pubLibFontPrev').innerHTML = `<div style="font-family:'${esc(d || 'Georgia')}',serif;font-weight:700;font-size:20px;line-height:1.15;">Control &amp; Surrender</div>
+    <div style="font-family:'${esc(b || 'Inter')}',sans-serif;font-weight:600;font-size:13px;">Hold what is yours to influence. Release what isn't.</div>${it && it.note ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:2px;">${esc(it.note)}</div>` : ''}`;
+}
+function pubLibLayoutPreview() {
+  const sel = document.getElementById('pubLibLayouts').value, it = PUB_LIB.layouts.find(x => x.id === sel);
+  const cv = document.getElementById('pubLibLayoutPrev'); if (!cv) return;
+  const c = cv.getContext('2d'), W = cv.width, H = cv.height, ep = PUB_LIB.ep || {};
+  const B = lfBoxesFull({ palette: ep.palette, layout: ep.layout }, it ? it.boxes : (ep.boxes || null));
+  c.fillStyle = '#3a4a40'; c.fillRect(0, 0, W, H);
+  const r = (b, fill, label, hh) => { if (!b) return; const x = b.x / 100 * W, y = b.y / 100 * H, w = (b.w || 20) / 100 * W, h = (hh != null ? hh : (b.h || 20)) / 100 * H; c.fillStyle = fill; c.fillRect(x, y, w, h); c.fillStyle = '#fff'; c.font = '10px sans-serif'; c.fillText(label, x + 4, y + 12); };
+  if (B.presenter && ep.layout !== 'stage') r({ ...B.presenter, w: B.presenter.h * 0.75 * H / W }, 'rgba(232,178,52,.45)', 'presenter');
+  r(B.card, lfHexA(B.card.color, B.card.opacity), 'card', 30 * (B.card.s || 100) / 100);
+  r(B.caption, lfHexA(B.caption.color, B.caption.opacity), 'captions');
+  document.getElementById('pubLibLayoutNote').textContent = it && it.note ? it.note : (sel === 'custom' ? 'Your own edits from 📐 Layout…' : '');
+}
+async function pubLibUse(kind) {
+  const sel = document.getElementById(kind === 'fonts' ? 'pubLibFonts' : 'pubLibLayouts').value;
+  if (sel === 'custom') return;
+  const msg = document.getElementById('pubLibMsg');
+  try {
+    const r = await w('longformLibrary', { kind, op: 'use', assetId: PUB_LF.assetId, id: sel });
+    PUB_LIB.cur[kind] = r.current;
+    if (kind === 'fonts') { PUB_LF.render = PUB_LF.render || {}; if (sel === 'default') delete PUB_LF.render.fonts; else PUB_LF.render.fonts = 1; }
+    try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {}
+    msg.style.color = 'var(--fresh)'; msg.textContent = '✓ ' + (kind === 'fonts' ? 'Typeface' : 'Layout') + ' set for this episode — used on the next 🎬 Render' + (kind === 'layouts' ? ' (fine-tune in 📐 Layout…).' : '.');
+    pubLibDraw();
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
+}
+function pubLibPrompt(kind) {
+  const ep = PUB_LIB.ep || {}, f = ep.fonts || {}, pal = ep.palette || {};
+  const ctx = `Channel / campaign: ${document.title.replace(/ Template$/, '')}. Episode: "${PUB_LF.title || ep.title || ''}" (${ep.format || ''} format). Presenter style: illustrated comic / graphic-novel character on screen. Palette: accent ${pal.accent || '?'}, text ${pal.ink || '?'}, panel ${pal.panel || '?'}.`;
+  if (kind === 'fonts') return `I make faceless long-form YouTube videos (1920×1080). Text on screen: big chapter-card headings (display font, rendered BOLD 700) and card text + spoken-word captions (body font, rendered 600). They must read instantly on a phone over a busy illustrated background.
+${ctx}
+Current pairing: ${f.display || '?'} (display) + ${f.body || '?'} (body).
+
+Suggest 8 typeface pairings that would suit this channel — a mix of safe and bolder choices. Rules:
+- Both fonts MUST be free on Google Fonts (fonts.google.com), using the exact family name as Google lists it.
+- The display font must have a 700 (Bold) weight; the body font a 600 (SemiBold) weight.
+- Prefer high legibility at caption size; no scripts or thin hairline faces for the body.
+
+Reply with ONLY this JSON (no other text), so it can be pasted straight into my dashboard:
+\`\`\`json
+[
+  { "name": "short label for the pairing", "display": "Google Font family", "body": "Google Font family", "why": "one sentence on the feel" }
+]
+\`\`\``;
+  const D = lfBoxesFull({ palette: pal, layout: ep.layout }, ep.boxes || null);
+  return `I make faceless long-form YouTube videos (1920×1080). Each frame has up to three boxes, positioned in PERCENT of the frame (x/y = top-left corner):
+- "card": the chapter card (heading + key point). Fields: x, y, w (width %), s (text size %, 100 = normal, 60-160), color (hex panel colour), opacity (0-100), maxChars (0 = no limit). Its height grows with the text.
+- "caption": the spoken-word captions (2 lines, hang from the TOP of the box). Fields: x, y, w, h (height %), s, color, opacity.
+- "presenter": the animated character${ep.layout === 'stage' ? ' (NOT used in this layout — omit it)' : ''}. Fields: x, y, h (height % of the frame; width follows the picture, about 0.75 × h in frame-height units).
+${ctx}
+Current layout: ${JSON.stringify(D)}
+
+Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone.
+
+Reply with ONLY this JSON (no other text), so it can be pasted straight into my dashboard:
+\`\`\`json
+[
+  { "name": "short label", "why": "one sentence", "boxes": {
+      "card": { "x": 4, "y": 11, "w": 40, "s": 100, "color": "#121a16", "opacity": 89, "maxChars": 0 },
+      "caption": { "x": 4, "y": 71, "w": 47, "h": 12, "s": 100, "color": "#0a0e0c", "opacity": 75 },
+      "presenter": { "x": 36, "y": 8, "h": 95 } } }
+]
+\`\`\``;
+}
+async function pubLibCopyPrompt(kind, btn) {
+  if (!PUB_LIB.ep) { try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {} }
+  const text = pubLibPrompt(kind), o = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = '✓ Copied — paste into ChatGPT'; }
+  catch (e) { pubLibPasteOpen(kind); document.getElementById('pubLibPaste').value = text; btn.textContent = 'Clipboard blocked — prompt is in the box'; }
+  setTimeout(() => { btn.textContent = o; }, 3000);
+}
+function pubLibPasteOpen(kind) {
+  const box = document.getElementById('pubLibPasteBox');
+  box.dataset.kind = kind; box.style.display = 'block';
+  document.getElementById('pubLibPasteLbl').textContent = kind === 'fonts' ? 'Paste ChatGPT\'s typeface reply:' : 'Paste ChatGPT\'s layout reply:';
+  document.getElementById('pubLibPaste').focus();
+}
+async function pubLibAdd(btn) {
+  const box = document.getElementById('pubLibPasteBox'), kind = box.dataset.kind, msg = document.getElementById('pubLibMsg');
+  const raw = document.getElementById('pubLibPaste').value || '';
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i), body = fenced ? fenced[1] : raw;
+  let items;
+  try {
+    const a = body.indexOf('['), b = body.lastIndexOf(']'), oa = body.indexOf('{'), ob = body.lastIndexOf('}');
+    items = a >= 0 && b > a ? JSON.parse(body.slice(a, b + 1)) : JSON.parse(body.slice(oa, ob + 1));
+    if (!Array.isArray(items)) items = [items];
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Could not read that reply as JSON — paste the whole ```json block.'; return; }
+  btn.disabled = true;
+  try {
+    const r = await w('longformLibrary', { kind, op: 'add', items });
+    PUB_LIB[kind] = r.items; document.getElementById('pubLibPaste').value = ''; box.style.display = 'none';
+    msg.style.color = 'var(--fresh)'; msg.textContent = `✓ Added ${r.added} ${kind === 'fonts' ? 'typeface pairing' : 'layout'}${r.added === 1 ? '' : 's'} to the list — pick one above.`;
+    pubLibDraw();
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not added: ' + e.message; }
+  btn.disabled = false;
+}
+async function pubLibDelete(kind) {
+  const sel = document.getElementById(kind === 'fonts' ? 'pubLibFonts' : 'pubLibLayouts').value;
+  const it = PUB_LIB[kind].find(x => x.id === sel); if (!it) return;
+  if (!confirm(`Remove “${it.name}” from the ${kind === 'fonts' ? 'typeface' : 'layout'} list? (Episodes already using it keep it.)`)) return;
+  PUB_LIB[kind] = (await w('longformLibrary', { kind, op: 'delete', id: sel })).items; pubLibDraw();
+}
+async function pubLibSaveCurrentLayout(btn) {
+  const name = (prompt('Name for this layout:', 'My layout') || '').trim(); if (!name) return;
+  try {
+    const r = await w('longformLayout', { assetId: PUB_LF.assetId, op: 'get' });
+    const boxes = r.boxes || r.campaignBoxes || lfDesignBoxes(PUB_LIB.ep || {});
+    const a = await w('longformLibrary', { kind: 'layouts', op: 'add', items: [{ name, boxes }] });
+    PUB_LIB.layouts = a.items; pubLibDraw();
+    document.getElementById('pubLibMsg').textContent = `✓ Saved “${name}” to the layout list.`;
+  } catch (e) { document.getElementById('pubLibMsg').textContent = 'Not saved: ' + e.message; }
+}
 // ── Longform episode render (YouTube Longform — Question-Led) ──
 let PUB_LF = null, PUB_LF_POLL = null;
 async function pubLfLoad(assetId, token) {
@@ -6460,6 +6633,7 @@ async function pubLfLoad(assetId, token) {
   PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();
   pubLfShowJob(r.job, r.videoUrl);
   if (r.job && /queued|running/.test(r.job.status)) pubLfPoll();
+  pubLibLoad();
 }
 function pubLfRenderScenes() {
   const el = document.getElementById('pubLfScenes'); if (!el || !PUB_LF) return;
