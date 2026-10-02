@@ -239,6 +239,9 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <span id="contentHubsList"></span>
           </div>
         </details>
+        <span style="display:inline-flex;gap:3px;align-items:center;font-size:10.5px;" title="How the Titles and Assets sections are grouped"><span style="color:var(--ink3);">Group:</span>
+          <button class="btn agrp-btn" data-v="default" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('default')">Stack</button>
+          <button class="btn agrp-btn" data-v="method" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('method')">Method</button></span>
         <button class="notebtn" data-noteid="page-overall" onclick="openNoteModal('page-overall','Whole page','page')">📝 Page note</button>
         <button class="lockbtn" onclick="lockApp()">🔒 Lock</button>
       </div>
@@ -1482,9 +1485,6 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <button class="btn" style="color:var(--stale);" onclick="bulkDeleteTitles()">✕ Delete</button>
           <button class="btn" onclick="clearTitleSelection()">Clear</button>
         </div>
-        <div style="display:flex;gap:4px;align-items:center;font-size:11px;margin-bottom:8px;"><span style="color:var(--ink3);">Group titles &amp; assets by:</span>
-          <button class="btn agrp-btn" data-v="default" style="font-size:10.5px;padding:2px 8px;" onclick="setAssetGrouping('default')">Stack → Product (default)</button>
-          <button class="btn agrp-btn" data-v="method" style="font-size:10.5px;padding:2px 8px;" onclick="setAssetGrouping('method')">Method → Stack</button></div>
         <div id="titleListBody"><div class="loadnote">Loading…</div></div>
       </div>
       <div class="kwcol">
