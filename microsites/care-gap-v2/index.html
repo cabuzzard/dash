@@ -5875,6 +5875,11 @@ async function runCreateAsset() {
       return;
     }
     const interview = CA_LF.iv.qs.map((iq, k) => ({ q: iq, a: ((document.getElementById('caLfIvA' + k) || {}).value || '').trim() })).filter(x => x.a);
+    // a second Generate on the same question makes a SECOND asset (2026-10-02: the render went on one copy, Publish
+    // was opened on the other with no video) — ask first
+    if (CA_LF.made && CA_LF.made.q === q.question && !confirm(`You already wrote a script for this question: “${CA_LF.made.title}”.
+
+Generating again creates a SECOND, separate asset (the first one keeps its render/fact check). Continue?`)) return;
     const o = btn.textContent; btn.disabled = true; btn.textContent = 'Writing…';
     resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Writing the episode script (about a minute)…';
     try {
@@ -5882,6 +5887,7 @@ async function runCreateAsset() {
         format: document.getElementById('caLfFormat').value, items: +document.getElementById('caLfItems').value || undefined,
         interview, layout: /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter',
         productId: CA_TITLE.productId || undefined });
+      CA_LF.made = { q: q.question, title: r.title, assetId: r.assetId };
       resEl.style.color = 'var(--fresh)';
       resEl.textContent = `✓ Script written — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to pick the presenter, voice and background, then 🎬 Render.`;
       await loadTitleAndAssetTab();
