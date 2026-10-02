@@ -45654,6 +45654,22 @@ async function handleKeywordAction(body, env) {
     return json({ run: await kwRunSummary(env, Number(body.runId)) });
   }
 
+  if (a === "kwRenameRun") {   // {runId, name} → renames the run (and its cached snapshot, so the tab shows it without a rebuild)
+    const id = Number(body.runId), name = String(body.name || "").trim().slice(0, 120);
+    if (!name) return json({ error: "Name can't be empty" }, 400);
+    await db.prepare("UPDATE kw_runs SET name = ? WHERE id = ?").bind(name, id).run();
+    const snap = await env.TRADES.get("kwsnap:run:" + id, "json").catch(() => null);
+    if (snap && snap.run) { snap.run.name = name; await env.TRADES.put("kwsnap:run:" + id, JSON.stringify(snap)); }
+    return json({ ok: true, name });
+  }
+  if (a === "kwGroupRename") {
+    const groups = (await env.TRADES.get("kwgroups", "json")) || [];
+    const g = groups.find(x => x.id === body.id), name = String(body.name || "").trim().slice(0, 80);
+    if (!g) return json({ error: "Group not found" }, 404);
+    if (!name) return json({ error: "Name can't be empty" }, 400);
+    g.name = name; await env.TRADES.put("kwgroups", JSON.stringify(groups));
+    return json({ ok: true, groups });
+  }
   if (a === "kwDeleteRun") {   // removes the run + its lineage only; keywords/metrics/cache stay (shared master data)
     const id = Number(body.runId);
     await db.batch([db.prepare("DELETE FROM kw_frontier WHERE run_id = ?").bind(id), db.prepare("DELETE FROM kw_runs WHERE id = ?").bind(id)]);

@@ -5085,6 +5085,7 @@ async function kwLoadRuns() {
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(name)}</span>
         <span style="color:var(--text3);white-space:nowrap;">${meta}</span>
         ${status ? `<span class="kw-st kw-st-${status}">${status}</span>` : ''}
+        ${id !== null ? `<span class="kw-x" title="Rename run" onclick="event.stopPropagation();kwRenameRun(${id})">✎</span>` : ''}
         ${id !== null ? `<span class="kw-x" title="Delete run (keywords stay in the store)" onclick="event.stopPropagation();kwDeleteRun(${id})">✕</span>` : ''}
       </div>`;
     try { KW.groups = (await call('kwGroups')).groups || []; } catch (e) { KW.groups = KW.groups || []; }
@@ -5093,6 +5094,7 @@ async function kwLoadRuns() {
         <span style="width:13px;">💾</span>
         <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(g.name)}</span>
         <span style="color:var(--text3);white-space:nowrap;">${kwNum(g.keywords.length)} kw · saved group · ${new Date(g.at).toISOString().slice(0, 10)}</span>
+        <span class="kw-x" title="Rename group" onclick="event.stopPropagation();kwRenameGroup('${g.id}')">✎</span>
         <span class="kw-x" title="Delete this saved group (keywords stay in the store)" onclick="event.stopPropagation();kwDeleteGroup('${g.id}')">✕</span>
       </div>`;
     el.innerHTML = row(null, 'All keywords in the store', '', '') + (KW.groups || []).map(grow).join('') + KW.runsList.map(r =>
@@ -5113,6 +5115,21 @@ async function kwDeleteGroup(id) {
   await call('kwGroupDelete', { id });
   if (KW.group === id) { KW.group = null; KW.view = []; kwLoadView(); }
   kwLoadRuns();
+}
+async function kwRenameRun(id) {
+  const r = (KW.runsList || []).find(x => x.id === id); if (!r) return;
+  const name = prompt('Rename run #' + id, r.name || ''); if (name == null || !name.trim() || name.trim() === r.name) return;
+  try {
+    await call('kwRenameRun', { runId: id, name: name.trim() });
+    if (KW.snaps[id]) KW.snaps[id].run.name = name.trim();
+    kwLoadRuns(); kwLoadResults(KW.offset);
+  } catch (e) { alert('Not renamed: ' + e.message); }
+}
+async function kwRenameGroup(id) {
+  const g = kwGroupById(id); if (!g) return;
+  const name = prompt('Rename saved group', g.name); if (name == null || !name.trim() || name.trim() === g.name) return;
+  try { KW.groups = (await call('kwGroupRename', { id, name: name.trim() })).groups; kwLoadRuns(); kwLoadResults(KW.offset); }
+  catch (e) { alert('Not renamed: ' + e.message); }
 }
 function kwRenderGroupPick() {
   const sel = document.getElementById('kwGroupPick'); if (!sel) return;
