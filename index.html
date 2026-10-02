@@ -1042,6 +1042,14 @@
         <select id="kwLocalF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">local: any</option><option value="only">local only</option><option value="exclude">no local</option></select>
         <select id="kwBrandF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">brand: any</option><option value="only">brands only</option><option value="exclude">no brands</option></select>
         <button class="kw-btn" onclick="kwLoadResults(0)">Apply</button>
+        <button class="kw-btn" onclick="kwTogglePaste()" title="Paste keyword lists (one per line) to select them — e.g. several lists you copied earlier">📥 Select from list</button>
+      </div>
+      <div id="kwPasteBox" style="display:none;gap:6px;align-items:flex-start;flex-wrap:wrap;font-size:12px;margin-bottom:8px;padding:8px;border:1px solid var(--border);border-radius:4px;background:var(--surface2);">
+        <textarea id="kwPasteText" rows="6" placeholder="Paste keywords here, one per line. Paste several lists one after another — they all get selected together." style="flex:1;min-width:260px;font-size:12px;"></textarea>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="kw-btn" onclick="kwPasteSelect()">➕ Add to selection</button>
+          <span id="kwPasteMsg" style="color:var(--text3);max-width:260px;"></span>
+        </div>
       </div>
       <div id="kwSendBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;margin-bottom:8px;padding:8px;border:1px solid #2a5a2a;border-radius:4px;background:var(--surface2);">
         <b id="kwSelCount"></b>
@@ -5220,6 +5228,20 @@ async function kwCopySel() {
   if (!list.length) { msg.textContent = 'Select some keywords first.'; return; }
   await navigator.clipboard.writeText(list.join('\n'));
   msg.textContent = `✓ Copied ${list.length} keyword${list.length === 1 ? '' : 's'}`;
+}
+// 📥 Select from list: pasted keywords (one per line, any number of lists) are ADDED to the current selection.
+// Matched case-insensitively against the loaded rows; then the table shows just the selection.
+function kwTogglePaste() { const b = document.getElementById('kwPasteBox'); b.style.display = b.style.display === 'none' ? 'flex' : 'none'; }
+function kwPasteSelect() {
+  const want = [...new Set(document.getElementById('kwPasteText').value.split(/[\r\n\t]+/).map(x => x.trim().toLowerCase()).filter(Boolean))];
+  const msg = document.getElementById('kwPasteMsg');
+  if (!want.length) { msg.textContent = 'Paste some keywords first.'; return; }
+  const byLow = new Map((KW.rows || []).map(r => [String(r.keyword).toLowerCase(), r.keyword]));
+  let added = 0; const missing = [];
+  for (const k of want) { const hit = byLow.get(k); if (!hit) { missing.push(k); continue; } if (!KW.selected.has(hit)) { KW.selected.add(hit); added++; } }
+  msg.textContent = `✓ ${added} added · ${KW.selected.size} selected in total` + (missing.length ? ` · ${missing.length} not in the loaded runs (load/combine the run they came from, then add again)` : '');
+  if (added) { document.getElementById('kwPasteText').value = ''; KW.selOnly = true; }
+  kwLoadResults(0);
 }
 // Filter the table down to the selection (toggle).
 function kwToggleSelOnly() { KW.selOnly = !KW.selOnly; kwLoadResults(0); }
