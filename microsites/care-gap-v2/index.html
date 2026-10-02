@@ -3324,6 +3324,15 @@ async function saveStagedFonts() {
 
 // ══════════════════════ PRODUCT RESEARCH TAB — nested by stack, modal per product ══════════════════════
 let CAMPAIGN_PRODUCTS = [];
+// One shared in-flight request: the Products column and the Titles/Assets columns load together and both need the list.
+let CAMPAIGN_PRODUCTS_P = null;
+function ensureCampaignProducts() {
+  if (CAMPAIGN_PRODUCTS.length) return Promise.resolve(CAMPAIGN_PRODUCTS);
+  if (!CAMPAIGN_PRODUCTS_P) CAMPAIGN_PRODUCTS_P = w('getCampaignProducts', { campaignId: CAMPAIGN_ID })
+    .then(r => { CAMPAIGN_PRODUCTS = r.products || []; return CAMPAIGN_PRODUCTS; })
+    .finally(() => { CAMPAIGN_PRODUCTS_P = null; });
+  return CAMPAIGN_PRODUCTS_P;
+}
 let SELECTED_PRODUCTS = new Set();
 const STRATEGY_FIELDS = ["Customer","Niche","Pain Points","Emotions","Solution","Benefits","Unique Opportunity","Transformation","Offer Structure","Proof Points","Objections"];
 // Per-product research-sync indicator, sourced from the existing
@@ -3690,9 +3699,11 @@ async function setAffiliateStatus(affId, sel) {
 async function loadProductTab() {
   const body = document.getElementById('productListBody');
   try {
-    if (!CAMPAIGN_PRODUCTS.length) { const r = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = r.products || []; }
+    await ensureCampaignProducts();
     if (!CAMPAIGN_PRODUCTS.length) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
-    await Promise.all([ensureProductResearchState(), ensureStackOrder(), ensureAffiliateLinks()]);
+    await Promise.all([ensureStackOrder(), ensureAffiliateLinks()]);
+    // research badges are slow (whole-DB scans) — draw the list now, redraw with badges when they arrive
+    if (!PRODUCT_RESEARCH_STATE) ensureProductResearchState().then(() => loadProductTab());
     const { groups, order: rawOrder } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
     EMPTY_STACKS.forEach(s => { if (!groups[s]) { groups[s] = []; rawOrder.push(s); } });
     if (!groups['No Stack']) { groups['No Stack'] = []; rawOrder.push('No Stack'); }   // hidden while empty; shown as a drop target during a product drag
@@ -4540,8 +4551,7 @@ async function loadTitleAndAssetTab() {
   document.getElementById('titleBulkBar').style.display = 'none';
   document.getElementById('assetBulkBar').style.display = 'none';
   try {
-    if (!CAMPAIGN_PRODUCTS.length) { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; }
-    const r = await w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES });
+    const [, r] = await Promise.all([ensureCampaignProducts(), w('getTitles', { campaignId: CAMPAIGN_ID, stages: TITLE_STAGES })]);   // in parallel
     CAMPAIGN_TITLES = r.titles || [];
     if (!CAMPAIGN_TITLES.length) { titleBody.innerHTML = assetBody.innerHTML = '<div class="loadnote">No titles on this campaign yet.</div>'; return; }
 

@@ -16796,11 +16796,19 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const hdrGcp = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const { ids: productIds } = await getFullRelation(hdrGcp, campaignId, "Products");
-        if (!productIds.length) return json({ products: [] });
-        const productPages = await Promise.all(productIds.map(id =>
-          fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdrGcp }).then(res => res.json())
-        ));
+        // ONE filtered (paginated) DB query — products whose Campaigns relation (dual of the campaign's Products)
+        // contains this campaign. Was one page GET per product: 140 products on Mountainwize = 140 Notion calls and a
+        // very slow Products column. Falls back to the old per-page path if the query fails.
+        const cidDash = String(campaignId).replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        let productPages = await notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: cidDash } }, sorts: [{ timestamp: "created_time", direction: "ascending" }] })
+          .catch(e => { console.error("getCampaignProducts query:", e.message); return null; });
+        if (!productPages) {
+          const { ids: productIds } = await getFullRelation(hdrGcp, campaignId, "Products");
+          if (!productIds.length) return json({ products: [] });
+          productPages = await Promise.all(productIds.map(id =>
+            fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdrGcp }).then(res => res.json())
+          ));
+        }
         const products = productPages
           // Archiving a product only ever changed its own Status — it never
           // touched the Campaign's "Products" relation this query reads, so
@@ -20279,8 +20287,9 @@ Return ONLY a JSON object, no other text, no markdown fences:
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const undash = raw => String(raw || "").replace(/-/g, "");
-        const campPage = await fetch(`https://api.notion.com/v1/pages/${dash(campaignId)}`, { headers: hdr }).then(r => r.json());
-        const productRels = campPage.properties?.["Products"]?.relation || [];
+        // getFullRelation: a page's relation property only carries the first 25 ids
+        const { ids: relIds } = await getFullRelation(hdr, campaignId, "Products");
+        const productRels = relIds.map(id => ({ id }));
         if (!productRels.length) return json({ products: [] });
         const wantIds = new Set(productRels.map(r => undash(r.id)));
 
