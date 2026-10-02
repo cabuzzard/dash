@@ -186,6 +186,8 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .rbody{display:none;padding:0 13px 13px 30px;}
 .rnode.open>.rbody{display:block;}
 .rasset{font-size:12.5px;color:var(--ink);padding:5px 0 5px 8px;border-left:2px solid var(--border2);margin:4px 0;}
+.spinner{border:2px solid var(--border2);border-top-color:var(--ink2);border-radius:50%;animation:bgspin .8s linear infinite;box-sizing:border-box;}
+@keyframes bgspin{to{transform:rotate(360deg);}}
 /* Products · Titles · Assets tab: three narrow columns — smaller row text that wraps instead of being cut off */
 .panel[data-panel="strategy"] .idea-title{font-size:10.5px;min-width:0;flex:1 1 120px;white-space:normal;overflow:visible;line-height:1.3;}
 .panel[data-panel="strategy"] .idea-desc{font-size:10px;}
@@ -4785,6 +4787,22 @@ function cpPickMethod(el) {
 function cpMethodBlur() {
   setTimeout(() => { document.getElementById('cpMethodOptions').style.display = 'none'; }, 150);
 }
+// Background jobs: slow actions close their modal right away and report in a corner chip instead (operator:
+// "create pillar takes time and I can't close the modal").
+function bgJobChip(label) {
+  let box = document.getElementById('bgJobs');
+  if (!box) { box = document.createElement('div'); box.id = 'bgJobs'; box.style.cssText = 'position:fixed;right:14px;bottom:14px;z-index:9999;display:flex;flex-direction:column;gap:6px;max-width:340px;'; document.body.appendChild(box); }
+  const el = document.createElement('div');
+  el.style.cssText = 'background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;font-size:11.5px;box-shadow:0 4px 14px rgba(0,0,0,.18);';
+  el.innerHTML = `<span class="spinner" style="display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;"></span>${esc(label)}`;
+  box.appendChild(el);
+  const close = '<span style="float:right;cursor:pointer;margin-left:8px;color:var(--ink3);" onclick="this.parentElement.remove()">✕</span>';
+  return {
+    step: t => { el.innerHTML = `<span class="spinner" style="display:inline-block;width:10px;height:10px;margin-right:6px;vertical-align:-1px;"></span>${esc(label)} — ${esc(t)}`; },
+    done: html => { el.style.borderColor = 'var(--fresh)'; el.innerHTML = close + html; setTimeout(() => el.remove(), 15000); },
+    fail: msg => { el.style.borderColor = 'var(--stale)'; el.innerHTML = close + `<span style="color:var(--stale);">✕ ${esc(label)}: ${esc(msg)}</span>`; },
+  };
+}
 async function runCreatePillar() {
   if (!CP_PRODUCT_ID) return;
   const title = document.getElementById('cpTitleInput').value.trim();
@@ -4792,24 +4810,19 @@ async function runCreatePillar() {
   const guidance = document.getElementById('cpGuidance').value.trim();
   const resEl = document.getElementById('cpResult');
   if (!title) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Title required.'; return; }
-  const btn = document.getElementById('cpRunBtn');
-  btn.disabled = true; btn.textContent = 'Creating…';
-  resEl.style.color = 'var(--ink3)'; resEl.textContent = 'Creating title…';
+  const productId = CP_PRODUCT_ID;
+  closeCreatePillarModal();   // keep working — progress shows in the corner
+  const job = bgJobChip(`✍ Pillar: ${title.slice(0, 60)}`);
   try {
-    const created = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId: CP_PRODUCT_ID, methodId, status: 'Development' });
+    job.step('creating title…');
+    const created = await w('createDevTitle', { title, campaignId: CAMPAIGN_ID, productId, methodId, status: 'Development' });
     if (created.error) throw new Error(created.error);
-    resEl.textContent = 'Writing pillar…';
+    job.step('writing pillar (about a minute)…');
     const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: guidance || undefined });
     if (pillarRes.error) throw new Error(pillarRes.error);
-    resEl.style.color = 'var(--fresh)';
-    resEl.innerHTML = `✓ Created — ${pillarRes.wordCount || '?'} words. <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open</a>`;
-    btn.textContent = '✓ Done';
+    job.done(`<span style="color:var(--fresh);">✓ Pillar written</span> — ${esc(title.slice(0, 60))} · ${pillarRes.wordCount || '?'} words · <a href="${notionUrl(created.id)}" target="_blank" rel="noopener">↗ open</a>`);
     loadTitleAndAssetTab();
-    setTimeout(closeCreatePillarModal, 1800);
-  } catch (e) {
-    resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
-    btn.disabled = false; btn.textContent = '✍ Create';
-  }
+  } catch (e) { job.fail(e.message); }
 }
 
 // ── CREATE PRODUCT ──────────────────────────────────────────────────
