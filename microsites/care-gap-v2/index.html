@@ -8117,6 +8117,39 @@ async function loadHubOutput() {
   try { HUB_OUTPUT = await w('getHubOutput', { slug: HUB_SLUG }); renderHubOutput(); }
   catch (e) { el.innerHTML = `<div class="errnote">Load failed: ${esc(e.message)}</div>`; }
 }
+// + title on an Output-board method row: name + product + notes → one Development title with this method as its
+// preferred method (createDevTitles). No pillar is written — it just lands in the Titles section.
+async function hoAddTitleOpen(btn, methodId) {
+  const tr = btn.closest('tr'), nx = tr.nextElementSibling;
+  if (nx && nx.classList.contains('ho-title-form')) { nx.remove(); return; }
+  if (!CAMPAIGN_PRODUCTS.length) { try { const rp = await w('getCampaignProducts', { campaignId: CAMPAIGN_ID }); CAMPAIGN_PRODUCTS = rp.products || []; } catch (e) {} }
+  const m = (HUB_OUTPUT.methods || []).find(x => x.id === methodId);
+  const f = document.createElement('tr'); f.className = 'ho-title-form';
+  f.innerHTML = `<td colspan="${tr.children.length}" style="padding:8px 6px;background:var(--surface2);">
+    <div style="display:flex;flex-direction:column;gap:6px;max-width:640px;font-size:11.5px;">
+      <div><b>New title</b> · method: ${esc(m ? m.name : methodId)}</div>
+      <input class="finput ho-t-name" placeholder="Title" style="font-size:12px;">
+      <select class="finput ho-t-prod" style="font-size:12px;"><option value="">— no product —</option>${CAMPAIGN_PRODUCTS.slice().sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))).map(p => `<option value="${esc(p.id)}">${esc(p.name || 'Untitled')}</option>`).join('')}</select>
+      <textarea class="finput ho-t-notes" rows="4" placeholder="Notes / text for this title (optional)" style="font-size:12px;"></textarea>
+      <div style="display:flex;gap:6px;align-items:center;"><button class="btn primary" type="button">Add title</button><button class="btn" type="button">cancel</button><span class="ho-t-msg" style="color:var(--ink3);"></span></div>
+    </div></td>`;
+  tr.after(f);
+  const [addB, cancelB] = f.querySelectorAll('button');
+  cancelB.onclick = () => f.remove();
+  addB.onclick = async () => {
+    const name = f.querySelector('.ho-t-name').value.trim(), msg = f.querySelector('.ho-t-msg');
+    if (!name) { f.querySelector('.ho-t-name').focus(); return; }
+    addB.disabled = true; msg.textContent = 'Adding…';
+    try {
+      const r = await w('createDevTitles', { titles: [name], campaignId: CAMPAIGN_ID, productId: f.querySelector('.ho-t-prod').value || undefined, methodId, notes: f.querySelector('.ho-t-notes').value, status: 'Development' });
+      if (!r.created) throw new Error('Notion did not create it');
+      msg.textContent = '✓ Added to Titles (Development).';
+      setTimeout(() => f.remove(), 1500);
+      if (typeof loadTitleAndAssetTab === 'function') loadTitleAndAssetTab();
+    } catch (e) { msg.textContent = 'Not added: ' + e.message; addB.disabled = false; }
+  };
+  f.querySelector('.ho-t-name').focus();
+}
 function renderHubOutput() {
   const el = document.getElementById('hubOutputBody'), O = HUB_OUTPUT;
   if (!el || !O) return;
@@ -8171,7 +8204,7 @@ function renderHubOutput() {
     return `<td title="${esc(list)}" style="padding:5px 6px;text-align:center;white-space:nowrap;background:${bg};color:${col};${isCur ? 'outline:2px solid #f6ad55;outline-offset:-2px;' : ''}"><b>${c}</b>${g ? `<span style="color:var(--ink3);"> / ${g}</span>` : ''}</td>`;
   };
   const rows = ids.map(id => `<tr data-mid="${esc(id)}" style="border-top:1px solid var(--border);">
-      <td style="padding:5px 6px;${tdName}white-space:nowrap;"><span class="stack-handle" title="Drag to reorder" onpointerdown="hoRowDragStart(event, this)">⠿</span>${id === '__none__' ? esc(nameOf(id)) : `<span class="ho-name" style="cursor:text;border-bottom:1px dotted var(--border2);" title="Click to rename (renames the method everywhere)" onclick="hoRenameStart(this, '${esc(id)}')">${esc(nameOf(id))}</span>`}${byId[id] && byId[id].needsBuild ? ` <span class="fbadge stale" title="${esc('Needs a code session to build.' + (byId[id].brief ? ' Brief: ' + byId[id].brief : ''))}">🛠 needs build</span>` : ''}</td>
+      <td style="padding:5px 6px;${tdName}white-space:nowrap;"><span class="stack-handle" title="Drag to reorder" onpointerdown="hoRowDragStart(event, this)">⠿</span>${id === '__none__' ? esc(nameOf(id)) : `<span class="ho-name" style="cursor:text;border-bottom:1px dotted var(--border2);" title="Click to rename (renames the method everywhere)" onclick="hoRenameStart(this, '${esc(id)}')">${esc(nameOf(id))}</span> <button class="iconbtn" style="font-size:10px;" title="Add a title that uses this method (goes to Titles → Development; no pillar written)" onclick="hoAddTitleOpen(this, '${esc(id)}')">+ title</button>`}${byId[id] && byId[id].needsBuild ? ` <span class="fbadge stale" title="${esc('Needs a code session to build.' + (byId[id].brief ? ' Brief: ' + byId[id].brief : ''))}">🛠 needs build</span>` : ''}</td>
       <td style="padding:5px 6px;min-width:160px;">${id === '__none__' ? '' : `<input type="text" class="finput" value="${esc(((O.notes || {})[id]) || '')}" placeholder="notes…" title="Notes for this method on this hub" style="width:100%;min-width:150px;font-size:11px;padding:2px 5px;" onchange="setHubOutputNote('${esc(id)}', this.value)">`}</td>
       <td style="padding:5px 6px;">${id === '__none__' ? '' : `<input type="number" min="0" max="99" value="${goal(id, thisWk) || ''}" placeholder="0" class="finput" title="This week's goal" style="width:52px;padding:2px 4px;font-size:11px;" onchange="setHubOutputGoal('${esc(id)}', this.value)">`}</td>
       ${weeks.map(wk => cell(id, wk)).join('')}

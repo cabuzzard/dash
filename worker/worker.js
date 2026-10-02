@@ -13442,6 +13442,7 @@ Return ONLY this JSON, no other text, no markdown fences:
         if (campaignId) baseProps["Campaign"] = { relation: [{ id: dashId(campaignId) }] };
         if (productId && productId !== "__none__" && productId !== campaignId) baseProps["product"] = { relation: [{ id: dashId(productId) }] };
         if (body.methodId && body.methodId !== "__none__") baseProps["method"] = { relation: [{ id: dashId(body.methodId) }] };
+        if (body.notes && String(body.notes).trim()) baseProps["Notes"] = { rich_text: lfRich(String(body.notes).trim().slice(0, 6000)) };
         let created = 0, failed = 0;
         const ids = [];
         for (let i = 0; i < names.length; i += 5) {
