@@ -226,7 +226,13 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 <div class="wrap">
   <div class="hdr">
     <div class="hdrtop">
-      <div class="eyebrow">Campaign Template · real, live-wired successor to New Template</div>
+      <div class="eyebrow">Campaign Template · real, live-wired successor to New Template
+        <span id="verBar" style="margin-left:8px;font-size:10px;text-transform:none;letter-spacing:0;color:var(--ink3);white-space:nowrap;">
+          <span id="verText" title="When this version of the page was published">v …</span>
+          <button class="iconbtn" style="font-size:10px;" title="Load the newest version (skips the phone's cached copy)" onclick="verUpdate()">↻ Update</button>
+          <button class="iconbtn" style="font-size:10px;" title="See / copy / edit this page's address" onclick="verLink()">🔗 Link</button>
+        </span></div>
+      <div id="verNew" style="display:none;margin:6px 0;padding:6px 10px;border-radius:8px;background:#f6ad55;color:#1a1a1a;font-size:12px;cursor:pointer;" onclick="verUpdate()">⬆ A newer version of this page is out — tap to update</div>
       <div class="hdrctrls">
         <select id="campaignPicker" title="Switch campaign — reloads this page against a different campaign" style="font-size:11px;padding:4px 8px;border-radius:6px;border:1px solid var(--border2);background:var(--surface);color:var(--ink);"><option>Loading campaigns…</option></select>
         <details class="artnav">
@@ -9519,6 +9525,34 @@ async function init() {
   loadMethods();
   loadNotes();
   loadContentHubsList();
+}
+
+// ── Version bar (for the iPhone home-screen shortcut, which has no address bar) ──
+// Version = when GitHub Pages published this file (Last-Modified). ↻ Update reloads with a cache-busting ?v=;
+// 🔗 Link shows the full address to copy or edit; a banner appears when a newer version is published.
+(function () {
+  const fmt = d => d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const mine = new Date(document.lastModified);
+  const vt = document.getElementById('verText'); if (vt) vt.textContent = 'v ' + (isNaN(mine) ? '?' : fmt(mine));
+  async function check() {
+    try {
+      const r = await fetch(location.pathname + '?vcheck=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+      const lm = new Date(r.headers.get('last-modified'));
+      if (!isNaN(lm) && !isNaN(mine) && lm - mine > 1000) { const b = document.getElementById('verNew'); if (b) { b.style.display = 'block'; b.textContent = '⬆ A newer version (' + fmt(lm) + ') is out — tap to update'; } }
+    } catch (e) {}
+  }
+  setTimeout(check, 4000); setInterval(check, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+})();
+function verUpdate() {
+  const u = new URL(location.href); u.searchParams.set('v', Date.now().toString(36)); u.searchParams.delete('vcheck');
+  location.replace(u.toString());
+}
+async function verLink() {
+  const cur = location.href;
+  try { await navigator.clipboard.writeText(cur); } catch (e) {}
+  const next = prompt('This page\'s address (already copied). Edit it and press OK to open it:', cur);
+  if (next && next.trim() && next.trim() !== cur) location.href = next.trim();
 }
 </script>
 </body>
