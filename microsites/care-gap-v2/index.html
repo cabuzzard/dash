@@ -7142,10 +7142,13 @@ function gfLoad(fams) {
       if (!url) continue;
       const face = new FontFace(f, `url(${url.replace(/["']/g, '')})`, { weight: weight.trim(), style: style.trim(), ...(range ? { unicodeRange: range.trim() } : {}) });
       document.fonts.add(face);
-      // load the Latin subset (and single-file families) right away; other scripts load if ever used
-      if (!range || /U\+0-FF|U\+0000-00FF/i.test(range)) loads.push(face.load().catch(() => {}));
+      if (!range) loads.push(face.load().catch(() => {}));   // single-file families: load now
     }
     await Promise.all(loads);
+    // split families (Latin subsets; Japanese fonts come in ~120 slices): every face is registered now, so ask the
+    // browser for exactly the slices that English text + punctuation need, at both weights the renderer uses
+    const sample = 'Control & Surrender — The Quick Brown Fox Jumps 0123456789 “’…!?:;,.-';
+    await Promise.all(['700', '600'].map(wt => document.fonts.load(`${wt} 40px "${f}"`, sample).catch(() => {})));
   })())));
 }
 function lfCase(t, m) { t = String(t || ''); return m === 'upper' ? t.toUpperCase() : m === 'lower' ? t.toLowerCase() : m === 'title' ? t.replace(/\w\S*/g, w_ => w_[0].toUpperCase() + w_.slice(1).toLowerCase()) : t; }
