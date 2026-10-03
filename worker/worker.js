@@ -1518,6 +1518,7 @@ async function lfBuildEpisode(env, assetId) {
     } catch (e) {}
   }
   const r = spec.render || {};
+  const campaignFonts = { ...fonts };   // the campaign/hub fonts, before this episode's own typeface choice
   if (r.fonts && r.fonts.display) fonts = { display: String(r.fonts.display), body: String(r.fonts.body || fonts.body) };
   const treatment = lfCleanTreatment(r.treatment);
   return {
@@ -1537,7 +1538,7 @@ async function lfBuildEpisode(env, assetId) {
     ...(() => { const vv = LF_VOICES.find(x => x.id === (r.voice || LF_DEFAULT_VOICE)); return vv && vv.ambience ? { ambience: vv.ambience } : {}; })(),
     ...(spec.format === "interview" ? { voice2: { engine: "edge", id: r.interviewer || LF_INTERVIEWER, rate: "+0%", pitch: "+0Hz" } } : {}),
     background: pr["Longform Background"]?.url ? { url: pr["Longform Background"].url } : {},
-    fonts, palette,
+    fonts, campaignFonts, palette,
     segments: introSegs.concat(spec.segments),
   };
 }

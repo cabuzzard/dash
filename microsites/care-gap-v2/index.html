@@ -6507,7 +6507,7 @@ function pubLibFontCssOld(fams) {
   for (const f of want) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.gf = f; l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700&display=swap'; document.head.appendChild(l); }
 }
 function pubLibDraw() {
-  const ep = PUB_LIB.ep || {}, campFonts = (ep.fonts && !PUB_LF.render?.fonts) ? ep.fonts : null;
+  const ep = PUB_LIB.ep || {}, campFonts = ep.campaignFonts || ((ep.fonts && !PUB_LF.render?.fonts) ? ep.fonts : null);
   const fs = document.getElementById('pubLibFonts'), ls = document.getElementById('pubLibLayouts');
   if (!fs || !ls) return;
   fs.innerHTML = `<option value="default">Campaign default${campFonts ? ` (${esc(campFonts.display)} + ${esc(campFonts.body)})` : ''}</option>`
@@ -6522,7 +6522,8 @@ function pubLibDraw() {
 function pubLibFontList() {
   const el = document.getElementById('pubLibFontList'); if (!el) return;
   const ep = PUB_LIB.ep || {}, cur = document.getElementById('pubLibFonts').value;
-  const all = [{ id: 'default', name: 'Campaign default', display: (ep.fonts || {}).display, body: (ep.fonts || {}).body }].concat(PUB_LIB.fonts);
+  const cf = ep.campaignFonts || ep.fonts || {};
+  const all = [{ id: 'default', name: 'Campaign default', display: cf.display, body: cf.body }].concat(PUB_LIB.fonts);
   gfLoad(all.flatMap(x => [x.display, x.body]));
   el.innerHTML = all.map(x => `<div onclick="document.getElementById('pubLibFonts').value='${esc(x.id)}';pubLibFontPreview();pubLibUse('fonts')" title="${esc(x.name)} — ${esc(x.display || '')} + ${esc(x.body || '')}"
       style="cursor:pointer;padding:5px 8px;border-radius:6px;border:1px solid ${x.id === cur ? 'var(--accent,#f6ad55)' : 'var(--border)'};background:#2c3a32;color:#f6eede;min-width:150px;flex:0 0 auto;">
@@ -6531,7 +6532,7 @@ function pubLibFontList() {
 }
 function pubLibFontPreview() {
   const sel = document.getElementById('pubLibFonts').value, it = PUB_LIB.fonts.find(x => x.id === sel);
-  const ep = PUB_LIB.ep || {}, d = it ? it.display : (ep.fonts || {}).display, b = it ? it.body : (ep.fonts || {}).body;
+  const ep = PUB_LIB.ep || {}, cf = ep.campaignFonts || ep.fonts || {}, d = it ? it.display : cf.display, b = it ? it.body : cf.body;
   pubLibFontCss([d, b]).then(() => pubLibLayoutPreview());
   document.getElementById('pubLibFontPrev').innerHTML = `<div style="font-family:'${esc(d || 'Georgia')}',serif;font-weight:700;font-size:20px;line-height:1.15;">Control &amp; Surrender</div>
     <div style="font-family:'${esc(b || 'Inter')}',sans-serif;font-weight:600;font-size:13px;">Hold what is yours to influence. Release what isn't.</div>${it && it.note ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:2px;">${esc(it.note)}</div>` : ''}`;
