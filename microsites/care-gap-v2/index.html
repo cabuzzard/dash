@@ -859,7 +859,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" style="font-size:11px;" onclick="document.getElementById('pubLibAskBox').style.display='none'">Cancel</button></div>
           </div>
           <div style="margin-top:6px;padding:6px 8px;border:1px dashed var(--border2);border-radius:8px;font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <b>📝 Fit script to layout</b><span style="color:var(--ink3);">— ChatGPT rewrites the on-screen text to fill exactly the text boxes of the layout selected above</span>
+            <b>📝 Fit script to layout</b><span style="color:var(--ink3);">— follows the <b>Layout</b> chosen at the top (<span id="pubFitFor">…</span>): ChatGPT reshapes the script to fit it</span>
             <button class="btn" type="button" style="font-size:10px;" onclick="pubFitCopy(this)">💬 Copy "fit script" prompt</button>
             <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('script')">📥 Paste fitted script</button>
             <button class="btn" type="button" style="font-size:10px;" title="Put back the script from before the last paste" onclick="pubFitUndo(this)">↶ Undo last fit</button>
@@ -6690,8 +6690,42 @@ function pubFitBoxes() {
   const tr = (it && it.treatment) || ep.treatment || {};
   return { B, tr, name: it ? it.name : 'Campaign default' };
 }
+// The LAYOUT chosen at the top of the Publish modal decides which "fit script" prompt is sent.
+function pubFitTopLayout() { const v = (document.getElementById('pubLfLayout') || {}).value; return ['stage', 'titles'].includes(v) ? v : 'presenter'; }
+function pubFitScriptJson(ep) {
+  const script = (ep.segments || []).filter(x => !['intro', 'jingle', 'topic'].includes(x.kind)).map(x => {
+    const o = { kind: x.kind }; for (const f of ['n', 'name', 'blurb', 'label', 'ask']) if (x[f] != null && x[f] !== '') o[f] = x[f]; o.text = x.text; return o; });
+  return JSON.stringify({ title: ep.title || '', segments: script }, null, 1).slice(0, 60000);
+}
+function pubFitPromptTitles(ep) {
+  return `I make faceless long-form YouTube videos. Rewrite the script below to fit the layout "PARAGRAPHS WITH TITLES": the video runs in SECTIONS. Each section shows ONE title, centred on screen, for the whole section, while that section's paragraph is spoken and shown as captions underneath it. There is no presenter, no numbers, no key-point line, no like/comment pills — only section titles and the spoken paragraphs.
+
+HOW TO STRUCTURE IT:
+- Every section = one "item" with "name" (the on-screen title) and "text" (the paragraph that is spoken and captioned under it).
+- Title ("name"): 2-6 words, at most 50 characters (2 lines at most), naming exactly what that paragraph is about. No numbers, no "#".
+- Paragraph ("text"): the narration for that section — about 40-150 words, written to be spoken; short sentences caption best.
+- Every bit of narration belongs to a titled section — nothing runs without a title. An opening section is fine (give it a title too).
+- Do NOT use "ask", "talk", "blurb" or "n".
+
+RULES:
+- Keep the narration in the speaker's own words and meaning — split and regroup it into titled sections, trim filler, fix spelling. Do not invent new claims, stories or facts.
+- If the script already has headings (e.g. "Control & Surrender"), keep them as the section titles.
+
+CURRENT SCRIPT (JSON):
+${pubFitScriptJson(ep)}
+
+Reply with ONLY the rewritten script as JSON in this shape (no other text), so it can be pasted straight into my dashboard:
+\`\`\`json
+{ "title": "episode title", "segments": [
+  { "kind": "item", "name": "Section title", "text": "the paragraph spoken under it" },
+  { "kind": "item", "name": "Next section title", "text": "..." }
+] }
+\`\`\``;
+}
 function pubFitPrompt() {
-  const ep = PUB_LIB.ep || {}, { B, tr, name } = pubFitBoxes(), tc = tr.card || {};
+  const ep = PUB_LIB.ep || {};
+  if (pubFitTopLayout() === 'titles') return pubFitPromptTitles(ep);
+  const { B, tr, name } = pubFitBoxes(), tc = tr.card || {};
   const perLine = (wPct, s, px) => Math.max(8, Math.round((wPct / 100 * 1920 / ((s || 100) / 100) - 80) / (px * 0.52)));
   const lines = [];
   if (B.title) lines.push(`- TITLE CARD: one on-screen title for the episode, at most ${perLine(B.title.w || B.card?.w || 40, B.title.s, 56) * 3} characters (3 lines of ~${perLine(B.title.w || B.card?.w || 40, B.title.s, 56)}).${(tr.title || {}).case === 'upper' ? ' Shown in UPPERCASE.' : ''}`);
@@ -6708,7 +6742,7 @@ function pubFitPrompt() {
     const o = { kind: x.kind }; for (const f of ['n', 'name', 'blurb', 'label', 'ask']) if (x[f] != null && x[f] !== '') o[f] = x[f]; o.text = x.text; return o; });
   return `I make faceless long-form YouTube videos. Below is an episode script and the layout it will be rendered in. Rewrite the script so it fills EXACTLY the text boxes this layout shows — no more, no less.
 
-LAYOUT: "${name}". Its on-screen text boxes and how much fits in each:
+LAYOUT: ${pubFitTopLayout() === 'stage' ? 'Text & images (no presenter; pictures shown big in the middle)' : 'Avatar (an animated presenter on screen)'}, box preset "${name}". Its on-screen text boxes and how much fits in each:
 ${lines.join('\n')}
 
 RULES:
@@ -6730,6 +6764,7 @@ Reply with ONLY the rewritten script as JSON in this shape (no other text), so i
 ] }
 \`\`\``;
 }
+function pubFitShowFor() { const el = document.getElementById('pubFitFor'); if (el) el.textContent = { presenter: 'Avatar', stage: 'Text & images', titles: 'Paragraphs with titles' }[pubFitTopLayout()]; }
 async function pubFitCopy(btn) {
   if (!PUB_LIB.ep) { try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {} }
   const text = pubFitPrompt(), o = btn.textContent;
@@ -6850,7 +6885,8 @@ async function pubLfLoad(assetId, token) {
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || ((r.voices || []).find(v => v.id === (r.render.voice || (r.voices || [])[0]?.id)) || {}).rate || '-10%'; rt.onchange = () => pubLfSave({ rate: rt.value });
   const ly = document.getElementById('pubLfLayout'); ly.value = ['stage', 'titles'].includes(r.render.layout) ? r.render.layout : 'presenter';
   document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none';
-  ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none'; pubLfSave({ layout: ly.value }); };
+  ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none'; pubLfSave({ layout: ly.value }); pubFitShowFor(); };
+  pubFitShowFor();
   pubLfShowBg(r.background);
   PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();
   pubLfShowJob(r.job, r.videoUrl);
