@@ -1503,7 +1503,7 @@ async function lfBuildEpisode(env, assetId) {
   return {
     ...(treatment ? { treatment } : {}),
     ...(r.boxesStrict && boxes ? { boxesStrict: true } : {}),
-    title: spec.title || lfReadRich(pr["Platform Title"]) || "",
+    title: spec.cardTitle || spec.title || lfReadRich(pr["Platform Title"]) || "",   // on-screen title card (as-is: the title's own name)
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
     ...(await (async () => { if (!/^p-/.test(r.character || "")) return {}; const p = (await lfPresenterList(env)).find(x => x.id === r.character); return p ? { presenter: p } : {}; })()),
@@ -15460,15 +15460,22 @@ Give a YouTube title in that format. Call submit_questions.`;
           const filled = secs.filter(x => x.body.length);
           if (!filled.length && !pre.length) return json({ error: "This title has no written script on its page yet" }, 400);
           asIsSegs = [];
-          if (pre.length) asIsSegs.push({ kind: "hook", text: pre.join("\n\n") });
-          filled.forEach((x, i) => {
-            const m = x.head.match(/^\s*(\d+)[.)]\s*(.+)$/);
-            const name = (m ? m[2] : x.head).trim();
-            const text = x.body.join("\n\n");
-            const first = (text.match(/^.*?[.!?](\s|$)/) || [text])[0].trim();
-            asIsSegs.push({ kind: "item", n: m ? +m[1] : i + 1, name, blurb: first.length > 140 ? first.slice(0, 137).trim() + "…" : first, text });
-          });
-          if (!asIsSegs.some(x => x.kind === "hook")) asIsSegs[0] = { ...asIsSegs[0] };   // no intro paragraph: the channel intro + topic line open the episode
+          // On screen = only what the script supplies. Real chapters = 2+ headings (or any numbered one); a single
+          // section label like "Pillar Content" / "Script" is NOT a chapter — that page is continuous narration
+          // ("talk" segments: captions only, no card). No invented key-point line; "#N" only if the heading has one.
+          const numbered = filled.some(x => /^\s*\d+[.)]/.test(x.head));
+          const chaptered = filled.length >= 2 || numbered;
+          if (!chaptered) {
+            const paras = pre.concat(...filled.map(x => x.body));
+            for (const para of paras) asIsSegs.push({ kind: "talk", text: para });
+          } else {
+            if (pre.length) asIsSegs.push({ kind: "talk", text: pre.join("\n\n") });
+            filled.forEach(x => {
+              const m = x.head.match(/^\s*(\d+)[.)]\s*(.+)$/);
+              asIsSegs.push({ kind: "item", ...(m ? { n: +m[1] } : {}), name: (m ? m[2] : x.head).trim(), text: x.body.join("\n\n") });
+            });
+          }
+          body.__titleName = tName;
           if (!String(question || "").trim()) question = String(body.topic || pg.properties?.["Core Idea"]?.rich_text?.map(t => t.plain_text).join("") || tName || "this episode").trim();
         }
         const format = body.asIs ? "explainer" : (LF_FORMATS[body.format] ? body.format : "ranked");
@@ -15562,7 +15569,7 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           return k;
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
-        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout }, ...(asIsSegs ? { asIs: true } : {}) };
+        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout }, ...(asIsSegs ? { asIs: true, cardTitle: S(body.__titleName) } : {}) };
         spec.tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         // ✍️ proofread the fresh script before it's saved (the render runs the pass again as a final check)
         try { const pf = await lfProofread(env, spec); if (pf.length) { spec.proofread = { at: Date.now(), fixes: pf.slice(0, 200) }; o.title = spec.title; } } catch (e) { console.error("proofread:", e.message); }

@@ -6581,7 +6581,7 @@ function pubLibUses(ep) {
 }
 function pubLibUsesText(u) {
   return [
-    `- CHAPTER CARDS: ${u.items} of them${u.numbered ? ', each starting with a big "#N" number' : ''}. Longest heading: "${u.longName}" (${u.longName.length} chars — wraps to max 3 lines). Longest key-point line under it: "${u.longBlurb}" (${u.longBlurb.length} chars, max 3 lines).`,
+    u.items ? `- CHAPTER CARDS: ${u.items} of them${u.numbered ? ', each starting with a big "#N" number' : ' (no numbers)'}. Longest heading: "${u.longName}" (${u.longName.length} chars — wraps to max 3 lines).${u.longBlurb ? ` Longest key-point line under it: "${u.longBlurb}" (${u.longBlurb.length} chars, max 3 lines).` : ' No key-point line (the script has none).'}` : '- NO CHAPTER CARDS — this script is continuous narration (captions only). Do not include a card box.',
     u.pay ? '- The cards also show a PAY bar (adds ~10% of frame height to the card).' : '',
     u.score ? '- The cards also show a SCORE / TIER row (adds ~7% of frame height).' : '',
     `- TITLE CARD (same card box): "${u.title}" in the opening, plus the channel intro lines.`,
