@@ -7121,26 +7121,27 @@ function lfText(ctx, text, x, y, st, fill) {
 // once the browser can draw it — so canvas previews never fall back to a system font.
 const GF_LOADED = {};
 function gfLoad(fams) {
-  return Promise.all([...new Set((fams || []).filter(Boolean))].map(f => {
-    if (!GF_LOADED[f]) {
-      const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.gf = f;
-      l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700&display=swap';
-      document.head.appendChild(l);
-      // single-weight families (Bangers, Knewave…) reject ":wght@600;700" → retry with the family's own weight(s)
-      GF_LOADED[f] = new Promise(res => { l.onload = res; l.onerror = () => { l.onerror = res; l.onload = res; l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + '&display=swap'; }; setTimeout(res, 8000); })
-        .then(() => Promise.all(['700', '600'].map(async wt => {
-          // the stylesheet's @font-face rules register a moment AFTER onload — asking too early returns nothing and
-          // leaves the font unloaded, so keep asking (with sample text so the Latin subset loads) until it's there
-          const spec = `${wt} 40px "${f}"`, txt = 'Control & Surrender Aa Bb 0123';
-          for (let i = 0; i < 25; i++) {
-            const got = await document.fonts.load(spec, txt).catch(() => []);
-            if ((got && got.length) || [...document.fonts].some(x => x.family.replace(/["']/g, '') === f && x.status === 'loaded')) return;
-            await new Promise(r => setTimeout(r, 200));
-          }
-        }))).catch(() => {});
+  // Deterministic: fetch Google's CSS ourselves, register each @font-face as a FontFace and wait for its file.
+  // (A <link> stylesheet registers its faces at an unpredictable moment, so previews sometimes drew a fallback.)
+  return Promise.all([...new Set((fams || []).filter(Boolean))].map(f => GF_LOADED[f] || (GF_LOADED[f] = (async () => {
+    const base = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+');
+    let css = '';
+    for (const u of [base + ':wght@600;700&display=swap', base + '&display=swap']) {   // single-weight families reject wght
+      try { const r = await fetch(u); if (r.ok) { css = await r.text(); break; } } catch (e) {}
     }
-    return GF_LOADED[f];
-  }));
+    if (!css) return;
+    const loads = [];
+    for (const m of css.matchAll(/@font-face\s*{([^}]*)}/g)) {
+      const blk = m[1], g = re => (blk.match(re) || [])[1];
+      const url = g(/url\(([^)]+)\)/), weight = g(/font-weight:\s*([^;]+);/) || '400', style = g(/font-style:\s*([^;]+);/) || 'normal', range = g(/unicode-range:\s*([^;]+);/);
+      if (!url) continue;
+      const face = new FontFace(f, `url(${url.replace(/["']/g, '')})`, { weight: weight.trim(), style: style.trim(), ...(range ? { unicodeRange: range.trim() } : {}) });
+      document.fonts.add(face);
+      // load the Latin subset (and single-file families) right away; other scripts load if ever used
+      if (!range || /U\+0-FF|U\+0000-00FF/i.test(range)) loads.push(face.load().catch(() => {}));
+    }
+    await Promise.all(loads);
+  })())));
 }
 function lfCase(t, m) { t = String(t || ''); return m === 'upper' ? t.toUpperCase() : m === 'lower' ? t.toLowerCase() : m === 'title' ? t.replace(/\w\S*/g, w_ => w_[0].toUpperCase() + w_.slice(1).toLowerCase()) : t; }
 function lfFrame(ctx, k, D, B, c) {
