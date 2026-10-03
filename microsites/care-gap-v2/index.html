@@ -835,6 +835,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div id="pubLibFontPrev" style="margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#2c3a32;color:#f6eede;"></div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('fonts', this)">💬 Copy ChatGPT prompt</button>
+                <button class="btn" type="button" style="font-size:10px;" title="Edit what the prompt asks ChatGPT for and how it should structure its reply" onclick="pubLibEditAsk('fonts')">✎ Edit prompt</button>
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('fonts')">📥 Paste reply</button>
                 <button class="btn" type="button" style="font-size:10px;" title="Remove the selected typeface from the list" onclick="pubLibDelete('fonts')">🗑</button></div></div>
             <div style="flex:1;min-width:240px;">📐 Layout preset
@@ -843,9 +844,19 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div id="pubLibLayoutNote" style="font-size:10.5px;color:var(--ink3);white-space:pre-wrap;"></div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('layouts', this)">💬 Copy ChatGPT prompt</button>
+                <button class="btn" type="button" style="font-size:10px;" title="Edit what the prompt asks ChatGPT for and how it should structure its reply" onclick="pubLibEditAsk('layouts')">✎ Edit prompt</button>
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('layouts')">📥 Paste reply</button>
                 <button class="btn" type="button" style="font-size:10px;" title="Save this episode's current layout (from 📐 Layout…) as a preset" onclick="pubLibSaveCurrentLayout(this)">＋ Save current</button>
                 <button class="btn" type="button" style="font-size:10px;" title="Remove the selected layout from the list" onclick="pubLibDelete('layouts')">🗑</button></div></div>
+          </div>
+          <div id="pubLibAskBox" style="display:none;margin-top:6px;padding:8px;border:1px solid var(--border);border-radius:8px;">
+            <div id="pubLibAskLbl" style="font-size:11px;color:var(--ink2);margin-bottom:4px;"></div>
+            <details style="font-size:10.5px;color:var(--ink3);margin-bottom:4px;"><summary>Generated part (filled in from this episode every time — not editable)</summary><pre id="pubLibAskCtx" style="white-space:pre-wrap;font-size:10px;max-height:180px;overflow:auto;"></pre></details>
+            <textarea id="pubLibAskText" class="finput" rows="14" style="width:100%;font-size:11px;font-family:monospace;"></textarea>
+            <div style="font-size:10.5px;color:var(--ink3);margin:2px 0 4px;">Any reply format works when you paste it back — JSON is read directly, anything else is converted.</div>
+            <div style="display:flex;gap:6px;"><button class="btn primary" type="button" style="font-size:11px;" onclick="pubLibSaveAsk(false)">💾 Save my prompt</button>
+              <button class="btn" type="button" style="font-size:11px;" onclick="pubLibSaveAsk(true)">↺ Reset to default</button>
+              <button class="btn" type="button" style="font-size:11px;" onclick="document.getElementById('pubLibAskBox').style.display='none'">Cancel</button></div>
           </div>
           <div id="pubLibPasteBox" style="display:none;margin-top:6px;">
             <div id="pubLibPasteLbl" style="font-size:11px;color:var(--ink2);"></div>
@@ -6471,6 +6482,7 @@ async function pubLibLoad() {
   try {
     const [f, l] = await Promise.all(['fonts', 'layouts'].map(kind => w('longformLibrary', { kind, assetId: PUB_LF.assetId })));
     PUB_LIB.fonts = f.items || []; PUB_LIB.cur.fonts = f.current || 'default';
+    PUB_LIB.ask = { fonts: f.ask || '', layouts: l.ask || '' };
     PUB_LIB.layouts = l.items || []; PUB_LIB.cur.layouts = l.current || 'default';
   } catch (e) {}
   try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {}
@@ -6576,13 +6588,13 @@ function pubLibUsesText(u) {
     u.presenter ? '- PRESENTER: the animated character is on screen the whole time.' : '- No presenter (text & images layout).',
   ].filter(Boolean).join('\n');
 }
-function pubLibPrompt(kind) {
+function pubLibPromptRaw(kind) {
   const ep = PUB_LIB.ep || {}, f = ep.fonts || {}, pal = ep.palette || {};
   const ctx = `Channel / campaign: ${document.title.replace(/ Template$/, '')}. Episode: "${PUB_LF.title || ep.title || ''}" (${ep.format || ''} format). Presenter style: illustrated comic / graphic-novel character on screen. Palette: accent ${pal.accent || '?'}, text ${pal.ink || '?'}, panel ${pal.panel || '?'}.`;
   if (kind === 'fonts') return `I make faceless long-form YouTube videos (1920×1080). Text on screen: big chapter-card headings (display font, rendered BOLD 700) and card text + spoken-word captions (body font, rendered 600). They must read instantly on a phone over a busy illustrated background.
 ${ctx}
 Current pairing: ${f.display || '?'} (display) + ${f.body || '?'} (body).
-
+
 Suggest 8 typeface pairings that would suit this channel — a mix of safe and bolder choices. Rules:
 - Both fonts MUST be free on Google Fonts (fonts.google.com), using the exact family name as Google lists it.
 - The display font must have a 700 (Bold) weight; the body font a 600 (SemiBold) weight.
@@ -6609,7 +6621,7 @@ BOX TYPES YOU CAN USE (include only the ones your layout needs; anything you lea
 - "ask" (optional — omit to put pills at the card's top-left): the "like / comment" pills. Fields: x, y, s.
 - "pictures" (optional — omit to show pictures in the card's spot): the framed 4:3 scene-image panel. Fields: x, y, w (h optional, default 4:3).
 Current layout: ${JSON.stringify(D)}
-
+
 For EACH layout also decide how the content should be TREATED in its boxes, in two ways:
 1. "treatment" — switches my renderer applies directly (use only these keys/values; leave out what should stay default):
    card: number (true/false — show "#N"), blurb (true/false — show the key-point line), case ("as-is" | "upper" | "title" | "lower"), align ("left" | "center"), headingLines (1-3), blurbLines (0-3)
@@ -6632,6 +6644,29 @@ Reply with ONLY this JSON (no other text, no comments inside it), so it can be p
       "presenter": { "x": 36, "y": 8, "h": 95 } } }
 ]
 \`\`\``;
+}
+// The prompt = generated context (campaign, episode, what the script shows, current settings, box types) + the
+// editable ASK (what to propose + how to structure the reply). ✎ Edit prompt saves your own ASK (KV, shared).
+function pubLibPromptParts(kind) { const [context, ask] = pubLibPromptRaw(kind).split('\u0001'); return { context: context.trim(), defaultAsk: (ask || '').trim() }; }
+function pubLibPrompt(kind) { const p = pubLibPromptParts(kind); return p.context + '\n\n' + ((PUB_LIB.ask && PUB_LIB.ask[kind]) || p.defaultAsk); }
+async function pubLibEditAsk(kind) {
+  if (!PUB_LIB.ep) { try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {} }
+  const p = pubLibPromptParts(kind), box = document.getElementById('pubLibAskBox');
+  box.dataset.kind = kind; box.style.display = 'block';
+  document.getElementById('pubLibAskLbl').textContent = (kind === 'fonts' ? 'Typeface' : 'Layout') + ' prompt — the part you can edit (what ChatGPT should propose and how to structure its reply). ' + ((PUB_LIB.ask || {})[kind] ? 'Showing YOUR saved version.' : 'Showing the built-in default.');
+  document.getElementById('pubLibAskCtx').textContent = p.context;
+  document.getElementById('pubLibAskText').value = (PUB_LIB.ask || {})[kind] || p.defaultAsk;
+}
+async function pubLibSaveAsk(reset) {
+  const box = document.getElementById('pubLibAskBox'), kind = box.dataset.kind, msg = document.getElementById('pubLibMsg');
+  const text = reset ? '' : document.getElementById('pubLibAskText').value;
+  if (reset && !confirm('Go back to the built-in prompt for ' + (kind === 'fonts' ? 'typefaces' : 'layouts') + '?')) return;
+  try {
+    const r = await w('longformLibrary', { kind, op: 'setAsk', text });
+    PUB_LIB.ask = PUB_LIB.ask || {}; PUB_LIB.ask[kind] = r.ask;
+    box.style.display = 'none';
+    msg.style.color = 'var(--fresh)'; msg.textContent = reset ? '✓ Back to the built-in prompt.' : '✓ Your prompt is saved — 💬 Copy ChatGPT prompt uses it from now on (every campaign).';
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
 }
 async function pubLibCopyPrompt(kind, btn) {
   if (!PUB_LIB.ep) { try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {} }

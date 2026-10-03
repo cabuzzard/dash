@@ -16063,6 +16063,9 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           return json({ ok: true, added: added.length, items: lib });
         }
         if (op === "delete") { lib = lib.filter(x => x.id !== body.id); await env.TRADES.put(key, JSON.stringify(lib)); return json({ ok: true, items: lib }); }
+        // setAsk {text} — the operator's own version of the editable part of the ChatGPT prompt (the request + how to
+        // structure the reply); "" = back to the built-in default. Returned as `ask` on every list call.
+        if (op === "setAsk") { const t = String(body.text || "").slice(0, 20000); if (t.trim()) await env.TRADES.put("lflib:ask:" + kind, t); else await env.TRADES.delete("lflib:ask:" + kind); return json({ ok: true, ask: t.trim() ? t : "" }); }
         // parse {text}: ChatGPT answered in prose / mixed text → Claude turns it into library items (instructions kept)
         if (op === "parse") {
           const text = String(body.text || "").slice(0, 40000);
@@ -16106,7 +16109,8 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           }
           current = (kind === "fonts" ? spec.render.fontSet : spec.render.layoutId) || (kind === "layouts" && spec.render.boxes ? "custom" : "default");
         }
-        return json({ ok: true, items: lib, current });
+        let ask = ""; try { ask = (await env.TRADES.get("lflib:ask:" + kind)) || ""; } catch (e) {}
+        return json({ ok: true, items: lib, current, ask });
       }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");
