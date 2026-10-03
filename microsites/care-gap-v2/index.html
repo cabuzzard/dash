@@ -858,6 +858,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" style="font-size:11px;" onclick="pubLibSaveAsk(true)">↺ Reset to default</button>
               <button class="btn" type="button" style="font-size:11px;" onclick="document.getElementById('pubLibAskBox').style.display='none'">Cancel</button></div>
           </div>
+          <div style="margin-top:6px;padding:6px 8px;border:1px dashed var(--border2);border-radius:8px;font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <b>📝 Fit script to layout</b><span style="color:var(--ink3);">— ChatGPT rewrites the on-screen text to fill exactly the text boxes of the layout selected above</span>
+            <button class="btn" type="button" style="font-size:10px;" onclick="pubFitCopy(this)">💬 Copy "fit script" prompt</button>
+            <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('script')">📥 Paste fitted script</button>
+            <button class="btn" type="button" style="font-size:10px;" title="Put back the script from before the last paste" onclick="pubFitUndo(this)">↶ Undo last fit</button>
+          </div>
           <div id="pubLibPasteBox" style="display:none;margin-top:6px;">
             <div id="pubLibPasteLbl" style="font-size:11px;color:var(--ink2);"></div>
             <textarea id="pubLibPaste" class="finput" rows="5" style="width:100%;font-size:11px;font-family:monospace;" placeholder="Paste the whole reply (the ```json block)"></textarea>
@@ -6671,6 +6677,93 @@ async function pubLibSaveAsk(reset) {
     msg.style.color = 'var(--fresh)'; msg.textContent = reset ? '✓ Back to the built-in prompt.' : '✓ Your prompt is saved — 💬 Copy ChatGPT prompt uses it from now on (every campaign).';
   } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
 }
+// ── 📝 Fit script to layout ── the prompt lists the CURRENT script + every text box the selected layout shows
+// (with how much text fits), ChatGPT rewrites the on-screen text to fill exactly those boxes, the reply replaces
+// the episode's script (any format; JSON read directly, anything else converted).
+function pubFitBoxes() {
+  const sel = document.getElementById('pubLibLayouts').value, it = PUB_LIB.layouts.find(x => x.id === sel), ep = PUB_LIB.ep || {};
+  const src = it ? it.boxes : (ep.boxes || null), strict = !!it || !!ep.boxesStrict;
+  const B = lfBoxesFull({ palette: ep.palette, layout: ep.layout }, src);
+  if (strict && src) for (const k of ['card', 'caption', 'presenter']) if (!src[k]) delete B[k];
+  for (const k of ['title', 'ask', 'pictures']) if (src && src[k]) B[k] = src[k]; else if (strict) delete B[k];
+  if (!strict) { B.title = B.title || B.card; B.ask = B.ask || {}; }   // campaign default: title cards + pills use the card spot
+  const tr = (it && it.treatment) || ep.treatment || {};
+  return { B, tr, name: it ? it.name : 'Campaign default' };
+}
+function pubFitPrompt() {
+  const ep = PUB_LIB.ep || {}, { B, tr, name } = pubFitBoxes(), tc = tr.card || {};
+  const perLine = (wPct, s, px) => Math.max(8, Math.round((wPct / 100 * 1920 / ((s || 100) / 100) - 80) / (px * 0.52)));
+  const lines = [];
+  if (B.title) lines.push(`- TITLE CARD: one on-screen title for the episode, at most ${perLine(B.title.w || B.card?.w || 40, B.title.s, 56) * 3} characters (3 lines of ~${perLine(B.title.w || B.card?.w || 40, B.title.s, 56)}).${(tr.title || {}).case === 'upper' ? ' Shown in UPPERCASE.' : ''}`);
+  if (B.card) {
+    const hl = tc.headingLines || 3, bl = tc.blurb === false ? 0 : (tc.blurbLines != null ? tc.blurbLines : 3);
+    lines.push(`- CHAPTER CARDS: every chapter ("item") gets a card.${tc.number === false ? ' No number is shown.' : ' A big "#N" number is shown — give each chapter "n".'} Heading ("name"): at most ${perLine(B.card.w, B.card.s, 56) * hl} characters (${hl} line${hl > 1 ? 's' : ''} of ~${perLine(B.card.w, B.card.s, 56)}).${bl ? ` Key point ("blurb"): one punchy line, at most ${perLine(B.card.w, B.card.s, 29) * bl} characters (${bl} line${bl > 1 ? 's' : ''}).` : ' No key-point line is shown — leave "blurb" out.'}${tc.case === 'upper' ? ' Headings show in UPPERCASE.' : ''}`);
+  } else lines.push('- NO CHAPTER CARDS in this layout — do not use chapters ("item"); the narration runs as "talk" segments with captions only.');
+  if (B.ask) lines.push('- ASK PILLS: 2-3 "ask" segments placed naturally (e.g. after the 1st chapter, mid-way, at the end), each with a pill "label" of at most 28 characters including one emoji (e.g. "👍 Like if this helps", "💬 Which one fits you?") and a short spoken line in "text".');
+  else lines.push('- NO ASK PILLS in this layout — no "ask" segments.');
+  lines.push(`- CAPTIONS: all spoken narration ("text") is shown as captions, ${((tr.caption || {}).lines || 2)} line${((tr.caption || {}).lines || 2) > 1 ? 's' : ''} at a time — write it to be spoken; short sentences read best.`);
+  if (ep.voice2) lines.push('- CUSTOMER QUESTION: each chapter may carry an "ask" = the customer asking, first person, at most 15 words (read by a second voice, shown as a "Q:" caption).');
+  if (B.pictures || (ep.layout !== 'stage' && B.card)) lines.push('- PICTURES (optional): scene pictures already planned stay with the chapter at the same position.');
+  const script = (ep.segments || []).filter(x => !['intro', 'jingle', 'topic'].includes(x.kind)).map(x => {
+    const o = { kind: x.kind }; for (const f of ['n', 'name', 'blurb', 'label', 'ask']) if (x[f] != null && x[f] !== '') o[f] = x[f]; o.text = x.text; return o; });
+  return `I make faceless long-form YouTube videos. Below is an episode script and the layout it will be rendered in. Rewrite the script so it fills EXACTLY the text boxes this layout shows — no more, no less.
+
+LAYOUT: "${name}". Its on-screen text boxes and how much fits in each:
+${lines.join('\n')}
+
+RULES:
+- Keep the narration (every "text") in the speaker's own words and meaning — only regroup it into the structure above, trim filler, and fix spelling. Do not invent new claims, stories or facts.
+- Write the on-screen text (title, headings, key points, pill labels) from what the narration already says, sized to fit the limits above.
+- Every box the layout shows must be filled where it applies; anything the layout does not show must be left out.
+- Segment kinds: "hook" (opening), "item" (a chapter with a card), "talk" (narration with no card), "ask" (a like/comment moment), "outro" (closing).
+
+CURRENT SCRIPT (JSON):
+${JSON.stringify({ title: ep.title || '', segments: script }, null, 1).slice(0, 60000)}
+
+Reply with ONLY the rewritten script as JSON in this shape (no other text), so it can be pasted straight into my dashboard:
+\`\`\`json
+{ "title": "on-screen episode title", "segments": [
+  { "kind": "hook", "text": "spoken opening" },
+  { "kind": "item", "n": 1, "name": "chapter heading", "blurb": "key point", "text": "spoken narration for this chapter" },
+  { "kind": "ask", "label": "👍 Like if this helps", "text": "spoken ask" },
+  { "kind": "outro", "text": "spoken closing" }
+] }
+\`\`\``;
+}
+async function pubFitCopy(btn) {
+  if (!PUB_LIB.ep) { try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {} }
+  const text = pubFitPrompt(), o = btn.textContent;
+  try { await navigator.clipboard.writeText(text); btn.textContent = '✓ Copied — paste into ChatGPT'; }
+  catch (e) { pubLibPasteOpen('script'); document.getElementById('pubLibPaste').value = text; btn.textContent = 'Clipboard blocked — prompt is in the box'; }
+  setTimeout(() => { btn.textContent = o; }, 3000);
+}
+async function pubFitPaste(btn) {
+  const box = document.getElementById('pubLibPasteBox'), msg = document.getElementById('pubLibMsg');
+  const raw = document.getElementById('pubLibPaste').value || '';
+  if (!raw.trim()) { msg.textContent = 'Paste ChatGPT\'s fitted script first.'; return; }
+  if (!confirm('Replace this episode\'s whole script with the pasted one? (↶ Undo last fit puts the current script back.)')) return;
+  // JSON → direct; otherwise the worker has Claude map it (words kept as written)
+  let payload = { text: raw };
+  const tidy = t => t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/,\s*([}\]])/g, '$1');
+  const m = raw.match(/```(?:json|JSON)?\s*([\s\S]*?)```/), body = m ? m[1] : raw;
+  try { const a = body.indexOf('{'), b = body.lastIndexOf('}'); const v = JSON.parse(tidy(body.slice(a, b + 1))); const segs = Array.isArray(v) ? v : v.segments; if (Array.isArray(segs) && segs.length) payload = { segments: segs, title: v.title }; } catch (e) {}
+  btn.disabled = true; const o = btn.textContent; btn.textContent = payload.segments ? 'Saving…' : 'Reading the script…';
+  msg.style.color = 'var(--ink3)'; msg.textContent = payload.segments ? 'Saving the fitted script…' : 'No JSON in that reply — Claude is mapping it into the script (your words kept)…';
+  try {
+    const r = await w('replaceLongformScript', { assetId: PUB_LF.assetId, ...payload });
+    document.getElementById('pubLibPaste').value = ''; box.style.display = 'none';
+    msg.style.color = 'var(--fresh)'; msg.textContent = `✓ Script replaced — ${r.segments} segments (${r.items} chapters, ~${Math.round(r.words / 165)} min). Check it in 📝 Script & cards, then 🎬 Render.`;
+    PUB_LIB.ep = null; try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {}
+    pubLibDraw(); if (typeof pubLfReloadScenes === 'function') pubLfReloadScenes();
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not saved: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
+async function pubFitUndo(btn) {
+  if (!confirm('Put back the script from before the last fit?')) return;
+  const msg = document.getElementById('pubLibMsg');
+  try { const r = await w('undoLongformScript', { assetId: PUB_LF.assetId }); msg.style.color = 'var(--fresh)'; msg.textContent = `✓ Previous script restored (${r.segments} segments).`; PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; pubLibDraw(); }
+  catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Undo failed: ' + e.message; }
+}
 async function pubLibCopyPrompt(kind, btn) {
   if (!PUB_LIB.ep) { try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {} }
   const text = pubLibPrompt(kind), o = btn.textContent;
@@ -6681,7 +6774,7 @@ async function pubLibCopyPrompt(kind, btn) {
 function pubLibPasteOpen(kind) {
   const box = document.getElementById('pubLibPasteBox');
   box.dataset.kind = kind; box.style.display = 'block';
-  document.getElementById('pubLibPasteLbl').textContent = kind === 'fonts' ? 'Paste ChatGPT\'s typeface reply:' : 'Paste ChatGPT\'s layout reply:';
+  document.getElementById('pubLibPasteLbl').textContent = kind === 'fonts' ? 'Paste ChatGPT\'s typeface reply:' : kind === 'script' ? 'Paste ChatGPT\'s fitted script (replaces this episode\'s script — ↶ Undo last fit puts it back):' : 'Paste ChatGPT\'s layout reply:';
   document.getElementById('pubLibPaste').focus();
 }
 // Lenient reader for a pasted ChatGPT reply: every ```json block / bracketed JSON, tidied (comments, trailing commas,
@@ -6702,6 +6795,7 @@ function pubLibExtract(raw) {
   return { items, prose };
 }
 async function pubLibAdd(btn) {
+  if (document.getElementById('pubLibPasteBox').dataset.kind === 'script') return pubFitPaste(btn);
   const box = document.getElementById('pubLibPasteBox'), kind = box.dataset.kind, msg = document.getElementById('pubLibMsg');
   const raw = document.getElementById('pubLibPaste').value || '';
   if (!raw.trim()) { msg.textContent = 'Paste ChatGPT\'s reply first.'; return; }

@@ -10586,7 +10586,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -15776,6 +15776,51 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
         const mini = { segments: [{ kind: "item", ...seg }] };
         const fixes = await lfProofread(env, mini);
         return json({ ok: true, fields: mini.segments[0], fixes: fixes.map(x => `${x.from} → ${x.to}`) });
+      }
+      // 📝 Fit script to layout — replaceLongformScript {assetId, segments | text, title?}: the whole script replaced by
+      // a ChatGPT rewrite that fills the selected layout's text boxes. `text` (not JSON) → Claude turns it into segments.
+      // Pictures planned on the old script carry over to the segment at the same position when its kind matches.
+      if (body.action === "replaceLongformScript") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const { spec, page } = await lfLoadAsset(aid);
+        if (!spec || !Array.isArray(spec.segments)) return json({ error: "No script on this asset yet" }, 400);
+        let segs = Array.isArray(body.segments) ? body.segments : null, newTitle = body.title;
+        if (!segs && String(body.text || "").trim()) {
+          const pr = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 16000,
+            tools: [{ name: "submit_script", description: "The script", input_schema: { type: "object", required: ["segments"], properties: { title: { type: "string" },
+              segments: { type: "array", items: { type: "object", required: ["kind", "text"], properties: { kind: { type: "string", enum: ["hook", "item", "ask", "outro", "talk"] }, text: { type: "string" }, n: { type: "integer" }, name: { type: "string" }, blurb: { type: "string" }, label: { type: "string" }, ask: { type: "string" } } } } } } }],
+            tool_choice: { type: "tool", name: "submit_script" },
+            messages: [{ role: "user", content: `This is a rewritten YouTube episode script (from ChatGPT). Put it into submit_script EXACTLY as written — do not rewrite any words. Map its parts: spoken narration → "text"; chapter heading → "name" (and its number → "n"); the short line shown under a heading → "blurb"; the like/comment pill text → kind "ask" with "label" (its spoken line → text); the customer's question read by a second voice → "ask"; narration with no on-screen card → kind "talk"; the opening → "hook"; the closing → "outro". The on-screen episode title → "title".\n\nSCRIPT:\n${String(body.text).slice(0, 60000)}` }] });
+          const pd = await pr.json().catch(() => ({}));
+          if (!pr.ok) return json({ error: pd.error?.message || "Couldn't read that script" }, 502);
+          const out = ((pd.content || []).find(b => b.type === "tool_use") || {}).input || {};
+          segs = out.segments; newTitle = newTitle || out.title;
+        }
+        const K = ["hook", "item", "ask", "outro", "talk"], S = v => String(v == null ? "" : v).trim();
+        segs = (segs || []).filter(x => x && S(x.text)).map(x => {
+          const k = { kind: K.includes(x.kind) ? x.kind : "talk", text: S(x.text).slice(0, 8000) };
+          if (Number.isFinite(+x.n) && x.n !== "" && x.n != null) k.n = +x.n;
+          for (const f of ["name", "blurb", "label", "ask"]) if (S(x[f])) k[f] = S(x[f]).slice(0, 400);
+          return k;
+        });
+        if (!segs.length) return json({ error: "No script segments found in that reply" }, 400);
+        segs.forEach((x, i) => { const old = spec.segments[i]; if (old && old.kind === x.kind && Array.isArray(old.images) && old.images.length) x.images = old.images; });
+        const before = spec.segments;
+        spec.segments = segs;
+        if (S(newTitle)) { if (spec.asIs) spec.cardTitle = S(newTitle).slice(0, 200); else spec.title = S(newTitle).slice(0, 200); }
+        spec.fittedAt = Date.now();
+        await lfSaveSpec(aid, spec);
+        try { await env.TRADES.put("lfscript:prev:" + aid, JSON.stringify({ at: Date.now(), segments: before })); } catch (e) {}   // one-step undo
+        return json({ ok: true, segments: segs.length, items: segs.filter(x => x.kind === "item").length, words: segs.reduce((n, x) => n + x.text.split(/\s+/).length, 0) });
+      }
+      if (body.action === "undoLongformScript") {
+        const aid = String(body.assetId || "").replace(/-/g, "");
+        const prev = await env.TRADES.get("lfscript:prev:" + aid, "json").catch(() => null);
+        if (!prev) return json({ error: "Nothing to undo" }, 400);
+        const { spec } = await lfLoadAsset(aid);
+        const cur = spec.segments; spec.segments = prev.segments; await lfSaveSpec(aid, spec);
+        await env.TRADES.put("lfscript:prev:" + aid, JSON.stringify({ at: Date.now(), segments: cur }));
+        return json({ ok: true, segments: spec.segments.length });
       }
       if (body.action === "saveLongformScript") {
         const aid = String(body.assetId || "").replace(/-/g, "");
