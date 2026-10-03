@@ -6622,16 +6622,14 @@ ${ctx}
 WHAT THIS EPISODE'S SCRIPT PUTS ON SCREEN:
 ${pubLibUsesText(pubLibUses(ep))}
 
-BOX TYPES YOU CAN USE — include a box for EVERY element you want on screen. A box you leave out is NOT shown at all (only these boxes appear; captions are always required):
-- "caption" (REQUIRED): spoken-word captions, 2 lines hanging from the TOP of the box. Fields: x, y, w, h, s (text size %, 100 = normal, 60-160), color (hex), opacity (0-100).
-- "card" (leave out = no chapter cards on screen): the chapter card (#N, heading, key point${pubLibUses(ep).pay ? ', pay bar' : ''}${pubLibUses(ep).score ? ', score row' : ''}). Fields: x, y, w, s, color, opacity, maxChars (0 = no limit). Height grows with the text.
-- "presenter"${pubLibUses(ep).presenter ? ' (REQUIRED — the character is on screen)' : ' (DO NOT USE — no presenter in this layout)'}: Fields: x, y, h (height % of frame; width ≈ 0.75 × h in frame-height units).
-- "title" (leave out = no title cards): the episode title / channel-intro title cards. Fields: x, y, w, s, color, opacity.
-- "ask" (leave out = no like/comment pills): the "like / comment" pills. Fields: x, y, s.
-- "pictures" (leave out = pictures use the card's spot, or the default frame): the framed 4:3 scene-image panel. Fields: x, y, w (h optional, default 4:3).
+THE FORMAT IS FIXED: "${{ presenter: 'Avatar', stage: 'Text & images', titles: 'Paragraphs with titles' }[pubFitTopLayout()]}". It already decides which text boxes exist and how they play — you only POSITION and STYLE these boxes (do not add or remove any):
+${pubFitTopLayout() === 'titles' ? `- "title": the section title — stays on screen for the whole section. Fields: x, y, w, s (text size %, 100 = normal, 60-160), color (hex panel), opacity (0-100).
+- "caption": the section's paragraph as captions, hanging from the TOP of the box. Fields: x, y, w, h, s, color, opacity.` : `- "card": the chapter card (#N, heading, key point). Fields: x, y, w, s (text size %), color, opacity, maxChars (0 = no limit). Height grows with the text.
+- "caption": spoken-word captions, hanging from the TOP of the box. Fields: x, y, w, h, s, color, opacity.${pubFitTopLayout() === 'presenter' ? `
+- "presenter": the animated character. Fields: x, y, h (height % of frame; width ≈ 0.75 × h in frame-height units).` : ''}`}
 Current layout: ${JSON.stringify(D)}
 
-For EACH layout also decide how the content should be TREATED in its boxes, in two ways:
+For EACH layout also set the TYPOGRAPHY of its boxes, in two ways:
 1. "treatment" — switches my renderer applies directly (use only these keys/values; leave out what should stay default):
    card: number (true/false — show "#N"), blurb (true/false — show the key-point line), case ("as-is" | "upper" | "title" | "lower"), align ("left" | "center"), headingLines (1-3), blurbLines (0-3)
    title: case, align
@@ -6639,7 +6637,7 @@ For EACH layout also decide how the content should be TREATED in its boxes, in t
    ask: show (true/false)   pictures: show (true/false)
 2. "instructions" — plain-language direction for how the script's content should be handled in this layout that the switches can't express (e.g. "keep headings under 4 words", "lead each chapter with the image", "short punchy captions"). I'll read these and apply them by hand.
 
-Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). For each, decide which boxes it needs and list them in "uses". Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone; size the card (w and s) so the longest heading above fits in 3 lines.
+Design 6 alternative layouts for this format — different positions, sizes and typography for the SAME boxes (e.g. top vs centre, left vs centred, a minimal one, a big-text accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% so it can be cropped to 9:16). Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone; size the card (w and s) so the longest heading above fits in 3 lines.
 
 Reply with ONLY this JSON (no other text, no comments inside it), so it can be pasted straight into my dashboard:
 \`\`\`json
