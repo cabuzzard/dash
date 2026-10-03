@@ -7145,6 +7145,11 @@ function lfText(ctx, text, x, y, st, fill) {
   // letter spacing (1/1000 em, like Canva): each glyph at its kerned position + i × spacing — same as the renderer
   const trk = (+st.tracking || 0) / 1000 * (parseFloat((ctx.font.match(/(\d+(?:\.\d+)?)px/) || [])[1]) || 40);
   const each = (fn) => { if (!trk) return fn(text, x, y); [...text].forEach((ch, i) => { if (ch !== ' ') fn(ch, x + ctx.measureText(text.slice(0, i)).width + i * trk, y); }); };
+  if (st.strokeW && st.strokePos === 'front') {   // stroke on top: fill first, then a stroke centred on the letter's edge
+    ctx.fillStyle = st.textColor || fill; each((t, a, b) => ctx.fillText(t, a, b)); ctx.shadowColor = 'transparent';
+    ctx.lineJoin = 'round'; ctx.lineWidth = st.strokeW; ctx.strokeStyle = st.strokeColor || '#000'; each((t, a, b) => ctx.strokeText(t, a, b));
+    return ctx.restore();
+  }
   if (st.strokeW) { ctx.lineJoin = 'round'; ctx.lineWidth = st.strokeW * 2; ctx.strokeStyle = st.strokeColor || '#000'; each((t, a, b) => ctx.strokeText(t, a, b)); ctx.shadowColor = 'transparent'; }
   ctx.fillStyle = st.textColor || fill; each((t, a, b) => ctx.fillText(t, a, b)); ctx.restore();
 }
@@ -7479,7 +7484,8 @@ async function pubLfLayoutModal() {
     </div>
     <div id="lflTextRow" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:6px;">
       <label style="display:flex;align-items:center;gap:6px;">Text <input type="color" id="lflTextColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-      <label style="display:flex;align-items:center;gap:6px;">Stroke <input type="number" id="lflStrokeW" min="0" max="16" step="1" class="finput" oninput="lflInput()" style="width:44px;">px <input type="color" id="lflStrokeColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+      <label style="display:flex;align-items:center;gap:6px;">Stroke <input type="number" id="lflStrokeW" min="0" max="16" step="1" class="finput" oninput="lflInput()" style="width:44px;">px <input type="color" id="lflStrokeColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;">
+        <select id="lflStrokePos" class="finput" onchange="lflInput()" title="Behind = the stroke sits outside the letter. On top = drawn over the letter, centred on its edge (half inside, half outside)" style="font-size:11px;padding:2px 4px;"><option value="">behind</option><option value="front">on top</option></select></label>
       <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="lflShadowOn" onchange="lflInput()"> Shadow <input type="color" id="lflShadowColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
       <label style="display:flex;align-items:center;gap:6px;">Diffusion <input type="range" id="lflShadowBlur" min="0" max="40" step="1" oninput="lflInput()" style="width:80px;"><span id="lflShadowBlurVal" style="font-family:monospace;"></span></label>
       <label style="display:flex;align-items:center;gap:6px;">Distance <input type="number" id="lflShadowDist" min="0" max="40" step="1" class="finput" oninput="lflInput()" style="width:44px;">px</label>
@@ -7538,7 +7544,7 @@ function lflSync() {
   if (x.opacity != null) set('lflOpacity', x.opacity);
   set('lflTextColor', x.textColor || '#f6eede'); set('lflStrokeW', x.strokeW || 0); set('lflStrokeColor', x.strokeColor || '#000000');
   document.getElementById('lflShadowOn').checked = !!x.shadowColor; set('lflShadowColor', x.shadowColor || '#000000');
-  set('lflShadowBlur', x.shadowBlur || 0); document.getElementById('lflShadowBlurVal').textContent = x.shadowBlur || 0; set('lflShadowDist', x.shadowDist || 0); set('lflTracking', x.tracking || 0);
+  set('lflShadowBlur', x.shadowBlur || 0); document.getElementById('lflShadowBlurVal').textContent = x.shadowBlur || 0; set('lflShadowDist', x.shadowDist || 0); set('lflTracking', x.tracking || 0); set('lflStrokePos', x.strokePos || '');
 }
 function lflInput() {
   const x = LFL.B[LFL.sel], v = id => parseFloat(document.getElementById(id).value);
@@ -7553,6 +7559,7 @@ function lflInput() {
   if (LFL.sel !== 'presenter') {
     x.textColor = document.getElementById('lflTextColor').value;
     x.strokeW = Math.max(0, Math.min(16, parseInt(document.getElementById('lflStrokeW').value) || 0)); x.strokeColor = document.getElementById('lflStrokeColor').value;
+    if (document.getElementById('lflStrokePos').value === 'front') x.strokePos = 'front'; else delete x.strokePos;
     if (document.getElementById('lflShadowOn').checked) { x.shadowColor = document.getElementById('lflShadowColor').value; x.shadowBlur = +document.getElementById('lflShadowBlur').value || 0; x.shadowDist = Math.max(0, parseInt(document.getElementById('lflShadowDist').value) || 0); }
     else { delete x.shadowColor; delete x.shadowBlur; delete x.shadowDist; }
     const trk = Math.max(-100, Math.min(800, parseInt(document.getElementById('lflTracking').value) || 0)); if (trk) x.tracking = trk; else delete x.tracking;

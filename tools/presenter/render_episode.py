@@ -25,7 +25,7 @@ an idle sway; the character's own character.json says where the mouth and eyes a
 """
 import json, math, os, re, subprocess, sys, tempfile, urllib.request, io
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageChops
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 W, H, FPS, SR = 1920, 1080, 24, 24000
@@ -427,6 +427,8 @@ def styled_text(img, xy, text, fnt, fill, st=None, anchor=None):
     trk = track_px(fnt, st)
     fill = hexrgb(st.get("textColor") or "", fill[:3]) + ((fill[3],) if len(fill) > 3 else ()) if st.get("textColor") else fill
     sw = int(float(st.get("strokeW") or 0)); sfill = hexrgb(st.get("strokeColor") or "", (0, 0, 0))
+    front = sw > 0 and st.get("strokePos") == "front"   # stroke on top: centred on the outline, over the fill
+    if front: sw_out, sw_in = (sw + 1) // 2, sw // 2
     if st.get("shadowColor"):
         blur = float(st.get("shadowBlur") or 0); dist = float(st.get("shadowDist") or 0)
         d0 = ImageDraw.Draw(img)
@@ -435,13 +437,36 @@ def styled_text(img, xy, text, fnt, fill, st=None, anchor=None):
         pad = int(blur * 3 + dist + 4)
         lay = Image.new("RGBA", (int(r - l) + pad * 2, int(b - t) + pad * 2), (0, 0, 0, 0))
         sc = hexrgb(st["shadowColor"], (0, 0, 0))
-        draw_str(ImageDraw.Draw(lay), (xy[0] - l + pad + dist, xy[1] - t + pad + dist), text, fnt, trk, fill=sc + (235,), anchor=anchor, stroke_width=sw, stroke_fill=sc)
+        draw_str(ImageDraw.Draw(lay), (xy[0] - l + pad + dist, xy[1] - t + pad + dist), text, fnt, trk, fill=sc + (235,), anchor=anchor, stroke_width=(sw_out if front else sw), stroke_fill=sc)
         if blur > 0: lay = lay.filter(ImageFilter.GaussianBlur(blur))
         dx, dy = int(l) - pad, int(t) - pad
         if dx < 0: lay = lay.crop((-dx, 0, lay.width, lay.height)); dx = 0
         if dy < 0: lay = lay.crop((0, -dy, lay.width, lay.height)); dy = 0
         img.alpha_composite(lay, (dx, dy))
-    draw_str(ImageDraw.Draw(img), xy, text, fnt, trk, fill=fill, anchor=anchor, stroke_width=sw, stroke_fill=sfill)
+    if not front:
+        draw_str(ImageDraw.Draw(img), xy, text, fnt, trk, fill=fill, anchor=anchor, stroke_width=sw, stroke_fill=sfill); return
+    draw_str(ImageDraw.Draw(img), xy, text, fnt, trk, fill=fill, anchor=anchor)
+    ring, dx, dy = stroke_ring(xy, text, fnt, trk, anchor, sw_out, sw_in)
+    col = Image.new("RGBA", ring.size, sfill + (255,)); col.putalpha(ring)
+    if dx < 0: col = col.crop((-dx, 0, col.width, col.height)); dx = 0
+    if dy < 0: col = col.crop((0, -dy, col.width, col.height)); dy = 0
+    img.alpha_composite(col, (dx, dy))
+
+# the ring of a front stroke: the letters grown by sw_out minus the letters shrunk by sw_in (cached — captions repeat per frame)
+_RING = {}
+def stroke_ring(xy, text, fnt, trk, anchor, sw_out, sw_in):
+    key = (text, id(fnt), trk, anchor, sw_out, sw_in, xy)
+    if key not in _RING:
+        d0 = ImageDraw.Draw(Image.new("L", (1, 1)))
+        l, t, r, b = d0.textbbox(xy, text, font=fnt, anchor=anchor, stroke_width=sw_out)
+        r += max(0, trk) * max(0, len(text) - 1); pad = sw_out + 3
+        size = (int(r - l) + pad * 2, int(b - t) + pad * 2); org = (xy[0] - l + pad, xy[1] - t + pad)
+        outer = Image.new("L", size, 0); draw_str(ImageDraw.Draw(outer), org, text, fnt, trk, fill=255, anchor=anchor, stroke_width=sw_out, stroke_fill=255)
+        inner = Image.new("L", size, 0); draw_str(ImageDraw.Draw(inner), org, text, fnt, trk, fill=255, anchor=anchor)
+        if sw_in > 0: inner = inner.filter(ImageFilter.MinFilter(sw_in * 2 + 1))
+        if len(_RING) > 400: _RING.clear()
+        _RING[key] = (ImageChops.subtract(outer, inner), int(l) - pad, int(t) - pad)
+    return _RING[key]
 
 def ease(t): t = max(0.0, min(1.0, t)); return 1 - (1 - t) ** 3
 

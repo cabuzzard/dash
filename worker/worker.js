@@ -1418,6 +1418,7 @@ function lfCleanBoxes(b) {
     const o = {};
     for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300], ["strokeW", 0, 16], ["shadowBlur", 0, 60], ["shadowDist", 0, 40], ["tracking", -100, 800]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
     for (const cf of ["color", "textColor", "strokeColor", "shadowColor"]) if (/^#[0-9a-f]{6}$/i.test(String(x[cf] || ""))) o[cf] = String(x[cf]).toLowerCase();
+    if (x.strokePos === "front") o.strokePos = "front";   // stroke over the letter (centred on its edge) instead of behind it
     if (Object.keys(o).length) out[k] = o;
   }
   return Object.keys(out).length ? out : null;
