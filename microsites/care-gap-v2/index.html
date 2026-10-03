@@ -833,6 +833,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="flex:1;min-width:240px;">🔤 Typeface
               <select id="pubLibFonts" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLibFontPreview();pubLibUse('fonts')"></select>
               <div id="pubLibFontPrev" style="margin-top:4px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:#2c3a32;color:#f6eede;"></div>
+              <div id="pubLibFontList" style="display:flex;gap:6px;overflow-x:auto;padding:4px 0;margin-top:4px;"></div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('fonts', this)">💬 Copy ChatGPT prompt</button>
                 <button class="btn" type="button" style="font-size:10px;" title="Edit what the prompt asks ChatGPT for and how it should structure its reply" onclick="pubLibEditAsk('fonts')">✎ Edit prompt</button>
@@ -6494,7 +6495,8 @@ async function pubLibLoad() {
   try { PUB_LIB.ep = (await w('getLongformEpisode', { assetId: PUB_LF.assetId })).episode; } catch (e) {}
   pubLibDraw();
 }
-function pubLibFontCss(fams) {
+function pubLibFontCss(fams) { return gfLoad(fams); }
+function pubLibFontCssOld(fams) {
   const want = [...new Set(fams.filter(Boolean))].filter(f => !document.querySelector(`link[data-gf="${CSS.escape(f)}"]`));
   for (const f of want) { const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.gf = f; l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700&display=swap'; document.head.appendChild(l); }
 }
@@ -6508,12 +6510,23 @@ function pubLibDraw() {
   ls.innerHTML = `<option value="default">Campaign default</option>` + (PUB_LIB.cur.layouts === 'custom' ? '<option value="custom">Custom (edited in 📐 Layout…)</option>' : '')
     + PUB_LIB.layouts.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
   ls.value = PUB_LIB.cur.layouts;
-  pubLibFontPreview(); pubLibLayoutPreview();
+  pubLibFontPreview(); pubLibLayoutPreview(); pubLibFontList();
+}
+// every saved pairing drawn in its own Google fonts — click one to use it
+function pubLibFontList() {
+  const el = document.getElementById('pubLibFontList'); if (!el) return;
+  const ep = PUB_LIB.ep || {}, cur = document.getElementById('pubLibFonts').value;
+  const all = [{ id: 'default', name: 'Campaign default', display: (ep.fonts || {}).display, body: (ep.fonts || {}).body }].concat(PUB_LIB.fonts);
+  gfLoad(all.flatMap(x => [x.display, x.body]));
+  el.innerHTML = all.map(x => `<div onclick="document.getElementById('pubLibFonts').value='${esc(x.id)}';pubLibFontPreview();pubLibUse('fonts')" title="${esc(x.name)} — ${esc(x.display || '')} + ${esc(x.body || '')}"
+      style="cursor:pointer;padding:5px 8px;border-radius:6px;border:1px solid ${x.id === cur ? 'var(--accent,#f6ad55)' : 'var(--border)'};background:#2c3a32;color:#f6eede;min-width:150px;flex:0 0 auto;">
+      <div style="font-family:'${esc(x.display || 'Georgia')}',serif;font-weight:700;font-size:16px;line-height:1.1;white-space:nowrap;">Control &amp; Surrender</div>
+      <div style="font-family:'${esc(x.body || 'Inter')}',sans-serif;font-weight:600;font-size:11px;white-space:nowrap;">${esc(x.name)}</div></div>`).join('');
 }
 function pubLibFontPreview() {
   const sel = document.getElementById('pubLibFonts').value, it = PUB_LIB.fonts.find(x => x.id === sel);
   const ep = PUB_LIB.ep || {}, d = it ? it.display : (ep.fonts || {}).display, b = it ? it.body : (ep.fonts || {}).body;
-  pubLibFontCss([d, b]);
+  pubLibFontCss([d, b]).then(() => pubLibLayoutPreview());
   document.getElementById('pubLibFontPrev').innerHTML = `<div style="font-family:'${esc(d || 'Georgia')}',serif;font-weight:700;font-size:20px;line-height:1.15;">Control &amp; Surrender</div>
     <div style="font-family:'${esc(b || 'Inter')}',sans-serif;font-weight:600;font-size:13px;">Hold what is yours to influence. Release what isn't.</div>${it && it.note ? `<div style="font-size:10.5px;color:var(--ink3);margin-top:2px;">${esc(it.note)}</div>` : ''}`;
 }
@@ -7098,6 +7111,21 @@ function lfText(ctx, text, x, y, st, fill) {
   if (st.strokeW) { ctx.lineJoin = 'round'; ctx.lineWidth = st.strokeW * 2; ctx.strokeStyle = st.strokeColor || '#000'; ctx.strokeText(text, x, y); ctx.shadowColor = 'transparent'; }
   ctx.fillStyle = st.textColor || fill; ctx.fillText(text, x, y); ctx.restore();
 }
+// Google Fonts in the modal: load any family on demand (600 + 700, the weights the renderer uses) and resolve
+// once the browser can draw it — so canvas previews never fall back to a system font.
+const GF_LOADED = {};
+function gfLoad(fams) {
+  return Promise.all([...new Set((fams || []).filter(Boolean))].map(f => {
+    if (!GF_LOADED[f]) {
+      const l = document.createElement('link'); l.rel = 'stylesheet'; l.dataset.gf = f;
+      l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700&display=swap';
+      document.head.appendChild(l);
+      GF_LOADED[f] = new Promise(res => { l.onload = res; l.onerror = res; setTimeout(res, 6000); })
+        .then(() => Promise.all([document.fonts.load(`700 40px "${f}"`), document.fonts.load(`600 40px "${f}"`)])).catch(() => {});
+    }
+    return GF_LOADED[f];
+  }));
+}
 function lfCase(t, m) { t = String(t || ''); return m === 'upper' ? t.toUpperCase() : m === 'lower' ? t.toLowerCase() : m === 'title' ? t.replace(/\w\S*/g, w_ => w_[0].toUpperCase() + w_.slice(1).toLowerCase()) : t; }
 function lfFrame(ctx, k, D, B, c) {
   const W = 1920, H = 1080, pal = D.palette || {}, ACC = lfsHex(pal.accent, '#e8b234'), INK = lfsHex(pal.ink, '#f6eede'), PANEL = lfsHex(pal.panel, '#121a16');
@@ -7159,13 +7187,7 @@ function lfFrame(ctx, k, D, B, c) {
   return rects;
 }
 async function lfsLoadAssets(r) {
-  const fam = [r.fonts?.display, r.fonts?.body].filter(Boolean);
-  if (fam.length && !document.getElementById('lfsFonts')) {
-    const l = document.createElement('link'); l.rel = 'stylesheet'; l.id = 'lfsFonts';
-    l.href = 'https://fonts.googleapis.com/css2?' + fam.map(f => 'family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700').join('&') + '&display=swap';
-    document.head.appendChild(l);
-    try { await Promise.all(fam.map(f => document.fonts.load(`700 40px "${f}"`))); } catch (e) {}
-  }
+  try { await gfLoad([r.fonts?.display, r.fonts?.body]); } catch (e) {}
   const load = src => new Promise(res => { if (!src) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
   const lib = /^p-/.test(r.character || '') ? (PRES_LIB || []).find(x => x.id === r.character) : null;
   [LFS.bg, LFS.cut] = await Promise.all([load(r.background || r.defaultScene), ['stage', 'titles'].includes(r.layout) ? null : load(lib ? lib.image : `../../tools/presenter/characters/${r.character}/cutout.png`)]);
