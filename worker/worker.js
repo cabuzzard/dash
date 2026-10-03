@@ -1471,6 +1471,26 @@ async function lfCharStyle(env, id) {
   if (/^p-/.test(id)) { const p = (await lfPresenterList(env)).find(x => x.id === id); return (p && p.style) || ""; }
   try { const cj = await fetch(`https://cabuzzard.github.io/dash/tools/presenter/characters/${id.replace(/[^a-z0-9-]/g, "")}/character.json`).then(r => r.json()); return cj.style || ""; } catch (e) { return ""; }
 }
+// 🔤 Google Fonts catalogue (fonts.google.com/metadata/fonts, ~1,950 families) cached in KV for a week.
+// gfResolve(name) → the exact Google family name (case/spacing/near-miss corrected) or null if it isn't on Google Fonts.
+async function gfCatalog(env) {
+  try { const c = await env.TRADES.get("gfonts:catalog", "json"); if (c && c.at > Date.now() - 7 * 864e5) return c.families; } catch (e) {}
+  const r = await fetch("https://fonts.google.com/metadata/fonts", { cf: { cacheTtl: 86400 } });
+  const t = await r.text(); const d = JSON.parse(t.slice(t.indexOf("{")));
+  const families = (d.familyMetadataList || []).map(x => ({ f: x.family, w: Object.keys(x.fonts || {}).filter(k => /^\d+$/.test(k)).map(Number) }));
+  if (families.length > 500) await env.TRADES.put("gfonts:catalog", JSON.stringify({ at: Date.now(), families }));
+  return families;
+}
+function gfResolve(cat, name) {
+  const norm = v => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+  const n = norm(name); if (!n) return null;
+  const exact = cat.find(x => norm(x.f) === n); if (exact) return exact;
+  const lev = (a, b) => { const d = Array.from({ length: a.length + 1 }, (_, i) => [i]); for (let j = 1; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[a.length][b.length]; };
+  let best = null, bd = 99;
+  for (const x of cat) { const m = norm(x.f); if (Math.abs(m.length - n.length) > 3) continue; const dd = lev(m, n); if (dd < bd) { bd = dd; best = x; } }
+  return best && bd <= Math.max(1, Math.floor(n.length / 6)) ? best : null;   // small typos only — never a different font
+}
 async function lfBuildEpisode(env, assetId) {
   const { page, spec } = await lfLoadAsset(assetId);
   if (!spec || !Array.isArray(spec.segments) || !spec.segments.length) throw new Error("No script on this asset yet");
@@ -16084,6 +16104,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           body: JSON.stringify({ properties: { "Watch Link": { url: watch }, ...(yt ? { "YouTube URL": { url: yt } } : {}) } }) });
         return json({ ok: true, watchLink: watch, youtubeUrl: yt || page.properties["YouTube URL"]?.url || "" });
       }
+      // (Google font names are checked against the catalogue — see gfResolve)
       // 🔤 / 📐 Longform libraries (like the photo library): typefaces (KV lflib:fonts) and box layouts
       // (KV lflib:layouts), shared by every campaign. The campaign default (hub fonts / campaign layout) is always
       // the first option. Options come in by pasting a ChatGPT reply (the page writes the prompt + exact format).
@@ -16094,13 +16115,23 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const op = body.op || "list";
         const F = v => String(v || "").replace(/[^A-Za-z0-9 ]/g, "").replace(/\s+/g, " ").trim().slice(0, 60);
         if (op === "add") {
-          const added = [];
+          const added = [], fontNotes = [];
+          let cat = null; if (kind === "fonts") { try { cat = await gfCatalog(env); } catch (e) { console.error("gfCatalog", e.message); } }
           for (const it of (Array.isArray(body.items) ? body.items : [body.items]).slice(0, 30)) {
             if (!it || typeof it !== "object") continue;
             const name = String(it.name || "").trim().slice(0, 60);
             if (kind === "fonts") {
-              const display = F(it.display), bodyF = F(it.body);
+              let display = F(it.display), bodyF = F(it.body);
               if (!display) continue;
+              if (cat) {   // fit every suggestion to a real Google font — fix spelling, refuse what Google doesn't have
+                const d = gfResolve(cat, display), b = bodyF ? gfResolve(cat, bodyF) : null;
+                if (!d) { fontNotes.push(`✕ "${display}" isn't on Google Fonts — skipped ${name || "that pairing"}`); continue; }
+                if (d.f !== display) fontNotes.push(`"${display}" → ${d.f}`);
+                if (bodyF && !b) fontNotes.push(`✕ body font "${bodyF}" isn't on Google Fonts — using Inter`);
+                else if (b && b.f !== bodyF) fontNotes.push(`"${bodyF}" → ${b.f}`);
+                if (!d.w.includes(700)) fontNotes.push(`${d.f} has no Bold — headings use its ${d.w.includes(600) ? "SemiBold" : "regular"} weight`);
+                display = d.f; bodyF = b ? b.f : "Inter";
+              }
               added.push({ id: "f-" + Date.now().toString(36) + added.length, name: name || `${display} + ${bodyF || "Inter"}`, display, body: bodyF || "Inter", note: String(it.why || it.note || "").slice(0, 300), at: Date.now() });
             } else {
               const boxes = lfCleanBoxes(it.boxes || it);
@@ -16110,10 +16141,11 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
                 instructions: String(it.instructions || "").slice(0, 2000), note: String(it.why || it.note || "").slice(0, 300), at: Date.now() });
             }
           }
+          if (!added.length && fontNotes.length) return json({ error: "None of those fonts are on Google Fonts: " + fontNotes.join(" · ") }, 400);
           if (!added.length) return json({ error: kind === "fonts" ? "No typefaces found in that reply — it needs {\"name\", \"display\", \"body\"} items" : "No layouts found in that reply — it needs {\"name\", \"boxes\": {card, caption, presenter}} items" }, 400);
           lib = added.concat(lib).slice(0, 200);
           await env.TRADES.put(key, JSON.stringify(lib));
-          return json({ ok: true, added: added.length, items: lib });
+          return json({ ok: true, added: added.length, items: lib, notes: fontNotes });
         }
         if (op === "delete") { lib = lib.filter(x => x.id !== body.id); await env.TRADES.put(key, JSON.stringify(lib)); return json({ ok: true, items: lib }); }
         // setAsk {text} — the operator's own version of the editable part of the ChatGPT prompt (the request + how to

@@ -6622,6 +6622,11 @@ function pubLibPromptRaw(kind) {
   if (kind === 'fonts') return `I make faceless long-form YouTube videos (1920×1080). Text on screen: big chapter-card headings (display font, rendered BOLD 700) and card text + spoken-word captions (body font, rendered 600). They must read instantly on a phone over a busy illustrated background.
 ${ctx}
 Current pairing: ${f.display || '?'} (display) + ${f.body || '?'} (body).
+
+GOOGLE FONTS ONLY — CHECK EVERY NAME: my renderer downloads fonts from Google Fonts by their exact family name, and my dashboard checks every name you give against Google Fonts' live catalogue (fonts.google.com) — anything not found there is rejected. So before you suggest a font:
+- confirm it exists on fonts.google.com today and write its family name EXACTLY as Google lists it (e.g. "Source Sans 3", not "Source Sans Pro"; "Bebas Neue", "Noto Sans JP");
+- never suggest Adobe, system or commercial fonts (Helvetica, Futura, Proxima Nova, Avenir, Gotham, Garamond Premier, etc.);
+- check its weights on Google: headings render Bold (700), body SemiBold (600) — if a font only has Regular (e.g. Bebas Neue, Bangers), say so in "why".
 
 Suggest 8 typeface pairings that would suit this channel — a mix of safe and bolder choices. Rules:
 - Both fonts MUST be free on Google Fonts (fonts.google.com), using the exact family name as Google lists it.
@@ -6863,7 +6868,7 @@ async function pubLibAdd(btn) {
     if (!items.length) throw new Error('no options found in that reply');
     const r = await w('longformLibrary', { kind, op: 'add', items });
     PUB_LIB[kind] = r.items; document.getElementById('pubLibPaste').value = ''; box.style.display = 'none';
-    msg.style.color = 'var(--fresh)'; msg.textContent = `✓ Added ${r.added} ${kind === 'fonts' ? 'typeface pairing' : 'layout'}${r.added === 1 ? '' : 's'} to the list — pick one above.`;
+    msg.style.color = 'var(--fresh)'; msg.textContent = `✓ Added ${r.added} ${kind === 'fonts' ? 'typeface pairing' : 'layout'}${r.added === 1 ? '' : 's'} to the list — pick one above.` + ((r.notes || []).length ? ' Google Fonts check: ' + r.notes.join(' · ') : '');
     pubLibDraw();
   } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not added: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
