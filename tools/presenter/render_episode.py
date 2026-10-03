@@ -476,6 +476,10 @@ def main(ep_path, out, work):
     CAP_LINES = 1 if int(TRP.get("lines", 2) or 2) == 1 else 2
     # optional layout boxes (a layout only lists the ones it needs; missing → they follow the card box)
     tb, ab, picb = BOXES.get("title") or {}, BOXES.get("ask") or {}, BOXES.get("pictures") or {}
+    # a layout PRESET is strict: only the boxes it lists are on screen (no card → no chapter cards, no title → no
+    # title cards, no ask → no pills, no presenter → no character). Captions always show.
+    STRICT = bool(ep.get("boxesStrict"))
+    SHOW = lambda k: (not STRICT) or (k in BOXES)
     TCS = max(0.4, min(2.5, float(tb.get("s", cb.get("s", 100))) / 100))
     TX = int(float(tb["x"]) * W / 100) if "x" in tb else CX
     TY = int(float(tb["y"]) * H / 100) if "y" in tb else CY
@@ -608,7 +612,7 @@ def main(ep_path, out, work):
         dx = int(40 * math.sin(t / 23)); dy = 0   # no vertical drift: it read as the presenter floating (operator 2026-10-02)
         ox, oy = (sc.width - W) // 2 + dx, max(0, (sc.height - H) // 2 + dy)
         fr = sc.crop((ox, oy, ox + W, oy + H)).convert("RGBA")
-        if not STAGE_LAYOUT:
+        if not STAGE_LAYOUT and SHOW("presenter"):
             ch = P.variant(jaw[i] if i < len(jaw) else 0, blink_at.get(i, 0))
             bob = 0   # idle bob removed — operator: "he seems to be floating up and down"
             fr.alpha_composite(ch, (chx, (PY if PY is not None else H - ch.height + pl.get("bottomOverhang", 30)) + bob))
@@ -620,17 +624,17 @@ def main(ep_path, out, work):
             x = int(-NW * CS - 40 + (CX + NW * CS + 40) * k_in - (W + 100) * k_out)
             xt = int(-TNW * TCS - 40 + (TX + TNW * TCS + 40) * k_in - (W + 100) * k_out)   # title box
             if kind in ("item", "point"):
-                if shot_at(t) is None:
+                if shot_at(t) is None and SHOW("card"):
                     fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, CY))
-            elif kind == "intro" and ep.get("channel"):
+            elif kind == "intro" and ep.get("channel") and SHOW("title"):
                 fr.alpha_composite(title_card(ep["channel"]), (xt, TY))
-            elif kind == "topic" and ep.get("title"):
+            elif kind == "topic" and ep.get("title") and SHOW("title"):
                 fr.alpha_composite(title_card(ep["title"]), (xt, TY))
-            elif kind == "jingle" and seg.get("text"):   # same card formatting as everything else (📐 Layout card box)
+            elif kind == "jingle" and seg.get("text") and SHOW("title"):   # same card formatting as everything else (📐 Layout card box)
                 fr.alpha_composite(title_card(seg["text"]), (xt, TY))
-            elif kind == "hook" and ep.get("title"):
+            elif kind == "hook" and ep.get("title") and SHOW("title"):
                 fr.alpha_composite(title_card(ep["title"]), (xt, TY))
-            elif kind == "ask" and seg.get("label") and (TR.get("ask") or {}).get("show", True) is not False:
+            elif kind == "ask" and seg.get("label") and (TR.get("ask") or {}).get("show", True) is not False and SHOW("ask"):
                 fa = F_TXT if AS == 1 else font(bpath, max(14, round(32 * AS)))
                 tw = d.textlength(seg["label"], font=fa); ph = int(72 * AS)
                 ax = x if AX is None else int(-tw - 100 + (AX + tw + 100) * k_in - (W + 100) * k_out)

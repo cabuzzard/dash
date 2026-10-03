@@ -1502,6 +1502,7 @@ async function lfBuildEpisode(env, assetId) {
   const treatment = lfCleanTreatment(r.treatment);
   return {
     ...(treatment ? { treatment } : {}),
+    ...(r.boxesStrict && boxes ? { boxesStrict: true } : {}),
     title: spec.title || lfReadRich(pr["Platform Title"]) || "",
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
@@ -16102,8 +16103,8 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
             const it = lib.find(x => x.id === id);
             if (kind === "fonts") { if (it) { spec.render.fonts = { display: it.display, body: it.body }; spec.render.fontSet = it.id; } else { delete spec.render.fonts; delete spec.render.fontSet; } }
             else {
-              if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; if (it.treatment) spec.render.treatment = it.treatment; else delete spec.render.treatment; }
-              else { delete spec.render.boxes; delete spec.render.layoutId; delete spec.render.treatment; }
+              if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; spec.render.boxesStrict = true; if (it.treatment) spec.render.treatment = it.treatment; else delete spec.render.treatment; }
+              else { delete spec.render.boxes; delete spec.render.layoutId; delete spec.render.treatment; delete spec.render.boxesStrict; }
             }
             await lfSaveSpec(aid, spec);
           }

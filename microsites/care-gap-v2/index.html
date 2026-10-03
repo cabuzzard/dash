@@ -6515,14 +6515,16 @@ function pubLibLayoutPreview() {
   const sel = document.getElementById('pubLibLayouts').value, it = PUB_LIB.layouts.find(x => x.id === sel);
   const cv = document.getElementById('pubLibLayoutPrev'); if (!cv) return;
   const c = cv.getContext('2d'), W = cv.width, H = cv.height, k = W / 1920, ep = PUB_LIB.ep || {}, u = pubLibUses(ep);
-  const B = lfBoxesFull({ palette: ep.palette, layout: ep.layout }, it ? it.boxes : (ep.boxes || null));
+  const strict = !!it || !!ep.boxesStrict, srcB = it ? it.boxes : (ep.boxes || null);
+  const B = lfBoxesFull({ palette: ep.palette, layout: ep.layout }, srcB);
+  if (strict && srcB) for (const k of ['card', 'caption', 'presenter']) if (!srcB[k]) delete B[k];   // a preset shows ONLY its listed boxes
   const fonts = (it && PUB_LIB.fonts.find(f => f.id === document.getElementById('pubLibFonts').value)) || ep.fonts || {};
   const DF = `"${fonts.display || 'Georgia'}", Georgia, serif`, BF = `"${fonts.body || 'Inter'}", sans-serif`;
   c.fillStyle = '#3a4a40'; c.fillRect(0, 0, W, H);
   const wrapN = (t, maxW, n) => { const out = []; let cur = ''; for (const w_ of String(t).split(/\s+/)) { const tt = (cur + ' ' + w_).trim(); if (c.measureText(tt).width <= maxW || !cur) cur = tt; else { out.push(cur); cur = w_; } } if (cur) out.push(cur); return out; };
   if (B.presenter && u.presenter) { const p = B.presenter, ph = p.h / 100 * H, pw = ph * 0.75; c.fillStyle = 'rgba(232,178,52,.35)'; c.fillRect(p.x / 100 * W, p.y / 100 * H, pw, ph); c.fillStyle = '#fff'; c.font = '9px sans-serif'; c.fillText('presenter', p.x / 100 * W + 3, p.y / 100 * H + 10); }
   // card with the LONGEST real heading + key point, at native metrics scaled like the renderer
-  const cb = B.card, CS = (cb.s || 100) / 100, NW = Math.max(420, (cb.w || 40) / 100 * 1920 / CS), cx = cb.x / 100 * W, cy = cb.y / 100 * H;
+  const cb = B.card || { x: -999, y: -999, w: 40, s: 100 }, CS = (cb.s || 100) / 100, NW = Math.max(420, (cb.w || 40) / 100 * 1920 / CS), cx = cb.x / 100 * W, cy = cb.y / 100 * H;
   c.save(); c.translate(cx, cy); c.scale(k * CS, k * CS);
   let y = 20; const lines = [];
   const TRc = ((it && it.treatment) || (ep.treatment) || {}).card || {}, tc = (t, m) => m === 'upper' ? String(t).toUpperCase() : m === 'lower' ? String(t).toLowerCase() : m === 'title' ? String(t).replace(/\w\S*/g, w_ => w_[0].toUpperCase() + w_.slice(1).toLowerCase()) : String(t);
@@ -6532,21 +6534,22 @@ function pubLibLayoutPreview() {
   const big = nm.length > 2; c.font = `700 ${big ? 44 : 56}px ${DF}`; const nm2 = big ? wrapN(u.longName || u.title, NW - 80, 9) : nm;
   if (u.numbered) y += 84; const nameLines = nm2.slice(0, Math.max(1, Math.min(3, TRc.headingLines || 3))); y += nameLines.length * (big ? 52 : 66) + 8;
   c.font = `600 29px ${BF}`; const bl = u.longBlurb ? wrapN(u.longBlurb, NW - 80, 9).slice(0, TRc.blurbLines != null ? TRc.blurbLines : 3) : []; y += bl.length * 38 + (u.pay ? 104 : 0) + (u.score ? 76 : 0) + 18;
+  if (!B.card) { c.restore(); } else {
   c.fillStyle = lfHexA(cb.color, cb.opacity); c.fillRect(0, 0, NW, y);
   let yy = 20; c.fillStyle = '#e8b234'; if (u.numbered) { c.font = `700 72px ${DF}`; c.fillText('#1', 40, yy + 60); yy += 84; }
   c.fillStyle = '#f6eede'; c.font = `700 ${big ? 44 : 56}px ${DF}`; nameLines.forEach(l => { c.fillText(l, 40, yy + (big ? 44 : 56)); yy += big ? 52 : 66; });
   if (nm2.length > nameLines.length) { c.fillStyle = '#ff6b6b'; c.fillText('…too long', 40, yy + 40); }
   c.font = `600 29px ${BF}`; c.fillStyle = '#cfc6b4'; yy += 8; bl.forEach(l => { c.fillText(l, 42, yy + 30); yy += 38; });
-  c.restore();
+  c.restore(); }
   // pictures take the card's spot (4:3, ≥560 px wide)
   if (u.pictures && u.presenter) { const fw = Math.max(560, Math.min(1100, NW * CS)) * k, fh = fw * 0.763; c.strokeStyle = 'rgba(232,178,52,.9)'; c.setLineDash([4, 3]); c.strokeRect(cx, cy, fw, fh); c.setLineDash([]); c.fillStyle = '#e8b234'; c.font = '9px sans-serif'; c.fillText(`pictures (${u.pictures})`, cx + 3, cy + fh - 4); }
   const ob = (b, label, hh) => { if (!b || b.x == null) return; c.strokeStyle = 'rgba(255,255,255,.85)'; c.setLineDash([3, 3]); c.strokeRect(b.x / 100 * W, b.y / 100 * H, (b.w || 14) / 100 * W, (b.h || hh) / 100 * H); c.setLineDash([]); c.fillStyle = '#fff'; c.font = '9px sans-serif'; c.fillText(label, b.x / 100 * W + 3, b.y / 100 * H + 10); };
   const own = (it && it.boxes) || ep.boxes || {};
   ob(own.title, 'title', 9); ob(own.ask, 'ask pill', 6); if (own.pictures) ob(own.pictures, 'pictures', (own.pictures.w || 40) * 0.763 * 16 / 9);
   // captions: top-anchored, 2 lines
-  const cp = B.caption; c.fillStyle = lfHexA(cp.color, cp.opacity); c.fillRect(cp.x / 100 * W, cp.y / 100 * H, cp.w / 100 * W, (cp.h || 12) / 100 * H);
+  const cp = B.caption || lfDesignBoxes({}).caption; c.fillStyle = lfHexA(cp.color, cp.opacity); c.fillRect(cp.x / 100 * W, cp.y / 100 * H, cp.w / 100 * W, (cp.h || 12) / 100 * H);
   c.fillStyle = '#fff'; c.font = `600 ${Math.round(40 * k * (cp.s || 100) / 100)}px ${BF}`; c.fillText(u.qLines ? 'Q: the customer asks…' : 'Spoken words appear here…', cp.x / 100 * W + 4, cp.y / 100 * H + 12);
-  const notes = [u.items + ' cards', u.pay && 'pay bar', u.score && 'score row', u.asks.length && u.asks.length + ' ask pills', u.qLines && 'Q: lines', u.pictures && u.pictures + ' pictures'].filter(Boolean).join(' · ');
+  const notes = [B.card ? u.items + ' cards' : 'no chapter cards', u.pay && 'pay bar', u.score && 'score row', u.asks.length && u.asks.length + ' ask pills', u.qLines && 'Q: lines', u.pictures && u.pictures + ' pictures'].filter(Boolean).join(' · ');
   document.getElementById('pubLibLayoutNote').textContent = (it && it.note ? it.note + ' — ' : (sel === 'custom' ? 'Your own edits from 📐 Layout… — ' : '')) + (it ? 'boxes: ' + Object.keys(it.boxes).join(', ') + ' · ' : '') + 'this script uses: ' + notes + (it && it.instructions ? '\n📝 ' + it.instructions : '');
 }
 async function pubLibUse(kind) {
@@ -6613,13 +6616,13 @@ ${ctx}
 WHAT THIS EPISODE'S SCRIPT PUTS ON SCREEN:
 ${pubLibUsesText(pubLibUses(ep))}
 
-BOX TYPES YOU CAN USE (include only the ones your layout needs; anything you leave out falls back as noted):
+BOX TYPES YOU CAN USE — include a box for EVERY element you want on screen. A box you leave out is NOT shown at all (only these boxes appear; captions are always required):
 - "caption" (REQUIRED): spoken-word captions, 2 lines hanging from the TOP of the box. Fields: x, y, w, h, s (text size %, 100 = normal, 60-160), color (hex), opacity (0-100).
-- "card" (REQUIRED when there are chapter cards): the chapter card (#N, heading, key point${pubLibUses(ep).pay ? ', pay bar' : ''}${pubLibUses(ep).score ? ', score row' : ''}). Fields: x, y, w, s, color, opacity, maxChars (0 = no limit). Height grows with the text.
+- "card" (leave out = no chapter cards on screen): the chapter card (#N, heading, key point${pubLibUses(ep).pay ? ', pay bar' : ''}${pubLibUses(ep).score ? ', score row' : ''}). Fields: x, y, w, s, color, opacity, maxChars (0 = no limit). Height grows with the text.
 - "presenter"${pubLibUses(ep).presenter ? ' (REQUIRED — the character is on screen)' : ' (DO NOT USE — no presenter in this layout)'}: Fields: x, y, h (height % of frame; width ≈ 0.75 × h in frame-height units).
-- "title" (optional — omit to use the card box): the episode title / intro title cards. Fields: x, y, w, s, color, opacity.
-- "ask" (optional — omit to put pills at the card's top-left): the "like / comment" pills. Fields: x, y, s.
-- "pictures" (optional — omit to show pictures in the card's spot): the framed 4:3 scene-image panel. Fields: x, y, w (h optional, default 4:3).
+- "title" (leave out = no title cards): the episode title / channel-intro title cards. Fields: x, y, w, s, color, opacity.
+- "ask" (leave out = no like/comment pills): the "like / comment" pills. Fields: x, y, s.
+- "pictures" (leave out = pictures use the card's spot, or the default frame): the framed 4:3 scene-image panel. Fields: x, y, w (h optional, default 4:3).
 Current layout: ${JSON.stringify(D)}
 
 For EACH layout also decide how the content should be TREATED in its boxes, in two ways:
