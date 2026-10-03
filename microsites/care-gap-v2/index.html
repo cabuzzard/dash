@@ -6646,24 +6646,43 @@ function pubLibPasteOpen(kind) {
   document.getElementById('pubLibPasteLbl').textContent = kind === 'fonts' ? 'Paste ChatGPT\'s typeface reply:' : 'Paste ChatGPT\'s layout reply:';
   document.getElementById('pubLibPaste').focus();
 }
+// Lenient reader for a pasted ChatGPT reply: every ```json block / bracketed JSON, tidied (comments, trailing commas,
+// curly quotes) and merged. Prose around it is kept as each layout's instructions. Nothing usable → Claude converts.
+function pubLibExtract(raw) {
+  const tidy = t => t.replace(/[“”]/g, '"').replace(/[‘’]/g, "'").replace(/\/\/[^\n"]*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/,\s*([}\]])/g, '$1');
+  const cands = [...raw.matchAll(/```(?:json|JSON)?\s*([\s\S]*?)```/g)].map(m => m[1]);
+  // bracketed spans outside code fences too
+  const scan = t => { const out = []; for (let k = 0; k < t.length; k++) { if (t[k] !== '[' && t[k] !== '{') continue; let d = 0, inS = false; for (let e = k; e < t.length; e++) { const ch = t[e]; if (inS) { if (ch === '\\') e++; else if (ch === '"') inS = false; continue; } if (ch === '"') inS = true; else if (ch === '[' || ch === '{') d++; else if (ch === ']' || ch === '}') { d--; if (!d) { out.push(t.slice(k, e + 1)); k = e; break; } } } } return out; };
+  if (!cands.length) cands.push(...scan(raw));
+  const items = [];
+  for (const c of cands) {
+    let v; try { v = JSON.parse(tidy(c)); } catch (e) { continue; }
+    const arr = Array.isArray(v) ? v : Array.isArray(v.layouts) ? v.layouts : Array.isArray(v.items) ? v.items : Array.isArray(v.pairings) ? v.pairings : [v];
+    for (const x of arr) if (x && typeof x === 'object' && (x.boxes || x.display || x.card || x.caption)) items.push(x);
+  }
+  const prose = raw.replace(/```[\s\S]*?```/g, '').trim();
+  return { items, prose };
+}
 async function pubLibAdd(btn) {
   const box = document.getElementById('pubLibPasteBox'), kind = box.dataset.kind, msg = document.getElementById('pubLibMsg');
   const raw = document.getElementById('pubLibPaste').value || '';
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i), body = fenced ? fenced[1] : raw;
-  let items;
+  if (!raw.trim()) { msg.textContent = 'Paste ChatGPT\'s reply first.'; return; }
+  btn.disabled = true; const o = btn.textContent;
   try {
-    const a = body.indexOf('['), b = body.lastIndexOf(']'), oa = body.indexOf('{'), ob = body.lastIndexOf('}');
-    items = a >= 0 && b > a ? JSON.parse(body.slice(a, b + 1)) : JSON.parse(body.slice(oa, ob + 1));
-    if (!Array.isArray(items)) items = [items];
-  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Could not read that reply as JSON — paste the whole ```json block.'; return; }
-  btn.disabled = true;
-  try {
+    let { items, prose } = pubLibExtract(raw);
+    if (!items.length) {   // instructional reply → let Claude turn it into options
+      btn.textContent = 'Reading the reply…'; msg.style.color = 'var(--ink3)'; msg.textContent = 'No JSON in that reply — Claude is reading it and building the options (keeps ChatGPT\'s instructions)…';
+      items = (await w('longformLibrary', { kind, op: 'parse', text: raw })).items || [];
+    } else if (kind === 'layouts' && prose.length > 40) {
+      items = items.map(x => x.instructions ? x : { ...x, instructions: prose.slice(0, 2000) });   // the surrounding guidance travels with each layout
+    }
+    if (!items.length) throw new Error('no options found in that reply');
     const r = await w('longformLibrary', { kind, op: 'add', items });
     PUB_LIB[kind] = r.items; document.getElementById('pubLibPaste').value = ''; box.style.display = 'none';
     msg.style.color = 'var(--fresh)'; msg.textContent = `✓ Added ${r.added} ${kind === 'fonts' ? 'typeface pairing' : 'layout'}${r.added === 1 ? '' : 's'} to the list — pick one above.`;
     pubLibDraw();
   } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Not added: ' + e.message; }
-  btn.disabled = false;
+  btn.disabled = false; btn.textContent = o;
 }
 async function pubLibDelete(kind) {
   const sel = document.getElementById(kind === 'fonts' ? 'pubLibFonts' : 'pubLibLayouts').value;

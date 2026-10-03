@@ -16063,6 +16063,31 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           return json({ ok: true, added: added.length, items: lib });
         }
         if (op === "delete") { lib = lib.filter(x => x.id !== body.id); await env.TRADES.put(key, JSON.stringify(lib)); return json({ ok: true, items: lib }); }
+        // parse {text}: ChatGPT answered in prose / mixed text → Claude turns it into library items (instructions kept)
+        if (op === "parse") {
+          const text = String(body.text || "").slice(0, 40000);
+          if (!text.trim()) return json({ error: "Nothing pasted" }, 400);
+          const boxProps = { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" }, s: { type: "number" }, color: { type: "string" }, opacity: { type: "number" }, maxChars: { type: "number" } } };
+          const itemSchema = kind === "fonts"
+            ? { type: "object", required: ["name", "display", "body"], properties: { name: { type: "string" }, display: { type: "string", description: "exact Google Fonts family" }, body: { type: "string" }, why: { type: "string" } } }
+            : { type: "object", required: ["name", "boxes"], properties: { name: { type: "string" }, why: { type: "string" },
+                boxes: { type: "object", description: "percent of a 1920x1080 frame, x/y = top-left", properties: { caption: boxProps, card: boxProps, presenter: boxProps, title: boxProps, ask: boxProps, pictures: boxProps } },
+                treatment: { type: "object", properties: {
+                  card: { type: "object", properties: { number: { type: "boolean" }, blurb: { type: "boolean" }, case: { type: "string", enum: ["as-is", "upper", "title", "lower"] }, align: { type: "string", enum: ["left", "center"] }, headingLines: { type: "integer" }, blurbLines: { type: "integer" } } },
+                  title: { type: "object", properties: { case: { type: "string" }, align: { type: "string" } } },
+                  caption: { type: "object", properties: { lines: { type: "integer" }, case: { type: "string" }, align: { type: "string" } } },
+                  ask: { type: "object", properties: { show: { type: "boolean" } } }, pictures: { type: "object", properties: { show: { type: "boolean" } } } } },
+                instructions: { type: "string", description: "everything the reply says about how to treat the content in this layout, kept in its own words" } } };
+          const pr = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+            headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+            body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, tools: [{ name: "submit_items", description: "The options found in the reply", input_schema: { type: "object", required: ["items"], properties: { items: { type: "array", items: itemSchema } } } }],
+              tool_choice: { type: "tool", name: "submit_items" },
+              messages: [{ role: "user", content: `This is a reply from ChatGPT proposing ${kind === "fonts" ? "typeface pairings (Google Fonts) for a YouTube video" : "on-screen layouts for a 1920x1080 faceless YouTube video renderer"}. Extract EVERY option it proposes into submit_items. ${kind === "fonts" ? "" : "Positions are percent of the frame (x/y top-left; convert pixels on 1920x1080 to percent if needed). Put the renderer switches it describes into treatment (only the listed keys; "key point"/"subline"/"description" under the heading = card.blurb / card.blurbLines, "#N"/"number" = card.number, heading line limits = card.headingLines 1-3, word-count limits stay in instructions), and keep ALL of its guidance about how to treat the content for that layout in instructions, in its own words (guidance that applies to all layouts goes into each one)."} Don't invent options it didn't propose; if a value isn't given, leave it out.\n\nREPLY:\n${text}` }] }) });
+          const pd = await pr.json().catch(() => ({}));
+          if (!pr.ok) return json({ error: pd.error?.message || "Claude couldn't read the reply" }, 502);
+          const items = (((pd.content || []).find(b => b.type === "tool_use") || {}).input || {}).items || [];
+          return json({ ok: true, items });
+        }
         let current = "default";
         if (body.assetId) {
           const aid = String(body.assetId).replace(/-/g, "");
