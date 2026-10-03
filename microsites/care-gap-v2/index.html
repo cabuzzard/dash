@@ -819,7 +819,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <div style="font-weight:700;margin-bottom:6px;">🎬 Longform episode <span id="pubLfInfo" style="font-weight:400;color:var(--ink3);"></span></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
             <div style="flex:1;min-width:180px;">Layout
-              <select id="pubLfLayout" class="finput" style="width:100%;margin-top:4px;font-size:11px;"><option value="presenter">Avatar — presenter + image box</option><option value="stage">Text &amp; images — big image frame, no avatar</option></select>
+              <select id="pubLfLayout" class="finput" style="width:100%;margin-top:4px;font-size:11px;"><option value="presenter">Avatar — presenter + image box</option><option value="titles">Paragraphs with titles — no presenter</option><option value="stage">Text &amp; images — big image frame, no avatar</option></select>
               <div id="pubLfCharsWrap" style="margin-top:6px;">Presenter
               <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div></div>
             <div style="flex:1;min-width:180px;">Voice
@@ -6582,7 +6582,7 @@ function pubLibUses(ep) {
     pay: items.some(x => x.pay), score: items.some(x => x.score != null || x.tier),
     title: ep && ep.title || '', asks: segs.filter(x => x.kind === 'ask' && x.label).map(x => x.label),
     qLines: segs.filter(x => x.ask).length, pictures: segs.reduce((n, x) => n + (x.images || []).length, 0),
-    presenter: ep && ep.layout !== 'stage', format: ep && ep.format || '',
+    presenter: ep && !['stage', 'titles'].includes(ep.layout), titlesLayout: ep && ep.layout === 'titles', format: ep && ep.format || '',
   };
 }
 function pubLibUsesText(u) {
@@ -6848,9 +6848,9 @@ async function pubLfLoad(assetId, token) {
   pubLfIntroOptions(); pubYtStatus(); pubYtShowLink(r.youtubeUrl); pubYtShowWatch(r.watchLink);
   vs.onchange = () => { const dv = ((r.voices || []).find(v => v.id === vs.value) || {}).rate; if (dv) rt.value = dv; pubLfSave({ voice: vs.value, ...(dv ? { rate: dv } : {}) }); };
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || ((r.voices || []).find(v => v.id === (r.render.voice || (r.voices || [])[0]?.id)) || {}).rate || '-10%'; rt.onchange = () => pubLfSave({ rate: rt.value });
-  const ly = document.getElementById('pubLfLayout'); ly.value = r.render.layout === 'stage' ? 'stage' : 'presenter';
-  document.getElementById('pubLfCharsWrap').style.display = ly.value === 'stage' ? 'none' : '';
-  ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'stage' ? 'none' : ''; pubLfSave({ layout: ly.value }); };
+  const ly = document.getElementById('pubLfLayout'); ly.value = ['stage', 'titles'].includes(r.render.layout) ? r.render.layout : 'presenter';
+  document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none';
+  ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none'; pubLfSave({ layout: ly.value }); };
   pubLfShowBg(r.background);
   PUB_LF.scenes = r.scenes || []; pubLfRenderScenes();
   pubLfShowJob(r.job, r.videoUrl);
@@ -7014,7 +7014,7 @@ async function pubLfScriptModal() {
   document.body.appendChild(ov);
   try {
     const r = await w('getLongformScript', { assetId: PUB_LF.assetId });
-    LFS.data = r; LFS.stage = r.layout === 'stage';
+    LFS.data = r; LFS.stage = ['stage', 'titles'].includes(r.layout);
     await lfsLoadAssets(r);
     try { const lay = await w('longformLayout', { assetId: PUB_LF.assetId, op: 'get' }); LFS.boxes = lay.boxes || lay.campaignBoxes || null; } catch (e) { LFS.boxes = null; }
     const kindLbl = { hook: '🎬 Hook', item: '', ask: '📣 Ask', outro: '👋 Outro' };
@@ -7036,7 +7036,7 @@ async function pubLfScriptModal() {
 }
 // Design defaults = the renderer's built-in layout, as % of 1920×1080 (render_episode.py).
 function lfDesignBoxes(D) {
-  const pal = (D && D.palette) || {}, stage = D && D.layout === 'stage';
+  const pal = (D && D.palette) || {}, stage = D && ['stage', 'titles'].includes(D.layout);
   return {
     card: { x: stage ? 30.21 : 4.17, y: 11.11, w: 39.58, s: 100, color: lfsHex(pal.panel, '#121a16'), opacity: 89, maxChars: 0 },
     caption: { x: stage ? 9.38 : 4.17, y: 71.3, w: stage ? 81.25 : 46.88, h: 12.2, s: 100, color: '#0a0e0c', opacity: 75 },
@@ -7054,7 +7054,7 @@ function lfHexA(hex, op) { const h = lfsHex(hex, '#121a16'); return `rgba(${pars
 function lfFrame(ctx, k, D, B, c) {
   const W = 1920, H = 1080, pal = D.palette || {}, ACC = lfsHex(pal.accent, '#e8b234'), INK = lfsHex(pal.ink, '#f6eede'), PANEL = lfsHex(pal.panel, '#121a16');
   const DF = `"${D.fonts?.display || 'Georgia'}", Georgia, serif`, BF = `"${D.fonts?.body || 'Segoe UI'}", "Segoe UI", sans-serif`;
-  const stage = D.layout === 'stage', rects = {};
+  const stage = ['stage', 'titles'].includes(D.layout), rects = {};
   ctx.save(); ctx.scale(k, k);
   ctx.fillStyle = '#26302b'; ctx.fillRect(0, 0, W, H);
   if (LFS.bg) { const cr = (!D.background && D.defaultCrop) || [0, 0, LFS.bg.width, LFS.bg.height];
@@ -7108,7 +7108,7 @@ async function lfsLoadAssets(r) {
   }
   const load = src => new Promise(res => { if (!src) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
   const lib = /^p-/.test(r.character || '') ? (PRES_LIB || []).find(x => x.id === r.character) : null;
-  [LFS.bg, LFS.cut] = await Promise.all([load(r.background || r.defaultScene), r.layout === 'stage' ? null : load(lib ? lib.image : `../../tools/presenter/characters/${r.character}/cutout.png`)]);
+  [LFS.bg, LFS.cut] = await Promise.all([load(r.background || r.defaultScene), ['stage', 'titles'].includes(r.layout) ? null : load(lib ? lib.image : `../../tools/presenter/characters/${r.character}/cutout.png`)]);
 }
 
 // 🎙 Channel intro… — the campaign's fixed opening for every longform episode:
@@ -7348,7 +7348,7 @@ async function pubLfLayoutModal() {
     LFL.content = { card: { n: it.n ?? 1, name: it.name || 'Card heading', blurb: it.blurb || 'The key point, one line', pay: it.pay, score: it.score, tier: it.tier },
       caption: it.ask ? 'Q: ' + it.ask : (((it.text || '').match(/^[^.!?]+[.!?]?/) || [''])[0] || 'Captions appear here as the narrator speaks.') };
     document.getElementById('lflMsg').textContent = lay.inEffect === 'episode' ? 'Showing this episode\'s saved layout.' : lay.inEffect === 'campaign' ? 'Showing the campaign default layout.' : 'Showing the video\'s design default.';
-    if (!r.presenter && r.layout === 'stage') document.querySelector('#lflTabs [data-b="presenter"]').style.display = 'none';
+    if (!r.presenter && ['stage', 'titles'].includes(r.layout)) document.querySelector('#lflTabs [data-b="presenter"]').style.display = 'none';
     lflSelect('card');
   } catch (e) { document.getElementById('lflMsg').textContent = 'Could not load: ' + e.message; }
 }

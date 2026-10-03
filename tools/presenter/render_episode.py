@@ -453,7 +453,10 @@ def main(ep_path, out, work):
     pl = P.c["place"]; chx = W - pl["figureRightEdge"] - pl["right"]
     fmt = ep.get("format", "ranked")
     cap_w = chx + pl.get("figureLeftEdge", 330) - 80 - 40   # captions run up to the presenter
-    STAGE_LAYOUT = ep.get("layout") == "stage"                  # "Text & Images": no presenter, big centred frame
+    # "stage" = Text & Images (no presenter, big centred frame); "titles" = Paragraphs with titles: no presenter, each
+    # section's title stays on screen for the whole section while its paragraph plays as captions below it
+    TITLES_LAYOUT = ep.get("layout") == "titles"
+    STAGE_LAYOUT = ep.get("layout") in ("stage", "titles")
     CAP_Y = 840                                                  # baseline row of the last caption line (was 930 — too low)
     BX = (W - 760) // 2 if STAGE_LAYOUT else 80                  # where cards / titles / pills rest
     if STAGE_LAYOUT: cap_w = 1560
@@ -493,7 +496,7 @@ def main(ep_path, out, work):
     if "w" in capb: cap_w = int(float(capb["w"]) * W / 100)
     CAPX = int(float(capb["x"]) * W / 100) if "x" in capb else None
     # captions hang from the TOP of their box (operator 2026-10-01): line 1 at the top, line 2 below it
-    CAP_TOP = int(float(capb["y"]) * H / 100) + 8 if "y" in capb else CAP_Y - 62 * 1
+    CAP_TOP = int(float(capb["y"]) * H / 100) + 8 if "y" in capb else (int(H * 0.56) if TITLES_LAYOUT else CAP_Y - 62 * 1)
     CAP_FILL = hexa(capb.get("color"), capb.get("opacity", 75), (10, 14, 12)) if capb.get("color") else (10, 14, 12, 190)
     if pb and "h" in pb:
         P.scale = max(0.2, float(pb["h"]) * H / 100 / P.base.height)
@@ -514,7 +517,7 @@ def main(ep_path, out, work):
     norm = lambda x: re.sub(r"[^a-z0-9 ]+", "", str(x).lower()).split()
     shots = []   # (start, end, PIL image sized 1.12x the stage)
     for t0, t1, seg in timeline:
-        imgs = [im for im in (seg.get("images") or []) if im.get("url")] if ((ep.get("treatment") or {}).get("pictures") or {}).get("show", True) is not False else []
+        imgs = [] if (ep.get("layout") == "titles" and not (ep.get("boxes") or {}).get("pictures")) else [im for im in (seg.get("images") or []) if im.get("url")] if ((ep.get("treatment") or {}).get("pictures") or {}).get("show", True) is not False else []
         if not imgs: continue
         seg_caps = [(s_, c) for s_, e_, c in caps if t0 - 0.05 <= s_ <= t1]
         starts = []
@@ -553,6 +556,29 @@ def main(ep_path, out, work):
         return out
     def clip_txt(t):
         t = str(t or ""); return (t[:CARD_MAX - 1].rstrip() + "…") if CARD_MAX and len(t) > CARD_MAX else t
+
+    # Paragraphs with titles: the section title, big and centred (title box if the layout has one), on a soft panel
+    F_SEC = font(dpath, 84); F_SEC2 = font(dpath, 66)
+    _sec_cache = {}
+    def section_title(text):
+        if text in _sec_cache: return _sec_cache[text]
+        tbx = BOXES.get("title") or {}
+        sw = int(float(tbx["w"]) * W / 100) if "w" in tbx else 1500
+        tmp = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
+        txt = tcase(text, (TR.get("title") or {}).get("case"))
+        lines = wrap(tmp, txt, F_SEC, sw - 120); f_, lh = F_SEC, 100
+        if len(lines) > 2: lines = wrap(tmp, txt, F_SEC2, sw - 120); f_, lh = F_SEC2, 80
+        lines = lines[:3]
+        h = 60 + lh * len(lines)
+        im = Image.new("RGBA", (sw, h), (0, 0, 0, 0)); dd = ImageDraw.Draw(im)
+        dd.rounded_rectangle([0, 0, sw - 1, h - 1], 28, fill=(TITLE_FILL or CARD_FILL))
+        y = 30
+        for ln in lines:
+            dd.text(((sw - int(dd.textlength(ln, font=f_))) // 2, y), ln, font=f_, fill=INK); y += lh
+        sx = int(float(tbx["x"]) * W / 100) if "x" in tbx else (W - sw) // 2
+        sy = int(float(tbx["y"]) * H / 100) if "y" in tbx else max(40, int(H * 0.50) - h - 40)
+        _sec_cache[text] = (im, sx, sy)
+        return _sec_cache[text]
 
     def title_card(text):
         lay = Image.new("RGBA", (TNW, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
@@ -623,6 +649,13 @@ def main(ep_path, out, work):
             k_in, k_out = ease((t - t0) / 0.45), ease((t - t1) / 0.4)
             x = int(-NW * CS - 40 + (CX + NW * CS + 40) * k_in - (W + 100) * k_out)
             xt = int(-TNW * TCS - 40 + (TX + TNW * TCS + 40) * k_in - (W + 100) * k_out)   # title box
+            if TITLES_LAYOUT and kind in ("item", "point", "hook") and (seg.get("name") or (kind == "hook" and ep.get("title"))):
+                im_, sx_, sy_ = section_title(seg.get("name") or ep.get("title"))
+                a_ = min(ease((t - t0) / 0.5), 1 - ease((t - t1) / 0.4))   # fades in, stays the whole section, fades out
+                if a_ > 0:
+                    if a_ < 1: im_ = im_.copy(); im_.putalpha(im_.split()[-1].point(lambda v: int(v * a_)))
+                    fr.alpha_composite(im_, (sx_, sy_))
+                continue
             if kind in ("item", "point"):
                 if shot_at(t) is None and SHOW("card"):
                     fr.alpha_composite(item_card(seg, k_in, t0, t1, t), (x, CY))

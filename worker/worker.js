@@ -1507,7 +1507,7 @@ async function lfBuildEpisode(env, assetId) {
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
     ...(await (async () => { if (!/^p-/.test(r.character || "")) return {}; const p = (await lfPresenterList(env)).find(x => x.id === r.character); return p ? { presenter: p } : {}; })()),
-    layout: r.layout === "stage" ? "stage" : "presenter",
+    layout: ["stage", "titles"].includes(r.layout) ? r.layout : "presenter",
     voice: (() => { const id = r.voice || LF_DEFAULT_VOICE; const v = LF_VOICES.find(x => x.id === id);
       const rate = (v && v.legacyRates && v.legacyRates.includes(r.rate)) ? v.rate : (r.rate || (v && v.rate) || LF_DEFAULT_RATE);
       return { engine: (v && v.engine) || "edge", id, rate, pitch: r.pitch || (v && v.pitch) || "+0Hz", ...(v && v.pauseScale && rate === v.rate ? { pauseScale: v.pauseScale } : {}), ...(v && v.tempo && rate === v.rate ? { tempo: v.tempo } : {}), ...(v && v.paraScale && rate === v.rate ? { paraScale: v.paraScale } : {}) }; })(),
@@ -15479,7 +15479,7 @@ Give a YouTube title in that format. Call submit_questions.`;
           if (!String(question || "").trim()) question = String(body.topic || pg.properties?.["Core Idea"]?.rich_text?.map(t => t.plain_text).join("") || tName || "this episode").trim();
         }
         const format = body.asIs ? "explainer" : (LF_FORMATS[body.format] ? body.format : "ranked");
-        const layout = body.layout === "stage" ? "stage" : "presenter";
+        const layout = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
         const items = format === "interview" ? interview.length : Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 15);
@@ -15619,7 +15619,7 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           spec.render = spec.render || {};
           if (body.character) spec.render.character = String(body.character).replace(/[^a-z0-9-]/g, "").slice(0, 60);
           if (body.voice) spec.render.voice = String(body.voice).replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
-          if (body.layout) spec.render.layout = body.layout === "stage" ? "stage" : "presenter";
+          if (body.layout) spec.render.layout = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
           if (body.intro !== undefined) { const v = String(body.intro || "").slice(0, 60); if (v) spec.render.intro = v; else delete spec.render.intro; }
           if (body.rate !== undefined) spec.render.rate = /^[+-]\d{1,2}%$/.test(body.rate) ? body.rate : "-4%";
           await lfSaveSpec(aid, spec);
@@ -16331,7 +16331,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         ispec += approvedPlateBlock(brief);
         const charStyle = await lfCharStyle(env, spec?.render?.character);
         const topic = spec?.question || lfReadRich(page.properties["Platform Title"]);
-        const stageLayout = spec?.render?.layout === "stage";
+        const stageLayout = ["stage", "titles"].includes(spec?.render?.layout);
         const bgCid = (page.properties["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
         const direction = String(body.direction || "").trim().slice(0, 600);
         if (bgCid && typeof body.direction === "string") await env.TRADES.put("lfbg:dir:" + bgCid, direction).catch(() => {});
