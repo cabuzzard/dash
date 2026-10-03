@@ -7121,7 +7121,7 @@ function gfLoad(fams) {
       l.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+') + ':wght@600;700&display=swap';
       document.head.appendChild(l);
       GF_LOADED[f] = new Promise(res => { l.onload = res; l.onerror = res; setTimeout(res, 6000); })
-        .then(() => Promise.all([document.fonts.load(`700 40px "${f}"`), document.fonts.load(`600 40px "${f}"`)])).catch(() => {});
+        .then(() => Promise.all(['700', '600'].map(wt => document.fonts.load(`${wt} 40px "${f}"`, 'Control & Surrender — Aa Bb 0123 “’…')))).catch(() => {});   // sample text → the Latin subset loads
     }
     return GF_LOADED[f];
   }));
