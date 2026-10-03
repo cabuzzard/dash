@@ -1416,7 +1416,7 @@ function lfCleanBoxes(b) {
   for (const k of ["card", "caption", "presenter", "title", "ask", "pictures"]) {
     const x = b[k]; if (!x || typeof x !== "object") continue;
     const o = {};
-    for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300], ["strokeW", 0, 16], ["shadowBlur", 0, 60], ["shadowDist", 0, 40]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
+    for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300], ["strokeW", 0, 16], ["shadowBlur", 0, 60], ["shadowDist", 0, 40], ["tracking", -100, 800]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
     for (const cf of ["color", "textColor", "strokeColor", "shadowColor"]) if (/^#[0-9a-f]{6}$/i.test(String(x[cf] || ""))) o[cf] = String(x[cf]).toLowerCase();
     if (Object.keys(o).length) out[k] = o;
   }
@@ -1481,6 +1481,10 @@ async function gfCatalog(env) {
   if (families.length > 500) await env.TRADES.put("gfonts:catalog", JSON.stringify({ at: Date.now(), families }));
   return families;
 }
+// 🔤 Uploaded (non-Google) fonts: KV lflib:customfonts = { family: { url, file, licence, source, at } }, files in R2 fonts/.
+// The renderer downloads `url` instead of asking Google; the modal registers it as a FontFace.
+async function lfCustomFonts(env) { try { return (await env.TRADES.get("lflib:customfonts", "json")) || {}; } catch (e) { return {}; } }
+function lfCustomFind(cf, name) { const n = String(name || "").toLowerCase().replace(/[^a-z0-9]/g, ""); return Object.keys(cf).find(k => k.toLowerCase().replace(/[^a-z0-9]/g, "") === n) || null; }
 function gfResolve(cat, name) {
   const norm = v => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
   const n = norm(name); if (!n) return null;
@@ -1521,8 +1525,12 @@ async function lfBuildEpisode(env, assetId) {
   const campaignFonts = { ...fonts };   // the campaign/hub fonts, before this episode's own typeface choice
   if (r.fonts && r.fonts.display) fonts = { display: String(r.fonts.display), body: String(r.fonts.body || fonts.body) };
   const treatment = lfCleanTreatment(r.treatment);
+  const fontUrls = {};
+  { const cf = await lfCustomFonts(env);
+    for (const fam of [fonts.display, fonts.body, campaignFonts.display, campaignFonts.body]) { const k = lfCustomFind(cf, fam); if (k) fontUrls[fam] = cf[k].url; } }
   return {
     ...(treatment ? { treatment } : {}),
+    ...(Object.keys(fontUrls).length ? { fontUrls } : {}),
     ...(r.boxesStrict && boxes ? { boxesStrict: true } : {}),
     title: spec.cardTitle || spec.title || lfReadRich(pr["Platform Title"]) || "",   // on-screen title card (as-is: the title's own name)
     format: spec.format || "ranked",
@@ -16118,14 +16126,17 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         if (op === "add") {
           const added = [], fontNotes = [];
           let cat = null; if (kind === "fonts") { try { cat = await gfCatalog(env); } catch (e) { console.error("gfCatalog", e.message); } }
+          const cfonts = kind === "fonts" ? await lfCustomFonts(env) : {};
           for (const it of (Array.isArray(body.items) ? body.items : [body.items]).slice(0, 30)) {
             if (!it || typeof it !== "object") continue;
             const name = String(it.name || "").trim().slice(0, 60);
             if (kind === "fonts") {
               let display = F(it.display), bodyF = F(it.body);
               if (!display) continue;
-              if (cat) {   // fit every suggestion to a real Google font — fix spelling, refuse what Google doesn't have
-                const d = gfResolve(cat, display), b = bodyF ? gfResolve(cat, bodyF) : null;
+              const cD = lfCustomFind(cfonts, display), cB = bodyF ? lfCustomFind(cfonts, bodyF) : null;   // uploaded fonts count as real
+              if (cD) display = cD; if (cB) bodyF = cB;
+              if (cat && !(cD && (cB || !bodyF))) {   // fit every suggestion to a real Google font — fix spelling, refuse what Google doesn't have
+                const gD = cD ? { f: cD, w: [700] } : gfResolve(cat, display), b = cB ? { f: cB } : bodyF ? gfResolve(cat, bodyF) : null, d = gD;
                 if (!d) { fontNotes.push(`✕ "${display}" isn't on Google Fonts — skipped ${name || "that pairing"}`); continue; }
                 if (d.f !== display) fontNotes.push(`"${display}" → ${d.f}`);
                 if (bodyF && !b) fontNotes.push(`✕ body font "${bodyF}" isn't on Google Fonts — using Inter`);
@@ -16146,9 +16157,31 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           if (!added.length) return json({ error: kind === "fonts" ? "No typefaces found in that reply — it needs {\"name\", \"display\", \"body\"} items" : "No layouts found in that reply — it needs {\"name\", \"boxes\": {card, caption, presenter}} items" }, 400);
           lib = added.concat(lib).slice(0, 200);
           await env.TRADES.put(key, JSON.stringify(lib));
-          return json({ ok: true, added: added.length, items: lib, notes: fontNotes });
+          return json({ ok: true, added: added.length, items: lib, notes: fontNotes, customFonts: cfonts });
         }
         if (op === "delete") { lib = lib.filter(x => x.id !== body.id); await env.TRADES.put(key, JSON.stringify(lib)); return json({ ok: true, items: lib }); }
+        // uploadFont {family, fileData (base64 .ttf/.otf), ext, licence?, source?, pairWith?} — a font that isn't on Google
+        // Fonts (e.g. DaFont). Stored in R2 fonts/, registered by family name; pairWith adds a typeface pairing too.
+        if (op === "uploadFont") {
+          const family = F(body.family); if (!family) return json({ error: "Font name needed" }, 400);
+          const ext = /^otf$/i.test(body.ext || "") ? "otf" : "ttf";
+          let bytes; try { bytes = Uint8Array.from(atob(String(body.fileData || "")), c => c.charCodeAt(0)); } catch (e) { return json({ error: "Couldn't read the font file" }, 400); }
+          const sig = String.fromCharCode(...bytes.slice(0, 4));
+          if (bytes.length < 1000 || bytes.length > 15e6 || !["\x00\x01\x00\x00", "OTTO", "true"].includes(sig)) return json({ error: "That isn't a .ttf / .otf font file" }, 400);
+          if (!env.MEDIA) return json({ error: "Media storage isn't connected" }, 500);
+          const file = "fonts/" + family.replace(/\s+/g, "-") + "-" + Date.now().toString(36) + "." + ext;
+          await env.MEDIA.put(file, bytes, { httpMetadata: { contentType: ext === "otf" ? "font/otf" : "font/ttf", cacheControl: "public, max-age=31536000, immutable" } });
+          const cf = await lfCustomFonts(env);
+          const old = lfCustomFind(cf, family); if (old) delete cf[old];
+          cf[family] = { url: env.MEDIA_PUBLIC_BASE.replace(/\/$/, "") + "/" + file, file, licence: String(body.licence || "").slice(0, 400), source: String(body.source || "").slice(0, 300), at: Date.now() };
+          await env.TRADES.put("lflib:customfonts", JSON.stringify(cf));
+          if (body.pairWith) {
+            const bodyF = F(body.pairWith);
+            lib = [{ id: "f-" + Date.now().toString(36) + "u", name: String(body.name || "").trim().slice(0, 60) || `${family} + ${bodyF}`, display: family, body: bodyF, note: String(body.note || "").slice(0, 300), at: Date.now() }].concat(lib.filter(x => !(x.display === family && x.body === bodyF))).slice(0, 200);
+            await env.TRADES.put(key, JSON.stringify(lib));
+          }
+          return json({ ok: true, family, url: cf[family].url, items: lib, customFonts: cf });
+        }
         // setAsk {text} — the operator's own version of the editable part of the ChatGPT prompt (the request + how to
         // structure the reply); "" = back to the built-in default. Returned as `ask` on every list call.
         if (op === "setAsk") { const t = String(body.text || "").slice(0, 20000); if (t.trim()) await env.TRADES.put("lflib:ask:" + kind, t); else await env.TRADES.delete("lflib:ask:" + kind); return json({ ok: true, ask: t.trim() ? t : "" }); }
@@ -16156,7 +16189,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         if (op === "parse") {
           const text = String(body.text || "").slice(0, 40000);
           if (!text.trim()) return json({ error: "Nothing pasted" }, 400);
-          const boxProps = { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" }, s: { type: "number" }, color: { type: "string" }, opacity: { type: "number" }, maxChars: { type: "number" } } };
+          const boxProps = { type: "object", properties: { x: { type: "number" }, y: { type: "number" }, w: { type: "number" }, h: { type: "number" }, s: { type: "number" }, color: { type: "string" }, opacity: { type: "number" }, maxChars: { type: "number" }, tracking: { type: "number", description: "letter spacing, 1/1000 em (Canva units)" } } };
           const itemSchema = kind === "fonts"
             ? { type: "object", required: ["name", "display", "body"], properties: { name: { type: "string" }, display: { type: "string", description: "exact Google Fonts family" }, body: { type: "string" }, why: { type: "string" } } }
             : { type: "object", required: ["name", "boxes"], properties: { name: { type: "string" }, why: { type: "string" },
@@ -16196,7 +16229,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           current = (kind === "fonts" ? spec.render.fontSet : spec.render.layoutId) || (kind === "layouts" && spec.render.boxes ? "custom" : "default");
         }
         let ask = ""; try { ask = (await env.TRADES.get("lflib:ask:" + kind)) || ""; } catch (e) {}
-        return json({ ok: true, items: lib, current, ask });
+        return json({ ok: true, items: lib, current, ask, ...(kind === "fonts" ? { customFonts: await lfCustomFonts(env) } : {}) });
       }
       if (body.action === "longformLayout") {
         const aid = String(body.assetId || "").replace(/-/g, "");

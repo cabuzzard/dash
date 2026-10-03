@@ -844,6 +844,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('fonts', this)">💬 Copy ChatGPT prompt</button>
                 <button class="btn" type="button" style="font-size:10px;" title="Edit what the prompt asks ChatGPT for and how it should structure its reply" onclick="pubLibEditAsk('fonts')">✎ Edit prompt</button>
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('fonts')">📥 Paste reply</button>
+                <button class="btn" type="button" style="font-size:10px;" title="Add a font that isn't on Google Fonts (.ttf / .otf, e.g. from DaFont) — check its licence allows commercial use" onclick="document.getElementById('pubLibFontFile').click()">⬆ Upload font</button>
+                <input type="file" id="pubLibFontFile" accept=".ttf,.otf" style="display:none" onchange="pubLibUploadFont(this)">
                 <button class="btn" type="button" style="font-size:10px;" title="Remove the selected typeface from the list" onclick="pubLibDelete('fonts')">🗑</button></div></div>
             <div style="flex:1;min-width:240px;">📐 Layout preset
               <select id="pubLibLayouts" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLibLayoutPreview();pubLibUse('layouts')"></select>
@@ -6495,6 +6497,7 @@ async function pubLibLoad() {
   try {
     const [f, l] = await Promise.all(['fonts', 'layouts'].map(kind => w('longformLibrary', { kind, assetId: PUB_LF.assetId })));
     PUB_LIB.fonts = f.items || []; PUB_LIB.cur.fonts = f.current || 'default';
+    for (const [k, v] of Object.entries(f.customFonts || {})) CUSTOM_FONTS[k] = v;
     PUB_LIB.ask = { fonts: f.ask || '', layouts: l.ask || '' };
     PUB_LIB.layouts = l.items || []; PUB_LIB.cur.layouts = l.current || 'default';
   } catch (e) {}
@@ -6852,6 +6855,25 @@ function pubLibExtract(raw) {
   const prose = raw.replace(/```[\s\S]*?```/g, '').trim();
   return { items, prose };
 }
+// ⬆ Upload font: a .ttf/.otf that isn't on Google Fonts → R2 fonts/ + the uploaded-font registry, and a pairing with it as
+// the heading font (captions/body in the font you name, Barlow Semi Condensed by default).
+async function pubLibUploadFont(inp) {
+  const file = inp.files && inp.files[0]; inp.value = '';
+  if (!file) return;
+  const guess = file.name.replace(/\.(ttf|otf)$/i, '').replace(/[-_]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  const family = prompt('Font name (how it will appear in the list):', guess); if (!family) return;
+  const pairWith = prompt('Captions / body font to pair it with (a Google font):', 'Barlow Semi Condensed'); if (pairWith === null) return;
+  const buf = new Uint8Array(await file.arrayBuffer()); let bin = '';
+  for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+  try {
+    const r = await w('longformLibrary', { kind: 'fonts', op: 'uploadFont', family, pairWith: pairWith.trim() || 'Inter', ext: /\.otf$/i.test(file.name) ? 'otf' : 'ttf', fileData: btoa(bin) });
+    if (r.error) throw new Error(r.error);
+    for (const [k, v] of Object.entries(r.customFonts || {})) CUSTOM_FONTS[k] = v;
+    delete GF_LOADED[r.family];
+    PUB_LIB.fonts = r.items || PUB_LIB.fonts; pubLibDraw();
+    alert('✓ Uploaded ' + r.family + ' — it is at the top of the Typeface list.');
+  } catch (e) { alert('Upload failed: ' + e.message); }
+}
 async function pubLibAdd(btn) {
   if (document.getElementById('pubLibPasteBox').dataset.kind === 'script') return pubFitPaste(btn);
   const box = document.getElementById('pubLibPasteBox'), kind = box.dataset.kind, msg = document.getElementById('pubLibMsg');
@@ -7120,22 +7142,30 @@ function lfHexA(hex, op) { const h = lfsHex(hex, '#121a16'); return `rgba(${pars
 function lfText(ctx, text, x, y, st, fill) {
   st = st || {}; ctx.save();
   if (st.shadowColor) { ctx.shadowColor = st.shadowColor; ctx.shadowBlur = (st.shadowBlur || 0) * 2; ctx.shadowOffsetX = ctx.shadowOffsetY = st.shadowDist || 0; }
-  if (st.strokeW) { ctx.lineJoin = 'round'; ctx.lineWidth = st.strokeW * 2; ctx.strokeStyle = st.strokeColor || '#000'; ctx.strokeText(text, x, y); ctx.shadowColor = 'transparent'; }
-  ctx.fillStyle = st.textColor || fill; ctx.fillText(text, x, y); ctx.restore();
+  // letter spacing (1/1000 em, like Canva): each glyph at its kerned position + i × spacing — same as the renderer
+  const trk = (+st.tracking || 0) / 1000 * (parseFloat((ctx.font.match(/(\d+(?:\.\d+)?)px/) || [])[1]) || 40);
+  const each = (fn) => { if (!trk) return fn(text, x, y); [...text].forEach((ch, i) => { if (ch !== ' ') fn(ch, x + ctx.measureText(text.slice(0, i)).width + i * trk, y); }); };
+  if (st.strokeW) { ctx.lineJoin = 'round'; ctx.lineWidth = st.strokeW * 2; ctx.strokeStyle = st.strokeColor || '#000'; each((t, a, b) => ctx.strokeText(t, a, b)); ctx.shadowColor = 'transparent'; }
+  ctx.fillStyle = st.textColor || fill; each((t, a, b) => ctx.fillText(t, a, b)); ctx.restore();
 }
 // Google Fonts in the modal: load any family on demand (600 + 700, the weights the renderer uses) and resolve
 // once the browser can draw it — so canvas previews never fall back to a system font.
 const GF_LOADED = {};
+let CUSTOM_FONTS = {};   // uploaded (non-Google) fonts {family: {url}} — from longformLibrary / the episode's fontUrls
 function gfLoad(fams) {
   // Deterministic: fetch Google's CSS ourselves, register each @font-face as a FontFace and wait for its file.
   // (A <link> stylesheet registers its faces at an unpredictable moment, so previews sometimes drew a fallback.)
   return Promise.all([...new Set((fams || []).filter(Boolean))].map(f => GF_LOADED[f] || (GF_LOADED[f] = (async () => {
+    if (CUSTOM_FONTS[f]) {   // uploaded font file: one face covering every weight (no faux bold)
+      const face = new FontFace(f, `url(${CUSTOM_FONTS[f].url})`, { weight: '100 900' });
+      document.fonts.add(face); await face.load().catch(() => {}); return;
+    }
     const base = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(f).replace(/%20/g, '+');
     let css = '';
     for (const u of [base + ':wght@600;700&display=swap', base + '&display=swap']) {   // single-weight families reject wght
       try { const r = await fetch(u); if (r.ok) { css = await r.text(); break; } } catch (e) {}
     }
-    if (!css) return;
+    if (!css) { delete GF_LOADED[f]; return; }   // maybe an uploaded font we don't know about yet — retry next time
     const loads = [];
     for (const m of css.matchAll(/@font-face\s*{([^}]*)}/g)) {
       const blk = m[1], g = re => (blk.match(re) || [])[1];
@@ -7213,6 +7243,7 @@ function lfFrame(ctx, k, D, B, c) {
   return rects;
 }
 async function lfsLoadAssets(r) {
+  for (const [k, u] of Object.entries(r.fontUrls || {})) CUSTOM_FONTS[k] = { url: u };
   try { await gfLoad([r.fonts?.display, r.fonts?.body]); } catch (e) {}
   const load = src => new Promise(res => { if (!src) return res(null); const im = new Image(); im.onload = () => res(im); im.onerror = () => res(null); im.src = src; });
   const lib = /^p-/.test(r.character || '') ? (PRES_LIB || []).find(x => x.id === r.character) : null;
@@ -7452,6 +7483,7 @@ async function pubLfLayoutModal() {
       <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="lflShadowOn" onchange="lflInput()"> Shadow <input type="color" id="lflShadowColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
       <label style="display:flex;align-items:center;gap:6px;">Diffusion <input type="range" id="lflShadowBlur" min="0" max="40" step="1" oninput="lflInput()" style="width:80px;"><span id="lflShadowBlurVal" style="font-family:monospace;"></span></label>
       <label style="display:flex;align-items:center;gap:6px;">Distance <input type="number" id="lflShadowDist" min="0" max="40" step="1" class="finput" oninput="lflInput()" style="width:44px;">px</label>
+      <label style="display:flex;align-items:center;gap:6px;" title="Letter spacing in thousandths of the font size (Canva's unit): 0 = the font's own spacing, 100 = wide, negative = tighter">Spacing <input type="number" id="lflTracking" min="-100" max="800" step="10" class="finput" oninput="lflInput()" style="width:54px;"></label>
     </div>
     <label style="display:flex;align-items:center;gap:6px;justify-content:center;font-size:11.5px;margin-top:8px;"><input type="checkbox" id="lflCampaign"> Use as the default layout for every episode in this campaign</label>
     <div id="lflMsg" style="font-size:11.5px;min-height:14px;text-align:center;color:var(--ink3);margin-top:4px;">Loading…</div>
@@ -7506,7 +7538,7 @@ function lflSync() {
   if (x.opacity != null) set('lflOpacity', x.opacity);
   set('lflTextColor', x.textColor || '#f6eede'); set('lflStrokeW', x.strokeW || 0); set('lflStrokeColor', x.strokeColor || '#000000');
   document.getElementById('lflShadowOn').checked = !!x.shadowColor; set('lflShadowColor', x.shadowColor || '#000000');
-  set('lflShadowBlur', x.shadowBlur || 0); document.getElementById('lflShadowBlurVal').textContent = x.shadowBlur || 0; set('lflShadowDist', x.shadowDist || 0);
+  set('lflShadowBlur', x.shadowBlur || 0); document.getElementById('lflShadowBlurVal').textContent = x.shadowBlur || 0; set('lflShadowDist', x.shadowDist || 0); set('lflTracking', x.tracking || 0);
 }
 function lflInput() {
   const x = LFL.B[LFL.sel], v = id => parseFloat(document.getElementById(id).value);
@@ -7523,6 +7555,7 @@ function lflInput() {
     x.strokeW = Math.max(0, Math.min(16, parseInt(document.getElementById('lflStrokeW').value) || 0)); x.strokeColor = document.getElementById('lflStrokeColor').value;
     if (document.getElementById('lflShadowOn').checked) { x.shadowColor = document.getElementById('lflShadowColor').value; x.shadowBlur = +document.getElementById('lflShadowBlur').value || 0; x.shadowDist = Math.max(0, parseInt(document.getElementById('lflShadowDist').value) || 0); }
     else { delete x.shadowColor; delete x.shadowBlur; delete x.shadowDist; }
+    const trk = Math.max(-100, Math.min(800, parseInt(document.getElementById('lflTracking').value) || 0)); if (trk) x.tracking = trk; else delete x.tracking;
     document.getElementById('lflShadowBlurVal').textContent = document.getElementById('lflShadowBlur').value;
   }
   lflDraw(); lflSync();

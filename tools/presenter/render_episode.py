@@ -57,6 +57,18 @@ def google_ttf(family, weight, work):
     except Exception as e:
         print("font fetch failed:", family, e); return None
 
+# uploaded (non-Google) fonts: the episode carries fontUrls {family: url}; download the file as-is
+def font_file(family, weight, work, urls):
+    u = (urls or {}).get(family or "")
+    if u:
+        path = os.path.join(work, "custom-" + re.sub(r"[^A-Za-z0-9.]", "", u.rsplit("/", 1)[-1]))
+        try:
+            if not os.path.exists(path): open(path, "wb").write(fetch(u))
+            return path
+        except Exception as e:
+            print("custom font fetch failed:", family, e)
+    return google_ttf(family, weight, work)
+
 FALLBACKS = ["C:/Windows/Fonts/georgiab.ttf", "C:/Windows/Fonts/segoeuib.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
 def font(path, size):
     for p in [path] + FALLBACKS:
@@ -397,32 +409,47 @@ def prepare_presenter(pr, work):
 
 # Per-box text style from the 📐 Layout editor: textColor, strokeW + strokeColor, shadowColor + shadowBlur (diffusion)
 # + shadowDist. The shadow is drawn on a small local layer (not the whole frame) so captions stay fast.
+def track_px(fnt, st):
+    try: return float((st or {}).get("tracking") or 0) / 1000.0 * getattr(fnt, "size", 40)
+    except Exception: return 0.0
+
+def tlen(draw, text, fnt, st=None):   # width of a line including the box's letter spacing
+    return draw.textlength(text, font=fnt) + track_px(fnt, st) * max(0, len(text) - 1)
+
+def draw_str(draw, xy, text, fnt, track, **kw):   # letter-spaced text: each glyph at its kerned position + i * track
+    if not track: return draw.text(xy, text, font=fnt, **kw)
+    kw.pop("anchor", None)
+    for i, ch in enumerate(text):
+        if ch != " ": draw.text((xy[0] + draw.textlength(text[:i], font=fnt) + i * track, xy[1]), ch, font=fnt, **kw)
+
 def styled_text(img, xy, text, fnt, fill, st=None, anchor=None):
     st = st or {}
+    trk = track_px(fnt, st)
     fill = hexrgb(st.get("textColor") or "", fill[:3]) + ((fill[3],) if len(fill) > 3 else ()) if st.get("textColor") else fill
     sw = int(float(st.get("strokeW") or 0)); sfill = hexrgb(st.get("strokeColor") or "", (0, 0, 0))
     if st.get("shadowColor"):
         blur = float(st.get("shadowBlur") or 0); dist = float(st.get("shadowDist") or 0)
         d0 = ImageDraw.Draw(img)
         l, t, r, b = d0.textbbox(xy, text, font=fnt, anchor=anchor, stroke_width=sw)
+        r += max(0, trk) * max(0, len(text) - 1)
         pad = int(blur * 3 + dist + 4)
         lay = Image.new("RGBA", (int(r - l) + pad * 2, int(b - t) + pad * 2), (0, 0, 0, 0))
         sc = hexrgb(st["shadowColor"], (0, 0, 0))
-        ImageDraw.Draw(lay).text((xy[0] - l + pad + dist, xy[1] - t + pad + dist), text, font=fnt, fill=sc + (235,), anchor=anchor, stroke_width=sw, stroke_fill=sc)
+        draw_str(ImageDraw.Draw(lay), (xy[0] - l + pad + dist, xy[1] - t + pad + dist), text, fnt, trk, fill=sc + (235,), anchor=anchor, stroke_width=sw, stroke_fill=sc)
         if blur > 0: lay = lay.filter(ImageFilter.GaussianBlur(blur))
         dx, dy = int(l) - pad, int(t) - pad
         if dx < 0: lay = lay.crop((-dx, 0, lay.width, lay.height)); dx = 0
         if dy < 0: lay = lay.crop((0, -dy, lay.width, lay.height)); dy = 0
         img.alpha_composite(lay, (dx, dy))
-    ImageDraw.Draw(img).text(xy, text, font=fnt, fill=fill, anchor=anchor, stroke_width=sw, stroke_fill=sfill)
+    draw_str(ImageDraw.Draw(img), xy, text, fnt, trk, fill=fill, anchor=anchor, stroke_width=sw, stroke_fill=sfill)
 
 def ease(t): t = max(0.0, min(1.0, t)); return 1 - (1 - t) ** 3
 
-def wrap(draw, text, fnt, width):
+def wrap(draw, text, fnt, width, st=None):
     words, lines, cur = str(text).split(), [], ""
     for w_ in words:
         t = (cur + " " + w_).strip()
-        if draw.textlength(t, font=fnt) <= width: cur = t
+        if tlen(draw, t, fnt, st) <= width: cur = t
         else:
             if cur: lines.append(cur)
             cur = w_
@@ -438,7 +465,8 @@ def main(ep_path, out, work):
     ACC, INK, PANEL = hexrgb(pal.get("accent", ""), (232, 178, 52)), hexrgb(pal.get("ink", ""), (246, 238, 222)), hexrgb(pal.get("panel", ""), (18, 26, 22))
     SUB = tuple(int(c * .8) for c in INK)
     fonts = ep.get("fonts") or {}
-    dpath = google_ttf(fonts.get("display"), 700, work); bpath = google_ttf(fonts.get("body"), 600, work)
+    furls = ep.get("fontUrls") or {}
+    dpath = font_file(fonts.get("display"), 700, work, furls); bpath = font_file(fonts.get("body"), 600, work, furls)
     F_BIG, F_TTL, F_TXT, F_SM, F_CAP = font(dpath, 118), font(dpath, 56), font(bpath, 32), font(bpath, 29), font(bpath, 40)
     F_TTL2 = font(dpath, 44)
     F_NUM = font(dpath, 72)
@@ -589,15 +617,15 @@ def main(ep_path, out, work):
         sw = int(float(tbx["w"]) * W / 100) if "w" in tbx else 1500
         tmp = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
         txt = tcase(text, (TR.get("title") or {}).get("case"))
-        lines = wrap(tmp, txt, F_SEC, sw - 120); f_, lh = F_SEC, round(100 * _ts)
-        if len(lines) > 2: lines = wrap(tmp, txt, F_SEC2, sw - 120); f_, lh = F_SEC2, round(80 * _ts)
+        lines = wrap(tmp, txt, F_SEC, sw - 120, tbx); f_, lh = F_SEC, round(100 * _ts)
+        if len(lines) > 2: lines = wrap(tmp, txt, F_SEC2, sw - 120, tbx); f_, lh = F_SEC2, round(80 * _ts)
         lines = lines[:3]
         h = 60 + lh * len(lines) - (lh - round(f_.size * 1.12) if hasattr(f_, "size") else 0)
         im = Image.new("RGBA", (sw, h), (0, 0, 0, 0)); dd = ImageDraw.Draw(im)
         dd.rounded_rectangle([0, 0, sw - 1, h - 1], 28, fill=(TITLE_FILL or CARD_FILL))
         y = 30; left = (TR.get("title") or {}).get("align") == "left"
         for ln in lines:
-            styled_text(im, (60 if left else (sw - int(dd.textlength(ln, font=f_))) // 2, y), ln, f_, INK, BOXES.get("title")); y += lh
+            styled_text(im, (60 if left else (sw - int(tlen(dd, ln, f_, tbx))) // 2, y), ln, f_, INK, BOXES.get("title")); y += lh
         sx = int(float(tbx["x"]) * W / 100) if "x" in tbx else (W - sw) // 2
         sy = int(float(tbx["y"]) * H / 100) if "y" in tbx else max(40, int(H * 0.50) - h - 40)
         _sec_cache[text] = (im, sx, sy)
@@ -607,10 +635,11 @@ def main(ep_path, out, work):
         lay = Image.new("RGBA", (TNW, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
         y = 22
         text = tcase(text, TRT.get("case"))
-        lines = wrap(td, text, F_TTL, TNW - 80); f_, lh = F_TTL, 64
-        if len(lines) > 3: lines = wrap(td, text, F_TTL2, TNW - 80); f_, lh = F_TTL2, 52
+        tst = BOXES.get("title") or cb
+        lines = wrap(td, text, F_TTL, TNW - 80, tst); f_, lh = F_TTL, 64
+        if len(lines) > 3: lines = wrap(td, text, F_TTL2, TNW - 80, tst); f_, lh = F_TTL2, 52
         for ln in lines[:4]:
-            lx = (TNW - int(td.textlength(ln, font=f_))) // 2 if (STAGE_LAYOUT or TRT.get("align") == "center") and TRT.get("align") != "left" else 40
+            lx = (TNW - int(tlen(td, ln, f_, tst))) // 2 if (STAGE_LAYOUT or TRT.get("align") == "center") and TRT.get("align") != "left" else 40
             styled_text(lay, (lx, y), ln, f_, INK, BOXES.get("title") or cb); y += lh
         return card_panel(lay, y + 20, TNW, TCS, TITLE_FILL)
 
@@ -618,18 +647,18 @@ def main(ep_path, out, work):
         card = Image.new("RGBA", (NW, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
         y = 20
         cen = TRC.get("align") == "center"
-        lxf = lambda ln, f_, x0: (NW - int(cd.textlength(ln, font=f_))) // 2 if cen else x0
+        lxf = lambda ln, f_, x0: (NW - int(tlen(cd, ln, f_, cb))) // 2 if cen else x0
         if seg.get("n") is not None and TRC.get("number", True) is not False:
             nt = f"#{seg['n']}"; styled_text(card, (lxf(nt, F_NUM, 40), y), nt, F_NUM, ACC, {k: v for k, v in cb.items() if k != "textColor"}); y += 84
         hname = tcase(clip_txt(seg.get("name", "")), TRC.get("case"))
         hl = max(1, min(3, int(TRC.get("headingLines", 3) or 3)))
-        nm = wrap(cd, hname, F_TTL, NW - 80); fnm, lh = F_TTL, 66
-        if len(nm) > 2: nm = wrap(cd, hname, F_TTL2, NW - 80); fnm, lh = F_TTL2, 52
+        nm = wrap(cd, hname, F_TTL, NW - 80, cb); fnm, lh = F_TTL, 66
+        if len(nm) > 2: nm = wrap(cd, hname, F_TTL2, NW - 80, cb); fnm, lh = F_TTL2, 52
         for ln in nm[:hl]: styled_text(card, (lxf(ln, fnm, 40), y), ln, fnm, INK, cb); y += lh
         y += 8
         if TRC.get("blurb", True) is not False:
             bl_n = max(0, min(3, int(TRC.get("blurbLines", 3) if TRC.get("blurbLines") is not None else 3)))
-            for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80)[:bl_n]: styled_text(card, (lxf(ln, F_SM, 42), y), ln, F_SM, SUB, {**cb, "textColor": ""}); y += 38
+            for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80, cb)[:bl_n]: styled_text(card, (lxf(ln, F_SM, 42), y), ln, F_SM, SUB, {**cb, "textColor": ""}); y += 38
         # final height is fixed up front (room for the pay bar / score that animate in) so the card never grows mid-shot
         full_h = y + (104 if seg.get("pay") else 0) + (76 if (seg.get("score") is not None or seg.get("tier")) else 0) + 18
         p = (t - t0) / max(0.1, (t1 - t0))
@@ -713,23 +742,23 @@ def main(ep_path, out, work):
         cue = next(((s_, e_, c) for s_, e_, c in caps if s_ - 0.05 <= t <= e_ + 0.2), None)
         cur = tcase(cue[2], TRP.get("case")) if cue else ""
         if cur:
-            lines = wrap(d, cur, F_CAP, cap_w)
+            lines = wrap(d, cur, F_CAP, cap_w, capb)
             if len(lines) > CAP_LINES and CAP_LINES == 1:   # one line at a time, in step with the speech
                 frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
                 lines = [lines[min(len(lines) - 1, max(0, int(frac * len(lines))))]]
             if len(lines) > 2:   # balance the pages so the last one isn't a lone word
                 pages = (len(lines) + 1) // 2
-                full = d.textlength(cur, font=F_CAP)
+                full = tlen(d, cur, F_CAP, capb)
                 for f_ in (1.05, 1.12, 1.2, 1.3, 1.45, 1.6):   # widest even split that still fits the box
                     w_ = min(cap_w, max(200, int(full / (pages * 2) * f_)))
-                    bal = wrap(d, cur, F_CAP, w_)
+                    bal = wrap(d, cur, F_CAP, w_, capb)
                     if len(bal) <= pages * 2 and (len(bal) % 2 == 0 or len(bal[-1].split()) > 2): lines = bal; break
             if len(lines) > 2:   # long cue: show it two lines at a time, in step with the speech
                 chunks = [lines[k:k + 2] for k in range(0, len(lines), 2)]
                 frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
                 lines = chunks[min(len(chunks) - 1, max(0, int(frac * len(chunks))))]
             for li, ln in enumerate(lines):
-                tw = d.textlength(ln, font=F_CAP)
+                tw = tlen(d, ln, F_CAP, capb)
                 capc = (STAGE_LAYOUT or TRP.get("align") == "center") and TRP.get("align") != "left"
                 if CAPX is None: x = (W - int(tw)) // 2 if capc else 80
                 else: x = CAPX + (cap_w - int(tw)) // 2 if capc else CAPX
