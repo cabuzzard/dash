@@ -1416,8 +1416,8 @@ function lfCleanBoxes(b) {
   for (const k of ["card", "caption", "presenter", "title", "ask", "pictures"]) {
     const x = b[k]; if (!x || typeof x !== "object") continue;
     const o = {};
-    for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
-    if (/^#[0-9a-f]{6}$/i.test(String(x.color || ""))) o.color = String(x.color).toLowerCase();
+    for (const [f, lo, hi] of [["x", -20, 100], ["y", -20, 100], ["w", 5, 100], ["h", 3, 140], ["s", 40, 250], ["opacity", 0, 100], ["maxChars", 0, 300], ["strokeW", 0, 16], ["shadowBlur", 0, 60], ["shadowDist", 0, 40]]) { const v = num(x[f], lo, hi); if (v !== undefined) o[f] = v; }
+    for (const cf of ["color", "textColor", "strokeColor", "shadowColor"]) if (/^#[0-9a-f]{6}$/i.test(String(x[cf] || ""))) o[cf] = String(x[cf]).toLowerCase();
     if (Object.keys(o).length) out[k] = o;
   }
   return Object.keys(out).length ? out : null;

@@ -395,6 +395,27 @@ def prepare_presenter(pr, work):
     print(f"presenter: {cj['name']} {im.size} mouth {mx},{my} eyes {eyes}", flush=True)
     return cdir
 
+# Per-box text style from the 📐 Layout editor: textColor, strokeW + strokeColor, shadowColor + shadowBlur (diffusion)
+# + shadowDist. The shadow is drawn on a small local layer (not the whole frame) so captions stay fast.
+def styled_text(img, xy, text, fnt, fill, st=None, anchor=None):
+    st = st or {}
+    fill = hexrgb(st.get("textColor") or "", fill[:3]) + ((fill[3],) if len(fill) > 3 else ()) if st.get("textColor") else fill
+    sw = int(float(st.get("strokeW") or 0)); sfill = hexrgb(st.get("strokeColor") or "", (0, 0, 0))
+    if st.get("shadowColor"):
+        blur = float(st.get("shadowBlur") or 0); dist = float(st.get("shadowDist") or 0)
+        d0 = ImageDraw.Draw(img)
+        l, t, r, b = d0.textbbox(xy, text, font=fnt, anchor=anchor, stroke_width=sw)
+        pad = int(blur * 3 + dist + 4)
+        lay = Image.new("RGBA", (int(r - l) + pad * 2, int(b - t) + pad * 2), (0, 0, 0, 0))
+        sc = hexrgb(st["shadowColor"], (0, 0, 0))
+        ImageDraw.Draw(lay).text((xy[0] - l + pad + dist, xy[1] - t + pad + dist), text, font=fnt, fill=sc + (235,), anchor=anchor, stroke_width=sw, stroke_fill=sc)
+        if blur > 0: lay = lay.filter(ImageFilter.GaussianBlur(blur))
+        dx, dy = int(l) - pad, int(t) - pad
+        if dx < 0: lay = lay.crop((-dx, 0, lay.width, lay.height)); dx = 0
+        if dy < 0: lay = lay.crop((0, -dy, lay.width, lay.height)); dy = 0
+        img.alpha_composite(lay, (dx, dy))
+    ImageDraw.Draw(img).text(xy, text, font=fnt, fill=fill, anchor=anchor, stroke_width=sw, stroke_fill=sfill)
+
 def ease(t): t = max(0.0, min(1.0, t)); return 1 - (1 - t) ** 3
 
 def wrap(draw, text, fnt, width):
@@ -576,7 +597,7 @@ def main(ep_path, out, work):
         dd.rounded_rectangle([0, 0, sw - 1, h - 1], 28, fill=(TITLE_FILL or CARD_FILL))
         y = 30; left = (TR.get("title") or {}).get("align") == "left"
         for ln in lines:
-            dd.text((60 if left else (sw - int(dd.textlength(ln, font=f_))) // 2, y), ln, font=f_, fill=INK); y += lh
+            styled_text(im, (60 if left else (sw - int(dd.textlength(ln, font=f_))) // 2, y), ln, f_, INK, BOXES.get("title")); y += lh
         sx = int(float(tbx["x"]) * W / 100) if "x" in tbx else (W - sw) // 2
         sy = int(float(tbx["y"]) * H / 100) if "y" in tbx else max(40, int(H * 0.50) - h - 40)
         _sec_cache[text] = (im, sx, sy)
@@ -590,7 +611,7 @@ def main(ep_path, out, work):
         if len(lines) > 3: lines = wrap(td, text, F_TTL2, TNW - 80); f_, lh = F_TTL2, 52
         for ln in lines[:4]:
             lx = (TNW - int(td.textlength(ln, font=f_))) // 2 if (STAGE_LAYOUT or TRT.get("align") == "center") and TRT.get("align") != "left" else 40
-            td.text((lx, y), ln, font=f_, fill=INK); y += lh
+            styled_text(lay, (lx, y), ln, f_, INK, BOXES.get("title") or cb); y += lh
         return card_panel(lay, y + 20, TNW, TCS, TITLE_FILL)
 
     def item_card(seg, k, t0, t1, t):
@@ -599,16 +620,16 @@ def main(ep_path, out, work):
         cen = TRC.get("align") == "center"
         lxf = lambda ln, f_, x0: (NW - int(cd.textlength(ln, font=f_))) // 2 if cen else x0
         if seg.get("n") is not None and TRC.get("number", True) is not False:
-            nt = f"#{seg['n']}"; cd.text((lxf(nt, F_NUM, 40), y), nt, font=F_NUM, fill=ACC); y += 84
+            nt = f"#{seg['n']}"; styled_text(card, (lxf(nt, F_NUM, 40), y), nt, F_NUM, ACC, {k: v for k, v in cb.items() if k != "textColor"}); y += 84
         hname = tcase(clip_txt(seg.get("name", "")), TRC.get("case"))
         hl = max(1, min(3, int(TRC.get("headingLines", 3) or 3)))
         nm = wrap(cd, hname, F_TTL, NW - 80); fnm, lh = F_TTL, 66
         if len(nm) > 2: nm = wrap(cd, hname, F_TTL2, NW - 80); fnm, lh = F_TTL2, 52
-        for ln in nm[:hl]: cd.text((lxf(ln, fnm, 40), y), ln, font=fnm, fill=INK); y += lh
+        for ln in nm[:hl]: styled_text(card, (lxf(ln, fnm, 40), y), ln, fnm, INK, cb); y += lh
         y += 8
         if TRC.get("blurb", True) is not False:
             bl_n = max(0, min(3, int(TRC.get("blurbLines", 3) if TRC.get("blurbLines") is not None else 3)))
-            for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80)[:bl_n]: cd.text((lxf(ln, F_SM, 42), y), ln, font=F_SM, fill=SUB); y += 38
+            for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80)[:bl_n]: styled_text(card, (lxf(ln, F_SM, 42), y), ln, F_SM, SUB, {**cb, "textColor": ""}); y += 38
         # final height is fixed up front (room for the pay bar / score that animate in) so the card never grows mid-shot
         full_h = y + (104 if seg.get("pay") else 0) + (76 if (seg.get("score") is not None or seg.get("tier")) else 0) + 18
         p = (t - t0) / max(0.1, (t1 - t0))
@@ -714,7 +735,7 @@ def main(ep_path, out, work):
                 else: x = CAPX + (cap_w - int(tw)) // 2 if capc else CAPX
                 y = CAP_TOP + li * CLH
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + round(54 * CAPS)], 12, fill=CAP_FILL)
-                d.text((x, y), ln, font=F_CAP, fill=INK)
+                styled_text(fr, (x, y), ln, F_CAP, INK, capb)
         return fr.convert("RGB")
 
     n = int((len(a) / SR + 0.6) * FPS)
