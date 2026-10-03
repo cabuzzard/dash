@@ -482,7 +482,8 @@ def main(ep_path, out, work):
     # a layout PRESET is strict: only the boxes it lists are on screen (no card → no chapter cards, no title → no
     # title cards, no ask → no pills, no presenter → no character). Captions always show.
     STRICT = bool(ep.get("boxesStrict"))
-    SHOW = lambda k: (not STRICT) or (k in BOXES)
+    LAYOUT_BOXES = {"titles": {"title", "caption"}, "stage": {"card", "caption", "title", "ask", "pictures"}}.get(ep.get("layout"))
+    SHOW = lambda k: ((not STRICT) or (k in BOXES)) and (LAYOUT_BOXES is None or k in LAYOUT_BOXES)
     TCS = max(0.4, min(2.5, float(tb.get("s", cb.get("s", 100))) / 100))
     TX = int(float(tb["x"]) * W / 100) if "x" in tb else CX
     TY = int(float(tb["y"]) * H / 100) if "y" in tb else CY
@@ -558,7 +559,8 @@ def main(ep_path, out, work):
         t = str(t or ""); return (t[:CARD_MAX - 1].rstrip() + "…") if CARD_MAX and len(t) > CARD_MAX else t
 
     # Paragraphs with titles: the section title, big and centred (title box if the layout has one), on a soft panel
-    F_SEC = font(dpath, 84); F_SEC2 = font(dpath, 66)
+    _ts = max(0.4, min(2.5, float((BOXES.get("title") or {}).get("s", 100)) / 100))
+    F_SEC = font(dpath, round(84 * _ts)); F_SEC2 = font(dpath, round(66 * _ts))
     _sec_cache = {}
     def section_title(text):
         if text in _sec_cache: return _sec_cache[text]
@@ -566,15 +568,15 @@ def main(ep_path, out, work):
         sw = int(float(tbx["w"]) * W / 100) if "w" in tbx else 1500
         tmp = ImageDraw.Draw(Image.new("RGBA", (10, 10)))
         txt = tcase(text, (TR.get("title") or {}).get("case"))
-        lines = wrap(tmp, txt, F_SEC, sw - 120); f_, lh = F_SEC, 100
-        if len(lines) > 2: lines = wrap(tmp, txt, F_SEC2, sw - 120); f_, lh = F_SEC2, 80
+        lines = wrap(tmp, txt, F_SEC, sw - 120); f_, lh = F_SEC, round(100 * _ts)
+        if len(lines) > 2: lines = wrap(tmp, txt, F_SEC2, sw - 120); f_, lh = F_SEC2, round(80 * _ts)
         lines = lines[:3]
-        h = 60 + lh * len(lines)
+        h = 60 + lh * len(lines) - (lh - round(f_.size * 1.12) if hasattr(f_, "size") else 0)
         im = Image.new("RGBA", (sw, h), (0, 0, 0, 0)); dd = ImageDraw.Draw(im)
         dd.rounded_rectangle([0, 0, sw - 1, h - 1], 28, fill=(TITLE_FILL or CARD_FILL))
-        y = 30
+        y = 30; left = (TR.get("title") or {}).get("align") == "left"
         for ln in lines:
-            dd.text(((sw - int(dd.textlength(ln, font=f_))) // 2, y), ln, font=f_, fill=INK); y += lh
+            dd.text((60 if left else (sw - int(dd.textlength(ln, font=f_))) // 2, y), ln, font=f_, fill=INK); y += lh
         sx = int(float(tbx["x"]) * W / 100) if "x" in tbx else (W - sw) // 2
         sy = int(float(tbx["y"]) * H / 100) if "y" in tbx else max(40, int(H * 0.50) - h - 40)
         _sec_cache[text] = (im, sx, sy)

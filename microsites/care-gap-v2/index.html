@@ -818,7 +818,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="pubLongform" style="display:none;border:1px solid var(--border);border-radius:8px;padding:10px;font-size:11px;color:var(--ink2);">
           <div style="font-weight:700;margin-bottom:6px;">🎬 Longform episode <span id="pubLfInfo" style="font-weight:400;color:var(--ink3);"></span></div>
           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start;">
-            <div style="flex:1;min-width:180px;">Layout
+            <div style="flex:1;min-width:180px;">Format <span style="color:var(--ink3);">(which text boxes exist + how they play)</span>
               <select id="pubLfLayout" class="finput" style="width:100%;margin-top:4px;font-size:11px;"><option value="presenter">Avatar — presenter + image box</option><option value="titles">Paragraphs with titles — no presenter</option><option value="stage">Text &amp; images — big image frame, no avatar</option></select>
               <div id="pubLfCharsWrap" style="margin-top:6px;">Presenter
               <div id="pubLfChars" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;"></div></div></div>
@@ -859,7 +859,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <button class="btn" type="button" style="font-size:11px;" onclick="document.getElementById('pubLibAskBox').style.display='none'">Cancel</button></div>
           </div>
           <div style="margin-top:6px;padding:6px 8px;border:1px dashed var(--border2);border-radius:8px;font-size:11px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-            <b>📝 Fit script to layout</b><span style="color:var(--ink3);">— follows the <b>Layout</b> chosen at the top (<span id="pubFitFor">…</span>): ChatGPT reshapes the script to fit it</span>
+            <b>📝 Fit script to layout</b><span style="color:var(--ink3);">— follows the <b>Format</b> chosen at the top (<span id="pubFitFor">…</span>): ChatGPT reshapes the script to fit it</span>
             <button class="btn" type="button" style="font-size:10px;" onclick="pubFitCopy(this)">💬 Copy "fit script" prompt</button>
             <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('script')">📥 Paste fitted script</button>
             <button class="btn" type="button" style="font-size:10px;" title="Put back the script from before the last paste" onclick="pubFitUndo(this)">↶ Undo last fit</button>
@@ -7071,8 +7071,14 @@ async function pubLfScriptModal() {
   } catch (e) { document.getElementById('lfsBody').textContent = 'Could not load the script: ' + e.message; }
 }
 // Design defaults = the renderer's built-in layout, as % of 1920×1080 (render_episode.py).
+// The top Layout decides which boxes exist: Avatar = card/caption/presenter, Text & images = card/caption,
+// Paragraphs with titles = section title + caption. 📐 Layout… only positions/styles those.
 function lfDesignBoxes(D) {
   const pal = (D && D.palette) || {}, stage = D && ['stage', 'titles'].includes(D.layout);
+  if (D && D.layout === 'titles') return {
+    title: { x: 10.94, y: 26, w: 78.13, s: 100, color: lfsHex(pal.panel, '#121a16'), opacity: 89 },
+    caption: { x: 9.38, y: 56, w: 81.25, h: 12.2, s: 100, color: '#0a0e0c', opacity: 75 },
+  };
   return {
     card: { x: stage ? 30.21 : 4.17, y: 11.11, w: 39.58, s: 100, color: lfsHex(pal.panel, '#121a16'), opacity: 89, maxChars: 0 },
     caption: { x: stage ? 9.38 : 4.17, y: 71.3, w: stage ? 81.25 : 46.88, h: 12.2, s: 100, color: '#0a0e0c', opacity: 75 },
@@ -7087,6 +7093,7 @@ function lfBoxesFull(D, B) {
 function lfHexA(hex, op) { const h = lfsHex(hex, '#121a16'); return `rgba(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)},${Math.max(0, Math.min(100, +op || 0)) / 100})`; }
 // Draws one frame like the renderer: background, presenter, a card (hook title or item), an ask pill, a caption.
 // Returns the frame-pixel rects of the card / caption / presenter boxes (for the layout editor's handles).
+function lfCase(t, m) { t = String(t || ''); return m === 'upper' ? t.toUpperCase() : m === 'lower' ? t.toLowerCase() : m === 'title' ? t.replace(/\w\S*/g, w_ => w_[0].toUpperCase() + w_.slice(1).toLowerCase()) : t; }
 function lfFrame(ctx, k, D, B, c) {
   const W = 1920, H = 1080, pal = D.palette || {}, ACC = lfsHex(pal.accent, '#e8b234'), INK = lfsHex(pal.ink, '#f6eede'), PANEL = lfsHex(pal.panel, '#121a16');
   const DF = `"${D.fonts?.display || 'Georgia'}", Georgia, serif`, BF = `"${D.fonts?.body || 'Segoe UI'}", "Segoe UI", sans-serif`;
@@ -7100,23 +7107,34 @@ function lfFrame(ctx, k, D, B, c) {
   if (LFS.cut && B.presenter) { const pb = B.presenter, sc = pb.h * H / 100 / LFS.cut.height, px = pb.x * W / 100, py = pb.y * H / 100;
     ctx.drawImage(LFS.cut, px, py, LFS.cut.width * sc, LFS.cut.height * sc); rects.presenter = { x: px, y: py, w: LFS.cut.width * sc, h: LFS.cut.height * sc }; }
   // card: drawn at native metrics with width NW, then scaled by s — exactly how the renderer scales it
-  const cb = B.card, CS = cb.s / 100, CX = cb.x * W / 100, CY = cb.y * H / 100, NW = Math.max(420, cb.w * W / 100 / CS);
+  if (B.title && D.layout === 'titles') {   // Paragraphs with titles: the persistent section title
+    const tb = B.title, ts = (tb.s || 100) / 100, tw = tb.w * W / 100, tx = tb.x * W / 100, ty = tb.y * H / 100, T = (c.T || {}).title || {};
+    const txt = lfCase(c.section || c.title || 'Section title', T.case);
+    ctx.textBaseline = 'top'; let f = 84 * ts, lh = 100 * ts; ctx.font = `700 ${f}px ${DF}`; let ls = lfsWrap(ctx, txt, tw - 120);
+    if (ls.length > 2) { f = 66 * ts; lh = 80 * ts; ctx.font = `700 ${f}px ${DF}`; ls = lfsWrap(ctx, txt, tw - 120); }
+    ls = ls.slice(0, 3); const th = 60 + lh * ls.length - (lh - f * 1.12);
+    ctx.fillStyle = lfHexA(tb.color, tb.opacity); ctx.beginPath(); ctx.roundRect(tx, ty, tw, th, 28); ctx.fill();
+    ctx.fillStyle = INK; ls.forEach((l, i) => ctx.fillText(l, T.align === 'left' ? tx + 60 : tx + (tw - ctx.measureText(l).width) / 2, ty + 30 + i * lh));
+    rects.title = { x: tx, y: ty, w: tw, h: th };
+  }
+  const cb = B.card || { x: -200, y: -200, w: 20, s: 100 }, CS = cb.s / 100, CX = cb.x * W / 100, CY = cb.y * H / 100, NW = Math.max(420, cb.w * W / 100 / CS);
   const clip = t => { t = String(t || ''); return cb.maxChars && t.length > cb.maxChars ? t.slice(0, cb.maxChars - 1).trim() + '…' : t; };
   ctx.textBaseline = 'top';
   const card = draw => { ctx.save(); ctx.translate(CX, CY); ctx.scale(CS, CS);
     const h = draw(false); ctx.fillStyle = lfHexA(cb.color, cb.opacity); ctx.beginPath(); ctx.roundRect(0, 0, NW, h, 24); ctx.fill();
     ctx.lineWidth = 3; ctx.strokeStyle = ACC; ctx.stroke(); draw(true); ctx.restore(); rects.card = { x: CX, y: CY, w: NW * CS, h: h * CS }; };
-  if (c.title != null) card(paint => {
+  if (c.title != null && B.card) card(paint => {
     let f = 56, lh = 64; ctx.font = `700 ${f}px ${DF}`; let ls = lfsWrap(ctx, c.title, NW - 80);
     if (ls.length > 3) { f = 44; lh = 52; ctx.font = `700 ${f}px ${DF}`; ls = lfsWrap(ctx, c.title, NW - 80); }
     let y = 22; ls.slice(0, 4).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.fillText(l, stage ? (NW - ctx.measureText(l).width) / 2 : 40, y); } y += lh; });
     return y + 20; });
-  if (c.card) card(paint => {
+  if (c.card && B.card) card(paint => {
     let y = 20;
     if (c.card.n != null) { ctx.font = `700 72px ${DF}`; if (paint) { ctx.fillStyle = ACC; ctx.fillText('#' + c.card.n, 40, y); } y += 84; }
-    let f = 56, lh = 66; ctx.font = `700 ${f}px ${DF}`; let ls = lfsWrap(ctx, clip(c.card.name), NW - 80);
-    if (ls.length > 2) { f = 44; lh = 52; ctx.font = `700 ${f}px ${DF}`; ls = lfsWrap(ctx, clip(c.card.name), NW - 80); }
-    ls.slice(0, 3).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.fillText(l, 40, y); } y += lh; });
+    const TC = (c.T || {}).card || {}, cen = TC.align === 'center', nm = lfCase(clip(c.card.name), TC.case);
+    let f = 56, lh = 66; ctx.font = `700 ${f}px ${DF}`; let ls = lfsWrap(ctx, nm, NW - 80);
+    if (ls.length > 2) { f = 44; lh = 52; ctx.font = `700 ${f}px ${DF}`; ls = lfsWrap(ctx, nm, NW - 80); }
+    ls.slice(0, 3).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.fillText(l, cen ? (NW - ctx.measureText(l).width) / 2 : 40, y); } y += lh; });
     y += 8; ctx.font = `600 29px ${BF}`;
     lfsWrap(ctx, c.card.blurb, NW - 80).slice(0, 3).forEach(l => { if (paint) { ctx.fillStyle = INK; ctx.globalAlpha = .8; ctx.fillText(l, 42, y); ctx.globalAlpha = 1; } y += 38; });
     return y + (c.card.pay ? 104 : 0) + (c.card.score != null || c.card.tier ? 76 : 0) + 18; });
@@ -7127,8 +7145,9 @@ function lfFrame(ctx, k, D, B, c) {
   const capTop = capb.y * H / 100 + 8;   // captions hang from the top of their box
   rects.caption = { x: capX, y: capb.y * H / 100, w: capW, h: capb.h * H / 100 };
   if (c.caption) { ctx.font = `600 ${Math.round(40 * CAPS)}px ${BF}`;
-    const ls = lfsWrap(ctx, c.caption, capW).slice(0, 2);
-    ls.forEach((l, li) => { const tw = ctx.measureText(l).width, x = stage ? capX + (capW - tw) / 2 : capX, y = capTop + li * CLH;
+    const TP = (c.T || {}).caption || {}, capCen = (stage || TP.align === 'center') && TP.align !== 'left';
+    const ls = lfsWrap(ctx, lfCase(c.caption, TP.case), capW).slice(0, TP.lines === 1 ? 1 : 2);
+    ls.forEach((l, li) => { const tw = ctx.measureText(l).width, x = capCen ? capX + (capW - tw) / 2 : capX, y = capTop + li * CLH;
       ctx.fillStyle = lfHexA(capb.color, capb.opacity); ctx.beginPath(); ctx.roundRect(x - 20, y - 8, tw + 40, 62 * CAPS, 12); ctx.fill();
       ctx.fillStyle = INK; ctx.fillText(l, x, y); }); }
   ctx.restore();
@@ -7351,6 +7370,7 @@ async function pubLfLayoutModal() {
     <div class="mtitle">Video layout</div>
     <div class="mfield" style="font-size:12px;font-weight:400;color:var(--ink3);">One layout for every card in this render. Drag a box to move it, its corner handle to resize — or type exact numbers.</div>
     <div style="display:flex;gap:6px;justify-content:center;margin-bottom:6px;" id="lflTabs">
+      <button class="btn" type="button" data-b="title" onclick="lflSelect('title')">🔤 Section title</button>
       <button class="btn" type="button" data-b="card" onclick="lflSelect('card')">🟫 Cards</button>
       <button class="btn" type="button" data-b="caption" onclick="lflSelect('caption')">💬 Captions</button>
       <button class="btn" type="button" data-b="presenter" onclick="lflSelect('presenter')">🧍 Presenter</button>
@@ -7368,6 +7388,11 @@ async function pubLfLayoutModal() {
       <label style="display:flex;align-items:center;gap:6px;">Box color <input type="color" id="lflColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
       <label style="display:flex;align-items:center;gap:6px;">Opacity <input type="number" id="lflOpacity" min="0" max="100" step="5" class="finput" oninput="lflInput()" style="width:50px;">%</label>
     </div>
+    <div id="lflTypoRow" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:6px;">
+      <label style="display:flex;align-items:center;gap:6px;">Case <select id="lflCase" class="finput" onchange="lflInput()" style="width:auto;font-size:11px;"><option value="as-is">As written</option><option value="upper">UPPERCASE</option><option value="title">Title Case</option><option value="lower">lowercase</option></select></label>
+      <label style="display:flex;align-items:center;gap:6px;">Align <select id="lflAlign" class="finput" onchange="lflInput()" style="width:auto;font-size:11px;"><option value="">Layout default</option><option value="left">Left</option><option value="center">Centre</option></select></label>
+      <span style="color:var(--ink3);">Typeface: 🔤 Typeface row in the Publish window</span>
+    </div>
     <label style="display:flex;align-items:center;gap:6px;justify-content:center;font-size:11.5px;margin-top:8px;"><input type="checkbox" id="lflCampaign"> Use as the default layout for every episode in this campaign</label>
     <div id="lflMsg" style="font-size:11.5px;min-height:14px;text-align:center;color:var(--ink3);margin-top:4px;">Loading…</div>
     <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;">
@@ -7378,14 +7403,19 @@ async function pubLfLayoutModal() {
   document.body.appendChild(ov);
   try {
     const [r, lay] = await Promise.all([w('getLongformScript', { assetId: PUB_LF.assetId }), w('longformLayout', { assetId: PUB_LF.assetId, op: 'get' })]);
-    LFL.D = r; await lfsLoadAssets(r);
-    LFL.B = lfBoxesFull(r, lay.boxes || lay.campaignBoxes);
+    LFL.D = r; LFL.D.layout = lay.layout || r.layout; await lfsLoadAssets(r);
+    LFL.B = lfBoxesFull(LFL.D, lay.boxes || lay.campaignBoxes);
+    // the top Layout decides which boxes exist — only those get tabs
+    const has = LFL.D.layout === 'titles' ? ['title', 'caption'] : LFL.D.layout === 'stage' ? ['card', 'caption'] : ['card', 'caption', 'presenter'];
+    for (const k of Object.keys(LFL.B)) if (!has.includes(k)) delete LFL.B[k];
+    for (const k of has) if (!LFL.B[k]) LFL.B[k] = lfDesignBoxes(LFL.D)[k] || { x: 10, y: 20, w: 60, s: 100 };
+    document.querySelectorAll('#lflTabs button').forEach(b => b.style.display = has.includes(b.dataset.b) ? '' : 'none');
+    LFL.T = JSON.parse(JSON.stringify(lay.treatment || {}));
     const it = (r.segments || []).find(x => x.kind === 'item') || {};
-    LFL.content = { card: { n: it.n ?? 1, name: it.name || 'Card heading', blurb: it.blurb || 'The key point, one line', pay: it.pay, score: it.score, tier: it.tier },
+    LFL.content = { section: it.name || 'Section title', T: LFL.T, card: { n: it.n ?? 1, name: it.name || 'Card heading', blurb: it.blurb || 'The key point, one line', pay: it.pay, score: it.score, tier: it.tier },
       caption: it.ask ? 'Q: ' + it.ask : (((it.text || '').match(/^[^.!?]+[.!?]?/) || [''])[0] || 'Captions appear here as the narrator speaks.') };
     document.getElementById('lflMsg').textContent = lay.inEffect === 'episode' ? 'Showing this episode\'s saved layout.' : lay.inEffect === 'campaign' ? 'Showing the campaign default layout.' : 'Showing the video\'s design default.';
-    if (!r.presenter && ['stage', 'titles'].includes(r.layout)) document.querySelector('#lflTabs [data-b="presenter"]').style.display = 'none';
-    lflSelect('card');
+    lflSelect(has[0]);
   } catch (e) { document.getElementById('lflMsg').textContent = 'Could not load: ' + e.message; }
 }
 function lflSelect(b) {
@@ -7396,7 +7426,10 @@ function lflSelect(b) {
   document.getElementById('lflSizeWrap').style.display = isP ? 'none' : 'flex';
   document.getElementById('lflMaxWrap').style.display = b === 'card' ? 'flex' : 'none';
   document.getElementById('lflStyleRow').style.display = isP ? 'none' : 'flex';
-  document.getElementById('lflW').disabled = isP; document.getElementById('lflH').disabled = b === 'card';
+  document.getElementById('lflTypoRow').style.display = isP ? 'none' : 'flex';
+  const tk = b === 'title' ? 'title' : b === 'card' ? 'card' : 'caption', tt = (LFL.T || {})[tk] || {};
+  document.getElementById('lflCase').value = tt.case || 'as-is'; document.getElementById('lflAlign').value = tt.align || '';
+  document.getElementById('lflW').disabled = isP; document.getElementById('lflH').disabled = b === 'card' || b === 'title';
   document.getElementById('lflH').title = b === 'card' ? 'Cards fit their text — height follows the text size' : '';
   lflSync(); lflDraw();
 }
@@ -7415,7 +7448,9 @@ function lflInput() {
   const x = LFL.B[LFL.sel], v = id => parseFloat(document.getElementById(id).value);
   if (!isNaN(v('lflX'))) x.x = v('lflX'); if (!isNaN(v('lflY'))) x.y = v('lflY');
   if (LFL.sel !== 'presenter' && !isNaN(v('lflW'))) x.w = Math.max(5, v('lflW'));
-  if (LFL.sel !== 'card' && !isNaN(v('lflH'))) x.h = Math.max(3, v('lflH'));
+  if (LFL.sel !== 'card' && LFL.sel !== 'title' && !isNaN(v('lflH'))) x.h = Math.max(3, v('lflH'));
+  if (LFL.sel !== 'presenter') { const tk = LFL.sel === 'title' ? 'title' : LFL.sel === 'card' ? 'card' : 'caption'; LFL.T = LFL.T || {}; LFL.T[tk] = { ...(LFL.T[tk] || {}), case: document.getElementById('lflCase').value };
+    const al = document.getElementById('lflAlign').value; if (al) LFL.T[tk].align = al; else delete LFL.T[tk].align; LFL.content.T = LFL.T; }
   if (LFL.sel !== 'presenter') { x.s = v('lflSize') || 100; document.getElementById('lflSizeVal').textContent = x.s;
     x.color = document.getElementById('lflColor').value; x.opacity = isNaN(v('lflOpacity')) ? x.opacity : v('lflOpacity'); }
   if (LFL.sel === 'card') x.maxChars = Math.max(0, parseInt(document.getElementById('lflMax').value) || 0);
@@ -7436,7 +7471,7 @@ function lflDraw() {
 function lflPos(e) { const cv = document.getElementById('lflCanvas'), rc = cv.getBoundingClientRect(); return { x: (e.clientX - rc.left) * (1920 / rc.width), y: (e.clientY - rc.top) * (1080 / rc.height) }; }
 function lflDown(e) {
   if (!LFL.rects) return;
-  const p = lflPos(e), order = [LFL.sel, 'card', 'caption', 'presenter'];
+  const p = lflPos(e), order = [LFL.sel, 'title', 'card', 'caption', 'presenter'];
   for (const name of order) {
     const r = LFL.rects[name]; if (!r) continue;
     if (Math.abs(p.x - (r.x + r.w)) < 36 && Math.abs(p.y - (r.y + r.h)) < 36) { if (name !== LFL.sel) lflSelect(name); LFL.drag = 'resize'; e.preventDefault(); return; }
@@ -7452,12 +7487,12 @@ function lflMove(e) {
   lflDraw(); lflSync();
 }
 function lflUp() { LFL.drag = null; }
-function lflReset() { if (!LFL.D) return; LFL.B = lfBoxesFull(LFL.D, null); document.getElementById('lflMsg').textContent = 'Back to the design default — Save to keep it.'; lflSelect(LFL.sel); }
+function lflReset() { if (!LFL.D) return; LFL.B = lfDesignBoxes(LFL.D); LFL.T = {}; LFL.content.T = LFL.T; document.getElementById('lflMsg').textContent = 'Back to the design default — Save to keep it.'; lflSelect(LFL.sel); }
 async function lflSave(btn) {
   const msg = document.getElementById('lflMsg'); btn.disabled = true; msg.textContent = 'Saving…';
   try {
     const camp = document.getElementById('lflCampaign').checked;
-    await w('longformLayout', { assetId: PUB_LF.assetId, op: 'save', boxes: LFL.B, campaignDefault: camp });
+    await w('longformLayout', { assetId: PUB_LF.assetId, op: 'save', boxes: LFL.B, campaignDefault: camp, treatment: LFL.T || {} });
     msg.textContent = '✓ Layout saved' + (camp ? ' — and set as this campaign\'s default.' : ' for this episode.') + ' Re-render to apply it.';
     LFS.boxes = LFL.B;
   } catch (e) { msg.textContent = 'Not saved: ' + e.message; }

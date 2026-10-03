@@ -16155,7 +16155,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
             const it = lib.find(x => x.id === id);
             if (kind === "fonts") { if (it) { spec.render.fonts = { display: it.display, body: it.body }; spec.render.fontSet = it.id; } else { delete spec.render.fonts; delete spec.render.fontSet; } }
             else {
-              if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; spec.render.boxesStrict = true; if (it.treatment) spec.render.treatment = it.treatment; else delete spec.render.treatment; }
+              if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; delete spec.render.boxesStrict; if (it.treatment) spec.render.treatment = it.treatment; else delete spec.render.treatment; }
               else { delete spec.render.boxes; delete spec.render.layoutId; delete spec.render.treatment; delete spec.render.boxesStrict; }
             }
             await lfSaveSpec(aid, spec);
@@ -16177,13 +16177,14 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           const prevB = spec.render.boxes || {};
           if (b) for (const k of ["title", "ask", "pictures"]) if (prevB[k] && !b[k]) b[k] = prevB[k];   // editor only edits card/caption/presenter
           if (b) spec.render.boxes = b; else delete spec.render.boxes;
-          delete spec.render.layoutId;
+          delete spec.render.layoutId; delete spec.render.boxesStrict;
+          if (body.treatment !== undefined) { const t = lfCleanTreatment({ ...(spec.render.treatment || {}), ...(body.treatment || {}) }); if (t) spec.render.treatment = t; else delete spec.render.treatment; }
           await lfSaveSpec(aid, spec);
           if (body.campaignDefault && cid) { if (b) await env.TRADES.put("lflayout:" + cid, JSON.stringify(b)); else await env.TRADES.delete("lflayout:" + cid); camp = b; }
           return json({ ok: true, boxes: b, campaignBoxes: camp });
         }
         const own = lfCleanBoxes(spec.render && spec.render.boxes);
-        return json({ ok: true, boxes: own, campaignBoxes: camp, inEffect: own ? "episode" : camp ? "campaign" : "design" });
+        return json({ ok: true, boxes: own, campaignBoxes: camp, inEffect: own ? "episode" : camp ? "campaign" : "design", treatment: (spec.render && spec.render.treatment) || null, layout: (spec.render && spec.render.layout) || "presenter" });
       }
       if (body.action === "getLongformEpisode") {
         try { return json({ success: true, episode: await lfBuildEpisode(env, String(body.assetId || "").replace(/-/g, "")) }); }
