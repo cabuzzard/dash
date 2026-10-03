@@ -467,6 +467,13 @@ def main(ep_path, out, work):
     NW = max(420, int((float(cb["w"]) * W / 100 if "w" in cb else 760 * CS) / CS))   # card width before scaling
     CARD_FILL = hexa(cb.get("color"), cb.get("opacity", 89), PANEL) if cb.get("color") else PANEL + (228,)
     CARD_MAX = int(cb.get("maxChars") or 0)
+    # content treatment from the layout preset (ep["treatment"]): how each box shows the script's content
+    TR = ep.get("treatment") or {}
+    TRC, TRT, TRP = TR.get("card") or {}, TR.get("title") or {}, TR.get("caption") or {}
+    def tcase(t, mode):
+        t = str(t or "")
+        return t.upper() if mode == "upper" else t.title() if mode == "title" else t.lower() if mode == "lower" else t
+    CAP_LINES = 1 if int(TRP.get("lines", 2) or 2) == 1 else 2
     # optional layout boxes (a layout only lists the ones it needs; missing → they follow the card box)
     tb, ab, picb = BOXES.get("title") or {}, BOXES.get("ask") or {}, BOXES.get("pictures") or {}
     TCS = max(0.4, min(2.5, float(tb.get("s", cb.get("s", 100))) / 100))
@@ -503,7 +510,7 @@ def main(ep_path, out, work):
     norm = lambda x: re.sub(r"[^a-z0-9 ]+", "", str(x).lower()).split()
     shots = []   # (start, end, PIL image sized 1.12x the stage)
     for t0, t1, seg in timeline:
-        imgs = [im for im in (seg.get("images") or []) if im.get("url")]
+        imgs = [im for im in (seg.get("images") or []) if im.get("url")] if ((ep.get("treatment") or {}).get("pictures") or {}).get("show", True) is not False else []
         if not imgs: continue
         seg_caps = [(s_, c) for s_, e_, c in caps if t0 - 0.05 <= s_ <= t1]
         starts = []
@@ -546,22 +553,30 @@ def main(ep_path, out, work):
     def title_card(text):
         lay = Image.new("RGBA", (TNW, 600), (0, 0, 0, 0)); td = ImageDraw.Draw(lay)
         y = 22
+        text = tcase(text, TRT.get("case"))
         lines = wrap(td, text, F_TTL, TNW - 80); f_, lh = F_TTL, 64
         if len(lines) > 3: lines = wrap(td, text, F_TTL2, TNW - 80); f_, lh = F_TTL2, 52
         for ln in lines[:4]:
-            lx = (TNW - int(td.textlength(ln, font=f_))) // 2 if STAGE_LAYOUT else 40
+            lx = (TNW - int(td.textlength(ln, font=f_))) // 2 if (STAGE_LAYOUT or TRT.get("align") == "center") and TRT.get("align") != "left" else 40
             td.text((lx, y), ln, font=f_, fill=INK); y += lh
         return card_panel(lay, y + 20, TNW, TCS, TITLE_FILL)
 
     def item_card(seg, k, t0, t1, t):
         card = Image.new("RGBA", (NW, 600), (0, 0, 0, 0)); cd = ImageDraw.Draw(card)
         y = 20
-        if seg.get("n") is not None: cd.text((40, y), f"#{seg['n']}", font=F_NUM, fill=ACC); y += 84
-        nm = wrap(cd, clip_txt(seg.get("name", "")), F_TTL, NW - 80); fnm, lh = F_TTL, 66
-        if len(nm) > 2: nm = wrap(cd, clip_txt(seg.get("name", "")), F_TTL2, NW - 80); fnm, lh = F_TTL2, 52
-        for ln in nm[:3]: cd.text((40, y), ln, font=fnm, fill=INK); y += lh
+        cen = TRC.get("align") == "center"
+        lxf = lambda ln, f_, x0: (NW - int(cd.textlength(ln, font=f_))) // 2 if cen else x0
+        if seg.get("n") is not None and TRC.get("number", True) is not False:
+            nt = f"#{seg['n']}"; cd.text((lxf(nt, F_NUM, 40), y), nt, font=F_NUM, fill=ACC); y += 84
+        hname = tcase(clip_txt(seg.get("name", "")), TRC.get("case"))
+        hl = max(1, min(3, int(TRC.get("headingLines", 3) or 3)))
+        nm = wrap(cd, hname, F_TTL, NW - 80); fnm, lh = F_TTL, 66
+        if len(nm) > 2: nm = wrap(cd, hname, F_TTL2, NW - 80); fnm, lh = F_TTL2, 52
+        for ln in nm[:hl]: cd.text((lxf(ln, fnm, 40), y), ln, font=fnm, fill=INK); y += lh
         y += 8
-        for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80)[:3]: cd.text((42, y), ln, font=F_SM, fill=SUB); y += 38
+        if TRC.get("blurb", True) is not False:
+            bl_n = max(0, min(3, int(TRC.get("blurbLines", 3) if TRC.get("blurbLines") is not None else 3)))
+            for ln in wrap(cd, seg.get("blurb", ""), F_SM, NW - 80)[:bl_n]: cd.text((lxf(ln, F_SM, 42), y), ln, font=F_SM, fill=SUB); y += 38
         # final height is fixed up front (room for the pay bar / score that animate in) so the card never grows mid-shot
         full_h = y + (104 if seg.get("pay") else 0) + (76 if (seg.get("score") is not None or seg.get("tier")) else 0) + 18
         p = (t - t0) / max(0.1, (t1 - t0))
@@ -615,7 +630,7 @@ def main(ep_path, out, work):
                 fr.alpha_composite(title_card(seg["text"]), (xt, TY))
             elif kind == "hook" and ep.get("title"):
                 fr.alpha_composite(title_card(ep["title"]), (xt, TY))
-            elif kind == "ask" and seg.get("label"):
+            elif kind == "ask" and seg.get("label") and (TR.get("ask") or {}).get("show", True) is not False:
                 fa = F_TXT if AS == 1 else font(bpath, max(14, round(32 * AS)))
                 tw = d.textlength(seg["label"], font=fa); ph = int(72 * AS)
                 ax = x if AX is None else int(-tw - 100 + (AX + tw + 100) * k_in - (W + 100) * k_out)
@@ -636,9 +651,12 @@ def main(ep_path, out, work):
             fr.alpha_composite(frame_bg, (STAGE[0] - 6, STAGE[1] - 6))
             fr.alpha_composite(view, (STAGE[0], STAGE[1]))
         cue = next(((s_, e_, c) for s_, e_, c in caps if s_ - 0.05 <= t <= e_ + 0.2), None)
-        cur = cue[2] if cue else ""
+        cur = tcase(cue[2], TRP.get("case")) if cue else ""
         if cur:
             lines = wrap(d, cur, F_CAP, cap_w)
+            if len(lines) > CAP_LINES and CAP_LINES == 1:   # one line at a time, in step with the speech
+                frac = (t - cue[0]) / max(0.1, cue[1] - cue[0])
+                lines = [lines[min(len(lines) - 1, max(0, int(frac * len(lines))))]]
             if len(lines) > 2:   # balance the pages so the last one isn't a lone word
                 pages = (len(lines) + 1) // 2
                 full = d.textlength(cur, font=F_CAP)
@@ -652,8 +670,9 @@ def main(ep_path, out, work):
                 lines = chunks[min(len(chunks) - 1, max(0, int(frac * len(chunks))))]
             for li, ln in enumerate(lines):
                 tw = d.textlength(ln, font=F_CAP)
-                if CAPX is None: x = (W - int(tw)) // 2 if STAGE_LAYOUT else 80
-                else: x = CAPX + (cap_w - int(tw)) // 2 if STAGE_LAYOUT else CAPX
+                capc = (STAGE_LAYOUT or TRP.get("align") == "center") and TRP.get("align") != "left"
+                if CAPX is None: x = (W - int(tw)) // 2 if capc else 80
+                else: x = CAPX + (cap_w - int(tw)) // 2 if capc else CAPX
                 y = CAP_TOP + li * CLH
                 d.rounded_rectangle([x - 20, y - 8, x + tw + 20, y + round(54 * CAPS)], 12, fill=CAP_FILL)
                 d.text((x, y), ln, font=F_CAP, fill=INK)

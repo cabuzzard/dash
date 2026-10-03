@@ -840,7 +840,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="flex:1;min-width:240px;">📐 Layout preset
               <select id="pubLibLayouts" class="finput" style="width:100%;margin-top:4px;font-size:11px;" onchange="pubLibLayoutPreview();pubLibUse('layouts')"></select>
               <canvas id="pubLibLayoutPrev" width="384" height="216" style="margin-top:4px;width:100%;max-width:384px;height:auto;border-radius:6px;display:block;"></canvas>
-              <div id="pubLibLayoutNote" style="font-size:10.5px;color:var(--ink3);"></div>
+              <div id="pubLibLayoutNote" style="font-size:10.5px;color:var(--ink3);white-space:pre-wrap;"></div>
               <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibCopyPrompt('layouts', this)">💬 Copy ChatGPT prompt</button>
                 <button class="btn" type="button" style="font-size:10px;" onclick="pubLibPasteOpen('layouts')">📥 Paste reply</button>
@@ -6513,14 +6513,17 @@ function pubLibLayoutPreview() {
   const cb = B.card, CS = (cb.s || 100) / 100, NW = Math.max(420, (cb.w || 40) / 100 * 1920 / CS), cx = cb.x / 100 * W, cy = cb.y / 100 * H;
   c.save(); c.translate(cx, cy); c.scale(k * CS, k * CS);
   let y = 20; const lines = [];
+  const TRc = ((it && it.treatment) || (ep.treatment) || {}).card || {}, tc = (t, m) => m === 'upper' ? String(t).toUpperCase() : m === 'lower' ? String(t).toLowerCase() : m === 'title' ? String(t).replace(/\w\S*/g, w_ => w_[0].toUpperCase() + w_.slice(1).toLowerCase()) : String(t);
+  if (TRc.number === false) u.numbered = false;
+  u.longName = tc(u.longName || u.title, TRc.case); if (TRc.blurb === false) u.longBlurb = '';
   c.font = `700 56px ${DF}`; const nm = wrapN(u.longName || u.title, NW - 80, 9);
   const big = nm.length > 2; c.font = `700 ${big ? 44 : 56}px ${DF}`; const nm2 = big ? wrapN(u.longName || u.title, NW - 80, 9) : nm;
-  if (u.numbered) y += 84; const nameLines = nm2.slice(0, 3); y += nameLines.length * (big ? 52 : 66) + 8;
-  c.font = `600 29px ${BF}`; const bl = wrapN(u.longBlurb, NW - 80, 9).slice(0, 3); y += bl.length * 38 + (u.pay ? 104 : 0) + (u.score ? 76 : 0) + 18;
+  if (u.numbered) y += 84; const nameLines = nm2.slice(0, Math.max(1, Math.min(3, TRc.headingLines || 3))); y += nameLines.length * (big ? 52 : 66) + 8;
+  c.font = `600 29px ${BF}`; const bl = u.longBlurb ? wrapN(u.longBlurb, NW - 80, 9).slice(0, TRc.blurbLines != null ? TRc.blurbLines : 3) : []; y += bl.length * 38 + (u.pay ? 104 : 0) + (u.score ? 76 : 0) + 18;
   c.fillStyle = lfHexA(cb.color, cb.opacity); c.fillRect(0, 0, NW, y);
   let yy = 20; c.fillStyle = '#e8b234'; if (u.numbered) { c.font = `700 72px ${DF}`; c.fillText('#1', 40, yy + 60); yy += 84; }
   c.fillStyle = '#f6eede'; c.font = `700 ${big ? 44 : 56}px ${DF}`; nameLines.forEach(l => { c.fillText(l, 40, yy + (big ? 44 : 56)); yy += big ? 52 : 66; });
-  if (nm2.length > 3) { c.fillStyle = '#ff6b6b'; c.fillText('…too long', 40, yy + 40); }
+  if (nm2.length > nameLines.length) { c.fillStyle = '#ff6b6b'; c.fillText('…too long', 40, yy + 40); }
   c.font = `600 29px ${BF}`; c.fillStyle = '#cfc6b4'; yy += 8; bl.forEach(l => { c.fillText(l, 42, yy + 30); yy += 38; });
   c.restore();
   // pictures take the card's spot (4:3, ≥560 px wide)
@@ -6532,7 +6535,7 @@ function pubLibLayoutPreview() {
   const cp = B.caption; c.fillStyle = lfHexA(cp.color, cp.opacity); c.fillRect(cp.x / 100 * W, cp.y / 100 * H, cp.w / 100 * W, (cp.h || 12) / 100 * H);
   c.fillStyle = '#fff'; c.font = `600 ${Math.round(40 * k * (cp.s || 100) / 100)}px ${BF}`; c.fillText(u.qLines ? 'Q: the customer asks…' : 'Spoken words appear here…', cp.x / 100 * W + 4, cp.y / 100 * H + 12);
   const notes = [u.items + ' cards', u.pay && 'pay bar', u.score && 'score row', u.asks.length && u.asks.length + ' ask pills', u.qLines && 'Q: lines', u.pictures && u.pictures + ' pictures'].filter(Boolean).join(' · ');
-  document.getElementById('pubLibLayoutNote').textContent = (it && it.note ? it.note + ' — ' : (sel === 'custom' ? 'Your own edits from 📐 Layout… — ' : '')) + (it ? 'boxes: ' + Object.keys(it.boxes).join(', ') + ' · ' : '') + 'this script uses: ' + notes;
+  document.getElementById('pubLibLayoutNote').textContent = (it && it.note ? it.note + ' — ' : (sel === 'custom' ? 'Your own edits from 📐 Layout… — ' : '')) + (it ? 'boxes: ' + Object.keys(it.boxes).join(', ') + ' · ' : '') + 'this script uses: ' + notes + (it && it.instructions ? '\n📝 ' + it.instructions : '');
 }
 async function pubLibUse(kind) {
   const sel = document.getElementById(kind === 'fonts' ? 'pubLibFonts' : 'pubLibLayouts').value;
@@ -6607,12 +6610,22 @@ BOX TYPES YOU CAN USE (include only the ones your layout needs; anything you lea
 - "pictures" (optional — omit to show pictures in the card's spot): the framed 4:3 scene-image panel. Fields: x, y, w (h optional, default 4:3).
 Current layout: ${JSON.stringify(D)}
 
+For EACH layout also decide how the content should be TREATED in its boxes, in two ways:
+1. "treatment" — switches my renderer applies directly (use only these keys/values; leave out what should stay default):
+   card: number (true/false — show "#N"), blurb (true/false — show the key-point line), case ("as-is" | "upper" | "title" | "lower"), align ("left" | "center"), headingLines (1-3), blurbLines (0-3)
+   title: case, align
+   caption: lines (1 or 2 lines on screen at a time), case, align
+   ask: show (true/false)   pictures: show (true/false)
+2. "instructions" — plain-language direction for how the script's content should be handled in this layout that the switches can't express (e.g. "keep headings under 4 words", "lead each chapter with the image", "short punchy captions"). I'll read these and apply them by hand.
+
 Design 6 alternative layouts for this channel — e.g. presenter left vs right, card top vs centre, a minimal one, a big-caption accessibility one, a Shorts-friendly one that keeps everything inside the centre 56% (so it can be cropped to 9:16). For each, decide which boxes it needs and list them in "uses". Rules: keep captions in the lower third and never over the presenter's face; keep 3% margins; text must stay readable on a phone; size the card (w and s) so the longest heading above fits in 3 lines.
 
-Reply with ONLY this JSON (no other text), so it can be pasted straight into my dashboard:
+Reply with ONLY this JSON (no other text, no comments inside it), so it can be pasted straight into my dashboard:
 \`\`\`json
 [
   { "name": "short label", "why": "one sentence", "uses": ["caption", "card", "presenter"],
+    "treatment": { "card": { "number": true, "blurb": true, "case": "as-is", "align": "left" }, "caption": { "lines": 2 } },
+    "instructions": "how to treat the content in this layout",
     "boxes": {
       "caption": { "x": 4, "y": 71, "w": 47, "h": 12, "s": 100, "color": "#0a0e0c", "opacity": 75 },
       "card": { "x": 4, "y": 11, "w": 40, "s": 100, "color": "#121a16", "opacity": 89, "maxChars": 0 },

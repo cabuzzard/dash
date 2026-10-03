@@ -1393,6 +1393,21 @@ async function lfSaveSpec(assetId, spec) {
 // 📐 Layout boxes (care-gap layout editor): card / caption / presenter, percentages of the 1920×1080 frame
 // + text size, box colour, opacity, max chars. Episode's own (spec.render.boxes) → campaign default
 // (KV lflayout:<cid>) → none (renderer's built-in design).
+// Content treatment a layout preset carries (from ChatGPT's reply): how each box shows the script's content.
+// Only these switches reach the renderer; anything else ChatGPT says is kept as plain-language instructions.
+function lfCleanTreatment(t) {
+  if (!t || typeof t !== "object") return null;
+  const CASES = ["as-is", "upper", "title", "lower"], AL = ["left", "center"], out = {};
+  const pick = (v, list) => list.includes(String(v)) ? String(v) : undefined, bool = v => v === false || v === "false" ? false : v === true || v === "true" ? true : undefined;
+  const int = (v, lo, hi) => { const n = parseInt(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : undefined; };
+  const set = (k, o) => { Object.keys(o).forEach(x => o[x] === undefined && delete o[x]); if (Object.keys(o).length) out[k] = o; };
+  const c = t.card || {}; set("card", { number: bool(c.number), blurb: bool(c.blurb), case: pick(c.case || c.headingCase, CASES), align: pick(c.align, AL), headingLines: int(c.headingLines, 1, 3), blurbLines: int(c.blurbLines, 0, 3) });
+  const ti = t.title || {}; set("title", { case: pick(ti.case, CASES), align: pick(ti.align, AL) });
+  const cp = t.caption || {}; set("caption", { lines: int(cp.lines, 1, 2), case: pick(cp.case, CASES), align: pick(cp.align, AL) });
+  const a = t.ask || {}; set("ask", { show: bool(a.show) });
+  const pi = t.pictures || {}; set("pictures", { show: bool(pi.show) });
+  return Object.keys(out).length ? out : null;
+}
 function lfCleanBoxes(b) {
   if (!b || typeof b !== "object") return null;
   const out = {}, num = (v, lo, hi) => { const n = parseFloat(v); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, Math.round(n * 100) / 100)) : undefined; };
@@ -1484,7 +1499,9 @@ async function lfBuildEpisode(env, assetId) {
   }
   const r = spec.render || {};
   if (r.fonts && r.fonts.display) fonts = { display: String(r.fonts.display), body: String(r.fonts.body || fonts.body) };
+  const treatment = lfCleanTreatment(r.treatment);
   return {
+    ...(treatment ? { treatment } : {}),
     title: spec.title || lfReadRich(pr["Platform Title"]) || "",
     format: spec.format || "ranked",
     character: r.character || "mountain-man",
@@ -16035,7 +16052,9 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
             } else {
               const boxes = lfCleanBoxes(it.boxes || it);
               if (!boxes) continue;
-              added.push({ id: "l-" + Date.now().toString(36) + added.length, name: name || "Layout", boxes, note: String(it.why || it.note || "").slice(0, 300), at: Date.now() });
+              const treatment = lfCleanTreatment(it.treatment);
+              added.push({ id: "l-" + Date.now().toString(36) + added.length, name: name || "Layout", boxes, ...(treatment ? { treatment } : {}),
+                instructions: String(it.instructions || "").slice(0, 2000), note: String(it.why || it.note || "").slice(0, 300), at: Date.now() });
             }
           }
           if (!added.length) return json({ error: kind === "fonts" ? "No typefaces found in that reply — it needs {\"name\", \"display\", \"body\"} items" : "No layouts found in that reply — it needs {\"name\", \"boxes\": {card, caption, presenter}} items" }, 400);
@@ -16054,7 +16073,10 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
             const id = String(body.id || "default");
             const it = lib.find(x => x.id === id);
             if (kind === "fonts") { if (it) { spec.render.fonts = { display: it.display, body: it.body }; spec.render.fontSet = it.id; } else { delete spec.render.fonts; delete spec.render.fontSet; } }
-            else { if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; } else { delete spec.render.boxes; delete spec.render.layoutId; } }
+            else {
+              if (it) { spec.render.boxes = it.boxes; spec.render.layoutId = it.id; if (it.treatment) spec.render.treatment = it.treatment; else delete spec.render.treatment; }
+              else { delete spec.render.boxes; delete spec.render.layoutId; delete spec.render.treatment; }
+            }
             await lfSaveSpec(aid, spec);
           }
           current = (kind === "fonts" ? spec.render.fontSet : spec.render.layoutId) || (kind === "layouts" && spec.render.boxes ? "custom" : "default");
