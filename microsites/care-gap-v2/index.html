@@ -1235,7 +1235,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <div class="modaloverlay" id="imgDirModal">
     <div class="modalbox" style="max-width:520px;">
-      <div class="mtitle">🧭 Image direction</div>
+      <div class="mtitle">🧭 Background image: direction or your own</div>
       <div class="mfield" id="imgDirAsset"></div>
       <div style="font-size:11px;color:var(--ink2);line-height:1.5;margin-bottom:8px;">
         Every background for this asset is built in this order, highest first:<br>
@@ -1245,6 +1245,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       </div>
       <textarea id="imgDirText" rows="5" class="finput" style="width:100%;box-sizing:border-box;font-size:12px;" placeholder="e.g. A caregiver helping an older man down his front steps, morning light, both mid-laugh. Or: no people, just the empty porch."></textarea>
       <label id="imgDirAllRow" style="display:none;font-size:11px;color:var(--ink2);margin-top:6px;align-items:center;gap:6px;"><input type="checkbox" id="imgDirAll"> Use for every slide of this carousel</label>
+      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border2);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        <label class="btn" style="cursor:pointer;">⬆ Upload my own image<input type="file" accept="image/*" id="imgDirFile" style="display:none;" onchange="imgDirUpload(this)"></label>
+        <span style="flex:1;min-width:180px;font-size:10.5px;color:var(--ink3);">Use your own picture as this background instead of generating one. Your text goes on top as usual.</span>
+      </div>
       <div id="imgDirStatus" style="font-size:11px;min-height:14px;margin-top:6px;"></div>
       <div class="modalrow">
         <button class="btn" onclick="closeImgDirModal()">Cancel</button>
@@ -8420,6 +8424,57 @@ function openImgDirModal(kind) {
   setTimeout(() => document.getElementById('imgDirText').focus(), 50);
 }
 function closeImgDirModal() { document.getElementById('imgDirModal').classList.remove('open'); }
+// ⬆ Upload my own image: becomes this slot's clean background (the "Source"), exactly where a generated one goes.
+const IMG_SLOT_KIND = { post: 'post-image', ig: 'ig-background', thumb: 'blog-thumbnail' };
+function imgFileToPng(file, maxSide) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => { const im = new Image(); im.onload = () => {
+      const k = Math.min(1, maxSide / Math.max(im.naturalWidth, im.naturalHeight));
+      const c = document.createElement('canvas'); c.width = Math.round(im.naturalWidth * k); c.height = Math.round(im.naturalHeight * k);
+      c.getContext('2d').drawImage(im, 0, 0, c.width, c.height); res(c.toDataURL('image/png'));
+    }; im.onerror = () => rej(new Error("That file isn't an image the browser can open")); im.src = r.result; };
+    r.onerror = () => rej(new Error("Couldn't read the file")); r.readAsDataURL(file);
+  });
+}
+function imgSlotApply(kind, assetId, url) {
+  const cache = PUB_ASSET_CACHE[assetId] || (PUB_ASSET_CACHE[assetId] = {});
+  if (kind === 'post-image') {
+    cache.postImage = cache.postImageSource = url;
+    if (pubAssetId !== assetId) return;
+    document.getElementById('pubPostImageSource').value = url; document.getElementById('pubPostImage').value = url;
+    const pv = document.getElementById('pubPostImagePreview'); pv.src = url; pv.style.display = '';
+    document.getElementById('pubPostImageTextBtn').style.display = ''; document.getElementById('pubPostImageEditBtn').style.display = '';
+    if (PUB_CAROUSEL && PUB_CAROUSEL.forAsset === assetId) { const x = PUB_CAROUSEL.slides.find(z => z.id === assetId); if (x) { x.postImage = x.postImageSource = url; pubCarouselDraw(); } }
+  } else if (kind === 'blog-thumbnail') {
+    cache.thumbnail = cache.thumbnailSource = url;
+    if (pubAssetId !== assetId) return;
+    _offerImgShow(kind, url, '');
+    document.getElementById('pubThumbnail').value = url; document.getElementById('pubThumbBgSource').value = url;
+    renderPubThumbnailPreview(url);
+    document.getElementById('pubThumbnailTextBtn').style.display = ''; document.getElementById('pubThumbnailEditBtn').style.display = '';
+  } else {
+    cache.instagramBackground = cache.instagramBackgroundSource = url;
+    if (pubAssetId !== assetId) return;
+    _offerImgShow(kind, url, '');
+    document.getElementById('pubIgBgSource').value = url;
+    document.getElementById('pubIgBgTextBtn').style.display = ''; document.getElementById('pubIgBgEditBtn').style.display = '';
+  }
+}
+async function imgDirUpload(inp) {
+  const file = inp.files && inp.files[0]; inp.value = '';
+  if (!file || !pubAssetId) return;
+  const st = document.getElementById('imgDirStatus'), kind = IMG_SLOT_KIND[IMG_DIR.kind] || 'post-image', assetId = pubAssetId;
+  st.style.color = 'var(--ink3)'; st.textContent = 'Uploading ' + file.name + '…';
+  try {
+    const fileData = await imgFileToPng(file, 2048);
+    const s = await w('saveOfferImage', { assetId, kind, fileData, background: true });
+    if (!s.url) throw new Error(s.error || 'no URL returned');
+    imgSlotApply(kind, assetId, s.url);
+    st.style.color = 'var(--fresh)'; st.textContent = '✓ Your image is now the background. Add the text with 🔤 or 🎯 Preview & Edit.';
+    setTimeout(() => { if (st.textContent.startsWith('✓ Your image')) closeImgDirModal(); }, 1400);
+  } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Upload failed: ' + e.message; }
+}
 async function saveImgDir(regen, clear) {
   const st = document.getElementById('imgDirStatus');
   const text = clear ? '' : document.getElementById('imgDirText').value.trim();
