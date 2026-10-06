@@ -16659,8 +16659,19 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       // dates each asset the first time it's seen Published: on the first build,
       // Publishing Date || created time (backfill); afterwards Publishing Date ||
       // last edited at first sight (≈ the edit that flipped it). Goals: hubout:goals:<slug>.
+      // Output rows are tagged with the hubs that use them (KV hubout:rowhubs = { methodId: [slug] }). A hub's
+      // Output board shows only its rows; the dashboard Output tab shows every row with totals across its hubs.
+      // First read seeds every existing row with care-gap (the only hub that had the board before tags).
+      const readRowHubs = async rows => {
+        let m = null; try { m = await env.TRADES.get("hubout:rowhubs", "json"); } catch (e) {}
+        if (!m || typeof m !== "object") {
+          m = {}; (Array.isArray(rows) ? rows : []).forEach(id => { m[id] = ["care-gap"]; });
+          if (Object.keys(m).length) await env.TRADES.put("hubout:rowhubs", JSON.stringify(m));
+        }
+        return m;
+      };
       if (body.action === "getHubOutput" || body.action === "saveHubOutputGoals") {
-        const slug = String(body.slug || "").trim();
+        const slug = String(body.slug || (body.tagRow && body.tagRow.slug) || "").trim();
         const hub = HUB_SITES.find(h => h.slug === slug);
         if (!hub) return json({ error: "unknown hub" }, 400);
         const gkey = `hubout:goals:${slug}`, lkey = `hubout:ledger:${slug}`;
@@ -16668,6 +16679,17 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const readGoals = async () => { let g = null; try { g = await env.TRADES.get(gkey, "json"); } catch (e) {} return (g && g.weeks) ? g : { weeks: {} }; };
         if (body.action === "saveHubOutputGoals") {
           const week = String(body.week || "");
+          if (!week && body.tagRow && typeof body.tagRow === "object") {   // tag / untag one row for one hub
+            let rowsNow = null; try { rowsNow = await env.TRADES.get("hubout:rows", "json"); } catch (e) {}
+            const map = await readRowHubs(rowsNow);
+            const mid = String(body.tagRow.methodId || "").slice(0, 40), hs = String(body.tagRow.slug || "").slice(0, 60);
+            if (!mid || !hs) return json({ error: "methodId and slug required" }, 400);
+            const set = new Set(map[mid] || []);
+            if (body.tagRow.on) set.add(hs); else set.delete(hs);
+            if (set.size) map[mid] = [...set]; else delete map[mid];
+            await env.TRADES.put("hubout:rowhubs", JSON.stringify(map));
+            return json({ success: true, rowHubs: map });
+          }
           if (!week && Array.isArray(body.rows)) {   // the SHARED row list (which methods, in what order) — every hub
             const rows = body.rows.map(x => String(x).slice(0, 40)).filter(Boolean).slice(0, 300);
             await env.TRADES.put("hubout:rows", JSON.stringify(rows));
@@ -16748,7 +16770,50 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { "Publishing Date": { date: { start: d } } } }) }).catch(() => {});
         }
-        return json({ success: true, slug, today, methods, goals, order, hidden, notes, rows, assets, backfilled: firstBuild });
+        const rowHubs = await readRowHubs(rows);
+        return json({ success: true, slug, today, methods, goals, order, hidden, notes, rows, rowHubs, assets, backfilled: firstBuild });
+      }
+
+      // getOutputOverview — dashboard Output tab: the shared rows (methods) with their hub tags, every hub's weekly
+      // goals, and every Published asset dated + attributed to a hub and a method (same rules as getHubOutput:
+      // hub = Content Hub select || the hub whose campaign it belongs to; method = asset.Method || its title's;
+      // date = the hub's ledger || Publishing Date || last edited). Totals are summed on the page per row.
+      if (body.action === "getOutputOverview") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const norm = s2 => (s2 || "").replace(/-/g, "");
+        let rows = null; try { rows = await env.TRADES.get("hubout:rows", "json"); } catch (e) {}
+        const rowHubs = await readRowHubs(rows);
+        const [assetRows, titleRows, methodRows] = await Promise.all([
+          notionQuery(ASSETS_DB, { filter: { property: "Asset Status", select: { equals: "Published" } } }).catch(e => { console.error("getOutputOverview assets:", e.message); return null; }),
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "method", relation: { is_not_empty: true } } }).catch(() => []),
+          notionQuery(METHODS_DB, {}).catch(() => []),
+        ]);
+        if (!assetRows) return json({ error: "Couldn't read the Assets DB" }, 502);
+        const titleMethod = {};
+        titleRows.forEach(t => { const m = norm((t.properties?.method?.relation || [])[0]?.id); if (m) titleMethod[norm(t.id)] = m; });
+        const methods = methodRows.map(r => ({ id: norm(r.id), name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""),
+          status: r.properties?.Status?.select?.name || "", needsBuild: !!r.properties?.["Needs Build"]?.checkbox })).filter(m => m.name);
+        const hubByCamp = {}; HUB_SITES.forEach(h => { hubByCamp[norm(h.campaignId)] = h.slug; });
+        const goals = {}, ledgers = {};
+        await Promise.all(HUB_SITES.map(async h => {
+          try { const g = await env.TRADES.get(`hubout:goals:${h.slug}`, "json"); goals[h.slug] = (g && g.weeks) || {}; } catch (e) { goals[h.slug] = {}; }
+          try { ledgers[h.slug] = (await env.TRADES.get(`hubout:ledger:${h.slug}`, "json")) || {}; } catch (e) { ledgers[h.slug] = {}; }
+        }));
+        const assets = [];
+        assetRows.forEach(a => {
+          const pr = a.properties || {}, id = norm(a.id);
+          const hubSel = pr["Content Hub"]?.select?.name || "";
+          const hubSlug = HUB_SITES.some(h => h.slug === hubSel) ? hubSel : hubByCamp[norm((pr.Campaign?.relation || [])[0]?.id)] || "";
+          if (!hubSlug) return;
+          const pd = String(pr["Publishing Date"]?.date?.start || "").slice(0, 10);
+          const titleId = norm((pr["Content Strategy"]?.relation || [])[0]?.id);
+          assets.push({ id, hub: hubSlug,
+            date: pd || (ledgers[hubSlug] || {})[id] || String(a.last_edited_time || "").slice(0, 10),
+            methodId: norm((pr.Method?.relation || [])[0]?.id) || titleMethod[titleId] || "",
+            type: pr["Asset Type"]?.select?.name || "", title: (pr["Asset Title"]?.title || []).map(t => t.plain_text).join("").slice(0, 120) });
+        });
+        return json({ success: true, rows: Array.isArray(rows) ? rows : [], rowHubs, methods, goals,
+          hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name || h.slug })), assets });
       }
 
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,

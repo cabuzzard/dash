@@ -5030,8 +5030,11 @@ async function cpMethodSearch() {
   box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Loading…</div>';
   let methods;
   try { methods = await ensureAllMethodsCache(); } catch (e) { box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Load failed.</div>'; return; }
-  const filtered = (q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods).slice(0, 40);
-  box.innerHTML = filtered.length ? filtered.map(m => `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="cpPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
+  const all = q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods;
+  const core = all.filter(m => isCoreMethod(m.name)), rest = all.filter(m => !isCoreMethod(m.name));
+  const filtered = core.concat(rest).slice(0, 40);
+  const hd = t => `<div style="padding:5px 9px 3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);background:var(--surface2);">${t}</div>`;
+  box.innerHTML = filtered.length ? filtered.map((m, i) => (i === 0 && core.length ? hd('★ Active methods') : '') + (i === core.length && core.length && rest.length ? hd('Other methods') : '') + `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="cpPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
 }
 function cpPickMethod(el) {
   cpSetMethod(el.dataset.id, el.dataset.name);
@@ -5336,8 +5339,11 @@ async function digMethodSearch() {
   box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Loading…</div>';
   let methods;
   try { methods = await ensureAllMethodsCache(); } catch (e) { box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Load failed.</div>'; return; }
-  const filtered = (q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods).slice(0, 40);
-  box.innerHTML = filtered.length ? filtered.map(m => `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="digPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
+  const all = q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods;
+  const core = all.filter(m => isCoreMethod(m.name)), rest = all.filter(m => !isCoreMethod(m.name));
+  const filtered = core.concat(rest).slice(0, 40);
+  const hd = t => `<div style="padding:5px 9px 3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);background:var(--surface2);">${t}</div>`;
+  box.innerHTML = filtered.length ? filtered.map((m, i) => (i === 0 && core.length ? hd('★ Active methods') : '') + (i === core.length && core.length && rest.length ? hd('Other methods') : '') + `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="digPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
 }
 function digPickMethod(el) { digSetMethod(el.dataset.id, el.dataset.name); document.getElementById('digMethodOptions').style.display = 'none'; }
 function digMethodBlur() { setTimeout(() => { document.getElementById('digMethodOptions').style.display = 'none'; }, 150); }
@@ -5678,8 +5684,11 @@ async function caMethodSearch() {
   box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Loading…</div>';
   let methods;
   try { methods = await ensureAllMethodsCache(); } catch (e) { box.innerHTML = '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">Load failed.</div>'; return; }
-  const filtered = (q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods).slice(0, 40);
-  box.innerHTML = filtered.length ? filtered.map(m => `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="caPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
+  const all = q ? methods.filter(m => m.name.toLowerCase().includes(q)) : methods;
+  const core = all.filter(m => isCoreMethod(m.name)), rest = all.filter(m => !isCoreMethod(m.name));
+  const filtered = core.concat(rest).slice(0, 40);
+  const hd = t => `<div style="padding:5px 9px 3px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);background:var(--surface2);">${t}</div>`;
+  box.innerHTML = filtered.length ? filtered.map((m, i) => (i === 0 && core.length ? hd('★ Active methods') : '') + (i === core.length && core.length && rest.length ? hd('Other methods') : '') + `<div data-id="${esc(m.id)}" data-name="${esc(m.name)}" onmousedown="caPickMethod(this)" style="padding:6px 9px;font-size:12px;cursor:pointer;">${esc(m.name)}${m.status && m.status !== 'Live' ? ` <span style="color:var(--ink3);font-size:10px;">(${esc(m.status)})</span>` : ''}</div>`).join('') : '<div style="padding:6px 9px;font-size:11px;color:var(--ink3);">No methods found.</div>';
 }
 function caPickMethod(el) {
   caSetMethod(el.dataset.id, el.dataset.name);
@@ -5922,6 +5931,8 @@ function caQaRenderForm() {
     </label>`).join('') + '<button type="button" class="btn" onclick="caQaSaveToResearch()" style="margin-top:4px;">💾 Save to Product Research</button><div id="caQaSaveStatus" style="font-size:11px;margin-top:6px;min-height:14px;"></div>';
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
+// The four ACTIVE methods (single post, single post carousel, YT Interview, YT Titles) — grouped first in every method list.
+function isCoreMethod(name) { const n = String(name || ''); if (/text\s*(&|and)\s*images/i.test(n)) return false; return /^single post\b/i.test(n) || /long\s*-?\s*form\W+(interview|titles)\b|question[\s-]*led/i.test(n); }
 let CA_LF = { titleId: null, questions: [], pick: -1 };
 // Two longform methods, two editors: Interview (questions → your answers → script; Avatar / Text & images)
 // and Titles (hook + titled sections; "Paragraphs with titles" only).
@@ -9675,9 +9686,11 @@ function renderHubOutput() {
       .sort((a, b) => pos(a) - pos(b) || goal(b, thisWk) - goal(a, thisWk) || nameOf(a).localeCompare(nameOf(b)));
     hoSaveRows(O.rows);
   }
-  const ids = O.rows.filter(id => byId[id]);
+  // rows carry hub tags (dashboard Output tab); this board shows the rows tagged for THIS hub
+  const tagged = id => ((O.rowHubs || {})[id] || []).includes(HUB_SLUG);
+  const ids = O.rows.filter(id => byId[id] && tagged(id));
   if (cells['__none__']) ids.push('__none__');
-  const offList = Object.keys(cells).filter(id => id !== '__none__' && byId[id] && !O.rows.includes(id));
+  const offList = Object.keys(cells).filter(id => id !== '__none__' && byId[id] && !ids.includes(id));
   const tdName = 'max-width:320px;';
   const n = (id, wk) => ((cells[id] || {})[wk] || []).length;
   const goalRows = ids.filter(id => goal(id, thisWk) > 0);
@@ -9708,7 +9721,9 @@ function renderHubOutput() {
   const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));   // anything not on the shared list
   const statusOrder = ['Live', 'Development', 'Migrate'];
   const groupsSt = [...new Set(addable.map(m => m.status || 'No status'))].sort((a, b) => ((statusOrder.indexOf(a) + 1) || 99) - ((statusOrder.indexOf(b) + 1) || 99) || a.localeCompare(b));
-  const addOpts = groupsSt.map(st => `<optgroup label="${esc(st)}">${addable.filter(m => (m.status || 'No status') === st).map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.needsBuild ? ' 🛠' : ''}</option>`).join('')}</optgroup>`).join('');
+  const coreAdd = addable.filter(m => isCoreMethod(m.name));
+  const addOpts = (coreAdd.length ? `<optgroup label="★ Active methods">${coreAdd.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</optgroup>` : '')
+    + groupsSt.map(st => { const g = addable.filter(m => (m.status || 'No status') === st && !isCoreMethod(m.name)); return g.length ? `<optgroup label="${esc(st)}">${g.map(m => `<option value="${esc(m.id)}">${esc(m.name)}${m.needsBuild ? ' 🛠' : ''}</option>`).join('')}</optgroup>` : ''; }).join('');
   el.innerHTML = summary + `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11.5px;width:100%;">
       <thead><tr style="text-align:left;color:var(--ink3);font-size:10px;text-transform:uppercase;letter-spacing:.04em;"><th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">Notes</th><th style="padding:4px 6px;">This wk goal</th>${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;${wk === thisWk ? 'color:#f6ad55;' : ''}">${wk === thisWk ? 'This wk' : fmt(wk)}</th>`).join('')}<th></th></tr></thead>
       <tbody id="hoRows">${rows || `<tr><td colspan="${weeks.length + 4}" class="loadnote">Nothing published in the last ${HO_WEEKS} weeks and no goals set.</td></tr>`}</tbody>
@@ -9727,7 +9742,7 @@ function renderHubOutput() {
           <button class="btn primary" onclick="hoCreateMethod(this)">Create + flag for development</button><button class="btn" onclick="document.getElementById('hoNewForm').style.display='none'">cancel</button></div>
         <span style="color:var(--ink3);">Creates the method in Notion (Status Development + ☑ Needs Build — the build queue for a code session) and puts it on this hub's board.</span>
       </div>
-      <span style="color:var(--ink3);">Rows + order are shared by every hub (add / ✕ / drag here changes them everywhere); goals, counts and notes are this hub's. Cell = published that week / that week's goal. Goals are set per week. Hover a cell for the assets and their publish dates. Green = met · amber = some · red = none (past weeks).</span>
+      <span style="color:var(--ink3);">Rows tagged for this hub (tag rows for any hub on the dashboard's Output tab; adding a row here tags this hub, ✕ untags it). Row order is shared; goals, counts and notes are this hub's. Cell = published that week / that week's goal. Goals are set per week. Hover a cell for the assets and their publish dates. Green = met · amber = some · red = none (past weeks).</span>
     </div>`;
   HO_THIS_WEEK = thisWk; HO_LAST_WEEK = lastWk;
 }
@@ -9783,18 +9798,20 @@ async function saveHoHidden(hidden) {
 }
 async function removeHubOutputRow(methodId) {
   const m = HUB_OUTPUT.methods.find(x => x.id === methodId);
-  if (!confirm(`Remove "${m ? m.name : methodId}" from the Output board on EVERY hub? (Goals already set stay stored; add it back from the list any time.)`)) return;
-  try {
-    HUB_OUTPUT.rows = (HUB_OUTPUT.rows || []).filter(x => x !== methodId);
-    await hoSaveRows(HUB_OUTPUT.rows);
-    renderHubOutput();
-  } catch (e) { alert('Not removed: ' + e.message); }
+  if (!confirm(`Remove "${m ? m.name : methodId}" from ${HUB_SLUG}'s Output board? It stays on the dashboard's Output tab for any other hubs that use it. (Goals already set stay stored.)`)) return;
+  try { await hoTag(methodId, false); renderHubOutput(); } catch (e) { alert('Not removed: ' + e.message); }
+}
+// tag / untag a row for THIS hub (the dashboard Output tab totals every hub a row is tagged with)
+async function hoTag(methodId, on) {
+  const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, tagRow: { methodId, slug: HUB_SLUG, on } });
+  HUB_OUTPUT.rowHubs = r.rowHubs || HUB_OUTPUT.rowHubs;
 }
 async function hoSaveRows(rows) {
   try { await w('saveHubOutputGoals', { slug: HUB_SLUG, rows }); } catch (e) { alert('Row list not saved: ' + e.message); }
 }
 async function hoAddRow(methodId, goal) {
   if (!(HUB_OUTPUT.rows || []).includes(methodId)) { HUB_OUTPUT.rows = [...(HUB_OUTPUT.rows || []), methodId]; await hoSaveRows(HUB_OUTPUT.rows); }
+  try { await hoTag(methodId, true); } catch (e) { alert('Row added but not tagged for this hub: ' + e.message); }
   if (goal) await setHubOutputGoal(methodId, goal); else renderHubOutput();
 }
 async function setHubOutputGoal(methodId, value) {

@@ -701,6 +701,7 @@
   <div class="tabs">
     <div class="tab active" onclick="switchTab('td')">TD</div>
     <div class="tab"        onclick="switchTab('overview')">Overview</div>
+    <div class="tab"        onclick="switchTab('output')">Output</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
     <div class="tab"        onclick="switchTab('dev2')">Dev 2</div>
@@ -717,6 +718,14 @@
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
+
+  <div class="tab-panel" id="tabOutput">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+      <h2 style="margin:0;font-size:16px;">Output: all hubs</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Every row (method) with the hubs that use it. Cells = published that week / that week's goal, summed across the row's hubs. Goals are set on each hub's own Output board.</span>
+    </div>
+    <div id="outputBody"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+  </div>
 
   <div class="tab-panel" id="tabOverview">
     <a class="add-link" onclick="openNewCampaignModal()">+ New campaign</a>
@@ -4078,7 +4087,7 @@ function resetLoadFlags() {
   tdTabLoaded = false; linksLoaded = false; toolsLoaded = false; stackLoaded = false;
   ecoLoaded = false; globalsLoaded = false; domTabLoaded = false; smAccsLoaded = false; emailsLoaded = false;
   careerLoaded = false; siteTdsLoaded = false; tradesLoaded = false; last30Loaded = false; last30TitlesLoaded = false;
-  dev2Loaded = false; keywordsLoaded = false;
+  dev2Loaded = false; keywordsLoaded = false; outputLoaded = false;
 }
 function lockApp() {
   SESSION_TOKEN = null;
@@ -4147,6 +4156,106 @@ let stackLoaded = false;
 let ecoLoaded = false;
 let globalsLoaded = false;
 let hubsTabLoaded = false;
+// ── OUTPUT TAB (all hubs) ── the shared Output rows (methods) with hub tags; totals across each row's hubs.
+// Rows are the same list every hub's Output board uses (KV hubout:rows); a hub's board shows only its tagged rows.
+// The four ACTIVE methods (single post, single post carousel, YT Interview, YT Titles) — grouped first in every method list.
+function isCoreMethod(name) { const n = String(name || ''); if (/text\s*(&|and)\s*images/i.test(n)) return false; return /^single post\b/i.test(n) || /long\s*-?\s*form\W+(interview|titles)\b|question[\s-]*led/i.test(n); }
+let outputLoaded = false, OUT = null;
+const OUT_WEEKS = 8;
+function outWeekStart(d) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - (x.getDay() + 6) % 7); return x; }
+function outKey(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+async function loadOutputTab() {
+  const el = document.getElementById('outputBody');
+  el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
+  try { OUT = await call('getOutputOverview'); if (OUT.error) throw new Error(OUT.error); renderOutputTab(); }
+  catch (e) { el.innerHTML = `<div style="color:var(--danger);font-size:12px;">Load failed: ${esc(e.message)}</div>`; }
+}
+function renderOutputTab() {
+  const el = document.getElementById('outputBody'), O = OUT; if (!el || !O) return;
+  const cur = outWeekStart(new Date()), weeks = [];
+  for (let i = OUT_WEEKS - 1; i >= 0; i--) { const d = new Date(cur); d.setDate(d.getDate() - 7 * i); weeks.push(outKey(d)); }
+  const thisWk = weeks[weeks.length - 1];
+  const byId = {}; O.methods.forEach(m => { byId[m.id] = m; });
+  const hubName = {}; O.hubs.forEach(h => { hubName[h.slug] = h.name; });
+  const tags = id => (O.rowHubs || {})[id] || [];
+  const wkOf = d => { const [y, m, dd] = String(d).split('-').map(Number); return outKey(outWeekStart(new Date(y, m - 1, dd))); };
+  const cellAssets = {};   // id → wk → [asset]
+  O.assets.forEach(a => {
+    if (!a.methodId || !tags(a.methodId).includes(a.hub)) return;   // only the hubs that use the row
+    const wk = wkOf(a.date); if (!weeks.includes(wk)) return;
+    ((cellAssets[a.methodId] = cellAssets[a.methodId] || {})[wk] = cellAssets[a.methodId][wk] || []).push(a);
+  });
+  const n = (id, wk) => ((cellAssets[id] || {})[wk] || []).length;
+  const goal = (id, wk) => tags(id).reduce((t, h) => t + (+((((O.goals || {})[h] || {})[wk] || {})[id] || 0)), 0);
+  const fmt = k => { const [y, m, d] = k.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }); };
+  const ids = (O.rows || []).filter(id => byId[id]);
+  const cell = (id, wk) => {
+    const c = n(id, wk), g = goal(id, wk), isCur = wk === thisWk;
+    const list = ((cellAssets[id] || {})[wk] || []).map(a => `• ${a.title || 'Untitled'} (${hubName[a.hub] || a.hub}) — ${a.date}`).join('\n');
+    let bg = 'transparent';
+    if (g) { if (c >= g) bg = 'rgba(74,222,128,.18)'; else if (!isCur) bg = c ? 'rgba(246,173,85,.18)' : 'rgba(248,113,113,.15)'; }
+    return `<td title="${esc(list)}" style="padding:5px 6px;text-align:center;white-space:nowrap;background:${bg};${isCur ? 'outline:2px solid #f6ad55;outline-offset:-2px;' : ''}${!g && !c ? 'color:var(--text3);opacity:.6;' : ''}"><b>${c}</b>${g ? `<span style="opacity:.7;"> / ${g}</span>` : ''}</td>`;
+  };
+  const hubCell = id => {
+    const t = tags(id), label = t.length ? (t.length <= 2 ? t.map(h => hubName[h] || h).join(', ') : `${hubName[t[0]] || t[0]} +${t.length - 1}`) : 'no hubs';
+    return `<td style="padding:5px 6px;position:relative;white-space:nowrap;">
+      <button class="out-hubbtn" onclick="outHubPicker(event, '${esc(id)}')" title="${esc(t.map(h => hubName[h] || h).join(', ') || 'Tag the hubs that use this row')}"
+        style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:${t.length ? 'var(--text)' : 'var(--text3)'};cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(label)} ▾</button></td>`;
+  };
+  const rows = ids.map(id => `<tr style="border-top:1px solid var(--border);">
+      <td style="padding:5px 6px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(byId[id].name)}">${esc(byId[id].name)}${byId[id].needsBuild ? ' 🛠' : ''}</td>
+      ${hubCell(id)}
+      <td style="padding:5px 6px;text-align:center;">${goal(id, thisWk) || '<span style="opacity:.5;">0</span>'}</td>
+      ${weeks.map(wk => cell(id, wk)).join('')}
+      <td style="padding:5px 4px;"><button class="out-hubbtn" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="Remove this row from the Output (every hub)" onclick="outRemoveRow('${esc(id)}')">✕</button></td>
+    </tr>`).join('');
+  const tot = wk => ids.reduce((t, id) => t + n(id, wk), 0), totG = wk => ids.reduce((t, id) => t + goal(id, wk), 0);
+  const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
+  el.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11.5px;width:100%;">
+    <thead><tr style="text-align:left;color:var(--text2);font-size:10px;text-transform:uppercase;letter-spacing:.04em;">
+      <th style="padding:4px 6px;">Method</th><th style="padding:4px 6px;">Hubs</th><th style="padding:4px 6px;">This wk goal</th>
+      ${weeks.map(wk => `<th style="padding:4px 6px;text-align:center;">${fmt(wk)}</th>`).join('')}<th></th></tr></thead>
+    <tbody>${rows || `<tr><td colspan="${weeks.length + 4}" style="padding:10px;color:var(--text3);">No rows yet.</td></tr>`}
+      <tr style="border-top:2px solid var(--border2);font-weight:700;"><td style="padding:5px 6px;">Total</td><td></td><td style="padding:5px 6px;text-align:center;">${totG(thisWk)}</td>
+      ${weeks.map(wk => `<td style="padding:5px 6px;text-align:center;">${tot(wk)}${totG(wk) ? `<span style="opacity:.7;font-weight:400;"> / ${totG(wk)}</span>` : ''}</td>`).join('')}<td></td></tr></tbody>
+  </table></div>
+  <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:10px;font-size:11.5px;">
+    <select id="outAddMethod" style="max-width:300px;font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"><option value="">+ add a method row…</option>${(() => { const opt = m => `<option value="${esc(m.id)}">${esc(m.name)}${m.status ? ' (' + esc(m.status) + ')' : ''}</option>`, core = addable.filter(m => isCoreMethod(m.name)), rest = addable.filter(m => !isCoreMethod(m.name));
+      return (core.length ? `<optgroup label="★ Active methods">${core.map(opt).join('')}</optgroup>` : '') + `<optgroup label="Other methods">${rest.map(opt).join('')}</optgroup>`; })()}</select>
+    <button onclick="outAddRow()" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">Add row</button>
+    <button onclick="loadOutputTab()" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">↻ Reload</button>
+    <span style="color:var(--text3);">Tag hubs with ▾ on each row: a hub's own Output board shows only its rows. Hover a cell for the assets.</span>
+  </div>`;
+}
+// the hub multiselect: one row-height button that opens a checkbox list
+function outHubPicker(ev, id) {
+  ev.stopPropagation();
+  document.querySelectorAll('.out-hubpop').forEach(x => x.remove());
+  const t = new Set((OUT.rowHubs || {})[id] || []);
+  const pop = document.createElement('div'); pop.className = 'out-hubpop';
+  pop.style.cssText = 'position:absolute;z-index:50;top:100%;left:6px;min-width:200px;padding:6px 8px;background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.35);font-size:12px;';
+  pop.innerHTML = OUT.hubs.map(h => `<label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;"><input type="checkbox" ${t.has(h.slug) ? 'checked' : ''} onchange="outTag('${esc(id)}','${esc(h.slug)}',this.checked)"> ${esc(h.name)}</label>`).join('');
+  pop.onclick = e => e.stopPropagation();
+  ev.currentTarget.parentElement.appendChild(pop);
+  setTimeout(() => document.addEventListener('click', function close() { pop.remove(); document.removeEventListener('click', close); renderOutputTab(); }), 0);
+}
+async function outTag(id, slug, on) {
+  try { const r = await call('saveHubOutputGoals', { slug, tagRow: { methodId: id, slug, on } }); if (r.error) throw new Error(r.error); OUT.rowHubs = r.rowHubs || OUT.rowHubs; }
+  catch (e) { alert('Not saved: ' + e.message); }
+}
+async function outAddRow() {
+  const id = document.getElementById('outAddMethod').value; if (!id) return;
+  const rows = [...(OUT.rows || [])]; if (!rows.includes(id)) rows.push(id);
+  try { const r = await call('saveHubOutputGoals', { slug: OUT.hubs[0].slug, rows }); if (r.error) throw new Error(r.error); OUT.rows = r.rows || rows; renderOutputTab(); }
+  catch (e) { alert('Not added: ' + e.message); }
+}
+async function outRemoveRow(id) {
+  const m = OUT.methods.find(x => x.id === id);
+  if (!confirm(`Remove "${m ? m.name : id}" from the Output on EVERY hub? (Goals already set stay stored.)`)) return;
+  const rows = (OUT.rows || []).filter(x => x !== id);
+  try { const r = await call('saveHubOutputGoals', { slug: OUT.hubs[0].slug, rows }); if (r.error) throw new Error(r.error); OUT.rows = r.rows || rows; renderOutputTab(); }
+  catch (e) { alert('Not removed: ' + e.message); }
+}
 let landingTabLoaded = false;
 
 const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
@@ -4924,6 +5033,7 @@ function loadTabContent(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
+  if (name === 'output'    && !outputLoaded) { outputLoaded = true; loadOutputTab(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
