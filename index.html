@@ -10102,16 +10102,18 @@ function dev2SortSel() {
 // ── Group by sort: each sort level becomes a collapsible header tier (up to 5) ──
 const DEV2_MAX_LEVELS = 7;
 let DEV2_GROUP = (() => { try { return localStorage.getItem('dev2Group') !== 'off'; } catch (e) { return true; } })();
-function dev2Closed() { try { return JSON.parse(localStorage.getItem('dev2Collapsed') || '{}'); } catch (e) { return {}; } }
-function dev2SaveClosed(c) { try { localStorage.setItem('dev2Collapsed', JSON.stringify(c)); } catch (e) {} }
+function dev2OpenMap() { try { return JSON.parse(localStorage.getItem('dev2Open') || '{}'); } catch (e) { return {}; } }
+function dev2SaveOpen(o) { try { localStorage.setItem('dev2Open', JSON.stringify(o)); } catch (e) {} }
+// headings default to COLLAPSED: a heading is closed unless it has been opened
+function dev2Closed() { const o = dev2OpenMap(); return new Proxy({}, { get: (t, k) => typeof k === 'string' && !o[k] }); }
 function dev2SetGroup(on) { DEV2_GROUP = on; try { localStorage.setItem('dev2Group', on ? 'on' : 'off'); } catch (e) {} renderDev2(); }
 function dev2GKey(r, d) { return DEV2_SORT.slice(0, d + 1).map(x => x.col + '=' + dev2Val(r, x.col)).join('|'); }
-function dev2ToggleGroup(k) { const c = dev2Closed(); if (c[k]) delete c[k]; else c[k] = 1; dev2SaveClosed(c); renderDev2(); }
+function dev2ToggleGroup(k) { const o = dev2OpenMap(); if (o[k]) delete o[k]; else o[k] = 1; dev2SaveOpen(o); renderDev2(); }
 function dev2CollapseAll(close) {
-  const c = dev2Closed(), L = Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS);
+  const o = dev2OpenMap(), L = Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS);
   const rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
-  rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); if (close) c[k] = 1; else delete c[k]; } });
-  dev2SaveClosed(c); renderDev2();
+  rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); if (close) delete o[k]; else o[k] = 1; } });
+  dev2SaveOpen(o); renderDev2();
 }
 async function loadDev2() {
   const el = document.getElementById('dev2Content');
