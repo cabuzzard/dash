@@ -726,21 +726,22 @@
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
 
   <div class="tab-panel" id="tabOutput">
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
-      <h2 style="margin:0;font-size:16px;">Output: all hubs</h2>
+    <div class="oc-sec" data-ock="output"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin-bottom:8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Output: all hubs</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every row (method) with the hubs that use it. Cells = published that week / that week's goal, summed across the row's hubs. Goals are set on each hub's own Output board.</span>
     </div>
-    <div id="outputBody"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 8px;">
-      <h2 style="margin:0;font-size:16px;">Flow</h2>
+    <div class="oc-bd"><div id="outputBody"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div></div></div>
+    <div class="oc-sec" data-ock="flow"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Flow</h2>
       <span style="font-size:11.5px;color:var(--text2);">Your own table. Click any cell or header to edit; it saves as you type.</span>
       <span id="flowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
-    <div id="flowBody"></div>
-    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 8px;">
-      <h2 style="margin:0;font-size:16px;">Pillar</h2>
+    <div class="oc-bd"><div id="flowBody"></div></div></div>
+    <div class="oc-sec" data-ock="pillar"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Pillar</h2>
       <span style="font-size:11.5px;color:var(--text2);">Brainstorm. Your notes on the right are the same notes as the care-gap Hub tab's Pillar section.</span>
     </div>
+    <div class="oc-bd">
     <style>.pl-wrap{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}.pl-notes{flex:1 1 420px;min-width:0;font-size:12px;line-height:1.5;color:var(--text2)}.pl-notes h4{margin:12px 0 4px;font-size:12.5px;color:var(--text)}.pl-notes ul,.pl-notes ol{margin:4px 0 4px 18px;padding:0}.pl-notes p{margin:4px 0}.pl-notes .bs-t{border-collapse:collapse;font-size:11px;margin:4px 0;width:100%}.pl-notes .bs-t td,.pl-notes .bs-t th{border:1px solid var(--border2);padding:3px 6px;text-align:left;vertical-align:top}.pl-mine{flex:1 1 300px;min-width:0;position:sticky;top:60px}</style>
     <div class="pl-wrap">
       <div class="pl-notes">
@@ -807,6 +808,7 @@
         <div style="display:flex;gap:8px;align-items:center;margin-top:4px;"><button onclick="plSave(this)" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">💾 Save notes</button><span id="plMsg" style="font-size:11px;color:var(--text3);"></span></div>
       </div>
     </div>
+    </div></div>
   </div>
 
   <div class="tab-panel" id="tabOverview">
@@ -4309,6 +4311,18 @@ function renderOutputTab() {
     <span style="color:var(--text3);">Tag hubs with ▾ on each row: a hub's own Output board shows only its rows. Hover a cell for the assets.</span>
   </div>`;
 }
+// Output tab sections (Output / Flow / Pillar) collapse; the state is remembered in this browser
+function ocToggle(ev, hd) {
+  if (ev && ev.target && ev.target.closest('button,input,textarea,select,a')) return;
+  const sec = hd.closest('.oc-sec'), bd = sec.querySelector('.oc-bd'), closed = bd.style.display !== 'none';
+  bd.style.display = closed ? 'none' : ''; sec.querySelector('.oc-chev').textContent = closed ? '▶' : '▼';
+  try { const st = JSON.parse(localStorage.getItem('outTabCollapsed') || '{}'); if (closed) st[sec.dataset.ock] = 1; else delete st[sec.dataset.ock]; localStorage.setItem('outTabCollapsed', JSON.stringify(st)); } catch (e) {}
+}
+function ocApply() {
+  let st = {}; try { st = JSON.parse(localStorage.getItem('outTabCollapsed') || '{}'); } catch (e) {}
+  document.querySelectorAll('#tabOutput .oc-sec').forEach(sec => { const c = !!st[sec.dataset.ock];
+    sec.querySelector('.oc-bd').style.display = c ? 'none' : ''; sec.querySelector('.oc-chev').textContent = c ? '▶' : '▼'; });
+}
 // ── Pillar notes: the SAME record as the care-gap Hub tab's Pillar section (microsite notes, care-gap campaign) ──
 const PL_CAMPAIGN = '34b1f7d3a4bb81b6a8a8fee04df94807', PL_NOTE_ID = 'hub-brainstorm-one-engine';
 async function plLoad() {
@@ -5184,7 +5198,7 @@ function loadTabContent(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
-  if (name === 'output'    && !outputLoaded) { outputLoaded = true; loadOutputTab(); loadFlowTable(); plLoad(); }
+  if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable(); plLoad(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
