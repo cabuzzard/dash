@@ -6341,9 +6341,19 @@ function renderAssetTitleNode(t, data) {
   const allAssets = (data && data.assets) || [];
   allAssets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
   const assets = collapseCarousels(allAssets);
-  const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
+  // grouped by ASSET TYPE (single post, single post carousel, …), each type its own collapsible group
+  const typeOf = a => String(a.type || 'No type').trim() || 'No type';
+  const byType = {};
+  assets.forEach(a => { (byType[typeOf(a)] = byType[typeOf(a)] || []).push(a); });
+  const types = Object.keys(byType).sort((x, y) => x.localeCompare(y));
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => a.isCarouselGroup ? renderCarouselRowHtml(a, t) : renderAssetRowHtml(a, t)).join('')}</div>`).join('')
+    ? types.map(ty => {
+        const list = byType[ty], n = list.length;
+        const what = list.every(a => a.isCarouselGroup) ? (n === 1 ? 'carousel' : 'carousels') : (n === 1 ? 'asset' : 'assets');
+        return `<div class="rnode" data-ckey="att-${esc(t.id)}-${esc(ty.toLowerCase().replace(/[^a-z0-9]+/g, '-'))}" style="margin-bottom:4px;">
+          <div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="font-size:11px;font-weight:700;">${esc(ty)}</span><span style="font-size:10px;color:var(--ink3);flex-shrink:0;">${n} ${what}</span></div>
+          <div class="rbody">${list.map(a => a.isCarouselGroup ? renderCarouselRowHtml(a, t) : renderAssetRowHtml(a, t)).join('')}</div></div>`;
+      }).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
