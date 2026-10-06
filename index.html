@@ -882,6 +882,9 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;">
         <b style="font-size:14px;">All Output</b>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2TogglePanel()">⚲ Filter &amp; sort</button>
+        <button id="dev2GroupBtn" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2SetGroup(!DEV2_GROUP)" title="Group the rows under collapsible headers, one tier per sort level">☰ Group by sort: on</button>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(true)">▸ Collapse all</button>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(false)">▾ Expand all</button>
         <span id="dev2Chips" style="display:inline-flex;gap:6px;flex-wrap:wrap;"></span>
       </div>
       <span id="dev2Count" style="font-size:11px;color:var(--text3);white-space:nowrap;"></span>
@@ -897,12 +900,15 @@
     </div>
     <div id="dev2Panel" style="display:none;margin-bottom:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);font-size:12px;">
       <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">
-        <span style="color:var(--text2);">Filter 1</span><span><select id="dev2F0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(0)"></select> = <select id="dev2F0v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(0)"></select></span>
-        <span style="color:var(--text2);">then Filter 2</span><span><select id="dev2F1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(1)"></select> = <select id="dev2F1v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(1)"></select></span>
+        <span style="color:var(--text2);">Filter 1</span><span><select id="dev2F0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(0)"></select> <select id="dev2F0n" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterNeg(0)" title="is = keep only these rows · is not = remove these rows"><option value="">is</option><option value="not">is not</option></select> <select id="dev2F0v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(0)"></select></span>
+        <span style="color:var(--text2);">then Filter 2</span><span><select id="dev2F1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(1)"></select> <select id="dev2F1n" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterNeg(1)" title="is = keep only these rows · is not = remove these rows"><option value="">is</option><option value="not">is not</option></select> <select id="dev2F1v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(1)"></select></span>
         <span style="color:var(--text2);">Sort by</span><span><select id="dev2S0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S0d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
         <span style="color:var(--text2);">then by</span><span><select id="dev2S1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S1d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
+        <span style="color:var(--text2);">then by</span><span><select id="dev2S2c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S2d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
+        <span style="color:var(--text2);">then by</span><span><select id="dev2S3c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S3d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
+        <span style="color:var(--text2);">then by</span><span><select id="dev2S4c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S4d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
       </div>
-      <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Header clicks still sort (shift-click adds a level).</span></div>
+      <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Up to 5 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks still sort (shift-click adds a level).</span></div>
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
   </div>
@@ -10057,7 +10063,8 @@ const DEV2_COLS = [
 let DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }];
 const DEV2_BLANK = '__blank__';
 function dev2Val(r, col) { return String(r[col] == null ? '' : r[col]); }
-function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col); return f.val === DEV2_BLANK ? !v : v === f.val; }
+function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col), hit = f.val === DEV2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
+function dev2FilterNeg(k) { DEV2_F[k].neg = document.getElementById('dev2F' + k + 'n').value === 'not'; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2TogglePanel() { const p = document.getElementById('dev2Panel'); p.style.display = p.style.display === 'none' ? '' : 'none'; dev2DrawPanel(); }
 function dev2DrawPanel() {
   const colOpts = (sel, withNone) => (withNone ? '<option value="">(none)</option>' : '') + DEV2_COLS.map(c => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${c.label}</option>`).join('');
@@ -10068,20 +10075,39 @@ function dev2DrawPanel() {
     const vals = DEV2_F[k].col ? [...new Set(base.map(r => dev2Val(r, DEV2_F[k].col)))].sort((a, b) => a.localeCompare(b)) : [];
     vEl.innerHTML = '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}">${esc(v)}</option>` : `<option value="${DEV2_BLANK}">(blank)</option>`).join('');
     vEl.value = DEV2_F[k].val; vEl.disabled = !DEV2_F[k].col;
+    const nEl = document.getElementById('dev2F' + k + 'n'); if (nEl) { nEl.value = DEV2_F[k].neg ? 'not' : ''; nEl.disabled = !DEV2_F[k].col; }
   }
-  for (const k of [0, 1]) {
-    const cEl = document.getElementById('dev2S' + k + 'c'), dEl = document.getElementById('dev2S' + k + 'd'), s0 = DEV2_SORT[k];
-    cEl.innerHTML = colOpts(s0 ? s0.col : '', k === 1); dEl.value = s0 && !s0.asc ? 'desc' : 'asc';
+  for (let k = 0; k < DEV2_MAX_LEVELS; k++) {
+    const cEl = document.getElementById('dev2S' + k + 'c'), dEl = document.getElementById('dev2S' + k + 'd'), s0 = DEV2_SORT[k]; if (!cEl) continue;
+    cEl.innerHTML = colOpts(s0 ? s0.col : '', k > 0); dEl.value = s0 && !s0.asc ? 'desc' : 'asc';
   }
 }
-function dev2FilterCol(k) { DEV2_F[k] = { col: document.getElementById('dev2F' + k + 'c').value, val: '' }; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2FilterCol(k) { DEV2_F[k] = { col: document.getElementById('dev2F' + k + 'c').value, val: '', neg: !!DEV2_F[k].neg }; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2FilterVal(k) { DEV2_F[k].val = document.getElementById('dev2F' + k + 'v').value; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2ClearFilters() { DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }]; dev2OnFilterChange(); dev2DrawPanel(); }
 function dev2SortSel() {
-  const a = document.getElementById('dev2S0c').value, b = document.getElementById('dev2S1c').value;
-  DEV2_SORT = [{ col: a || 'campaign', asc: document.getElementById('dev2S0d').value !== 'desc' }];
-  if (b && b !== a) DEV2_SORT.push({ col: b, asc: document.getElementById('dev2S1d').value !== 'desc' });
-  renderDev2();
+  const out = [];
+  for (let k = 0; k < DEV2_MAX_LEVELS; k++) {
+    const c = document.getElementById('dev2S' + k + 'c').value;
+    if (k === 0 && !c) { out.push({ col: 'campaign', asc: true }); continue; }
+    if (!c) break;   // a blank level ends the chain
+    if (!out.some(x => x.col === c)) out.push({ col: c, asc: document.getElementById('dev2S' + k + 'd').value !== 'desc' });
+  }
+  DEV2_SORT = out; dev2DrawPanel(); renderDev2();
+}
+// ── Group by sort: each sort level becomes a collapsible header tier (up to 5) ──
+const DEV2_MAX_LEVELS = 5;
+let DEV2_GROUP = (() => { try { return localStorage.getItem('dev2Group') !== 'off'; } catch (e) { return true; } })();
+function dev2Closed() { try { return JSON.parse(localStorage.getItem('dev2Collapsed') || '{}'); } catch (e) { return {}; } }
+function dev2SaveClosed(c) { try { localStorage.setItem('dev2Collapsed', JSON.stringify(c)); } catch (e) {} }
+function dev2SetGroup(on) { DEV2_GROUP = on; try { localStorage.setItem('dev2Group', on ? 'on' : 'off'); } catch (e) {} renderDev2(); }
+function dev2GKey(r, d) { return DEV2_SORT.slice(0, d + 1).map(x => x.col + '=' + dev2Val(r, x.col)).join('|'); }
+function dev2ToggleGroup(k) { const c = dev2Closed(); if (c[k]) delete c[k]; else c[k] = 1; dev2SaveClosed(c); renderDev2(); }
+function dev2CollapseAll(close) {
+  const c = dev2Closed(), L = Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS);
+  const rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); if (close) c[k] = 1; else delete c[k]; } });
+  dev2SaveClosed(c); renderDev2();
 }
 async function loadDev2() {
   const el = document.getElementById('dev2Content');
@@ -10098,7 +10124,7 @@ function dev2SetSort(col, ev) {
   const shift = !!(ev && ev.shiftKey);
   const idx = DEV2_SORT.findIndex(s => s.col === col);
   if (shift) {
-    if (idx === -1) DEV2_SORT.push({ col, asc: true });
+    if (idx === -1) { if (DEV2_SORT.length < DEV2_MAX_LEVELS) DEV2_SORT.push({ col, asc: true }); }
     else DEV2_SORT[idx].asc = !DEV2_SORT[idx].asc;
   } else if (DEV2_SORT.length === 1 && idx === 0) {
     DEV2_SORT[0].asc = !DEV2_SORT[0].asc;
@@ -10263,17 +10289,21 @@ function renderDev2() {
   // than narrowing with every extra word.
   let rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
   const chips = document.getElementById('dev2Chips');
-  if (chips) chips.innerHTML = DEV2_F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc((DEV2_COLS.find(c => c.key === f.col) || {}).label || f.col)}: ${f.val === DEV2_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
+  if (chips) chips.innerHTML = DEV2_F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc((DEV2_COLS.find(c => c.key === f.col) || {}).label || f.col)} ${f.neg ? '≠' : '='} ${f.val === DEV2_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
     + (DEV2_SORT.length ? `<span style="font-size:11px;color:var(--text3);">sorted by ${DEV2_SORT.map(x => ((DEV2_COLS.find(c => c.key === x.col) || {}).label || x.col) + (x.asc ? ' ▲' : ' ▼')).join(', then ')}</span>` : '');
 
   rows = rows.slice().sort(dev2Cmp);
-  DEV2_VISIBLE_ROWS = rows;
+  const gOn = DEV2_GROUP && DEV2_SORT.length > 0, L = gOn ? Math.min(DEV2_SORT.length, DEV2_MAX_LEVELS) : 0, closedMap = dev2Closed();
+  const isHidden = r => { for (let d = 0; d < L; d++) if (closedMap[dev2GKey(r, d)]) return true; return false; };
+  const visibleRows = gOn ? rows.filter(r => !isHidden(r)) : rows;
+  DEV2_VISIBLE_ROWS = visibleRows;
+  const gb = document.getElementById('dev2GroupBtn'); if (gb) gb.textContent = '☰ Group by sort: ' + (DEV2_GROUP ? 'on' : 'off');
 
   if (countEl) countEl.textContent = rows.length + ' / ' + DEV2_ROWS.length + ' rows';
   dev2UpdateBulkBar();
 
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString() : '';
-  const allChecked = rows.length > 0 && rows.every(r => DEV2_SELECTED.has(dev2RowKey(r)));
+  const allChecked = visibleRows.length > 0 && visibleRows.every(r => DEV2_SELECTED.has(dev2RowKey(r)));
   const thead = `<tr>
     <th style="padding:6px 8px;border-bottom:1px solid var(--border2);"><input type="checkbox" id="dev2SelectAll" ${allChecked ? 'checked' : ''} onclick="dev2ToggleAll(this.checked)"></th>
     ${DEV2_COLS.map(c => {
@@ -10287,7 +10317,7 @@ function renderDev2() {
     }).join('')}
   </tr>`;
 
-  const tbody = rows.map(r => {
+  const rowHtml = r => {
     const key = dev2RowKey(r);
     const dash = '<span style="color:var(--text3);">—</span>';
     const titleCell = r.titleId ? `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>` : dash;
@@ -10313,7 +10343,30 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
     </tr>`;
-  }).join('');
+  };
+  let tbody = '';
+  if (!gOn) tbody = rows.map(rowHtml).join('');
+  else {
+    // live counts for the current filters + sort: rows under each header, and how many groups sit directly under it
+    const counts = {}, kids = {};
+    rows.forEach(r => { for (let d = 0; d < L; d++) { const k = dev2GKey(r, d); counts[k] = (counts[k] || 0) + 1; if (d + 1 < L) (kids[k] = kids[k] || new Set()).add(dev2GKey(r, d + 1)); } });
+    const nextLab = d => d + 1 < L ? (((DEV2_COLS.find(c => c.key === DEV2_SORT[d + 1].col) || {}).label || DEV2_SORT[d + 1].col).toLowerCase()) : '';
+    const countTxt = (k, d) => `${counts[k]} row${counts[k] === 1 ? '' : 's'}` + (kids[k] ? ` · ${kids[k].size} ${nextLab(d)}${kids[k].size === 1 ? '' : 's'}` : '');
+    const span = DEV2_COLS.length + 1, prev = [];
+    rows.forEach(r => {
+      for (let d = 0; d < L; d++) {
+        const k = dev2GKey(r, d);
+        if (prev[d] === k) continue;
+        prev[d] = k; for (let e = d + 1; e < L; e++) prev[e] = null;
+        let parentClosed = false; for (let e = 0; e < d; e++) if (closedMap[dev2GKey(r, e)]) parentClosed = true;
+        if (parentClosed) continue;
+        const col = DEV2_SORT[d].col, v = dev2Val(r, col), lab = (DEV2_COLS.find(c => c.key === col) || {}).label || col, closed = !!closedMap[k];
+        tbody += `<tr data-k="${esc(k)}" onclick="dev2ToggleGroup(this.dataset.k)" style="cursor:pointer;background:rgba(127,127,127,${(0.16 - d * 0.025).toFixed(3)});border-bottom:1px solid var(--border);">
+          <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};"><span style="display:inline-block;width:14px;">${closed ? '▶' : '▼'}</span><span style="color:var(--text3);font-weight:400;">${esc(lab)}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${countTxt(k, d)})</span></td></tr>`;
+      }
+      if (!isHidden(r)) tbody += rowHtml(r);
+    });
+  }
 
   el.innerHTML = `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead>${thead}</thead><tbody>${tbody}</tbody></table></div>`;
 }
