@@ -1173,6 +1173,26 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </div>
         <div id="textEditorHint" style="font-size:10.5px;color:var(--ink3);text-align:center;"></div>
         <div id="textEditorTextFields" style="display:flex;flex-direction:column;gap:6px;"></div>
+        <div id="txTypo" style="border:1px solid var(--border2);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--ink2);">
+          <label style="display:flex;align-items:center;gap:6px;">🔤 Typeface <select id="txFont" class="finput" style="flex:1;font-size:11px;" onchange="txFontChange()"></select></label>
+          <div id="txParts" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;"></div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">
+            <label style="display:flex;align-items:center;gap:4px;" title="Off = the hub's own colour for this text"><input type="checkbox" id="txColorOn" onchange="txStyleInput()"> Text <input type="color" id="txColor" oninput="document.getElementById('txColorOn').checked=true;txStyleInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+            <label style="display:flex;align-items:center;gap:4px;">Case <select id="txCase" class="finput" onchange="txStyleInput()" style="font-size:11px;padding:2px 4px;"><option value="">as typed</option><option value="upper">UPPER</option><option value="title">Title Case</option><option value="lower">lower</option></select></label>
+            <label style="display:flex;align-items:center;gap:4px;">Align <select id="txAlign" class="finput" onchange="txStyleInput()" style="font-size:11px;padding:2px 4px;"><option value="">left</option><option value="center">center</option><option value="right">right</option></select></label>
+            <label style="display:flex;align-items:center;gap:4px;" title="Letter spacing in thousandths of the font size (Canva's unit): 0 = the font's own spacing, 100 = wide, negative = tighter">Spacing <input type="number" id="txTracking" min="-100" max="800" step="10" class="finput" oninput="txStyleInput()" style="width:54px;"></label>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">
+            <label style="display:flex;align-items:center;gap:4px;" title="Stroke width, in pixels on a 1080-wide image">Stroke <input type="number" id="txStrokeW" min="0" max="16" step="1" class="finput" oninput="txStyleInput()" style="width:44px;">px <input type="color" id="txStrokeColor" oninput="txStyleInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;">
+              <select id="txStrokePos" class="finput" onchange="txStyleInput()" title="Behind = the stroke sits outside the letter. On top = drawn over the letter, centred on its edge" style="font-size:11px;padding:2px 4px;"><option value="">behind</option><option value="front">on top</option></select></label>
+          </div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">
+            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="txShadowOn" onchange="txStyleInput()"> Shadow <input type="color" id="txShadowColor" oninput="document.getElementById('txShadowOn').checked=true;txStyleInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
+            <label style="display:flex;align-items:center;gap:4px;">Diffusion <input type="range" id="txShadowBlur" min="0" max="40" step="1" oninput="txStyleInput()" style="width:80px;"><span id="txShadowBlurVal" style="font-family:var(--mono);"></span></label>
+            <label style="display:flex;align-items:center;gap:4px;">Distance <input type="number" id="txShadowDist" min="0" max="40" step="1" class="finput" oninput="txStyleInput()" style="width:44px;">px</label>
+          </div>
+          <div id="txCopyRow" style="text-align:center;"><button class="btn" type="button" style="font-size:10px;" onclick="txCopyToAll()">⧉ Copy this style to every part</button></div>
+        </div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
           <label style="display:flex;align-items:center;gap:6px;">Font size
             <input type="range" id="textEditorFontSize" min="2" max="15" step="0.2" oninput="textEditorFontSizeChange()" style="width:110px;">
@@ -8438,6 +8458,38 @@ function readBoxStyle(prefix, defaults) {
   const opacity = opacityEl ? parseFloat(opacityEl.value) : NaN;
   return { boxColor: (colorEl && colorEl.value) || defaults.boxColor, boxOpacity: isNaN(opacity) ? defaults.boxOpacity : opacity };
 }
+// ── Typography for the image text editor (same controls as the longform 📐 Layout editor): per-part style
+// {textColor, case, align, tracking, strokeW, strokeColor, strokePos, shadowColor, shadowBlur, shadowDist} drawn with
+// lfText. Pixel values are for a 1080-wide image and scale with the canvas, so the small preview matches the save.
+// Remembered per slot (thumbnail / igBackground / postImage) in this browser, with the chosen typeface.
+const TX_STYLE = {};
+function txLoadStyle(mode) {
+  if (TX_STYLE[mode]) return TX_STYLE[mode];
+  let v = null; try { v = JSON.parse(localStorage.getItem('txstyle:' + mode) || 'null'); } catch (e) {}
+  return (TX_STYLE[mode] = (v && typeof v === 'object') ? { styles: v.styles || {}, fontSet: v.fontSet || null } : { styles: {}, fontSet: null });
+}
+function txSaveStyle(mode, v) { TX_STYLE[mode] = v; try { localStorage.setItem('txstyle:' + mode, JSON.stringify(v)); } catch (e) {} }
+// the hub design with a library typeface swapped in (heading = display, body = body); fonts loaded first
+async function txHub(hub, fs) {
+  if (!fs || !fs.display) return hub;
+  try { await gfLoad([fs.display, fs.body]); } catch (e) {}
+  return { ...hub, display: { family: fs.display, fallback: 'sans-serif', regular: 600, bold: 700 }, body: { family: fs.body || fs.display, fallback: 'sans-serif', regular: 600, bold: 700 } };
+}
+function txScaled(st, w) { st = st || {}; const k = w / 1080; return { ...st, strokeW: (st.strokeW || 0) * k, shadowBlur: (st.shadowBlur || 0) * k, shadowDist: (st.shadowDist || 0) * k }; }
+function txTrackPx(ctx, st) { return (+((st || {}).tracking) || 0) / 1000 * (parseFloat((ctx.font.match(/(\d+(?:\.\d+)?)px/) || [])[1]) || 40); }
+function txWidth(ctx, t, st) { return ctx.measureText(t).width + txTrackPx(ctx, st) * Math.max(0, t.length - 1); }
+function txWrap(ctx, text, maxWidth, st) {
+  const words = String(text || '').split(/\s+/).filter(Boolean), lines = []; let line = '';
+  for (const word of words) { const test = line ? line + ' ' + word : word; if (txWidth(ctx, test, st) > maxWidth && line) { lines.push(line); line = word; } else line = test; }
+  if (line) lines.push(line);
+  return lines;
+}
+function txLines(ctx, lines, x, y, maxWidth, lineHeight, st, fill, w) {
+  st = st || {}; const sc = txScaled(st, w);
+  lines.forEach((ln, i) => { const tw = txWidth(ctx, ln, st);
+    lfText(ctx, ln, st.align === 'center' ? x + (maxWidth - tw) / 2 : st.align === 'right' ? x + maxWidth - tw : x, y + i * lineHeight, sc, fill); });
+  return lines.length * lineHeight;
+}
 function boxRect(w, h, opts) {
   return { x: w * (opts.xPct / 100), y: h * (opts.yPct / 100), w: w * (opts.wPct / 100), h: h * (opts.hPct / 100) };
 }
@@ -8460,17 +8512,19 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
   ctx.fillStyle = `rgba(${scrim.r},${scrim.g},${scrim.b},${peakAlpha})`; ctx.fillRect(box.x, box.y, box.w, box.h);
   const pad = w * 0.03, maxWidth = box.w - pad * 2;
   ctx.textBaseline = 'top'; ctx.fillStyle = hub.tokens.deepInk;
+  const S = (opts.styles || {}).title || {};
+  title = lfCase(title, S.case);
   let fontSize = Math.round(w * (opts.sizePct / 100));
   let lineHeight, lines;
   do {
     ctx.font = `${hub.display.bold} ${fontSize}px "${hub.display.family}", ${hub.display.fallback}`;
     lineHeight = fontSize * 1.18;
-    lines = wrapCanvasLines(ctx, title, maxWidth);
+    lines = txWrap(ctx, title, maxWidth, S);
     fontSize -= Math.max(1, Math.round(w * 0.001));
   } while (lines.length * lineHeight > box.h * 0.82 && fontSize > 10);
   const blockH = lines.length * lineHeight;
   const startY = box.y + Math.max(pad * 0.6, (box.h - blockH) / 2);
-  lines.forEach((line, i) => ctx.fillText(line, box.x + pad, startY + i * lineHeight));
+  txLines(ctx, lines, box.x + pad, startY, maxWidth, lineHeight, S, hub.tokens.deepInk, w);
   return box;
 }
 function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
@@ -8488,14 +8542,14 @@ function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
   let y = box.y + pad;
   const headFontSize = Math.max(8, Math.round(w * (opts.sizePct / 100))), headLineHeight = headFontSize * 1.16;
   ctx.font = `${hub.display.bold} ${headFontSize}px "${hub.display.family}", ${hub.display.fallback}`;
-  if (primary) { ctx.fillStyle = hub.tokens.ink; y += drawWrappedText(ctx, primary, box.x + pad, y, maxWidth, headLineHeight); }
-  if (accent) { ctx.fillStyle = hub.tokens.accent; y += drawWrappedText(ctx, accent, box.x + pad, y, maxWidth, headLineHeight); }
+  const ST = opts.styles || {}, part = (txt, S, fill, lh) => txLines(ctx, txWrap(ctx, lfCase(txt, (S || {}).case), maxWidth, S), box.x + pad, y, maxWidth, lh, S, fill, w);
+  if (primary) y += part(primary, ST.primary, hub.tokens.ink, headLineHeight);
+  if (accent) y += part(accent, ST.accent, hub.tokens.accent, headLineHeight);
   if (bodyText) {
     y += headFontSize * 0.3;
     const bodyFontSize = Math.max(6, Math.round(w * 0.03)), bodyLineHeight = bodyFontSize * 1.35;
     ctx.font = `${hub.body.regular} ${bodyFontSize}px "${hub.body.family}", ${hub.body.fallback}`;
-    ctx.fillStyle = hub.tokens.ink;
-    drawWrappedText(ctx, bodyText, box.x + pad, y, maxWidth, bodyLineHeight);
+    part(bodyText, ST.body, hub.tokens.ink, bodyLineHeight);
   }
   return box;
 }
@@ -8534,7 +8588,7 @@ async function compositeTitleOnThumbnail(overrideTitle) {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box, ...style });
+    { const tx = txLoadStyle('thumbnail'); drawThumbnailComposite(ctx, canvas.width, canvas.height, title, await txHub(hub, tx.fontSet), { sizePct, ...box, ...style, styles: tx.styles }); }
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'blog-thumbnail', fileData: dataUrl });
@@ -8579,7 +8633,7 @@ async function compositeTitleOnIgBackground(overrideTitle) {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawThumbnailComposite(ctx, canvas.width, canvas.height, title, hub, { sizePct, ...box, ...style });
+    { const tx = txLoadStyle('igBackground'); drawThumbnailComposite(ctx, canvas.width, canvas.height, title, await txHub(hub, tx.fontSet), { sizePct, ...box, ...style, styles: tx.styles }); }
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'ig-background', fileData: dataUrl });
@@ -8627,7 +8681,7 @@ async function compositeTextOnPostImage(overrideFields) {
     canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
     const ctx = canvas.getContext('2d');
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-    drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, hub, { sizePct: headSizePct, ...box, ...style });
+    { const tx = txLoadStyle('postImage'); drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, await txHub(hub, tx.fontSet), { sizePct: headSizePct, ...box, ...style, styles: tx.styles }); }
     const dataUrl = canvas.toDataURL('image/png');
     statusEl.textContent = 'Saving…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', fileData: dataUrl });
@@ -8706,7 +8760,11 @@ async function openTextEditor(mode) {
       ...readBoxParams(slot.boxPrefix, slot.boxDefaults),
       ...readBoxStyle(slot.boxPrefix, slot.styleDefaults),
     };
-    TEXT_EDITOR = { mode, slot, canvas, ctx: canvas.getContext('2d'), img, hub, text, params, dragging: null };
+    const tx = txLoadStyle(mode);
+    params.styles = JSON.parse(JSON.stringify(tx.styles || {})); params.fontSet = tx.fontSet || null;
+    TEXT_EDITOR = { mode, slot, canvas, ctx: canvas.getContext('2d'), img, hub: await txHub(hub, params.fontSet), baseHub: hub, text, params, dragging: null,
+      part: slot.draw === 'title' ? 'title' : 'primary' };
+    txFillFonts(); txDrawParts(); txFillControls();
     const sizeInput = document.getElementById('textEditorFontSize');
     sizeInput.max = slot.sizeMax; sizeInput.value = params.sizePct;
     document.getElementById('textEditorFontSizeVal').textContent = params.sizePct;
@@ -8759,6 +8817,75 @@ function textEditorTextChange() {
     t.text.accent = document.getElementById('textEditorAccentText').value;
     t.text.body = document.getElementById('textEditorBodyText').value;
   }
+  redrawTextEditor();
+}
+// Typography panel
+const TX_PARTS = { title: [['title', 'Title']], post: [['primary', 'Headline'], ['accent', 'Accent'], ['body', 'Body']] };
+let TX_FONTLIB = null;
+async function txFillFonts() {
+  const sel = document.getElementById('txFont'), t = TEXT_EDITOR; if (!sel || !t) return;
+  const hubName = `Hub fonts (${t.baseHub.display.family} + ${t.baseHub.body.family})`;
+  const draw = () => {
+    const items = TX_FONTLIB || [], fs = t.params.fontSet;
+    sel.innerHTML = `<option value="">${esc(hubName)}</option>` + items.map(x => `<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.display)} + ${esc(x.body)}</option>`).join('');
+    const cur = fs ? items.find(x => x.display === fs.display && x.body === fs.body) : null;
+    if (fs && !cur) sel.insertAdjacentHTML('beforeend', `<option value="__cur">${esc(fs.display)} + ${esc(fs.body)}</option>`);
+    sel.value = fs ? (cur ? cur.id : '__cur') : '';
+  };
+  draw();
+  if (!TX_FONTLIB) {
+    try { const r = await w('longformLibrary', { kind: 'fonts' }); TX_FONTLIB = r.items || [];
+      for (const [k, v] of Object.entries(r.customFonts || {})) CUSTOM_FONTS[k] = v; } catch (e) { TX_FONTLIB = []; }
+    if (TEXT_EDITOR === t) draw();
+  }
+}
+async function txFontChange() {
+  const t = TEXT_EDITOR; if (!t) return;
+  const id = document.getElementById('txFont').value;
+  if (id === '__cur') return;
+  const it = (TX_FONTLIB || []).find(x => x.id === id);
+  t.params.fontSet = it ? { display: it.display, body: it.body } : null;
+  const st = document.getElementById('textEditorStatus'); st.style.color = 'var(--ink3)'; st.textContent = it ? 'Loading ' + it.display + '…' : '';
+  t.hub = await txHub(t.baseHub, t.params.fontSet);
+  if (TEXT_EDITOR !== t) return;
+  st.textContent = ''; redrawTextEditor();
+}
+function txDrawParts() {
+  const t = TEXT_EDITOR, el = document.getElementById('txParts'); if (!t || !el) return;
+  const parts = TX_PARTS[t.slot.draw === 'title' ? 'title' : 'post'];
+  el.innerHTML = parts.length < 2 ? '' : parts.map(([k, lab]) => `<button class="btn${k === t.part ? ' primary' : ''}" type="button" style="font-size:10px;" onclick="TEXT_EDITOR.part='${k}';txDrawParts();txFillControls()">${lab}</button>`).join('');
+  document.getElementById('txCopyRow').style.display = parts.length < 2 ? 'none' : '';
+}
+function txDefaultColor(t) {
+  const k = t.hub.tokens; return t.slot.draw === 'title' ? k.deepInk : t.part === 'accent' ? k.accent : k.ink;
+}
+function txFillControls() {
+  const t = TEXT_EDITOR; if (!t) return;
+  const S = t.params.styles[t.part] || {}, set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = !!v; else el.value = v; } };
+  set('txColorOn', !!S.textColor); set('txColor', S.textColor || txDefaultColor(t)); set('txCase', S.case || ''); set('txAlign', S.align || '');
+  set('txTracking', S.tracking || 0); set('txStrokeW', S.strokeW || 0); set('txStrokeColor', S.strokeColor || '#000000'); set('txStrokePos', S.strokePos || '');
+  set('txShadowOn', !!S.shadowColor); set('txShadowColor', S.shadowColor || '#000000'); set('txShadowBlur', S.shadowBlur || 0); set('txShadowDist', S.shadowDist || 0);
+  document.getElementById('txShadowBlurVal').textContent = S.shadowBlur || 0;
+}
+function txStyleInput() {
+  const t = TEXT_EDITOR; if (!t) return;
+  const v = id => document.getElementById(id), S = {};
+  if (v('txColorOn').checked) S.textColor = v('txColor').value;
+  if (v('txCase').value) S.case = v('txCase').value;
+  if (v('txAlign').value) S.align = v('txAlign').value;
+  const trk = Math.max(-100, Math.min(800, parseInt(v('txTracking').value) || 0)); if (trk) S.tracking = trk;
+  const sw = Math.max(0, Math.min(16, parseInt(v('txStrokeW').value) || 0));
+  if (sw) { S.strokeW = sw; S.strokeColor = v('txStrokeColor').value; if (v('txStrokePos').value === 'front') S.strokePos = 'front'; }
+  if (v('txShadowOn').checked) { S.shadowColor = v('txShadowColor').value; S.shadowBlur = +v('txShadowBlur').value || 0; S.shadowDist = Math.max(0, parseInt(v('txShadowDist').value) || 0); }
+  v('txShadowBlurVal').textContent = v('txShadowBlur').value;
+  t.params.styles[t.part] = S;
+  redrawTextEditor();
+}
+function txCopyToAll() {
+  const t = TEXT_EDITOR; if (!t) return;
+  const S = t.params.styles[t.part] || {};
+  for (const [k] of TX_PARTS.post) if (k !== t.part) { const own = (t.params.styles[k] || {}).textColor; t.params.styles[k] = { ...S }; if (own) t.params.styles[k].textColor = own; else delete t.params.styles[k].textColor; }
+  const st = document.getElementById('textEditorStatus'); st.style.color = 'var(--fresh)'; st.textContent = 'Style copied to every part (each keeps its own colour).';
   redrawTextEditor();
 }
 function textEditorBoxStyleChange() {
@@ -8854,6 +8981,7 @@ function applyTextEditorAndSave() {
   document.getElementById(slot.sizeId).value = t.params.sizePct;
   document.getElementById(slot.boxPrefix + 'Color').value = t.params.boxColor;
   document.getElementById(slot.boxPrefix + 'Opacity').value = t.params.boxOpacity;
+  txSaveStyle(t.mode, { styles: t.params.styles || {}, fontSet: t.params.fontSet || null });
   const save = slot.save, text = t.text;
   closeTextEditor();
   save(text);
