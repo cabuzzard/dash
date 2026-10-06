@@ -1407,7 +1407,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
-    <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
+    <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="btn" type="button" style="font-size:10px;padding:2px 8px;margin-left:8px;" title="Close every header in this tab" onclick="collapseAllIn('keywords')">&#9656; Collapse all</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
     <p class="stage-sub">Master + every SEO cluster, all as one flat, fully-collapsible stack, collapsed by default (Master is a cluster like any other). Product Ideas mirrors it on the right: a Main Stack plus one Cluster Ideas group per cluster.</p>
     <div class="kwgrid">
       <div class="kwcol">
@@ -1570,7 +1570,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 
   <!-- ══════════════════════ TAB: STRATEGY · TITLES · ASSETS ══════════════════════ -->
   <div class="panel" data-panel="strategy">
-    <div class="stage-hd"><h2>Products · Titles · Assets</h2><span class="stagetag">stage 2-6</span><span style="display:inline-flex;margin-left:10px;gap:3px;align-items:center;font-size:10.5px;" title="How the Titles and Assets sections are grouped"><span style="color:var(--ink3);">Group:</span>
+    <div class="stage-hd"><h2>Products · Titles · Assets</h2><span class="stagetag">stage 2-6</span><button class="btn" type="button" style="font-size:10px;padding:2px 8px;margin-left:8px;" title="Close every header in this tab" onclick="collapseAllIn('strategy')">&#9656; Collapse all</button><span style="display:inline-flex;margin-left:10px;gap:3px;align-items:center;font-size:10.5px;" title="How the Titles and Assets sections are grouped"><span style="color:var(--ink3);">Group:</span>
           <button class="btn agrp-btn" data-v="default" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('default')">Stack</button>
           <button class="btn agrp-btn" data-v="method" style="font-size:10px;padding:2px 7px;" onclick="setAssetGrouping('method')">Method</button></span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-strategy','Strategy tab','strategy')">📝 Tab note</button></div>
     <p class="stage-sub">Products (left) — Group → Product Stack → Product; 🔬 opens a product's 11 research fields — their Titles (middle), and Titles' Assets (right), all on one page. Titles/Assets nest Product Stack → Product → Strategy; Assets sub-group by Platform.</p>
@@ -2237,6 +2237,12 @@ function toggleGrp(el) {
     if (open) GROUPS_OPEN[k] = 1; else delete GROUPS_OPEN[k];
     try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(GROUPS_OPEN)); } catch (e) {}
   }
+}
+// ▸ Collapse all: close every collapsible header in one tab (and remember it), nothing else changes
+function collapseAllIn(panel) {
+  const root = document.querySelector(`.panel[data-panel="${panel}"]`); if (!root) return;
+  root.querySelectorAll('[data-ckey]').forEach(el => { el.classList.remove('open'); delete GROUPS_OPEN[el.dataset.ckey]; });
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify(GROUPS_OPEN)); } catch (e) {}
 }
 function applyCollapseState(root) {
   (root || document).querySelectorAll('[data-ckey]').forEach(el => {
