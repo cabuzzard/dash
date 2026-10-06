@@ -1192,31 +1192,14 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mtitle">Preview &amp; Edit</div>
       <div class="mfield" id="textEditorTitle">Text placement</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
+        <div id="txParts" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;"></div>
         <div style="width:100%;max-width:460px;margin:0 auto;">
           <canvas id="textEditorCanvas" style="width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--border2);touch-action:none;cursor:grab;" onpointerdown="textEditorPointerDown(event)" onpointermove="textEditorPointerMove(event)" onpointerup="textEditorPointerUp(event)" onpointerleave="textEditorPointerUp(event)"></canvas>
         </div>
         <div id="textEditorHint" style="font-size:10.5px;color:var(--ink3);text-align:center;"></div>
         <div id="textEditorTextFields" style="display:flex;flex-direction:column;gap:6px;"></div>
-        <div id="txTypo" style="border:1px solid var(--border2);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--ink2);">
-          <label style="display:flex;align-items:center;gap:6px;">🔤 Typeface <select id="txFont" class="finput" style="flex:1;font-size:11px;" onchange="txFontChange()"></select></label>
-          <div id="txParts" style="display:flex;gap:4px;justify-content:center;flex-wrap:wrap;"></div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">
-            <label style="display:flex;align-items:center;gap:4px;" title="Off = the hub's own colour for this text"><input type="checkbox" id="txColorOn" onchange="txStyleInput()"> Text <input type="color" id="txColor" oninput="document.getElementById('txColorOn').checked=true;txStyleInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-            <label style="display:flex;align-items:center;gap:4px;">Case <select id="txCase" class="finput" onchange="txStyleInput()" style="font-size:11px;padding:2px 4px;"><option value="">as typed</option><option value="upper">UPPER</option><option value="title">Title Case</option><option value="lower">lower</option></select></label>
-            <label style="display:flex;align-items:center;gap:4px;">Align <select id="txAlign" class="finput" onchange="txStyleInput()" style="font-size:11px;padding:2px 4px;"><option value="">left</option><option value="center">center</option><option value="right">right</option></select></label>
-            <label style="display:flex;align-items:center;gap:4px;" title="Letter spacing in thousandths of the font size (Canva's unit): 0 = the font's own spacing, 100 = wide, negative = tighter">Spacing <input type="number" id="txTracking" min="-100" max="800" step="10" class="finput" oninput="txStyleInput()" style="width:54px;"></label>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">
-            <label style="display:flex;align-items:center;gap:4px;" title="Stroke width, in pixels on a 1080-wide image">Stroke <input type="number" id="txStrokeW" min="0" max="16" step="1" class="finput" oninput="txStyleInput()" style="width:44px;">px <input type="color" id="txStrokeColor" oninput="txStyleInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;">
-              <select id="txStrokePos" class="finput" onchange="txStyleInput()" title="Behind = the stroke sits outside the letter. On top = drawn over the letter, centred on its edge" style="font-size:11px;padding:2px 4px;"><option value="">behind</option><option value="front">on top</option></select></label>
-          </div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">
-            <label style="display:flex;align-items:center;gap:4px;"><input type="checkbox" id="txShadowOn" onchange="txStyleInput()"> Shadow <input type="color" id="txShadowColor" oninput="document.getElementById('txShadowOn').checked=true;txStyleInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-            <label style="display:flex;align-items:center;gap:4px;">Diffusion <input type="range" id="txShadowBlur" min="0" max="40" step="1" oninput="txStyleInput()" style="width:80px;"><span id="txShadowBlurVal" style="font-family:var(--mono);"></span></label>
-            <label style="display:flex;align-items:center;gap:4px;">Distance <input type="number" id="txShadowDist" min="0" max="40" step="1" class="finput" oninput="txStyleInput()" style="width:44px;">px</label>
-          </div>
-          <div id="txCopyRow" style="text-align:center;"><button class="btn" type="button" style="font-size:10px;" onclick="txCopyToAll()">⧉ Copy this style to every part</button></div>
-        </div>
+        <div id="txTypoHost"></div>
+        <div id="txCopyRow" style="text-align:center;"><button class="btn" type="button" style="font-size:10px;" onclick="txCopyToAll()">⧉ Copy this style to every part</button></div>
         <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
           <label style="display:flex;align-items:center;gap:6px;">Font size
             <input type="range" id="textEditorFontSize" min="2" max="15" step="0.2" oninput="textEditorFontSizeChange()" style="width:110px;">
@@ -1231,10 +1214,6 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <label style="display:flex;align-items:center;gap:4px;">Y <input type="number" id="textEditorBoxY" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
           <label style="display:flex;align-items:center;gap:4px;">W <input type="number" id="textEditorBoxW" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
           <label style="display:flex;align-items:center;gap:4px;">H <input type="number" id="textEditorBoxH" class="finput" oninput="textEditorBoxChange()" style="width:44px;">%</label>
-        </div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);">
-          <label style="display:flex;align-items:center;gap:6px;">Box color <input type="color" id="textEditorBoxColor" oninput="textEditorBoxStyleChange()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-          <label style="display:flex;align-items:center;gap:6px;">Opacity <input type="number" id="textEditorBoxOpacity" min="0" max="100" step="5" oninput="textEditorBoxStyleChange()" class="finput" style="width:44px;">%</label>
         </div>
         <div id="textEditorStatus" style="font-size:11.5px;min-height:14px;text-align:center;"></div>
       </div>
@@ -7672,30 +7651,12 @@ async function pubLfLayoutModal() {
     <canvas id="lflCanvas" width="960" height="540" style="width:100%;height:auto;display:block;border-radius:8px;border:1px solid var(--border2);touch-action:none;cursor:grab;"
       onpointerdown="lflDown(event)" onpointermove="lflMove(event)" onpointerup="lflUp()" onpointerleave="lflUp()"></canvas>
     <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:8px;">
-      <label id="lflSizeWrap" style="display:flex;align-items:center;gap:6px;">Text size <input type="range" id="lflSize" min="40" max="250" step="5" oninput="lflInput()" style="width:120px;"><span id="lflSizeVal" style="font-family:var(--mono);width:34px;"></span>%</label>
       <label id="lflMaxWrap" style="display:flex;align-items:center;gap:6px;">Max chars <input type="number" id="lflMax" class="finput" min="0" oninput="lflInput()" style="width:50px;" title="Card heading length limit (0 = no limit)"></label>
     </div>
     <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:6px;">
       ${num('X', 'X')}${num('Y', 'Y')}${num('W', 'W')}${num('H', 'H')}
     </div>
-    <div id="lflStyleRow" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:6px;">
-      <label style="display:flex;align-items:center;gap:6px;">Box color <input type="color" id="lflColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-      <label style="display:flex;align-items:center;gap:6px;">Opacity <input type="number" id="lflOpacity" min="0" max="100" step="5" class="finput" oninput="lflInput()" style="width:50px;">%</label>
-    </div>
-    <div id="lflTypoRow" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:6px;">
-      <label style="display:flex;align-items:center;gap:6px;">Case <select id="lflCase" class="finput" onchange="lflInput()" style="width:auto;font-size:11px;"><option value="as-is">As written</option><option value="upper">UPPERCASE</option><option value="title">Title Case</option><option value="lower">lowercase</option></select></label>
-      <label style="display:flex;align-items:center;gap:6px;">Align <select id="lflAlign" class="finput" onchange="lflInput()" style="width:auto;font-size:11px;"><option value="">Layout default</option><option value="left">Left</option><option value="center">Centre</option></select></label>
-      <span style="color:var(--ink3);">Typeface: 🔤 Typeface row in the Publish window</span>
-    </div>
-    <div id="lflTextRow" style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;font-size:11px;color:var(--ink2);margin-top:6px;">
-      <label style="display:flex;align-items:center;gap:6px;">Text <input type="color" id="lflTextColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-      <label style="display:flex;align-items:center;gap:6px;">Stroke <input type="number" id="lflStrokeW" min="0" max="16" step="1" class="finput" oninput="lflInput()" style="width:44px;">px <input type="color" id="lflStrokeColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;">
-        <select id="lflStrokePos" class="finput" onchange="lflInput()" title="Behind = the stroke sits outside the letter. On top = drawn over the letter, centred on its edge (half inside, half outside)" style="font-size:11px;padding:2px 4px;"><option value="">behind</option><option value="front">on top</option></select></label>
-      <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="lflShadowOn" onchange="lflInput()"> Shadow <input type="color" id="lflShadowColor" oninput="lflInput()" style="width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-      <label style="display:flex;align-items:center;gap:6px;">Diffusion <input type="range" id="lflShadowBlur" min="0" max="40" step="1" oninput="lflInput()" style="width:80px;"><span id="lflShadowBlurVal" style="font-family:monospace;"></span></label>
-      <label style="display:flex;align-items:center;gap:6px;">Distance <input type="number" id="lflShadowDist" min="0" max="40" step="1" class="finput" oninput="lflInput()" style="width:44px;">px</label>
-      <label style="display:flex;align-items:center;gap:6px;" title="Letter spacing in thousandths of the font size (Canva's unit): 0 = the font's own spacing, 100 = wide, negative = tighter">Spacing <input type="number" id="lflTracking" min="-100" max="800" step="10" class="finput" oninput="lflInput()" style="width:54px;"></label>
-    </div>
+    <div style="margin-top:8px;">${typoPanelHtml('lfl', 'lflInput()', 'lflFontChange()')}</div>
     <label style="display:flex;align-items:center;gap:6px;justify-content:center;font-size:11.5px;margin-top:8px;"><input type="checkbox" id="lflCampaign"> Use as the default layout for every episode in this campaign</label>
     <div id="lflMsg" style="font-size:11.5px;min-height:14px;text-align:center;color:var(--ink3);margin-top:4px;">Loading…</div>
     <div class="modalrow" style="display:flex;gap:8px;justify-content:flex-end;">
@@ -7721,18 +7682,31 @@ async function pubLfLayoutModal() {
     lflSelect(has[0]);
   } catch (e) { document.getElementById('lflMsg').textContent = 'Could not load: ' + e.message; }
 }
+function lflFillFonts() {
+  const sel = document.getElementById('lflFont'); if (!sel) return;
+  const ep = PUB_LIB.ep || {}, camp = ep.campaignFonts || {};
+  TX_FONTLIB = TX_FONTLIB || PUB_LIB.fonts;
+  typoFontOptions(sel, `Campaign default${camp.display ? ` (${camp.display} + ${camp.body})` : ''}`, PUB_LF.render && PUB_LF.render.fonts ? (LFL.D && LFL.D.fonts) : null);
+  const ps = document.getElementById('pubLibFonts'); if (ps && ps.value && ps.value !== 'default') sel.value = ps.value;
+}
+async function lflFontChange() {
+  const id = document.getElementById('lflFont').value, it = (PUB_LIB.fonts || []).find(x => x.id === id);
+  const ps = document.getElementById('pubLibFonts'); if (ps) ps.value = id || 'default';
+  const camp = (PUB_LIB.ep || {}).campaignFonts || {};
+  if (LFL.D) LFL.D.fonts = it ? { display: it.display, body: it.body } : { display: camp.display, body: camp.body };
+  try { await gfLoad([LFL.D.fonts.display, LFL.D.fonts.body]); } catch (e) {}
+  lflDraw();
+  pubLibUse('fonts');   // saves it on the episode (same as the 🔤 Typeface row)
+}
 function lflSelect(b) {
   if (!LFL.B || !LFL.B[b]) return;
   LFL.sel = b;
   document.querySelectorAll('#lflTabs button').forEach(x => x.style.outline = x.dataset.b === b ? '2px solid var(--accent,#f6ad55)' : '');
   const x = LFL.B[b], isP = b === 'presenter';
-  document.getElementById('lflSizeWrap').style.display = isP ? 'none' : 'flex';
   document.getElementById('lflMaxWrap').style.display = b === 'card' ? 'flex' : 'none';
-  document.getElementById('lflStyleRow').style.display = isP ? 'none' : 'flex';
-  document.getElementById('lflTypoRow').style.display = isP ? 'none' : 'flex';
-  document.getElementById('lflTextRow').style.display = isP ? 'none' : 'flex';
-  const tk = b === 'title' ? 'title' : b === 'card' ? 'card' : 'caption', tt = (LFL.T || {})[tk] || {};
-  document.getElementById('lflCase').value = tt.case || 'as-is'; document.getElementById('lflAlign').value = tt.align || '';
+  document.getElementById('lflTypo').style.display = isP ? 'none' : 'flex';
+  const pn = document.getElementById('lflPartName'); if (pn) pn.textContent = '· ' + ({ title: 'Section title', card: 'Cards', caption: 'Captions' }[b] || '');
+  lflFillFonts();
   document.getElementById('lflW').disabled = isP; document.getElementById('lflH').disabled = b === 'card' || b === 'title';
   document.getElementById('lflH').title = b === 'card' ? 'Cards fit their text — height follows the text size' : '';
   lflSync(); lflDraw();
@@ -7743,33 +7717,28 @@ function lflSync() {
   set('lflX', +x.x.toFixed(2)); set('lflY', +x.y.toFixed(2));
   set('lflW', x.w != null ? +x.w.toFixed(2) : rr ? +(rr.w / 19.2).toFixed(2) : '');
   set('lflH', x.h != null && LFL.sel !== 'card' ? +x.h.toFixed(2) : rr ? +(rr.h / 10.8).toFixed(2) : '');
-  if (x.s != null) { set('lflSize', x.s); document.getElementById('lflSizeVal').textContent = x.s; }
   if (x.maxChars != null) set('lflMax', x.maxChars);
-  if (x.color) set('lflColor', x.color);
-  if (x.opacity != null) set('lflOpacity', x.opacity);
-  set('lflTextColor', x.textColor || '#f6eede'); set('lflStrokeW', x.strokeW || 0); set('lflStrokeColor', x.strokeColor || '#000000');
-  document.getElementById('lflShadowOn').checked = !!x.shadowColor; set('lflShadowColor', x.shadowColor || '#000000');
-  set('lflShadowBlur', x.shadowBlur || 0); document.getElementById('lflShadowBlurVal').textContent = x.shadowBlur || 0; set('lflShadowDist', x.shadowDist || 0); set('lflTracking', x.tracking || 0); set('lflStrokePos', x.strokePos || '');
+  if (LFL.sel !== 'presenter') {
+    const tk = LFL.sel === 'title' ? 'title' : LFL.sel === 'card' ? 'card' : 'caption', tt = (LFL.T || {})[tk] || {};
+    typoWrite('lfl', { size: x.s, case: tt.case, align: tt.align, tracking: x.tracking, textColor: x.textColor, strokeW: x.strokeW, strokeColor: x.strokeColor, strokePos: x.strokePos,
+      shadowColor: x.shadowColor, shadowBlur: x.shadowBlur, shadowDist: x.shadowDist, boxColor: x.color, boxOpacity: x.opacity }, { textColor: '#f6eede' });
+  }
 }
 function lflInput() {
   const x = LFL.B[LFL.sel], v = id => parseFloat(document.getElementById(id).value);
   if (!isNaN(v('lflX'))) x.x = v('lflX'); if (!isNaN(v('lflY'))) x.y = v('lflY');
   if (LFL.sel !== 'presenter' && !isNaN(v('lflW'))) x.w = Math.max(5, v('lflW'));
   if (LFL.sel !== 'card' && LFL.sel !== 'title' && !isNaN(v('lflH'))) x.h = Math.max(3, v('lflH'));
-  if (LFL.sel !== 'presenter') { const tk = LFL.sel === 'title' ? 'title' : LFL.sel === 'card' ? 'card' : 'caption'; LFL.T = LFL.T || {}; LFL.T[tk] = { ...(LFL.T[tk] || {}), case: document.getElementById('lflCase').value };
-    const al = document.getElementById('lflAlign').value; if (al) LFL.T[tk].align = al; else delete LFL.T[tk].align; LFL.content.T = LFL.T; }
-  if (LFL.sel !== 'presenter') { x.s = v('lflSize') || 100; document.getElementById('lflSizeVal').textContent = x.s;
-    x.color = document.getElementById('lflColor').value; x.opacity = isNaN(v('lflOpacity')) ? x.opacity : v('lflOpacity'); }
-  if (LFL.sel === 'card') x.maxChars = Math.max(0, parseInt(document.getElementById('lflMax').value) || 0);
   if (LFL.sel !== 'presenter') {
-    x.textColor = document.getElementById('lflTextColor').value;
-    x.strokeW = Math.max(0, Math.min(16, parseInt(document.getElementById('lflStrokeW').value) || 0)); x.strokeColor = document.getElementById('lflStrokeColor').value;
-    if (document.getElementById('lflStrokePos').value === 'front') x.strokePos = 'front'; else delete x.strokePos;
-    if (document.getElementById('lflShadowOn').checked) { x.shadowColor = document.getElementById('lflShadowColor').value; x.shadowBlur = +document.getElementById('lflShadowBlur').value || 0; x.shadowDist = Math.max(0, parseInt(document.getElementById('lflShadowDist').value) || 0); }
-    else { delete x.shadowColor; delete x.shadowBlur; delete x.shadowDist; }
-    const trk = Math.max(-100, Math.min(800, parseInt(document.getElementById('lflTracking').value) || 0)); if (trk) x.tracking = trk; else delete x.tracking;
-    document.getElementById('lflShadowBlurVal').textContent = document.getElementById('lflShadowBlur').value;
+    const { style: S, box } = typoRead('lfl');
+    const tk = LFL.sel === 'title' ? 'title' : LFL.sel === 'card' ? 'card' : 'caption'; LFL.T = LFL.T || {};
+    const T = { ...(LFL.T[tk] || {}) }; delete T.case; delete T.align;
+    if (S.case) T.case = S.case; if (S.align) T.align = S.align; LFL.T[tk] = T; LFL.content.T = LFL.T;
+    x.s = S.size || 100;
+    if (box.boxColor) x.color = box.boxColor; if (!isNaN(box.boxOpacity)) x.opacity = box.boxOpacity;
+    for (const f of ['textColor', 'strokeW', 'strokeColor', 'strokePos', 'shadowColor', 'shadowBlur', 'shadowDist', 'tracking']) { if (S[f] != null) x[f] = S[f]; else delete x[f]; }
   }
+  if (LFL.sel === 'card') x.maxChars = Math.max(0, parseInt(document.getElementById('lflMax').value) || 0);
   lflDraw(); lflSync();
 }
 function lflDraw() {
@@ -8938,7 +8907,7 @@ function drawThumbnailComposite(ctx, w, h, title, hub, opts) {
   ctx.textBaseline = 'top'; ctx.fillStyle = hub.tokens.deepInk;
   const S = (opts.styles || {}).title || {};
   title = lfCase(title, S.case);
-  let fontSize = Math.round(w * (opts.sizePct / 100));
+  let fontSize = Math.round(w * (opts.sizePct / 100) * ((S.size || 100) / 100));
   let lineHeight, lines;
   do {
     ctx.font = `${hub.display.bold} ${fontSize}px "${hub.display.family}", ${hub.display.fallback}`;
@@ -8967,11 +8936,13 @@ function drawPostComposite(ctx, w, h, primary, accent, bodyText, hub, opts) {
   const headFontSize = Math.max(8, Math.round(w * (opts.sizePct / 100))), headLineHeight = headFontSize * 1.16;
   ctx.font = `${hub.display.bold} ${headFontSize}px "${hub.display.family}", ${hub.display.fallback}`;
   const ST = opts.styles || {}, part = (txt, S, fill, lh) => txLines(ctx, txWrap(ctx, lfCase(txt, (S || {}).case), maxWidth, S), box.x + pad, y, maxWidth, lh, S, fill, w);
-  if (primary) y += part(primary, ST.primary, hub.tokens.ink, headLineHeight);
-  if (accent) y += part(accent, ST.accent, hub.tokens.accent, headLineHeight);
+  const headFont = k => { const z = Math.max(6, Math.round(headFontSize * k)); ctx.font = `${hub.display.bold} ${z}px "${hub.display.family}", ${hub.display.fallback}`; return z * 1.16; };
+  const kOf = S => ((S && S.size) || 100) / 100;
+  if (primary) { const lh = headFont(kOf(ST.primary)); y += part(primary, ST.primary, hub.tokens.ink, lh); }
+  if (accent) { const lh = headFont(kOf(ST.accent)); y += part(accent, ST.accent, hub.tokens.accent, lh); }
   if (bodyText) {
     y += headFontSize * 0.3;
-    const bodyFontSize = Math.max(6, Math.round(w * ((opts.bodyPct || 3) / 100))), bodyLineHeight = bodyFontSize * 1.35;
+    const bodyFontSize = Math.max(6, Math.round(w * ((opts.bodyPct || 3) / 100) * kOf(ST.body))), bodyLineHeight = bodyFontSize * 1.35;
     ctx.font = `${hub.body.regular} ${bodyFontSize}px "${hub.body.family}", ${hub.body.fallback}`;
     part(bodyText, ST.body, hub.tokens.ink, bodyLineHeight);
   }
@@ -9189,13 +9160,12 @@ async function openTextEditor(mode) {
     if (mode === 'postImage') params.bodyPct = spcBodyPct();
     TEXT_EDITOR = { mode, slot, canvas, ctx: canvas.getContext('2d'), img, hub: await txHub(hub, params.fontSet), baseHub: hub, text, params, dragging: null,
       part: slot.draw === 'title' ? 'title' : 'primary' };
+    document.getElementById('txTypoHost').innerHTML = typoPanelHtml('tx', 'txStyleInput()', 'txFontChange()');
     txFillFonts(); txDrawParts(); txFillControls();
     const sizeInput = document.getElementById('textEditorFontSize');
     sizeInput.max = slot.sizeMax; sizeInput.value = params.sizePct;
     document.getElementById('textEditorFontSizeVal').textContent = params.sizePct;
     document.getElementById('textEditorMaxChars').value = params.maxChars;
-    document.getElementById('textEditorBoxColor').value = params.boxColor;
-    document.getElementById('textEditorBoxOpacity').value = params.boxOpacity;
     renderTextEditorTextFields();
     statusEl.textContent = '';
     redrawTextEditor();
@@ -9244,6 +9214,62 @@ function textEditorTextChange() {
   }
   redrawTextEditor();
 }
+// ── ONE Typography panel for every text editor (single post, single post carousel, YT Interview, YT Titles) ──
+// Same controls, labels, order and units everywhere. Each editor keeps its own storage; it just reads/writes
+// the panel with typoRead / typoWrite. Style = {size, case, align, tracking, textColor?, strokeW, strokeColor,
+// strokePos, shadowColor?, shadowBlur, shadowDist} + the part's box {boxColor, boxOpacity}.
+function typoPanelHtml(p, onInput, onFont) {
+  const sw = 'width:34px;height:24px;padding:1px;border:1px solid var(--border2);border-radius:4px;';
+  const row = c => `<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:center;">${c}</div>`;
+  const lab = (c, t) => `<label style="display:flex;align-items:center;gap:4px;"${t ? ` title="${t}"` : ''}>${c}</label>`;
+  return `<div id="${p}Typo" style="border:1px solid var(--border2);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:7px;font-size:11px;color:var(--ink2);">
+    <div style="display:flex;align-items:center;gap:6px;"><b style="font-size:11.5px;">Typography</b><span id="${p}PartName" style="color:var(--ink3);"></span></div>
+    <label style="display:flex;align-items:center;gap:6px;">🔤 Typeface <select id="${p}Font" class="finput" style="flex:1;font-size:11px;" onchange="${onFont}"></select></label>
+    ${row(lab(`Size <input type="range" id="${p}Size" min="40" max="250" step="5" oninput="${onInput}" style="width:90px;"><span id="${p}SizeVal" style="font-family:var(--mono);width:34px;"></span>%`, 'Size of this text, 100 = the layout default')
+      + lab(`Case <select id="${p}Case" class="finput" onchange="${onInput}" style="font-size:11px;padding:2px 4px;"><option value="">As written</option><option value="upper">UPPERCASE</option><option value="title">Title Case</option><option value="lower">lowercase</option></select>`)
+      + lab(`Align <select id="${p}Align" class="finput" onchange="${onInput}" style="font-size:11px;padding:2px 4px;"><option value="">Default</option><option value="left">Left</option><option value="center">Center</option></select>`)
+      + lab(`Spacing <input type="number" id="${p}Tracking" min="-100" max="800" step="10" class="finput" oninput="${onInput}" style="width:54px;">`, "Letter spacing in thousandths of the font size (Canva's unit): 0 = the font's own spacing, 100 = wide, negative = tighter"))}
+    ${row(lab(`<input type="checkbox" id="${p}ColorOn" onchange="${onInput}"> Text colour <input type="color" id="${p}TextColor" oninput="document.getElementById('${p}ColorOn').checked=true;${onInput}" style="${sw}">`, 'Off = the design colour for this text')
+      + lab(`Stroke <input type="number" id="${p}StrokeW" min="0" max="16" step="1" class="finput" oninput="${onInput}" style="width:44px;">px <input type="color" id="${p}StrokeColor" oninput="${onInput}" style="${sw}"> <select id="${p}StrokePos" class="finput" onchange="${onInput}" style="font-size:11px;padding:2px 4px;" title="Behind = the stroke sits outside the letter. On top = drawn over the letter, centred on its edge"><option value="">behind</option><option value="front">on top</option></select>`, 'Stroke width, in pixels on a 1080-wide image / 1920-wide frame'))}
+    ${row(lab(`<input type="checkbox" id="${p}ShadowOn" onchange="${onInput}"> Shadow <input type="color" id="${p}ShadowColor" oninput="document.getElementById('${p}ShadowOn').checked=true;${onInput}" style="${sw}">`)
+      + lab(`Diffusion <input type="range" id="${p}ShadowBlur" min="0" max="40" step="1" oninput="${onInput}" style="width:80px;"><span id="${p}ShadowBlurVal" style="font-family:var(--mono);"></span>`)
+      + lab(`Distance <input type="number" id="${p}ShadowDist" min="0" max="40" step="1" class="finput" oninput="${onInput}" style="width:44px;">px`))}
+    <div id="${p}BoxRow">${row(lab(`Box colour <input type="color" id="${p}BoxColor" oninput="${onInput}" style="${sw}">`) + lab(`Opacity <input type="number" id="${p}BoxOpacity" min="0" max="100" step="5" class="finput" oninput="${onInput}" style="width:50px;">%`))}</div>
+  </div>`;
+}
+function typoWrite(p, st, d) {
+  st = st || {}; d = d || {};
+  const el = id => document.getElementById(p + id), set = (id, v) => { const e = el(id); if (e && document.activeElement !== e) { if (e.type === 'checkbox') e.checked = !!v; else e.value = v; } };
+  set('Size', st.size || 100); if (el('SizeVal')) el('SizeVal').textContent = st.size || 100;
+  set('Case', st.case && st.case !== 'as-is' ? st.case : ''); set('Align', st.align || ''); set('Tracking', st.tracking || 0);
+  set('ColorOn', !!st.textColor); set('TextColor', st.textColor || d.textColor || '#ffffff');
+  set('StrokeW', st.strokeW || 0); set('StrokeColor', st.strokeColor || '#000000'); set('StrokePos', st.strokePos || '');
+  set('ShadowOn', !!st.shadowColor); set('ShadowColor', st.shadowColor || '#000000'); set('ShadowBlur', st.shadowBlur || 0); set('ShadowDist', st.shadowDist || 0);
+  if (el('ShadowBlurVal')) el('ShadowBlurVal').textContent = st.shadowBlur || 0;
+  if (st.boxColor || d.boxColor) set('BoxColor', st.boxColor || d.boxColor);
+  if (st.boxOpacity != null || d.boxOpacity != null) set('BoxOpacity', st.boxOpacity != null ? st.boxOpacity : d.boxOpacity);
+}
+function typoRead(p) {
+  const el = id => document.getElementById(p + id), S = {};
+  const size = parseInt(el('Size').value) || 100; if (size !== 100) S.size = size; el('SizeVal').textContent = size;
+  if (el('Case').value) S.case = el('Case').value;
+  if (el('Align').value) S.align = el('Align').value;
+  const trk = Math.max(-100, Math.min(800, parseInt(el('Tracking').value) || 0)); if (trk) S.tracking = trk;
+  if (el('ColorOn').checked) S.textColor = el('TextColor').value;
+  const sw = Math.max(0, Math.min(16, parseInt(el('StrokeW').value) || 0));
+  if (sw) { S.strokeW = sw; S.strokeColor = el('StrokeColor').value; if (el('StrokePos').value === 'front') S.strokePos = 'front'; }
+  if (el('ShadowOn').checked) { S.shadowColor = el('ShadowColor').value; S.shadowBlur = +el('ShadowBlur').value || 0; S.shadowDist = Math.max(0, parseInt(el('ShadowDist').value) || 0); }
+  el('ShadowBlurVal').textContent = el('ShadowBlur').value;
+  const box = { boxColor: el('BoxColor').value, boxOpacity: parseFloat(el('BoxOpacity').value) };
+  return { style: S, box };
+}
+// the typeface library in any editor's 🔤 select (Campaign / hub default first)
+function typoFontOptions(sel, defLabel, fs) {
+  const items = (TX_FONTLIB || (PUB_LIB && PUB_LIB.fonts) || []);
+  sel.innerHTML = `<option value="">${esc(defLabel)}</option>` + items.map(x => `<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.display)} + ${esc(x.body)}</option>`).join('');
+  const cur = fs ? items.find(x => x.display === fs.display && x.body === fs.body) : null;
+  sel.value = cur ? cur.id : '';
+}
 // Typography panel
 const TX_PARTS = { title: [['title', 'Title']], post: [['primary', 'Headline'], ['accent', 'Accent'], ['body', 'Body']] };
 let TX_FONTLIB = null;
@@ -9251,11 +9277,9 @@ async function txFillFonts() {
   const sel = document.getElementById('txFont'), t = TEXT_EDITOR; if (!sel || !t) return;
   const hubName = `Hub fonts (${t.baseHub.display.family} + ${t.baseHub.body.family})`;
   const draw = () => {
-    const items = TX_FONTLIB || [], fs = t.params.fontSet;
-    sel.innerHTML = `<option value="">${esc(hubName)}</option>` + items.map(x => `<option value="${esc(x.id)}">${esc(x.name)} — ${esc(x.display)} + ${esc(x.body)}</option>`).join('');
-    const cur = fs ? items.find(x => x.display === fs.display && x.body === fs.body) : null;
-    if (fs && !cur) sel.insertAdjacentHTML('beforeend', `<option value="__cur">${esc(fs.display)} + ${esc(fs.body)}</option>`);
-    sel.value = fs ? (cur ? cur.id : '__cur') : '';
+    const fs = t.params.fontSet, items = TX_FONTLIB || [];
+    typoFontOptions(sel, hubName, fs);
+    if (fs && !items.some(x => x.display === fs.display && x.body === fs.body)) { sel.insertAdjacentHTML('beforeend', `<option value="__cur">${esc(fs.display)} + ${esc(fs.body)}</option>`); sel.value = '__cur'; }
   };
   draw();
   if (!TX_FONTLIB) {
@@ -9278,7 +9302,8 @@ async function txFontChange() {
 function txDrawParts() {
   const t = TEXT_EDITOR, el = document.getElementById('txParts'); if (!t || !el) return;
   const parts = TX_PARTS[t.slot.draw === 'title' ? 'title' : 'post'];
-  el.innerHTML = parts.length < 2 ? '' : parts.map(([k, lab]) => `<button class="btn${k === t.part ? ' primary' : ''}" type="button" style="font-size:10px;" onclick="TEXT_EDITOR.part='${k}';txDrawParts();txFillControls()">${lab}</button>`).join('');
+  el.innerHTML = parts.map(([k, lab]) => `<button class="btn" type="button" style="font-size:11px;${k === t.part ? 'outline:2px solid var(--accent,#f6ad55);' : ''}" onclick="TEXT_EDITOR.part='${k}';txDrawParts();txFillControls()">${lab}</button>`).join('');
+  const pn = document.getElementById('txPartName'); if (pn) pn.textContent = '· ' + (parts.find(x => x[0] === t.part) || [, ''])[1];
   document.getElementById('txCopyRow').style.display = parts.length < 2 ? 'none' : '';
 }
 function txDefaultColor(t) {
@@ -9286,24 +9311,14 @@ function txDefaultColor(t) {
 }
 function txFillControls() {
   const t = TEXT_EDITOR; if (!t) return;
-  const S = t.params.styles[t.part] || {}, set = (id, v) => { const el = document.getElementById(id); if (el) { if (el.type === 'checkbox') el.checked = !!v; else el.value = v; } };
-  set('txColorOn', !!S.textColor); set('txColor', S.textColor || txDefaultColor(t)); set('txCase', S.case || ''); set('txAlign', S.align || '');
-  set('txTracking', S.tracking || 0); set('txStrokeW', S.strokeW || 0); set('txStrokeColor', S.strokeColor || '#000000'); set('txStrokePos', S.strokePos || '');
-  set('txShadowOn', !!S.shadowColor); set('txShadowColor', S.shadowColor || '#000000'); set('txShadowBlur', S.shadowBlur || 0); set('txShadowDist', S.shadowDist || 0);
-  document.getElementById('txShadowBlurVal').textContent = S.shadowBlur || 0;
+  typoWrite('tx', t.params.styles[t.part] || {}, { textColor: txDefaultColor(t), boxColor: t.params.boxColor, boxOpacity: t.params.boxOpacity });
 }
 function txStyleInput() {
   const t = TEXT_EDITOR; if (!t) return;
-  const v = id => document.getElementById(id), S = {};
-  if (v('txColorOn').checked) S.textColor = v('txColor').value;
-  if (v('txCase').value) S.case = v('txCase').value;
-  if (v('txAlign').value) S.align = v('txAlign').value;
-  const trk = Math.max(-100, Math.min(800, parseInt(v('txTracking').value) || 0)); if (trk) S.tracking = trk;
-  const sw = Math.max(0, Math.min(16, parseInt(v('txStrokeW').value) || 0));
-  if (sw) { S.strokeW = sw; S.strokeColor = v('txStrokeColor').value; if (v('txStrokePos').value === 'front') S.strokePos = 'front'; }
-  if (v('txShadowOn').checked) { S.shadowColor = v('txShadowColor').value; S.shadowBlur = +v('txShadowBlur').value || 0; S.shadowDist = Math.max(0, parseInt(v('txShadowDist').value) || 0); }
-  v('txShadowBlurVal').textContent = v('txShadowBlur').value;
-  t.params.styles[t.part] = S;
+  const { style, box } = typoRead('tx');
+  t.params.styles[t.part] = style;
+  if (box.boxColor) t.params.boxColor = box.boxColor;
+  if (!isNaN(box.boxOpacity)) t.params.boxOpacity = box.boxOpacity;
   redrawTextEditor();
 }
 function txCopyToAll() {
@@ -9313,12 +9328,7 @@ function txCopyToAll() {
   const st = document.getElementById('textEditorStatus'); st.style.color = 'var(--fresh)'; st.textContent = 'Style copied to every part (each keeps its own colour).';
   redrawTextEditor();
 }
-function textEditorBoxStyleChange() {
-  const t = TEXT_EDITOR; if (!t) return;
-  t.params.boxColor = document.getElementById('textEditorBoxColor').value;
-  t.params.boxOpacity = parseFloat(document.getElementById('textEditorBoxOpacity').value);
-  redrawTextEditor();
-}
+function textEditorBoxStyleChange() { txStyleInput(); }
 // Keeps the four X/Y/W/H number fields showing whatever the current params
 // are — called after every drag AND every direct edit of those fields, so
 // dragging and typing stay in sync with each other.
