@@ -3024,7 +3024,18 @@ Write 800-1500 words of substantive, specific, well-organized prose — real cla
 // ever promotes FORWARD — an operator generating research on an already-Active
 // product must not knock it back to Planning. Legacy/blank status counts as
 // below "Idea" so it always gets promoted. Best-effort: never throws.
-const PRODUCT_STATUS_RANK = { "Idea": 0, "Planning": 1, "Active": 2 };
+const PRODUCT_STATUS_RANK = { "Planning": 0, "Development": 1, "Publish": 2, "Published": 3 };
+// FOUR statuses for products, titles and assets (operator, 2026-10-06): Planning · Development · Publish · Published.
+// Every status write goes through normStatus4, so older pages that still send Research / Active / Writing / Idea…
+// can't bring the old values back. In Development → Development, Active → Published, anything else → Planning.
+const STATUS4 = ["Planning", "Development", "Publish", "Published"];
+function normStatus4(v) {
+  const x = String(v || "").trim();
+  if (STATUS4.includes(x)) return x;
+  if (/^in\s*development$/i.test(x)) return "Development";
+  if (/^active$/i.test(x)) return "Published";
+  return "Planning";
+}
 async function promoteProductStatus(hdr, productId, target) {
   try {
     const tRank = PRODUCT_STATUS_RANK[target];
@@ -4088,7 +4099,7 @@ async function injectGrowthStrategyPlan({ env, ctx, hdr, campaignId, productId, 
   const recommendedPlatforms = Array.isArray(plan.recommendedPlatforms) ? plan.recommendedPlatforms : [];
   if (!groupings.length) return { error: "Plan has no groupings" };
 
-  await promoteProductStatus(hdr, productId, "Active");
+  await promoteProductStatus(hdr, productId, "Development");
 
   const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
   const productName = (productPage?.properties?.Name?.title || []).map(t => t.plain_text).join("") || "Untitled Product";
@@ -13086,7 +13097,7 @@ Return: {
         const activeProdCount = {};
         const campaignIds = new Set(Object.keys(campById));
         productRows.forEach(p => {
-          if (p.properties?.Status?.select?.name !== "Active") return;
+          if (!["Development", "Publish", "Published"].includes(p.properties?.Status?.select?.name || "")) return;
           (p.properties["Campaigns"]?.relation || []).forEach(r => {
             const id = r.id.replace(/-/g,"");
             if (campaignIds.has(id)) activeProdCount[id] = (activeProdCount[id] || 0) + 1;
@@ -14789,7 +14800,7 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
         const { title, type, description, stack, campaignId, status, keywords } = body;
         if (!title) return json({ error: "title required" }, 400);
         const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
-        if (status) createProps["Status"] = { select: { name: status } };
+        createProps["Status"] = { select: { name: normStatus4(status || "Planning") } };
         // Attach to a campaign at creation (the Development-tab "+ Add
         // product" quick-add) — Products relate to campaigns via "Campaigns".
         if (campaignId) createProps["Campaigns"] = { relation: [{ id: campaignId.replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") }] };
@@ -17537,11 +17548,11 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           // product added, page reload, etc). Filter it out here instead of
           // trying to keep the relation itself in sync from every archive
           // call site.
-          .filter(p => (p.properties?.Status?.select?.name || "") !== "Archived")
+          .filter(p => (p.properties?.Status?.select?.name || "") !== "Archived" && !p.properties?.Archived?.checkbox)
           .map(p => ({
           id:     p.id.replace(/-/g,""),
           name:   p.properties?.Name?.title?.map(t => t.plain_text).join("") || "Untitled",
-          status: p.properties?.Status?.select?.name || "In Development",
+          status: p.properties?.Status?.select?.name || "Planning",
           // The product's URL property — feeds the "site" chip on the product
           // row (links to its productsites/ page when set).
           productsite: p.properties?.["URL"]?.url || null,
@@ -19841,7 +19852,7 @@ Return ONLY this JSON, no other text, no fences:
 
       if (body.action === "getProductsTds") {
         const productRows = await notionQuery(PRODUCTS_DB, {
-          filter: { property: "Status", select: { equals: "In Development" } },
+          filter: { property: "Status", select: { equals: "Development" } },
         });
         const prodNames = {};
         productRows.forEach(p => { prodNames[p.id.replace(/-/g,"")] = p.properties.Name?.title?.map(t => t.plain_text).join("") || "Untitled"; });
@@ -20009,7 +20020,7 @@ Return ONLY this JSON, no other text, no fences:
         const description = ([coreIdea, bodyText].filter(Boolean).join("\n\n") || titleText).slice(0, 1990);
         const props = {
           Name:        { title: [{ type: "text", text: { content: titleText.slice(0, 200) } }] },
-          Status:      { select: { name: "In Development" } },
+          Status:      { select: { name: "Development" } },
           Description: { rich_text: [{ type: "text", text: { content: description } }] },
           Notes:       { rich_text: [{ type: "text", text: { content: `Seeded from title ${titleId} for method re-run.`.slice(0, 1990) } }] },
         };
@@ -20294,7 +20305,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const props = {
           Name:        { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
-          Status:      { select: { name: "In Development" } },
+          Status:      { select: { name: "Development" } },
           Campaigns:   { relation: [{ id: dash(campaignId) }] },
         };
         if (description) props["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
@@ -22023,6 +22034,16 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const { productId, status } = body;
         if (!productId || !status) return json({ error: "productId and status required" }, 400);
         const dashed = productId.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/,"$1-$2-$3-$4-$5");
+        // "Archived" isn't a status any more: it ticks the separate Archived checkbox (hidden from lists, status kept)
+        if (/^archived?$/i.test(String(status).trim()) || body.archived !== undefined) {
+          const on = body.archived !== undefined ? !!body.archived : true;
+          const H = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+          try { const db = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, { headers: H }).then(r => r.json());
+            if (!db.properties?.Archived) await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { Archived: { checkbox: {} } } }) }); } catch (e) {}
+          const ar = await fetch(`https://api.notion.com/v1/pages/${dashed}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { Archived: { checkbox: on } } }) });
+          const arj = await ar.json(); if (!ar.ok) return json({ error: arj.message || "Archive failed" }, ar.status);
+          return json({ success: true, archived: on });
+        }
         const resp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, {
           method: "PATCH",
           headers: {
@@ -22030,7 +22051,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
             "Notion-Version": NOTION_VERSION,
             "Content-Type":   "application/json",
           },
-          body: JSON.stringify({ properties: { Status: { select: { name: status } } } }),
+          body: JSON.stringify({ properties: { Status: { select: { name: normStatus4(status) } } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
@@ -29898,6 +29919,38 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         }
         return json({ ok: saved === ids.length, saved });
       }
+      // normalizeStatuses {dryRun?} — move every product / title / asset onto the FOUR statuses (normStatus4).
+      // Products whose status was Archived also get the Archived checkbox (so they stay hidden). Each call re-reads
+      // the three databases and applies up to 60 changes; the page calls it until remaining = 0.
+      if (body.action === "normalizeStatuses") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const H = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const [aRows, tRows, pRows] = await Promise.all([notionQuery(ASSETS_DB, {}), notionQuery(CONTENT_STRATEGY_DB, {}), notionQuery(PRODUCTS_DB, {})]);
+        const jobs = [], summary = {};
+        const add = (db, page, prop, cur, extra) => {
+          const to = normStatus4(cur), arch = db === "product" && /^archived$/i.test(cur || "");
+          if (cur === to && !arch) return;
+          const k = `${db}: ${cur || "(blank)"} → ${to}`; summary[k] = (summary[k] || 0) + 1;
+          jobs.push({ id: page.id, prop, to, arch });
+        };
+        aRows.forEach(a => add("asset", a, "Asset Status", a.properties?.["Asset Status"]?.select?.name || ""));
+        tRows.forEach(t => add("title", t, "Status", t.properties?.Status?.select?.name || ""));
+        pRows.forEach(p => add("product", p, "Status", p.properties?.Status?.select?.name || ""));
+        if (body.dryRun) return json({ success: true, total: jobs.length, summary });
+        if (jobs.some(j => j.arch)) {
+          try { const db = await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, { headers: H }).then(r => r.json());
+            if (!db.properties?.Archived) await fetch(`https://api.notion.com/v1/databases/${PRODUCTS_DB}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { Archived: { checkbox: {} } } }) }); } catch (e) {}
+        }
+        const batch = jobs.slice(0, 60); let ok = 0, failed = 0, lastErr = "";
+        const each = async j => {
+          const props = { [j.prop]: { select: { name: j.to } } };
+          if (j.arch) props.Archived = { checkbox: true };
+          const r = await fetch(`https://api.notion.com/v1/pages/${j.id}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: props }) });
+          if (r.ok) ok++; else { failed++; lastErr = ((await r.json().catch(() => ({}))).message || r.status) + ""; }
+        };
+        for (let i = 0; i < batch.length; i += 3) await Promise.all(batch.slice(i, i + 3).map(each));   // 3 at a time (Notion rate limit)
+        return json({ success: true, done: ok, failed, lastError: lastErr, remaining: Math.max(0, jobs.length - ok), summary });
+      }
       // getCarouselSlides {assetId} → the carousel this slide belongs to, every slide in order
       if (body.action === "getCarouselSlides") {
         const { assetId } = body;
@@ -33515,17 +33568,16 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       if (body.action === "updateTitleStage") {
         const { titleId, stage } = body;
         if (!titleId || !stage) return json({ error: "titleId and stage required" }, 400);
-        const validStages = ["Development","Writing","Review","Approved","Publish","Published","Explode","Done"];
-        if (!validStages.includes(stage)) return json({ error: "Invalid stage: " + stage }, 400);
+        const stage4 = normStatus4(stage);   // Writing / Review / Approved / Explode / Done … → Planning
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, {
           method: "PATCH",
           headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { Status: { select: { name: stage } } } }),
+          body: JSON.stringify({ properties: { Status: { select: { name: stage4 } } } }),
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Update failed" }, resp.status);
-        return json({ success: true });
+        return json({ success: true, stage: stage4 });
       }
 
       // ── updateTitleStrategy ──

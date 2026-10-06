@@ -884,6 +884,7 @@
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2TogglePanel()">⚲ Filter &amp; sort</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Keep the current filters and sort for next time" onclick="dev2SaveClick(this)">💾 Save</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Go back to the saved filters and sort" onclick="dev2LoadSaved()">↺ Revert</button>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Move every product, title and asset onto the four statuses: Planning, Development, Publish, Published" onclick="dev2Normalize(this)">⇢ 4 statuses</button>
         <button id="dev2GroupBtn" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2SetGroup(!DEV2_GROUP)" title="Group the rows under collapsible headers, one tier per sort level">☰ Group by sort: on</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(true)">▸ Collapse all</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(false)">▾ Expand all</button>
@@ -8426,7 +8427,7 @@ function renderProducts() {
   const el = document.getElementById('prodContent');
   el.innerHTML = '';
 
-  const inDev = prodData.filter(p => p.status === 'In Development');
+  const inDev = prodData.filter(p => p.status === 'Development' || p.status === 'In Development');
   if (!inDev.length) { el.innerHTML = '<div class="empty">No products in development.</div>'; return; }
 
   const cols = [
@@ -8481,13 +8482,13 @@ function renderProducts() {
   thead.appendChild(hrow);
   table.appendChild(thead);
 
-  const STATUSES = prodStatuses.length ? prodStatuses : ['Active', 'Research', 'In Development', 'Paused', 'Retired'];
+  const STATUSES = ['Planning', 'Development', 'Publish', 'Published'];   // the four statuses (old Notion options are ignored)
 
   const tbody = document.createElement('tbody');
   sorted.forEach(p => {
     const tr = document.createElement('tr');
-    if (p.status === 'Active')         tr.classList.add('status-active');
-    else if (p.status === 'In Development') tr.classList.add('status-indev');
+    if (p.status === 'Published' || p.status === 'Active') tr.classList.add('status-active');
+    else if (p.status === 'Development' || p.status === 'In Development') tr.classList.add('status-indev');
 
     // Status cell — inline select
     const statusTd = document.createElement('td');
@@ -8506,16 +8507,16 @@ function renderProducts() {
       sel.disabled = true; sel.style.opacity = '.5';
       // Update row highlight immediately
       tr.classList.remove('status-active', 'status-indev');
-      if (p.status === 'Active') tr.classList.add('status-active');
-      else if (p.status === 'In Development') tr.classList.add('status-indev');
+      if (p.status === 'Published' || p.status === 'Active') tr.classList.add('status-active');
+      else if (p.status === 'Development' || p.status === 'In Development') tr.classList.add('status-indev');
       try {
         await call('updateProductStatus', { productId: p.id, status: sel.value });
         showToast('Status updated ✓', 'success');
       } catch (e) {
         p.status = prev; sel.value = prev;
         tr.classList.remove('status-active', 'status-indev');
-        if (prev === 'Active') tr.classList.add('status-active');
-        else if (prev === 'In Development') tr.classList.add('status-indev');
+        if (prev === 'Published' || prev === 'Active') tr.classList.add('status-active');
+        else if (prev === 'Development' || prev === 'In Development') tr.classList.add('status-indev');
         showToast('Failed: ' + e.message, 'error');
       }
       sel.disabled = false; sel.style.opacity = '';
@@ -9180,7 +9181,7 @@ function filterInDevProducts() {
   const query  = document.getElementById('prodTitle').value.trim().toLowerCase();
   const dd     = document.getElementById('prodDropdown');
   // Candidates: products NOT already In Development
-  const pool   = prodData.filter(p => p.status !== 'In Development');
+  const pool   = prodData.filter(p => p.status !== 'Development' && p.status !== 'In Development');
   const matches = pool.filter(p => !query || (p.name || '').toLowerCase().includes(query));
 
   dd.innerHTML = '';
@@ -9303,14 +9304,14 @@ async function submitProduct() {
   try {
     if (existingId) {
       // Promote existing product to In Development
-      await call('updateProductStatus', { productId: existingId, status: 'In Development' });
+      await call('updateProductStatus', { productId: existingId, status: 'Development' });
       // Update local cache immediately
       const p = prodData.find(x => x.id === existingId);
-      if (p) p.status = 'In Development';
-      showToast('Moved to In Development ✓', 'success');
+      if (p) p.status = 'Development';
+      showToast('Moved to Development ✓', 'success');
     } else {
       // Create brand-new product, always In Development
-      await call('createProduct', { title, campaignId, status: 'In Development' });
+      await call('createProduct', { title, campaignId, status: 'Development' });
       showToast('Product created ✓', 'success');
       prodLoaded = false; prodTdLoaded = false;
     }
@@ -10333,6 +10334,26 @@ function dev2Cmp(a, b) {
     if (cmp !== 0) return cmp;
   }
   return 0;
+}
+// ⇢ 4 statuses: preview (dry run), confirm, then apply in batches with progress
+async function dev2Normalize(btn) {
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Checking…';
+  try {
+    const pv = await call('normalizeStatuses', { dryRun: true }); if (pv.error) throw new Error(pv.error);
+    if (!pv.total) { alert('Everything is already on the four statuses.'); return; }
+    const lines = Object.entries(pv.summary).sort((a, b) => b[1] - a[1]).map(([k, n]) => `${n} × ${k}`).join('\n');
+    if (!confirm(`Change ${pv.total} records to the four statuses?\n\n${lines}\n\nArchived products also get the Archived checkbox so they stay hidden.`)) return;
+    let done = 0, guard = 0, failedTotal = 0, lastErr = '';
+    while (guard++ < 40) {
+      btn.textContent = `Updating… ${done}/${pv.total}`;
+      const r = await call('normalizeStatuses', {}); if (r.error) throw new Error(r.error);
+      done += r.done; failedTotal += r.failed; if (r.lastError) lastErr = r.lastError;
+      if (!r.remaining || (!r.done && r.failed)) break;
+    }
+    alert(`Done: ${done} of ${pv.total} updated.` + (failedTotal ? `\n${failedTotal} failed${lastErr ? ' (' + lastErr + ')' : ''}.` : ''));
+    loadDev2();
+  } catch (e) { alert('Not finished: ' + e.message); }
+  finally { btn.disabled = false; btn.textContent = o; }
 }
 function dev2SaveState() { try { localStorage.setItem('dev2Sort', JSON.stringify(DEV2_SORT)); localStorage.setItem('dev2Filters', JSON.stringify(DEV2_F)); } catch (e) {} }
 function dev2LoadSaved() {
