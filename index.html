@@ -10133,6 +10133,7 @@ function dev2SetSort(col, ev) {
   } else {
     DEV2_SORT = [{ col, asc: true }];
   }
+  dev2DrawPanel();   // keep the Filter & sort panel in step with heading clicks
   renderDev2();
 }
 function dev2OnFilterChange() {
