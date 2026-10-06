@@ -6302,12 +6302,48 @@ function renderAssetRowHtml(a, t) {
   PUB_ASSET_CACHE[a.id] = a;
   return `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">📤 Push to Hub</button>` : ''}${/hyperframes/i.test(a.type || '') ? (a.videoUrl ? `<a class="kwlink" href="${esc(a.videoUrl)}" target="_blank" rel="noopener" title="The rendered Reel (MP4)">▶ Reel</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render again on HeyGen (replaces the Video URL)" onclick="event.stopPropagation();hfReel(this)">↻</button>` : `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render this Reel on HeyGen's cloud (~1-3 min); the MP4 lands on Video URL" onclick="event.stopPropagation();hfReel(this)">🎬 Render</button>`) : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`;
 }
+// A single post carousel's slides are separate assets underneath; the list shows each carousel as ONE row.
+function collapseCarousels(assets) {
+  const out = [], groups = {};
+  for (const a of assets) {
+    if (!a.carouselId) { out.push(a); continue; }
+    if (!groups[a.carouselId]) { groups[a.carouselId] = { ...a, isCarouselGroup: true, slides: [] }; out.push(groups[a.carouselId]); }
+    groups[a.carouselId].slides.push(a);
+  }
+  Object.values(groups).forEach(g => g.slides.sort((x, y) => (x.slide || 0) - (y.slide || 0)));
+  return out;
+}
+function renderCarouselRowHtml(g, t) {
+  const sl = g.slides, first = sl[0];
+  const name = String(first.assetTitle || first.title || 'Carousel').replace(/\s*·\s*\d+\/\d+\s*—.*$/, '');
+  const done = sl.filter(x => x.postImage && x.postImage !== x.postImageSource).length;
+  const status = sl.every(x => x.status === 'Published') ? 'Published' : sl.every(x => x.status === 'Publish' || x.status === 'Published') ? 'Publish' : (first.status || 'Development');
+  const ids = sl.map(x => x.id);
+  const thumbs = sl.map(x => { const img = x.postImage || x.postImageSource; return `<span title="Slide ${x.slide}" style="width:15px;height:20px;border-radius:2px;border:1px solid var(--border2);display:inline-block;background:${img ? `url('${esc(img)}') center/cover` : 'var(--surface2)'};"></span>`; }).join('');
+  return `<div class="rasset" style="cursor:pointer;" onclick="openPublishAssetModal('${esc(first.id)}')" title="Open the carousel: all ${sl.length} slides in one editor"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+    <input type="checkbox" class="asset-select-cb" data-id="${esc(first.id)}" onclick="event.stopPropagation();${ids.map(id => `toggleAssetSelect('${esc(id)}',this.checked)`).join(';')}" style="flex-shrink:0;">
+    <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">🎠 ${esc(name)} <span style="color:var(--ink3);">· ${sl.length} slides · ${done}/${sl.length} finished</span></span>
+    <span style="display:inline-flex;gap:2px;flex-shrink:0;">${thumbs}</span>
+    <span style="color:var(--ink2);flex-shrink:0;">carousel</span>
+    <span class="rstatus ${assetStatusClass(status)}" style="flex-shrink:0;">${esc(status)}</span>
+    <button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this carousel (all ${sl.length} slides)" onclick="event.stopPropagation();deleteCarouselRow('${ids.join(',')}','${esc(name).replace(/'/g, "\\'")}')">✕</button>
+  </div></div>`;
+}
+async function deleteCarouselRow(idList, name) {
+  const ids = String(idList).split(',').filter(Boolean);
+  if (!confirm(`Delete the carousel "${name}" and all ${ids.length} of its slides? This archives them in Notion.`)) return;
+  let failed = 0;
+  for (const id of ids) { try { await w('deleteAsset', { assetId: id }); } catch (e) { failed++; } }
+  if (failed) alert(`${failed} slide(s) could not be deleted.`);
+  loadTitleAndAssetTab();
+}
 function renderAssetTitleNode(t, data) {
-  const assets = (data && data.assets) || [];
+  const allAssets = (data && data.assets) || [];
+  allAssets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
+  const assets = collapseCarousels(allAssets);
   const { groups: byPlatform, order } = groupByStack(assets, a => a.platform, 'No platform');
-  assets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
   const body = assets.length
-    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => renderAssetRowHtml(a, t)).join('')}</div>`).join('')
+    ? order.map(plat => `<div style="margin-bottom:6px;"><div style="font-size:9.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink3);margin-bottom:3px;">${esc(plat)} (${byPlatform[plat].length})</div>${byPlatform[plat].map(a => a.isCarouselGroup ? renderCarouselRowHtml(a, t) : renderAssetRowHtml(a, t)).join('')}</div>`).join('')
     : `<div class="loadnote">${data && data.error ? 'Load failed: ' + esc(data.error) : 'No assets resolved.'}</div>`;
   return `<div class="rnode" data-ckey="at-${esc(t.id)}"><div class="rhd" onclick="toggleGrp(this.parentElement)"><span class="rchev">▶</span><span class="rname" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</span>
     <span style="display:flex;align-items:center;gap:6px;flex-shrink:0;">
@@ -8248,7 +8284,9 @@ function pubCarouselDraw() {
   const c = PUB_CAROUSEL; if (!c) return;
   const cur = c.slides.find(x => x.id === pubAssetId);
   const done = c.slides.filter(x => x.postImage && x.postImage !== x.postImageSource).length;
-  document.getElementById('pubCarouselHead').innerHTML = `🎠 ${esc(c.carousel.title || 'Carousel')} <span style="font-weight:400;color:var(--ink3);">· slide ${cur ? cur.slide : '?'} of ${c.slides.length}${SPC_CUR_FMT ? ' (' + SPC_LAYOUTS[SPC_CUR_FMT].label + ' format)' : ''} · ${done}/${c.slides.length} finished · tap a slide to edit it</span>`
+  const ci = c.slides.findIndex(x => x.id === pubAssetId), prev = c.slides[ci - 1], next = c.slides[ci + 1];
+  const nav = `<span style="float:right;display:inline-flex;gap:4px;"><button class="iconbtn" ${prev ? `onclick="pubCarouselOpen('${esc(prev.id)}')"` : 'disabled'} title="Previous slide">◀</button><button class="iconbtn" ${next ? `onclick="pubCarouselOpen('${esc(next.id)}')"` : 'disabled'} title="Next slide">▶</button></span>`;
+  document.getElementById('pubCarouselHead').innerHTML = nav + `🎠 ${esc(c.carousel.title || 'Carousel')} <span style="font-weight:400;color:var(--ink3);">· slide ${cur ? cur.slide : '?'} of ${c.slides.length}${SPC_CUR_FMT ? ' (' + SPC_LAYOUTS[SPC_CUR_FMT].label + ' format)' : ''} · ${done}/${c.slides.length} finished · tap a slide to edit it</span>`
     + (c.carousel.visualThread ? `<div style="font-weight:400;font-size:10.5px;color:var(--ink3);margin-top:2px;">Visual thread: ${esc(c.carousel.visualThread)}</div>` : '');
   document.getElementById('pubCarouselStrip').innerHTML = c.slides.map(x => {
     const on = x.id === pubAssetId, img = x.postImage || x.postImageSource;

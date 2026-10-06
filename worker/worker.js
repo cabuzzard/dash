@@ -22363,6 +22363,9 @@ Return ONLY a JSON array — no other text, no markdown fences:
             thumbnailSource: p["Thumbnail Source"]?.url || "",
             instagramBackgroundSource: p["Instagram Background Source"]?.url || "",
             postImageSource: p["Post Image Source"]?.url || "",
+            // single post carousel: the slides of one carousel share an id → the page shows them as ONE row
+            carouselId: (p["Carousel ID"]?.rich_text || []).map(x => x.plain_text).join("") || "",
+            slide: p["Slide"]?.number || 0,
           };
         };
         titleList.forEach(t => { t.assets = []; });
