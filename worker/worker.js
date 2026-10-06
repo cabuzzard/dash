@@ -2050,6 +2050,31 @@ async function resolveMethodIdByName(name, { create = false, status = "Live" } =
 // (Asset Type "single post carousel") — same fields, same Publish-modal editor, background + text overlay per
 // slide. Slides are tied together by Assets."Carousel ID" + "Slide" (and a `carousel` object in each slide's
 // SINGLE POST json block: {id, index, total, title, visualThread, visual}).
+// Slide FORMATS (researched carousel conventions): a COVER that hooks, TEXT slides that teach one idea each,
+// an END slide that pays off + asks. The format is positional (slide 1 = cover, last = end, the rest = text) so
+// the page, the copy writer and the background writer always agree without storing it. Each format has its own
+// copy budget, background brief and text zone (the page's layout presets in care-gap-v2 match these zones).
+const SPC_FORMATS = {
+  cover: {
+    label: "COVER (title slide)",
+    copy: "The scroll-stopper. headlinePrimary + headlineAccent together at most ~8 words: a bold promise, a number, or a sharp question the swipe answers. body = a 2-5 word swipe cue (e.g. \"Swipe to see why →\") or \"\". No CTA here.",
+    bg: "COVER / hero: the strongest, most striking image of the series — one clear hero subject (people, if the hub design includes them) filling the LOWER 60% of the frame, full-bleed, close and emotional. TEXT ZONE: the TOP 35%, full width, must stay calm and near-empty (soft wall, sky, out-of-focus space) for a big title.",
+    fmt: "vertical 3:4 carousel COVER: big title across the top 35%, hero subject in the lower 60%",
+  },
+  text: {
+    label: "TEXT (middle slide)",
+    copy: "One idea, taught. headlinePrimary + headlineAccent = the point in one sentence (~6-12 words total). body = 1-2 sentences, up to ~200 characters, that make it useful: the why, the how, or the proof. Never a list.",
+    bg: "TEXT slide: the background must step BACK so the words lead — a quiet, low-detail continuation of the visual thread (a soft-focus detail, a texture, an empty corner of the same world, gentle light). TEXT ZONE: the upper 60% of the frame sits under a large text panel — keep it plain and even; at most one small, soft detail in the bottom 35%.",
+    fmt: "vertical 3:4 carousel TEXT slide: a large text panel covers the upper 60%; background quiet and low-detail",
+  },
+  end: {
+    label: "END (closing slide)",
+    copy: "The payoff + the ask. headlinePrimary + headlineAccent = the resolved promise from the cover (~6-10 words). body = ONE clear call to action, under ~90 characters (save this, share it with someone who needs it, follow for more, or the link in bio).",
+    bg: "END slide: a bookend that echoes the cover — the same world and subject, now resolved, calmer and warmer (the tension eased). Subject along the bottom edge or one side. TEXT ZONE: the CENTRE of the frame (roughly 30-70% height, full width) calm and near-empty for the closing line + call to action.",
+    fmt: "vertical 3:4 carousel END slide: closing line + call to action centred; subject on the bottom edge or a side",
+  },
+};
+function spcFormat(index, total) { return index <= 1 ? "cover" : index >= total ? "end" : "text"; }
 async function spCarouselInfo(hdr, assetId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const br = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
@@ -25949,15 +25974,21 @@ THE ARC:
 - Slides 2 to ${spCount - 1} = ONE beat each, in an order that builds (e.g. the problem → why it happens → the shift → how / proof). Every slide earns the next swipe; no two slides make the same point; each one still reads on its own.
 - Slide ${spCount} = the PAYOFF: lands the promise from slide 1, then one soft call to action (save it, share it, follow, or the link in bio).
 
-THE THREE FIELDS, per slide (the same fixed layout on every slide):
-- "headlinePrimary": the setup / first half of the slide's statement. ~25-35 characters, 2-3 lines, NO single word over ~9 characters.
-- "headlineAccent": the payoff / turn / number / load-bearing word — the SAME sentence continued, shown in the accent colour. ~15-25 characters, at most 2 lines.
-- "body": ONE short supporting sentence, at most ~110 characters, or "" when the headline says it all. Never a feature list, never a restatement of the headline.
+SLIDE FORMATS (fixed by position — slide 1 is the COVER, slide ${spCount} is the END, every slide between is a TEXT slide):
+- ${SPC_FORMATS.cover.label}: ${SPC_FORMATS.cover.copy}
+- ${SPC_FORMATS.text.label}: ${SPC_FORMATS.text.copy}
+- ${SPC_FORMATS.end.label}: ${SPC_FORMATS.end.copy}
+CAROUSEL CRAFT: one idea per slide; slide 2 re-hooks (it delivers the first real insight fast, so the reader commits); the middle builds in a clear order; never repeat a point; keep every line plain and concrete.
+
+THE THREE FIELDS on every slide (budgets per format above):
+- "headlinePrimary": the setup / first half of the slide's statement. NO single word over ~9 characters.
+- "headlineAccent": the payoff / turn / number / load-bearing word — the SAME sentence continued, shown in the accent colour.
+- "body": per the format above.
 Write each slide's headline sentence first, then split it at the most load-bearing word. Never name a colour in the copy. Plain second person, the reader's own language.
 
 VISUAL THREAD — the backgrounds are WORDLESS photos/plates generated per slide, and they must read as ONE series:
 - "visualThread": one shared visual concept every slide belongs to — the same setting / subject family / light, unfolding across the swipe (e.g. "one modest kitchen across a single morning, light moving across the table"). Concrete, photographable, in the hub image spec's register.
-- per slide "visual": what THIS slide's background shows within that thread — one concrete subject/moment that fits the slide's beat, kept low and to the right (text sits top-left).
+- per slide "visual": what THIS slide's background shows within that thread — one concrete subject/moment that fits the slide's beat AND its format: the COVER gets the strongest hero image; TEXT slides get a quiet detail or texture of the same world (the words lead); the END echoes the cover, resolved.
 
 ONCE for the whole carousel: "carouselTitle" (2-5 words, a working name), "caption" (3-5 conversational sentences for the post, ending on one soft nudge), "hashtags" (3-5 space-separated, Instagram-native).
 Per slide also "altText": one sentence describing the finished slide.
@@ -26078,7 +26109,7 @@ Return via the submit_carousel tool ONLY — nothing as plain text.`;
               caption: cap,
               hashtags: tags ? tags.split(/\s+/).filter(Boolean) : [],
               altText: alt, accent: "#7ed321", status: "awaiting-canva",
-              ...(isCarousel ? { carousel: { id: carousel.id, index: pi + 1, total: posts.length, title: carousel.title, visualThread: carousel.visualThread, visual: String(post.visual || "").trim().slice(0, 500) } } : {}),
+              ...(isCarousel ? { carousel: { id: carousel.id, index: pi + 1, total: posts.length, format: spcFormat(pi + 1, posts.length), title: carousel.title, visualThread: carousel.visualThread, visual: String(post.visual || "").trim().slice(0, 500) } } : {}),
             };
             const props = {
               "Asset Title":  { title: [{ text: { content: label.slice(0, 200) } }] },
@@ -26119,7 +26150,7 @@ Return via the submit_carousel tool ONLY — nothing as plain text.`;
               method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
               body: JSON.stringify({ children }),
             }).catch(() => {});
-            created.push({ id: newAssetId, contentType });
+            created.push({ id: newAssetId, contentType, ...(isCarousel ? { slide: pi + 1, format: spcFormat(pi + 1, posts.length) } : {}) });
           }
           if (!created.length) return json({ error: "All single-post asset creates failed: " + (failures[0] || "unknown") }, 502);
 
@@ -29683,10 +29714,11 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const contentType = (assetTitle.match(/—\s*([^—]+)$/) || [])[1]?.trim() || "";
         const car = /carousel/i.test(ap["Asset Type"]?.select?.name || "") ? await spCarouselInfo(hdr, assetId).catch(() => null) : null;
         // the whole narrative, in order, from every slide's CURRENT words (operator edits included)
-        let carStory = "", carRole = "";
+        let carStory = "", carRole = "", carFmt = "";
         if (car) {
           const sl = await spCarouselSlides(car.id).catch(() => []);
           const n = sl.length || car.total, i = car.index;
+          carFmt = spcFormat(i, n);
           carRole = i === 1 ? "the HOOK — opens the story: the tension / question the swipe will resolve"
             : i === n ? "the PAYOFF — resolves the story the hook opened, with a soft call to action"
             : `a BUILDING BEAT (${i - 1} of ${n - 2}) — moves the story one step from the hook toward the payoff`;
@@ -29702,7 +29734,7 @@ OUTPUT FORMAT — exactly two lines, nothing else:
 SCENE: <12 words max — main subject + setting/surface + camera viewpoint>
 PROMPT: <the Grok prompt: 60-110 words, one vivid paragraph>
 
-WHAT IT IS: a VERTICAL 3:4 wordless BACKGROUND for a social post — real type gets set over it separately afterward in real fonts, so keep the entire LEFT HALF and the TOP 55% of the frame calm, open and near-empty (a flat wash, soft gradient, or quiet out-of-focus area, no subject or busy detail there). Any subject, object, or texture belongs low and to the right. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+${carFmt ? `WHAT IT IS: a VERTICAL 3:4 wordless BACKGROUND for slide ${car.index} of a carousel, format ${SPC_FORMATS[carFmt].label} — real type gets set over it afterward in real fonts. ${SPC_FORMATS[carFmt].bg} WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.` : `WHAT IT IS: a VERTICAL 3:4 wordless BACKGROUND for a social post — real type gets set over it separately afterward in real fonts, so keep the entire LEFT HALF and the TOP 55% of the frame calm, open and near-empty (a flat wash, soft gradient, or quiet out-of-focus area, no subject or busy detail there). Any subject, object, or texture belongs low and to the right. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.`}
 
 Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
 ${spec}
@@ -29718,7 +29750,7 @@ THIS SLIDE'S ROLE: ${carRole}
 - PLANNED BACKGROUND FOR THIS SLIDE: ${car.visual || "a moment within the thread that fits this slide's message"} — written with the original copy; if this slide's words above have changed since, the WORDS win: re-pick the moment so it shows what this slide now says.
 - The image must show THIS slide's point at THIS point in the story: it should read as the step after the previous slide's image and lead into the next one (e.g. the hook shows the tension, the middle beats show it shifting, the payoff shows it resolved). Don't jump ahead to the payoff early or repeat the previous slide's moment.
 - SERIES CONTINUITY: the same setting/world, subjects, colour grade, medium and lens feel on every slide. Light, time and composition may progress deliberately with the story (e.g. from tension toward resolution), never randomly.
-- KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
+- KEEP THIS FORMAT'S TEXT ZONE (see WHAT IT IS above) calm and near-empty.
 (Ignore the variety rubric below — it is for unrelated single posts.)
 
 ` : ""}VARIETY RUBRIC — every post in this campaign must look like its own photograph, not a variation of the last one:
@@ -29728,7 +29760,7 @@ THIS SLIDE'S ROLE: ${carRole}
 4. STAY IN THE BRAND: the spec's palette hexes, light, mood and its "Never" list still apply. Its example subjects are a starting vocabulary, not a limit.
 5. KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
 
-${await bgLayersBlock(hdr, ap, "vertical 3:4 social post background; the headline + body sit over the left half / top 55%")}
+${await bgLayersBlock(hdr, ap, carFmt ? SPC_FORMATS[carFmt].fmt : "vertical 3:4 social post background; the headline + body sit over the left half / top 55%")}
 End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
