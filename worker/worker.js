@@ -26036,7 +26036,10 @@ THE THREE FIELDS on every slide (budgets per format above):
 - "body": per the format above.
 Write each slide's headline sentence first, then split it at the most load-bearing word. Never name a colour in the copy. Plain second person, the reader's own language.
 
-VISUAL THREAD — the backgrounds are WORDLESS photos/plates generated per slide, and they must read as ONE series:
+${brief && brief.approvedPlate && brief.approvedPlate.prompt ? `APPROVED CAMPAIGN PLATE (the reference look every background matches): ${String(brief.approvedPlate.prompt).slice(0, 1200)}
+
+` : ""}VISUAL THREAD — the backgrounds are WORDLESS photos/plates generated per slide, and they must read as ONE series:
+- PEOPLE: follow the hub design (image spec + approved plate above). If it shows people (for example caregivers with the people they support), the thread and most slides' visuals include them: candid, mid-action, never posing for the camera. Only leave people out if the hub design does.
 - "visualThread": one shared visual concept every slide belongs to — the same setting / subject family / light, unfolding across the swipe (e.g. "one modest kitchen across a single morning, light moving across the table"). Concrete, photographable, in the hub image spec's register.
 - per slide "visual": what THIS slide's background shows within that thread — one concrete subject/moment that fits the slide's beat AND its format: the COVER gets the strongest hero image; TEXT slides get a quiet detail or texture of the same world (the words lead); the END echoes the cover, resolved.
 
@@ -29778,6 +29781,7 @@ ${carStory || "(slide list unavailable)"}
 THIS SLIDE'S ROLE: ${carRole}
 - SHARED VISUAL THREAD (all slides): ${car.visualThread || "(none given — keep one setting/world and grade across the series)"}
 - PLANNED BACKGROUND FOR THIS SLIDE: ${car.visual || "a moment within the thread that fits this slide's message"} — written with the original copy; if this slide's words above have changed since, the WORDS win: re-pick the moment so it shows what this slide now says.
+- The planned background and the visual thread never override the hub design plate or the PEOPLE rule below: if they leave people out but the hub design shows people, include them.
 - The image must show THIS slide's point at THIS point in the story: it should read as the step after the previous slide's image and lead into the next one (e.g. the hook shows the tension, the middle beats show it shifting, the payoff shows it resolved). Don't jump ahead to the payoff early or repeat the previous slide's moment.
 - SERIES CONTINUITY: the same setting/world, subjects, colour grade, medium and lens feel on every slide. Light, time and composition may progress deliberately with the story (e.g. from tension toward resolution), never randomly.
 - KEEP THIS FORMAT'S TEXT ZONE (see WHAT IT IS above) calm and near-empty.
