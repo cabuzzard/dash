@@ -516,7 +516,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <option>Hook</option><option>Pain Point</option><option>Benefit</option><option>Informational</option><option>Customer Focus</option><option>Proof</option><option>Objection</option><option>Contrarian</option>
           </select>
         </label>
-        <label style="font-size:11px;color:var(--ink2);">Count
+        <label style="font-size:11px;color:var(--ink2);"><span id="caCountLabel">Count</span>
           <input type="number" id="caCount" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" min="1" max="12" value="4">
         </label>
         <!-- QA – Product / QA – Sales / QA – Story: this modal's own title
@@ -944,6 +944,15 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         </label>
 
         <div id="pubSinglePostWrap" style="display:none;padding:10px 12px;border:1px solid var(--border2);background:var(--surface2);border-radius:8px;">
+          <div id="pubCarouselWrap" style="display:none;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border2);">
+            <div id="pubCarouselHead" style="font-size:11.5px;font-weight:700;color:var(--ink2);"></div>
+            <div id="pubCarouselStrip" style="display:flex;gap:6px;overflow-x:auto;padding:6px 0;"></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+              <button class="btn" onclick="spCarouselBackgrounds(this)" title="A fresh wordless background for every slide, all in the carousel's shared visual thread">🎨 Backgrounds for every slide</button>
+              <button class="btn" onclick="spCarouselText(this)" title="Puts each slide's own text on its background, using THIS slide's box, font size and typography (set them with 🎯 Preview &amp; Edit first)">🔤 Text on every slide</button>
+              <span id="pubCarouselStatus" style="font-size:10.5px;color:var(--ink3);"></span>
+            </div>
+          </div>
           <div id="pubSpWrap" style="display:none;flex-direction:column;gap:6px;padding:0 0 10px;margin-bottom:10px;border-bottom:1px solid var(--border2);">
           <div style="font-size:11px;color:var(--ink2);font-weight:700;">Post copy <span style="font-weight:400;color:var(--ink3);">— the three text fields on the image. Edit here or in 🎯 Preview &amp; Edit; Save stores them, and your rewrites teach the writer your voice.</span></div>
           <label style="font-size:11px;color:var(--ink2);">Headline Primary<input type="text" id="pubSpPrimary" class="finput" style="width:100%;margin-top:3px;box-sizing:border-box;"></label>
@@ -5390,11 +5399,12 @@ async function openBulkCreateAssetModal() {
 function bcaOnMethodChange() {
   const sel = document.getElementById('bcaMethod');
   const name = sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].textContent : '';
-  const isSinglePost = /single post/i.test(name);
+  const isSinglePost = /single post/i.test(name), isSpCarousel = isSinglePost && /carousel/i.test(name);
   document.getElementById('bcaContentTypeRow').style.display = isSinglePost ? 'block' : 'none';
   const countEl = document.getElementById('bcaCountInput');
-  countEl.value = isSinglePost ? 6 : 4;
-  countEl.max = isSinglePost ? 12 : 8;
+  countEl.value = isSpCarousel ? 7 : isSinglePost ? 6 : 4;
+  countEl.min = isSpCarousel ? 6 : 1;
+  countEl.max = isSpCarousel ? 9 : isSinglePost ? 12 : 8;
 }
 function closeBulkCreateAssetModal() { document.getElementById('bulkCreateAssetModal').classList.remove('open'); }
 async function runBulkCreateAsset() {
@@ -5611,11 +5621,13 @@ async function openCreateAssetModal(titleId) {
 }
 function caOnMethodChange() {
   const name = document.getElementById('caMethod').dataset.name || '';
-  const isSinglePost = /single post/i.test(name);
+  const isSinglePost = /single post/i.test(name), isSpCarousel = isSinglePost && /carousel/i.test(name);
   document.getElementById('caContentTypeRow').style.display = isSinglePost ? 'block' : 'none';
   const countEl = document.getElementById('caCount');
-  countEl.value = isSinglePost ? 6 : 4;
-  countEl.max = isSinglePost ? 12 : 8;
+  countEl.value = isSpCarousel ? 7 : isSinglePost ? 6 : 4;
+  countEl.min = isSpCarousel ? 6 : 1;
+  countEl.max = isSpCarousel ? 9 : isSinglePost ? 12 : 8;
+  const cl = document.getElementById('caCountLabel'); if (cl) cl.textContent = isSpCarousel ? 'Slides (6-9, one carousel)' : 'Count';
   // QA – Product / QA – Sales / QA – Story — no concept-count generic path
   // at all (see the QA branch in runCreateAsset); needs a Product always,
   // a digital-product-type picker for QA – Product only.
@@ -6304,7 +6316,7 @@ function openPublishAssetModal(assetId) {
   document.getElementById('pubVideoUrl').value = data.videoUrl || '';
   document.getElementById('pubVideoStatus').textContent = '';
   const bufBtn = document.getElementById('pubBufferBtn'), bufSel = document.getElementById('pubBufferChannel');
-  const bufferable = /^(carousel|single post)$/i.test(data.type || '') || isVideoAsset || /\boffer\b/i.test(data.type || '');
+  const bufferable = /^(carousel|single post|single post carousel)$/i.test(data.type || '') || isVideoAsset || /\boffer\b/i.test(data.type || '');
   bufBtn.style.display = bufferable ? '' : 'none'; bufBtn.disabled = false; bufBtn.textContent = '📤 Send to Buffer'; bufBtn.title = '';
   bufSel.style.display = 'none'; bufSel.innerHTML = '';
   document.getElementById('pubBufferType').style.display = 'none'; document.getElementById('pubBufferType').value = '';
@@ -6325,6 +6337,8 @@ function openPublishAssetModal(assetId) {
   const spWrap = document.getElementById('pubSinglePostWrap');
   const isSinglePostAsset = /single post/i.test(data.type || '');
   spWrap.style.display = isSinglePostAsset ? 'block' : 'none';
+  document.getElementById('pubCarouselWrap').style.display = 'none';
+  if (/single post carousel/i.test(data.type || '')) { pubCarouselLoad(assetId); if (bufBtn) bufBtn.textContent = '📤 Send whole carousel to Buffer'; }
   if (isSinglePostAsset) {
     document.getElementById('pubPostImage').value = data.postImage || '';
     const ppImg = document.getElementById('pubPostImagePreview');
@@ -8157,6 +8171,98 @@ async function genBlogThumbnail(action) {
 // that's the step that makes this a finished, publishable creative, so
 // Asset Status is left alone here (compositeTextOnPostImage flips it once
 // there's real text on the image, not before).
+// ── 🎠 Single post carousel: every slide is its own single-post asset (same editor); this strip ties them together ──
+let PUB_CAROUSEL = null;   // { forAsset, carousel, slides }
+async function pubCarouselLoad(assetId) {
+  const wrap = document.getElementById('pubCarouselWrap');
+  wrap.style.display = 'block';
+  document.getElementById('pubCarouselHead').textContent = '🎠 Loading the carousel…';
+  document.getElementById('pubCarouselStrip').innerHTML = '';
+  document.getElementById('pubCarouselStatus').textContent = '';
+  try {
+    const r = await w('getCarouselSlides', { assetId });
+    if (pubAssetId !== assetId) return;
+    if (!r.carousel) { wrap.style.display = 'none'; return; }
+    PUB_CAROUSEL = { forAsset: assetId, carousel: r.carousel, slides: r.slides || [] };
+    pubCarouselDraw();
+  } catch (e) { document.getElementById('pubCarouselHead').textContent = '🎠 Carousel: ' + e.message; }
+}
+function pubCarouselDraw() {
+  const c = PUB_CAROUSEL; if (!c) return;
+  const cur = c.slides.find(x => x.id === pubAssetId);
+  const done = c.slides.filter(x => x.postImage && x.postImage !== x.postImageSource).length;
+  document.getElementById('pubCarouselHead').innerHTML = `🎠 ${esc(c.carousel.title || 'Carousel')} <span style="font-weight:400;color:var(--ink3);">· slide ${cur ? cur.slide : '?'} of ${c.slides.length} · ${done}/${c.slides.length} finished · tap a slide to edit it</span>`
+    + (c.carousel.visualThread ? `<div style="font-weight:400;font-size:10.5px;color:var(--ink3);margin-top:2px;">Visual thread: ${esc(c.carousel.visualThread)}</div>` : '');
+  document.getElementById('pubCarouselStrip').innerHTML = c.slides.map(x => {
+    const on = x.id === pubAssetId, img = x.postImage || x.postImageSource;
+    return `<div onclick="pubCarouselOpen('${esc(x.id)}')" title="${esc(x.title)}" style="flex:0 0 auto;cursor:pointer;width:54px;text-align:center;font-size:10px;color:var(--ink3);">
+      <div style="width:54px;height:72px;border-radius:6px;border:2px solid ${on ? 'var(--accent,#f6ad55)' : 'var(--border2)'};background:${img ? `url('${esc(img)}') center/cover` : 'var(--surface)'};display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--ink2);">${img ? '' : x.slide}</div>${x.slide}</div>`;
+  }).join('');
+}
+function pubCarouselOpen(id) {
+  if (id === pubAssetId) return;
+  if (!PUB_ASSET_CACHE[id]) { alert("That slide isn't loaded on this page yet. Refresh the Assets list and open it from there."); return; }
+  openPublishAssetModal(id);
+}
+async function spCarouselBackgrounds(btn) {
+  const c = PUB_CAROUSEL; if (!c) return;
+  if (!confirm(`Generate a fresh background for all ${c.slides.length} slides?\n\nEach one replaces that slide's current background (any text render stays until you put the text back on). Takes about 20-40 seconds per slide.`)) return;
+  const st = document.getElementById('pubCarouselStatus'), o = btn.textContent; btn.disabled = true;
+  let ok = 0;
+  for (const [i, x] of c.slides.entries()) {
+    st.style.color = 'var(--ink3)'; st.textContent = `Background ${i + 1}/${c.slides.length} (slide ${x.slide})…`;
+    try {
+      const url = await generateBackgroundForKind(x.id, false, 'post-image');
+      x.postImage = x.postImageSource = url; ok++;
+      if (PUB_ASSET_CACHE[x.id]) { PUB_ASSET_CACHE[x.id].postImage = url; PUB_ASSET_CACHE[x.id].postImageSource = url; }
+      if (x.id === pubAssetId) { document.getElementById('pubPostImageSource').value = url; document.getElementById('pubPostImage').value = url; const pv = document.getElementById('pubPostImagePreview'); pv.src = url; pv.style.display = ''; }
+      pubCarouselDraw();
+    } catch (e) { st.style.color = 'var(--stale)'; st.textContent = `Slide ${x.slide} failed: ${e.message}`; await new Promise(r => setTimeout(r, 1500)); }
+  }
+  btn.disabled = false; btn.textContent = o;
+  st.style.color = ok === c.slides.length ? 'var(--fresh)' : 'var(--stale)';
+  st.textContent = `✓ ${ok}/${c.slides.length} backgrounds made. Next: set the layout + typography in 🎯 Preview & Edit, then 🔤 Text on every slide.`;
+}
+// one slide's text onto its clean background, with THIS modal's box / size / typography settings
+async function spComposeAndSave(assetId, bgUrl, fields) {
+  const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
+  const maxChars = parseInt(document.getElementById('pubPostMaxChars').value) || 40;
+  const box = readBoxParams('pubPostBox', { xPct: 0, yPct: 0, wPct: 62, hPct: 58 });
+  const style = readBoxStyle('pubPostBox', { boxColor: '#ffffff', boxOpacity: 88 });
+  const primary = truncateToChars((fields['Headline Primary'] || '').trim(), maxChars);
+  const accent = truncateToChars((fields['Headline Accent'] || '').trim(), maxChars);
+  const bodyText = (fields['Body'] || '').trim();
+  const hub = await ensureHubFontsLoaded(await resolveHubDesign());
+  const img = await loadImageCORS(bgUrl);
+  const canvas = document.createElement('canvas'); canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+  const ctx = canvas.getContext('2d'); ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  const tx = txLoadStyle('postImage');
+  drawPostComposite(ctx, canvas.width, canvas.height, primary, accent, bodyText, await txHub(hub, tx.fontSet), { sizePct: headSizePct, ...box, ...style, styles: tx.styles });
+  const s = await w('saveOfferImage', { assetId, kind: 'post-image', fileData: canvas.toDataURL('image/png') });
+  return s.url;
+}
+async function spCarouselText(btn) {
+  const c = PUB_CAROUSEL; if (!c) return;
+  const todo = c.slides.filter(x => x.postImageSource);
+  if (!todo.length) { alert('No slide has a background yet. Use 🎨 Backgrounds for every slide first.'); return; }
+  if (!confirm(`Put the text on ${todo.length} slide${todo.length === 1 ? '' : 's'} using this slide's layout and typography?` + (todo.length < c.slides.length ? `\n\n${c.slides.length - todo.length} slide(s) have no background yet and will be skipped.` : ''))) return;
+  const st = document.getElementById('pubCarouselStatus'), o = btn.textContent; btn.disabled = true;
+  let ok = 0;
+  for (const [i, x] of todo.entries()) {
+    st.style.color = 'var(--ink3)'; st.textContent = `Text ${i + 1}/${todo.length} (slide ${x.slide})…`;
+    try {
+      const fields = (x.id === pubAssetId && PUB_SP_LOADED === pubAssetId) ? pubSpFields() : ((await w('getSinglePostFields', { assetId: x.id })).fields || {});
+      const url = await spComposeAndSave(x.id, x.postImageSource, fields);
+      x.postImage = url; ok++;
+      if (PUB_ASSET_CACHE[x.id]) PUB_ASSET_CACHE[x.id].postImage = url;
+      if (x.id === pubAssetId) { document.getElementById('pubPostImage').value = url; const pv = document.getElementById('pubPostImagePreview'); pv.src = url; pv.style.display = ''; }
+      pubCarouselDraw();
+    } catch (e) { st.style.color = 'var(--stale)'; st.textContent = `Slide ${x.slide} failed: ${e.message}`; await new Promise(r => setTimeout(r, 1500)); }
+  }
+  btn.disabled = false; btn.textContent = o;
+  st.style.color = ok === todo.length ? 'var(--fresh)' : 'var(--stale)';
+  st.textContent = `✓ Text on ${ok}/${todo.length} slides. Tap any slide to fine-tune it on its own, then 📤 Send whole carousel to Buffer.`;
+}
 async function genSinglePostImage() {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageGenBtn');

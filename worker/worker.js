@@ -1990,7 +1990,35 @@ async function resolveMethodIdByName(name, { create = false, status = "Live" } =
 // Resume, Listing, LinkedIn Post, SEO Post, Offer – Content Hub, Blog - SEO -
 // News, Landing Page, Upwork Proposal, Upwork Search, the carousel — … CSV
 // Export variants) resolve straight through.
+// ── "single post carousel": one cohesive 6-9 slide carousel where EVERY slide is its own single-post asset
+// (Asset Type "single post carousel") — same fields, same Publish-modal editor, background + text overlay per
+// slide. Slides are tied together by Assets."Carousel ID" + "Slide" (and a `carousel` object in each slide's
+// SINGLE POST json block: {id, index, total, title, visualThread, visual}).
+async function spCarouselInfo(hdr, assetId) {
+  const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const br = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+  for (const b of (br.results || [])) {
+    if (b.type !== "code") continue;
+    const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
+    try { const j = JSON.parse(txt); if (j.kind === "single-post") return j.carousel ? { ...j.carousel, fields: j.fields || {} } : null; } catch (e) {}
+  }
+  return null;
+}
+// every slide of a carousel, in order: [{id, slide, title, postImage, status}]
+async function spCarouselSlides(carouselId) {
+  if (!carouselId) return [];
+  const rows = await notionQuery(ASSETS_DB, { filter: { property: "Carousel ID", rich_text: { equals: String(carouselId) } } }).catch(() => []);
+  return rows.map(r => ({
+    id: r.id.replace(/-/g, ""),
+    slide: r.properties?.["Slide"]?.number || 0,
+    title: (r.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join(""),
+    postImage: r.properties?.["Post Image"]?.url || "",
+    postImageSource: r.properties?.["Post Image Source"]?.url || "",   // the clean (wordless) background
+    status: r.properties?.["Asset Status"]?.select?.name || "",
+  })).sort((a, b) => a.slide - b.slide);
+}
 const ASSET_TYPE_METHOD_ALIAS = {
+  "single post carousel": "single post carousel",
   "single post": "single post",
   "avatar video": "Avatar Video — Growth",
   "text video": "Text Video — Growth",
@@ -25765,7 +25793,8 @@ Return via the submit_reels tool ONLY.`;
         // .claude/skills/single-post-canva.md → saveSinglePostImage). No
         // worker-side image render. Renamed from the old "Hook Posts" method.
         if (/\bsingle post\b/i.test(assetType)) {
-          const spCount = Math.min(Math.max(parseInt(body.count) || 6, 1), 12);
+          const isCarousel = /\bcarousel\b/i.test(assetType);   // "single post carousel": one 6-9 slide carousel, a slide per asset
+          const spCount = isCarousel ? Math.min(Math.max(parseInt(body.count) || 7, 6), 9) : Math.min(Math.max(parseInt(body.count) || 6, 1), 12);
           const contentType = String(body.contentType || "Hook").trim() || "Hook";
           const hasMethod = methodId && methodId !== "__none__";
           const hubSlug = hubSlugForCampaign(campaignId);
@@ -25784,6 +25813,7 @@ Return via the submit_reels tool ONLY.`;
             } catch (e) {}
           }
           if (!tplCycle.length) tplCycle = [{ ...SINGLE_POST_DEFAULT_TEMPLATE }];
+          if (isCarousel) tplCycle = tplCycle.slice(0, 1);   // one look for every slide of a carousel
 
           const [prodPage, researchRec, methodFrameworkText, pillarContent, campResearch] = await Promise.all([
             hasProduct ? fetch(`https://api.notion.com/v1/pages/${dsDash(productId)}`, { headers: dsHdr }).then(r => r.json()).catch(() => null) : Promise.resolve(null),
@@ -25846,6 +25876,73 @@ Also per post:
 
 Return via the submit_single_posts tool ONLY — nothing as plain text.`;
 
+          let carousel = null, posts = [];
+          if (isCarousel) {
+            const cPrompt = `${researchGuidelinesBlock(body.researchGuidelines)}${body.__voice || ""}You are a short-form social copywriter. Write ONE Instagram carousel of exactly ${spCount} slides${productName ? ` for "${productName}"` : ""} — one cohesive piece, a single argument that builds slide by slide, not ${spCount} separate posts.
+
+TITLE / ANGLE: ${title}
+CAROUSEL ANGLE — "${contentType}": ${CT_GUIDE[contentType] || CT_GUIDE["Hook"]} (this is the carousel as a whole; individual slides play their own role in the arc)
+${description ? `OPERATOR NOTES (follow): ${description}\n` : ""}${methodFrameworkText ? `METHOD FRAMEWORK (voice + structure — follow it):\n${methodFrameworkText.slice(0, 2600)}\n` : ""}
+RESEARCH TO GROUND EVERY SLIDE IN (use the plain phrasing here; do not make it cleverer or more abstract):
+${researchFacts || "(sparse — work from the title + pillar below)"}
+${campPain ? `\nCampaign pain points: ${campPain}\n` : ""}${pillarContent ? `\nPILLAR CONTENT (voice + facts to stay faithful to — invent no claims beyond this):\n${pillarContent.slice(0, 2400)}\n` : ""}
+${imageSpec ? `HUB IMAGE SPEC (the visual register — every slide background lives in it):\n${imageSpec.slice(0, 1600)}\n` : ""}
+THE ARC:
+- Slide 1 = the HOOK: stops the scroll and promises what the swipe pays off. It must make slide 2 feel necessary.
+- Slides 2 to ${spCount - 1} = ONE beat each, in an order that builds (e.g. the problem → why it happens → the shift → how / proof). Every slide earns the next swipe; no two slides make the same point; each one still reads on its own.
+- Slide ${spCount} = the PAYOFF: lands the promise from slide 1, then one soft call to action (save it, share it, follow, or the link in bio).
+
+THE THREE FIELDS, per slide (the same fixed layout on every slide):
+- "headlinePrimary": the setup / first half of the slide's statement. ~25-35 characters, 2-3 lines, NO single word over ~9 characters.
+- "headlineAccent": the payoff / turn / number / load-bearing word — the SAME sentence continued, shown in the accent colour. ~15-25 characters, at most 2 lines.
+- "body": ONE short supporting sentence, at most ~110 characters, or "" when the headline says it all. Never a feature list, never a restatement of the headline.
+Write each slide's headline sentence first, then split it at the most load-bearing word. Never name a colour in the copy. Plain second person, the reader's own language.
+
+VISUAL THREAD — the backgrounds are WORDLESS photos/plates generated per slide, and they must read as ONE series:
+- "visualThread": one shared visual concept every slide belongs to — the same setting / subject family / light, unfolding across the swipe (e.g. "one modest kitchen across a single morning, light moving across the table"). Concrete, photographable, in the hub image spec's register.
+- per slide "visual": what THIS slide's background shows within that thread — one concrete subject/moment that fits the slide's beat, kept low and to the right (text sits top-left).
+
+ONCE for the whole carousel: "carouselTitle" (2-5 words, a working name), "caption" (3-5 conversational sentences for the post, ending on one soft nudge), "hashtags" (3-5 space-separated, Instagram-native).
+Per slide also "altText": one sentence describing the finished slide.
+
+Return via the submit_carousel tool ONLY — nothing as plain text.`;
+            const cResp = await fetch("https://api.anthropic.com/v1/messages", {
+              method: "POST",
+              headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+              body: JSON.stringify({
+                model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: cPrompt }],
+                tools: [{
+                  name: "submit_carousel",
+                  description: `Submit ONE carousel of exactly ${spCount} slides.`,
+                  input_schema: {
+                    type: "object",
+                    properties: {
+                      carouselTitle: { type: "string" }, caption: { type: "string" }, hashtags: { type: "string" }, visualThread: { type: "string" },
+                      slides: { type: "array", items: { type: "object", properties: {
+                        headlinePrimary: { type: "string" }, headlineAccent: { type: "string" }, body: { type: "string" }, visual: { type: "string" }, altText: { type: "string" },
+                      }, required: ["headlinePrimary", "headlineAccent", "visual"] } },
+                    },
+                    required: ["carouselTitle", "caption", "hashtags", "visualThread", "slides"],
+                  },
+                }],
+                tool_choice: { type: "tool", name: "submit_carousel" },
+              }),
+            });
+            const cData = await cResp.json();
+            if (!cResp.ok) return json({ error: cData.error?.message || "Claude API error" }, 502);
+            const cu = (cData.content || []).find(b => b.type === "tool_use" && b.name === "submit_carousel");
+            const ci = cu?.input || {};
+            const slides = (Array.isArray(ci.slides) ? ci.slides : []).filter(x => x && String(x.headlinePrimary || "").trim()).slice(0, spCount);
+            if (slides.length < 3) return json({ error: "The carousel came back with too few slides — try again" }, 502);
+            carousel = {
+              id: "c" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+              title: String(ci.carouselTitle || title || "Carousel").trim().slice(0, 60),
+              visualThread: String(ci.visualThread || "").trim().slice(0, 600),
+              caption: String(ci.caption || "").trim(), hashtags: String(ci.hashtags || ""),
+              total: slides.length,
+            };
+            posts = slides.map(sl => ({ ...sl, caption: carousel.caption, hashtags: carousel.hashtags }));
+          } else {
           const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
             headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -25882,9 +25979,10 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
           const aiData = await aiResp.json();
           if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
           const toolUse = (aiData.content || []).find(b => b.type === "tool_use" && b.name === "submit_single_posts");
-          let posts = (toolUse && Array.isArray(toolUse.input?.posts)) ? toolUse.input.posts : [];
+          posts = (toolUse && Array.isArray(toolUse.input?.posts)) ? toolUse.input.posts : [];
           posts = posts.filter(x => x && String(x.headlinePrimary || "").trim()).slice(0, spCount);
           if (!posts.length) return json({ error: "No single posts generated — try again" }, 502);
+          }
 
           try {
             await ensureAssetsDbProperties(dsHdr, {
@@ -25892,6 +25990,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
               "Design Link": { type: "url" }, "Post Caption": { type: "rich_text" },
               "Alt Text": { type: "rich_text" }, "Notes": { type: "rich_text" },
               "Hashtags": { type: "rich_text" },
+              ...(isCarousel ? { "Carousel ID": { type: "rich_text" }, "Slide": { type: "number" } } : {}),
             });
           } catch (e) { /* PATCH below surfaces a real prop error if one slips through */ }
 
@@ -25899,7 +25998,8 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
           const heading2 = text => ({ object: "block", type: "heading_2", heading_2: { rich_text: rtBlock(text) } });
           const para = text => ({ object: "block", type: "paragraph", paragraph: { rich_text: rtBlock(text) } });
 
-          const spMProp = await assetMethodProp(methodId, "single post");
+          const spType = isCarousel ? "single post carousel" : "single post";
+          const spMProp = await assetMethodProp(methodId, spType);
           const created = [], failures = [];
           for (let pi = 0; pi < posts.length; pi++) {
             const post = posts[pi];
@@ -25910,7 +26010,9 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
             const cap = String(post.caption || "").trim();
             const tags = String(post.hashtags || "").split(/\s+/).filter(t => /^#\S+/.test(t)).slice(0, 5).join(" ");
             const alt = String(post.altText || "").trim();
-            const label = `${(hp + (ha ? " " + ha : "")).slice(0, 80)} — ${contentType}`;
+            const label = isCarousel
+              ? `${carousel.title} · ${pi + 1}/${posts.length} — ${(hp + (ha ? " " + ha : "")).slice(0, 70)}`
+              : `${(hp + (ha ? " " + ha : "")).slice(0, 80)} — ${contentType}`;
             const cardObj = {
               kind: "single-post",
               template: { url: tpl.canvaUrl, id: tpl.id, name: tpl.name },
@@ -25919,11 +26021,12 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
               caption: cap,
               hashtags: tags ? tags.split(/\s+/).filter(Boolean) : [],
               altText: alt, accent: "#7ed321", status: "awaiting-canva",
+              ...(isCarousel ? { carousel: { id: carousel.id, index: pi + 1, total: posts.length, title: carousel.title, visualThread: carousel.visualThread, visual: String(post.visual || "").trim().slice(0, 500) } } : {}),
             };
             const props = {
               "Asset Title":  { title: [{ text: { content: label.slice(0, 200) } }] },
               "Asset Status": { select: { name: "Development" } },
-              "Asset Type":   { select: { name: "single post" } },
+              "Asset Type":   { select: { name: spType } },
               "Body":         { rich_text: [{ text: { content: (hp + (ha ? " " + ha : "") + (bd ? "\n" + bd : "")).slice(0, 2000) } }] },
               "Content Strategy": { relation: [{ id: dsDash(titleId) }] },
               "Canva Template": { url: tpl.canvaUrl },
@@ -25935,6 +26038,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
             if (platformId) props["Platform"] = { relation: [{ id: dsDash(platformId) }] };
             if (tags) props["Hashtags"] = { rich_text: [{ text: { content: tags.slice(0, 1990) } }] };
             if (alt) props["Alt Text"] = { rich_text: [{ text: { content: alt.slice(0, 1990) } }] };
+            if (isCarousel) { props["Carousel ID"] = { rich_text: [{ text: { content: carousel.id } }] }; props["Slide"] = { number: pi + 1 }; }
             Object.assign(props, spMProp);
             const aResp = await fetch("https://api.notion.com/v1/pages", {
               method: "POST", headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -25952,6 +26056,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
               heading2("Canva handoff"),
               para(`Template: ${tpl.name} — ${tpl.canvaUrl}`),
               para(`Content type: ${contentType}${tags ? " · Hashtags: " + tags : ""}`),
+              ...(isCarousel ? [heading2("Carousel"), para(`${carousel.title} — slide ${pi + 1} of ${posts.length}`), para(`Visual thread: ${carousel.visualThread}`), para(`This slide's background: ${String(post.visual || "").trim()}`)] : []),
             ];
             await fetch(`https://api.notion.com/v1/blocks/${dsDash(newAssetId)}/children`, {
               method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -25961,7 +26066,7 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
           }
           if (!created.length) return json({ error: "All single-post asset creates failed: " + (failures[0] || "unknown") }, 502);
 
-          const spMethodId = (methodId && methodId !== "__none__") ? methodId : await resolveMethodIdByName("single post").catch(() => null);
+          const spMethodId = (methodId && methodId !== "__none__") ? methodId : await resolveMethodIdByName(spType).catch(() => null);
           if (spMethodId) {
             await fetch(`https://api.notion.com/v1/pages/${dsDash(titleId)}`, {
               method: "PATCH", headers: { ...dsHdr, "Content-Type": "application/json" },
@@ -25973,7 +26078,8 @@ Return via the submit_single_posts tool ONLY — nothing as plain text.`;
           return json({
             success: true, created: created.length, failed: failures.length,
             assets: created, awaitingCanva: created.length,
-            assetType: "single post", contentType,
+            assetType: spType, contentType,
+            ...(isCarousel ? { carouselId: carousel.id, carouselTitle: carousel.title, slides: created.length } : {}),
             templateCount: tplCycle.length,
             templateNames: tplCycle.map(t => t.name),
           });
@@ -29427,6 +29533,16 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
           samples: { all: (sAll || []).length, campaign: (sMine || []).length }, recentSamples: (sMine || []).slice(-5).reverse() });
       }
 
+      // getCarouselSlides {assetId} → the carousel this slide belongs to, every slide in order
+      if (body.action === "getCarouselSlides") {
+        const { assetId } = body;
+        if (!assetId) return json({ error: "assetId required" }, 400);
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const car = await spCarouselInfo(hdr, assetId).catch(() => null);
+        if (!car) return json({ carousel: null, slides: [] });
+        const { fields, ...meta } = car;
+        return json({ carousel: meta, slides: await spCarouselSlides(car.id) });
+      }
       if (body.action === "getSinglePostFields") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
@@ -29482,6 +29598,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         // the campaign's recent scenes (KV bgscenes:<campaignId>) are passed so a batch never repeats.
         const postText = (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim().slice(0, 700);
         const contentType = (assetTitle.match(/—\s*([^—]+)$/) || [])[1]?.trim() || "";
+        const car = /carousel/i.test(ap["Asset Type"]?.select?.name || "") ? await spCarouselInfo(hdr, assetId).catch(() => null) : null;
         const sceneKey = "bgscenes:" + campaignId;
         let recentScenes = [];
         try { recentScenes = (await env.TRADES.get(sceneKey, "json")) || []; } catch (e) {}
@@ -29500,9 +29617,16 @@ ${spec}
 THIS POST'S MESSAGE (do NOT put its words in the image):
 ${postText || assetTitle}${contentType ? `\nPOST TYPE: ${contentType}` : ""}
 
-VARIETY RUBRIC — every post in this campaign must look like its own photograph, not a variation of the last one:
+${car ? `THIS IS SLIDE ${car.index} OF ${car.total} IN ONE CAROUSEL ("${car.title}") — every slide's background belongs to ONE visual series:
+- SHARED VISUAL THREAD (all slides): ${car.visualThread || "(none given — keep one setting, light and grade across the series)"}
+- THIS SLIDE'S BACKGROUND: ${car.visual || "a moment within the thread that fits this slide's message"}
+- Keep the SAME setting/world, light, time of day, colour grade, medium and lens feel as the rest of the series; vary only the subject, moment and framing this slide calls for, so a swipe feels like turning pages of one story.
+- KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
+(Ignore the variety rubric below — it is for unrelated single posts.)
+
+` : ""}VARIETY RUBRIC — every post in this campaign must look like its own photograph, not a variation of the last one:
 1. MESSAGE → METAPHOR: turn this post's core idea into ONE concrete, photographable visual metaphor or situation that a viewer would connect to the message (e.g. "more leads into a broken pipe" → water escaping a cracked pipe joint; "five dashboards tell five stories" → five mismatched gauges or screens; "every handoff is where leads go quiet" → a dropped relay baton, an unplugged cable). Generic workspace props (desk, notebook, pen, laptop, mug) only if the message is literally about them.
-2. NO REPEATS: ${recentScenes.length ? `this campaign's recent backgrounds were —\n${recentScenes.map(r => "   • " + r.scene).join("\n")}\n   Do NOT reuse any of their main subjects, settings/surfaces, or viewpoints.` : "(no recent backgrounds yet)"}
+2. NO REPEATS: ${car ? "(carousel slide — see the series rules above instead)" : recentScenes.length ? `this campaign's recent backgrounds were —\n${recentScenes.map(r => "   • " + r.scene).join("\n")}\n   Do NOT reuse any of their main subjects, settings/surfaces, or viewpoints.` : "(no recent backgrounds yet)"}
 3. VARY THE CAMERA: pick a viewpoint unlike the recent ones — macro close-up, overhead flat-lay, low angle, wide environmental, through a doorway, shallow-focus detail.
 4. STAY IN THE BRAND: the spec's palette hexes, light, mood and its "Never" list still apply. Its example subjects are a starting vocabulary, not a limit.
 5. KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
@@ -41590,6 +41714,14 @@ ${assemblyManifest}`;
           if (!slides.length) return json({ error: "No slide-NN.png files found at the Design Link folder" }, 400);
           assets = slides.map(n => ({ image: { url: designLink.replace(/\/?$/, "/") + n } }));
           kind = `carousel (${slides.length} slides)`;
+        } else if (/single post carousel/i.test(assetType)) {
+          const car = await spCarouselInfo(hdr, assetId).catch(() => null);
+          const slides = car ? await spCarouselSlides(car.id) : [];
+          if (!slides.length) return json({ error: "Couldn't find this carousel's slides" }, 400);
+          const missing = slides.filter(x => !https(x.postImage)).map(x => x.slide);
+          if (missing.length) return json({ error: `Slide${missing.length > 1 ? "s" : ""} ${missing.join(", ")} ${missing.length > 1 ? "have" : "has"} no finished Post Image yet — make every slide's image first` }, 400);
+          assets = slides.map(x => ({ image: { url: x.postImage } }));
+          kind = `carousel (${slides.length} slides)`;
         } else if (/video|reel|short|explainer|avatar/i.test(assetType)) {
           const v = String(body.videoUrl || P["Video URL"]?.url || "").trim();
           if (!https(v)) return json({ error: "No public Video URL on this asset yet — paste a permanent https link to the MP4 (or upload it once video hosting is enabled)" }, 400);
@@ -41667,6 +41799,18 @@ ${assemblyManifest}`;
           if (up.ok) await stampPublishingDate(assetId);
           if (!up.ok) console.error("sendAssetToBuffer: status flip failed", up.status, (await up.text()).slice(0, 200));
         } catch (e) { console.error("sendAssetToBuffer: status flip failed", e.message); }
+        // a single post carousel went out as one post → every other slide is Published too
+        if (statusSet && /single post carousel/i.test(assetType)) {
+          try {
+            const car = await spCarouselInfo(hdr, assetId);
+            for (const sl of (car ? await spCarouselSlides(car.id) : [])) {
+              if (sl.id === String(assetId).replace(/-/g, "")) continue;
+              const r2 = await fetch(`https://api.notion.com/v1/pages/${dashId(sl.id)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
+                body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Published" } } } }) });
+              if (r2.ok) await stampPublishingDate(sl.id);
+            }
+          } catch (e) { console.error("sendAssetToBuffer: carousel slide status", e.message); }
+        }
         return json({ success: true, draft: true, kind: kind + (metadata && (service === "instagram" || service === "facebook") ? " " + igType : ""), channelId, service, channelHow: how, bufferPostId,
           channelName: channel.name, organizationName: channel.organizationName || "", statusSet, tagsWhere: tags ? tagsWhere : "" });
       }
