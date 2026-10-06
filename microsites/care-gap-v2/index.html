@@ -1526,6 +1526,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div class="field"><div class="frow"><span class="fname">Display / Body / Mono</span><span class="fbadge fresh" id="badge-fonts">live</span><div class="fmeta"><div class="fval mono" id="f-fonts">—</div></div><button class="notebtn" onclick="openNoteModal('design-fonts','Fonts','design')">📝</button></div></div>
       </div>
     </section>
+    <div id="designSaveBar" style="position:sticky;bottom:0;z-index:15;margin-top:12px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));border-radius:10px;border:1px solid var(--border2);background:var(--surface);display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:0 -4px 14px rgba(0,0,0,.12);">
+      <div id="designSaveBarMsg" style="flex:1;min-width:200px;font-size:12px;"></div>
+      <button class="btn primary" id="designSaveAllBtn" onclick="saveAllDesign()" style="font-size:13px;padding:8px 14px;font-weight:700;"></button>
+    </div>
   </div>
 
   <!-- ══════════════════════ TAB: PRODUCT RESEARCH ══════════════════════ -->
@@ -3015,6 +3019,79 @@ let DESIGN_STAGE = { register:null, photography:null, avoid:null, palette:null, 
 let PALETTE_IMAGE = null;
 const HP_ROLES = [['bg','Background'],['surface','Card'],['ink','Body text'],['ink-head','Headings'],['ink-soft','Muted text'],['line','Outlines'],['sea','Primary / links'],['deep','Dark band'],['deep-ink','Text on dark'],['accent','Accent / button']];
 
+// ── 💾 Save all design changes (sticky bar at the bottom of the Design tab) ──
+// One save path for direction / palette / fonts: write every staged part, then rebuild the image spec and WAIT
+// for it (the step everything visual reads). The bar always says what's unsaved, what's running, or that all is done.
+let DESIGN_SAVING = null, DESIGN_SPEC_OK = true, DESIGN_SAVE_ERR = '';
+function designDirtyParts() {
+  const p = [];
+  if (DESIGN_STAGE.register != null) p.push('Visual direction');
+  if (DESIGN_STAGE.palette != null) p.push('Palette');
+  if (DESIGN_STAGE.fonts != null) p.push('Fonts');
+  return p;
+}
+function renderDesignSaveBar() {
+  const bar = document.getElementById('designSaveBar'), msg = document.getElementById('designSaveBarMsg'), btn = document.getElementById('designSaveAllBtn');
+  if (!bar) return;
+  const dirty = designDirtyParts();
+  const look = (bg, border) => { bar.style.background = bg; bar.style.borderColor = border; };
+  if (DESIGN_SAVING) {
+    look('var(--surface2)', 'var(--sea, #0b6e8a)');
+    msg.innerHTML = `<b>⏳ ${esc(DESIGN_SAVING)}</b><br><span style="color:var(--ink3);">Keep this page open until this says “All design changes saved”.</span>`;
+    btn.style.display = ''; btn.disabled = true; btn.textContent = 'Saving…';
+  } else if (dirty.length) {
+    look('#fff4e0', '#e0a040');
+    msg.innerHTML = `<b style="color:#8a5300;">⚠ Not saved yet: ${esc(dirty.join(' · '))}</b><br><span style="color:#6b5530;">Renders and new assets still use the saved design until you save.</span>${DESIGN_SAVE_ERR ? `<br><span style="color:#c0392b;">Last try failed: ${esc(DESIGN_SAVE_ERR)}</span>` : ''}`;
+    btn.style.display = ''; btn.disabled = false; btn.textContent = '💾 Save all design changes';
+  } else if (!DESIGN_SPEC_OK) {
+    look('#fdecea', '#c0392b');
+    msg.innerHTML = `<b style="color:#c0392b;">The image spec isn't built from your saved design yet.</b><br><span style="color:var(--ink2);">Single-post backgrounds and offer plates read it.${DESIGN_SAVE_ERR ? ' Last try failed: ' + esc(DESIGN_SAVE_ERR) : ''}</span>`;
+    btn.style.display = ''; btn.disabled = false; btn.textContent = '↻ Rebuild image spec';
+  } else {
+    look('var(--fresh-bg)', 'var(--fresh)');
+    msg.innerHTML = '<b style="color:var(--fresh);">✓ All design changes saved</b> <span style="color:var(--ink3);">· image spec up to date. New backgrounds follow this design.</span>';
+    btn.style.display = 'none';
+  }
+}
+async function saveDesignParts(which) {
+  if (DESIGN_SAVING) return;
+  DESIGN_SAVE_ERR = '';
+  const step = t => { DESIGN_SAVING = t; renderDesignSaveBar(); };
+  try {
+    if (which.includes('direction') && DESIGN_STAGE.register != null) {
+      step('Saving the visual direction…');
+      await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Visual Register', text: DESIGN_STAGE.register });
+      await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Photography Direction', text: DESIGN_STAGE.photography });
+      await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Visual Avoid', text: DESIGN_STAGE.avoid });
+      DESIGN_LIVE.register = DESIGN_STAGE.register; DESIGN_LIVE.photography = DESIGN_STAGE.photography; DESIGN_LIVE.avoid = DESIGN_STAGE.avoid;
+      DESIGN_STAGE.register = DESIGN_STAGE.photography = DESIGN_STAGE.avoid = null;
+      DESIGN_SPEC_OK = false; renderDesignDirection();
+    }
+    if (which.includes('palette') && DESIGN_STAGE.palette != null) {
+      step('Saving the palette…');
+      const strip = Object.entries(DESIGN_STAGE.palette).map(([k, v]) => `${k} ${v}`).join(' · ');
+      await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Palette', text: `${strip}\n\n${JSON.stringify(DESIGN_STAGE.palette)}` });
+      DESIGN_LIVE.palette = DESIGN_STAGE.palette; DESIGN_STAGE.palette = null;
+      DESIGN_SPEC_OK = false; renderDesignPalette();
+    }
+    if (which.includes('fonts') && DESIGN_STAGE.fonts != null) {
+      step('Saving the fonts…');
+      const f = DESIGN_STAGE.fonts;
+      await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Fonts', text: `${f.display} / ${f.body} / ${f.mono}\n\n${JSON.stringify(f)}` });
+      DESIGN_LIVE.fonts = DESIGN_STAGE.fonts; DESIGN_STAGE.fonts = null;
+      DESIGN_SPEC_OK = false; renderDesignFonts();
+    }
+    if (!DESIGN_SPEC_OK) {
+      step('Rebuilding the image spec from the saved design (about a minute)…');
+      const r = await rebuildImageSpec();
+      DESIGN_SPEC_OK = r === true;
+      if (!DESIGN_SPEC_OK) DESIGN_SAVE_ERR = typeof r === 'string' ? r : 'image spec rebuild failed';
+    }
+  } catch (e) { DESIGN_SAVE_ERR = e.message; }
+  DESIGN_SAVING = null; renderDesignSaveBar();
+}
+function saveAllDesign() { return saveDesignParts(['direction', 'palette', 'fonts']); }
+window.addEventListener('beforeunload', e => { if (DESIGN_SAVING || designDirtyParts().length) { e.preventDefault(); e.returnValue = ''; } });
 function renderDesignDirection() {
   const dirty = DESIGN_STAGE.register != null;
   document.getElementById('f-visualRegister').textContent = dirty ? DESIGN_STAGE.register : (DESIGN_LIVE.register || '(none on file)');
@@ -3027,6 +3104,7 @@ function renderDesignDirection() {
   });
   document.getElementById('direction-badge').textContent = dirty ? 'staged — unsaved' : 'real regen';
   document.getElementById('designSaveBtn').disabled = !dirty;
+  renderDesignSaveBar();
 }
 function renderDesignPalette() {
   const pal = DESIGN_STAGE.palette || DESIGN_LIVE.palette;
@@ -3042,6 +3120,7 @@ function renderDesignPalette() {
   }
   document.getElementById('palette-badge').textContent = dirty ? 'staged — unsaved' : 'real regen';
   document.getElementById('paletteSaveBtn').disabled = !dirty;
+  renderDesignSaveBar();
 }
 function renderDesignFonts() {
   const f = DESIGN_STAGE.fonts || DESIGN_LIVE.fonts;
@@ -3051,6 +3130,7 @@ function renderDesignFonts() {
   document.getElementById('badge-fonts').className = dirty ? 'fbadge stale' : 'fbadge fresh';
   document.getElementById('fonts-badge').textContent = dirty ? 'staged — unsaved' : 'real regen';
   document.getElementById('fontsSaveBtn').disabled = !dirty;
+  renderDesignSaveBar();
 }
 async function loadDesignTab() {
   try {
@@ -3062,6 +3142,7 @@ async function loadDesignTab() {
       palette: r.palette || null,
       fonts: r.fonts || null,
     };
+    if (typeof r.imageSpecLen === 'number' && !DESIGN_SAVING) DESIGN_SPEC_OK = r.imageSpecLen > 200;   // cleared by a design save → needs a rebuild
     renderDesignDirection(); renderDesignPalette(); renderDesignFonts();
     loadApprovedPlate();
   } catch (e) {
@@ -3161,7 +3242,8 @@ async function rebuildImageSpec() {
     const s = await w('saveImageSpec', { campaignId: CAMPAIGN_ID, text: r.text });
     if (s.error) throw new Error(s.error);
     if (msg) { msg.style.color = 'var(--fresh)'; msg.textContent = 'Image spec rebuilt from the saved design. Every Grok render now follows it.'; }
-  } catch (e) { if (msg) { msg.style.color = '#c0392b'; msg.textContent = 'Saved, but the image spec rebuild failed: ' + e.message; } }
+    return true;
+  } catch (e) { if (msg) { msg.style.color = '#c0392b'; msg.textContent = 'Saved, but the image spec rebuild failed: ' + e.message; } return e.message; }
 }
 // ── Approved campaign plate (Research › Approved Plate) — the first Grok
 // throw that every asset-level throw is informed by.
@@ -3333,21 +3415,7 @@ async function testDesignOnGrok(guidance, previousPrompt) {
   } catch (e) { msg.style.color = '#c0392b'; msg.textContent = 'Grok test failed: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
 }
-async function saveStagedDesign() {
-  const btn = document.getElementById('designSaveBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
-  try {
-    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Visual Register', text: DESIGN_STAGE.register });
-    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Photography Direction', text: DESIGN_STAGE.photography });
-    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Visual Avoid', text: DESIGN_STAGE.avoid });
-    DESIGN_LIVE.register = DESIGN_STAGE.register; DESIGN_LIVE.photography = DESIGN_STAGE.photography; DESIGN_LIVE.avoid = DESIGN_STAGE.avoid;
-    DESIGN_STAGE.register = DESIGN_STAGE.photography = DESIGN_STAGE.avoid = null;
-    renderDesignDirection();
-    btn.textContent = 'rebuilding image spec…';
-    await rebuildImageSpec();   // wait: until it's stored, renders write a fresh spec from the saved design each time
-    btn.disabled = false; btn.textContent = o;
-  } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
-}
+async function saveStagedDesign() { return saveDesignParts(['direction']); }
 function setPaletteImage(input) {
   const f = input.files && input.files[0]; if (!f) return;
   if (f.size > 4000000) { alert('Keep the image under 4 MB.'); return; }
@@ -3369,39 +3437,13 @@ async function runRegenPalette(steer, omit) {
   DESIGN_STAGE.palette = r.palette;
   renderDesignPalette();
 }
-async function saveStagedPalette() {
-  const btn = document.getElementById('paletteSaveBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
-  try {
-    const strip = Object.entries(DESIGN_STAGE.palette).map(([k,v]) => `${k} ${v}`).join(' · ');
-    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Palette', text: `${strip}\n\n${JSON.stringify(DESIGN_STAGE.palette)}` });
-    DESIGN_LIVE.palette = DESIGN_STAGE.palette;
-    DESIGN_STAGE.palette = null;
-    renderDesignPalette();
-    btn.textContent = 'rebuilding image spec…';
-    await rebuildImageSpec();   // wait: until it's stored, renders write a fresh spec from the saved design each time
-    btn.disabled = false; btn.textContent = o;
-  } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
-}
+async function saveStagedPalette() { return saveDesignParts(['palette']); }
 async function runRegenFonts(steer, omit) {
   const r = await w('generateResearchFonts', { campaignId: CAMPAIGN_ID, instructions: steer || undefined, omit: omit || undefined, stage: true, slug: HUB_SLUG || undefined });
   DESIGN_STAGE.fonts = r.fonts;
   renderDesignFonts();
 }
-async function saveStagedFonts() {
-  const btn = document.getElementById('fontsSaveBtn');
-  const o = btn.textContent; btn.disabled = true; btn.textContent = 'saving…';
-  try {
-    const f = DESIGN_STAGE.fonts;
-    await w('saveResearchDesignField', { campaignId: CAMPAIGN_ID, field: 'Fonts', text: `${f.display} / ${f.body} / ${f.mono}\n\n${JSON.stringify(f)}` });
-    DESIGN_LIVE.fonts = DESIGN_STAGE.fonts;
-    DESIGN_STAGE.fonts = null;
-    renderDesignFonts();
-    btn.textContent = 'rebuilding image spec…';
-    await rebuildImageSpec();   // wait: until it's stored, renders write a fresh spec from the saved design each time
-    btn.disabled = false; btn.textContent = o;
-  } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
-}
+async function saveStagedFonts() { return saveDesignParts(['fonts']); }
 
 // ══════════════════════ PRODUCT RESEARCH TAB — nested by stack, modal per product ══════════════════════
 let CAMPAIGN_PRODUCTS = [];

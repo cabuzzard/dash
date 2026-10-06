@@ -11742,6 +11742,7 @@ Return ONLY this minified JSON object, nothing before or after:
               },
               scope: t.kind,
               researchId: t.kind === "research" ? t.pageId : undefined,
+              imageSpecLen: (rtOf(t.resProps, "Image Spec") || "").length,   // 0 = cleared by a design save, needs a rebuild
             });
           } catch (e) { return json({ palette: null, fonts: null, error: e.message }); }
         }
