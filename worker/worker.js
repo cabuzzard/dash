@@ -16670,8 +16670,22 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         }
         return m;
       };
+      // Output row GROUPS (shared by the dashboard table and every hub's board): KV hubout:groups =
+      // { list: [{id, name}], of: { methodId: groupId } }. First read seeds "★ Active" with the four active methods.
+      const OUT_CORE = n => !/text\s*(&|and)\s*images/i.test(n) && (/^single post\b/i.test(n) || /long\s*-?\s*form\W+(interview|titles)\b|question[\s-]*led/i.test(n));
+      const readGroups = async (rows, methods) => {
+        let g = null; try { g = await env.TRADES.get("hubout:groups", "json"); } catch (e) {}
+        if (!g || !Array.isArray(g.list)) {
+          const names = {}; (methods || []).forEach(m => { names[m.id] = m.name; });
+          const of = {}; (Array.isArray(rows) ? rows : []).forEach(id => { if (OUT_CORE(names[id] || "")) of[id] = "g-active"; });
+          g = { list: [{ id: "g-active", name: "★ Active" }], of };
+          if (methods && methods.length) await env.TRADES.put("hubout:groups", JSON.stringify(g));
+        }
+        g.of = g.of || {};
+        return g;
+      };
       if (body.action === "getHubOutput" || body.action === "saveHubOutputGoals") {
-        const slug = String(body.slug || (body.tagRow && body.tagRow.slug) || "").trim();
+        const slug = String(body.slug || (body.tagRow && body.tagRow.slug) || (body.groups ? HUB_SITES[0].slug : "")).trim();
         const hub = HUB_SITES.find(h => h.slug === slug);
         if (!hub) return json({ error: "unknown hub" }, 400);
         const gkey = `hubout:goals:${slug}`, lkey = `hubout:ledger:${slug}`;
@@ -16679,6 +16693,13 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const readGoals = async () => { let g = null; try { g = await env.TRADES.get(gkey, "json"); } catch (e) {} return (g && g.weeks) ? g : { weeks: {} }; };
         if (body.action === "saveHubOutputGoals") {
           const week = String(body.week || "");
+          if (!week && body.groups && typeof body.groups === "object") {   // replace the shared group list + membership
+            const list = (Array.isArray(body.groups.list) ? body.groups.list : []).slice(0, 60).map(x => ({ id: String(x?.id || "").slice(0, 40), name: String(x?.name || "").trim().slice(0, 80) || "Group" })).filter(x => x.id);
+            const ids = new Set(list.map(x => x.id)), of = {};
+            Object.entries(body.groups.of || {}).slice(0, 500).forEach(([k, v]) => { if (ids.has(String(v))) of[String(k).slice(0, 40)] = String(v); });
+            await env.TRADES.put("hubout:groups", JSON.stringify({ list, of }));
+            return json({ success: true, groups: { list, of } });
+          }
           if (!week && body.tagRow && typeof body.tagRow === "object") {   // tag / untag one row for one hub
             let rowsNow = null; try { rowsNow = await env.TRADES.get("hubout:rows", "json"); } catch (e) {}
             const map = await readRowHubs(rowsNow);
@@ -16771,7 +16792,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             body: JSON.stringify({ properties: { "Publishing Date": { date: { start: d } } } }) }).catch(() => {});
         }
         const rowHubs = await readRowHubs(rows);
-        return json({ success: true, slug, today, methods, goals, order, hidden, notes, rows, rowHubs, assets, backfilled: firstBuild });
+        const groups = await readGroups(rows, methods);
+        return json({ success: true, slug, today, methods, goals, order, hidden, notes, rows, rowHubs, groups, assets, backfilled: firstBuild });
       }
 
       // getOutputOverview — dashboard Output tab: the shared rows (methods) with their hub tags, every hub's weekly
@@ -16812,7 +16834,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             methodId: norm((pr.Method?.relation || [])[0]?.id) || titleMethod[titleId] || "",
             type: pr["Asset Type"]?.select?.name || "", title: (pr["Asset Title"]?.title || []).map(t => t.plain_text).join("").slice(0, 120) });
         });
-        return json({ success: true, rows: Array.isArray(rows) ? rows : [], rowHubs, methods, goals,
+        const groups = await readGroups(rows, methods);
+        return json({ success: true, rows: Array.isArray(rows) ? rows : [], rowHubs, groups, methods, goals,
           hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name || h.slug })), assets });
       }
 

@@ -6417,7 +6417,7 @@ let PUB_ASSET_CACHE = {};
 // One asset row — shared by the Assets section and the Hub tab's Sections list.
 function renderAssetRowHtml(a, t) {
   PUB_ASSET_CACHE[a.id] = a;
-  return `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">📤 Push to Hub</button>` : ''}${/hyperframes/i.test(a.type || '') ? (a.videoUrl ? `<a class="kwlink" href="${esc(a.videoUrl)}" target="_blank" rel="noopener" title="The rendered Reel (MP4)">▶ Reel</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render again on HeyGen (replaces the Video URL)" onclick="event.stopPropagation();hfReel(this)">↻</button>` : `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render this Reel on HeyGen's cloud (~1-3 min); the MP4 lands on Video URL" onclick="event.stopPropagation();hfReel(this)">🎬 Render</button>`) : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`;
+  return `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">📤 Push to Hub</button>` : ''}${/\bhyperframes\b/i.test(a.type || '') ? (a.videoUrl ? `<a class="kwlink" href="${esc(a.videoUrl)}" target="_blank" rel="noopener" title="The rendered Reel (MP4)">▶ Reel</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render again on HeyGen (replaces the Video URL)" onclick="event.stopPropagation();hfReel(this)">↻</button>` : `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render this Reel on HeyGen's cloud (~1-3 min); the MP4 lands on Video URL" onclick="event.stopPropagation();hfReel(this)">🎬 Render</button>`) : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`;
 }
 // A single post carousel's slides are separate assets underneath; the list shows each carousel as ONE row.
 function collapseCarousels(assets) {
@@ -9711,13 +9711,18 @@ function renderHubOutput() {
     } else if (!c) col = 'var(--ink3)';
     return `<td title="${esc(list)}" style="padding:5px 6px;text-align:center;white-space:nowrap;background:${bg};color:${col};${isCur ? 'outline:2px solid #f6ad55;outline-offset:-2px;' : ''}"><b>${c}</b>${g ? `<span style="color:var(--ink3);"> / ${g}</span>` : ''}</td>`;
   };
-  const rows = ids.map(id => `<tr data-mid="${esc(id)}" style="border-top:1px solid var(--border);">
+  const rowHtml = id => `<tr data-mid="${esc(id)}" style="border-top:1px solid var(--border);">
       <td style="padding:5px 6px;${tdName}white-space:nowrap;"><span class="stack-handle" title="Drag to reorder" onpointerdown="hoRowDragStart(event, this)">⠿</span>${id === '__none__' ? esc(nameOf(id)) : `<span class="ho-name" style="cursor:text;border-bottom:1px dotted var(--border2);" title="Click to rename (renames the method everywhere)" onclick="hoRenameStart(this, '${esc(id)}')">${esc(nameOf(id))}</span> <button class="iconbtn" style="font-size:10px;" title="Add a title that uses this method (goes to Titles → Development; no pillar written)" onclick="hoAddTitleOpen(this, '${esc(id)}')">+ title</button>`}${byId[id] && byId[id].needsBuild ? ` <span class="fbadge stale" title="${esc('Needs a code session to build.' + (byId[id].brief ? ' Brief: ' + byId[id].brief : ''))}">🛠 needs build</span>` : ''}</td>
       <td style="padding:5px 6px;min-width:160px;">${id === '__none__' ? '' : `<input type="text" class="finput" value="${esc(((O.notes || {})[id]) || '')}" placeholder="notes…" title="Notes for this method on this hub" style="width:100%;min-width:150px;font-size:11px;padding:2px 5px;" onchange="setHubOutputNote('${esc(id)}', this.value)">`}</td>
       <td style="padding:5px 6px;">${id === '__none__' ? '' : `<input type="number" min="0" max="99" value="${goal(id, thisWk) || ''}" placeholder="0" class="finput" title="This week's goal" style="width:52px;padding:2px 4px;font-size:11px;" onchange="setHubOutputGoal('${esc(id)}', this.value)">`}</td>
       ${weeks.map(wk => cell(id, wk)).join('')}
-      <td style="padding:5px 4px;">${id === '__none__' ? '' : `<button class="iconbtn" title="Remove this method from this hub's board (clears this week's goal; add it back any time)" onclick="removeHubOutputRow('${esc(id)}')">✕</button>`}</td>
-    </tr>`).join('');
+      <td style="padding:5px 4px;white-space:nowrap;">${id === '__none__' ? '' : ogSelect(id, O.groups) + `<button class="iconbtn" title="Remove this method from this hub's board (clears this week's goal; add it back any time)" onclick="removeHubOutputRow('${esc(id)}')">✕</button>`}</td>
+    </tr>`;
+  // grouped: header rows (collapsible, subtotals) with their methods under them; "(no method)" stays last
+  const realIds = ids.filter(id => id !== '__none__');
+  const rows = ogSections(realIds, O.groups).filter(sec => sec.id || sec.ids.length).map(sec =>
+      ogHeaderRow(sec, weeks, thisWk, n, goal, 2) + (ogIsClosed(sec.id) ? '' : sec.ids.map(rowHtml).join(''))).join('')
+    + (ids.includes('__none__') ? rowHtml('__none__') : '');
   const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));   // anything not on the shared list
   const statusOrder = ['Live', 'Development', 'Migrate'];
   const groupsSt = [...new Set(addable.map(m => m.status || 'No status'))].sort((a, b) => ((statusOrder.indexOf(a) + 1) || 99) - ((statusOrder.indexOf(b) + 1) || 99) || a.localeCompare(b));
@@ -9734,6 +9739,7 @@ function renderHubOutput() {
       <select id="hoAddMethod" class="finput" style="width:auto;max-width:280px;font-size:11px;"><option value="">+ add an existing method to this week…</option>${addOpts}</select>
       <button class="btn" onclick="const v=document.getElementById('hoAddMethod').value; if(v) hoAddRow(v, 1)">Add (goal 1 here)</button>
       <button class="btn" onclick="document.getElementById('hoNewForm').style.display='flex'">✚ New method</button>
+      <button class="btn" onclick="ogAdd()">+ Group</button>
       <button class="btn" onclick="loadHubOutput()">↻ Reload</button>
       <div id="hoNewForm" style="display:none;flex-direction:column;gap:6px;width:100%;margin:6px 0;padding:10px;border:1px dashed var(--border2);border-radius:8px;">
         <input id="hoNewName" class="finput" placeholder="Method name (e.g. YouTube Longform — Question-Led)" style="font-size:12px;">
@@ -9745,6 +9751,52 @@ function renderHubOutput() {
       <span style="color:var(--ink3);">Rows tagged for this hub (tag rows for any hub on the dashboard's Output tab; adding a row here tags this hub, ✕ untags it). Row order is shared; goals, counts and notes are this hub's. Cell = published that week / that week's goal. Goals are set per week. Hover a cell for the assets and their publish dates. Green = met · amber = some · red = none (past weeks).</span>
     </div>`;
   HO_THIS_WEEK = thisWk; HO_LAST_WEEK = lastWk;
+}
+// ── Output row GROUPS (shared by the dashboard Output tab and every hub's board; KV hubout:groups) ──
+// Group header rows live in the SAME table: collapsible (remembered per browser), with per-week subtotals.
+function ogSections(ids, G) {
+  const list = (G && G.list) || [], of = (G && G.of) || {}, known = new Set(list.map(g => g.id));
+  return list.map(g => ({ id: g.id, name: g.name, ids: ids.filter(id => of[id] === g.id) }))
+    .concat([{ id: '', name: 'Ungrouped', ids: ids.filter(id => !known.has(of[id])) }]);
+}
+function ogCollapsed() { try { return JSON.parse(localStorage.getItem('outGrpCollapsed') || '{}'); } catch (e) { return {}; } }
+function ogIsClosed(gid) { return !!ogCollapsed()[gid || '_ungrouped']; }
+function ogToggle(gid) {
+  const c = ogCollapsed(), k = gid || '_ungrouped';
+  if (c[k]) delete c[k]; else c[k] = 1;
+  try { localStorage.setItem('outGrpCollapsed', JSON.stringify(c)); } catch (e) {}
+  renderHubOutput();
+}
+// header row: name + count + actions | subtotal of this week's goal | per-week subtotals | (empty)
+function ogHeaderRow(sec, weeks, thisWk, n, goal, cols) {
+  const closed = ogIsClosed(sec.id), real = !!sec.id;
+  const sumN = wk => sec.ids.reduce((t, id) => t + n(id, wk), 0), sumG = wk => sec.ids.reduce((t, id) => t + goal(id, wk), 0);
+  const ib = 'font-size:10px;padding:0 4px;border:none;background:transparent;color:inherit;opacity:.7;cursor:pointer;';
+  return `<tr class="og-hd" data-gid="${sec.id}" onclick="ogToggle('${sec.id}')" style="cursor:pointer;background:rgba(127,127,127,.12);font-weight:700;">
+    <td colspan="${cols}" style="padding:6px 6px;white-space:nowrap;"><span style="display:inline-block;width:12px;">${closed ? '▶' : '▼'}</span>${esc(sec.name)} <span style="font-weight:400;opacity:.7;">(${sec.ids.length})</span>
+      ${real ? `<span onclick="event.stopPropagation()"><button style="${ib}" title="Rename group" onclick="ogRename('${sec.id}')">✎</button><button style="${ib}" title="Move group up" onclick="ogMove('${sec.id}',-1)">▲</button><button style="${ib}" title="Move group down" onclick="ogMove('${sec.id}',1)">▼</button><button style="${ib}" title="Delete group (its methods become Ungrouped)" onclick="ogDelete('${sec.id}')">✕</button></span>` : ''}</td>
+    <td style="padding:6px 6px;text-align:center;">${sumG(thisWk) || ''}</td>
+    ${weeks.map(wk => `<td style="padding:6px 6px;text-align:center;">${sumN(wk)}${sumG(wk) ? `<span style="font-weight:400;opacity:.7;"> / ${sumG(wk)}</span>` : ''}</td>`).join('')}<td></td></tr>`;
+}
+function ogSelect(id, G) {
+  const cur = ((G && G.of) || {})[id] || '';
+  return `<select title="Group" onchange="ogSet('${id}', this.value)" onclick="event.stopPropagation()" style="font-size:10px;padding:1px 2px;max-width:90px;margin-right:4px;">
+    <option value="">Ungrouped</option>${((G && G.list) || []).map(g => `<option value="${esc(g.id)}" ${g.id === cur ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>`;
+}
+async function ogSave() {
+  const G = (HUB_OUTPUT.groups = HUB_OUTPUT.groups || { list: [], of: {} });
+  try { const r = await w('saveHubOutputGoals', { slug: HUB_SLUG, groups: G }); if (r && r.error) throw new Error(r.error); if (r && r.groups) HUB_OUTPUT.groups = r.groups; }
+  catch (e) { alert('Groups not saved: ' + e.message); }
+  renderHubOutput();
+}
+function ogSet(id, gid) { const G = (HUB_OUTPUT.groups = HUB_OUTPUT.groups || { list: [], of: {} }); G.of = G.of || {}; if (gid) G.of[id] = gid; else delete G.of[id]; ogSave(); }
+function ogAdd() { const name = (prompt('New group name:') || '').trim(); if (!name) return; const G = (HUB_OUTPUT.groups = HUB_OUTPUT.groups || { list: [], of: {} }); G.list = G.list || []; G.list.push({ id: 'g-' + Date.now().toString(36), name }); ogSave(); }
+function ogRename(gid) { const G = (HUB_OUTPUT.groups = HUB_OUTPUT.groups || { list: [], of: {} }), g = (G.list || []).find(x => x.id === gid); if (!g) return; const name = (prompt('Rename group:', g.name) || '').trim(); if (!name) return; g.name = name; ogSave(); }
+function ogMove(gid, d) { const a = (HUB_OUTPUT.groups = HUB_OUTPUT.groups || { list: [], of: {} }).list || [], i = a.findIndex(x => x.id === gid), j = i + d; if (i < 0 || j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; ogSave(); }
+function ogDelete(gid) {
+  const G = (HUB_OUTPUT.groups = HUB_OUTPUT.groups || { list: [], of: {} }), g = (G.list || []).find(x => x.id === gid); if (!g) return;
+  if (!confirm(`Delete the group "${g.name}"? Its methods stay, as Ungrouped.`)) return;
+  G.list = G.list.filter(x => x.id !== gid); Object.keys(G.of || {}).forEach(k => { if (G.of[k] === gid) delete G.of[k]; }); ogSave();
 }
 let HO_THIS_WEEK = null, HO_LAST_WEEK = null;
 async function saveHoWeek(week, goals) {
@@ -9842,6 +9894,9 @@ function hoRowDragStart(e, handle) {
     if (ev.pointerId !== e.pointerId) return;
     window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
     row.classList.remove('stack-dragging');
+    let hd = row.previousElementSibling; while (hd && hd.dataset.gid === undefined) hd = hd.previousElementSibling;
+    const mid = row.dataset.mid, newG = hd ? hd.dataset.gid : '', G = HUB_OUTPUT.groups || { list: [], of: {} };
+    if (mid && mid !== '__none__' && (G.of[mid] || '') !== newG) { HUB_OUTPUT.groups = G; G.of = G.of || {}; if (newG) G.of[mid] = newG; else delete G.of[mid]; ogSave(); }
     const shown = [...body.children].map(c => c.dataset.mid).filter(x => x && x !== '__none__');
     HUB_OUTPUT.rows = shown.concat((HUB_OUTPUT.rows || []).filter(x => !shown.includes(x)));
     hoSaveRows(HUB_OUTPUT.rows);

@@ -4286,13 +4286,15 @@ function renderOutputTab() {
       <button class="out-hubbtn" onclick="outHubPicker(event, '${esc(id)}')" title="${esc(t.map(h => hubName[h] || h).join(', ') || 'Tag the hubs that use this row')}"
         style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:${t.length ? 'var(--text)' : 'var(--text3)'};cursor:pointer;max-width:200px;overflow:hidden;text-overflow:ellipsis;">${esc(label)} ▾</button></td>`;
   };
-  const rows = ids.map(id => `<tr style="border-top:1px solid var(--border);">
+  const rowHtml = id => `<tr style="border-top:1px solid var(--border);">
       <td style="padding:5px 6px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(byId[id].name)}">${esc(byId[id].name)}${byId[id].needsBuild ? ' 🛠' : ''}</td>
       ${hubCell(id)}
       <td style="padding:5px 6px;text-align:center;">${goal(id, thisWk) || '<span style="opacity:.5;">0</span>'}</td>
       ${weeks.map(wk => cell(id, wk)).join('')}
-      <td style="padding:5px 4px;"><button class="out-hubbtn" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="Remove this row from the Output (every hub)" onclick="outRemoveRow('${esc(id)}')">✕</button></td>
-    </tr>`).join('');
+      <td style="padding:5px 4px;white-space:nowrap;">${ogSelect(id, O.groups)}<button class="out-hubbtn" style="font-size:11px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="Remove this row from the Output (every hub)" onclick="outRemoveRow('${esc(id)}')">✕</button></td>
+    </tr>`;
+  const rows = ogSections(ids, O.groups).filter(sec => sec.id || sec.ids.length).map(sec =>
+    ogHeaderRow(sec, weeks, thisWk, n, goal, 2) + (ogIsClosed(sec.id) ? '' : sec.ids.map(rowHtml).join(''))).join('');
   const tot = wk => ids.reduce((t, id) => t + n(id, wk), 0), totG = wk => ids.reduce((t, id) => t + goal(id, wk), 0);
   const addable = O.methods.filter(m => !ids.includes(m.id)).sort((a, b) => a.name.localeCompare(b.name));
   el.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:11.5px;width:100%;">
@@ -4307,6 +4309,7 @@ function renderOutputTab() {
     <select id="outAddMethod" style="max-width:300px;font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"><option value="">+ add a method row…</option>${(() => { const opt = m => `<option value="${esc(m.id)}">${esc(m.name)}${m.status ? ' (' + esc(m.status) + ')' : ''}</option>`, core = addable.filter(m => isCoreMethod(m.name)), rest = addable.filter(m => !isCoreMethod(m.name));
       return (core.length ? `<optgroup label="★ Active methods">${core.map(opt).join('')}</optgroup>` : '') + `<optgroup label="Other methods">${rest.map(opt).join('')}</optgroup>`; })()}</select>
     <button onclick="outAddRow()" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">Add row</button>
+    <button onclick="ogAdd()" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">+ Group</button>
     <button onclick="loadOutputTab()" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">↻ Reload</button>
     <span style="color:var(--text3);">Tag hubs with ▾ on each row: a hub's own Output board shows only its rows. Hover a cell for the assets.</span>
   </div>`;
@@ -4392,6 +4395,52 @@ function flowDelCol(ci) {
 }
 function flowMoveRow(ri, d) { const a = FLOW.rows; [a[ri], a[ri + d]] = [a[ri + d], a[ri]]; renderFlowTable(); flowSaveSoon(); }
 function flowMoveCol(ci, d) { const a = FLOW.columns; [a[ci], a[ci + d]] = [a[ci + d], a[ci]]; renderFlowTable(); flowSaveSoon(); }
+// ── Output row GROUPS (shared by the dashboard Output tab and every hub's board; KV hubout:groups) ──
+// Group header rows live in the SAME table: collapsible (remembered per browser), with per-week subtotals.
+function ogSections(ids, G) {
+  const list = (G && G.list) || [], of = (G && G.of) || {}, known = new Set(list.map(g => g.id));
+  return list.map(g => ({ id: g.id, name: g.name, ids: ids.filter(id => of[id] === g.id) }))
+    .concat([{ id: '', name: 'Ungrouped', ids: ids.filter(id => !known.has(of[id])) }]);
+}
+function ogCollapsed() { try { return JSON.parse(localStorage.getItem('outGrpCollapsed') || '{}'); } catch (e) { return {}; } }
+function ogIsClosed(gid) { return !!ogCollapsed()[gid || '_ungrouped']; }
+function ogToggle(gid) {
+  const c = ogCollapsed(), k = gid || '_ungrouped';
+  if (c[k]) delete c[k]; else c[k] = 1;
+  try { localStorage.setItem('outGrpCollapsed', JSON.stringify(c)); } catch (e) {}
+  renderOutputTab();
+}
+// header row: name + count + actions | subtotal of this week's goal | per-week subtotals | (empty)
+function ogHeaderRow(sec, weeks, thisWk, n, goal, cols) {
+  const closed = ogIsClosed(sec.id), real = !!sec.id;
+  const sumN = wk => sec.ids.reduce((t, id) => t + n(id, wk), 0), sumG = wk => sec.ids.reduce((t, id) => t + goal(id, wk), 0);
+  const ib = 'font-size:10px;padding:0 4px;border:none;background:transparent;color:inherit;opacity:.7;cursor:pointer;';
+  return `<tr class="og-hd" data-gid="${sec.id}" onclick="ogToggle('${sec.id}')" style="cursor:pointer;background:rgba(127,127,127,.12);font-weight:700;">
+    <td colspan="${cols}" style="padding:6px 6px;white-space:nowrap;"><span style="display:inline-block;width:12px;">${closed ? '▶' : '▼'}</span>${esc(sec.name)} <span style="font-weight:400;opacity:.7;">(${sec.ids.length})</span>
+      ${real ? `<span onclick="event.stopPropagation()"><button style="${ib}" title="Rename group" onclick="ogRename('${sec.id}')">✎</button><button style="${ib}" title="Move group up" onclick="ogMove('${sec.id}',-1)">▲</button><button style="${ib}" title="Move group down" onclick="ogMove('${sec.id}',1)">▼</button><button style="${ib}" title="Delete group (its methods become Ungrouped)" onclick="ogDelete('${sec.id}')">✕</button></span>` : ''}</td>
+    <td style="padding:6px 6px;text-align:center;">${sumG(thisWk) || ''}</td>
+    ${weeks.map(wk => `<td style="padding:6px 6px;text-align:center;">${sumN(wk)}${sumG(wk) ? `<span style="font-weight:400;opacity:.7;"> / ${sumG(wk)}</span>` : ''}</td>`).join('')}<td></td></tr>`;
+}
+function ogSelect(id, G) {
+  const cur = ((G && G.of) || {})[id] || '';
+  return `<select title="Group" onchange="ogSet('${id}', this.value)" onclick="event.stopPropagation()" style="font-size:10px;padding:1px 2px;max-width:90px;margin-right:4px;">
+    <option value="">Ungrouped</option>${((G && G.list) || []).map(g => `<option value="${esc(g.id)}" ${g.id === cur ? 'selected' : ''}>${esc(g.name)}</option>`).join('')}</select>`;
+}
+async function ogSave() {
+  const G = (OUT.groups = OUT.groups || { list: [], of: {} });
+  try { const r = await call('saveHubOutputGoals', { slug: OUT.hubs[0].slug, groups: G }); if (r && r.error) throw new Error(r.error); if (r && r.groups) OUT.groups = r.groups; }
+  catch (e) { alert('Groups not saved: ' + e.message); }
+  renderOutputTab();
+}
+function ogSet(id, gid) { const G = (OUT.groups = OUT.groups || { list: [], of: {} }); G.of = G.of || {}; if (gid) G.of[id] = gid; else delete G.of[id]; ogSave(); }
+function ogAdd() { const name = (prompt('New group name:') || '').trim(); if (!name) return; const G = (OUT.groups = OUT.groups || { list: [], of: {} }); G.list = G.list || []; G.list.push({ id: 'g-' + Date.now().toString(36), name }); ogSave(); }
+function ogRename(gid) { const G = (OUT.groups = OUT.groups || { list: [], of: {} }), g = (G.list || []).find(x => x.id === gid); if (!g) return; const name = (prompt('Rename group:', g.name) || '').trim(); if (!name) return; g.name = name; ogSave(); }
+function ogMove(gid, d) { const a = (OUT.groups = OUT.groups || { list: [], of: {} }).list || [], i = a.findIndex(x => x.id === gid), j = i + d; if (i < 0 || j < 0 || j >= a.length) return; [a[i], a[j]] = [a[j], a[i]]; ogSave(); }
+function ogDelete(gid) {
+  const G = (OUT.groups = OUT.groups || { list: [], of: {} }), g = (G.list || []).find(x => x.id === gid); if (!g) return;
+  if (!confirm(`Delete the group "${g.name}"? Its methods stay, as Ungrouped.`)) return;
+  G.list = G.list.filter(x => x.id !== gid); Object.keys(G.of || {}).forEach(k => { if (G.of[k] === gid) delete G.of[k]; }); ogSave();
+}
 // the hub multiselect: one row-height button that opens a checkbox list
 function outHubPicker(ev, id) {
   ev.stopPropagation();
