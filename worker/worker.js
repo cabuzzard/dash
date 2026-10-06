@@ -22417,7 +22417,7 @@ Return ONLY a JSON array — no other text, no markdown fences:
         };
         titleList.forEach(t => { t.assets = []; });
         const totalAssetIds = titleList.reduce((n, t) => n + t.assetIds.length, 0);
-        if (campaignId && totalAssetIds) {
+        if (campaignId) {
           // Bulk path — ONE query for every asset in this campaign
           // (paginated ~100/subrequest) instead of one GET per referenced
           // asset id. This is the actual fix for the reported failure: 75
@@ -22441,6 +22441,18 @@ Return ONLY a JSON array — no other text, no markdown fences:
               if (!page || page.archived || page.in_trash) return;
               t.assets.push(buildAssetRow(aid, page));
             });
+          });
+          // Notion returns at most 25 items of a relation in a query result, so a title with many assets (a few
+          // 7-slide carousels) silently lost its newest ones. Match from the ASSET side too: every campaign asset
+          // whose own "Content Strategy" relation points at a listed title, deduped against what's already there.
+          const titleById = new Map(titleList.map(t => [t.id, t]));
+          campaignAssets.forEach(page => {
+            if (page.archived || page.in_trash) return;
+            const aid = page.id.replace(/-/g, "");
+            for (const rel of (page.properties?.["Content Strategy"]?.relation || [])) {
+              const t = titleById.get(rel.id.replace(/-/g, ""));
+              if (t && !t.assets.some(x => x.id === aid)) t.assets.push(buildAssetRow(aid, page));
+            }
           });
         } else if (totalAssetIds) {
           // Fallback for calls with no campaignId to scope a bulk query by
