@@ -2013,6 +2013,7 @@ async function spCarouselSlides(carouselId) {
     slide: r.properties?.["Slide"]?.number || 0,
     title: (r.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join(""),
     postImage: r.properties?.["Post Image"]?.url || "",
+    body: (r.properties?.["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim(),   // the slide's current words
     postImageSource: r.properties?.["Post Image Source"]?.url || "",   // the clean (wordless) background
     status: r.properties?.["Asset Status"]?.select?.name || "",
   })).sort((a, b) => a.slide - b.slide);
@@ -29599,6 +29600,17 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const postText = (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim().slice(0, 700);
         const contentType = (assetTitle.match(/—\s*([^—]+)$/) || [])[1]?.trim() || "";
         const car = /carousel/i.test(ap["Asset Type"]?.select?.name || "") ? await spCarouselInfo(hdr, assetId).catch(() => null) : null;
+        // the whole narrative, in order, from every slide's CURRENT words (operator edits included)
+        let carStory = "", carRole = "";
+        if (car) {
+          const sl = await spCarouselSlides(car.id).catch(() => []);
+          const n = sl.length || car.total, i = car.index;
+          carRole = i === 1 ? "the HOOK — opens the story: the tension / question the swipe will resolve"
+            : i === n ? "the PAYOFF — resolves the story the hook opened, with a soft call to action"
+            : `a BUILDING BEAT (${i - 1} of ${n - 2}) — moves the story one step from the hook toward the payoff`;
+          carStory = sl.map(x => `${x.slide === i ? "▶ " : "  "}Slide ${x.slide}: ${(x.body || x.title || "").replace(/\s+/g, " ").slice(0, 220)}`).join("
+");
+        }
         const sceneKey = "bgscenes:" + campaignId;
         let recentScenes = [];
         try { recentScenes = (await env.TRADES.get(sceneKey, "json")) || []; } catch (e) {}
@@ -29617,10 +29629,14 @@ ${spec}
 THIS POST'S MESSAGE (do NOT put its words in the image):
 ${postText || assetTitle}${contentType ? `\nPOST TYPE: ${contentType}` : ""}
 
-${car ? `THIS IS SLIDE ${car.index} OF ${car.total} IN ONE CAROUSEL ("${car.title}") — every slide's background belongs to ONE visual series:
-- SHARED VISUAL THREAD (all slides): ${car.visualThread || "(none given — keep one setting, light and grade across the series)"}
-- THIS SLIDE'S BACKGROUND: ${car.visual || "a moment within the thread that fits this slide's message"}
-- Keep the SAME setting/world, light, time of day, colour grade, medium and lens feel as the rest of the series; vary only the subject, moment and framing this slide calls for, so a swipe feels like turning pages of one story.
+${car ? `THIS IS SLIDE ${car.index} OF ${car.total} IN ONE CAROUSEL ("${car.title}") — the backgrounds tell ONE visual story in step with the words:
+THE CAROUSEL'S NARRATIVE (every slide's words, in swipe order; ▶ = this slide):
+${carStory || "(slide list unavailable)"}
+THIS SLIDE'S ROLE: ${carRole}
+- SHARED VISUAL THREAD (all slides): ${car.visualThread || "(none given — keep one setting/world and grade across the series)"}
+- PLANNED BACKGROUND FOR THIS SLIDE: ${car.visual || "a moment within the thread that fits this slide's message"} — written with the original copy; if this slide's words above have changed since, the WORDS win: re-pick the moment so it shows what this slide now says.
+- The image must show THIS slide's point at THIS point in the story: it should read as the step after the previous slide's image and lead into the next one (e.g. the hook shows the tension, the middle beats show it shifting, the payoff shows it resolved). Don't jump ahead to the payoff early or repeat the previous slide's moment.
+- SERIES CONTINUITY: the same setting/world, subjects, colour grade, medium and lens feel on every slide. Light, time and composition may progress deliberately with the story (e.g. from tension toward resolution), never randomly.
 - KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
 (Ignore the variety rubric below — it is for unrelated single posts.)
 
