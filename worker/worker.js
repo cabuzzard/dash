@@ -11701,7 +11701,14 @@ Return ONLY this minified JSON object, nothing before or after:
           } catch (e) {}
           try { await writeResearchField(t.pageId, body.field, String(body.text || "")); }
           catch (e) { return json({ error: e.message }, 502); }
-          return json({ ok: true });
+          // The stored Image Spec is DERIVED from these fields — a design save makes it stale, so clear it. Until the page's
+          // rebuild stores a new one, every render (single-post backgrounds, offer plates…) writes a fresh spec from the
+          // saved direction instead of obeying the old one.
+          let specCleared = false;
+          if (t.kind === "research") {
+            try { const r = await fetch(`https://api.notion.com/v1/pages/${dash(t.pageId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Image Spec": { rich_text: [] } } }) }); specCleared = r.ok; } catch (e) {}
+          }
+          return json({ ok: true, specCleared });
         }
 
         // ---- getHubPalette : product override else campaign default ----

@@ -3343,7 +3343,9 @@ async function saveStagedDesign() {
     DESIGN_LIVE.register = DESIGN_STAGE.register; DESIGN_LIVE.photography = DESIGN_STAGE.photography; DESIGN_LIVE.avoid = DESIGN_STAGE.avoid;
     DESIGN_STAGE.register = DESIGN_STAGE.photography = DESIGN_STAGE.avoid = null;
     renderDesignDirection();
-    rebuildImageSpec();
+    btn.textContent = 'rebuilding image spec…';
+    await rebuildImageSpec();   // wait: until it's stored, renders write a fresh spec from the saved design each time
+    btn.disabled = false; btn.textContent = o;
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 function setPaletteImage(input) {
@@ -3376,7 +3378,9 @@ async function saveStagedPalette() {
     DESIGN_LIVE.palette = DESIGN_STAGE.palette;
     DESIGN_STAGE.palette = null;
     renderDesignPalette();
-    rebuildImageSpec();
+    btn.textContent = 'rebuilding image spec…';
+    await rebuildImageSpec();   // wait: until it's stored, renders write a fresh spec from the saved design each time
+    btn.disabled = false; btn.textContent = o;
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 async function runRegenFonts(steer, omit) {
@@ -3393,7 +3397,9 @@ async function saveStagedFonts() {
     DESIGN_LIVE.fonts = DESIGN_STAGE.fonts;
     DESIGN_STAGE.fonts = null;
     renderDesignFonts();
-    rebuildImageSpec();
+    btn.textContent = 'rebuilding image spec…';
+    await rebuildImageSpec();   // wait: until it's stored, renders write a fresh spec from the saved design each time
+    btn.disabled = false; btn.textContent = o;
   } catch (e) { alert('Save failed: ' + e.message); btn.disabled = false; btn.textContent = o; }
 }
 
