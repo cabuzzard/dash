@@ -6147,7 +6147,12 @@ Generating again creates a SECOND, separate asset (the first one keeps its rende
     resEl.style.color = 'var(--fresh)';
     resEl.textContent = '✓ Done' + (n != null ? ` — ${n} asset(s).` : '.') + ' Refreshing…';
     await loadTitleAndAssetTab();
-    if (r.carouselId && Array.isArray(r.assets) && r.assets.length) { btn.disabled = false; btn.textContent = o; await spAutoBuild(r, resEl); return; }
+    if (r.carouselId && Array.isArray(r.assets) && r.assets.length) {
+      // stay locked while the slides are built — re-enabling here let a second click start a whole second carousel
+      btn.textContent = '🎠 Building slides…';
+      try { await spAutoBuild(r, resEl); } finally { btn.disabled = false; btn.textContent = o; }
+      return;
+    }
     setTimeout(closeCreateAssetModal, 900);
   } catch (e) {
     resEl.style.color = 'var(--stale)';
