@@ -15673,7 +15673,50 @@ Give a YouTube title in that format. Call submit_questions.`;
           body.__titleName = tName;
           if (!String(question || "").trim()) question = String(body.topic || pg.properties?.["Core Idea"]?.rich_text?.map(t => t.plain_text).join("") || tName || "this episode").trim();
         }
-        const format = body.asIs ? "explainer" : (LF_FORMATS[body.format] ? body.format : "ranked");
+        // ✍️ writeTitles (method "YouTube Longform — Titles", 2026-10-05): the Dualities structure, written for you — an
+        // opening hook + N titled sections; each section's title stays on screen for its whole section (layout
+        // "titles"). Grounded in the title's own page + campaign research; then packaged like an as-is script.
+        if (body.writeTitles && titleId) {
+          const hdrW = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+          const tid = String(titleId).replace(/-/g, "");
+          const pg = await fetch(`https://api.notion.com/v1/pages/${tid}`, { headers: hdrW }).then(r => r.json()).catch(() => ({}));
+          const tName = ((pg.properties?.Title?.title) || []).map(t => t.plain_text).join("").trim();
+          const rtx = k => (pg.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+          const pageText = await extractBlocksTextRecursive(hdrW, tid).catch(() => "");
+          const brief = campaignId ? await assembleImageBrief(env, { campaignId }).catch(() => null) : null;
+          const campRes = brief ? brief.facts.filter(f => /^Campaign Research|Product Research/.test(f)).join("\n").slice(0, 3500) : "";
+          const n = Math.min(Math.max(parseInt(body.sections) || 8, 3), 30);
+          const wr = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 16000, messages: [{ role: "user", content:
+`Write a faceless YouTube episode script in TITLED SECTIONS.
+
+EPISODE: ${tName || body.topic || "this episode"}${rtx("Core Idea") ? "\nCore idea: " + rtx("Core Idea") : ""}${rtx("Notes") ? "\nNotes: " + rtx("Notes").slice(0, 1500) : ""}
+${body.guidance ? "\nOPERATOR DIRECTION (follow it): " + String(body.guidance).slice(0, 1500) + "\n" : ""}
+WHAT THE TITLE'S PAGE ALREADY SAYS (the substance to build from; stay faithful, invent no facts beyond it and the research):
+${pageText.slice(0, 9000) || "(nothing on the page yet: build from the episode name and the research)"}
+${campRes ? "\nCAMPAIGN / PRODUCT RESEARCH (voice, audience, what they search for):\n" + campRes + "\n" : ""}
+STRUCTURE (the video shows each section's TITLE on screen for the whole section while its narration plays):
+- "intro": the opening hook, 2-4 spoken sentences that make the viewer stay, then a one-line promise of what the episode covers. No title.
+- exactly ${n} "sections", in an order that builds. Each has:
+  - "title": 2-6 words, a clear, quotable label for the section (it sits on screen the whole time, so it must still mean something 60 seconds in). No numbering, no ending punctuation.
+  - "narration": 90-180 spoken words, one idea per section, plain second person, the way a calm, experienced person talks. No lists, no "in this section", no headings inside.
+- The last section lands the episode and ends with one soft call to action (subscribe, comment, or watch the next one).
+Write for the ear: short sentences, concrete examples, no jargon. Call submit_titles_script.` }],
+            tools: [{ name: "submit_titles_script", description: "The script.", input_schema: { type: "object", required: ["intro", "sections"], properties: {
+              intro: { type: "string" },
+              sections: { type: "array", items: { type: "object", required: ["title", "narration"], properties: { title: { type: "string" }, narration: { type: "string" } } } } } } }],
+            tool_choice: { type: "tool", name: "submit_titles_script" } });
+          const wd = await wr.json().catch(() => ({}));
+          if (!wr.ok) return json({ error: (wd.error && wd.error.message) || "Claude API error" }, 502);
+          const ws = ((wd.content || []).find(b => b.type === "tool_use") || {}).input || {};
+          const secs = (Array.isArray(ws.sections) ? ws.sections : []).filter(x => x && String(x.title || "").trim() && String(x.narration || "").trim());
+          if (secs.length < 2) return json({ error: "The titles script came back empty — try again" }, 502);
+          asIsSegs = [];
+          if (String(ws.intro || "").trim()) asIsSegs.push({ kind: "talk", text: String(ws.intro).trim() });
+          secs.forEach((x, i) => asIsSegs.push({ kind: "item", n: i + 1, name: String(x.title).trim().replace(/[.:]+$/, ""), text: String(x.narration).trim() }));
+          body.__titleName = tName;
+          if (!String(question || "").trim()) question = String(body.topic || rtx("Core Idea") || tName || "this episode").trim();
+        }
+        const format = (body.asIs || body.writeTitles) ? "explainer" : (LF_FORMATS[body.format] ? body.format : "ranked");
         const layout = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
         const interview = (Array.isArray(body.interview) ? body.interview : []).map(x => ({ q: String(x.q || x.question || "").trim().slice(0, 400), a: String(x.a || x.answer || "").trim().slice(0, 3000) })).filter(x => x.q && x.a);
         if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
@@ -15764,7 +15807,7 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           return k;
         });
         const words = segs.reduce((n2, x) => n2 + x.text.split(/\s+/).length, 0);
-        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout }, ...(asIsSegs ? { asIs: true, cardTitle: S(body.__titleName) } : {}) };
+        const spec = { v: 1, question: S(question), format, title: S(o.title), segments: segs, interview, render: { character: "mountain-man", voice: LF_DEFAULT_VOICE, layout }, ...(asIsSegs ? { asIs: true, cardTitle: S(body.__titleName) } : {}), ...((body.writeTitles || layout === "titles") ? { titlesScript: true } : {}) };
         spec.tags = (o.tags || []).map(S).filter(Boolean).slice(0, 15);
         // ✍️ proofread the fresh script before it's saved (the render runs the pass again as a final check)
         try { const pf = await lfProofread(env, spec); if (pf.length) { spec.proofread = { at: Date.now(), fixes: pf.slice(0, 200) }; o.title = spec.title; } } catch (e) { console.error("proofread:", e.message); }
@@ -15814,13 +15857,19 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           spec.render = spec.render || {};
           if (body.character) spec.render.character = String(body.character).replace(/[^a-z0-9-]/g, "").slice(0, 60);
           if (body.voice) spec.render.voice = String(body.voice).replace(/[^A-Za-z0-9-]/g, "").slice(0, 60);
-          if (body.layout) spec.render.layout = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
+          // two separate editors: a Titles episode stays on the titles format; an Interview episode can't switch to it
+          if (body.layout) {
+            const isT = !!(spec.titlesScript || spec.render.layout === "titles");
+            const want = ["stage", "titles"].includes(body.layout) ? body.layout : "presenter";
+            spec.render.layout = isT ? "titles" : (want === "titles" ? (spec.render.layout || "presenter") : want);
+          }
           if (body.intro !== undefined) { const v = String(body.intro || "").slice(0, 60); if (v) spec.render.intro = v; else delete spec.render.intro; }
           if (body.rate !== undefined) spec.render.rate = /^[+-]\d{1,2}%$/.test(body.rate) ? body.rate : "-4%";
           await lfSaveSpec(aid, spec);
         }
         let job = null; try { job = await env.TRADES.get("lfrender:" + aid, "json"); } catch (e) {}
         return json({ success: true, render: spec.render || {}, format: spec.format, question: spec.question, segments: spec.segments.length,
+          titlesScript: !!(spec.titlesScript || (spec.render && spec.render.layout === "titles")),
           words: spec.segments.reduce((n2, x) => n2 + String(x.text || "").split(/\s+/).length, 0),
           background: page.properties["Longform Background"]?.url || "", videoUrl: page.properties["Video URL"]?.url || "", youtubeUrl: page.properties["YouTube URL"]?.url || "", watchLink: page.properties["Watch Link"]?.url || "", voices: LF_VOICES, job,
           scenes: spec.segments.map((x, i) => ({ i, kind: x.kind, name: x.name || "", images: x.images || [] })).filter(x => x.kind === "hook" || x.kind === "item") });
@@ -25715,7 +25764,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         // sponsor/integrated-read slot). Title/alt titles/thumbnail text/description
         // with chapters/tags/hashtags on the asset; the outline itself as page blocks.
         // The method's Notion body is the methodology (read here, never copied).
-        if (/\byoutube\b/i.test(assetType) && /long\s*-?\s*form|outline/i.test(assetType) && !/question/i.test(assetType)) {
+        if (/\byoutube\b/i.test(assetType) && /long\s*-?\s*form|outline/i.test(assetType) && !/question|interview|titles/i.test(assetType)) {
           const hasMethod = methodId && methodId !== "__none__";
           const minutes = Math.min(Math.max(parseInt(body.minutes) || 25, 12), 40);
           const [prodPage, researchRec, methodFrameworkText, pillarContent] = await Promise.all([

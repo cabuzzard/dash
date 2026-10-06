@@ -545,11 +545,23 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <!-- YouTube Longform — Question-Led: 1st Generate finds real questions (Google + YouTube
              autocomplete, YouTube outliers, keyword demand); pick one + format; 2nd Generate writes
              the episode script onto a new YouTube Longform asset (Video Spec). -->
+        <!-- YouTube Longform — Titles: the Dualities structure — opening hook + titled sections, each title on screen
+             for its whole section (format "Paragraphs with titles"). Write one, or use the title's own script as-is. -->
+        <div id="caLfTitlesRow" style="display:none;font-size:11px;color:var(--ink2);">
+          <div style="margin-bottom:6px;color:var(--ink3);">An opening hook, then titled sections. Each section's title stays on screen while its narration plays.</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+            <label style="display:flex;align-items:center;gap:6px;">Sections <input id="caLfTSections" type="number" min="3" max="30" value="8" class="finput" style="width:56px;"></label>
+          </div>
+          <textarea id="caLfTGuidance" class="finput" rows="2" placeholder="Direction (optional): angle, tone, what each section should cover…" style="width:100%;box-sizing:border-box;font-size:12px;margin-bottom:6px;"></textarea>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">
+            <button class="btn primary" type="button" onclick="caLfTitlesWrite(this)" title="Claude writes the script in titled sections from this title's page and the campaign research">✍️ Write titles script</button>
+            <button class="btn" type="button" onclick="caLfAsIs(this)" title="Already wrote the script on this title's page? Each heading + its text becomes one titled section, word for word (spelling still checked). Only the YouTube title, description and tags are written for you.">📜 Use this title's script as-is</button>
+          </div>
+        </div>
         <div id="caLfRow" style="display:none;font-size:11px;color:var(--ink2);">
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;">
             <input id="caLfSeed" class="finput" type="text" placeholder="Seed topic (optional — defaults to this title + Main Keywords)" style="flex:1;font-size:12px;">
             <button class="btn" type="button" onclick="caLfFindQuestions(this)">🔎 Find questions</button>
-            <button class="btn" type="button" onclick="caLfAsIs(this)" title="Already wrote the script on this title's page? Each heading + its text becomes one chapter, word for word (spelling still checked). Only the YouTube title, description and tags are written for you.">📜 Use this title's script as-is</button>
           </div>
           <div id="caLfQuestions" style="max-height:260px;overflow-y:auto;"></div>
           <div id="caLfInterview" style="display:none;margin-top:8px;border:1px solid var(--border);border-radius:8px;padding:8px;">
@@ -5667,8 +5679,9 @@ function caOnMethodChange() {
   document.getElementById('caQaProductRow').style.display = isQaMethod ? 'block' : 'none';
   document.getElementById('caQaTypeRow').style.display = isQaProductMethod ? 'block' : 'none';
   document.getElementById('caQaInterviewRow').style.display = isQaMethod ? 'block' : 'none';
-  const isLf = /question[\s-]*led/i.test(name);
+  const isLf = lfIsInterview(name), isLfT = lfIsTitles(name);
   document.getElementById('caLfRow').style.display = isLf ? 'block' : 'none';
+  document.getElementById('caLfTitlesRow').style.display = isLfT ? 'block' : 'none';
   if (isLf && CA_LF.titleId !== (CA_TITLE ? CA_TITLE.id : null)) { CA_LF = { titleId: CA_TITLE ? CA_TITLE.id : null, questions: [], pick: -1 }; document.getElementById('caLfInterview').style.display = 'none'; document.getElementById('caLfInterviewQs').innerHTML = ''; caLfRender(); }
   // Reset only when THIS title's QA state actually belongs to a
   // different method — not on every method-set call (that was the bug:
@@ -5842,6 +5855,26 @@ function caQaRenderForm() {
 }
 function closeCreateAssetModal() { document.getElementById('createAssetModal').classList.remove('open'); CA_TITLE = null; }
 let CA_LF = { titleId: null, questions: [], pick: -1 };
+// Two longform methods, two editors: Interview (questions → your answers → script; Avatar / Text & images)
+// and Titles (hook + titled sections; "Paragraphs with titles" only).
+function lfIsTitles(name) { return /long\s*-?\s*form/i.test(name || '') && /\btitles\b/i.test(name || ''); }
+function lfIsInterview(name) { return /question[\s-]*led|long\s*-?\s*form\W+interview/i.test(name || ''); }
+async function caLfTitlesWrite(btn) {
+  if (!CA_TITLE) return;
+  const resEl = document.getElementById('caResult');
+  const methodId = document.getElementById('caMethod').value;
+  const o = btn.textContent; btn.disabled = true; btn.textContent = 'Writing…';
+  resEl.style.color = 'var(--ink3)'; resEl.textContent = `Writing a titles script for “${CA_TITLE.title}” — hook + titled sections (about a minute)…`;
+  try {
+    const r = await w('generateLongformScript', { writeTitles: true, titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId, layout: 'titles',
+      sections: parseInt(document.getElementById('caLfTSections').value) || 8, guidance: document.getElementById('caLfTGuidance').value.trim() || undefined,
+      productId: CA_TITLE.productId || undefined });
+    resEl.style.color = 'var(--fresh)';
+    resEl.textContent = `✓ Titles script written — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to check it in 📝 Script & cards, pick voice/background, then 🎬 Render.`;
+    await loadTitleAndAssetTab();
+  } catch (e) { resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
 // 📜 The title's own written script → episode, word for word (no questions, no interview).
 async function caLfAsIs(btn) {
   if (!CA_TITLE) return;
@@ -5853,7 +5886,7 @@ async function caLfAsIs(btn) {
   resEl.style.color = 'var(--ink3)'; resEl.textContent = `Turning “${CA_TITLE.title}” into an episode — your words as written, one chapter per heading…`;
   try {
     const r = await w('generateLongformScript', { asIs: true, titleId: CA_TITLE.id, campaignId: CAMPAIGN_ID, methodId,
-      layout: /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter', productId: CA_TITLE.productId || undefined });
+      layout: lfIsTitles(methodName) ? 'titles' : /text\s*(&|and)\s*image/i.test(methodName) ? 'stage' : 'presenter', productId: CA_TITLE.productId || undefined });
     CA_LF.made = { q: '__asis__', asIs: true, title: r.title, assetId: r.assetId };
     resEl.style.color = 'var(--fresh)';
     resEl.textContent = `✓ Episode made from your script — "${r.title}", ${r.segments} segments (~${r.minutes} min). Open its 📋 Publish to pick presenter/voice/background (📝 Script & cards to check it), then 🎬 Render.`;
@@ -6025,7 +6058,8 @@ async function runCreateAsset() {
   // text box (see caQaRenderForm) — fill in whichever apply, then Generate
   // again to actually write it.
   // YouTube Longform — Question-Led: questions first, then the script.
-  if (/question[\s-]*led/i.test(methodName)) {
+  if (lfIsTitles(methodName)) return caLfTitlesWrite(btn);
+  if (lfIsInterview(methodName)) {
     if (!CA_LF.questions.length) return caLfFindQuestions(btn);
     const q = CA_LF.questions[CA_LF.pick];
     if (!q) { resEl.style.color = 'var(--danger)'; resEl.textContent = 'Pick a question above.'; return; }
@@ -7093,7 +7127,13 @@ async function pubLfLoad(assetId, token) {
   pubLfIntroOptions(); pubYtStatus(); pubYtShowLink(r.youtubeUrl); pubYtShowWatch(r.watchLink);
   vs.onchange = () => { const dv = ((r.voices || []).find(v => v.id === vs.value) || {}).rate; if (dv) rt.value = dv; pubLfSave({ voice: vs.value, ...(dv ? { rate: dv } : {}) }); };
   const rt = document.getElementById('pubLfRate'); rt.value = r.render.rate || ((r.voices || []).find(v => v.id === (r.render.voice || (r.voices || [])[0]?.id)) || {}).rate || '-10%'; rt.onchange = () => pubLfSave({ rate: rt.value });
-  const ly = document.getElementById('pubLfLayout'); ly.value = ['stage', 'titles'].includes(r.render.layout) ? r.render.layout : 'presenter';
+  const ly = document.getElementById('pubLfLayout');
+  ly.innerHTML = r.titlesScript
+    ? '<option value="titles">Paragraphs with titles: no presenter (Titles episode)</option>'
+    : '<option value="presenter">Avatar — presenter + image box</option><option value="stage">Text &amp; images — big image frame, no avatar</option>';
+  ly.disabled = !!r.titlesScript;
+  ly.title = r.titlesScript ? 'A YouTube Longform — Titles episode always uses the titles format' : 'Interview episodes: Avatar or Text & images';
+  ly.value = r.titlesScript ? 'titles' : (r.render.layout === 'stage' ? 'stage' : 'presenter');
   document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none';
   ly.onchange = () => { document.getElementById('pubLfCharsWrap').style.display = ly.value === 'presenter' ? '' : 'none'; pubLfSave({ layout: ly.value }); pubFitShowFor(); };
   pubFitShowFor();
