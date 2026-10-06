@@ -882,6 +882,8 @@
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;">
         <b style="font-size:14px;">All Output</b>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2TogglePanel()">⚲ Filter &amp; sort</button>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Keep the current filters and sort for next time" onclick="dev2SaveClick(this)">💾 Save</button>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Go back to the saved filters and sort" onclick="dev2LoadSaved()">↺ Revert</button>
         <button id="dev2GroupBtn" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2SetGroup(!DEV2_GROUP)" title="Group the rows under collapsible headers, one tier per sort level">☰ Group by sort: on</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(true)">▸ Collapse all</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(false)">▾ Expand all</button>
@@ -10039,7 +10041,7 @@ let DEV2_ROWS = [];
 // header resets to that one column; shift-click adds it as the next tie-
 // breaker (or flips its direction if it's already in the list) without
 // disturbing the columns already sorted on.
-let DEV2_SORT = [{ col: 'campaign', asc: true }];
+let DEV2_SORT = (() => { try { const v = JSON.parse(localStorage.getItem('dev2Sort') || 'null'); if (Array.isArray(v) && v.length && v.every(x => x && x.col)) return v.slice(0, 5); } catch (e) {} return [{ col: 'campaign', asc: true }]; })();
 // Bulk selection — keyed 'a:<assetId>' for a real asset row or
 // 't:<titleId>' for a blank/no-asset placeholder row (there's no asset to
 // act on there, only the title). Persists across a re-sort (same rows,
@@ -10060,7 +10062,7 @@ const DEV2_COLS = [
   { key: 'status',       label: 'Status' },
 ];
 // two-layer filter: [{col, val}] — val '' = any, '__blank__' = empty
-let DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }];
+let DEV2_F = (() => { try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); if (Array.isArray(v) && v.length === 2) return v.map(f => ({ col: String((f && f.col) || ''), val: String((f && f.val) || ''), neg: !!(f && f.neg) })); } catch (e) {} return [{ col: '', val: '' }, { col: '', val: '' }]; })();
 const DEV2_BLANK = '__blank__';
 function dev2Val(r, col) { return String(r[col] == null ? '' : r[col]); }
 function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col), hit = f.val === DEV2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
@@ -10279,6 +10281,13 @@ function dev2Cmp(a, b) {
   }
   return 0;
 }
+function dev2SaveState() { try { localStorage.setItem('dev2Sort', JSON.stringify(DEV2_SORT)); localStorage.setItem('dev2Filters', JSON.stringify(DEV2_F)); } catch (e) {} }
+function dev2LoadSaved() {
+  try { const v = JSON.parse(localStorage.getItem('dev2Sort') || 'null'); DEV2_SORT = (Array.isArray(v) && v.length) ? v.slice(0, 5) : [{ col: 'campaign', asc: true }]; } catch (e) {}
+  try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); DEV2_F = (Array.isArray(v) && v.length === 2) ? v : [{ col: '', val: '' }, { col: '', val: '' }]; } catch (e) {}
+  DEV2_SELECTED.clear(); dev2DrawPanel(); renderDev2();
+}
+function dev2SaveClick(btn) { dev2SaveState(); const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); }
 function renderDev2() {
   const el = document.getElementById('dev2Content');
   const countEl = document.getElementById('dev2Count');
