@@ -910,7 +910,7 @@
         <span style="color:var(--text2);">then by</span><span><select id="dev2S3c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S3d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
         <span style="color:var(--text2);">then by</span><span><select id="dev2S4c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S4d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
       </div>
-      <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Up to 5 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks still sort (shift-click adds a level).</span></div>
+      <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Up to 5 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks still sort (Ctrl- or Shift-click adds a level).</span></div>
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
   </div>
@@ -10123,7 +10123,7 @@ async function loadDev2() {
   }
 }
 function dev2SetSort(col, ev) {
-  const shift = !!(ev && ev.shiftKey);
+  const shift = !!(ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey));   // shift-, ctrl- or ⌘-click adds a sort level
   const idx = DEV2_SORT.findIndex(s => s.col === col);
   if (shift) {
     if (idx === -1) { if (DEV2_SORT.length < DEV2_MAX_LEVELS) DEV2_SORT.push({ col, asc: true }); }
@@ -10322,7 +10322,7 @@ function renderDev2() {
         const s = DEV2_SORT[sortIdx];
         arrow = ' ' + (s.asc ? '▲' : '▼') + (DEV2_SORT.length > 1 ? (sortIdx + 1) : '');
       }
-      return `<th onclick="dev2SetSort('${c.key}', event)" title="Click to sort — shift-click to add as a tie-breaker" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
+      return `<th onclick="dev2SetSort('${c.key}', event)" title="Click to sort — Ctrl-click (or Shift-click) to add it as the next sort level" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
     }).join('')}
   </tr>`;
 
