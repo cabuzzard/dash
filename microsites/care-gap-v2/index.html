@@ -1632,6 +1632,77 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <div class="panel" data-panel="hub">
     <div class="stage-hd"><h2>Hub</h2><span class="stagetag">content hub</span><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-hub','Hub tab','hub')">📝 Tab note</button></div>
     <p class="stage-sub">The live Content Hub for this campaign — fixed section copy for now (headings, ribbon, nav), more hub tools land here over time.</p>
+    <section class="card" data-ckey="card-hub-brainstorm" style="margin-bottom:12px;">
+      <div class="card-hd" onclick="toggleGrp(this.parentElement)"><span class="chev">▶</span><h3>Pillar</h3><span class="tag manual">notes</span></div>
+      <div class="card-body">
+        <style>.bs-wrap{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}.bs-notes{flex:1 1 420px;min-width:0;font-size:12px;line-height:1.5;color:var(--ink2)}.bs-notes h4{margin:12px 0 4px;font-size:12.5px;color:var(--ink)}.bs-notes ul,.bs-notes ol{margin:4px 0 4px 18px;padding:0}.bs-notes p{margin:4px 0}.bs-t{border-collapse:collapse;font-size:11px;margin:4px 0;width:100%}.bs-t td,.bs-t th{border:1px solid var(--border2);padding:3px 6px;text-align:left;vertical-align:top}.bs-mine{flex:1 1 300px;min-width:0;position:sticky;top:60px}</style>
+        <div class="bs-wrap">
+          <div class="bs-notes">
+<p><b>Status:</b> brainstorming only. Nothing built. If it goes ahead, step 1 is a short spec to review.</p>
+<h4>1. Every format is the same thing underneath</h4>
+<p>Backgrounds, text boxes placed on them, and timing. Only the counts and the clock differ.</p>
+<table class="bs-t"><tr><th></th><th>Backgrounds</th><th>Text boxes</th><th>Timing</th></tr>
+<tr><td>Single post</td><td>1</td><td>3 (headline, accent, body)</td><td>static</td></tr>
+<tr><td>Single post carousel</td><td>6-9, one per slide</td><td>3, by format (Cover / Text / End)</td><td>static, one frame per slide</td></tr>
+<tr><td>YT Titles</td><td>per section, or pictures within it</td><td>section title + captions</td><td>title lasts its section; captions per spoken phrase</td></tr>
+<tr><td>YT Interview</td><td>presenter scene + pictures</td><td>title, card, Q: line, captions, ask pills</td><td>card per chapter; captions and pills timed to the voice</td></tr></table>
+<h4>2. One engine</h4>
+<ul>
+<li><b>One composition format:</b> a list of frames. Each frame = a background + text boxes. Each box = role, text, position, style, start/end time. A still = a frame with no time.</li>
+<li><b>The methods become presets</b> that write that format (single post = 1 frame, carousel = N frames, Titles / Interview = timed frames).</li>
+<li><b>One editor:</b> frames along the bottom, boxes on the canvas, the shared Typography panel, plus a timeline for videos to drag each box's start/end (per-box durations).</li>
+<li><b>Two outputs from one file:</b> PNGs (browser) and MP4 (Python renderer).</li>
+<li>Timing can follow the voice: "show while these words are spoken", so edits keep their timing.</li>
+<li>Formats become reusable looks (Cover / Text / End, section title, chapter card) any method can borrow.</li>
+</ul>
+<h4>3. One long-form script feeds every method</h4>
+<ul>
+<li>Whole script = longform video. Sections = carousel slides. Strongest lines = single posts. One section = a Reel. Prose = blog + email. Hook + titles = YouTube packaging.</li>
+<li>Outputs are <b>cuts</b> of the same material, not new generations, so message and voice stay consistent.</li>
+<li>Example: Dualities (25 sections) = 1 longform, ~5 carousels, 25 posts, a Reel series.</li>
+</ul>
+<h4>4. Clipping long-form into Reels / Shorts</h4>
+<ul>
+<li>A clip = a time range in the composition, re-laid out 9:16.</li>
+<li>Needs: start/end (15-60s), stands alone, a new 1-2s hook line, vertical layout (captions up, bigger text, section title as a banner), an end beat.</li>
+<li>AI suggests ranges scored on hook strength, standalone clarity, payoff and length; you approve or trim on the timeline.</li>
+<li>Script structure already marks most cuts: each Titles section / Interview chapter is a natural clip.</li>
+</ul>
+<h4>5. One generation, disseminated</h4>
+<ul>
+<li>One idea, one script, one approval, many assets, published over time (pairs with the Buffer queue).</li>
+<li>Approve at the source: a fix in the script fixes every output.</li>
+<li>Each method keeps its own rules (platform, format, length): adapting, not copying.</li>
+<li>You choose which outputs to make; text cuts are cheap, renders are made in waves for what you'll publish.</li>
+</ul>
+<h4>6. It all lives in the pillar</h4>
+<p>Write the pillar to a structure every format can cut from:</p>
+<table class="bs-t"><tr><th>Pillar part</th><th>Used by</th></tr>
+<tr><td>Hook (2-4 spoken sentences)</td><td>video opening, Reel hooks, carousel cover, headlines</td></tr>
+<tr><td>Titled sections (2-6 word title + narration)</td><td>Titles video, carousel Text slides, Reel clips, blog H2s</td></tr>
+<tr><td>One quotable line per section (setup + payoff)</td><td>single posts, carousel headlines, thumbnail text</td></tr>
+<tr><td>Proof per section (number, story, example)</td><td>post bodies, carousel "why", blog depth</td></tr>
+<tr><td>Visual note per section</td><td>backgrounds, video pictures, carousel visual thread</td></tr>
+<tr><td>Payoff + call to action</td><td>End slides, video outro, email close</td></tr>
+<tr><td>Questions it answers</td><td>Interview episodes, SEO/blog angles, FAQ</td></tr></table>
+<p style="color:var(--ink3);">Note: the pillar's structure is defined in the Information Flow Contract. Changing it needs your explicit yes on the exact wording first.</p>
+<h4>Possible build order (if it goes ahead)</h4>
+<ol>
+<li>Composition format + the four methods also saving into it (nothing else changes).</li>
+<li>One editor: posts and carousels first, then videos with the per-box timeline.</li>
+<li>Video renderer draws from the composition (per-box durations in the final video). Riskiest step.</li>
+<li>Structured pillar + "make outputs from this pillar" + clip suggestions.</li>
+<li>Retire the old separate editors.</li>
+</ol>
+          </div>
+          <div class="bs-mine">
+            <div style="font-size:11.5px;font-weight:700;color:var(--ink2);margin-bottom:4px;">Your notes</div>
+            <textarea id="bsMine" class="finput" rows="22" style="width:100%;box-sizing:border-box;font-size:12px;resize:vertical;" placeholder="Your thoughts, changes, questions…" oninput="document.getElementById('bsMsg').textContent='Not saved yet';"></textarea>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:4px;"><button class="btn" type="button" onclick="bsSave(this)">💾 Save notes</button><span id="bsMsg" style="font-size:11px;color:var(--ink3);"></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
     <div id="hubTabBody"><div class="loadnote">Loading…</div></div>
   </div>
 
@@ -1956,6 +2027,24 @@ function esc(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt
 // ── notes system — real KV backend (saveMicrositeNote/getMicrositeNotes) ──
 let NOTE_ACTIVE = null;
 let NOTES_CACHE = [];
+// 💡 Hub tab brainstorm card: the operator's own notes beside the write-up (stored with the microsite notes)
+const BS_NOTE_ID = 'hub-brainstorm-one-engine';
+function bsFill() {
+  const ta = document.getElementById('bsMine'); if (!ta || document.activeElement === ta) return;
+  const n = (NOTES_CACHE || []).find(x => x.fieldId === BS_NOTE_ID);
+  ta.value = n ? n.note : '';
+  const m = document.getElementById('bsMsg'); if (m && n) m.textContent = 'Saved ' + new Date(n.ts).toLocaleString();
+}
+async function bsSave(btn) {
+  const ta = document.getElementById('bsMine'), m = document.getElementById('bsMsg');
+  btn.disabled = true; m.style.color = 'var(--ink3)'; m.textContent = 'Saving…';
+  try {
+    const r = await w('saveMicrositeNote', { campaignId: CAMPAIGN_ID, fieldId: BS_NOTE_ID, label: 'Pillar (brainstorm notes)', tab: 'hub', note: ta.value });
+    NOTES_CACHE = r.notes || NOTES_CACHE;
+    m.style.color = 'var(--fresh)'; m.textContent = '✓ Saved';
+  } catch (e) { m.style.color = 'var(--stale)'; m.textContent = 'Not saved: ' + e.message; }
+  btn.disabled = false;
+}
 function openNoteModal(fieldId, label, tab) {
   NOTE_ACTIVE = { fieldId, label, tab };
   document.getElementById('noteModalTab').textContent = tab || '';
@@ -2010,7 +2099,7 @@ function refreshNoteMarks() {
   });
 }
 async function loadNotes() {
-  try { const r = await w('getMicrositeNotes', { campaignId: CAMPAIGN_ID }); NOTES_CACHE = r.notes || []; refreshNoteMarks(); }
+  try { const r = await w('getMicrositeNotes', { campaignId: CAMPAIGN_ID }); NOTES_CACHE = r.notes || []; refreshNoteMarks(); bsFill(); }
   catch (e) {}
 }
 function submitNotes() {
