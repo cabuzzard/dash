@@ -13291,6 +13291,7 @@ Return: {
             name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?",
             stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
             campId: (p.properties?.Campaigns?.relation || [])[0]?.id ? dropDash(p.properties.Campaigns.relation[0].id) : null,
+            status: p.properties?.Status?.select?.name || p.properties?.Status?.status?.name || "",
           };
         });
 
@@ -13300,6 +13301,7 @@ Return: {
           const p = t.properties || {};
           titleById[id] = {
             title: (p.Title?.title || []).map(x => x.plain_text).join("") || "Untitled",
+            status: p.Status?.select?.name || "",
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
             productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
           };
@@ -13405,7 +13407,10 @@ Return: {
         const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
         const groupMaps = {};
         await Promise.all(campIds.map(async cid => { try { const g = await env.TRADES.get("stackgroups:" + cid, "json"); groupMaps[cid] = (g && g.map) || {}; } catch (e) { groupMaps[cid] = {}; } }));
-        rows.forEach(r => { r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title"; });
+        rows.forEach(r => {
+          r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
+          r.status = r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
+        });
         return json({ rows });
       }
 

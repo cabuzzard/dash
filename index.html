@@ -10051,6 +10051,7 @@ const DEV2_COLS = [
   { key: 'title',        label: 'Title' },
   { key: 'assetName',    label: 'Asset name' },
   { key: 'assetType',    label: 'Asset type' },
+  { key: 'status',       label: 'Status' },
 ];
 // two-layer filter: [{col, val}] — val '' = any, '__blank__' = empty
 let DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }];
@@ -10310,6 +10311,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${titleCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
+      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
     </tr>`;
   }).join('');
 
