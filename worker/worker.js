@@ -16816,6 +16816,27 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           hubs: HUB_SITES.map(h => ({ slug: h.slug, name: h.name || h.slug })), assets });
       }
 
+      // ── Information flow table ── dashboard Output tab: a free-form operator table (editable cells, add/remove
+      // rows and columns). One KV blob, replaced wholesale on save: { columns:[{id,name}], rows:[{id,cells:{colId:text}}] }.
+      // Standalone: NOT the Notion "Information Flow Contract" page.
+      if (body.action === "getInfoFlowTable") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let t = null; try { t = await env.TRADES.get("infoflow:table:v1", "json"); } catch (e) {}
+        return json({ success: true, table: t || { columns: [{ id: "c1", name: "Stage" }, { id: "c2", name: "Input" }, { id: "c3", name: "Output" }], rows: [{ id: "r1", cells: {} }] } });
+      }
+      if (body.action === "saveInfoFlowTable") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const t = body.table || {};
+        const columns = (Array.isArray(t.columns) ? t.columns : []).slice(0, 40).map(c => ({ id: String(c?.id || "").slice(0, 40), name: String(c?.name || "").slice(0, 120), ...(c?.w ? { w: Math.max(60, Math.min(800, +c.w || 0)) } : {}) })).filter(c => c.id);
+        const colIds = new Set(columns.map(c => c.id));
+        const rows = (Array.isArray(t.rows) ? t.rows : []).slice(0, 500).map(r => {
+          const cells = {}; Object.entries(r?.cells || {}).forEach(([k, v]) => { if (colIds.has(k)) { const x = String(v || "").slice(0, 4000); if (x) cells[k] = x; } });
+          return { id: String(r?.id || "").slice(0, 40), cells };
+        }).filter(r => r.id);
+        await env.TRADES.put("infoflow:table:v1", JSON.stringify({ columns, rows, at: Date.now() }));
+        return json({ success: true, saved: rows.length });
+      }
+
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
       // rows = the same hubs/landing pages (and order) as the Hub Method
       // Matrix above, columns fully operator-defined (add/rename/delete/

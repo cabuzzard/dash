@@ -725,6 +725,12 @@
       <span style="font-size:11.5px;color:var(--text2);">Every row (method) with the hubs that use it. Cells = published that week / that week's goal, summed across the row's hubs. Goals are set on each hub's own Output board.</span>
     </div>
     <div id="outputBody"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 8px;">
+      <h2 style="margin:0;font-size:16px;">Flow</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Your own table. Click any cell or header to edit; it saves as you type.</span>
+      <span id="flowMsg" style="font-size:11px;color:var(--text3);"></span>
+    </div>
+    <div id="flowBody"></div>
   </div>
 
   <div class="tab-panel" id="tabOverview">
@@ -4227,6 +4233,54 @@ function renderOutputTab() {
     <span style="color:var(--text3);">Tag hubs with ▾ on each row: a hub's own Output board shows only its rows. Hover a cell for the assets.</span>
   </div>`;
 }
+// ── Flow: a free-form editable table (cells, add/remove rows + columns), saved as one KV blob ──
+let FLOW = null, FLOW_T = null;
+const flowId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+async function loadFlowTable() {
+  const el = document.getElementById('flowBody'); if (!el) return;
+  el.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
+  try { const r = await call('getInfoFlowTable'); if (r.error) throw new Error(r.error); FLOW = r.table; renderFlowTable(); }
+  catch (e) { el.innerHTML = `<div style="color:var(--danger);font-size:12px;">Load failed: ${esc(e.message)}</div>`; }
+}
+function flowSaveSoon() {
+  const m = document.getElementById('flowMsg'); if (m) { m.style.color = 'var(--text3)'; m.textContent = 'Saving…'; }
+  clearTimeout(FLOW_T);
+  FLOW_T = setTimeout(async () => {
+    try { const r = await call('saveInfoFlowTable', { table: FLOW }); if (r.error) throw new Error(r.error); if (m) { m.style.color = 'var(--text3)'; m.textContent = '✓ Saved'; } }
+    catch (e) { if (m) { m.style.color = 'var(--danger)'; m.textContent = 'Not saved: ' + e.message; } }
+  }, 700);
+}
+function renderFlowTable() {
+  const el = document.getElementById('flowBody'), F = FLOW; if (!el || !F) return;
+  const btn = 'font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
+  const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:vertical;font-family:inherit;';
+  el.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;">
+    <thead><tr>${F.columns.map((c, ci) => `<th style="padding:4px;border:1px solid var(--border);background:var(--surface2);min-width:${c.w || 160}px;text-align:left;vertical-align:top;">
+        <div style="display:flex;align-items:center;gap:2px;">
+          <input value="${esc(c.name)}" placeholder="Column" oninput="FLOW.columns[${ci}].name=this.value;flowSaveSoon()" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
+          ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol(${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol(${ci},1)">▶</button>` : ''}
+          <button style="${xbtn}" title="Delete this column" onclick="flowDelCol(${ci})">✕</button></div></th>`).join('')}<th style="width:30px;border:1px solid var(--border);background:var(--surface2);"></th></tr></thead>
+    <tbody>${F.rows.map((r, ri) => `<tr>${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell(${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;">${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow(${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow(${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow(${ri})">✕</button></td></tr>`).join('')}</tbody>
+  </table></div>
+  <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow()">+ Row</button><button style="${btn}" onclick="flowAddCol()">+ Column</button></div>`;
+  el.querySelectorAll('textarea').forEach(flowGrow);
+}
+function flowGrow(t) { t.style.height = 'auto'; t.style.height = Math.max(28, t.scrollHeight + 2) + 'px'; }
+function flowCell(ri, cid, t) { const r = FLOW.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(); }
+function flowAddRow() { FLOW.rows.push({ id: flowId('r'), cells: {} }); renderFlowTable(); flowSaveSoon(); }
+function flowAddCol() { FLOW.columns.push({ id: flowId('c'), name: 'New column' }); renderFlowTable(); flowSaveSoon(); }
+function flowDelRow(ri) {
+  const r = FLOW.rows[ri]; if (Object.values(r.cells || {}).some(v => String(v).trim()) && !confirm('Delete this row and its text?')) return;
+  FLOW.rows.splice(ri, 1); renderFlowTable(); flowSaveSoon();
+}
+function flowDelCol(ci) {
+  const c = FLOW.columns[ci]; if (FLOW.rows.some(r => String((r.cells || {})[c.id] || '').trim()) && !confirm(`Delete the column "${c.name}" and everything in it?`)) return;
+  FLOW.columns.splice(ci, 1); FLOW.rows.forEach(r => { if (r.cells) delete r.cells[c.id]; }); renderFlowTable(); flowSaveSoon();
+}
+function flowMoveRow(ri, d) { const a = FLOW.rows; [a[ri], a[ri + d]] = [a[ri + d], a[ri]]; renderFlowTable(); flowSaveSoon(); }
+function flowMoveCol(ci, d) { const a = FLOW.columns; [a[ci], a[ci + d]] = [a[ci + d], a[ci]]; renderFlowTable(); flowSaveSoon(); }
 // the hub multiselect: one row-height button that opens a checkbox list
 function outHubPicker(ev, id) {
   ev.stopPropagation();
@@ -5033,7 +5087,7 @@ function loadTabContent(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
-  if (name === 'output'    && !outputLoaded) { outputLoaded = true; loadOutputTab(); }
+  if (name === 'output'    && !outputLoaded) { outputLoaded = true; loadOutputTab(); loadFlowTable(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
