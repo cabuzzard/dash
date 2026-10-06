@@ -692,8 +692,14 @@
 <!-- Header -->
 <div class="header">
   <div class="header-title">Hermes</div>
+  <span id="verBar" style="margin-left:10px;font-size:10px;color:var(--text3);white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">
+    <span id="verText" title="When this version of the page was published">v …</span>
+    <button style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="Load the newest version (skips the cached copy)" onclick="verUpdate()">↻ Update</button>
+    <button style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="See / copy / edit this page's address" onclick="verLink()">🔗 Link</button>
+  </span>
   <div class="lock-btn" onclick="lockApp()" title="Lock">🔒</div>
 </div>
+<div id="verNew" style="display:none;margin:6px 16px 0;padding:6px 10px;border-radius:8px;background:#f6ad55;color:#1a1a1a;font-size:12px;cursor:pointer;" onclick="verUpdate()">⬆ A newer version of this page is out — tap to update</div>
 
 <!-- Main -->
 <div id="viewMain" style="padding:16px;">
@@ -20293,6 +20299,34 @@ async function loadMorningTodos() {
     else if (++tries > 600) clearInterval(t);   // give up after ~5 min
   }, 500);
 })();
+
+// ── Version bar (same as the care-gap microsite): version = when GitHub Pages published this file (Last-Modified).
+// ↻ Update reloads with a cache-busting ?v=; 🔗 Link shows the full address to copy or edit; a banner appears when
+// a newer version is published.
+(function () {
+  const fmt = d => d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const mine = new Date(document.lastModified);
+  const vt = document.getElementById('verText'); if (vt) vt.textContent = 'v ' + (isNaN(mine) ? '?' : fmt(mine));
+  async function check() {
+    try {
+      const r = await fetch(location.pathname + '?vcheck=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+      const lm = new Date(r.headers.get('last-modified'));
+      if (!isNaN(lm) && !isNaN(mine) && lm - mine > 1000) { const b = document.getElementById('verNew'); if (b) { b.style.display = 'block'; b.textContent = '⬆ A newer version (' + fmt(lm) + ') is out — tap to update'; } }
+    } catch (e) {}
+  }
+  setTimeout(check, 4000); setInterval(check, 10 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+})();
+function verUpdate() {
+  const u = new URL(location.href); u.searchParams.set('v', Date.now().toString(36)); u.searchParams.delete('vcheck');
+  location.replace(u.toString());
+}
+async function verLink() {
+  const cur = location.href;
+  try { await navigator.clipboard.writeText(cur); } catch (e) {}
+  const next = prompt('This page\'s address (already copied). Edit it and press OK to open it:', cur);
+  if (next && next.trim() && next.trim() !== cur) location.href = next.trim();
+}
 </script>
 
 </body>
