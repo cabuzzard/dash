@@ -2075,15 +2075,62 @@ const SPC_FORMATS = {
   },
 };
 function spcFormat(index, total) { return index <= 1 ? "cover" : index >= total ? "end" : "text"; }
-async function spCarouselInfo(hdr, assetId) {
+// The SINGLE POST json block ({"kind":"single-post", fields, caption, carousel…}) used to be written as ONE
+// rich-text piece cut at 1990 chars, so long carousel slides got truncated JSON that nothing could read.
+// spLoadCard reads it; if it is damaged it REBUILDS the card from the page's own "## Headline Primary /
+// Headline Accent / Body / Carousel" sections + properties, and writes the repaired card back (in pieces).
+function spCardRichText(card) {
+  const txt = JSON.stringify(card), rt = [];
+  for (let i = 0; i < txt.length; i += 1900) rt.push({ type: "text", text: { content: txt.slice(i, i + 1900) } });
+  return rt;
+}
+async function spLoadCard(hdr, assetId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
-  const br = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
-  for (const b of (br.results || [])) {
+  const br = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=100`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
+  const blocks = br.results || [];
+  let blk = null, card = null;
+  for (const b of blocks) {
     if (b.type !== "code") continue;
     const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
-    try { const j = JSON.parse(txt); if (j.kind === "single-post") return j.carousel ? { ...j.carousel, fields: j.fields || {} } : null; } catch (e) {}
+    if (!/^\s*\{/.test(txt) || !/"single-post"/.test(txt)) continue;
+    blk = b;
+    try { const j = JSON.parse(txt); if (j.kind === "single-post") card = j; } catch (e) {}
+    break;
   }
-  return null;
+  if (card || !blk) return { card, blk };
+  // ── repair a truncated block from the page itself ──
+  const sec = {}; let cur = null;
+  for (const b of blocks) {
+    const t = (b[b.type]?.rich_text || []).map(x => x.plain_text).join("");
+    if (/^heading_/.test(b.type)) { cur = t.trim(); continue; }
+    if (b.type === "paragraph" && cur) sec[cur] = (sec[cur] ? sec[cur] + "\n" : "") + t;
+  }
+  const pg = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+  const P = pg.properties || {};
+  const rt = k => (P[k]?.rich_text || []).map(x => x.plain_text).join("").trim();
+  const body = (sec["Body"] || "").trim();
+  card = {
+    kind: "single-post",
+    template: P["Canva Template"]?.url ? { url: P["Canva Template"].url } : undefined,
+    fields: { "Headline Primary": (sec["Headline Primary"] || "").trim(), "Headline Accent": (sec["Headline Accent"] || "").trim(), "Body": /^—\s*\(empty\)\s*—$/.test(body) ? "" : body },
+    caption: rt("Post Caption"), hashtags: rt("Hashtags").split(/\s+/).filter(Boolean), altText: rt("Alt Text"),
+    status: "awaiting-canva", repaired: true,
+  };
+  const cid = rt("Carousel ID");
+  if (cid) {
+    const lines = String(sec["Carousel"] || "").split("\n");
+    const after = pre => (lines.find(l => l.startsWith(pre)) || "").slice(pre.length).trim();
+    const total = (await spCarouselSlides(cid).catch(() => [])).length || 1, index = P["Slide"]?.number || 1;
+    card.carousel = { id: cid, index, total, format: spcFormat(index, total),
+      title: ((P["Asset Title"]?.title || []).map(x => x.plain_text).join("").split(" · ")[0] || "").trim(),
+      visualThread: after("Visual thread:"), visual: after("This slide's background:") };
+  }
+  try { await fetch(`https://api.notion.com/v1/blocks/${blk.id}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ code: { rich_text: spCardRichText(card), language: "json" } }) }); } catch (e) {}
+  return { card, blk };
+}
+async function spCarouselInfo(hdr, assetId) {
+  const { card } = await spLoadCard(hdr, assetId);
+  return card && card.carousel ? { ...card.carousel, fields: card.fields || {} } : null;
 }
 // every slide of a carousel, in order: [{id, slide, title, postImage, status}]
 async function spCarouselSlides(carouselId) {
@@ -26139,7 +26186,7 @@ Return via the submit_carousel tool ONLY — nothing as plain text.`;
             if (!aResp.ok || !aRes.id) { failures.push(aRes.message || "create failed"); continue; }
             const newAssetId = aRes.id.replace(/-/g, "");
             const children = [
-              { object: "block", type: "code", code: { language: "json", rich_text: rtBlock(JSON.stringify(cardObj, null, 0)) } },
+              { object: "block", type: "code", code: { language: "json", rich_text: spCardRichText(cardObj) } },
               heading2("Headline Primary"), para(hp),
               heading2("Headline Accent"), para(ha),
               heading2("Body"), para(bd || "— (empty) —"),
@@ -29428,13 +29475,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         // same block buildSinglePostCanvaHandoff already reads.
         const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
         let fields = null;
-        for (const b of (blocksResp.results || [])) {
-          const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
-          if (b.type === "code" && txt.trim().startsWith("{")) {
-            try { const j = JSON.parse(txt); if (j.kind === "single-post") fields = j.fields || null; } catch (e) {}
-          }
-          if (fields) break;
-        }
+        { const { card: spc } = await spLoadCard(hdr, assetId); if (spc) fields = spc.fields || null; }
         if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
 
         const brief = await assembleImageBrief(env, { campaignId, assetId });
@@ -29530,12 +29571,7 @@ Portrait Instagram post, ready to publish.`;
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const dash = id => { const x = String(id).replace(/-/g,""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
         const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
-        let blk = null, card = null;
-        for (const b of (blocksResp.results || [])) {
-          if (b.type !== "code") continue;
-          const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
-          try { const j = JSON.parse(txt); if (j.kind === "single-post") { blk = b; card = j; break; } } catch (e) {}
-        }
+        let { blk, card } = await spLoadCard(hdr, assetId);
         if (!card) return json({ error: "Couldn't find this asset's single-post block" }, 400);
         const KEYS = ["Headline Primary", "Headline Accent", "Body"];
         const old = { ...(card.fields || {}) };
@@ -29573,10 +29609,7 @@ Portrait Instagram post, ready to publish.`;
         const P = page.properties || {};
         const rt = k => (P[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
         let fields = null;
-        for (const b of (blocksResp.results || [])) {
-          if (b.type !== "code") continue;
-          try { const j = JSON.parse((b.code?.rich_text || []).map(t => t.plain_text).join("")); if (j.kind === "single-post") { fields = j.fields || {}; break; } } catch (e) {}
-        }
+        { const { card: spc } = await spLoadCard(hdr, assetId); if (spc) fields = spc.fields || {}; }
         if (!fields) return json({ error: "No single-post copy on this asset" }, 400);
         const campaignId = (P["Campaign"]?.relation?.[0]?.id || "").replace(/-/g, "");
         const voice = await voiceBlock(env, campaignId).catch(() => "");
@@ -29667,13 +29700,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const dash = id => { const s = String(id).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(assetId)}/children?page_size=50`, { headers: hdr }).then(r => r.json()).catch(() => ({ results: [] }));
         let fields = null;
-        for (const b of (blocksResp.results || [])) {
-          const txt = (b.code?.rich_text || []).map(t => t.plain_text).join("");
-          if (b.type === "code" && txt.trim().startsWith("{")) {
-            try { const j = JSON.parse(txt); if (j.kind === "single-post") fields = j.fields || null; } catch (e) {}
-          }
-          if (fields) break;
-        }
+        { const { card: spc } = await spLoadCard(hdr, assetId); if (spc) fields = spc.fields || null; }
         if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
         return json({ fields });
       }
