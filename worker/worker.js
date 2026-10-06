@@ -29608,8 +29608,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
           carRole = i === 1 ? "the HOOK — opens the story: the tension / question the swipe will resolve"
             : i === n ? "the PAYOFF — resolves the story the hook opened, with a soft call to action"
             : `a BUILDING BEAT (${i - 1} of ${n - 2}) — moves the story one step from the hook toward the payoff`;
-          carStory = sl.map(x => `${x.slide === i ? "▶ " : "  "}Slide ${x.slide}: ${(x.body || x.title || "").replace(/\s+/g, " ").slice(0, 220)}`).join("
-");
+          carStory = sl.map(x => `${x.slide === i ? "▶ " : "  "}Slide ${x.slide}: ${(x.body || x.title || "").replace(/\s+/g, " ").slice(0, 220)}`).join("\n");
         }
         const sceneKey = "bgscenes:" + campaignId;
         let recentScenes = [];
