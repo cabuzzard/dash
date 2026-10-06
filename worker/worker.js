@@ -38690,6 +38690,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           if (def.type === 'rich_text') toAdd[name] = { rich_text: {} };
           else if (def.type === 'url') toAdd[name] = { url: {} };
           else if (def.type === 'date') toAdd[name] = { date: {} };
+          else if (def.type === 'number') toAdd[name] = { number: { format: "number" } };
           else if (def.type === 'select') toAdd[name] = { select: { options: (def.options || []).map(o => ({ name: o })) } };
         }
         if (Object.keys(toAdd).length) {
