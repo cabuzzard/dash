@@ -13290,6 +13290,7 @@ Return: {
           productById[dropDash(p.id)] = {
             name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?",
             stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
+            campId: (p.properties?.Campaigns?.relation || [])[0]?.id ? dropDash(p.properties.Campaigns.relation[0].id) : null,
           };
         });
 
@@ -13304,21 +13305,26 @@ Return: {
           };
         });
 
-        const assetsByTitle = {};
+        // ALL OUTPUT (2026-10-06): every product, title and asset gets a row — assets with no title and products
+        // with no titles too. Asset name = Asset Title; Group = the campaign's product group for the stack.
+        const assetsByTitle = {}, orphanAssets = [];
         const methIdSet = new Set();
         assetRows.forEach(a => {
           const p = a.properties || {};
           const titleId = (p["Content Strategy"]?.relation || [])[0]?.id ? dropDash((p["Content Strategy"].relation)[0].id) : null;
-          if (!titleId) return; // an asset with no source title can't place itself in this title-rooted table
           const methodId = (p["Method"]?.relation || [])[0]?.id ? dropDash((p["Method"].relation)[0].id) : null;
           if (methodId) methIdSet.add(methodId);
-          (assetsByTitle[titleId] ||= []).push({
+          const row = {
             id: dropDash(a.id),
             methodId,
+            name: (p["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "",
             assetType: p["Asset Type"]?.select?.name || "",
             status: p["Asset Status"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
-          });
+            campId: (p.Campaign?.relation || [])[0]?.id ? dropDash(p.Campaign.relation[0].id) : null,
+            productId: (p.Product?.relation || [])[0]?.id ? dropDash(p.Product.relation[0].id) : null,
+          };
+          if (titleId && titleById[titleId]) (assetsByTitle[titleId] ||= []).push(row); else orphanAssets.push(row);
         });
 
         // Resolve Method relation ids to names (same per-id page fetch
@@ -13334,7 +13340,15 @@ Return: {
         })));
 
         const rows = [];
+        const usedProducts = new Set();
+        const assetFields = a => ({
+          assetId: a.id, assetName: a.name,
+          assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+          rawAssetType: a.assetType || "", assetStatus: a.status || "",
+          datePublished: a.status === "Published" ? a.lastEditedTime : null,
+        });
         Object.entries(titleById).forEach(([titleId, t]) => {
+          if (t.productId) usedProducts.add(t.productId);
           const camp = t.campId ? campById[t.campId] : null;
           const prod = t.productId ? productById[t.productId] : null;
           const base = {
@@ -13348,12 +13362,13 @@ Return: {
           };
           const assets = assetsByTitle[titleId] || [];
           if (!assets.length) {
-            rows.push({ ...base, assetId: null, assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
+            rows.push({ ...base, kind: "title", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
             return;
           }
           assets.forEach(a => {
             rows.push({
               ...base,
+              kind: "asset", assetName: a.name,
               assetId: a.id,
               // assetType is the display value (Method name, when stamped
               // — that's what the column header promises); rawAssetType is
@@ -13369,6 +13384,28 @@ Return: {
           });
         });
 
+        // assets with no title: placed by their own Campaign / Product
+        orphanAssets.forEach(a => {
+          const prod = a.productId ? productById[a.productId] : null;
+          if (a.productId) usedProducts.add(a.productId);
+          const campId = a.campId || (prod && prod.campId) || null, camp = campId ? campById[campId] : null;
+          rows.push({ kind: "asset", campaign: camp ? camp.name : "?", campId, hub: campId ? (hubByCampId[campId] || "") : "",
+            productStack: prod ? (prod.stack || "No Stack") : "No Product", product: prod ? prod.name : "No Product", productId: a.productId || null,
+            title: "", titleId: null, ...assetFields(a) });
+        });
+        // products with no titles and no assets
+        Object.entries(productById).forEach(([pid, prod]) => {
+          if (usedProducts.has(pid)) return;
+          const camp = prod.campId ? campById[prod.campId] : null;
+          rows.push({ kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "",
+            productStack: prod.stack || "No Stack", product: prod.name, productId: pid, title: "", titleId: null,
+            assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
+        });
+        // Group = the campaign's product group for this stack (KV stackgroups:<campaignId>, Group → Stack → Product)
+        const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
+        const groupMaps = {};
+        await Promise.all(campIds.map(async cid => { try { const g = await env.TRADES.get("stackgroups:" + cid, "json"); groupMaps[cid] = (g && g.map) || {}; } catch (e) { groupMaps[cid] = {}; } }));
+        rows.forEach(r => { r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title"; });
         return json({ rows });
       }
 

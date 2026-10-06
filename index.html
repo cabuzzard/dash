@@ -708,9 +708,9 @@
     <div class="tab active" onclick="switchTab('td')">TD</div>
     <div class="tab"        onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('output')">Output</div>
+    <div class="tab"        onclick="switchTab('dev2')">All Output</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
-    <div class="tab"        onclick="switchTab('dev2')">Dev 2</div>
     <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
     <div class="tab"        onclick="switchTab('landingpages')">Landing Pages</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
@@ -879,7 +879,11 @@
        replace both Development and Publishing; for now it's additive. -->
   <div class="tab-panel" id="tabDev2">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
-      <input type="text" id="dev2Filter" placeholder="Filter… (comma-separate multiple values)" oninput="dev2OnFilterChange()" style="flex:1;min-width:160px;background:var(--surface);border:1px solid var(--border2);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--text);">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;">
+        <b style="font-size:14px;">All Output</b>
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2TogglePanel()">⚲ Filter &amp; sort</button>
+        <span id="dev2Chips" style="display:inline-flex;gap:6px;flex-wrap:wrap;"></span>
+      </div>
       <span id="dev2Count" style="font-size:11px;color:var(--text3);white-space:nowrap;"></span>
     </div>
     <!-- Bulk action bar — hidden until at least one row is checked. Delete
@@ -890,6 +894,15 @@
       <button onclick="dev2BulkGenerateThumbnails()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #3a5a3a;border-radius:4px;background:transparent;color:#7ed321;cursor:pointer;">🖼️ Generate Thumbnail</button>
       <button onclick="dev2BulkDelete()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #a33;border-radius:4px;background:transparent;color:#ff6b6b;cursor:pointer;">🗑 Delete</button>
       <button onclick="dev2ClearSelection()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;">Clear selection</button>
+    </div>
+    <div id="dev2Panel" style="display:none;margin-bottom:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);font-size:12px;">
+      <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">
+        <span style="color:var(--text2);">Filter 1</span><span><select id="dev2F0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(0)"></select> = <select id="dev2F0v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(0)"></select></span>
+        <span style="color:var(--text2);">then Filter 2</span><span><select id="dev2F1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterCol(1)"></select> = <select id="dev2F1v" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2FilterVal(1)"></select></span>
+        <span style="color:var(--text2);">Sort by</span><span><select id="dev2S0c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S0d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
+        <span style="color:var(--text2);">then by</span><span><select id="dev2S1c" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"></select> <select id="dev2S1d" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;" onchange="dev2SortSel()"><option value="asc">A → Z</option><option value="desc">Z → A</option></select></span>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Header clicks still sort (shift-click adds a level).</span></div>
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
   </div>
@@ -10028,16 +10041,47 @@ let DEV2_SORT = [{ col: 'campaign', asc: true }];
 // can never fire against rows the operator can no longer see.
 let DEV2_SELECTED = new Set();
 let DEV2_VISIBLE_ROWS = [];
-function dev2RowKey(r) { return r.assetId ? ('a:' + r.assetId) : ('t:' + r.titleId); }
+function dev2RowKey(r) { return r.assetId ? ('a:' + r.assetId) : r.titleId ? ('t:' + r.titleId) : ('p:' + (r.productId || r.product)); }
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
   { key: 'hub',          label: 'Hub' },
-  { key: 'productStack', label: 'Product Stack' },
+  { key: 'group',        label: 'Group' },
+  { key: 'productStack', label: 'Stack' },
   { key: 'product',      label: 'Product' },
   { key: 'title',        label: 'Title' },
-  { key: 'assetType',    label: 'Asset Type (Method)' },
-  { key: 'datePublished',label: 'Date Published' },
+  { key: 'assetName',    label: 'Asset name' },
+  { key: 'assetType',    label: 'Asset type' },
 ];
+// two-layer filter: [{col, val}] — val '' = any, '__blank__' = empty
+let DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }];
+const DEV2_BLANK = '__blank__';
+function dev2Val(r, col) { return String(r[col] == null ? '' : r[col]); }
+function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col); return f.val === DEV2_BLANK ? !v : v === f.val; }
+function dev2TogglePanel() { const p = document.getElementById('dev2Panel'); p.style.display = p.style.display === 'none' ? '' : 'none'; dev2DrawPanel(); }
+function dev2DrawPanel() {
+  const colOpts = (sel, withNone) => (withNone ? '<option value="">(none)</option>' : '') + DEV2_COLS.map(c => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${c.label}</option>`).join('');
+  for (const k of [0, 1]) {
+    const cEl = document.getElementById('dev2F' + k + 'c'), vEl = document.getElementById('dev2F' + k + 'v'); if (!cEl) return;
+    cEl.innerHTML = colOpts(DEV2_F[k].col, true);
+    const base = k === 0 ? DEV2_ROWS : DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]));
+    const vals = DEV2_F[k].col ? [...new Set(base.map(r => dev2Val(r, DEV2_F[k].col)))].sort((a, b) => a.localeCompare(b)) : [];
+    vEl.innerHTML = '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}">${esc(v)}</option>` : `<option value="${DEV2_BLANK}">(blank)</option>`).join('');
+    vEl.value = DEV2_F[k].val; vEl.disabled = !DEV2_F[k].col;
+  }
+  for (const k of [0, 1]) {
+    const cEl = document.getElementById('dev2S' + k + 'c'), dEl = document.getElementById('dev2S' + k + 'd'), s0 = DEV2_SORT[k];
+    cEl.innerHTML = colOpts(s0 ? s0.col : '', k === 1); dEl.value = s0 && !s0.asc ? 'desc' : 'asc';
+  }
+}
+function dev2FilterCol(k) { DEV2_F[k] = { col: document.getElementById('dev2F' + k + 'c').value, val: '' }; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2FilterVal(k) { DEV2_F[k].val = document.getElementById('dev2F' + k + 'v').value; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2ClearFilters() { DEV2_F = [{ col: '', val: '' }, { col: '', val: '' }]; dev2OnFilterChange(); dev2DrawPanel(); }
+function dev2SortSel() {
+  const a = document.getElementById('dev2S0c').value, b = document.getElementById('dev2S1c').value;
+  DEV2_SORT = [{ col: a || 'campaign', asc: document.getElementById('dev2S0d').value !== 'desc' }];
+  if (b && b !== a) DEV2_SORT.push({ col: b, asc: document.getElementById('dev2S1d').value !== 'desc' });
+  renderDev2();
+}
 async function loadDev2() {
   const el = document.getElementById('dev2Content');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
@@ -10100,6 +10144,7 @@ async function dev2BulkDelete() {
   if (!keys.length) return;
   const assetKeys = keys.filter(k => k.startsWith('a:'));
   const titleKeys = keys.filter(k => k.startsWith('t:'));
+  if (!assetKeys.length && !titleKeys.length) { alert('Only product rows are selected. Products aren\'t deleted from this table.'); return; }
   const parts = [];
   if (assetKeys.length) parts.push(assetKeys.length + ' asset(s)');
   if (titleKeys.length) parts.push(titleKeys.length + ' title(s) with no asset');
@@ -10210,19 +10255,15 @@ function dev2Cmp(a, b) {
 function renderDev2() {
   const el = document.getElementById('dev2Content');
   const countEl = document.getElementById('dev2Count');
-  if (!DEV2_ROWS.length) { el.innerHTML = '<div class="empty">No titles found.</div>'; if (countEl) countEl.textContent = ''; return; }
+  if (!DEV2_ROWS.length) { el.innerHTML = '<div class="empty">Nothing found.</div>'; if (countEl) countEl.textContent = ''; return; }
 
   // Comma-separated terms, OR'd together — "care gap, owners rep" shows
   // rows matching EITHER, same idea as filtering to a set of values rather
   // than narrowing with every extra word.
-  const terms = (document.getElementById('dev2Filter')?.value || '')
-    .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-  let rows = DEV2_ROWS;
-  if (terms.length) {
-    rows = rows.filter(r => terms.some(term =>
-      DEV2_COLS.some(c => c.key !== 'datePublished' && String(r[c.key] || '').toLowerCase().includes(term))
-    ));
-  }
+  let rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  const chips = document.getElementById('dev2Chips');
+  if (chips) chips.innerHTML = DEV2_F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc((DEV2_COLS.find(c => c.key === f.col) || {}).label || f.col)}: ${f.val === DEV2_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
+    + (DEV2_SORT.length ? `<span style="font-size:11px;color:var(--text3);">sorted by ${DEV2_SORT.map(x => ((DEV2_COLS.find(c => c.key === x.col) || {}).label || x.col) + (x.asc ? ' ▲' : ' ▼')).join(', then ')}</span>` : '');
 
   rows = rows.slice().sort(dev2Cmp);
   DEV2_VISIBLE_ROWS = rows;
@@ -10247,10 +10288,11 @@ function renderDev2() {
 
   const tbody = rows.map(r => {
     const key = dev2RowKey(r);
-    const titleCell = `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>`;
-    const assetTypeCell = r.assetId
-      ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text2);text-decoration:none;">${esc(r.assetType || '?')}</a>`
-      : '<span style="color:var(--text3);">—</span>';
+    const dash = '<span style="color:var(--text3);">—</span>';
+    const titleCell = r.titleId ? `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>` : dash;
+    const assetNameCell = r.assetId ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.assetName || '(untitled asset)')}</a>` : dash;
+    const assetTypeCell = r.assetId ? esc(r.assetType || '?') : dash;
+    const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
     // Hub → the care-gap-v2 microsite template, the campaign-agnostic
     // admin tool (pass its own campId as the query param — that's how it
     // resolves which campaign to show, same as opening it by hand).
@@ -10262,11 +10304,12 @@ function renderDev2() {
       <td style="padding:6px 8px;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${esc(r.group || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
-      <td style="padding:6px 10px;font-size:12px;">${esc(r.product)}</td>
+      <td style="padding:6px 10px;font-size:12px;">${productCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${titleCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
-      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${esc(fmtDate(r.datePublished))}</td>
     </tr>`;
   }).join('');
 
