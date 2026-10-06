@@ -296,6 +296,62 @@ async function bumpKeywordsVersion(hdr, researchPageId) {
 function parseApprovedPlate(txt) {
   try { const j = JSON.parse(String(txt || "").trim()); return j && j.prompt ? j : null; } catch (e) { return null; }
 }
+// ── Background-image authority (operator, 2026-10-05) ─────────────────────────────────────────────
+// Every background prompt is layered, highest first:
+//   1. ASSET DIRECTION — Assets."Image Direction", typed in the Publish modal's 🧭 Image direction box; overrides all.
+//   2. HUB DESIGN PLATE — the campaign's image spec + approved plate: the look, the world, and WHO is in it.
+//   3. METHOD / PLATFORM best practice for this title — format, framing, what performs on the platform; plus an
+//      optional "Background image" section on the method's own Notion page.
+// No layer below may forbid what a layer above asks for (the old hard-coded "No people" did exactly that).
+const BG_PLATFORM_PRACTICE = {
+  instagram: "Instagram feed: it has to stop the scroll at thumbnail size — one clear focal subject, simple readable shapes, strong value contrast between the subject and the calm text area; candid human moments outperform empty rooms when the design includes people.",
+  facebook: "Facebook feed: warm, relatable, real-life moments read best; one clear subject, readable at small size.",
+  linkedin: "LinkedIn: credible and editorial — real working settings and people as capable professionals, reportage rather than advertising; nothing glossy or staged.",
+  tiktok: "TikTok / Reels cover: bold, close, high-contrast, one subject that reads instantly at phone size.",
+  youtube: "YouTube: bold, close, high-contrast; one subject that reads at small thumbnail size.",
+  x: "X / Twitter: simple, high-contrast, one idea; reads at small size in a fast feed.",
+  blog: "Blog / hub header: editorial and specific to the article; it must survive a small card crop and a wide header crop.",
+};
+function bgPlatformKey(name) {
+  const n = String(name || "").toLowerCase();
+  return /insta/.test(n) ? "instagram" : /facebook|fb/.test(n) ? "facebook" : /linkedin/.test(n) ? "linkedin" : /tiktok/.test(n) ? "tiktok"
+    : /youtube/.test(n) ? "youtube" : /twitter|^x\b|x \//.test(n) ? "x" : /blog|wordpress|substack|beehiiv|pillar|live site/.test(n) ? "blog" : "";
+}
+async function bgLayersBlock(hdr, ap, fmt) {
+  ap = ap || {};
+  const rt = k => (ap[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  const direction = rt("Image Direction");
+  const platform = ap["Platform Name"]?.select?.name || "";
+  const methodId = ap["Method"]?.relation?.[0]?.id || "";
+  let methodName = "", methodBg = "";
+  if (methodId) {
+    try {
+      const mp = await fetch(`https://api.notion.com/v1/pages/${methodId}`, { headers: hdr }).then(r => r.json());
+      methodName = (mp.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+      const bodyTxt = await extractBlocksTextRecursive(hdr, methodId).catch(() => "");
+      const lines = bodyTxt.split("\n"); let on = false; const out = [];
+      for (const ln of lines) {
+        const h = /^\s*#{1,4}\s+(.*)$/.exec(ln);
+        if (h) { if (on) break; on = /background|image|visual/i.test(h[1]); continue; }
+        if (on && ln.trim()) out.push(ln.trim());
+      }
+      methodBg = out.join("\n").slice(0, 1500);
+    } catch (e) {}
+  }
+  const pk = bgPlatformKey(platform) || (/blog|thumbnail|header/i.test(fmt || "") ? "blog" : "");
+  return `
+
+ORDER OF AUTHORITY (highest first): 1) the ASSET DIRECTION below, if there is one — it overrides everything; 2) the HUB DESIGN PLATE above (this hub's image spec + approved plate) — the look, the world, and who is in it; 3) the METHOD / PLATFORM best practice below — format, framing and what performs on the platform. A lower layer never overrides a higher one.
+
+PEOPLE: follow the hub design plate. If its direction or approved plate shows people (for example caregivers with the people they support), include them — candid, mid-action, never posing or looking into the camera, never pity-coded, faces kept out of the text zone. If the hub design excludes people, include none. The asset direction can change this either way.
+
+METHOD / PLATFORM BEST PRACTICE${methodName ? ` — method "${methodName}"` : ""}${platform ? `, platform ${platform}` : ""}:
+- Format: ${fmt}
+${pk ? `- ${BG_PLATFORM_PRACTICE[pk]}\n` : ""}${methodBg ? `- From the method's own notes:\n${methodBg}\n` : ""}${direction ? `
+ASSET DIRECTION (the operator's direction for THIS asset — follow it over everything above, including the people rule and the scene choice):
+${direction.slice(0, 1500)}
+` : ""}`;
+}
 function approvedPlateBlock(brief) {
   const p = brief && brief.approvedPlate;
   if (!p || !p.prompt) return "";
@@ -476,11 +532,11 @@ Specific: time of day, quality, colour cast — consistent with the palette temp
 - Video B-roll plate — 9:16: reserve one full third of the frame (top, centre, or bottom — pick whichever the scene actually supports) as genuinely calm and empty, nothing crossing into it; that zone is for word-by-word kinetic captions burned in afterward, not a static headline. One clear subject or scene only — no multi-element/collage composition — since this plate is also animated with a slow pan/zoom and has to hold together as motion, not just as a still.
 One off-centre focal element, generous negative space, horizon never dead-centre. No collage.
 ## Never
-The hub's "deliberately avoided" list verbatim, then: any text, letters, numbers, logos, watermarks, UI or signage; a face as the subject (distant incidental silhouettes only); stock-photo clichés (handshakes, lightbulbs, growth arrows, piggy banks, glowing globes, a lone tree, sunrise-over-hills); gradient decoration, lens flare, heavy bokeh, tilt-shift, fisheye, HDR.
+The hub's "deliberately avoided" list verbatim, then: any text, letters, numbers, logos, watermarks, UI or signage; people posed for or looking into the camera, or people at all if the photography direction excludes them; stock-photo clichés (handshakes, lightbulbs, growth arrows, piggy banks, glowing globes, a lone tree, sunrise-over-hills); gradient decoration, lens flare, heavy bokeh, tilt-shift, fisheye, HDR.
 ## Prompt skeleton
-One fill-in-the-blanks line with the palette hexes baked in, ending: No people, no text, no letters, no logos, no watermarks.
+One fill-in-the-blanks line with the palette hexes baked in (people exactly as the photography direction says), ending: No text, no letters, no logos, no watermarks.
 ## Filled examples
-Three — one 4:5 Instagram background, one 1:1 thumbnail, one 9:16 video B-roll plate — REAL scenes from the customer's world (not placeholders), palette hexes baked in, each ending: No people, no text, no letters, no logos, no watermarks.
+Three — one 4:5 Instagram background, one 1:1 thumbnail, one 9:16 video B-roll plate — REAL scenes from the customer's world (not placeholders), with people exactly as the photography direction says, palette hexes baked in, each ending: No text, no letters, no logos, no watermarks.
 
 OPERATOR GUIDANCE (follow this; it overrides the derived choices where they conflict):
 ${brief.guidance || "(none)"}
@@ -28929,8 +28985,8 @@ ${spec}
 
 THE OFFER THIS PARTICULAR IMAGE IS FOR (pick a scene from the spec's world that fits it — do NOT put its words in the image):
 ${offerLines}
-
-End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+${await bgLayersBlock(hdr, ap, kind === "ig-background" ? "vertical 3:4 Instagram post background; headline + body go over the top 40% / centre" : "square 1:1 thumbnail; headline goes over the top ~45%")}
+End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -29093,8 +29149,8 @@ ${spec}
 THE ARTICLE THIS THUMBNAIL IS FOR (pick a real scene from the spec's world that fits what this article is actually about — do NOT put its words in the image):
 Headline: ${platformTitle}
 Opening: ${excerpt}
-
-End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+${await bgLayersBlock(hdr, ap, "wide 16:9 blog header; headline goes over the top ~45%")}
+End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -29158,8 +29214,8 @@ WHAT IT IS: a VERTICAL 3:4 (1080x1440) BACKGROUND for a social-post TEMPLATE. A 
 
 Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
 ${spec}
-${body.override ? `\nOPERATOR DIRECTION for this template (follow it): ${String(body.override).slice(0, 600)}\n` : ""}
-End the prompt with: "No people, no text, no letters, no logos, no watermarks."`;
+${await bgLayersBlock(hdr, body.override ? { "Image Direction": { rich_text: [{ plain_text: String(body.override).slice(0, 600) }] } } : {}, "vertical 3:4 social-post template background; headline upper-left, body below it")}
+End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
@@ -29534,6 +29590,32 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
           samples: { all: (sAll || []).length, campaign: (sMine || []).length }, recentSamples: (sMine || []).slice(-5).reverse() });
       }
 
+      // 🧭 Image direction (Assets."Image Direction"): the operator's per-asset direction for every background
+      // generator — the top layer of bgLayersBlock. getAssetImageDirection {assetId} / saveAssetImageDirection
+      // {assetId | assetIds[], text} ("" clears it).
+      if (body.action === "getAssetImageDirection") {
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const id = String(body.assetId || "").replace(/-/g, ""); if (!id) return json({ error: "assetId required" }, 400);
+        const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: hdr }).then(r => r.json());
+        return json({ text: (pg.properties?.["Image Direction"]?.rich_text || []).map(t => t.plain_text).join("") });
+      }
+      if (body.action === "saveAssetImageDirection") {
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const ids = (Array.isArray(body.assetIds) && body.assetIds.length ? body.assetIds : [body.assetId]).map(x => String(x || "").replace(/-/g, "")).filter(Boolean).slice(0, 20);
+        if (!ids.length) return json({ error: "assetId required" }, 400);
+        const text = String(body.text || "").slice(0, 1990);
+        try {
+          const db = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { headers: hdr }).then(r => r.json());
+          if (!db.properties?.["Image Direction"]) await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Image Direction": { rich_text: {} } } }) });
+        } catch (e) {}
+        let saved = 0;
+        for (const id of ids) {
+          const r = await fetch(`https://api.notion.com/v1/pages/${id}`, { method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { "Image Direction": { rich_text: text ? [{ text: { content: text } }] : [] } } }) });
+          if (r.ok) saved++;
+        }
+        return json({ ok: saved === ids.length, saved });
+      }
       // getCarouselSlides {assetId} → the carousel this slide belongs to, every slide in order
       if (body.action === "getCarouselSlides") {
         const { assetId } = body;
@@ -29646,7 +29728,8 @@ THIS SLIDE'S ROLE: ${carRole}
 4. STAY IN THE BRAND: the spec's palette hexes, light, mood and its "Never" list still apply. Its example subjects are a starting vocabulary, not a limit.
 5. KEEP THE TEXT ZONE: left half + top 55% calm and near-empty; the subject sits low and right.
 
-End the PROMPT with: "No people, no text, no letters, no logos, no watermarks."`;
+${await bgLayersBlock(hdr, ap, "vertical 3:4 social post background; the headline + body sit over the left half / top 55%")}
+End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",

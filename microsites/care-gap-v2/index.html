@@ -970,6 +970,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           </div>
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
             <button class="btn" id="pubPostImageGenBtn" onclick="genSinglePostImage()">✨ Generate background (Grok)</button>
+            <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('post')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
             <button class="btn" id="pubPostImageTextBtn" onclick="compositeTextOnPostImage()" style="display:none;">🔤 Add headline text</button>
             <button class="btn" id="pubPostImageEditBtn" onclick="openTextEditor('postImage')" style="display:none;">🎯 Preview &amp; Edit</button>
             <span id="pubPostImageStatus" style="font-size:10.5px;"></span>
@@ -1032,6 +1033,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4, spec's Instagram-background safe-area rules</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
                 <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
+                <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('ig')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
                 <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
                 <button class="iconbtn" onclick="openImagePicker('instagramBackground')" title="Choose from this asset's other images">🖼️</button>
                 <button class="iconbtn" id="pubIgBgOpenBtn" onclick="openPublishFieldLink('pubIgBgUrl')" style="display:none;">↗</button>
@@ -1069,6 +1071,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <div id="pubBlogThumbLabel" style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— wide 16:9 banner, this method's actual thumbnail (not a social-media square)</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
                 <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()">✨ Generate</button>
+                <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('thumb')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
                 <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
                 <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
                 <button class="btn" id="pubThumbnailEditBtn" onclick="openTextEditor('thumbnail')" style="display:none;">🎯 Preview &amp; Edit</button>
@@ -1226,6 +1229,28 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="modalrow">
         <button class="btn" onclick="closeTextEditor()">Cancel</button>
         <button class="btn primary" onclick="applyTextEditorAndSave()">✓ Render &amp; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modaloverlay" id="imgDirModal">
+    <div class="modalbox" style="max-width:520px;">
+      <div class="mtitle">🧭 Image direction</div>
+      <div class="mfield" id="imgDirAsset"></div>
+      <div style="font-size:11px;color:var(--ink2);line-height:1.5;margin-bottom:8px;">
+        Every background for this asset is built in this order, highest first:<br>
+        <b>1. Your direction (this box)</b>: overrides everything below.<br>
+        <b>2. Hub design plate</b>: the campaign's image spec and approved plate. Sets the look, the world, and who is in it.<br>
+        <b>3. Method / platform best practice</b>: format, framing, and what works on the platform.
+      </div>
+      <textarea id="imgDirText" rows="5" class="finput" style="width:100%;box-sizing:border-box;font-size:12px;" placeholder="e.g. A caregiver helping an older man down his front steps, morning light, both mid-laugh. Or: no people, just the empty porch."></textarea>
+      <label id="imgDirAllRow" style="display:none;font-size:11px;color:var(--ink2);margin-top:6px;align-items:center;gap:6px;"><input type="checkbox" id="imgDirAll"> Use for every slide of this carousel</label>
+      <div id="imgDirStatus" style="font-size:11px;min-height:14px;margin-top:6px;"></div>
+      <div class="modalrow">
+        <button class="btn" onclick="closeImgDirModal()">Cancel</button>
+        <button class="btn" onclick="saveImgDir(false, true)" title="Remove the direction; backgrounds follow the hub design again">Clear</button>
+        <button class="btn" onclick="saveImgDir(false)">💾 Save</button>
+        <button class="btn primary" onclick="saveImgDir(true)">💾 Save &amp; regenerate</button>
       </div>
     </div>
   </div>
@@ -6298,6 +6323,7 @@ let pubAssetId = null;
 let PUB_OPEN_TOKEN = 0;
 function openPublishAssetModal(assetId) {
   pubAssetId = assetId;
+  imgDirRefresh(assetId);
   const myToken = ++PUB_OPEN_TOKEN;
   const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
@@ -8262,6 +8288,52 @@ async function spCarouselText(btn) {
   btn.disabled = false; btn.textContent = o;
   st.style.color = ok === todo.length ? 'var(--fresh)' : 'var(--stale)';
   st.textContent = `✓ Text on ${ok}/${todo.length} slides. Tap any slide to fine-tune it on its own, then 📤 Send whole carousel to Buffer.`;
+}
+// ── 🧭 Image direction: the operator's per-asset direction, top layer of every background prompt ──
+let IMG_DIR = { forAsset: null, text: '', kind: 'post' };
+async function imgDirRefresh(assetId) {
+  IMG_DIR = { forAsset: assetId, text: '', kind: IMG_DIR.kind };
+  imgDirMark();
+  try { const r = await w('getAssetImageDirection', { assetId }); if (pubAssetId === assetId) { IMG_DIR.text = r.text || ''; imgDirMark(); } } catch (e) {}
+}
+function imgDirMark() {
+  document.querySelectorAll('.imgDirBtn').forEach(b => {
+    b.textContent = IMG_DIR.text ? '🧭 Direction ●' : '🧭 Direction';
+    b.style.borderColor = IMG_DIR.text ? 'var(--accent,#f6ad55)' : '';
+    b.title = IMG_DIR.text ? 'Your direction for this asset: ' + IMG_DIR.text : 'Add your direction for this asset\'s background image (overrides the hub design and method/platform defaults)';
+  });
+}
+function openImgDirModal(kind) {
+  if (!pubAssetId) return;
+  IMG_DIR.kind = kind;
+  const data = PUB_ASSET_CACHE[pubAssetId] || {};
+  document.getElementById('imgDirAsset').textContent = data.assetTitle || data.title || '';
+  document.getElementById('imgDirText').value = IMG_DIR.forAsset === pubAssetId ? IMG_DIR.text : '';
+  const isCar = /single post carousel/i.test(data.type || '') && PUB_CAROUSEL && PUB_CAROUSEL.forAsset === pubAssetId;
+  document.getElementById('imgDirAllRow').style.display = isCar ? 'flex' : 'none';
+  document.getElementById('imgDirAll').checked = false;
+  document.getElementById('imgDirStatus').textContent = '';
+  document.getElementById('imgDirModal').classList.add('open');
+  setTimeout(() => document.getElementById('imgDirText').focus(), 50);
+}
+function closeImgDirModal() { document.getElementById('imgDirModal').classList.remove('open'); }
+async function saveImgDir(regen, clear) {
+  const st = document.getElementById('imgDirStatus');
+  const text = clear ? '' : document.getElementById('imgDirText').value.trim();
+  const all = document.getElementById('imgDirAll').checked && PUB_CAROUSEL;
+  const ids = all ? PUB_CAROUSEL.slides.map(x => x.id) : [pubAssetId];
+  st.style.color = 'var(--ink3)'; st.textContent = 'Saving…';
+  try {
+    const r = await w('saveAssetImageDirection', { assetIds: ids, text });
+    if (!r.ok) throw new Error(`saved ${r.saved} of ${ids.length}`);
+    IMG_DIR.forAsset = pubAssetId; IMG_DIR.text = text; imgDirMark();
+    closeImgDirModal();
+    if (regen) {
+      if (IMG_DIR.kind === 'ig') genOfferImage('ig-background');
+      else if (IMG_DIR.kind === 'thumb') genThumbnail();
+      else genSinglePostImage();
+    }
+  } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Not saved: ' + e.message; }
 }
 async function genSinglePostImage() {
   if (!pubAssetId) return;
