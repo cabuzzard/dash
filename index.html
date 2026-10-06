@@ -731,6 +731,76 @@
       <span id="flowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <div id="flowBody"></div>
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:22px 0 8px;">
+      <h2 style="margin:0;font-size:16px;">Pillar</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Brainstorm. Your notes on the right are the same notes as the care-gap Hub tab's Pillar section.</span>
+    </div>
+    <style>.pl-wrap{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}.pl-notes{flex:1 1 420px;min-width:0;font-size:12px;line-height:1.5;color:var(--text2)}.pl-notes h4{margin:12px 0 4px;font-size:12.5px;color:var(--text)}.pl-notes ul,.pl-notes ol{margin:4px 0 4px 18px;padding:0}.pl-notes p{margin:4px 0}.pl-notes .bs-t{border-collapse:collapse;font-size:11px;margin:4px 0;width:100%}.pl-notes .bs-t td,.pl-notes .bs-t th{border:1px solid var(--border2);padding:3px 6px;text-align:left;vertical-align:top}.pl-mine{flex:1 1 300px;min-width:0;position:sticky;top:60px}</style>
+    <div class="pl-wrap">
+      <div class="pl-notes">
+<p><b>Status:</b> brainstorming only. Nothing built. If it goes ahead, step 1 is a short spec to review.</p>
+<h4>1. Every format is the same thing underneath</h4>
+<p>Backgrounds, text boxes placed on them, and timing. Only the counts and the clock differ.</p>
+<table class="bs-t"><tr><th></th><th>Backgrounds</th><th>Text boxes</th><th>Timing</th></tr>
+<tr><td>Single post</td><td>1</td><td>3 (headline, accent, body)</td><td>static</td></tr>
+<tr><td>Single post carousel</td><td>6-9, one per slide</td><td>3, by format (Cover / Text / End)</td><td>static, one frame per slide</td></tr>
+<tr><td>YT Titles</td><td>per section, or pictures within it</td><td>section title + captions</td><td>title lasts its section; captions per spoken phrase</td></tr>
+<tr><td>YT Interview</td><td>presenter scene + pictures</td><td>title, card, Q: line, captions, ask pills</td><td>card per chapter; captions and pills timed to the voice</td></tr></table>
+<h4>2. One engine</h4>
+<ul>
+<li><b>One composition format:</b> a list of frames. Each frame = a background + text boxes. Each box = role, text, position, style, start/end time. A still = a frame with no time.</li>
+<li><b>The methods become presets</b> that write that format (single post = 1 frame, carousel = N frames, Titles / Interview = timed frames).</li>
+<li><b>One editor:</b> frames along the bottom, boxes on the canvas, the shared Typography panel, plus a timeline for videos to drag each box's start/end (per-box durations).</li>
+<li><b>Two outputs from one file:</b> PNGs (browser) and MP4 (Python renderer).</li>
+<li>Timing can follow the voice: "show while these words are spoken", so edits keep their timing.</li>
+<li>Formats become reusable looks (Cover / Text / End, section title, chapter card) any method can borrow.</li>
+</ul>
+<h4>3. One long-form script feeds every method</h4>
+<ul>
+<li>Whole script = longform video. Sections = carousel slides. Strongest lines = single posts. One section = a Reel. Prose = blog + email. Hook + titles = YouTube packaging.</li>
+<li>Outputs are <b>cuts</b> of the same material, not new generations, so message and voice stay consistent.</li>
+<li>Example: Dualities (25 sections) = 1 longform, ~5 carousels, 25 posts, a Reel series.</li>
+</ul>
+<h4>4. Clipping long-form into Reels / Shorts</h4>
+<ul>
+<li>A clip = a time range in the composition, re-laid out 9:16.</li>
+<li>Needs: start/end (15-60s), stands alone, a new 1-2s hook line, vertical layout (captions up, bigger text, section title as a banner), an end beat.</li>
+<li>AI suggests ranges scored on hook strength, standalone clarity, payoff and length; you approve or trim on the timeline.</li>
+<li>Script structure already marks most cuts: each Titles section / Interview chapter is a natural clip.</li>
+</ul>
+<h4>5. One generation, disseminated</h4>
+<ul>
+<li>One idea, one script, one approval, many assets, published over time (pairs with the Buffer queue).</li>
+<li>Approve at the source: a fix in the script fixes every output.</li>
+<li>Each method keeps its own rules (platform, format, length): adapting, not copying.</li>
+<li>You choose which outputs to make; text cuts are cheap, renders are made in waves for what you'll publish.</li>
+</ul>
+<h4>6. It all lives in the pillar</h4>
+<p>Write the pillar to a structure every format can cut from:</p>
+<table class="bs-t"><tr><th>Pillar part</th><th>Used by</th></tr>
+<tr><td>Hook (2-4 spoken sentences)</td><td>video opening, Reel hooks, carousel cover, headlines</td></tr>
+<tr><td>Titled sections (2-6 word title + narration)</td><td>Titles video, carousel Text slides, Reel clips, blog H2s</td></tr>
+<tr><td>One quotable line per section (setup + payoff)</td><td>single posts, carousel headlines, thumbnail text</td></tr>
+<tr><td>Proof per section (number, story, example)</td><td>post bodies, carousel "why", blog depth</td></tr>
+<tr><td>Visual note per section</td><td>backgrounds, video pictures, carousel visual thread</td></tr>
+<tr><td>Payoff + call to action</td><td>End slides, video outro, email close</td></tr>
+<tr><td>Questions it answers</td><td>Interview episodes, SEO/blog angles, FAQ</td></tr></table>
+<p style="color:var(--text3);">Note: the pillar's structure is defined in the Information Flow Contract. Changing it needs your explicit yes on the exact wording first.</p>
+<h4>Possible build order (if it goes ahead)</h4>
+<ol>
+<li>Composition format + the four methods also saving into it (nothing else changes).</li>
+<li>One editor: posts and carousels first, then videos with the per-box timeline.</li>
+<li>Video renderer draws from the composition (per-box durations in the final video). Riskiest step.</li>
+<li>Structured pillar + "make outputs from this pillar" + clip suggestions.</li>
+<li>Retire the old separate editors.</li>
+</ol>
+          </div>
+      <div class="pl-mine">
+        <div style="font-size:11.5px;font-weight:700;color:var(--text2);margin-bottom:4px;">Your notes</div>
+        <textarea id="plMine" rows="22" style="width:100%;box-sizing:border-box;font-size:12px;resize:vertical;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:6px;font-family:inherit;" placeholder="Your thoughts, changes, questions…" oninput="document.getElementById('plMsg').textContent='Not saved yet';"></textarea>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:4px;"><button onclick="plSave(this)" style="font-size:11.5px;padding:3px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;">💾 Save notes</button><span id="plMsg" style="font-size:11px;color:var(--text3);"></span></div>
+      </div>
+    </div>
   </div>
 
   <div class="tab-panel" id="tabOverview">
@@ -4233,6 +4303,27 @@ function renderOutputTab() {
     <span style="color:var(--text3);">Tag hubs with ▾ on each row: a hub's own Output board shows only its rows. Hover a cell for the assets.</span>
   </div>`;
 }
+// ── Pillar notes: the SAME record as the care-gap Hub tab's Pillar section (microsite notes, care-gap campaign) ──
+const PL_CAMPAIGN = '34b1f7d3a4bb81b6a8a8fee04df94807', PL_NOTE_ID = 'hub-brainstorm-one-engine';
+async function plLoad() {
+  const ta = document.getElementById('plMine'), m = document.getElementById('plMsg'); if (!ta) return;
+  try {
+    const r = await call('getMicrositeNotes', { campaignId: PL_CAMPAIGN }); if (r.error) throw new Error(r.error);
+    const n = (r.notes || []).find(x => x.fieldId === PL_NOTE_ID);
+    if (document.activeElement !== ta) ta.value = n ? n.note : '';
+    m.textContent = n ? 'Saved ' + new Date(n.ts).toLocaleString() : '';
+  } catch (e) { m.style.color = 'var(--danger)'; m.textContent = 'Load failed: ' + e.message; }
+}
+async function plSave(btn) {
+  const ta = document.getElementById('plMine'), m = document.getElementById('plMsg');
+  btn.disabled = true; m.style.color = 'var(--text3)'; m.textContent = 'Saving…';
+  try {
+    const r = await call('saveMicrositeNote', { campaignId: PL_CAMPAIGN, fieldId: PL_NOTE_ID, label: 'Pillar (brainstorm notes)', tab: 'hub', note: ta.value });
+    if (r.error) throw new Error(r.error);
+    m.textContent = '✓ Saved';
+  } catch (e) { m.style.color = 'var(--danger)'; m.textContent = 'Not saved: ' + e.message; }
+  btn.disabled = false;
+}
 // ── Flow: a free-form editable table (cells, add/remove rows + columns), saved as one KV blob ──
 let FLOW = null, FLOW_T = null;
 const flowId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -5087,7 +5178,7 @@ function loadTabContent(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
-  if (name === 'output'    && !outputLoaded) { outputLoaded = true; loadOutputTab(); loadFlowTable(); }
+  if (name === 'output'    && !outputLoaded) { outputLoaded = true; loadOutputTab(); loadFlowTable(); plLoad(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
