@@ -13847,7 +13847,7 @@ function renderHubsTab() {
       <div style="padding:4px 12px 10px;">
         <div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span><span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);">Keywords</span>
-          <span style="font-size:10.5px;color:var(--text3);">master · clusters · topics — same as care-gap</span></div>
+          ${h.campaignId ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10.5px;color:var(--accent);text-decoration:none;">edit keywords in care-gap ↗</a>` : ''}</div>
         <div id="hubKwBody-${slug}" style="display:${_hubContentOpen[slug + '|kw'] ? '' : 'none'};padding:4px 0 8px;">${renderHubKw(slug)}</div>
         <div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span><span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);">Strategies</span>
@@ -14055,7 +14055,7 @@ function renderHubKw(slug) {
     out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`, ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster.</span>'); });
   if (un.length) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`, un.map(t => topic(t, 0)).join(''));
   if (!topics.length && !(K.tc.clusters || []).length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
-  return out + (h.campaignId ? `<div style="margin-top:6px;"><a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" style="font-size:10.5px;color:var(--accent);text-decoration:none;">edit keywords in care-gap ↗</a></div>` : '');
+  return out;
 }
 // ── Content section: strategies made here (real Growth Strategy records) and the titles in each ──
 const _hubContent = {}, _hubContentBusy = {}, _hubContentOpen = {}, _hubContentTitles = {};
