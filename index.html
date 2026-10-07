@@ -5559,6 +5559,16 @@ function switchTab(name) {
   document.getElementById('tab' + name.charAt(0).toUpperCase() + name.slice(1)).classList.add('active');
   loadTabContent(name);
 }
+// Alt+1 = tab to the left, Alt+2 = tab to the right (wraps around; skips hidden tabs)
+document.addEventListener('keydown', ev => {
+  if (!ev.altKey || ev.ctrlKey || ev.metaKey || (ev.code !== 'Digit1' && ev.code !== 'Digit2')) return;
+  const tabs = [...document.querySelectorAll('.tab')].filter(t => t.offsetParent && t.getAttribute('onclick'));
+  if (!tabs.length) return;
+  ev.preventDefault();
+  const i = tabs.findIndex(t => t.classList.contains('active')), d = ev.code === 'Digit1' ? -1 : 1;
+  const next = tabs[((i < 0 ? 0 : i) + d + tabs.length) % tabs.length];
+  next.click(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+});
 // Load whatever tab-panel is marked active in the DOM — used on session
 // restore so the default tab (TD, leftmost) fetches its data on load.
 function loadActiveTab() {
