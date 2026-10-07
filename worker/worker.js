@@ -12365,7 +12365,14 @@ the one aesthetic risk taken + why:`;
           });
           for (const ps of pageSections) if (ps.key === "cta") {
             let ids = []; try { ids = JSON.parse((await env.TRADES.get("hub:sectionproducts:cta:" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
-            ps.productIds = ids; ps.productSlots = true; ps.done = ps.done || ids.length > 0;
+            ps.productIds = ids; ps.productSlots = true;
+            // hand-placed titles too (KV hub:sectiontitles:cta:<cid>), resolved to name / status / method for the grid
+            let tids = []; try { tids = JSON.parse((await env.TRADES.get("hub:sectiontitles:cta:" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
+            ps.titles = (await Promise.all(tids.map(async id => { try { const pg = await fetch(`https://api.notion.com/v1/pages/${dashHb(id)}`, { headers: nhdr }).then(r => r.json());
+              if (!pg || pg.object === "error" || pg.archived) return null; const pp = pg.properties || {}; const mid = (pp.method?.relation || [])[0]?.id;
+              let method = ""; if (mid) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${mid}`, { headers: nhdr }).then(r => r.json()); method = (mp.properties?.Name?.title || []).map(t => t.plain_text).join(""); } catch (e) {} }
+              return { id, title: (pp.Title?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: pp.Status?.select?.name || "", method, date: (pg.created_time || "").slice(0, 10) }; } catch (e) { return null; } }))).filter(Boolean);
+            ps.done = ps.done || ids.length > 0 || ps.titles.length > 0;
           }
           let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
@@ -14463,11 +14470,11 @@ Return ONLY this JSON, no other text, no fences:
       if (body.action === "setHubSectionProducts") {
         const cid = String(body.campaignId || "").replace(/-/g, ""), pid = String(body.productId || "").replace(/-/g, ""), sec = String(body.section || "").replace(/[^a-z0-9-]/gi, "").toLowerCase();
         if (!cid || !pid || !sec) return json({ error: "campaignId, section and productId required" }, 400);
-        const key = "hub:sectionproducts:" + sec + ":" + cid;
+        const key = (body.kind === "title" ? "hub:sectiontitles:" : "hub:sectionproducts:") + sec + ":" + cid;
         let ids = []; try { ids = JSON.parse((await env.TRADES.get(key)) || "[]"); } catch (e) {}
         ids = body.op === "remove" ? ids.filter(x => x !== pid) : (ids.includes(pid) ? ids : ids.concat([pid]));
         if (ids.length) await env.TRADES.put(key, JSON.stringify(ids)); else await env.TRADES.delete(key);
-        return json({ success: true, productIds: ids });
+        return json({ success: true, ids, kind: body.kind === "title" ? "title" : "product" });
       }
 
       // ── setHubMainProduct ── writes the `product` relation on a campaign's
