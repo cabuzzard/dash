@@ -14088,7 +14088,7 @@ function hubProdTree(slug) {
     if (_hubProdOpen[slug + '|' + gk]) Object.keys(stacks).sort((a, b) => (a === NOS) - (b === NOS) || a.localeCompare(b)).forEach(st => {
       const sk = 's:' + g + '|' + st, list = stacks[st];
       list.sort((a, b) => HUB_PROD_STATUSES.indexOf(stOf(a)) - HUB_PROD_STATUSES.indexOf(stOf(b)) || a.name.localeCompare(b.name));   // by status, then name
-      inner += block('#8ab4f8', hdr(sk, 1, st, `— ${list.length}`), !_hubProdOpen[slug + '|' + sk] ? '' : hubGridHead(0) + list.map(p => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[stOf(p)], title: p.name + (p.id === mo.mainId ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
+      inner += block('#8ab4f8', hdr(sk, 1, st, `— ${list.length}`), !_hubProdOpen[slug + '|' + sk] ? '' : hubGridHead(0) + list.map(p => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[stOf(p)], title: p.name + ((mo.mainIds || [mo.mainId]).includes(p.id) ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
         links: `<button onclick="hubProdEdit('${slug}','${p.id}')" title="Edit status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join(''));
     });
     out += block('#f6ad55', hdr(gk, 0, g, `— ${count(stacks)} product${count(stacks) === 1 ? '' : 's'} · ${Object.keys(stacks).length} stack${Object.keys(stacks).length === 1 ? '' : 's'}`), inner);
@@ -14247,19 +14247,20 @@ function renderHubBuildRows(slug) {
     } else if (s.mainOffering) {
       // the hub's main offering: one real Products record — pick one of the campaign's products, or add a new one
       const SEL = 'font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:220px;';
+      const ids = s.mainIds || (s.mainId ? [s.mainId] : []), byId = {}; (s.products || []).forEach(p => { byId[p.id] = p; });
+      const others = (s.products || []).filter(p => !ids.includes(p.id));
       ctrl = `<span style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;flex-shrink:0;">
-        <select style="${SEL}" ${busy ? 'disabled' : ''} onchange="hubMainOfferSet('${slug}', this.value)"><option value="">${s.mainId ? '(none)' : 'Choose a product…'}</option>${(s.products || []).map(p => `<option value="${esc(p.id)}" ${p.id === s.mainId ? 'selected' : ''}>${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}${s.mainId && !(s.products || []).some(p => p.id === s.mainId) ? `<option value="${esc(s.mainId)}" selected>${esc(s.mainName || 'current product')}</option>` : ''}</select>
-        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAddOpen('${slug}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">+ Add product</button>
+        <select style="${SEL}" ${busy ? 'disabled' : ''} onchange="if(this.value)hubMainOfferSet('${slug}', this.value, 'add')"><option value="">+ Add a main product…</option>${others.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>
+        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAddOpen('${slug}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">+ New product</button>
         ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this campaign in the care-gap microsite" style="font-size:10px;color:var(--text3);text-decoration:none;">care-gap ↗</a>` : ''}</span>`;
       const add = _hubMainAdd[slug] ? `<div style="padding:2px 0 6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
         <input id="hubMainAddName-${slug}" placeholder="New product name" onkeydown="if(event.key==='Enter')hubMainOfferAdd('${slug}');if(event.key==='Escape'){_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')}" style="flex:1;min-width:160px;font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
-        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + set as main'}</button>
+        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + add as main'}</button>
         <button onclick="_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">cancel</button></div>` : '';
-      const lab = s.mainId ? `Main product — <b>${esc(s.mainName || 'set')}</b>` : 'Main product <span style="color:var(--text3);">— choose one of the campaign\'s products, or add one</span>';
-      const mp = (s.products || []).find(p => p.id === s.mainId) || {};
-      const grid = s.mainId ? hubGridHead(0) + hubGridRow({ pad: 0, title: s.mainName || mp.name || 'Main product', type: 'Product', method: '', status: mp.status || '',
-        links: `<a href="https://www.notion.so/${esc(s.mainId)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }) : '';
-      return phaseHdr + hubLvl(`<span style="font-size:10px;width:10px;"></span><span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;color:var(--text);line-height:1.35;">${s.mainId ? 'Main product' : lab}</span>${ctrl}`, add + grid);
+      const grid = ids.length ? hubGridHead(0) + ids.map((id, n) => { const p = byId[id] || {};
+        return hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[p.status] || '', title: (p.name || (id === s.mainId ? s.mainName : '') || 'Product') + (n === 0 && ids.length > 1 ? ' ★' : ''), type: 'Product', method: '', status: p.status || '', date: p.date,
+          links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy ? 'disabled' : ''} onclick="hubMainOfferSet('${slug}','${id}','remove')" title="Remove from the main offerings (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('') : '';
+      return phaseHdr + hubLvl(`<span style="font-size:10px;width:10px;"></span><span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;color:var(--text);line-height:1.35;">Main products <span style="color:var(--text3);">— ${ids.length ? ids.length + (ids.length > 1 ? ' (★ = primary: hub generation + image briefs)' : '') : 'add one or more of the campaign\'s products'}</span></span>${ctrl}`, add + grid);
     } else if (s.link === 'microsite') {
       ctrl = s.done
         ? `<span style="font-size:10px;color:#4ade80;flex-shrink:0;">${esc(s.doneText || 'live')}</span>`
@@ -14364,11 +14365,11 @@ async function hubBuildRun(slug, stepId) {
 // Main offering: choose / add the product the hub is built around (setHubMainOffering)
 const _hubMainAdd = {}, _hubPageOpen = {};   // Page content sections start collapsed
 function hubMainOfferAddOpen(slug) { _hubMainAdd[slug] = true; hubBuildRefreshRows(slug); const i = document.getElementById('hubMainAddName-' + slug); if (i) i.focus(); }
-async function hubMainOfferSet(slug, productId) {
-  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+async function hubMainOfferSet(slug, productId, op) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !productId) return;
   _hubBuildBusy[slug + '|mainproduct'] = true; hubBuildRefreshRows(slug);
-  try { const r = await call('setHubMainOffering', { campaignId: h.campaignId, productId }); if (r && r.error) throw new Error(r.error);
-    _hpNote[slug] = productId ? '✓ Main offering set: ' + (r.name || '') : 'Main offering cleared'; }
+  try { const r = await call('setHubMainOffering', { campaignId: h.campaignId, productId, op: op || 'add' }); if (r && r.error) throw new Error(r.error);
+    _hpNote[slug] = op === 'remove' ? 'Removed from the main offerings' : '✓ Main offering added: ' + (r.name || ''); }
   catch (e) { _hpNote[slug] = '✗ Main offering: ' + e.message; }
   _hubBuildBusy[slug + '|mainproduct'] = false; _hubBuildFetched[slug] = false;
   if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
@@ -14379,7 +14380,7 @@ async function hubMainOfferAdd(slug) {
   _hubBuildBusy[slug + '|mainproduct'] = true; hubBuildRefreshRows(slug);
   try { const r = await call('createProduct', { title: name, campaignId: h.campaignId, status: 'Planning' }); if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
     _hubMainAdd[slug] = false; _hubBuildBusy[slug + '|mainproduct'] = false;
-    await hubMainOfferSet(slug, r.id); return; }
+    await hubMainOfferSet(slug, r.id, 'add'); return; }
   catch (e) { _hpNote[slug] = '✗ Add product: ' + e.message; }
   _hubBuildBusy[slug + '|mainproduct'] = false; hubBuildRefreshRows(slug);
 }

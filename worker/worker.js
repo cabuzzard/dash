@@ -1061,6 +1061,14 @@ async function bufferDecrypt(env, rec) {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u(rec.iv) }, await bufferCipherKey(env), u(rec.ct));
   return new TextDecoder().decode(pt);
 }
+// Main offerings: KV hub:mainproduct:<campaignId> = JSON list of product ids (first = primary — what hub
+// generation / image briefs read). A bare id is the old single-choice format.
+async function hubMainList(env, cid) {
+  let v = null; try { v = await env.TRADES.get("hub:mainproduct:" + String(cid || "").replace(/-/g, "")); } catch (e) {}
+  if (!v) return [];
+  if (v.trim().startsWith("[")) { try { return JSON.parse(v).filter(Boolean); } catch (e) { return []; } }
+  return [v.trim()];
+}
 // Which content-hub section an asset is listed in. The asset's own "Hub Section"
 // (News / Articles / Offers — set in the Publish modal) overrides the type default:
 // Blog - SEO - News → news; SEO Post / QA (not Sales) → articles; Offer / QA – Sales → offers.
@@ -12227,7 +12235,7 @@ the one aesthetic risk taken + why:`;
           }
           const assetSlug = assetPage?.properties?.["Content Hub"]?.select?.name || "";
           const assetTitle = assetPage ? (assetPage.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join("") : "";
-          let chosenMain = null; try { chosenMain = await env.TRADES.get("hub:mainproduct:" + campaignId); } catch (e) {}
+          const mainList = await hubMainList(env, campaignId), chosenMain = mainList[0] || null;
           const assetMain = (assetPage?.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
           const productId = chosenMain || assetMain
             || (campPage.properties?.Products?.relation || [])[0]?.id?.replace(/-/g, "") || null;
@@ -12236,7 +12244,7 @@ the one aesthetic risk taken + why:`;
           return {
             campaignId, campName, campPage, assetPage,
             assetId: assetPage ? assetPage.id.replace(/-/g, "") : null,
-            productId, mainChosen, slug, registered: !!registered,
+            productId, mainChosen, mainIds: mainList.length ? mainList : (assetMain ? [assetMain] : []), slug, registered: !!registered,
             campKeywords: (campPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join(""),
             campNotes: (campPage.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
           };
@@ -12330,7 +12338,7 @@ the one aesthetic risk taken + why:`;
           let stackGroups = { order: [], map: {} };
           try { stackGroups = (await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json")) || stackGroups; } catch (e) {}
           campProducts.forEach(p => { p.group = (stackGroups.map || {})[p.stack || ""] || ""; });
-          const mainId = ctxH.mainChosen ? productId : null;
+          const mainIds = ctxH.mainChosen ? (ctxH.mainIds || [productId]) : [], mainId = mainIds[0] || null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
           const HUB_BLOG_SECTIONS = [{ key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
@@ -12359,7 +12367,7 @@ the one aesthetic risk taken + why:`;
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
             mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
           const steps = [
-            { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts, groupOrder: stackGroups.order || [],
+            { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
             ...pageSections,
           ];
@@ -13527,7 +13535,7 @@ Return: {
           if (op === "createStrategy") {
             const name = String(body.name || "").trim().slice(0, 200);
             if (!name) return json({ error: "Strategy name required" }, 400);
-            let mainProduct = null; try { mainProduct = await env.TRADES.get("hub:mainproduct:" + cid); } catch (e) {}
+            const mainProduct = (await hubMainList(env, cid))[0] || null;
             const props = { "Strategy Name": { title: [{ text: { content: name } }] }, "Campaign": { relation: [{ id: dash(cid) }] },
               "Status": { select: { name: "Draft" } }, "Summary": { rich_text: [{ text: { content: "Created from the Content Hubs card (Content section)." } }] } };
             if (mainProduct) props["Product"] = { relation: [{ id: dash(mainProduct) }] };
@@ -13549,7 +13557,7 @@ Return: {
           if (op === "newTitle") {
             const title = String(body.title || "").trim().slice(0, 1990);
             if (!title || !body.strategyId) return json({ error: "title and strategyId required" }, 400);
-            let mainProduct = null; try { mainProduct = await env.TRADES.get("hub:mainproduct:" + cid); } catch (e) {}
+            const mainProduct = (await hubMainList(env, cid))[0] || null;
             const props = { Title: { title: [{ text: { content: title } }] }, Status: { select: { name: "Planning" } },
               Campaign: { relation: [{ id: dash(cid) }] }, "Growth Strategy": { relation: [{ id: dash(body.strategyId) }] } };
             if (mainProduct) props["product"] = { relation: [{ id: dash(mainProduct) }] };
@@ -14410,7 +14418,27 @@ Return ONLY this JSON, no other text, no fences:
         if (!campaignId) return json({ error: "campaignId required" }, 400);
         const dash = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
-        if (!productId) { await env.TRADES.delete("hub:mainproduct:" + campaignId); return json({ success: true, cleared: true }); }
+        const op = body.op || "set";
+        let list = await hubMainList(env, campaignId);
+        if (op === "remove") list = list.filter(x => x !== productId);
+        else if (!productId) list = [];
+        if (op === "remove" || !productId) {
+          if (list.length) await env.TRADES.put("hub:mainproduct:" + campaignId, JSON.stringify(list)); else await env.TRADES.delete("hub:mainproduct:" + campaignId);
+          try { await hubMainMirror(list); } catch (e) {}
+          return json({ success: true, mainIds: list });
+        }
+        async function hubMainMirror(ids) {
+          const rel = ids.map(id => ({ id: dash(id) })), out = [];
+          const hubAssets = await notionQuery(ASSETS_DB, { filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Asset Type", select: { equals: "Content Hub" } } ] } }).catch(() => []);
+          for (const a of hubAssets) { const r = await fetch(`https://api.notion.com/v1/pages/${a.id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { Product: { relation: rel } } }) }); if (r.ok) out.push("content-hub asset"); }
+          const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+            { property: "method", relation: { contains: "3d61f7d3-a4bb-81d5-9083-da4af143c3ec" } },
+            { property: "Campaign", relation: { contains: dash(campaignId) } } ] } }).catch(() => []);
+          if (titles[0]) { const r = await fetch(`https://api.notion.com/v1/pages/${titles[0].id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { product: { relation: rel } } }) }); if (r.ok) out.push("hub title"); }
+          return out;
+        }
         const prod = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
         if (!prod || prod.object === "error") return json({ error: "Product not found" }, 404);
         const camps = prod.properties?.Campaigns?.relation || [];
@@ -14418,25 +14446,11 @@ Return ONLY this JSON, no other text, no fences:
           await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { method: "PATCH", headers: hdr,
             body: JSON.stringify({ properties: { Campaigns: { relation: camps.map(c => ({ id: c.id })).concat([{ id: dash(campaignId) }]) } } }) });
         }
-        await env.TRADES.put("hub:mainproduct:" + campaignId, productId);
-        const mirrors = [];
-        try {
-          const hubAssets = await notionQuery(ASSETS_DB, { filter: { and: [
-            { property: "Campaign", relation: { contains: dash(campaignId) } },
-            { property: "Asset Type", select: { equals: "Content Hub" } } ] } });
-          for (const a of hubAssets) {
-            const r = await fetch(`https://api.notion.com/v1/pages/${a.id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { Product: { relation: [{ id: dash(productId) }] } } }) });
-            if (r.ok) mirrors.push("content-hub asset");
-          }
-        } catch (e) {}
-        try {
-          const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
-            { property: "method", relation: { contains: "3d61f7d3-a4bb-81d5-9083-da4af143c3ec" } },
-            { property: "Campaign", relation: { contains: dash(campaignId) } } ] } });
-          if (titles[0]) { const r = await fetch(`https://api.notion.com/v1/pages/${titles[0].id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { product: { relation: [{ id: dash(productId) }] } } }) }); if (r.ok) mirrors.push("hub title"); }
-        } catch (e) {}
+        list = op === "add" ? (list.includes(productId) ? list : list.concat([productId])) : [productId];
+        await env.TRADES.put("hub:mainproduct:" + campaignId, JSON.stringify(list));
+        let mirrors = []; try { mirrors = await hubMainMirror(list); } catch (e) {}
         const name = (prod.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
-        return json({ success: true, productId, name, mirrors });
+        return json({ success: true, productId, name, mirrors, mainIds: list });
       }
 
       // ── setHubMainProduct ── writes the `product` relation on a campaign's
@@ -17780,7 +17794,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const norm = s => String(s || "").replace(/-/g, "");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         let productId = null, via = null;
-        try { const c = await env.TRADES.get("hub:mainproduct:" + norm(campaignId)); if (c) { productId = c; via = "main-offering"; } } catch (e) {}
+        { const c = (await hubMainList(env, norm(campaignId)))[0]; if (c) { productId = c; via = "main-offering"; } }
         if (!productId) try {
           const rows = await notionQuery(ASSETS_DB, {
             filter: { and: [
