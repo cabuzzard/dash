@@ -4367,7 +4367,7 @@ function ocToggle(ev, hd) {
   if (ev && ev.target && ev.target.closest('button,input,textarea,select,a')) return;
   const sec = hd.closest('.oc-sec'), bd = sec.querySelector('.oc-bd'), closed = bd.style.display !== 'none';
   bd.style.display = closed ? 'none' : ''; sec.querySelector('.oc-chev').textContent = closed ? '▶' : '▼';
-  if (closed) delete OC_OPEN[sec.dataset.ock]; else OC_OPEN[sec.dataset.ock] = 1;
+  if (closed) delete OC_OPEN[sec.dataset.ock]; else { OC_OPEN[sec.dataset.ock] = 1; bd.querySelectorAll('.flow-tbl textarea').forEach(flowGrow); }
 }
 function ocApply() {
   document.querySelectorAll('.oc-sec').forEach(sec => { const c = !OC_OPEN[sec.dataset.ock];
@@ -4421,15 +4421,15 @@ function renderFlowTable(k = 'main') {
   const T = FLOWS[k], el = document.getElementById(T.body), F = T.data; if (!el || !F) return;
   const btn = 'font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
-  const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:vertical;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;';
+  const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:none;overflow:hidden;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;';
   // fits the page: fixed layout, columns share the width, text wraps (never wider than the screen)
-  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
       <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`;
   const view = T.view ? fvBuild(k) : null, manual = !view || view.manual;
   const bodyHtml = view ? view.html(rowHtml) : F.rows.map(rowHtml).join('');
   if (T.view) fvBar(k, view);
   // header row sticks under the page's own sticky header + tab bar (offset measured live: --flowStickyTop)
-  el.innerHTML = `<div style="max-width:100%;"><table style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
+  el.innerHTML = `<div style="max-width:100%;"><table class="flow-tbl" style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
     <thead><tr>${F.columns.map((c, ci) => `<th data-ci="${ci}" style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;padding:4px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);text-align:left;vertical-align:top;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span title="Drag to move this column" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragCol(event,'${k}',${ci})">⠿</span>
@@ -4612,7 +4612,30 @@ function fvSortSet(k, L, col, dir) {
   const seen = new Set(); V.S = S.filter(x => x && x.col && !seen.has(x.col) && seen.add(x.col)).slice(0, FV_MAX);
   renderFlowTable(k); fvPanel(k);
 }
-function flowGrow(t) { t.style.height = 'auto'; t.style.height = Math.max(28, t.scrollHeight + 2) + 'px'; }
+const FLOW_CLAMP = 58;   // ~3 lines; the rest shows in the hover tip (full height while the cell is being edited)
+function flowGrow(t) {
+  if (!t.offsetParent) return;   // hidden (collapsed section): measured again when the section opens
+  t.style.height = 'auto';
+  const full = Math.max(28, t.scrollHeight + 2);
+  t.style.height = (document.activeElement === t ? full : Math.min(full, FLOW_CLAMP)) + 'px';
+}
+// hover tip: the full text of a Flow / New Flow cell or column header
+function flowTipHide() { const d = document.getElementById('flowTip'); if (d) d.style.display = 'none'; }
+document.addEventListener('mouseover', ev => {
+  const t = ev.target.closest && ev.target.closest('.flow-tbl textarea, .flow-tbl th input');
+  if (!t || document.activeElement === t || !String(t.value || '').trim()) return;
+  let d = document.getElementById('flowTip');
+  if (!d) { d = document.createElement('div'); d.id = 'flowTip';
+    d.style.cssText = 'position:fixed;z-index:9999;max-width:min(520px,90vw);max-height:70vh;overflow:hidden;padding:8px 10px;border-radius:8px;border:1px solid var(--border2);background:var(--surface);color:var(--text);font-size:12px;line-height:1.45;white-space:pre-wrap;overflow-wrap:anywhere;box-shadow:0 6px 24px rgba(0,0,0,.35);pointer-events:none;';
+    document.body.appendChild(d); }
+  d.textContent = t.value; d.style.display = 'block';
+  const r = t.getBoundingClientRect(), w = d.offsetWidth, h = d.offsetHeight;
+  let x = Math.min(r.left, innerWidth - w - 8), y = r.bottom + 6;
+  if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 6);
+  d.style.left = Math.max(8, x) + 'px'; d.style.top = y + 'px';
+});
+document.addEventListener('mouseout', ev => { if (ev.target.closest && ev.target.closest('.flow-tbl textarea, .flow-tbl th input')) flowTipHide(); });
+window.addEventListener('scroll', flowTipHide, true);
 function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
 function flowAddRow(k) { FLOWS[k].data.rows.push({ id: flowId('r'), cells: {} }); renderFlowTable(k); flowSaveSoon(k); }
 function flowAddCol(k) { FLOWS[k].data.columns.push({ id: flowId('c'), name: 'New column' }); renderFlowTable(k); flowSaveSoon(k); }
@@ -5489,6 +5512,7 @@ function loadTabContent(name) {
   }
 }
 function switchTab(name) {
+  setTimeout(() => document.querySelectorAll(".flow-tbl textarea").forEach(flowGrow), 0);   // cells in a hidden tab are measured once it shows
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   event.currentTarget.classList.add('active');
