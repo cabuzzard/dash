@@ -13837,8 +13837,9 @@ function renderHubsTab() {
       </summary>
       <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
       <div style="padding:0 0 4px;">
-        <div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);display:flex;align-items:center;gap:8px;"><span>Content</span>
-          <button onclick="_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload keywords + strategies from Notion" style="margin-left:auto;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;">⟳</button></div>
+        <div onclick="_hubPhaseOpen['${slug}|Production']=!_hubPhaseOpen['${slug}|Production'];this.nextElementSibling.style.display=_hubPhaseOpen['${slug}|Production']?'':'none';this.querySelector('.phchev').textContent=_hubPhaseOpen['${slug}|Production']?'▼':'▶'" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span class="phchev" style="font-size:9px;color:var(--text3);width:10px;">${_hubPhaseOpen[slug + '|Production'] ? '▼' : '▶'}</span><span>Production</span>
+          <button onclick="event.stopPropagation();_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload keywords + strategies from Notion" style="margin-left:auto;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">⟳</button></div>
+        <div style="display:${_hubPhaseOpen[slug + '|Production'] ? '' : 'none'};">
         <div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
           <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span>
           <span style="font-size:11px;color:var(--text);">Keywords</span>
@@ -13858,6 +13859,7 @@ function renderHubsTab() {
           <span style="font-size:11px;color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>
           <button onclick="event.stopPropagation();hcStratModal('${slug}')" title="New strategy" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button></div>
         <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:2px 12px 4px 34px;">${renderHubContent(slug)}</div>
+        </div>
       </div>
     </details>
 
@@ -14178,6 +14180,7 @@ function hubSecToggle(k, open) {
 //   prompt — copies a Claude Code prompt to the clipboard, + a manual ✓
 //   build  — manual ✓ styled amber: an audit step we haven't built yet
 //   manual — plain KV ✓ toggle
+const _hubPhaseOpen = {};   // build-checklist phases + Production: collapsed until opened
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
@@ -14187,7 +14190,9 @@ function renderHubBuildRows(slug) {
   return b.steps.map(s => {
     const busy = _hubBuildBusy[slug + '|' + s.id];
     const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
-    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
+    const phOpen = !!_hubPhaseOpen[slug + '|' + s.phase];
+    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div onclick="_hubPhaseOpen['${slug}|${esc(s.phase)}']=!_hubPhaseOpen['${slug}|${esc(s.phase)}'];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
+    if (!phOpen) return phaseHdr;
     let ctrl;
     if (s.pageSection) {
       // a hub blog section and every asset currently published to it
