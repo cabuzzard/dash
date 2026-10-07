@@ -737,12 +737,6 @@
       <span id="flowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <div class="oc-bd"><div id="flowBody"></div></div></div>
-    <div class="oc-sec" data-ock="newflow"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
-      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">New Flow</h2>
-      <span style="font-size:11.5px;color:var(--text2);">Another table of your own. Click any cell or header to edit; it saves as you type.</span>
-      <span id="newFlowMsg" style="font-size:11px;color:var(--text3);"></span>
-    </div>
-    <div class="oc-bd"><div id="newFlowBody"></div></div></div>
     <div class="oc-sec" data-ock="pillar"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Pillar</h2>
       <span style="font-size:11.5px;color:var(--text2);">Brainstorm. Your notes on the right are the same notes as the care-gap Hub tab's Pillar section.</span>
@@ -884,9 +878,12 @@
        for a Development-stage title with none yet). Meant to eventually
        replace both Development and Publishing; for now it's additive. -->
   <div class="tab-panel" id="tabDev2">
+    <div class="oc-sec" data-ock="alloutput"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Every product, title and asset from Notion.</span></div>
+    <div class="oc-bd">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:10px;flex-wrap:wrap;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1;">
-        <b style="font-size:14px;">All Output</b>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2TogglePanel()">⚲ Filter &amp; sort</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Keep the current filters and sort for next time" onclick="dev2SaveClick(this)">💾 Save</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Go back to the saved filters and sort" onclick="dev2LoadSaved()">↺ Revert</button>
@@ -922,6 +919,13 @@
       <div style="margin-top:8px;display:flex;gap:6px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2ClearFilters()">Clear filters</button><span style="color:var(--text3);font-size:11px;align-self:center;">Filter 2's values are drawn from what Filter 1 leaves. Up to 7 sort levels; with Group by sort on, each level is a collapsible header tier. Header clicks still sort (Ctrl- or Shift-click adds a level).</span></div>
     </div>
     <div id="dev2Content"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+    </div></div>
+    <div class="oc-sec" data-ock="newflow"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">New Flow</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Your own table: edit any cell or header (saves as you type), with the same filters, sorting and grouping as All Output.</span>
+      <span id="newFlowMsg" style="font-size:11px;color:var(--text3);"></span>
+    </div>
+    <div class="oc-bd"><div id="fvnewBar"></div><div id="fvnewPanel" style="display:none;"></div><div id="newFlowBody"></div></div></div>
   </div>
 
   <div class="tab-panel" id="tabPublishing">
@@ -4357,16 +4361,16 @@ function renderOutputTab() {
     <span style="color:var(--text3);">Tag hubs with ▾ on each row: a hub's own Output board shows only its rows. Hover a cell for the assets.</span>
   </div>`;
 }
-// Output tab sections (Output / Flow / Pillar) collapse; the state is remembered in this browser
+// Collapsible sections (Output / Flow / Pillar / All Output / New Flow): every page load starts them all collapsed
+const OC_OPEN = {};
 function ocToggle(ev, hd) {
   if (ev && ev.target && ev.target.closest('button,input,textarea,select,a')) return;
   const sec = hd.closest('.oc-sec'), bd = sec.querySelector('.oc-bd'), closed = bd.style.display !== 'none';
   bd.style.display = closed ? 'none' : ''; sec.querySelector('.oc-chev').textContent = closed ? '▶' : '▼';
-  try { const st = JSON.parse(localStorage.getItem('outTabCollapsed') || '{}'); if (closed) st[sec.dataset.ock] = 1; else delete st[sec.dataset.ock]; localStorage.setItem('outTabCollapsed', JSON.stringify(st)); } catch (e) {}
+  if (closed) delete OC_OPEN[sec.dataset.ock]; else OC_OPEN[sec.dataset.ock] = 1;
 }
 function ocApply() {
-  let st = {}; try { st = JSON.parse(localStorage.getItem('outTabCollapsed') || '{}'); } catch (e) {}
-  document.querySelectorAll('#tabOutput .oc-sec').forEach(sec => { const c = !!st[sec.dataset.ock];
+  document.querySelectorAll('.oc-sec').forEach(sec => { const c = !OC_OPEN[sec.dataset.ock];
     sec.querySelector('.oc-bd').style.display = c ? 'none' : ''; sec.querySelector('.oc-chev').textContent = c ? '▶' : '▼'; });
 }
 // ── Pillar notes: the SAME record as the care-gap Hub tab's Pillar section (microsite notes, care-gap campaign) ──
@@ -4394,7 +4398,7 @@ async function plSave(btn) {
 // 'main' = Flow (the original table), 'new' = New Flow. Same code for both; worker getInfoFlowTable / saveInfoFlowTable {name}.
 const FLOWS = {
   main: { name: '', body: 'flowBody', msg: 'flowMsg', data: null, t: null },
-  new:  { name: 'newflow', body: 'newFlowBody', msg: 'newFlowMsg', data: null, t: null },
+  new:  { name: 'newflow', body: 'newFlowBody', msg: 'newFlowMsg', data: null, t: null, view: true },
 };
 const flowId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 async function loadFlowTable(k = 'main') {
@@ -4419,19 +4423,24 @@ function renderFlowTable(k = 'main') {
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
   const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:vertical;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;';
   // fits the page: fixed layout, columns share the width, text wraps (never wider than the screen)
+  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`;
+  const view = T.view ? fvBuild(k) : null, manual = !view || view.manual;
+  const bodyHtml = view ? view.html(rowHtml) : F.rows.map(rowHtml).join('');
+  if (T.view) fvBar(k, view);
   // header row sticks under the page's own sticky header + tab bar (offset measured live: --flowStickyTop)
   el.innerHTML = `<div style="max-width:100%;"><table style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
     <thead><tr>${F.columns.map((c, ci) => `<th data-ci="${ci}" style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;padding:4px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);text-align:left;vertical-align:top;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span title="Drag to move this column" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragCol(event,'${k}',${ci})">⠿</span>
-          <input value="${esc(c.name)}" placeholder="Column" oninput="FLOWS['${k}'].data.columns[${ci}].name=this.value;flowSaveSoon('${k}')" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
+          ${T.view ? fvSortBtn(k, c.id) : ''}<input value="${esc(c.name)}" placeholder="Column" oninput="FLOWS['${k}'].data.columns[${ci}].name=this.value;flowSaveSoon('${k}')" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
           ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol('${k}',${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol('${k}',${ci},1)">▶</button>` : ''}
           <button style="${xbtn}" title="Delete this column" onclick="flowDelCol('${k}',${ci})">✕</button></div></th>`).join('')}<th style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;width:74px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);"></th></tr></thead>
-    <tbody>${F.rows.map((r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
-      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`).join('')}</tbody>
+    <tbody>${bodyHtml}</tbody>
   </table></div>
   <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow('${k}')">+ Row</button><button style="${btn}" onclick="flowAddCol('${k}')">+ Column</button></div>`;
   el.querySelectorAll('textarea').forEach(flowGrow);
+  if (!manual) el.querySelectorAll('[title="Drag to move this row"],[title="Move up"],[title="Move down"]').forEach(x => x.remove());   // order comes from the sort
   flowStickyTop();
 }
 function flowStickyTop() {
@@ -4483,6 +4492,125 @@ function flowDragCol(e, k, from) {
   };
   window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
 }
+
+// ── New Flow view: the same filter / sort / group tools as All Output, over the table's own columns ──
+// State per table (localStorage flowView:<k> on 💾 Save): F = 2 filter layers {col, val, neg}, S = up to 7 sort
+// levels {col, asc}, group = headings per sort level (always collapsed on page load).
+const FV_MAX = 7, FV_BLANK = '__blank__';
+function fvDefault() { return { F: [{ col: '', val: '', neg: false }, { col: '', val: '', neg: false }], S: [], group: true }; }
+function fvState(k) {
+  const T = FLOWS[k];
+  if (!T.vs) { try { T.vs = JSON.parse(localStorage.getItem('flowView:' + k) || 'null'); } catch (e) {} if (!T.vs || !Array.isArray(T.vs.F)) T.vs = fvDefault(); }
+  return T.vs;
+}
+function fvSave(k, btn) { try { localStorage.setItem('flowView:' + k, JSON.stringify(fvState(k))); } catch (e) {} if (btn) { const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); } }
+function fvRevert(k) { FLOWS[k].vs = null; fvState(k); renderFlowTable(k); fvPanel(k); }
+function fvVal(r, col) { return String(((r && r.cells) || {})[col] || '').trim(); }
+function fvPass(r, f) { if (!f.col || !f.val) return true; const v = fvVal(r, f.col), hit = f.val === FV_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
+function fvColName(k, id) { const c = (FLOWS[k].data.columns || []).find(x => x.id === id); return c ? (c.name || 'Column') : id; }
+const FV_OPEN = {};
+function fvOpenMap(k) { return Object.assign({}, FV_OPEN[k] || {}); }
+function fvSetOpen(k, o) { FV_OPEN[k] = o; }
+function fvToggle(k, key) { const o = fvOpenMap(k); if (o[key]) delete o[key]; else o[key] = 1; fvSetOpen(k, o); renderFlowTable(k); }
+function fvKey(r, S, d) { return S.slice(0, d + 1).map(x => x.col + '=' + fvVal(r, x.col)).join('|'); }
+function fvBuild(k) {
+  const F = FLOWS[k].data, V = fvState(k), colIds = new Set(F.columns.map(c => c.id));
+  const S = V.S.filter(x => colIds.has(x.col)).slice(0, FV_MAX);
+  let idx = F.rows.map((r, i) => i).filter(i => fvPass(F.rows[i], V.F[0]) && fvPass(F.rows[i], V.F[1]));
+  if (S.length) idx.sort((a, b) => {
+    for (const x of S) {
+      const av = fvVal(F.rows[a], x.col), bv = fvVal(F.rows[b], x.col);
+      if (!av !== !bv) return av ? -1 : 1;   // blanks last
+      const c = av.localeCompare(bv, undefined, { numeric: true, sensitivity: 'base' }); if (c) return x.asc === false ? -c : c;
+    }
+    return a - b;
+  });
+  const filtered = V.F.some(f => f.col && f.val), manual = !S.length && !filtered;
+  return { S, idx, total: F.rows.length, manual,
+    html(rowHtml) {
+      if (!S.length || !V.group) return idx.map(i => rowHtml(F.rows[i], i)).join('');
+      const open = fvOpenMap(k), L = S.length, span = F.columns.length + 1, counts = {}, kids = {};
+      idx.forEach(i => { for (let d = 0; d < L; d++) { const key = fvKey(F.rows[i], S, d); counts[key] = (counts[key] || 0) + 1; if (d + 1 < L) (kids[key] = kids[key] || new Set()).add(fvKey(F.rows[i], S, d + 1)); } });
+      let out = ''; const prev = [];
+      idx.forEach(i => {
+        const r = F.rows[i];
+        for (let d = 0; d < L; d++) {
+          const key = fvKey(r, S, d); if (prev[d] === key) continue;
+          prev[d] = key; for (let e = d + 1; e < L; e++) prev[e] = null;
+          let hidden = false; for (let e = 0; e < d; e++) if (!open[fvKey(r, S, e)]) hidden = true;
+          if (hidden) continue;
+          const v = fvVal(r, S[d].col), n = counts[key], sub = kids[key] ? ` · ${kids[key].size} ${esc(fvColName(k, S[d + 1].col)).toLowerCase()}${kids[key].size === 1 ? '' : 's'}` : '';
+          out += `<tr data-k="${esc(key)}" onclick="fvToggle('${k}', this.dataset.k)" style="cursor:pointer;background:rgba(127,127,127,${(0.16 - d * 0.02).toFixed(3)});">
+            <td colspan="${span}" style="padding:5px 10px 5px ${10 + d * 18}px;font-size:12px;font-weight:${d === 0 ? 700 : 600};border:1px solid var(--border);"><span style="display:inline-block;width:14px;">${open[key] ? '▼' : '▶'}</span><span style="color:var(--text3);font-weight:400;">${esc(fvColName(k, S[d].col))}:</span> ${v ? esc(v) : '<span style="color:var(--text3);">(blank)</span>'} <span style="color:var(--text3);font-weight:400;">(${n} row${n === 1 ? '' : 's'}${sub})</span></td></tr>`;
+        }
+        let shown = true; for (let d = 0; d < L; d++) if (!open[fvKey(r, S, d)]) shown = false;
+        if (shown) out += rowHtml(r, i);
+      });
+      return out;
+    } };
+}
+// header sort button: click = sort by this column only (again = flip), Ctrl / ⌘ / Shift-click = add as the next level
+function fvSortBtn(k, col) {
+  const V = fvState(k), i = V.S.findIndex(x => x.col === col), x = V.S[i];
+  const lab = x ? (x.asc === false ? '▼' : '▲') + (V.S.length > 1 ? i + 1 : '') : '⇅';
+  return `<button title="Sort by this column (Ctrl-click adds a level)" onclick="fvHeadSort(event,'${k}','${esc(col)}')" style="font-size:10px;padding:0 4px;border:none;background:transparent;color:${x ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">${lab}</button>`;
+}
+function fvHeadSort(ev, k, col) {
+  ev.stopPropagation();
+  const V = fvState(k), i = V.S.findIndex(x => x.col === col), add = ev.ctrlKey || ev.metaKey || ev.shiftKey;
+  if (add) { if (i < 0) { if (V.S.length < FV_MAX) V.S.push({ col, asc: true }); } else V.S[i].asc = V.S[i].asc === false; }
+  else if (V.S.length === 1 && i === 0) V.S[0].asc = V.S[0].asc === false;
+  else V.S = [{ col, asc: true }];
+  renderFlowTable(k); fvPanel(k);
+}
+function fvBar(k, view) {
+  const el = document.getElementById('fv' + k + 'Bar'); if (!el) return;
+  const V = fvState(k), B = 'font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
+  const chips = V.F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc(fvColName(k, f.col))} ${f.neg ? '≠' : '='} ${f.val === FV_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
+    + (view.S.length ? `<span style="font-size:11px;color:var(--text3);">sorted by ${view.S.map(x => esc(fvColName(k, x.col)) + (x.asc === false ? ' ▼' : ' ▲')).join(', then ')}</span>` : '');
+  el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+    <button style="${B}" onclick="const p=document.getElementById('fv${k}Panel');p.style.display=p.style.display==='none'?'':'none';fvPanel('${k}')">⚲ Filter &amp; sort</button>
+    <button style="${B}" onclick="fvSave('${k}', this)" title="Keep these filters and sort for next time">💾 Save</button>
+    <button style="${B}" onclick="fvRevert('${k}')" title="Back to the saved filters and sort">↺ Revert</button>
+    <button style="${B}" onclick="fvState('${k}').group=!fvState('${k}').group;renderFlowTable('${k}')">☰ Group by sort: ${V.group ? 'on' : 'off'}</button>
+    <button style="${B}" onclick="fvCollapseAll('${k}', true)">▸ Collapse all</button>
+    <button style="${B}" onclick="fvCollapseAll('${k}', false)">▾ Expand all</button>
+    ${chips}<span style="margin-left:auto;font-size:11px;color:var(--text3);">${view.idx.length} / ${view.total} rows${view.manual ? '' : ' · drag / ▲▼ off while sorted or filtered'}</span></div>`;
+}
+function fvCollapseAll(k, close) {
+  const F = FLOWS[k].data, view = fvBuild(k), o = fvOpenMap(k);
+  view.idx.forEach(i => { for (let d = 0; d < view.S.length; d++) { const key = fvKey(F.rows[i], view.S, d); if (close) delete o[key]; else o[key] = 1; } });
+  fvSetOpen(k, o); renderFlowTable(k);
+}
+function fvPanel(k) {
+  const el = document.getElementById('fv' + k + 'Panel'); if (!el || el.style.display === 'none') return;
+  const F = FLOWS[k].data, V = fvState(k);
+  const SEL = 'font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;max-width:220px;';
+  const colOpts = (sel, none) => (none ? '<option value="">(none)</option>' : '') + F.columns.map(c => `<option value="${esc(c.id)}" ${c.id === sel ? 'selected' : ''}>${esc(c.name || 'Column')}</option>`).join('');
+  const valOpts = (layer) => { const f = V.F[layer]; if (!f.col) return '<option value="">(any)</option>';
+    const base = layer === 0 ? F.rows : F.rows.filter(r => fvPass(r, V.F[0]));
+    const vals = [...new Set(base.map(r => fvVal(r, f.col)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+    return '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}" ${v === f.val ? 'selected' : ''}>${esc(v.length > 60 ? v.slice(0, 60) + '…' : v)}</option>` : `<option value="${FV_BLANK}" ${f.val === FV_BLANK ? 'selected' : ''}>(blank)</option>`).join(''); };
+  let rows = '';
+  [0, 1].forEach(L => { rows += `<span style="color:var(--text2);">${L ? 'then Filter 2' : 'Filter 1'}</span><span>
+      <select style="${SEL}" onchange="fvState('${k}').F[${L}]={col:this.value,val:'',neg:fvState('${k}').F[${L}].neg};${L ? '' : `fvState('${k}').F[1].val='';`}renderFlowTable('${k}');fvPanel('${k}')">${colOpts(V.F[L].col, true)}</select>
+      <select style="${SEL}" ${V.F[L].col ? '' : 'disabled'} onchange="fvState('${k}').F[${L}].neg=this.value==='not';renderFlowTable('${k}');fvPanel('${k}')"><option value="">is</option><option value="not" ${V.F[L].neg ? 'selected' : ''}>is not</option></select>
+      <select style="${SEL}" ${V.F[L].col ? '' : 'disabled'} onchange="fvState('${k}').F[${L}].val=this.value;${L ? '' : `fvState('${k}').F[1].val='';`}renderFlowTable('${k}');fvPanel('${k}')">${valOpts(L)}</select></span>`; });
+  for (let L = 0; L < FV_MAX; L++) { const x = V.S[L] || {};
+    rows += `<span style="color:var(--text2);">${L ? 'then by' : 'Sort by'}</span><span>
+      <select style="${SEL}" onchange="fvSortSet('${k}',${L},this.value,null)">${colOpts(x.col || '', true)}</select>
+      <select style="${SEL}" onchange="fvSortSet('${k}',${L},null,this.value)"><option value="asc">A → Z</option><option value="desc" ${x.asc === false ? 'selected' : ''}>Z → A</option></select></span>`; }
+  el.innerHTML = `<div style="margin-bottom:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);font-size:12px;">
+    <div style="display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;">${rows}</div>
+    <div style="margin-top:8px;"><button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="fvState('${k}').F=fvDefault().F;renderFlowTable('${k}');fvPanel('${k}')">Clear filters</button></div></div>`;
+}
+function fvSortSet(k, L, col, dir) {
+  const V = fvState(k), S = V.S.slice();
+  if (col !== null) { if (!col) S.length = Math.min(S.length, L); else S[L] = { col, asc: (S[L] || {}).asc !== false }; }
+  if (dir !== null && S[L]) S[L].asc = dir !== 'desc';
+  const seen = new Set(); V.S = S.filter(x => x && x.col && !seen.has(x.col) && seen.add(x.col)).slice(0, FV_MAX);
+  renderFlowTable(k); fvPanel(k);
+}
 function flowGrow(t) { t.style.height = 'auto'; t.style.height = Math.max(28, t.scrollHeight + 2) + 'px'; }
 function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
 function flowAddRow(k) { FLOWS[k].data.rows.push({ id: flowId('r'), cells: {} }); renderFlowTable(k); flowSaveSoon(k); }
@@ -4504,12 +4632,11 @@ function ogSections(ids, G) {
   return list.map(g => ({ id: g.id, name: g.name, ids: ids.filter(id => of[id] === g.id) }))
     .concat([{ id: '', name: 'Ungrouped', ids: ids.filter(id => !known.has(of[id])) }]);
 }
-function ogCollapsed() { try { return JSON.parse(localStorage.getItem('outGrpCollapsed') || '{}'); } catch (e) { return {}; } }
-function ogIsClosed(gid) { return !!ogCollapsed()[gid || '_ungrouped']; }
+const OG_OPEN = {};
+function ogIsClosed(gid) { return !OG_OPEN[gid || '_ungrouped']; }
 function ogToggle(gid) {
-  const c = ogCollapsed(), k = gid || '_ungrouped';
-  if (c[k]) delete c[k]; else c[k] = 1;
-  try { localStorage.setItem('outGrpCollapsed', JSON.stringify(c)); } catch (e) {}
+  const k = gid || '_ungrouped';
+  if (OG_OPEN[k]) delete OG_OPEN[k]; else OG_OPEN[k] = 1;
   renderOutputTab();
 }
 // header row: name + count + actions | subtotal of this week's goal | per-week subtotals | (empty)
@@ -5349,8 +5476,8 @@ function loadTabContent(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); usLoadPast(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
-  if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); loadFlowTable('new'); plLoad(); }
-  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
+  if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); plLoad(); }
+  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('new'); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
@@ -10182,8 +10309,9 @@ function dev2SortSel() {
 // ── Group by sort: each sort level becomes a collapsible header tier (up to 5) ──
 const DEV2_MAX_LEVELS = 7;
 let DEV2_GROUP = (() => { try { return localStorage.getItem('dev2Group') !== 'off'; } catch (e) { return true; } })();
-function dev2OpenMap() { try { return JSON.parse(localStorage.getItem('dev2Open') || '{}'); } catch (e) { return {}; } }
-function dev2SaveOpen(o) { try { localStorage.setItem('dev2Open', JSON.stringify(o)); } catch (e) {} }
+let DEV2_OPEN = {};
+function dev2OpenMap() { return Object.assign({}, DEV2_OPEN); }
+function dev2SaveOpen(o) { DEV2_OPEN = o; }
 // headings default to COLLAPSED: a heading is closed unless it has been opened
 function dev2Closed() { const o = dev2OpenMap(); return new Proxy({}, { get: (t, k) => typeof k === 'string' && !o[k] }); }
 function dev2SetGroup(on) { DEV2_GROUP = on; try { localStorage.setItem('dev2Group', on ? 'on' : 'off'); } catch (e) {} renderDev2(); }
