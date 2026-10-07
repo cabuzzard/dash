@@ -4553,12 +4553,13 @@ function fvBuild(k) {
 function fvSortBtn(k, col) {
   const V = fvState(k), i = V.S.findIndex(x => x.col === col), x = V.S[i];
   const lab = x ? (x.asc === false ? '▼' : '▲') + (V.S.length > 1 ? i + 1 : '') : '⇅';
-  return `<button title="Sort by this column (Ctrl-click adds a level)" onclick="fvHeadSort(event,'${k}','${esc(col)}')" style="font-size:10px;padding:0 4px;border:none;background:transparent;color:${x ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">${lab}</button>`;
+  return `<button title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level" onclick="fvHeadSort(event,'${k}','${esc(col)}')" style="font-size:10px;padding:0 4px;border:none;background:transparent;color:${x ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">${lab}</button>`;
 }
 function fvHeadSort(ev, k, col) {
   ev.stopPropagation();
   const V = fvState(k), i = V.S.findIndex(x => x.col === col), add = ev.ctrlKey || ev.metaKey || ev.shiftKey;
-  if (add) { if (i < 0) { if (V.S.length < FV_MAX) V.S.push({ col, asc: true }); } else V.S[i].asc = V.S[i].asc === false; }
+  if (ev.altKey) { if (i >= 0) V.S.splice(i, 1); }   // Alt-click removes just this level
+  else if (add) { if (i < 0) { if (V.S.length < FV_MAX) V.S.push({ col, asc: true }); } else if (V.S[i].asc !== false) V.S[i].asc = false; else V.S.splice(i, 1); }   // add → A→Z → Z→A → remove
   else if (V.S.length === 1 && i === 0) V.S[0].asc = V.S[0].asc === false;
   else V.S = [{ col, asc: true }];
   renderFlowTable(k); fvPanel(k);
@@ -4606,7 +4607,7 @@ function fvPanel(k) {
 }
 function fvSortSet(k, L, col, dir) {
   const V = fvState(k), S = V.S.slice();
-  if (col !== null) { if (!col) S.length = Math.min(S.length, L); else S[L] = { col, asc: (S[L] || {}).asc !== false }; }
+  if (col !== null) { if (!col) S[L] = null; else S[L] = { col, asc: (S[L] || {}).asc !== false }; }
   if (dir !== null && S[L]) S[L].asc = dir !== 'desc';
   const seen = new Set(); V.S = S.filter(x => x && x.col && !seen.has(x.col) && seen.add(x.col)).slice(0, FV_MAX);
   renderFlowTable(k); fvPanel(k);
@@ -10300,7 +10301,7 @@ function dev2SortSel() {
   for (let k = 0; k < DEV2_MAX_LEVELS; k++) {
     const c = document.getElementById('dev2S' + k + 'c').value;
     if (k === 0 && !c) { out.push({ col: 'campaign', asc: true }); continue; }
-    if (!c) break;   // a blank level ends the chain
+    if (!c) continue;   // a blank level is removed; the levels below move up
     const dv = document.getElementById('dev2S' + k + 'd').value;
     if (!out.some(x => x.col === c)) out.push({ col: c, asc: dv !== 'desc', ...(dv === 'custom' ? { custom: true } : {}) });
   }
@@ -10372,10 +10373,12 @@ async function loadDev2() {
 function dev2SetSort(col, ev) {
   const shift = !!(ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey));   // shift-, ctrl- or ⌘-click adds a sort level
   const idx = DEV2_SORT.findIndex(s => s.col === col);
-  if (shift) {
+  if (ev && ev.altKey) { if (idx !== -1) DEV2_SORT.splice(idx, 1); }   // Alt-click removes just this level
+  else if (shift) {   // Ctrl-click: add → A→Z → Z→A → remove
     if (idx === -1) { if (DEV2_SORT.length < DEV2_MAX_LEVELS) DEV2_SORT.push({ col, asc: true }); }
     else if (DEV2_SORT[idx].custom) { DEV2_SORT[idx].custom = false; DEV2_SORT[idx].asc = true; }
-    else DEV2_SORT[idx].asc = !DEV2_SORT[idx].asc;
+    else if (DEV2_SORT[idx].asc) DEV2_SORT[idx].asc = false;
+    else DEV2_SORT.splice(idx, 1);
   } else if (DEV2_SORT.length === 1 && idx === 0) {
     if (DEV2_SORT[0].custom) { DEV2_SORT[0].custom = false; DEV2_SORT[0].asc = true; } else DEV2_SORT[0].asc = !DEV2_SORT[0].asc;
   } else {
@@ -10602,7 +10605,7 @@ function renderDev2() {
         const s = DEV2_SORT[sortIdx];
         arrow = ' ' + (s.custom ? '✥' : s.asc ? '▲' : '▼') + (DEV2_SORT.length > 1 ? (sortIdx + 1) : '');
       }
-      return `<th onclick="dev2SetSort('${c.key}', event)" title="Click to sort — Ctrl-click (or Shift-click) to add it as the next sort level" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
+      return `<th onclick="dev2SetSort('${c.key}', event)" title="Click: sort by this column · Ctrl-click: add a level (again flips, third time removes) · Alt-click: remove this level" style="cursor:pointer;user-select:none;white-space:nowrap;padding:6px 10px;text-align:left;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${esc(c.label)}${arrow}</th>`;
     }).join('')}
   </tr>`;
 
