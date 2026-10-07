@@ -12326,6 +12326,10 @@ the one aesthetic risk taken + why:`;
               stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim(), type: (p.properties?.Type?.rich_text || []).map(t => t.plain_text).join("").trim(),
               date: (p.created_time || "").slice(0, 10) }))
             .sort((a, b) => a.name.localeCompare(b.name));
+          // Group → Stack → Product: the campaign's product groups (KV stackgroups:<cid>, same as care-gap's Product Research tab)
+          let stackGroups = { order: [], map: {} };
+          try { stackGroups = (await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json")) || stackGroups; } catch (e) {}
+          campProducts.forEach(p => { p.group = (stackGroups.map || {})[p.stack || ""] || ""; });
           const mainId = ctxH.mainChosen ? productId : null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
@@ -12355,7 +12359,7 @@ the one aesthetic risk taken + why:`;
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
             mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
           const steps = [
-            { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts,
+            { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts, groupOrder: stackGroups.order || [],
               mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
             ...pageSections,
           ];

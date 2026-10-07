@@ -13853,10 +13853,7 @@ function renderHubsTab() {
           return `<div onclick="_hubContentOpen['${slug}|pr']=!_hubContentOpen['${slug}|pr'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|pr']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|pr']?'▼':'▶'" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
             <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>
             <span style="font-size:11px;color:var(--text);flex:1;">Products <span style="color:var(--text3);">${prods ? '— ' + prods.length : ''}</span></span></div>
-          <div style="display:${open ? '' : 'none'};padding:2px 0 6px;">${!prods ? '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">Loading…</div>'
-            : prods.length ? hubGridHead() + prods.map(p => hubGridRow({ title: p.name + (p.id === mo.mainId ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
-                links: `<a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join('')
-            : '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">No products committed to this campaign yet.</div>'}</div>`; })()}
+          <div id="hubProdTree-${slug}" style="display:${open ? '' : 'none'};padding:2px 0 6px;">${hubProdTree(slug)}</div>`; })()}
         <div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
           <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span>
           <span style="font-size:11px;color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>
@@ -14028,6 +14025,35 @@ function renderHubKw(slug) {
     out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`, ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster.</span>'); });
   if (un.length) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`, un.map(t => topic(t, 0)).join(''));
   if (!topics.length && !(K.tc.clusters || []).length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
+  return out;
+}
+// ── Production → Products: Group → Stack → Product, every level collapsible (collapsed by default) ──
+const _hubProdOpen = {};
+function hubProdToggle(slug, k) { _hubProdOpen[slug + '|' + k] = !_hubProdOpen[slug + '|' + k]; const el = document.getElementById('hubProdTree-' + slug); if (el) el.innerHTML = hubProdTree(slug); }
+function hubProdTree(slug) {
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), prods = mo ? (mo.products || []) : null;
+  if (!prods) return '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">Loading…</div>';
+  if (!prods.length) return '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">No products committed to this campaign yet.</div>';
+  const NOG = 'Ungrouped', NOS = 'No Stack', by = {};
+  prods.forEach(p => { const g = p.group || NOG, st = p.stack || NOS; ((by[g] = by[g] || {})[st] = by[g][st] || []).push(p); });
+  const order = (mo.groupOrder || []).filter(g => by[g]).concat(Object.keys(by).filter(g => g !== NOG && !(mo.groupOrder || []).includes(g)).sort()).concat(by[NOG] ? [NOG] : []);
+  const count = o => Object.values(o).reduce((n, a) => n + a.length, 0);
+  const hdr = (k, depth, label, sub) => { const open = !!_hubProdOpen[slug + '|' + k];
+    return `<div onclick="hubProdToggle('${slug}', this.dataset.k)" data-k="${esc(k)}" style="padding:4px 12px 4px ${34 + depth * 16}px;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11px;border-top:1px dashed var(--border);">
+      <span style="font-size:9.5px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:${depth ? 600 : 700};color:var(--text);">${esc(label)}</span><span style="color:var(--text3);">${sub}</span></div>`; };
+  let out = '';
+  order.forEach(g => {
+    const stacks = by[g], gk = 'g:' + g;
+    out += hdr(gk, 0, g, `— ${count(stacks)} product${count(stacks) === 1 ? '' : 's'} · ${Object.keys(stacks).length} stack${Object.keys(stacks).length === 1 ? '' : 's'}`);
+    if (!_hubProdOpen[slug + '|' + gk]) return;
+    Object.keys(stacks).sort((a, b) => (a === NOS) - (b === NOS) || a.localeCompare(b)).forEach(st => {
+      const sk = 's:' + g + '|' + st, list = stacks[st];
+      out += hdr(sk, 1, st, `— ${list.length}`);
+      if (!_hubProdOpen[slug + '|' + sk]) return;
+      out += hubGridHead() + list.map(p => hubGridRow({ title: p.name + (p.id === mo.mainId ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
+        links: `<a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join('');
+    });
+  });
   return out;
 }
 // ── Content section: strategies made here (real Growth Strategy records) and the titles in each ──
