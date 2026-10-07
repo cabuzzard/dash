@@ -14249,8 +14249,20 @@ function renderHubBuildRows(slug) {
           typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
           links: (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
-      return phaseHdr + hubLvl(`<span style="font-size:10px;color:var(--text3);width:10px;">${n ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
-        <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="color:var(--text3);">— ${n} asset${n === 1 ? '' : 's'}${n ? '' : ' (nothing published to this section yet)'}</span></span>`, rows,
+      // sections that also hold hand-picked products (CTA's): product records first, then the assets
+      let prodRows = '', pick = '', np = 0;
+      if (s.productSlots) {
+        const all = ((b.steps || []).find(x => x.mainOffering) || {}).products || [], byId = {}; all.forEach(p => { byId[p.id] = p; });
+        const ids = s.productIds || []; np = ids.length;
+        pick = `<select onclick="event.stopPropagation()" onchange="if(this.value)hubSectionProd('${slug}','${s.key}',this.value,'add')" style="font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:200px;">
+          <option value="">+ Add a product…</option>${all.filter(p => !ids.includes(p.id)).map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>`;
+        if (open && ids.length) prodRows = (rows ? '' : hubGridHead(0)) + ids.map(id => { const p = byId[id] || {};
+          return hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[p.status] || '', title: p.name || 'Product', type: 'Product', method: '', status: p.status || '', date: p.date,
+            links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${id}','remove')" title="Take this product out of ${esc(s.label)} (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('');
+      }
+      const countTxt = (s.productSlots ? `${np} product${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
+      return phaseHdr + hubLvl(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
+        <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="color:var(--text3);">— ${countTxt}</span></span>${pick}`, (rows ? rows.replace(hubGridHead(0), hubGridHead(0) + prodRows) : prodRows),
         `onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')"`);
     } else if (s.mainOffering) {
       // the hub's main offering: one real Products record — pick one of the campaign's products, or add a new one
@@ -14391,6 +14403,14 @@ async function hubMainOfferAdd(slug) {
     await hubMainOfferSet(slug, r.id, 'add'); return; }
   catch (e) { _hpNote[slug] = '✗ Add product: ' + e.message; }
   _hubBuildBusy[slug + '|mainproduct'] = false; hubBuildRefreshRows(slug);
+}
+// products hand-placed in a checklist section (CTA's)
+async function hubSectionProd(slug, section, productId, op) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  try { const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId, op }); if (r && r.error) throw new Error(r.error);
+    const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.key === section); if (st) { st.productIds = r.productIds || []; st.done = (st.items || []).length > 0 || st.productIds.length > 0; }
+    _hubPageOpen[slug + '|page-' + section] = true; hubBuildRefreshRows(slug); }
+  catch (e) { _hpNote[slug] = '✗ ' + e.message; hubBuildRefreshRows(slug); }
 }
 async function hubBuildToggle(slug, stepId, done) {
   try { await call('setHubBuildCheck', { slug, stepId, done }); } catch (e) {}
