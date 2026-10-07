@@ -12327,18 +12327,23 @@ the one aesthetic risk taken + why:`;
           const mainId = ctxH.mainChosen ? productId : null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
-          const HUB_BLOG_SECTIONS = [{ key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" }];
+          const HUB_BLOG_SECTIONS = [{ key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" }];
           const listed = (await notionQuery(ASSETS_DB, { filter: { and: [
               { property: "Campaign", relation: { contains: dashHb(campaignId) } },
               { or: [ { property: "Asset Status", select: { equals: "Publish" } }, { property: "Asset Status", select: { equals: "Published" } } ] } ] } }).catch(() => []))
             .filter(r => { const h = r.properties?.["Content Hub"]?.select?.name || ""; return !h || h === slug; });
+          // method names, so each row shows which method produced it (the Asset Type select alone can be a legacy label)
+          const mIds = [...new Set(listed.map(r => (r.properties?.Method?.relation || [])[0]?.id).filter(Boolean))];
+          const mName = Object.fromEntries(await Promise.all(mIds.map(async id => { try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
+            return [id, (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim()]; } catch (e) { return [id, ""]; } })));
           const pageSections = HUB_BLOG_SECTIONS.map(sec => {
             const items = listed.filter(r => hubSectionOf(r.properties) === sec.key)
               .sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))
               .map(r => { const p = r.properties || {};
                 return { id: r.id.replace(/-/g, ""),
                   title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled",
-                  type: p["Asset Type"]?.select?.name || "", status: p["Asset Status"]?.select?.name || "",
+                  type: p["Asset Type"]?.select?.name || "", method: mName[(p.Method?.relation || [])[0]?.id] || "",
+                  section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
                   date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim() }; });
             return { id: "page-" + sec.key, phase: "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "nothing published to this section yet" };
@@ -12350,8 +12355,6 @@ the one aesthetic risk taken + why:`;
             { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts,
               mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
             ...pageSections,
-            { id: "offers",     phase: "Content",   label: "Offers published on the hub", link: "microsite",
-              done: offerLive, hint: offerLive ? "" : "build offers from the microsite" },
             { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
               done: postsN > 0, hint: postsN ? `${postsN} live` : "publish SEO posts from the microsite" },
             { id: "email",      phase: "Email",     label: "Nurture sequence published for the main form", link: "microsite",

@@ -14009,15 +14009,18 @@ function renderHubBuildRows(slug) {
       // a hub blog section and every asset currently published to it
       const hubBase = (h.domain ? 'https://' + h.domain + '/' : 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/');
       const open = !!_hubPageOpen[slug + '|' + s.id];
-      const rows = open ? (s.items || []).map(it => {
+      const TH = 'font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
+      const head = open && (s.items || []).length ? `<div style="padding:3px 12px 2px 34px;display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1.4fr) 70px 70px 90px;gap:8px;${TH}"><span>Title</span><span>Asset type</span><span>Method</span><span>Status</span><span>Date</span><span></span></div>` : '';
+      const rows = !open ? '' : head + (s.items || []).map(it => {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
-        return `<div style="padding:3px 12px 3px 34px;display:flex;align-items:center;gap:8px;font-size:11px;border-top:1px dashed var(--border);">
-          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(it.title)}">${esc(it.title)}</span>
-          <span style="color:var(--text3);flex-shrink:0;">${esc(it.type)}</span>
-          <span style="flex-shrink:0;padding:0 6px;border-radius:8px;font-size:10px;background:${it.status === 'Published' ? 'rgba(74,222,128,.18)' : 'rgba(246,173,85,.2)'};">${esc(it.status)}</span>
-          ${it.date ? `<span style="color:var(--text3);flex-shrink:0;">${esc(new Date(it.date + 'T12:00:00').toLocaleDateString())}</span>` : ''}
-          ${live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;flex-shrink:0;">page ↗</a>` : ''}
-          <a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;flex-shrink:0;">Notion ↗</a></div>`; }).join('') : '';
+        const cut = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        return `<div style="padding:3px 12px 3px 34px;display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1.4fr) 70px 70px 90px;gap:8px;align-items:center;font-size:11px;border-top:1px dashed var(--border);">
+          <span style="${cut}" title="${esc(it.title)}">${esc(it.title)}</span>
+          <span style="${cut}" title="Asset Type${it.section ? ' · placed here by Hub Section = ' + esc(it.section) : ''}">${esc(it.type) || '<span style="color:var(--text3);">—</span>'}${it.section ? ' <span style="color:var(--text3);">↳</span>' : ''}</span>
+          <span style="${cut}color:var(--text2);" title="${esc(it.method)}">${esc(it.method) || '<span style="color:var(--text3);">—</span>'}</span>
+          <span><span style="padding:0 6px;border-radius:8px;font-size:10px;background:${it.status === 'Published' ? 'rgba(74,222,128,.18)' : 'rgba(246,173,85,.2)'};">${esc(it.status)}</span></span>
+          <span style="color:var(--text3);">${it.date ? esc(new Date(it.date + 'T12:00:00').toLocaleDateString()) : ''}</span>
+          <span style="white-space:nowrap;">${live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : ''}<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a></span></div>`; }).join('');
       const n = (s.items || []).length;
       return phaseHdr + `<div onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
         <span style="flex-shrink:0;">${dot}</span><span style="font-size:10px;color:var(--text3);width:10px;">${n ? (open ? '▼' : '▶') : ''}</span>
