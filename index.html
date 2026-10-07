@@ -4429,7 +4429,8 @@ function renderFlowTable(k = 'main') {
   const bodyHtml = view ? view.html(rowHtml) : F.rows.map(rowHtml).join('');
   if (T.view) fvBar(k, view);
   // header row sticks under the page's own sticky header + tab bar (offset measured live: --flowStickyTop)
-  el.innerHTML = `<div style="max-width:100%;"><table class="flow-tbl" style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
+  const addBtns = `<div style="display:flex;gap:6px;margin:${T.view ? '0 0 8px' : '8px 0 0'};"><button style="${btn}" onclick="flowAddRow('${k}')">+ Row</button><button style="${btn}" onclick="flowAddCol('${k}')">+ Column</button></div>`;
+  el.innerHTML = `${T.view ? addBtns : ''}<div style="max-width:100%;"><table class="flow-tbl" style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
     <thead><tr>${F.columns.map((c, ci) => `<th data-ci="${ci}" style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;padding:4px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);text-align:left;vertical-align:top;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span title="Drag to move this column" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragCol(event,'${k}',${ci})">⠿</span>
@@ -4437,8 +4438,7 @@ function renderFlowTable(k = 'main') {
           ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol('${k}',${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol('${k}',${ci},1)">▶</button>` : ''}
           <button style="${xbtn}" title="Delete this column" onclick="flowDelCol('${k}',${ci})">✕</button></div></th>`).join('')}<th style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;width:74px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);"></th></tr></thead>
     <tbody>${bodyHtml}</tbody>
-  </table></div>
-  <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow('${k}')">+ Row</button><button style="${btn}" onclick="flowAddCol('${k}')">+ Column</button></div>`;
+  </table></div>${T.view ? '' : addBtns}`;
   el.querySelectorAll('textarea').forEach(flowGrow);
   if (!manual) el.querySelectorAll('[title="Drag to move this row"],[title="Move up"],[title="Move down"]').forEach(x => x.remove());   // order comes from the sort
   flowStickyTop();
@@ -4516,7 +4516,9 @@ function fvKey(r, S, d) { return S.slice(0, d + 1).map(x => x.col + '=' + fvVal(
 function fvBuild(k) {
   const F = FLOWS[k].data, V = fvState(k), colIds = new Set(F.columns.map(c => c.id));
   const S = V.S.filter(x => colIds.has(x.col)).slice(0, FV_MAX);
-  let idx = F.rows.map((r, i) => i).filter(i => fvPass(F.rows[i], V.F[0]) && fvPass(F.rows[i], V.F[1]));
+  const fresh = FLOWS[k].fresh || new Set(), isFresh = i => fresh.has(F.rows[i].id);
+  const pinned = F.rows.map((r, i) => i).filter(isFresh);
+  let idx = F.rows.map((r, i) => i).filter(i => !isFresh(i) && fvPass(F.rows[i], V.F[0]) && fvPass(F.rows[i], V.F[1]));
   if (S.length) idx.sort((a, b) => {
     for (const x of S) {
       const av = fvVal(F.rows[a], x.col), bv = fvVal(F.rows[b], x.col);
@@ -4526,12 +4528,14 @@ function fvBuild(k) {
     return a - b;
   });
   const filtered = V.F.some(f => f.col && f.val), manual = !S.length && !filtered;
-  return { S, idx, total: F.rows.length, manual,
+  const top = pinned.map(i => i);
+  return { S, idx: top.concat(idx), total: F.rows.length, manual,
     html(rowHtml) {
-      if (!S.length || !V.group) return idx.map(i => rowHtml(F.rows[i], i)).join('');
+      const head = top.map(i => rowHtml(F.rows[i], i)).join('');   // newly added rows, pinned on top
+      if (!S.length || !V.group) return head + idx.map(i => rowHtml(F.rows[i], i)).join('');
       const open = fvOpenMap(k), L = S.length, span = F.columns.length + 1, counts = {}, kids = {};
       idx.forEach(i => { for (let d = 0; d < L; d++) { const key = fvKey(F.rows[i], S, d); counts[key] = (counts[key] || 0) + 1; if (d + 1 < L) (kids[key] = kids[key] || new Set()).add(fvKey(F.rows[i], S, d + 1)); } });
-      let out = ''; const prev = [];
+      let out = head; const prev = [];
       idx.forEach(i => {
         const r = F.rows[i];
         for (let d = 0; d < L; d++) {
@@ -4677,7 +4681,12 @@ document.addEventListener('mouseover', ev => {
 document.addEventListener('mouseout', ev => { if (ev.target.closest && ev.target.closest('.flow-tbl textarea, .flow-tbl th input')) flowTipHide(); });
 window.addEventListener('scroll', flowTipHide, true);
 function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
-function flowAddRow(k) { FLOWS[k].data.rows.push({ id: flowId('r'), cells: {} }); renderFlowTable(k); flowSaveSoon(k); }
+function flowAddRow(k) {
+  const T = FLOWS[k], r = { id: flowId('r'), cells: {} };
+  if (T.view) { T.data.rows.unshift(r); (T.fresh = T.fresh || new Set()).add(r.id); } else T.data.rows.push(r);
+  renderFlowTable(k); flowSaveSoon(k);
+  if (T.view) { const ta = document.querySelector('#' + T.body + ' tr[data-ri="0"] textarea'); if (ta) ta.focus(); }
+}
 function flowAddCol(k) { FLOWS[k].data.columns.push({ id: flowId('c'), name: 'New column' }); renderFlowTable(k); flowSaveSoon(k); }
 function flowDelRow(k, ri) {
   const F = FLOWS[k].data, r = F.rows[ri]; if (Object.values(r.cells || {}).some(v => String(v).trim()) && !confirm('Delete this row and its text?')) return;
