@@ -13759,7 +13759,7 @@ function renderHubsTab() {
       if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
     }).catch(() => {});
   }
-  if (hubSecOpen('build')) hubContentLoad(slug);
+  if (hubSecOpen('content')) hubContentLoad(slug);
   fetchHubSpecText(slug);
   const meta = hubMeta(h), state = hubReadyState(slug), badge = hubBadge(state, meta);
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
@@ -13829,26 +13829,31 @@ function renderHubsTab() {
       </div>
     </div>
 
-    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open);if(this.open)hubContentLoad('${slug}')">
+    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open)">
       <summary>
         <span>Build checklist</span>
         <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
         <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status from the live site + Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳ re-check</button>
       </summary>
       <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
-      <div style="padding:0 0 4px;">
-        <div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);display:flex;align-items:center;gap:8px;"><span>Content</span>
-          <button onclick="_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload keywords + strategies from Notion" style="margin-left:auto;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;">⟳</button></div>
-        <div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
-          <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span>
-          <span style="font-size:11px;color:var(--text);">Keywords</span>
+    </details>
+
+    <details class="hub-sec" ${hubSecOpen('content') ? 'open' : ''} ontoggle="hubSecToggle('content', this.open);if(this.open)hubContentLoad('${slug}')">
+      <summary>
+        <span>Content</span>
+        <span style="font-weight:400;color:var(--text3);letter-spacing:0;">keywords · strategies</span>
+        <button onclick="event.stopPropagation();_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload from Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+      </summary>
+      <div style="padding:4px 12px 10px;">
+        <div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span><span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);">Keywords</span>
           ${h.campaignId ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10.5px;color:var(--accent);text-decoration:none;">edit keywords in care-gap ↗</a>` : ''}</div>
-        <div id="hubKwBody-${slug}" style="display:${_hubContentOpen[slug + '|kw'] ? '' : 'none'};padding:2px 12px 8px 34px;">${renderHubKw(slug)}</div>
-        <div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
-          <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span>
-          <span style="font-size:11px;color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>
+        <div id="hubKwBody-${slug}" style="display:${_hubContentOpen[slug + '|kw'] ? '' : 'none'};padding:4px 0 8px;">${renderHubKw(slug)}</div>
+        <div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span><span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);">Strategies</span>
+          <span style="font-size:10.5px;color:var(--text3);flex:1;">${_hubContent[slug] ? _hubContent[slug].length : ''}</span>
           <button onclick="event.stopPropagation();hcStratModal('${slug}')" title="New strategy" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button></div>
-        <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:2px 12px 4px 34px;">${renderHubContent(slug)}</div>
+        <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:6px 0 4px;">${renderHubContent(slug)}</div>
       </div>
     </details>
 
@@ -14141,7 +14146,7 @@ function renderHubContent(slug) {
   if (!list) return '<div style="font-size:11px;color:var(--text3);">' + (_hubContentLoading[slug] ? 'Loading…' : 'Open to load.') + '</div>';
   const stratRows = list.map(st => {
     const open = !!_hubContentOpen[slug + '|' + st.id], n = st.titles.length;
-    const inner = !open ? '' : `<div style="margin:0 -12px 6px -34px;">${n ? hubGridHead() + st.titles.map(t => hubGridRow({ title: t.title, type: 'Title', method: t.method, status: t.status, date: t.date,
+    const inner = !open ? '' : `<div style="margin:0 -12px 6px;">${n ? hubGridHead() + st.titles.map(t => hubGridRow({ title: t.title, type: 'Title', method: t.method, status: t.status, date: t.date,
         links: `<a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy} onclick="hubContentDo('${slug}','removeTitle',{titleId:'${t.id}'})" title="Take this title out of the strategy (the title itself stays)" style="${B}padding:0 6px;">✕</button>` })).join('') : '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">No titles yet — use + on the line above.</div>'}</div>`;
     return `<div style="border-top:1px solid var(--border);">
       <div onclick="_hubContentOpen['${slug}|${st.id}']=!_hubContentOpen['${slug}|${st.id}'];hubContentRefresh('${slug}')" style="display:flex;align-items:center;gap:8px;padding:5px 0;cursor:pointer;user-select:none;">
