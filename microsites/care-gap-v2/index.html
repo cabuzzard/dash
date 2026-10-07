@@ -9701,7 +9701,7 @@ function renderWeeklyPlanner(monday, items) {
       <div class="wp-item" draggable="true" ondragstart="wpDragStart(event,'${it.id}')" ondragover="wpItemDragOver(event)" ondrop="wpItemDrop(event,'${it.id}','${dateIso}')" style="background:${it.status==='Done'?'var(--fresh-bg)':'var(--surface2)'};border:1px solid ${it.status==='Done'?'var(--fresh)':'var(--border)'};border-left:3px solid ${fc.b};border-radius:6px;padding:6px 8px;margin-bottom:6px;cursor:grab;">
         <div style="display:flex;align-items:flex-start;gap:6px;">
           <button onclick="wpCycleFlag('${it.id}')" title="Flag: ${fs} — click to cycle (urgent → planning → done → clear)" style="width:12px;height:12px;border-radius:50%;border:1px solid var(--border2);background:${fc.d};flex-shrink:0;margin-top:3px;cursor:pointer;padding:0;"></button>
-          <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked)" style="margin-top:2px;flex-shrink:0;">
+          <input type="checkbox" ${it.status==='Done'?'checked':''} onchange="wpToggleDone('${it.id}', this.checked, '${dateIso}')" style="margin-top:2px;flex-shrink:0;">
           <span style="flex:1;font-size:12px;color:${it.status==='Done'?'var(--ink3)':'var(--ink)'};text-decoration:${it.status==='Done'?'line-through':'none'};word-break:break-word;">${esc(it.name)}</span>
           <button onclick="wpOpenNotes('${it.id}')" title="${hasNotes ? 'Edit notes' : 'Add notes'}" style="background:none;border:none;color:${hasNotes ? 'var(--global)' : 'var(--ink3)'};cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">📝</button>
           <button onclick="wpDeleteItem('${it.id}')" title="Remove" style="background:none;border:none;color:var(--ink3);cursor:pointer;font-size:11px;flex-shrink:0;padding:0;">✕</button>
@@ -9733,8 +9733,8 @@ async function wpAddItem(dateIso, input) {
     input.disabled = false;
   }
 }
-async function wpToggleDone(itemId, checked) {
-  try { const r = await w('completeWeeklyPlannerItem', { itemId, done: checked }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
+async function wpToggleDone(itemId, checked, dateIso) {
+  try { const r = await w('completeWeeklyPlannerItem', { itemId, done: checked, date: dateIso }); if (r.error) throw new Error(r.error); await loadWeeklyPlanner(); }
   catch(e) { alert('Error: ' + e.message); }
 }
 async function wpDeleteItem(itemId) {

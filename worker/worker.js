@@ -17411,7 +17411,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         // recurring weekday anchor happened to be. Un-marking leaves the
         // date as-is; it becomes Open again and resumes recurring on that
         // same weekday going forward.
-        if (done !== false) props["Date"] = { date: { start: new Date().toISOString().slice(0, 10) } };
+        // body.date = the day the card sits on in the board → it stays put (struck through) instead of jumping to today
+        if (done !== false) props["Date"] = { date: { start: /^\d{4}-\d{2}-\d{2}$/.test(String(body.date || "")) ? body.date : new Date().toISOString().slice(0, 10) } };
         const resp = await fetch(`https://api.notion.com/v1/pages/${dash(itemId)}`, {
           method: "PATCH", headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: props }),
