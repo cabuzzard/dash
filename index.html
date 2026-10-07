@@ -13841,10 +13841,19 @@ function renderHubsTab() {
     <details class="hub-sec" ${hubSecOpen('content') ? 'open' : ''} ontoggle="hubSecToggle('content', this.open);if(this.open)hubContentLoad('${slug}')">
       <summary>
         <span>Content</span>
-        <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubContent[slug] ? _hubContent[slug].length + ' strateg' + (_hubContent[slug].length === 1 ? 'y' : 'ies') : ''}</span>
-        <button onclick="event.stopPropagation();hubContentLoad('${slug}', true)" title="Reload from Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
+        <span style="font-weight:400;color:var(--text3);letter-spacing:0;">keywords · strategies</span>
+        <button onclick="event.stopPropagation();_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload from Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button>
       </summary>
-      <div id="hubContentBody-${slug}" style="padding:6px 12px 10px;">${renderHubContent(slug)}</div>
+      <div style="padding:4px 12px 10px;">
+        <div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span><span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);">Keywords</span>
+          <span style="font-size:10.5px;color:var(--text3);">master · clusters · topics — same as care-gap</span></div>
+        <div id="hubKwBody-${slug}" style="display:${_hubContentOpen[slug + '|kw'] ? '' : 'none'};padding:4px 0 8px;">${renderHubKw(slug)}</div>
+        <div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="display:flex;align-items:center;gap:8px;padding:6px 0;cursor:pointer;user-select:none;border-bottom:1px solid var(--border);">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span><span style="font-size:10px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);">Strategies</span>
+          <span style="font-size:10.5px;color:var(--text3);">${_hubContent[slug] ? _hubContent[slug].length : ''}</span></div>
+        <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:6px 0 4px;">${renderHubContent(slug)}</div>
+      </div>
     </details>
 
     <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open)">
@@ -14003,6 +14012,49 @@ function hubGridRow(o) {
     <span>${st}</span>
     <span style="color:var(--text3);">${o.date ? esc(new Date(o.date + 'T12:00:00').toLocaleDateString()) : ''}</span>
     <span style="white-space:nowrap;">${o.links || ''}</span></div>`;
+}
+// ── Content → Keywords: the campaign's keyword tree exactly as care-gap's Keywords tab holds it — Master keywords
+// (Research "Keywords"), then CLUSTERS (KV seotopicclusters) → TOPICS (staged + committed SEO clusters) → their keywords.
+// Read-only here; editing stays on care-gap. Every level starts collapsed.
+const _hubKw = {}, _hubKwOpen = {};
+async function hubKwLoad(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || _hubKw[slug]) return;
+  _hubKw[slug] = { loading: true }; hubKwRefresh(slug);
+  try {
+    const [res, cl] = await Promise.all([call('getResearch', { campaignId: h.campaignId }), call('getKeywordClusters', { campaignId: h.campaignId })]);
+    if (cl && cl.error) throw new Error(cl.error);
+    _hubKw[slug] = { master: String((res && res.research && res.research.keywords) || ''), staged: (cl && cl.staged) || [], committed: (cl && cl.committed) || [],
+      tc: (cl && cl.topicClusters) || { clusters: [], assign: {} } };
+  } catch (e) { _hubKw[slug] = { error: e.message }; }
+  hubKwRefresh(slug);
+}
+function hubKwRefresh(slug) { const el = document.getElementById('hubKwBody-' + slug); if (el) el.innerHTML = renderHubKw(slug); }
+function hubKwToggle(slug, k) { _hubKwOpen[slug + '|' + k] = !_hubKwOpen[slug + '|' + k]; hubKwRefresh(slug); }
+function renderHubKw(slug) {
+  const K = _hubKw[slug];
+  if (!K || K.loading) return '<div style="font-size:11px;color:var(--text3);">' + (K ? 'Loading keywords…' : 'Open to load.') + '</div>';
+  if (K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load keywords: ${esc(K.error)}</div>`;
+  const h = HUB_SITES.find(x => x.slug === slug) || {};
+  const pills = arr => arr.map(k => `<span style="display:inline-block;font-size:10.5px;padding:1px 7px;margin:2px 3px 2px 0;border:1px solid var(--border2);border-radius:9px;color:var(--text2);">${esc(k)}</span>`).join('');
+  const split = s => String(s || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+  const node = (k, depth, color, label, sub, inner) => { const open = !!_hubKwOpen[slug + '|' + k];
+    return `<div style="margin-left:${depth * 14}px;border-left:3px solid ${color};padding-left:8px;margin-bottom:4px;">
+      <div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;user-select:none;font-size:11.5px;">
+        <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span></div>
+      ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
+  const topic = (t, depth) => { const kws = split(t.keywords);
+    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), `— ${t.staged ? 'staged' : 'committed'} · ${kws.length} keyword${kws.length === 1 ? '' : 's'}${t.searchIntent ? ' · ' + esc(t.searchIntent) : ''}`,
+      (kws.length ? pills(kws) : '<span style="font-size:11px;color:var(--text3);">No keywords.</span>') + (t.rationale ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;margin-top:3px;">${esc(t.rationale)}</div>` : '')); };
+  const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
+  const by = {}, un = [];
+  topics.forEach(t => { const c = K.tc.assign && K.tc.assign[t.id]; if (c && (K.tc.clusters || []).includes(c)) (by[c] = by[c] || []).push(t); else un.push(t); });
+  const master = split(K.master);
+  let out = node('master', 0, '#4ade80', 'Master', `— ${master.length} keyword${master.length === 1 ? '' : 's'}`, master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>');
+  (K.tc.clusters || []).forEach((c, ci) => { const ts = by[c] || [];
+    out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`, ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster.</span>'); });
+  if (un.length) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`, un.map(t => topic(t, 0)).join(''));
+  if (!topics.length && !(K.tc.clusters || []).length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
+  return out + (h.campaignId ? `<div style="margin-top:6px;"><a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" style="font-size:10.5px;color:var(--accent);text-decoration:none;">edit keywords in care-gap ↗</a></div>` : '');
 }
 // ── Content section: strategies made here (real Growth Strategy records) and the titles in each ──
 const _hubContent = {}, _hubContentBusy = {}, _hubContentOpen = {}, _hubContentTitles = {};
