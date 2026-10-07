@@ -13977,7 +13977,7 @@ function hubGridHead(pad) { return `<div style="${hubGridCols(pad)}font-size:9px
 function hubGridRow(o) {
   const cut = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', none = '<span style="color:var(--text3);">—</span>';
   const st = o.status ? `<span style="padding:0 6px;border-radius:8px;font-size:10px;background:${o.status === 'Published' ? 'rgba(74,222,128,.18)' : o.status === 'Publish' ? 'rgba(246,173,85,.2)' : 'rgba(127,127,127,.15)'};">${esc(o.status)}</span>` : none;
-  return `<div style="${hubGridCols(o.pad)}font-size:11px;border-top:1px dashed var(--border);">
+  return `<div style="${hubGridCols(o.pad)}font-size:11px;border-top:1px dashed var(--border);${o.bar ? `border-left:3px solid ${o.bar};padding-left:6px;` : ''}">
     <span style="${cut}" title="${esc(o.title)}">${esc(o.title) || none}</span>
     <span style="${cut}" title="${esc(o.typeTip || o.type || '')}">${o.typeHtml || esc(o.type) || none}</span>
     <span style="${cut}color:var(--text2);" title="${esc(o.method || '')}">${esc(o.method) || none}</span>
@@ -14031,6 +14031,7 @@ function renderHubKw(slug) {
 // ── Production → Products: Group → Stack → Product, every level collapsible (collapsed by default) ──
 const _hubProdOpen = {}, _hubProdHide = {};   // _hubProdHide[slug] = statuses filtered OUT
 const HUB_PROD_STATUSES = ['Planning', 'Development', 'Publish', 'Published'];
+const HUB_STATUS_COLOR = { Planning: '#9aa0a6', Development: '#63b3ed', Publish: '#f6ad55', Published: '#4ade80' };
 function hubProdFilter(slug, st) { const h = (_hubProdHide[slug] = _hubProdHide[slug] || {}); h[st] = !h[st]; const el = document.getElementById('hubProdTree-' + slug); if (el) el.innerHTML = hubProdTree(slug); }
 // ✎ product status modal → updateProductStatus (four statuses only)
 function hubProdEdit(slug, pid) {
@@ -14064,7 +14065,7 @@ function hubProdTree(slug) {
   const hide = _hubProdHide[slug] || {}, stOf = p => HUB_PROD_STATUSES.includes(p.status) ? p.status : 'Planning';
   const chips = `<div style="padding:2px 0 6px;display:flex;gap:5px;flex-wrap:wrap;align-items:center;font-size:10.5px;"><span style="color:var(--text3);">Status:</span>${HUB_PROD_STATUSES.map(x => {
     const n = prods.filter(p => stOf(p) === x).length, on = !hide[x];
-    return `<button onclick="hubProdFilter('${slug}','${x}')" title="${on ? 'Hide' : 'Show'} ${x}" style="font-size:10.5px;padding:1px 8px;border-radius:10px;cursor:pointer;border:1px solid ${on ? 'var(--accent)' : 'var(--border2)'};background:${on ? 'var(--surface2)' : 'transparent'};color:${on ? 'var(--text)' : 'var(--text3)'};${on ? '' : 'text-decoration:line-through;'}">${x} ${n}</button>`; }).join('')}</div>`;
+    return `<button onclick="hubProdFilter('${slug}','${x}')" title="${on ? 'Hide' : 'Show'} ${x}" style="font-size:10.5px;padding:1px 8px;border-radius:10px;cursor:pointer;border:1px solid ${on ? HUB_STATUS_COLOR[x] : 'var(--border2)'};background:${on ? 'var(--surface2)' : 'transparent'};color:${on ? 'var(--text)' : 'var(--text3)'};${on ? '' : 'text-decoration:line-through;'}"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${HUB_STATUS_COLOR[x]};margin-right:4px;"></span>${x} ${n}</button>`; }).join('')}</div>`;
   const shown = prods.filter(p => !hide[stOf(p)]);
   if (!shown.length) return chips + '<div style="font-size:11px;color:var(--text3);">No products with the selected statuses.</div>';
   const NOG = 'Ungrouped', NOS = 'No Stack', by = {};
@@ -14081,7 +14082,8 @@ function hubProdTree(slug) {
     let inner = '';
     if (_hubProdOpen[slug + '|' + gk]) Object.keys(stacks).sort((a, b) => (a === NOS) - (b === NOS) || a.localeCompare(b)).forEach(st => {
       const sk = 's:' + g + '|' + st, list = stacks[st];
-      inner += block('#8ab4f8', hdr(sk, 1, st, `— ${list.length}`), !_hubProdOpen[slug + '|' + sk] ? '' : hubGridHead(0) + list.map(p => hubGridRow({ pad: 0, title: p.name + (p.id === mo.mainId ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
+      list.sort((a, b) => HUB_PROD_STATUSES.indexOf(stOf(a)) - HUB_PROD_STATUSES.indexOf(stOf(b)) || a.name.localeCompare(b.name));   // by status, then name
+      inner += block('#8ab4f8', hdr(sk, 1, st, `— ${list.length}`), !_hubProdOpen[slug + '|' + sk] ? '' : hubGridHead(0) + list.map(p => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[stOf(p)], title: p.name + (p.id === mo.mainId ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
         links: `<button onclick="hubProdEdit('${slug}','${p.id}')" title="Edit status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join(''));
     });
     out += block('#f6ad55', hdr(gk, 0, g, `— ${count(stacks)} product${count(stacks) === 1 ? '' : 's'} · ${Object.keys(stacks).length} stack${Object.keys(stacks).length === 1 ? '' : 's'}`), inner);
