@@ -1004,9 +1004,9 @@
       <div id="hagBody" style="display:none;margin-top:10px;"></div>
     </div>
 
-    <div id="wpSection" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);">This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
+    <div id="wpSection" class="oc-sec" data-ock="tdweek" style="margin-bottom:18px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;">
+      <div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">
+        <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);"><span class="oc-chev" style="display:inline-block;width:12px;font-size:10px;">▶</span>This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;gap:6px;">
           <button onclick="wpSetAllGroups(true)" title="Expand all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▾ all</button>
           <button onclick="wpSetAllGroups(false)" title="Collapse all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ all</button>
@@ -1015,7 +1015,7 @@
           <button onclick="wpShiftWeek(1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">→</button>
         </span>
       </div>
-      <div id="wpBoard" style="display:grid;grid-template-columns:repeat(7,minmax(126px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px;"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div>
+      <div class="oc-bd" style="display:none;margin-top:8px;"><div id="wpBoard" style="display:grid;grid-template-columns:repeat(7,minmax(126px,1fr));gap:8px;overflow-x:auto;padding-bottom:4px;"><div class="loading-wrap"><div class="spinner"></div>Loading...</div></div></div>
     </div>
 
     <a class="add-link" onclick="openAddTdModal()">+ Add to do item</a>
