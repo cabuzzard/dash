@@ -16897,7 +16897,9 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       // Standalone: NOT the Notion "Information Flow Contract" page.
       if (body.action === "getInfoFlowTable") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        let t = null; try { t = await env.TRADES.get("infoflow:table:v1", "json"); } catch (e) {}
+        // body.name picks a separate table (e.g. "newflow"); no name = the original Flow table
+        const fkey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
+        let t = null; try { t = await env.TRADES.get(fkey, "json"); } catch (e) {}
         return json({ success: true, table: t || { columns: [{ id: "c1", name: "Stage" }, { id: "c2", name: "Input" }, { id: "c3", name: "Output" }], rows: [{ id: "r1", cells: {} }] } });
       }
       if (body.action === "saveInfoFlowTable") {
@@ -16909,7 +16911,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           const cells = {}; Object.entries(r?.cells || {}).forEach(([k, v]) => { if (colIds.has(k)) { const x = String(v || "").slice(0, 4000); if (x) cells[k] = x; } });
           return { id: String(r?.id || "").slice(0, 40), cells };
         }).filter(r => r.id);
-        await env.TRADES.put("infoflow:table:v1", JSON.stringify({ columns, rows, at: Date.now() }));
+        const fkey = body.name ? "infoflow:table:" + String(body.name).replace(/[^a-z0-9-]/gi, "").slice(0, 40) : "infoflow:table:v1";
+        await env.TRADES.put(fkey, JSON.stringify({ columns, rows, at: Date.now() }));
         return json({ success: true, saved: rows.length });
       }
 

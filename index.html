@@ -737,6 +737,12 @@
       <span id="flowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <div class="oc-bd"><div id="flowBody"></div></div></div>
+    <div class="oc-sec" data-ock="newflow"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">New Flow</h2>
+      <span style="font-size:11.5px;color:var(--text2);">Another table of your own. Click any cell or header to edit; it saves as you type.</span>
+      <span id="newFlowMsg" style="font-size:11px;color:var(--text3);"></span>
+    </div>
+    <div class="oc-bd"><div id="newFlowBody"></div></div></div>
     <div class="oc-sec" data-ock="pillar"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Pillar</h2>
       <span style="font-size:11.5px;color:var(--text2);">Brainstorm. Your notes on the right are the same notes as the care-gap Hub tab's Pillar section.</span>
@@ -4371,54 +4377,60 @@ async function plSave(btn) {
   } catch (e) { m.style.color = 'var(--danger)'; m.textContent = 'Not saved: ' + e.message; }
   btn.disabled = false;
 }
-// ── Flow: a free-form editable table (cells, add/remove rows + columns), saved as one KV blob ──
-let FLOW = null, FLOW_T = null;
+// ── Flow tables: free-form editable tables (cells, add/remove/move rows + columns), each saved as one KV blob.
+// 'main' = Flow (the original table), 'new' = New Flow. Same code for both; worker getInfoFlowTable / saveInfoFlowTable {name}.
+const FLOWS = {
+  main: { name: '', body: 'flowBody', msg: 'flowMsg', data: null, t: null },
+  new:  { name: 'newflow', body: 'newFlowBody', msg: 'newFlowMsg', data: null, t: null },
+};
 const flowId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-async function loadFlowTable() {
-  const el = document.getElementById('flowBody'); if (!el) return;
+async function loadFlowTable(k = 'main') {
+  const T = FLOWS[k], el = document.getElementById(T.body); if (!el) return;
   el.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
-  try { const r = await call('getInfoFlowTable'); if (r.error) throw new Error(r.error); FLOW = r.table; renderFlowTable(); }
+  try { const r = await call('getInfoFlowTable', T.name ? { name: T.name } : {}); if (r.error) throw new Error(r.error);
+    T.data = r.table; if (k !== 'main' && !r.table.at && !(r.table.rows || []).some(x => Object.keys(x.cells || {}).length)) T.data = { columns: [{ id: 'c1', name: 'Column 1' }, { id: 'c2', name: 'Column 2' }], rows: [{ id: 'r1', cells: {} }] };
+    renderFlowTable(k); }
   catch (e) { el.innerHTML = `<div style="color:var(--danger);font-size:12px;">Load failed: ${esc(e.message)}</div>`; }
 }
-function flowSaveSoon() {
-  const m = document.getElementById('flowMsg'); if (m) { m.style.color = 'var(--text3)'; m.textContent = 'Saving…'; }
-  clearTimeout(FLOW_T);
-  FLOW_T = setTimeout(async () => {
-    try { const r = await call('saveInfoFlowTable', { table: FLOW }); if (r.error) throw new Error(r.error); if (m) { m.style.color = 'var(--text3)'; m.textContent = '✓ Saved'; } }
+function flowSaveSoon(k = 'main') {
+  const T = FLOWS[k], m = document.getElementById(T.msg); if (m) { m.style.color = 'var(--text3)'; m.textContent = 'Saving…'; }
+  clearTimeout(T.t);
+  T.t = setTimeout(async () => {
+    try { const r = await call('saveInfoFlowTable', { table: T.data, ...(T.name ? { name: T.name } : {}) }); if (r.error) throw new Error(r.error); if (m) { m.style.color = 'var(--text3)'; m.textContent = '✓ Saved'; } }
     catch (e) { if (m) { m.style.color = 'var(--danger)'; m.textContent = 'Not saved: ' + e.message; } }
   }, 700);
 }
-function renderFlowTable() {
-  const el = document.getElementById('flowBody'), F = FLOW; if (!el || !F) return;
+function renderFlowTable(k = 'main') {
+  const T = FLOWS[k], el = document.getElementById(T.body), F = T.data; if (!el || !F) return;
   const btn = 'font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;';
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
   const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:vertical;font-family:inherit;';
   el.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;">
     <thead><tr>${F.columns.map((c, ci) => `<th style="padding:4px;border:1px solid var(--border);background:var(--surface2);min-width:${c.w || 160}px;text-align:left;vertical-align:top;">
         <div style="display:flex;align-items:center;gap:2px;">
-          <input value="${esc(c.name)}" placeholder="Column" oninput="FLOW.columns[${ci}].name=this.value;flowSaveSoon()" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
-          ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol(${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol(${ci},1)">▶</button>` : ''}
-          <button style="${xbtn}" title="Delete this column" onclick="flowDelCol(${ci})">✕</button></div></th>`).join('')}<th style="width:30px;border:1px solid var(--border);background:var(--surface2);"></th></tr></thead>
-    <tbody>${F.rows.map((r, ri) => `<tr>${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell(${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
-      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;">${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow(${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow(${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow(${ri})">✕</button></td></tr>`).join('')}</tbody>
+          <input value="${esc(c.name)}" placeholder="Column" oninput="FLOWS['${k}'].data.columns[${ci}].name=this.value;flowSaveSoon('${k}')" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
+          ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol('${k}',${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol('${k}',${ci},1)">▶</button>` : ''}
+          <button style="${xbtn}" title="Delete this column" onclick="flowDelCol('${k}',${ci})">✕</button></div></th>`).join('')}<th style="width:30px;border:1px solid var(--border);background:var(--surface2);"></th></tr></thead>
+    <tbody>${F.rows.map((r, ri) => `<tr>${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;">${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`).join('')}</tbody>
   </table></div>
-  <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow()">+ Row</button><button style="${btn}" onclick="flowAddCol()">+ Column</button></div>`;
+  <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow('${k}')">+ Row</button><button style="${btn}" onclick="flowAddCol('${k}')">+ Column</button></div>`;
   el.querySelectorAll('textarea').forEach(flowGrow);
 }
 function flowGrow(t) { t.style.height = 'auto'; t.style.height = Math.max(28, t.scrollHeight + 2) + 'px'; }
-function flowCell(ri, cid, t) { const r = FLOW.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(); }
-function flowAddRow() { FLOW.rows.push({ id: flowId('r'), cells: {} }); renderFlowTable(); flowSaveSoon(); }
-function flowAddCol() { FLOW.columns.push({ id: flowId('c'), name: 'New column' }); renderFlowTable(); flowSaveSoon(); }
-function flowDelRow(ri) {
-  const r = FLOW.rows[ri]; if (Object.values(r.cells || {}).some(v => String(v).trim()) && !confirm('Delete this row and its text?')) return;
-  FLOW.rows.splice(ri, 1); renderFlowTable(); flowSaveSoon();
+function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
+function flowAddRow(k) { FLOWS[k].data.rows.push({ id: flowId('r'), cells: {} }); renderFlowTable(k); flowSaveSoon(k); }
+function flowAddCol(k) { FLOWS[k].data.columns.push({ id: flowId('c'), name: 'New column' }); renderFlowTable(k); flowSaveSoon(k); }
+function flowDelRow(k, ri) {
+  const F = FLOWS[k].data, r = F.rows[ri]; if (Object.values(r.cells || {}).some(v => String(v).trim()) && !confirm('Delete this row and its text?')) return;
+  F.rows.splice(ri, 1); renderFlowTable(k); flowSaveSoon(k);
 }
-function flowDelCol(ci) {
-  const c = FLOW.columns[ci]; if (FLOW.rows.some(r => String((r.cells || {})[c.id] || '').trim()) && !confirm(`Delete the column "${c.name}" and everything in it?`)) return;
-  FLOW.columns.splice(ci, 1); FLOW.rows.forEach(r => { if (r.cells) delete r.cells[c.id]; }); renderFlowTable(); flowSaveSoon();
+function flowDelCol(k, ci) {
+  const F = FLOWS[k].data, c = F.columns[ci]; if (F.rows.some(r => String((r.cells || {})[c.id] || '').trim()) && !confirm(`Delete the column "${c.name}" and everything in it?`)) return;
+  F.columns.splice(ci, 1); F.rows.forEach(r => { if (r.cells) delete r.cells[c.id]; }); renderFlowTable(k); flowSaveSoon(k);
 }
-function flowMoveRow(ri, d) { const a = FLOW.rows; [a[ri], a[ri + d]] = [a[ri + d], a[ri]]; renderFlowTable(); flowSaveSoon(); }
-function flowMoveCol(ci, d) { const a = FLOW.columns; [a[ci], a[ci + d]] = [a[ci + d], a[ci]]; renderFlowTable(); flowSaveSoon(); }
+function flowMoveRow(k, ri, d) { const a = FLOWS[k].data.rows; [a[ri], a[ri + d]] = [a[ri + d], a[ri]]; renderFlowTable(k); flowSaveSoon(k); }
+function flowMoveCol(k, ci, d) { const a = FLOWS[k].data.columns; [a[ci], a[ci + d]] = [a[ci + d], a[ci]]; renderFlowTable(k); flowSaveSoon(k); }
 // ── Output row GROUPS (shared by the dashboard Output tab and every hub's board; KV hubout:groups) ──
 // Group header rows live in the SAME table: collapsible (remembered per browser), with per-week subtotals.
 function ogSections(ids, G) {
@@ -5271,7 +5283,7 @@ function loadTabContent(name) {
   if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
-  if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable(); plLoad(); }
+  if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); loadFlowTable('new'); plLoad(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; loadDev2(); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
