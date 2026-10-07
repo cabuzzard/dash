@@ -13929,7 +13929,7 @@ function renderHubBuildRows(slug) {
     let ctrl;
     if (s.link === 'microsite') {
       ctrl = s.done
-        ? '<span style="font-size:10px;color:#4ade80;flex-shrink:0;">live</span>'
+        ? `<span style="font-size:10px;color:#4ade80;flex-shrink:0;">${esc(s.doneText || 'live')}</span>`
         : (msUrl
           ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);text-decoration:none;flex-shrink:0;">microsite ↗</a>`
           : '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">no microsite</span>');

@@ -12315,7 +12315,14 @@ the one aesthetic risk taken + why:`;
           // manual step). Content / research / design / offers / blog /
           // email are authored from the campaign microsite — the checklist
           // just reports whether the result is live and links out.
+          // Main offering: the one product the hub is built around (the Content Hub asset's Product, else the
+          // campaign's first product — same resolution as getHubMainProduct)
+          let mainName = "";
+          if (productId) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(productId)}`, { headers: nhdr }).then(r => r.json());
+            mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
           const steps = [
+            { id: "mainproduct", phase: "Main offering", label: productId ? `Main product — ${mainName || "set"}` : "Main product", link: "microsite",
+              doneText: "set", done: !!productId, hint: productId ? "" : "pick the hub's Main Product from the microsite (Content Hub method)" },
             { id: "offers",     phase: "Content",   label: "Offers published on the hub", link: "microsite",
               done: offerLive, hint: offerLive ? "" : "build offers from the microsite" },
             { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
