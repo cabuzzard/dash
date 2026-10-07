@@ -16895,6 +16895,11 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       // ── Information flow table ── dashboard Output tab: a free-form operator table (editable cells, add/remove
       // rows and columns). One KV blob, replaced wholesale on save: { columns:[{id,name}], rows:[{id,cells:{colId:text}}] }.
       // Standalone: NOT the Notion "Information Flow Contract" page.
+      if (body.action === "utilityScout") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        try { return json({ success: true, ...(await utilityScout(env, body)) }); }
+        catch (e) { return json({ error: e.message }, e.budget ? 429 : 400); }
+      }
       if (body.action === "getInfoFlowTable") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         // body.name picks a separate table (e.g. "newflow"); no name = the original Flow table
@@ -46314,6 +46319,112 @@ function kwResultsSql(body, runs, forExport) {
 // search. Read-only; returns "" when the store has nothing relevant (prompts then
 // behave exactly as before).
 const KW_STOP = new Set("the and for with from your you are how what why when who best near into that this does can get make use using about over free top vs".split(" "));
+
+// ════════ 🧰 Utility site scout (2026-10-07) ════════
+// Seed keyword → utility-intent searches (Google Ads ideas, cached + budgeted like the Keywords tab) → Claude groups
+// them into tool ideas → Google top-10 per idea (Apify google-search-scraper) + domain ages (RDAP, cached) → score.
+// The video model: high demand + a simple tool can answer it + weak SERP (young / forum / thin sites on page one).
+// Standalone: stored in KV util:scout:<slug> (+ util:scouts index); never touches campaigns.
+const UTIL_MODS = ["calculator", "cost calculator", "estimator", "checker", "generator", "converter", "planner", "finder", "size calculator", "cost", "how much", "how many"];
+const UTIL_RX = /\b(calculator|calc|estimator|estimate|solver|generator|checker|check|converter|convert|planner|finder|lookup|tracker|counter|chart|template|quiz|simulator|tester|how much|how many|how long|what size|cost|costs|price|prices|per (square|sq)|vs\.?)\b/i;
+const UTIL_UGC = /(^|\.)(reddit|quora|facebook|youtube|pinterest|medium|tiktok|instagram|x|twitter|linkedin|stackexchange|stackoverflow|houzz|answers\.yahoo)\.com$|(^|\.)forum|\.fandom\.com$/i;
+const utilSlug = s => String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+async function utilDomainAge(env, host) {
+  const d = String(host || "").replace(/^www\./, "").split(".").slice(-2).join(".");
+  if (!d) return null;
+  const k = "rdap:" + d;
+  try { const c = await env.TRADES.get(k, "json"); if (c) return c.years; } catch (e) {}
+  let years = null;
+  try {
+    const r = await fetch("https://rdap.org/domain/" + d, { headers: { Accept: "application/rdap+json" }, cf: { cacheTtl: 86400 } });
+    if (r.ok) { const j = await r.json(); const ev = (j.events || []).find(e => /registration/i.test(e.eventAction || ""));
+      if (ev && ev.eventDate) years = Math.round(((Date.now() - Date.parse(ev.eventDate)) / (365.25 * 864e5)) * 10) / 10; }
+  } catch (e) {}
+  try { await env.TRADES.put(k, JSON.stringify({ years }), { expirationTtl: 60 * 60 * 24 * 90 }); } catch (e) {}
+  return years;
+}
+function utilScore(idea) {
+  const vol = idea.volume || 0, demand = Math.min(5, Math.log10(vol + 1));
+  const s = idea.serp || {}, young = s.young || 0, ugc = s.ugc || 0, old = s.old || 0;
+  const weak = Math.min(10, young * 1.5 + ugc);
+  const score = Math.round((demand * 2 + weak - old * 0.3 - ((idea.complexity || 3) - 1) * 0.5) * 10) / 10;
+  const verdict = !idea.serp ? "not checked" : score >= 12 ? "Strong" : score >= 8 ? "Worth a look" : "Hard";
+  return { score, verdict };
+}
+async function utilityScout(env, body) {
+  const op = body.op || "list";
+  if (op === "list") { let idx = []; try { idx = (await env.TRADES.get("util:scouts", "json")) || []; } catch (e) {} return { scouts: idx }; }
+  const seed = String(body.seed || "").trim().toLowerCase().slice(0, 80), slug = utilSlug(seed);
+  if (!seed) throw new Error("Seed keyword required");
+  const key = "util:scout:" + slug;
+  if (op === "get") { const sc = await env.TRADES.get(key, "json"); if (!sc) throw new Error("No scout for that seed yet"); return { scout: sc }; }
+  if (op === "start") {
+    // 1) seed + utility modifiers → Google Ads ideas (cached / budgeted, also lands in the Keywords store)
+    const market = await kwMarket(env, body);
+    const seeds = [seed, ...UTIL_MODS.map(m => /^how /.test(m) ? `${m} ${seed}` : `${seed} ${m}`)].slice(0, 20);
+    const req = await kwIdeasRequest(env, { keywords: seeds }, market);
+    const rows = (await env.KWDB.prepare("SELECT k.text t, MAX(m.avg_monthly_searches) v, MAX(m.competition_index) ci, MAX(m.high_top_of_page_bid) hb FROM kw_request_results r JOIN kw_keywords k ON k.id = r.keyword_id LEFT JOIN kw_metrics m ON m.keyword_id = k.id WHERE r.request_id = ? GROUP BY k.id").bind(req.requestId).all()).results || [];
+    const util = rows.filter(r => UTIL_RX.test(r.t) && (r.v || 0) > 0).sort((a, b) => (b.v || 0) - (a.v || 0)).slice(0, 220);
+    if (!util.length) throw new Error("No tool-style searches found for that seed — try a broader seed");
+    // 2) Claude groups them into tool ideas a simple web app could answer
+    const list = util.map(r => `${r.t} | ${r.v}`).join("\n");
+    const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content:
+`These are real Google searches (keyword | monthly US searches) around the seed "${seed}". Group them into 6-14 UTILITY TOOL ideas: small single-purpose web apps (calculator, estimator, checker, generator, converter, planner, finder) that would directly answer those searches. Only include a group if a simple tool truly answers it (skip pure information queries). For each: a short tool name, one-sentence what it does, the primary (best) keyword, the keywords it covers (exactly as given), build complexity 1-5 (1 = a formula, 5 = needs live data / external APIs), and up to 6 long-tail page ideas the tool could naturally generate (e.g. sizes, materials, states).
+SEARCHES:
+${list}
+Call submit_ideas.` }],
+        tools: [{ name: "submit_ideas", description: "Tool ideas", input_schema: { type: "object", required: ["ideas"], properties: { ideas: { type: "array", items: { type: "object",
+          required: ["name", "what", "primary", "keywords", "complexity"], properties: { name: { type: "string" }, what: { type: "string" }, primary: { type: "string" },
+            keywords: { type: "array", items: { type: "string" } }, complexity: { type: "integer" }, pages: { type: "array", items: { type: "string" } } } } } } } }],
+        tool_choice: { type: "tool", name: "submit_ideas" } }) });
+    const ad = await ar.json().catch(() => ({}));
+    if (!ar.ok) throw new Error((ad.error && ad.error.message) || "Claude API error");
+    const raw = (((ad.content || []).find(b => b.type === "tool_use") || {}).input || {}).ideas || [];
+    const vol = {}; util.forEach(r => { vol[r.t] = r.v || 0; });
+    const ideas = raw.map((x, i) => {
+      const kws = (x.keywords || []).filter(k => vol[k] != null);
+      const idea = { id: "i" + i, name: String(x.name || "").slice(0, 80), what: String(x.what || "").slice(0, 300), primary: String(x.primary || kws[0] || "").slice(0, 120),
+        keywords: kws.map(k => ({ t: k, v: vol[k] })).sort((a, b) => b.v - a.v), volume: kws.reduce((t, k) => t + vol[k], 0),
+        complexity: Math.max(1, Math.min(5, parseInt(x.complexity) || 3)), pages: (x.pages || []).slice(0, 6).map(v => String(v).slice(0, 120)) };
+      return Object.assign(idea, utilScore(idea));
+    }).filter(x => x.primary && x.volume > 0).sort((a, b) => b.volume - a.volume);
+    const sc = { seed, slug, at: Date.now(), market: market.geoLabels.join(", "), searches: util.length, ideas };
+    await env.TRADES.put(key, JSON.stringify(sc));
+    let idx = []; try { idx = (await env.TRADES.get("util:scouts", "json")) || []; } catch (e) {}
+    idx = [{ seed, slug, at: sc.at, ideas: ideas.length }].concat(idx.filter(x => x.slug !== slug)).slice(0, 100);
+    await env.TRADES.put("util:scouts", JSON.stringify(idx));
+    return { scout: sc };
+  }
+  if (op === "serp") {
+    // 3) Google top 10 for up to 3 ideas per call (Apify), domain ages via RDAP, then re-score
+    const sc = await env.TRADES.get(key, "json"); if (!sc) throw new Error("Run the seed first");
+    if (!(env.APIFY_TOKEN || "").trim()) throw new Error("APIFY_TOKEN not set on the worker");
+    const want = (Array.isArray(body.ids) ? body.ids : []).slice(0, 3);
+    const ideas = sc.ideas.filter(x => want.includes(x.id)); if (!ideas.length) return { scout: sc };
+    const items = await callApifyActor(env.APIFY_TOKEN.trim(), "apify~google-search-scraper",
+      { queries: ideas.map(x => x.primary).join("\n"), resultsPerPage: 10, maxPagesPerQuery: 1, countryCode: "us", languageCode: "en", mobileResults: false }, 120);
+    for (const idea of ideas) {
+      const it = items.find(r => String(r.searchQuery?.term || "").toLowerCase() === idea.primary.toLowerCase()) || items[ideas.indexOf(idea)] || {};
+      const org = (it.organicResults || []).slice(0, 10);
+      const res = [];
+      for (const o of org) {
+        let host = ""; try { host = new URL(o.url).hostname.replace(/^www\./, ""); } catch (e) {}
+        const ugc = UTIL_UGC.test(host), years = ugc ? null : await utilDomainAge(env, host);
+        res.push({ pos: o.position, host, title: String(o.title || "").slice(0, 120), url: o.url, years, ugc });
+      }
+      idea.serp = { at: Date.now(), results: res,
+        young: res.filter(r => r.years != null && r.years < 4).length,
+        ugc: res.filter(r => r.ugc).length,
+        old: res.filter(r => r.years != null && r.years >= 12).length };
+      Object.assign(idea, utilScore(idea));
+    }
+    await env.TRADES.put(key, JSON.stringify(sc));
+    return { scout: sc };
+  }
+  throw new Error("Unknown op");
+}
 async function kwDemandBlock(env, keywordsText, opts) {
   opts = opts || {};
   try {

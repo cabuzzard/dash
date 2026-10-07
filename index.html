@@ -1086,6 +1086,19 @@
       <span id="kwStats" style="font-size:11px;color:var(--text3);"></span>
       <a class="add-link" onclick="kwRefresh()">↺ Refresh</a>
     </div>
+    <section style="margin:0 0 14px;padding:12px 14px;border:1px solid var(--border2);border-radius:10px;background:var(--surface2);">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <b style="font-size:13.5px;color:var(--ink, var(--text));">🧰 Utility site scout</b>
+        <span style="font-size:11px;color:var(--ink3, var(--text3));">Seed keyword → tool-style Google searches → tool ideas → who ranks on Google → score. Find small calculators / checkers worth building.</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+        <input id="usSeed" placeholder="Seed keyword, e.g. deck, mulch, salary" onkeydown="if(event.key==='Enter')usRun(this.nextElementSibling)" style="flex:1;min-width:180px;font-size:12px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface,transparent);color:var(--ink, var(--text));">
+        <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--ink, var(--text));cursor:pointer;font-weight:700;" onclick="usRun(this)">🔎 Scout</button>
+        <select id="usPast" onfocus="if(!this.dataset.loaded){this.dataset.loaded=1;usLoadPast();}" onchange="if(this.value)usOpen(this.value)" style="font-size:11.5px;padding:4px;border:1px solid var(--border2);border-radius:6px;background:var(--surface,transparent);color:var(--ink, var(--text));max-width:220px;"><option value="">Past scouts…</option></select>
+      </div>
+      <div id="usMsg" style="font-size:11.5px;color:var(--ink3, var(--text3));margin-top:6px;min-height:14px;"></div>
+      <div id="usBody"></div>
+    </section>
 
     <div style="border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;margin-bottom:12px;">
       <div class="kw-h">New search</div>
@@ -5326,7 +5339,7 @@ function loadTabContent(name) {
   if (name === 'platforms') { loadPlatformMatrix(); if (!smAccsLoaded) loadSmAccounts(); if (!emailsLoaded) loadEmails(); }
   if (name === 'domains'   && !domTabLoaded) { domTabLoaded = true; initDomainsTab(); loadSmAccounts(); loadEmails(); }
   if (name === 'links'     && !linksLoaded)  { linksLoaded  = true; loadLinks(); }
-  if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); }
+  if (name === 'keywords'  && !keywordsLoaded) { keywordsLoaded = true; loadKeywordsTab(); usLoadPast(); }
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); loadFlowTable('new'); plLoad(); }
@@ -20628,6 +20641,61 @@ async function verLink() {
   try { await navigator.clipboard.writeText(cur); } catch (e) {}
   const next = prompt('This page\'s address (already copied). Edit it and press OK to open it:', cur);
   if (next && next.trim() && next.trim() !== cur) location.href = next.trim();
+}
+
+// ── 🧰 Utility site scout (worker utilityScout): seed → tool ideas → Google top-10 check → score ──
+let US = null;
+async function usApi(op, extra) { const r = await call('utilityScout', { op, ...extra }); if (!r || r.error) throw new Error((r && r.error) || 'No response'); return r; }
+async function usLoadPast() {
+  try { const r = await usApi('list'); const sel = document.getElementById('usPast'); if (!sel) return;
+    sel.innerHTML = '<option value="">Past scouts…</option>' + (r.scouts || []).map(x => `<option value="${esc(x.seed)}">${esc(x.seed)} · ${x.ideas} ideas · ${new Date(x.at).toLocaleDateString()}</option>`).join(''); } catch (e) {}
+}
+async function usRun(btn) {
+  const seed = (document.getElementById('usSeed').value || '').trim(); if (!seed) return;
+  const m = document.getElementById('usMsg'), o = btn.textContent; btn.disabled = true; btn.textContent = 'Scouting…';
+  m.textContent = 'Pulling Google searches for "' + seed + '" and grouping them into tool ideas (about 30-60 seconds)…';
+  try { US = (await usApi('start', { seed })).scout; m.textContent = `✓ ${US.ideas.length} tool ideas from ${US.searches} tool-style searches (${US.market}). Check Google on the ones you like, or ✓ Check all.`; usDraw(); usLoadPast(); }
+  catch (e) { m.textContent = 'Not finished: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
+}
+async function usOpen(seed) { const m = document.getElementById('usMsg'); try { US = (await usApi('get', { seed })).scout; document.getElementById('usSeed').value = US.seed; m.textContent = ''; usDraw(); } catch (e) { m.textContent = e.message; } }
+async function usCheck(ids, btn) {
+  const m = document.getElementById('usMsg'); if (btn) btn.disabled = true;
+  try {
+    for (let i = 0; i < ids.length; i += 3) {
+      m.textContent = `Checking Google top 10… ${Math.min(i + 3, ids.length)}/${ids.length}`;
+      US = (await usApi('serp', { seed: US.seed, ids: ids.slice(i, i + 3) })).scout; usDraw();
+    }
+    m.textContent = '✓ Checked. Sorted by score below.';
+  } catch (e) { m.textContent = 'Google check failed: ' + e.message; }
+  if (btn) btn.disabled = false;
+}
+function usToggle(id) { const r = document.getElementById('usD-' + id); if (r) r.style.display = r.style.display === 'none' ? '' : 'none'; }
+function usDraw() {
+  const el = document.getElementById('usBody'); if (!el || !US) return;
+  const ink3 = 'var(--ink3, var(--text3))', B = 'font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:6px;background:transparent;color:inherit;cursor:pointer;';
+  const ideas = US.ideas.slice().sort((a, b) => (b.serp ? 1 : 0) - (a.serp ? 1 : 0) || b.score - a.score || b.volume - a.volume);
+  const unchecked = ideas.filter(x => !x.serp).map(x => x.id);
+  const vcol = v => v === 'Strong' ? 'rgba(74,222,128,.25)' : v === 'Worth a look' ? 'rgba(246,173,85,.25)' : v === 'Hard' ? 'rgba(248,113,113,.2)' : 'rgba(127,127,127,.15)';
+  el.innerHTML = `<div style="display:flex;gap:6px;align-items:center;margin:6px 0;flex-wrap:wrap;">
+      ${unchecked.length ? `<button style="${B}" onclick="usCheck(${JSON.stringify(unchecked).replace(/"/g, '&quot;')}, this)">✓ Check all on Google (${unchecked.length})</button>` : ''}
+      <span style="font-size:10.5px;color:${ink3};">Score = demand + weak Google results (young sites, forums) − old big sites − build effort. Each Google check is one small Apify search.</span></div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;">
+    <thead><tr style="text-align:left;color:${ink3};font-size:10px;text-transform:uppercase;letter-spacing:.04em;">
+      <th style="padding:4px 6px;">Verdict</th><th style="padding:4px 6px;">Tool idea</th><th style="padding:4px 6px;">Main search</th><th style="padding:4px 6px;text-align:right;">Searches / mo</th><th style="padding:4px 6px;">Build</th><th style="padding:4px 6px;">Google top 10</th><th></th></tr></thead>
+    <tbody>${ideas.map(x => `<tr style="border-top:1px solid var(--border2);">
+      <td style="padding:6px;white-space:nowrap;"><span style="padding:2px 8px;border-radius:9px;background:${vcol(x.verdict)};font-weight:700;">${esc(x.verdict)}</span>${x.serp ? ` <span style="color:${ink3};">${x.score}</span>` : ''}</td>
+      <td style="padding:6px;"><b>${esc(x.name)}</b><div style="font-size:11px;color:${ink3};">${esc(x.what)}</div></td>
+      <td style="padding:6px;">${esc(x.primary)}</td>
+      <td style="padding:6px;text-align:right;">${(x.volume || 0).toLocaleString()}</td>
+      <td style="padding:6px;white-space:nowrap;" title="1 = a formula · 5 = needs live data / APIs">${'●'.repeat(x.complexity)}${'○'.repeat(5 - x.complexity)}</td>
+      <td style="padding:6px;white-space:nowrap;">${x.serp ? `🌱 ${x.serp.young} young · 💬 ${x.serp.ugc} forums · 🏛 ${x.serp.old} old` : `<button style="${B}" onclick="usCheck(['${x.id}'], this)">Check Google</button>`}</td>
+      <td style="padding:6px;"><button style="${B}" onclick="usToggle('${x.id}')">details</button></td></tr>
+      <tr id="usD-${x.id}" style="display:none;"><td colspan="7" style="padding:6px 10px 12px;font-size:11.5px;">
+        <div><b>Searches it covers:</b> ${x.keywords.map(k => `${esc(k.t)} <span style="color:${ink3};">(${k.v.toLocaleString()})</span>`).join(' · ')}</div>
+        ${x.pages && x.pages.length ? `<div style="margin-top:4px;"><b>Long-tail pages it could generate:</b> ${x.pages.map(esc).join(' · ')}</div>` : ''}
+        ${x.serp ? `<div style="margin-top:6px;"><b>Who ranks for "${esc(x.primary)}":</b><ol style="margin:4px 0 0 18px;padding:0;">${x.serp.results.map(r => `<li><a href="${esc(r.url)}" target="_blank" rel="noopener" style="color:inherit;">${esc(r.host)}</a> <span style="color:${ink3};">${r.ugc ? '💬 forum / social' : r.years != null ? (r.years < 4 ? '🌱 ' : r.years >= 12 ? '🏛 ' : '') + r.years + ' yrs old' : 'age unknown'} · ${esc(r.title)}</span></li>`).join('')}</ol></div>` : ''}
+      </td></tr>`).join('')}</tbody></table></div>`;
 }
 </script>
 
