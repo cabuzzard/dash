@@ -13495,6 +13495,74 @@ Return: {
         return json({ success: true });
       }
 
+      // ── hubContent ── the Content Hubs card's "Content" section. Lists ONLY the strategies created there
+      // (KV hub:content:<campaignId> = {strategies:[ids]}), each a real 🚀 Growth Strategy record (Campaign + the
+      // hub's main offering as Product, Status Draft). Titles join a strategy through their own Growth Strategy relation.
+      // ops: list · createStrategy {name} · dropStrategy {strategyId} (off this list only — the record stays) ·
+      //      newTitle {strategyId, title} · addTitle {strategyId, titleId} · removeTitle {titleId} · titles (campaign's titles)
+      if (body.action === "hubContent") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (cid.length !== 32) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = String(raw || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const key = "hub:content:" + cid;
+        let st = { strategies: [] }; try { st = (await env.TRADES.get(key, "json")) || st; } catch (e) {}
+        const txt = a => (a || []).map(t => t.plain_text).join("").trim();
+        const patchPage = (id, properties) => fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties }) })
+          .then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion update failed"); } return r.json(); });
+        const op = body.op || "list";
+        try {
+          if (op === "titles") {
+            const rows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dash(cid) } } });
+            return json({ titles: rows.map(t => ({ id: t.id.replace(/-/g, ""), title: txt(t.properties?.Title?.title) || "Untitled", status: t.properties?.Status?.select?.name || "",
+              strategyId: ((t.properties?.["Growth Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "") })).sort((a, b) => a.title.localeCompare(b.title)) });
+          }
+          if (op === "createStrategy") {
+            const name = String(body.name || "").trim().slice(0, 200);
+            if (!name) return json({ error: "Strategy name required" }, 400);
+            let mainProduct = null; try { mainProduct = await env.TRADES.get("hub:mainproduct:" + cid); } catch (e) {}
+            const props = { "Strategy Name": { title: [{ text: { content: name } }] }, "Campaign": { relation: [{ id: dash(cid) }] },
+              "Status": { select: { name: "Draft" } }, "Summary": { rich_text: [{ text: { content: "Created from the Content Hubs card (Content section)." } }] } };
+            if (mainProduct) props["Product"] = { relation: [{ id: dash(mainProduct) }] };
+            const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: GROWTH_STRATEGY_DB }, properties: props }) });
+            const d = await r.json(); if (!r.ok) return json({ error: d.message || "Create failed" }, r.status);
+            st.strategies = [d.id.replace(/-/g, "")].concat(st.strategies || []);
+            await env.TRADES.put(key, JSON.stringify(st));
+            return json({ success: true, id: d.id.replace(/-/g, "") });
+          }
+          if (op === "dropStrategy") {
+            st.strategies = (st.strategies || []).filter(x => x !== String(body.strategyId || "").replace(/-/g, ""));
+            await env.TRADES.put(key, JSON.stringify(st)); return json({ success: true });
+          }
+          if (op === "addTitle" || op === "removeTitle") {
+            if (!body.titleId) return json({ error: "titleId required" }, 400);
+            await patchPage(body.titleId, { "Growth Strategy": { relation: op === "addTitle" ? [{ id: dash(body.strategyId) }] : [] } });
+            return json({ success: true });
+          }
+          if (op === "newTitle") {
+            const title = String(body.title || "").trim().slice(0, 1990);
+            if (!title || !body.strategyId) return json({ error: "title and strategyId required" }, 400);
+            let mainProduct = null; try { mainProduct = await env.TRADES.get("hub:mainproduct:" + cid); } catch (e) {}
+            const props = { Title: { title: [{ text: { content: title } }] }, Status: { select: { name: "Planning" } },
+              Campaign: { relation: [{ id: dash(cid) }] }, "Growth Strategy": { relation: [{ id: dash(body.strategyId) }] } };
+            if (mainProduct) props["product"] = { relation: [{ id: dash(mainProduct) }] };
+            const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: props }) });
+            const d = await r.json(); if (!r.ok) return json({ error: d.message || "Create failed" }, r.status);
+            return json({ success: true, id: d.id.replace(/-/g, "") });
+          }
+          // list
+          const strategies = await Promise.all((st.strategies || []).map(async id => {
+            const pg = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            if (!pg || pg.object === "error" || pg.archived) return null;
+            const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(id) } } }).catch(() => []);
+            return { id, name: txt(pg.properties?.["Strategy Name"]?.title) || "Untitled strategy", status: pg.properties?.Status?.select?.name || "",
+              titles: titles.map(t => ({ id: t.id.replace(/-/g, ""), title: txt(t.properties?.Title?.title) || "Untitled", status: t.properties?.Status?.select?.name || "" }))
+                .sort((a, b) => a.title.localeCompare(b.title)) };
+          }));
+          return json({ strategies: strategies.filter(Boolean) });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
+
       if (body.action === "createDevTitle") {
         // Extended idea-input shape: an idea (the title) plus optional method/
         // product relations, a content description (→ Core Idea), seed
