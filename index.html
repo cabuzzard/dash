@@ -13844,6 +13844,15 @@ function renderHubsTab() {
           <span style="font-size:11px;color:var(--text);">Keywords</span>
           ${h.campaignId ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="font-size:10.5px;color:var(--accent);text-decoration:none;">edit keywords in care-gap ↗</a>` : ''}</div>
         <div id="hubKwBody-${slug}" style="display:${_hubContentOpen[slug + '|kw'] ? '' : 'none'};padding:2px 12px 8px 34px;">${renderHubKw(slug)}</div>
+        ${(() => { const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), prods = mo ? (mo.products || []) : null, open = !!_hubContentOpen[slug + '|pr'];
+          // committed products for the hub = the campaign's real Products records (same list as the Main offering picker)
+          return `<div onclick="_hubContentOpen['${slug}|pr']=!_hubContentOpen['${slug}|pr'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|pr']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|pr']?'▼':'▶'" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
+            <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>
+            <span style="font-size:11px;color:var(--text);flex:1;">Products <span style="color:var(--text3);">${prods ? '— ' + prods.length : ''}</span></span></div>
+          <div style="display:${open ? '' : 'none'};padding:2px 0 6px;">${!prods ? '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">Loading…</div>'
+            : prods.length ? hubGridHead() + prods.map(p => hubGridRow({ title: p.name + (p.id === mo.mainId ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
+                links: `<a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join('')
+            : '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">No products committed to this campaign yet.</div>'}</div>`; })()}
         <div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
           <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span>
           <span style="font-size:11px;color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>

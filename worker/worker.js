@@ -12322,7 +12322,9 @@ the one aesthetic risk taken + why:`;
           // campaign's first product — same resolution as getHubMainProduct)
           const campProducts = (await notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashHb(campaignId) } } }).catch(() => []))
             .filter(p => !p.archived && !p.properties?.Archived?.checkbox)
-            .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: p.properties?.Status?.select?.name || "" }))
+            .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: p.properties?.Status?.select?.name || "",
+              stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim(), type: (p.properties?.Type?.rich_text || []).map(t => t.plain_text).join("").trim(),
+              date: (p.created_time || "").slice(0, 10) }))
             .sort((a, b) => a.name.localeCompare(b.name));
           const mainId = ctxH.mainChosen ? productId : null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
