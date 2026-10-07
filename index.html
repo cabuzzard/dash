@@ -5578,6 +5578,31 @@ document.addEventListener('keydown', ev => {
   const next = tabs[((i < 0 ? 0 : i) + d + tabs.length) % tabs.length];
   next.click(); next.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 });
+// Drag the tabs left / right to reorder them; the order is remembered in this browser (localStorage tabOrder)
+function tabKey(t) { const m = (t.getAttribute('onclick') || '').match(/switchTab\('([^']+)'\)/); return m ? m[1] : ''; }
+(function tabDragInit() {
+  const bar = document.querySelector('.tabs'); if (!bar) return;
+  const tabs = () => [...bar.querySelectorAll('.tab')].filter(tabKey);
+  try { const order = JSON.parse(localStorage.getItem('tabOrder') || '[]');
+    if (order.length) { const byKey = {}; tabs().forEach(t => { byKey[tabKey(t)] = t; });
+      order.forEach(k => { if (byKey[k]) bar.appendChild(byKey[k]); });   // tabs not in the saved order keep their place after
+      tabs().filter(t => !order.includes(tabKey(t))).forEach(t => bar.appendChild(t)); } } catch (e) {}
+  let drag = null;
+  tabs().forEach(t => { t.draggable = true; });
+  bar.addEventListener('dragstart', ev => { const t = ev.target.closest && ev.target.closest('.tab'); if (!t || !tabKey(t)) return;
+    drag = t; t.style.opacity = '.5'; ev.dataTransfer.effectAllowed = 'move'; try { ev.dataTransfer.setData('text/plain', tabKey(t)); } catch (e) {} });
+  bar.addEventListener('dragover', ev => {
+    if (!drag) return; ev.preventDefault();
+    const over = ev.target.closest && ev.target.closest('.tab'); if (!over || over === drag || !tabKey(over)) return;
+    const r = over.getBoundingClientRect();
+    bar.insertBefore(drag, ev.clientX < r.left + r.width / 2 ? over : over.nextSibling);
+  });
+  bar.addEventListener('drop', ev => { if (drag) ev.preventDefault(); });
+  bar.addEventListener('dragend', () => {
+    if (!drag) return; drag.style.opacity = ''; drag = null;
+    try { localStorage.setItem('tabOrder', JSON.stringify(tabs().map(tabKey))); } catch (e) {}
+  });
+})();
 // Load whatever tab-panel is marked active in the DOM — used on session
 // restore so the default tab (TD, leftmost) fetches its data on load.
 function loadActiveTab() {
