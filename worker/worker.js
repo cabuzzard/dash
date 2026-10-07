@@ -9189,7 +9189,7 @@ function _sourcedLeadRow(p) {
 // ── Bulk hub research + strategy ──────────────────────────────────────
 // One-time backfill (operator-triggered, drained by cron): for every product
 // that shows in Development (has ≥1 Content Strategy title) across the hub
-// campaigns — EXCLUDING "Sm business software tools" (ai-implementation) — run
+// campaigns — EXCLUDING "AI Implementation" (ai-implementation) — run
 // a full Product Research regenerate, then generate ONE Growth Strategy if the
 // product has none. Never touches an existing strategy. Reuses the real
 // regenerateAllStrategyFields / generateGrowthStrategy actions via an
