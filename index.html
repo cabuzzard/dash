@@ -4419,19 +4419,26 @@ function renderFlowTable(k = 'main') {
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
   const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:vertical;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;';
   // fits the page: fixed layout, columns share the width, text wraps (never wider than the screen)
-  el.innerHTML = `<div style="max-width:100%;overflow:hidden;"><table style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
-    <thead><tr>${F.columns.map((c, ci) => `<th data-ci="${ci}" style="padding:4px;border:1px solid var(--border);background:var(--surface2);text-align:left;vertical-align:top;overflow:hidden;">
+  // header row sticks under the page's own sticky header + tab bar (offset measured live: --flowStickyTop)
+  el.innerHTML = `<div style="max-width:100%;"><table style="border-collapse:collapse;font-size:12px;width:100%;table-layout:fixed;">
+    <thead><tr>${F.columns.map((c, ci) => `<th data-ci="${ci}" style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;padding:4px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);text-align:left;vertical-align:top;overflow:hidden;">
         <div style="display:flex;align-items:center;gap:2px;">
           <span title="Drag to move this column" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragCol(event,'${k}',${ci})">⠿</span>
           <input value="${esc(c.name)}" placeholder="Column" oninput="FLOWS['${k}'].data.columns[${ci}].name=this.value;flowSaveSoon('${k}')" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
           ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol('${k}',${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol('${k}',${ci},1)">▶</button>` : ''}
-          <button style="${xbtn}" title="Delete this column" onclick="flowDelCol('${k}',${ci})">✕</button></div></th>`).join('')}<th style="width:74px;border:1px solid var(--border);background:var(--surface2);"></th></tr></thead>
+          <button style="${xbtn}" title="Delete this column" onclick="flowDelCol('${k}',${ci})">✕</button></div></th>`).join('')}<th style="position:sticky;top:var(--flowStickyTop,0px);z-index:5;width:74px;border:1px solid var(--border);background:var(--surface2);box-shadow:0 2px 4px rgba(0,0,0,.25);"></th></tr></thead>
     <tbody>${F.rows.map((r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
       <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`).join('')}</tbody>
   </table></div>
   <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow('${k}')">+ Row</button><button style="${btn}" onclick="flowAddCol('${k}')">+ Column</button></div>`;
   el.querySelectorAll('textarea').forEach(flowGrow);
+  flowStickyTop();
 }
+function flowStickyTop() {
+  const h = (document.querySelector('.header') || {}).offsetHeight || 0, t = (document.querySelector('.tabs') || {}).offsetHeight || 0;
+  document.documentElement.style.setProperty('--flowStickyTop', (h + t) + 'px');
+}
+window.addEventListener('resize', () => { try { flowStickyTop(); } catch (e) {} });
 // drag a row (vertical) or a column (horizontal) to a new place; the data is reordered on drop and saved
 function flowDragRow(e, k, from) {
   e.preventDefault();
