@@ -10381,6 +10381,84 @@ const DEV2_COLS = [
 // two-layer filter: [{col, val}] — val '' = any, '__blank__' = empty
 let DEV2_F = (() => { try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); if (Array.isArray(v) && v.length === 2) return v.map(f => ({ col: String((f && f.col) || ''), val: String((f && f.val) || ''), neg: !!(f && f.neg) })); } catch (e) {} return [{ col: '', val: '' }, { col: '', val: '' }]; })();
 const DEV2_BLANK = '__blank__';
+// ── Row editor: a modal built from DEV2_COLS, so a new column shows up here too. DEV2_EDIT says how a column is
+// edited and which record it saves to (worker updateAllOutputField); a column without an entry shows read-only.
+const DEV2_EDIT = {
+  group:        { type: 'list', rec: 'campaign product groups', ok: r => r.campId && r.productStack && !/^No (Stack|Product)$/.test(r.productStack) },
+  productStack: { type: 'list', rec: 'Products', ok: r => !!r.productId, val: r => /^No (Stack|Product)$/.test(r.productStack) ? '' : r.productStack },
+  product:      { type: 'text', rec: 'Products', ok: r => !!r.productId },
+  title:        { type: 'text', rec: 'Content Strategy (title)', ok: r => !!r.titleId },
+  assetName:    { type: 'text', rec: 'Assets', ok: r => !!r.assetId },
+  assetType:    { type: 'list', rec: 'Assets (Asset Type)', ok: r => !!r.assetId, val: r => r.rawAssetType || '' },
+  status:       { type: 'select', opts: ['Planning', 'Development', 'Publish', 'Published'], rec: r => r.kind === 'asset' ? 'Assets' : r.kind === 'title' ? 'Content Strategy (title)' : 'Products', ok: r => !!(r.assetId || r.titleId || r.productId) },
+};
+const DEV2_READONLY_WHY = { campaign: 'move records between campaigns from the microsite', hub: 'comes from the campaign' };
+let DEV2_EDIT_ROW = null;
+function dev2EditOpen(key) {
+  const r = DEV2_ROWS.find(x => dev2RowKey(x) === key); if (!r) return;
+  DEV2_EDIT_ROW = r;
+  let m = document.getElementById('dev2EditModal');
+  if (!m) { m = document.createElement('div'); m.id = 'dev2EditModal'; m.className = 'modal-bg'; m.onclick = e => { if (e.target === m) m.classList.remove('open'); }; document.body.appendChild(m); }
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  const lists = {};
+  const fields = DEV2_COLS.map(c => {
+    const e = DEV2_EDIT[c.key], can = e && e.ok(r), cur = e && e.val ? e.val(r) : dev2Val(r, c.key);
+    const rec = e ? (typeof e.rec === 'function' ? e.rec(r) : e.rec) : '';
+    let ctl;
+    if (!can) ctl = `<div style="font-size:12px;padding:5px 0;color:var(--text2);">${esc(dev2Val(r, c.key)) || '<span style="color:var(--text3);">—</span>'} <span style="font-size:10.5px;color:var(--text3);">· ${e ? 'no ' + esc(rec) + ' record on this row' : esc(DEV2_READONLY_WHY[c.key] || 'not editable here')}</span></div>`;
+    else if (e.type === 'select') ctl = `<select data-k="${c.key}" style="${IN}">${e.opts.map(o => `<option ${o === cur ? 'selected' : ''}>${o}</option>`).join('')}</select>`;
+    else {
+      if (e.type === 'list') { const pool = c.key === 'productStack' || c.key === 'group' ? DEV2_ROWS.filter(x => x.campId === r.campId) : DEV2_ROWS;
+        lists[c.key] = [...new Set(pool.map(x => (DEV2_EDIT[c.key].val ? DEV2_EDIT[c.key].val(x) : dev2Val(x, c.key))).filter(Boolean))].sort(); }
+      ctl = `<input data-k="${c.key}" value="${esc(cur)}" ${e.type === 'list' ? `list="dev2EdL-${c.key}"` : ''} style="${IN}">${e.type === 'list' ? `<datalist id="dev2EdL-${c.key}">${lists[c.key].map(v => `<option value="${esc(v)}">`).join('')}</datalist>` : ''}`;
+    }
+    return `<div style="margin-bottom:10px;"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:3px;">${esc(c.label)}${can ? ` <span style="text-transform:none;letter-spacing:0;">→ ${esc(rec)}</span>` : ''}</div>${ctl}</div>`;
+  }).join('');
+  const links = [r.productId && ['Product', r.productId], r.titleId && ['Title', r.titleId], r.assetId && ['Asset', r.assetId]].filter(Boolean)
+    .map(([l, id]) => `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">${l} in Notion ↗</a>`).join(' · ');
+  m.innerHTML = `<div class="modal" style="max-width:520px;">
+    <h3 style="margin:0 0 4px;">Edit ${esc(r.kind || 'row')}</h3>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Changes save to each field's own Notion record. A product or title shared by several rows changes on all of them. ${links}</div>
+    ${fields}
+    <div id="dev2EditMsg" style="font-size:11.5px;color:var(--text3);min-height:16px;margin-bottom:8px;"></div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" id="dev2EditSave" onclick="dev2EditSave()">Save</button>
+    <button class="modal-btn" onclick="document.getElementById('dev2EditModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button></div></div>`;
+  m.classList.add('open');
+}
+async function dev2EditSave() {
+  const r = DEV2_EDIT_ROW, m = document.getElementById('dev2EditModal'), msg = document.getElementById('dev2EditMsg'), btn = document.getElementById('dev2EditSave');
+  if (!r || !m) return;
+  const changes = [...m.querySelectorAll('[data-k]')].map(el => ({ k: el.dataset.k, v: el.value.trim() }))
+    .filter(x => { const e = DEV2_EDIT[x.k]; return x.v !== String(e.val ? e.val(r) : dev2Val(r, x.k)).trim(); });
+  if (!changes.length) { m.classList.remove('open'); return; }
+  btn.disabled = true; const done = [], failed = [];
+  for (const c of changes) {
+    msg.textContent = 'Saving ' + ((DEV2_COLS.find(x => x.key === c.k) || {}).label || c.k) + '…';
+    try {
+      const res = await call('updateAllOutputField', { kind: r.kind, field: c.k, value: c.v, productId: r.productId, titleId: r.titleId, assetId: r.assetId, campId: r.campId, productStack: r.productStack });
+      if (!res || res.error) throw new Error((res && res.error) || 'no response');
+      dev2EditApply(r, c.k, c.v); done.push(c.k);
+    } catch (e) { failed.push(((DEV2_COLS.find(x => x.key === c.k) || {}).label || c.k) + ': ' + e.message); }
+  }
+  btn.disabled = false;
+  renderDev2();
+  if (failed.length) msg.innerHTML = '<span style="color:#f87171;">Not saved — ' + failed.map(esc).join(' · ') + '</span>' + (done.length ? ' (the rest saved)' : '');
+  else m.classList.remove('open');
+}
+// mirror a saved edit onto every loaded row that shows the same record
+function dev2EditApply(r, k, v) {
+  const same = (x, idKey) => r[idKey] && x[idKey] === r[idKey];
+  const oldRaw = r.rawAssetType || '';
+  DEV2_ROWS.forEach(x => {
+    if (k === 'product' && same(x, 'productId')) x.product = v;
+    else if (k === 'productStack' && same(x, 'productId')) { x.productStack = v || 'No Stack'; }
+    else if (k === 'title' && same(x, 'titleId')) x.title = v;
+    else if (k === 'assetName' && same(x, 'assetId')) x.assetName = v;
+    else if (k === 'assetType' && same(x, 'assetId')) { if (x.assetType === oldRaw) x.assetType = v; x.rawAssetType = v; }
+    else if (k === 'status' && (r.kind === 'asset' ? same(x, 'assetId') && x.kind === 'asset' : r.kind === 'title' ? same(x, 'titleId') && x.kind === 'title' : same(x, 'productId') && x.kind === 'product')) { x.status = v; if (x.kind === 'asset') x.assetStatus = v; }
+    else if (k === 'group' && x.campId === r.campId && x.productStack === r.productStack) x.group = v;
+  });
+}
 function dev2Val(r, col) { return String(r[col] == null ? '' : r[col]); }
 function dev2Pass(r, f) { if (!f.col || !f.val) return true; const v = dev2Val(r, f.col), hit = f.val === DEV2_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
 function dev2FilterNeg(k) { DEV2_F[k].neg = document.getElementById('dev2F' + k + 'n').value === 'not'; if (k === 0) DEV2_F[1].val = ''; dev2OnFilterChange(); dev2DrawPanel(); }
@@ -10732,7 +10810,7 @@ function renderDev2() {
       : '';
     const isSel = DEV2_SELECTED.has(key);
     return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
-      <td style="padding:6px 8px;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"></td>
+      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"><button title="Edit this row's fields" onclick="dev2EditOpen('${esc(key)}')" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.group || '')}</td>

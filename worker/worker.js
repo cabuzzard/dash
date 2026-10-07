@@ -13440,6 +13440,47 @@ Return: {
         return json({ rows });
       }
 
+      // ── updateAllOutputField ── the All Output row editor: one displayed field → its own record.
+      // product / productStack → Products · title → Content Strategy · assetName / assetType → Assets ·
+      // status → the row's own record (asset, else title, else product; four statuses only) ·
+      // group → the campaign's product-group map (KV stackgroups:<campaignId>, stack → group).
+      if (body.action === "updateAllOutputField") {
+        const { kind, field } = body, value = String(body.value == null ? "" : body.value).trim();
+        const dash = raw => { const s = String(raw || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const rt = v => ({ rich_text: v ? [{ type: "text", text: { content: v.slice(0, 1990) } }] : [] });
+        const ti = v => ({ title: [{ type: "text", text: { content: (v || "Untitled").slice(0, 1990) } }] });
+        let pageId = null, props = null;
+        if (field === "product") { pageId = body.productId; props = { Name: ti(value) }; }
+        else if (field === "productStack") { pageId = body.productId; props = { "Product Stack": rt(value) }; }
+        else if (field === "title") { pageId = body.titleId; props = { Title: ti(value) }; }
+        else if (field === "assetName") { pageId = body.assetId; props = { "Asset Title": ti(value) }; }
+        else if (field === "assetType") { pageId = body.assetId; props = { "Asset Type": value ? { select: { name: value.slice(0, 100) } } : { select: null } }; }
+        else if (field === "status") {
+          const st = normStatus4(value);
+          if (!STATUS4.includes(st)) return json({ error: "Status must be one of " + STATUS4.join(", ") }, 400);
+          if (kind === "asset") { pageId = body.assetId; props = { "Asset Status": { select: { name: st } } }; }
+          else if (kind === "title") { pageId = body.titleId; props = { Status: { select: { name: st } } }; }
+          else { pageId = body.productId; props = { Status: { select: { name: st } } }; }
+        }
+        else if (field === "group") {
+          const cid = String(body.campId || "").replace(/-/g, ""), stack = String(body.productStack || "").trim();
+          if (!cid || !stack || /^No (Stack|Product)$/.test(stack)) return json({ error: "A group belongs to a campaign's product stack — this row has none" }, 400);
+          const gkey = "stackgroups:" + cid;
+          let g = { order: [], map: {} }; try { g = (await env.TRADES.get(gkey, "json")) || g; } catch (e) {}
+          g.order = g.order || []; g.map = g.map || {};
+          if (value) { if (!g.order.includes(value)) g.order.push(value.slice(0, 120)); g.map[stack] = value.slice(0, 120); } else delete g.map[stack];
+          await env.TRADES.put(gkey, JSON.stringify(g));
+          return json({ success: true });
+        }
+        else return json({ error: "This column isn't editable yet: " + field }, 400);
+        if (!pageId) return json({ error: "This row has no " + (field === "status" ? kind : field.replace(/Name|Type|Stack/, "")) + " record to edit" }, 400);
+        const r = await fetch(`https://api.notion.com/v1/pages/${dash(pageId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: props }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ error: d.message || "Update failed" }, r.status);
+        return json({ success: true });
+      }
+
       if (body.action === "createDevTitle") {
         // Extended idea-input shape: an idea (the title) plus optional method/
         // product relations, a content description (→ Core Idea), seed
