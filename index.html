@@ -4406,16 +4406,61 @@ function renderFlowTable(k = 'main') {
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
   const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:vertical;font-family:inherit;';
   el.innerHTML = `<div style="overflow-x:auto;"><table style="border-collapse:collapse;font-size:12px;min-width:100%;">
-    <thead><tr>${F.columns.map((c, ci) => `<th style="padding:4px;border:1px solid var(--border);background:var(--surface2);min-width:${c.w || 160}px;text-align:left;vertical-align:top;">
+    <thead><tr>${F.columns.map((c, ci) => `<th data-ci="${ci}" style="padding:4px;border:1px solid var(--border);background:var(--surface2);min-width:${c.w || 160}px;text-align:left;vertical-align:top;">
         <div style="display:flex;align-items:center;gap:2px;">
+          <span title="Drag to move this column" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragCol(event,'${k}',${ci})">⠿</span>
           <input value="${esc(c.name)}" placeholder="Column" oninput="FLOWS['${k}'].data.columns[${ci}].name=this.value;flowSaveSoon('${k}')" style="flex:1;min-width:0;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--text2);border:1px solid transparent;border-radius:4px;padding:3px 4px;">
           ${ci > 0 ? `<button style="${xbtn}" title="Move left" onclick="flowMoveCol('${k}',${ci},-1)">◀</button>` : ''}${ci < F.columns.length - 1 ? `<button style="${xbtn}" title="Move right" onclick="flowMoveCol('${k}',${ci},1)">▶</button>` : ''}
           <button style="${xbtn}" title="Delete this column" onclick="flowDelCol('${k}',${ci})">✕</button></div></th>`).join('')}<th style="width:30px;border:1px solid var(--border);background:var(--surface2);"></th></tr></thead>
-    <tbody>${F.rows.map((r, ri) => `<tr>${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
-      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;">${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`).join('')}</tbody>
+    <tbody>${F.rows.map((r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)'" onblur="this.style.borderColor='transparent'" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+      <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`).join('')}</tbody>
   </table></div>
   <div style="display:flex;gap:6px;margin-top:8px;"><button style="${btn}" onclick="flowAddRow('${k}')">+ Row</button><button style="${btn}" onclick="flowAddCol('${k}')">+ Column</button></div>`;
   el.querySelectorAll('textarea').forEach(flowGrow);
+}
+// drag a row (vertical) or a column (horizontal) to a new place; the data is reordered on drop and saved
+function flowDragRow(e, k, from) {
+  e.preventDefault();
+  const row = e.target.closest('tr'), body = row.parentElement;
+  row.style.opacity = '.6'; row.style.outline = '2px solid var(--accent)';
+  const move = ev => {
+    if (ev.pointerId !== e.pointerId) return; ev.preventDefault();
+    if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
+    const others = [...body.children].filter(t => t !== row);
+    const before = others.find(t => { const r = t.getBoundingClientRect(); return ev.clientY < r.top + r.height / 2; });
+    if (before) { if (row.nextElementSibling !== before) body.insertBefore(row, before); } else if (body.lastElementChild !== row) body.appendChild(row);
+  };
+  const up = ev => {
+    if (ev.pointerId !== e.pointerId) return;
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    const order = [...body.children].map(t => +t.dataset.ri), F = FLOWS[k].data;
+    if (order.some((v, i) => v !== i)) { F.rows = order.map(i => F.rows[i]); flowSaveSoon(k); }
+    renderFlowTable(k);
+  };
+  window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
+}
+function flowDragCol(e, k, from) {
+  e.preventDefault();
+  const th = e.target.closest('th'), tr = th.parentElement, ths = [...tr.querySelectorAll('th[data-ci]')];
+  th.style.outline = '2px solid var(--accent)';
+  let to = from;
+  const mark = () => ths.forEach((h, i) => { h.style.boxShadow = i === to && to !== from ? (to < from ? 'inset 4px 0 0 var(--accent)' : 'inset -4px 0 0 var(--accent)') : ''; });
+  const move = ev => {
+    if (ev.pointerId !== e.pointerId) return; ev.preventDefault();
+    let t = ths.length - 1;
+    for (let i = 0; i < ths.length; i++) { const r = ths[i].getBoundingClientRect(); if (ev.clientX < r.left + r.width / 2) { t = i; break; } }
+    to = t > from ? Math.max(from, t - 1) : t;
+    const r0 = ths[ths.length - 1].getBoundingClientRect(); if (ev.clientX > r0.left + r0.width / 2) to = ths.length - 1;
+    mark();
+  };
+  const up = ev => {
+    if (ev.pointerId !== e.pointerId) return;
+    window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
+    const cols = FLOWS[k].data.columns;
+    if (to !== from) { const [c] = cols.splice(from, 1); cols.splice(to, 0, c); flowSaveSoon(k); }
+    renderFlowTable(k);
+  };
+  window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
 }
 function flowGrow(t) { t.style.height = 'auto'; t.style.height = Math.max(28, t.scrollHeight + 2) + 'px'; }
 function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
