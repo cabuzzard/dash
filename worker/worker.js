@@ -12227,13 +12227,16 @@ the one aesthetic risk taken + why:`;
           }
           const assetSlug = assetPage?.properties?.["Content Hub"]?.select?.name || "";
           const assetTitle = assetPage ? (assetPage.properties?.["Asset Title"]?.title || []).map(t => t.plain_text).join("") : "";
-          const productId = (assetPage?.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "")
+          let chosenMain = null; try { chosenMain = await env.TRADES.get("hub:mainproduct:" + campaignId); } catch (e) {}
+          const assetMain = (assetPage?.properties?.Product?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+          const productId = chosenMain || assetMain
             || (campPage.properties?.Products?.relation || [])[0]?.id?.replace(/-/g, "") || null;
+          const mainChosen = !!(chosenMain || assetMain);
           const slug = registered?.slug || assetSlug || slugifyHb(assetTitle || campName);
           return {
             campaignId, campName, campPage, assetPage,
             assetId: assetPage ? assetPage.id.replace(/-/g, "") : null,
-            productId, slug, registered: !!registered,
+            productId, mainChosen, slug, registered: !!registered,
             campKeywords: (campPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join(""),
             campNotes: (campPage.properties?.Notes?.rich_text || []).map(t => t.plain_text).join(""),
           };
@@ -12317,12 +12320,17 @@ the one aesthetic risk taken + why:`;
           // just reports whether the result is live and links out.
           // Main offering: the one product the hub is built around (the Content Hub asset's Product, else the
           // campaign's first product — same resolution as getHubMainProduct)
-          let mainName = "";
-          if (productId) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(productId)}`, { headers: nhdr }).then(r => r.json());
+          const campProducts = (await notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashHb(campaignId) } } }).catch(() => []))
+            .filter(p => !p.archived && !p.properties?.Archived?.checkbox)
+            .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: p.properties?.Status?.select?.name || "" }))
+            .sort((a, b) => a.name.localeCompare(b.name));
+          const mainId = ctxH.mainChosen ? productId : null;
+          let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
+          if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
             mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
           const steps = [
-            { id: "mainproduct", phase: "Main offering", label: productId ? `Main product — ${mainName || "set"}` : "Main product", link: "microsite",
-              doneText: "set", done: !!productId, hint: productId ? "" : "pick the hub's Main Product from the microsite (Content Hub method)" },
+            { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts,
+              mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
             { id: "offers",     phase: "Content",   label: "Offers published on the hub", link: "microsite",
               done: offerLive, hint: offerLive ? "" : "build offers from the microsite" },
             { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
@@ -14259,6 +14267,43 @@ Return ONLY this JSON, no other text, no fences:
           return { ...f, mainProduct: pid ? { id: pid, name: pNameById[pid] || "" } : null, hubTitleId: camp ? (hubTitleIdByCampaign[camp] || null) : null };
         });
         return json({ forms: formsPlus, hubSlug });
+      }
+
+      // ── setHubMainOffering ── the hub's main offering = one real Products record. Stores the choice (KV
+      // hub:mainproduct:<campaignId>, read first by resolveHub + getHubMainProduct), links the product to the
+      // campaign if it isn't yet, and mirrors it onto the Content Hub asset's Product + the hub-method title's product.
+      if (body.action === "setHubMainOffering") {
+        const campaignId = String(body.campaignId || "").replace(/-/g, ""), productId = String(body.productId || "").replace(/-/g, "");
+        if (!campaignId) return json({ error: "campaignId required" }, 400);
+        const dash = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        if (!productId) { await env.TRADES.delete("hub:mainproduct:" + campaignId); return json({ success: true, cleared: true }); }
+        const prod = await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+        if (!prod || prod.object === "error") return json({ error: "Product not found" }, 404);
+        const camps = prod.properties?.Campaigns?.relation || [];
+        if (!camps.some(c => c.id.replace(/-/g, "") === campaignId)) {
+          await fetch(`https://api.notion.com/v1/pages/${dash(productId)}`, { method: "PATCH", headers: hdr,
+            body: JSON.stringify({ properties: { Campaigns: { relation: camps.map(c => ({ id: c.id })).concat([{ id: dash(campaignId) }]) } } }) });
+        }
+        await env.TRADES.put("hub:mainproduct:" + campaignId, productId);
+        const mirrors = [];
+        try {
+          const hubAssets = await notionQuery(ASSETS_DB, { filter: { and: [
+            { property: "Campaign", relation: { contains: dash(campaignId) } },
+            { property: "Asset Type", select: { equals: "Content Hub" } } ] } });
+          for (const a of hubAssets) {
+            const r = await fetch(`https://api.notion.com/v1/pages/${a.id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { Product: { relation: [{ id: dash(productId) }] } } }) });
+            if (r.ok) mirrors.push("content-hub asset");
+          }
+        } catch (e) {}
+        try {
+          const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+            { property: "method", relation: { contains: "3d61f7d3-a4bb-81d5-9083-da4af143c3ec" } },
+            { property: "Campaign", relation: { contains: dash(campaignId) } } ] } });
+          if (titles[0]) { const r = await fetch(`https://api.notion.com/v1/pages/${titles[0].id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { product: { relation: [{ id: dash(productId) }] } } }) }); if (r.ok) mirrors.push("hub title"); }
+        } catch (e) {}
+        const name = (prod.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+        return json({ success: true, productId, name, mirrors });
       }
 
       // ── setHubMainProduct ── writes the `product` relation on a campaign's
@@ -17599,7 +17644,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const norm = s => String(s || "").replace(/-/g, "");
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         let productId = null, via = null;
-        try {
+        try { const c = await env.TRADES.get("hub:mainproduct:" + norm(campaignId)); if (c) { productId = c; via = "main-offering"; } } catch (e) {}
+        if (!productId) try {
           const rows = await notionQuery(ASSETS_DB, {
             filter: { and: [
               { property: "Campaign", relation: { contains: dashId(campaignId) } },

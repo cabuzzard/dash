@@ -13685,7 +13685,7 @@ function renderHubsTab() {
   const meta = hubMeta(h), state = hubReadyState(slug), badge = hubBadge(state, meta);
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
   const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
-  const msUrl = h.microsite ? 'https://cabuzzard.github.io/dash/microsites/' + h.microsite + '/' : '';
+  const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
 
   const chip = (label, valHtml, onclick, title) =>
     `<button onclick="${onclick}" title="${esc(title || '')}" style="text-align:left;background:var(--surface);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;cursor:pointer;min-width:0;">
@@ -13920,18 +13920,32 @@ function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
   const h = HUB_SITES.find(x => x.slug === slug) || {};
-  const msUrl = h.microsite ? 'https://cabuzzard.github.io/dash/microsites/' + h.microsite + '/' : '';
+  const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
   let lastPhase = '';
   return b.steps.map(s => {
     const busy = _hubBuildBusy[slug + '|' + s.id];
     const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
     const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
     let ctrl;
-    if (s.link === 'microsite') {
+    if (s.mainOffering) {
+      // the hub's main offering: one real Products record — pick one of the campaign's products, or add a new one
+      const SEL = 'font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:220px;';
+      ctrl = `<span style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;flex-shrink:0;">
+        <select style="${SEL}" ${busy ? 'disabled' : ''} onchange="hubMainOfferSet('${slug}', this.value)"><option value="">${s.mainId ? '(none)' : 'Choose a product…'}</option>${(s.products || []).map(p => `<option value="${esc(p.id)}" ${p.id === s.mainId ? 'selected' : ''}>${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}${s.mainId && !(s.products || []).some(p => p.id === s.mainId) ? `<option value="${esc(s.mainId)}" selected>${esc(s.mainName || 'current product')}</option>` : ''}</select>
+        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAddOpen('${slug}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">+ Add product</button>
+        ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this campaign in the care-gap microsite" style="font-size:10px;color:var(--text3);text-decoration:none;">care-gap ↗</a>` : ''}</span>`;
+      const add = _hubMainAdd[slug] ? `<div style="padding:2px 12px 6px 32px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+        <input id="hubMainAddName-${slug}" placeholder="New product name" onkeydown="if(event.key==='Enter')hubMainOfferAdd('${slug}');if(event.key==='Escape'){_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')}" style="flex:1;min-width:160px;font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
+        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + set as main'}</button>
+        <button onclick="_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">cancel</button></div>` : '';
+      const lab = s.mainId ? `Main product — <b>${esc(s.mainName || 'set')}</b>` : 'Main product <span style="color:var(--text3);">— choose one of the campaign\'s products, or add one</span>';
+      return phaseHdr + `<div style="padding:5px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;font-size:11px;color:var(--text);line-height:1.35;">${lab}</span>${ctrl}</div>` + add;
+    } else if (s.link === 'microsite') {
       ctrl = s.done
         ? `<span style="font-size:10px;color:#4ade80;flex-shrink:0;">${esc(s.doneText || 'live')}</span>`
         : (msUrl
-          ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);text-decoration:none;flex-shrink:0;">microsite ↗</a>`
+          ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);text-decoration:none;flex-shrink:0;">care-gap ↗</a>`
           : '<span style="font-size:10px;color:var(--text3);flex-shrink:0;">no microsite</span>');
     } else if (s.prompt) {
       ctrl = `<button onclick="hubBuildPrompt('${slug}','${esc(s.prompt)}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;">📋 CC prompt</button><label style="display:flex;align-items:center;gap:4px;font-size:10px;color:var(--text3);cursor:pointer;flex-shrink:0;margin-left:6px;"><input type="checkbox" ${s.done ? 'checked' : ''} onchange="hubBuildToggle('${slug}','${s.id}',this.checked)">done</label>`;
@@ -13985,7 +13999,7 @@ function hubBuildRefreshRows(slug) {
 function hubBuildOpen(slug, fnName) {
   if (fnName === 'openHubResearch') {
     const h = HUB_SITES.find(x => x.slug === slug);
-    const ms = h && h.microsite ? 'https://cabuzzard.github.io/dash/microsites/' + h.microsite + '/' : '';
+    const ms = h && h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
     if (ms) window.open(ms, '_blank'); else alert('No microsite for this hub — run field research from its campaign microsite.');
     return;
   }
@@ -14027,6 +14041,28 @@ async function hubBuildRun(slug, stepId) {
     _hubBuildFetched[slug] = false;              // force a re-check
     if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
   }
+}
+// Main offering: choose / add the product the hub is built around (setHubMainOffering)
+const _hubMainAdd = {};
+function hubMainOfferAddOpen(slug) { _hubMainAdd[slug] = true; hubBuildRefreshRows(slug); const i = document.getElementById('hubMainAddName-' + slug); if (i) i.focus(); }
+async function hubMainOfferSet(slug, productId) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  _hubBuildBusy[slug + '|mainproduct'] = true; hubBuildRefreshRows(slug);
+  try { const r = await call('setHubMainOffering', { campaignId: h.campaignId, productId }); if (r && r.error) throw new Error(r.error);
+    _hpNote[slug] = productId ? '✓ Main offering set: ' + (r.name || '') : 'Main offering cleared'; }
+  catch (e) { _hpNote[slug] = '✗ Main offering: ' + e.message; }
+  _hubBuildBusy[slug + '|mainproduct'] = false; _hubBuildFetched[slug] = false;
+  if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
+}
+async function hubMainOfferAdd(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug), inp = document.getElementById('hubMainAddName-' + slug);
+  const name = inp ? inp.value.trim() : ''; if (!h || !name) return;
+  _hubBuildBusy[slug + '|mainproduct'] = true; hubBuildRefreshRows(slug);
+  try { const r = await call('createProduct', { title: name, campaignId: h.campaignId, status: 'Planning' }); if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
+    _hubMainAdd[slug] = false; _hubBuildBusy[slug + '|mainproduct'] = false;
+    await hubMainOfferSet(slug, r.id); return; }
+  catch (e) { _hpNote[slug] = '✗ Add product: ' + e.message; }
+  _hubBuildBusy[slug + '|mainproduct'] = false; hubBuildRefreshRows(slug);
 }
 async function hubBuildToggle(slug, stepId, done) {
   try { await call('setHubBuildCheck', { slug, stepId, done }); } catch (e) {}
