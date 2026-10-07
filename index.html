@@ -2311,6 +2311,10 @@
     <div class="modal-title" id="hubTdTitle">Add weekly To-Do</div>
     <div id="hubTdSub" style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:10px;"></div>
     <div class="modal-field">
+      <label class="modal-label">Hub / campaign</label>
+      <select class="modal-input" id="hubTdCamp"></select>
+    </div>
+    <div class="modal-field">
       <label class="modal-label">Task</label>
       <input class="modal-input" id="hubTdName" type="text" placeholder="e.g. Post the weekly reel" onkeydown="if(event.key==='Enter')hubTdSave()">
     </div>
@@ -13644,12 +13648,16 @@ function hubChecklistModal(slug) {
 // / WP_DAY_NAMES are defined further down (module scope) and are safe to
 // call from here at click time.
 let _hubTd = { slug: null, dayIdx: 0 };
+const MAIN_CAMPAIGN_ID = '3f21f7d3a4bb8110b0afeca01d14f4ad';   // "Main" — weekly to-dos that don't belong to one hub
 function openHubTdModal(slug, prefill, content) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   if (!h.campaignId) { alert('This hub has no campaign linked — cannot attach a To-Do.'); return; }
   _hubTd = { slug, dayIdx: (new Date().getDay() + 6) % 7 };  // 0 = Mon; default to today
   document.getElementById('hubTdTitle').textContent = 'Add weekly To-Do — ' + h.name;
-  document.getElementById('hubTdSub').innerHTML = 'Hub: <b>' + esc(h.name) + '</b> — shows on the TD tab’s This Week board.';
+  document.getElementById('hubTdSub').textContent = 'Shows on the TD tab’s This Week board.';
+  const sel = document.getElementById('hubTdCamp');
+  sel.innerHTML = HUB_SITES.filter(x => x.campaignId).map(x => `<option value="${esc(x.campaignId)}" ${x.slug === slug ? 'selected' : ''}>${esc(x.name)}</option>`).join('')
+    + `<option value="${MAIN_CAMPAIGN_ID}">Main</option>`;
   document.getElementById('hubTdName').value = prefill || '';
   document.getElementById('hubTdContent').value = content || '';
   const msg = document.getElementById('hubTdMsg'); msg.textContent = ''; msg.style.color = 'var(--text3)';
@@ -13674,7 +13682,7 @@ async function hubTdSave() {
   const monday = wpMonday(0);
   const target = new Date(monday); target.setUTCDate(monday.getUTCDate() + _hubTd.dayIdx);
   try {
-    const r = await call('addWeeklyPlannerItem', { name, day: wpIso(target), weekStart: wpIso(monday), campaignId: h.campaignId, content: (document.getElementById('hubTdContent').value || '').trim() || undefined });
+    const r = await call('addWeeklyPlannerItem', { name, day: wpIso(target), weekStart: wpIso(monday), campaignId: document.getElementById('hubTdCamp').value || h.campaignId, content: (document.getElementById('hubTdContent').value || '').trim() || undefined });
     if (r.error) throw new Error(r.error);
     msg.style.color = '#4cff4c';
     msg.textContent = 'Added to This Week (' + WP_DAY_NAMES[_hubTd.dayIdx] + ') — open the TD tab to see it.';
