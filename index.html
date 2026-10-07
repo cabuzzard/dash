@@ -13864,16 +13864,12 @@ function renderHubsTab() {
     </details>
 
     <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open)">
-      <summary><span>Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">palette · fonts · copy · images</span></summary>
+      <summary><span>Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">direction · palette · fonts · image spec</span></summary>
       <div style="padding:12px 14px;">
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
           <a href="${hubUrl}" target="_blank" rel="noopener" title="Open the published hub (its custom domain if wired, else the GitHub Pages URL). Read-only." style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
           ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this campaign's admin microsite. Read-only." style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
           <button onclick="openHubBriefModal('${slug}')" title="Copy a paste-ready design brief (campaign research + this hub's current tokens/fonts) for a ChatGPT chat or your Visual Director project. Copy only — nothing is written back." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
-          <button onclick="openHubTextModal('${slug}')" title="Every fixed string on the hub — brand name, hero copy, button labels, ribbon, nav, each section's eyebrow/heading/blurb/empty-state, footer. Blank = template default. Saves to content.json, commits + redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
-          <button onclick="openHubImageModal('${slug}')" title="Hero image + signup-section image (right third on desktop, stacked on mobile). Upload / paste URL / ✨ generate. Saves to content.json, commits + redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">🖼 Images</button>
-          <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with campaign research + this hub's tokens/fonts/brief + the display font. Paste into ChatGPT/DALL·E, then use ⬆ Logo. Copy only." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
-          <label title="Upload the finished logo file (< 3 MB) — committed to web/hub/${slug}/logo.<ext> and wired to the header. Redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
         </div>
 
         <div title="These fields all live on this CAMPAIGN's 🔬 Research row (not the product, not hubs.design.json). Palette + fonts are STAGED as candidate versions when you regenerate; the direction fields save on ✎-edit. 'Publish design to hub' writes the selected palette/fonts to the record AND commits everything live. hubs.design.json only holds the resolved outputs. Everything visual downstream inherits from here." style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;cursor:help;">Design — stored on the campaign's Research record (Stage 1)</div>
@@ -13930,6 +13926,20 @@ function renderHubsTab() {
           ${(_hpTests[slug] || []).length ? `<div style="display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:4px;">${_hpTests[slug].map(t => `<a href="${esc(t.imageUrl)}" target="_blank" rel="noopener" title="${esc(t.aspect + ' · ' + t.prompt)}" style="flex:0 0 auto;"><img src="${esc(t.imageUrl)}" alt="Grok test plate" style="height:150px;border-radius:6px;border:1px solid var(--border2);display:block;"></a>`).join('')}</div><div style="font-size:9px;color:var(--text3);margin-top:2px;">Grok test plates this session — newest first; hover for the prompt, click to open full size.</div>` : ''}
         </div>
 
+
+      </div>
+    </details>
+
+    <details class="hub-sec" ${hubSecOpen('layouts') ? 'open' : ''} ontoggle="hubSecToggle('layouts', this.open)">
+      <summary><span>Layouts</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">page text · images · logo · post templates</span></summary>
+      <div style="padding:12px 14px;">
+        <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Hub page</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+          <button onclick="openHubTextModal('${slug}')" title="Every fixed string on the hub — brand name, hero copy, button labels, ribbon, nav, each section's eyebrow/heading/blurb/empty-state, footer. Blank = template default. Saves to content.json, commits + redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
+          <button onclick="openHubImageModal('${slug}')" title="Hero image + signup-section image (right third on desktop, stacked on mobile). Upload / paste URL / ✨ generate. Saves to content.json, commits + redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">🖼 Images</button>
+          <button onclick="hubLogoPrompt('${slug}')" title="Copy an image prompt for a rectangular header logo — prefilled with campaign research + this hub's tokens/fonts/brief + the display font. Paste into ChatGPT/DALL·E, then use ⬆ Logo. Copy only." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">📋 Logo prompt</button>
+          <label title="Upload the finished logo file (< 3 MB) — committed to web/hub/${slug}/logo.<ext> and wired to the header. Redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">⬆ Logo<input type="file" accept="image/png,image/svg+xml,image/webp,image/jpeg" onchange="hubLogoUpload('${slug}', this)" style="display:none;"></label>
+        </div>
         <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
             <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Single-Post Templates</span>
@@ -13947,7 +13957,6 @@ function renderHubsTab() {
             </div>`).join('') + '</div>';
           })()}
         </div>
-
       </div>
     </details>
 
