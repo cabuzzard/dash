@@ -15328,8 +15328,11 @@ ${bodyText.slice(0, 6000)}`;
         // instead of always "today". campaignId itself is optional — a
         // manual add with no specific campaign in mind just leaves that
         // relation blank.
-        const { campaignId, name, day, weekStart, sourceTitleId, source } = body;
+        const { campaignId, name, day, weekStart, sourceTitleId, source, content } = body;
         if (!(name || '').trim()) return json({ error: "name required" }, 400);
+        // optional text content → the item's page body (one paragraph per blank-line block, ≤1900 chars a piece)
+        const bodyBlocks = String(content || "").trim() ? String(content).trim().split(/\n\s*\n/).flatMap(par => { const out = []; for (let i = 0; i < par.length; i += 1900) out.push(par.slice(i, i + 1900)); return out; })
+          .slice(0, 90).map(t => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: t } }] } })) : [];
         const dash = raw => { const s = raw.replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
@@ -15357,7 +15360,7 @@ ${bodyText.slice(0, 6000)}`;
         if (sourceTitleId) props["Source Title"] = { relation: [{ id: dash(sourceTitleId) }] };
         const created = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ parent: { database_id: WEEKLY_PLANNER_DB }, properties: props }),
+          body: JSON.stringify({ parent: { database_id: WEEKLY_PLANNER_DB }, properties: props, ...(bodyBlocks.length ? { children: bodyBlocks } : {}) }),
         }).then(r => r.json());
         if (!created.id) return json({ error: created.message || "Failed to add item" }, 500);
         return json({ success: true, id: created.id.replace(/-/g,""), date: targetDay });
