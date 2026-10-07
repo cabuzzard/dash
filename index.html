@@ -14005,7 +14005,24 @@ function renderHubBuildRows(slug) {
     const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
     const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div style="padding:6px 12px 2px;font-size:8.5px;letter-spacing:.09em;text-transform:uppercase;color:var(--text3);">${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
     let ctrl;
-    if (s.mainOffering) {
+    if (s.pageSection) {
+      // a hub blog section and every asset currently published to it
+      const hubBase = (h.domain ? 'https://' + h.domain + '/' : 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/');
+      const open = !!_hubPageOpen[slug + '|' + s.id];
+      const rows = open ? (s.items || []).map(it => {
+        const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
+        return `<div style="padding:3px 12px 3px 34px;display:flex;align-items:center;gap:8px;font-size:11px;border-top:1px dashed var(--border);">
+          <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(it.title)}">${esc(it.title)}</span>
+          <span style="color:var(--text3);flex-shrink:0;">${esc(it.type)}</span>
+          <span style="flex-shrink:0;padding:0 6px;border-radius:8px;font-size:10px;background:${it.status === 'Published' ? 'rgba(74,222,128,.18)' : 'rgba(246,173,85,.2)'};">${esc(it.status)}</span>
+          ${it.date ? `<span style="color:var(--text3);flex-shrink:0;">${esc(new Date(it.date + 'T12:00:00').toLocaleDateString())}</span>` : ''}
+          ${live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;flex-shrink:0;">page ↗</a>` : ''}
+          <a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;flex-shrink:0;">Notion ↗</a></div>`; }).join('') : '';
+      const n = (s.items || []).length;
+      return phaseHdr + `<div onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
+        <span style="flex-shrink:0;">${dot}</span><span style="font-size:10px;color:var(--text3);width:10px;">${n ? (open ? '▼' : '▶') : ''}</span>
+        <span style="flex:1;min-width:0;font-size:11px;color:var(--text);">${esc(s.label)} <span style="color:var(--text3);">— ${n} asset${n === 1 ? '' : 's'}${n ? '' : ' (nothing published to this section yet)'}</span></span></div>` + rows;
+    } else if (s.mainOffering) {
       // the hub's main offering: one real Products record — pick one of the campaign's products, or add a new one
       const SEL = 'font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:220px;';
       ctrl = `<span style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;flex-shrink:0;">
@@ -14121,7 +14138,7 @@ async function hubBuildRun(slug, stepId) {
   }
 }
 // Main offering: choose / add the product the hub is built around (setHubMainOffering)
-const _hubMainAdd = {};
+const _hubMainAdd = {}, _hubPageOpen = {};   // Page content sections start collapsed
 function hubMainOfferAddOpen(slug) { _hubMainAdd[slug] = true; hubBuildRefreshRows(slug); const i = document.getElementById('hubMainAddName-' + slug); if (i) i.focus(); }
 async function hubMainOfferSet(slug, productId) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;

@@ -12325,12 +12325,31 @@ the one aesthetic risk taken + why:`;
             .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: p.properties?.Status?.select?.name || "" }))
             .sort((a, b) => a.name.localeCompare(b.name));
           const mainId = ctxH.mainChosen ? productId : null;
+          // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
+          // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
+          const HUB_BLOG_SECTIONS = [{ key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" }];
+          const listed = (await notionQuery(ASSETS_DB, { filter: { and: [
+              { property: "Campaign", relation: { contains: dashHb(campaignId) } },
+              { or: [ { property: "Asset Status", select: { equals: "Publish" } }, { property: "Asset Status", select: { equals: "Published" } } ] } ] } }).catch(() => []))
+            .filter(r => { const h = r.properties?.["Content Hub"]?.select?.name || ""; return !h || h === slug; });
+          const pageSections = HUB_BLOG_SECTIONS.map(sec => {
+            const items = listed.filter(r => hubSectionOf(r.properties) === sec.key)
+              .sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))
+              .map(r => { const p = r.properties || {};
+                return { id: r.id.replace(/-/g, ""),
+                  title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled",
+                  type: p["Asset Type"]?.select?.name || "", status: p["Asset Status"]?.select?.name || "",
+                  date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim() }; });
+            return { id: "page-" + sec.key, phase: "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
+              hint: items.length ? "" : "nothing published to this section yet" };
+          });
           let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
             mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
           const steps = [
             { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts,
               mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
+            ...pageSections,
             { id: "offers",     phase: "Content",   label: "Offers published on the hub", link: "microsite",
               done: offerLive, hint: offerLive ? "" : "build offers from the microsite" },
             { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
