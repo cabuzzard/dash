@@ -12338,6 +12338,11 @@ the one aesthetic risk taken + why:`;
           let stackGroups = { order: [], map: {} };
           try { stackGroups = (await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json")) || stackGroups; } catch (e) {}
           campProducts.forEach(p => { p.group = (stackGroups.map || {})[p.stack || ""] || ""; });
+          // how many Development-status titles hang off each product
+          { const dev = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
+                { property: "Campaign", relation: { contains: dashHb(campaignId) } }, { property: "Status", select: { equals: "Development" } } ] } }).catch(() => []);
+            const n = {}; dev.forEach(t => (t.properties?.product?.relation || []).forEach(r => { const id = r.id.replace(/-/g, ""); n[id] = (n[id] || 0) + 1; }));
+            campProducts.forEach(p => { p.devTitles = n[p.id] || 0; }); }
           const mainIds = ctxH.mainChosen ? (ctxH.mainIds || [productId]) : [], mainId = mainIds[0] || null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.

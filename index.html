@@ -14177,7 +14177,8 @@ function hubProdTree(slug) {
     if (_hubProdOpen[slug + '|' + gk]) Object.keys(stacks).sort((a, b) => (a === NOS) - (b === NOS) || a.localeCompare(b)).forEach(st => {
       const sk = 's:' + g + '|' + st, list = stacks[st];
       list.sort((a, b) => HUB_PROD_STATUSES.indexOf(stOf(a)) - HUB_PROD_STATUSES.indexOf(stOf(b)) || a.name.localeCompare(b.name));   // by status, then name
-      inner += block('#8ab4f8', hdr(sk, 1, st, `— ${list.length}`), !_hubProdOpen[slug + '|' + sk] ? '' : hubGridHead(0) + list.map(p => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[stOf(p)], lead: hubResMark(slug, p.id), title: p.name + ((mo.mainIds || [mo.mainId]).includes(p.id) ? ' ★' : ''), type: 'Product', method: '', status: p.status, date: p.date,
+      inner += block('#8ab4f8', hdr(sk, 1, st, `— ${list.length}`), !_hubProdOpen[slug + '|' + sk] ? '' : hubGridHead(0) + list.map(p => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[stOf(p)], lead: hubResMark(slug, p.id), title: p.name + ((mo.mainIds || [mo.mainId]).includes(p.id) ? ' ★' : ''), type: 'Product',
+        method: p.devTitles == null ? '' : p.devTitles + ' dev title' + (p.devTitles === 1 ? '' : 's'), status: p.status, date: p.date,
         links: `<button onclick="hubProdEdit('${slug}','${p.id}')" title="Edit status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join(''));
     });
     out += block('#f6ad55', hdr(gk, 0, g, `— ${count(stacks)} product${count(stacks) === 1 ? '' : 's'} · ${Object.keys(stacks).length} stack${Object.keys(stacks).length === 1 ? '' : 's'}`), inner);
