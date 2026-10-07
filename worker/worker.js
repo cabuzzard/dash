@@ -1074,7 +1074,7 @@ async function hubMainList(env, cid) {
 // Blog - SEO - News → news; SEO Post / QA (not Sales) → articles; Offer / QA – Sales → offers.
 function hubSectionOf(props) {
   const o = String(props?.["Hub Section"]?.select?.name || "").trim().toLowerCase();
-  if (o === "news" || o === "articles" || o === "offers" || o === "interactive") return o;
+  if (o === "news" || o === "articles" || o === "offers" || o === "interactive" || o === "cta") return o;
   const at = String(props?.["Asset Type"]?.select?.name || "").trim();
   if (/\bblog\b/i.test(at) && /\bnews\b/i.test(at)) return "news";
   if (/\bseo post\b/i.test(at)) return "articles";
@@ -12342,7 +12342,7 @@ the one aesthetic risk taken + why:`;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
           const HUB_BLOG_SECTIONS = [{ key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
-            { key: "interactive", label: "Interactive", phase: "Interactive" }];   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
+            { key: "interactive", label: "Interactive", phase: "Interactive" }, { key: "cta", label: "CTA's", phase: "CTA's" }];   // CTA's: assets with Hub Section = CTA   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
           const listed = (await notionQuery(ASSETS_DB, { filter: { and: [
               { property: "Campaign", relation: { contains: dashHb(campaignId) } },
               { or: [ { property: "Asset Status", select: { equals: "Publish" } }, { property: "Asset Status", select: { equals: "Published" } } ] } ] } }).catch(() => []))
@@ -12369,7 +12369,8 @@ the one aesthetic risk taken + why:`;
           const steps = [
             { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
-            ...pageSections,
+            ...pageSections.filter(x => x.phase === "CTA's"),   // right under Main offerings
+            ...pageSections.filter(x => x.phase !== "CTA's"),
           ];
           return json({ slug, campaignId, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
         }
@@ -33994,8 +33995,8 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         // HUB_SITES, or "" to clear. getHubProducts reads this to decide which
         // hub an offer asset renders on.
         if (hubSection !== undefined) {
-          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers", "Interactive"] } });
-          const hs = { news: "News", articles: "Articles", offers: "Offers", interactive: "Interactive" }[String(hubSection || "").toLowerCase()];
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers", "Interactive", "CTA"] } });
+          const hs = { news: "News", articles: "Articles", offers: "Offers", interactive: "Interactive", cta: "CTA" }[String(hubSection || "").toLowerCase()];
           props["Hub Section"] = { select: hs ? { name: hs } : null };   // "" = back to the type default
         }
         if (contentHub !== undefined) {

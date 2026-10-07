@@ -1028,6 +1028,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
               <option value="articles">Articles</option>
               <option value="offers">Offers / Services</option>
               <option value="interactive">Interactive</option>
+              <option value="cta">CTA's</option>
             </select>
           </label>
         </div>
@@ -5858,7 +5859,7 @@ function hubSectionDefault(type) {
 function hubSectionLabel(assetId) {
   const d = PUB_ASSET_CACHE[assetId] || {};
   const k = d.hubSection || hubSectionDefault(d.type);
-  return ({ news: 'News', articles: 'Articles', offers: 'Offers / Services', interactive: 'Interactive' }[k] || 'default') + (d.hubSection ? ' (override)' : ' (type default)');
+  return ({ news: 'News', articles: 'Articles', offers: 'Offers / Services', interactive: 'Interactive', cta: "CTA's" }[k] || 'default') + (d.hubSection ? ' (override)' : ' (type default)');
 }
 async function pushAssetToHub(assetId, title) {
   try {
@@ -6085,7 +6086,7 @@ function openPublishAssetModal(assetId) {
   document.getElementById('pubHubSectionWrap').style.display = hubPublishable ? 'block' : 'none';
   const hsSel = document.getElementById('pubHubSection');
   hsSel.value = data.hubSection || '';
-  hsSel.options[0].textContent = 'Default for this type — ' + ({ news: 'News', articles: 'Articles', offers: 'Offers / Services', interactive: 'Interactive' }[hubSectionDefault(data.type)] || 'none');   // YouTube Longform: the same 16:9 row, YouTube-specific Grok generator
+  hsSel.options[0].textContent = 'Default for this type — ' + ({ news: 'News', articles: 'Articles', offers: 'Offers / Services', interactive: 'Interactive', cta: "CTA's" }[hubSectionDefault(data.type)] || 'none');   // YouTube Longform: the same 16:9 row, YouTube-specific Grok generator
   if (PUB_BLOG_THUMB_LABEL === null) PUB_BLOG_THUMB_LABEL = document.getElementById('pubBlogThumbLabel').innerHTML;
   document.getElementById('pubBlogThumbLabel').innerHTML = isYtThumb
     ? '▶️ YouTube thumbnail <span style="font-weight:400;color:var(--ink3);">— 16:9, one bold subject on the right, the left kept clean for 3-5 big words. ✨ Generate on Grok, then 🔤 Add title text or 🎯 Preview &amp; Edit to lay the words on.</span>'
