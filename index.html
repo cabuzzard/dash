@@ -13990,6 +13990,20 @@ function renderHubsTab() {
 
 // ── Left-column collapsible sections (open/closed remembered per section) ──
 function hubSecOpen(k) { try { return !!(JSON.parse(localStorage.getItem('hubSecOpen:v1') || '{}')[k]); } catch (e) { return false; } }
+// ── Hub card lists share one grid: Title · Asset type · Method · Status · Date · links ──
+const HUB_GRID_COLS = 'display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1.4fr) 84px 76px 120px;gap:8px;align-items:center;padding:3px 12px 3px 34px;';
+function hubGridHead() { return `<div style="${HUB_GRID_COLS}font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);"><span>Title</span><span>Asset type</span><span>Method</span><span>Status</span><span>Date</span><span></span></div>`; }
+function hubGridRow(o) {
+  const cut = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', none = '<span style="color:var(--text3);">—</span>';
+  const st = o.status ? `<span style="padding:0 6px;border-radius:8px;font-size:10px;background:${o.status === 'Published' ? 'rgba(74,222,128,.18)' : o.status === 'Publish' ? 'rgba(246,173,85,.2)' : 'rgba(127,127,127,.15)'};">${esc(o.status)}</span>` : none;
+  return `<div style="${HUB_GRID_COLS}font-size:11px;border-top:1px dashed var(--border);">
+    <span style="${cut}" title="${esc(o.title)}">${esc(o.title) || none}</span>
+    <span style="${cut}" title="${esc(o.typeTip || o.type || '')}">${o.typeHtml || esc(o.type) || none}</span>
+    <span style="${cut}color:var(--text2);" title="${esc(o.method || '')}">${esc(o.method) || none}</span>
+    <span>${st}</span>
+    <span style="color:var(--text3);">${o.date ? esc(new Date(o.date + 'T12:00:00').toLocaleDateString()) : ''}</span>
+    <span style="white-space:nowrap;">${o.links || ''}</span></div>`;
+}
 // ── Content section: strategies made here (real Growth Strategy records) and the titles in each ──
 const _hubContent = {}, _hubContentBusy = {}, _hubContentOpen = {}, _hubContentTitles = {};
 let _hubContentLoading = {};
@@ -14033,11 +14047,9 @@ function renderHubContent(slug) {
   const titles = _hubContentTitles[slug];
   const stratRows = list.map(st => {
     const open = !!_hubContentOpen[slug + '|' + st.id], n = st.titles.length;
-    const inner = !open ? '' : `<div style="padding:2px 0 8px 22px;">
-      ${st.titles.map(t => `<div style="display:flex;align-items:center;gap:8px;padding:2px 0;font-size:11px;border-top:1px dashed var(--border);">
-        <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="flex:1;min-width:0;color:var(--text);text-decoration:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(t.title)}">${esc(t.title)}</a>
-        <span style="font-size:10px;color:var(--text3);">${esc(t.status)}</span>
-        <button ${busy} onclick="hubContentDo('${slug}','removeTitle',{titleId:'${t.id}'},'Title removed from the strategy')" title="Take this title out of the strategy (the title itself stays)" style="${B}padding:0 6px;">✕</button></div>`).join('') || '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No titles yet.</div>'}
+    const inner = !open ? '' : `<div style="margin:0 -12px;">${st.titles.length ? hubGridHead() + st.titles.map(t => hubGridRow({ title: t.title, type: 'Title', method: t.method, status: t.status, date: t.date,
+        links: `<a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy} onclick="hubContentDo('${slug}','removeTitle',{titleId:'${t.id}'},'Title removed from the strategy')" title="Take this title out of the strategy (the title itself stays)" style="${B}padding:0 6px;">✕</button>` })).join('') : '<div style="font-size:11px;color:var(--text3);padding:2px 12px 2px 34px;">No titles yet.</div>'}</div>
+      <div style="padding:0 0 8px 22px;">
       <div style="display:flex;gap:5px;flex-wrap:wrap;margin-top:6px;">
         <input id="hcNewTitle-${st.id}" placeholder="New title" onkeydown="if(event.key==='Enter')hubContentNewTitle('${slug}','${st.id}')" style="${IN}flex:1;min-width:150px;">
         <button ${busy} style="${B}" onclick="hubContentNewTitle('${slug}','${st.id}')">+ New title</button>
@@ -14090,18 +14102,11 @@ function renderHubBuildRows(slug) {
       // a hub blog section and every asset currently published to it
       const hubBase = (h.domain ? 'https://' + h.domain + '/' : 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/');
       const open = !!_hubPageOpen[slug + '|' + s.id];
-      const TH = 'font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);';
-      const head = open && (s.items || []).length ? `<div style="padding:3px 12px 2px 34px;display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1.4fr) 70px 70px 90px;gap:8px;${TH}"><span>Title</span><span>Asset type</span><span>Method</span><span>Status</span><span>Date</span><span></span></div>` : '';
-      const rows = !open ? '' : head + (s.items || []).map(it => {
+      const rows = !open || !(s.items || []).length ? '' : hubGridHead() + (s.items || []).map(it => {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
-        const cut = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
-        return `<div style="padding:3px 12px 3px 34px;display:grid;grid-template-columns:minmax(0,2.2fr) minmax(0,1.2fr) minmax(0,1.4fr) 70px 70px 90px;gap:8px;align-items:center;font-size:11px;border-top:1px dashed var(--border);">
-          <span style="${cut}" title="${esc(it.title)}">${esc(it.title)}</span>
-          <span style="${cut}" title="Asset Type${it.section ? ' · placed here by Hub Section = ' + esc(it.section) : ''}">${esc(it.type) || '<span style="color:var(--text3);">—</span>'}${it.section ? ' <span style="color:var(--text3);">↳</span>' : ''}</span>
-          <span style="${cut}color:var(--text2);" title="${esc(it.method)}">${esc(it.method) || '<span style="color:var(--text3);">—</span>'}</span>
-          <span><span style="padding:0 6px;border-radius:8px;font-size:10px;background:${it.status === 'Published' ? 'rgba(74,222,128,.18)' : 'rgba(246,173,85,.2)'};">${esc(it.status)}</span></span>
-          <span style="color:var(--text3);">${it.date ? esc(new Date(it.date + 'T12:00:00').toLocaleDateString()) : ''}</span>
-          <span style="white-space:nowrap;">${live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : ''}<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a></span></div>`; }).join('');
+        return hubGridRow({ title: it.title, type: it.type, typeTip: 'Asset Type' + (it.section ? ' · placed here by Hub Section = ' + it.section : ''),
+          typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
+          links: (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
       return phaseHdr + `<div onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
         <span style="flex-shrink:0;">${dot}</span><span style="font-size:10px;color:var(--text3);width:10px;">${n ? (open ? '▼' : '▶') : ''}</span>
@@ -14118,8 +14123,11 @@ function renderHubBuildRows(slug) {
         <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + set as main'}</button>
         <button onclick="_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">cancel</button></div>` : '';
       const lab = s.mainId ? `Main product — <b>${esc(s.mainName || 'set')}</b>` : 'Main product <span style="color:var(--text3);">— choose one of the campaign\'s products, or add one</span>';
+      const mp = (s.products || []).find(p => p.id === s.mainId) || {};
+      const grid = s.mainId ? hubGridHead() + hubGridRow({ title: s.mainName || mp.name || 'Main product', type: 'Product', method: '', status: mp.status || '',
+        links: `<a href="https://www.notion.so/${esc(s.mainId)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }) : '';
       return phaseHdr + `<div style="padding:5px 12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;font-size:11px;color:var(--text);line-height:1.35;">${lab}</span>${ctrl}</div>` + add;
+        <span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;font-size:11px;color:var(--text);line-height:1.35;">${s.mainId ? 'Main product' : lab}</span>${ctrl}</div>` + add + grid;
     } else if (s.link === 'microsite') {
       ctrl = s.done
         ? `<span style="font-size:10px;color:#4ade80;flex-shrink:0;">${esc(s.doneText || 'live')}</span>`

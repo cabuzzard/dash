@@ -13555,8 +13555,11 @@ Return: {
             const pg = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
             if (!pg || pg.object === "error" || pg.archived) return null;
             const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Growth Strategy", relation: { contains: dash(id) } } }).catch(() => []);
+            const mids = [...new Set(titles.map(t => (t.properties?.method?.relation || [])[0]?.id).filter(Boolean))];
+            const mn = Object.fromEntries(await Promise.all(mids.map(async m => { try { const p = await fetch(`https://api.notion.com/v1/pages/${m}`, { headers: hdr }).then(r => r.json()); return [m, txt(p.properties?.Name?.title)]; } catch (e) { return [m, ""]; } })));
             return { id, name: txt(pg.properties?.["Strategy Name"]?.title) || "Untitled strategy", status: pg.properties?.Status?.select?.name || "",
-              titles: titles.map(t => ({ id: t.id.replace(/-/g, ""), title: txt(t.properties?.Title?.title) || "Untitled", status: t.properties?.Status?.select?.name || "" }))
+              titles: titles.map(t => ({ id: t.id.replace(/-/g, ""), title: txt(t.properties?.Title?.title) || "Untitled", status: t.properties?.Status?.select?.name || "",
+                method: mn[(t.properties?.method?.relation || [])[0]?.id] || "", date: (t.created_time || "").slice(0, 10) }))
                 .sort((a, b) => a.title.localeCompare(b.title)) };
           }));
           return json({ strategies: strategies.filter(Boolean) });
