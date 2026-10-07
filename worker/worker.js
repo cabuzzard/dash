@@ -1066,7 +1066,7 @@ async function bufferDecrypt(env, rec) {
 // Blog - SEO - News → news; SEO Post / QA (not Sales) → articles; Offer / QA – Sales → offers.
 function hubSectionOf(props) {
   const o = String(props?.["Hub Section"]?.select?.name || "").trim().toLowerCase();
-  if (o === "news" || o === "articles" || o === "offers") return o;
+  if (o === "news" || o === "articles" || o === "offers" || o === "interactive") return o;
   const at = String(props?.["Asset Type"]?.select?.name || "").trim();
   if (/\bblog\b/i.test(at) && /\bnews\b/i.test(at)) return "news";
   if (/\bseo post\b/i.test(at)) return "articles";
@@ -12329,7 +12329,8 @@ the one aesthetic risk taken + why:`;
           const mainId = ctxH.mainChosen ? productId : null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
-          const HUB_BLOG_SECTIONS = [{ key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" }];
+          const HUB_BLOG_SECTIONS = [{ key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
+            { key: "interactive", label: "Interactive", phase: "Interactive" }];   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
           const listed = (await notionQuery(ASSETS_DB, { filter: { and: [
               { property: "Campaign", relation: { contains: dashHb(campaignId) } },
               { or: [ { property: "Asset Status", select: { equals: "Publish" } }, { property: "Asset Status", select: { equals: "Published" } } ] } ] } }).catch(() => []))
@@ -12347,7 +12348,7 @@ the one aesthetic risk taken + why:`;
                   type: p["Asset Type"]?.select?.name || "", method: mName[(p.Method?.relation || [])[0]?.id] || "",
                   section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
                   date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim() }; });
-            return { id: "page-" + sec.key, phase: "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
+            return { id: "page-" + sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "nothing published to this section yet" };
           });
           let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
@@ -33971,8 +33972,8 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         // HUB_SITES, or "" to clear. getHubProducts reads this to decide which
         // hub an offer asset renders on.
         if (hubSection !== undefined) {
-          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers"] } });
-          const hs = { news: "News", articles: "Articles", offers: "Offers" }[String(hubSection || "").toLowerCase()];
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers", "Interactive"] } });
+          const hs = { news: "News", articles: "Articles", offers: "Offers", interactive: "Interactive" }[String(hubSection || "").toLowerCase()];
           props["Hub Section"] = { select: hs ? { name: hs } : null };   // "" = back to the type default
         }
         if (contentHub !== undefined) {
