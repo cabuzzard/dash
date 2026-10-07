@@ -4122,6 +4122,7 @@
   </div>
 </div>
 
+<script src="shared/design-panel.js"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -13759,8 +13760,7 @@ function renderHubsTab() {
       if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
     }).catch(() => {});
   }
-  if (hubSecOpen('build')) hubContentLoad(slug);
-  fetchHubSpecText(slug);
+  if (hubSecOpen('production')) hubContentLoad(slug);
   const meta = hubMeta(h), state = hubReadyState(slug), badge = hubBadge(state, meta);
   const spec = HUB_SPEC[slug] || {}, design = spec.design || {}, fonts = spec.fonts || {}, pal = hpPalette(slug);
   const hubUrl = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
@@ -13829,17 +13829,20 @@ function renderHubsTab() {
       </div>
     </div>
 
-    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open);if(this.open)hubContentLoad('${slug}')">
+    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open)">
       <summary>
         <span>Build checklist</span>
         <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
         <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status from the live site + Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳ re-check</button>
       </summary>
       <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
-      <div style="padding:0 0 4px;">
-        <div onclick="_hubPhaseOpen['${slug}|Production']=!_hubPhaseOpen['${slug}|Production'];this.nextElementSibling.style.display=_hubPhaseOpen['${slug}|Production']?'':'none';this.querySelector('.phchev').textContent=_hubPhaseOpen['${slug}|Production']?'▼':'▶'" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span class="phchev" style="font-size:9px;color:var(--text3);width:10px;">${_hubPhaseOpen[slug + '|Production'] ? '▼' : '▶'}</span><span>Production</span>
-          <button onclick="event.stopPropagation();_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload keywords + strategies from Notion" style="margin-left:auto;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">⟳</button></div>
-        <div style="display:${_hubPhaseOpen[slug + '|Production'] ? '' : 'none'};">
+    </details>
+
+    <details class="hub-sec" ${hubSecOpen('production') ? 'open' : ''} ontoggle="hubSecToggle('production', this.open);if(this.open)hubContentLoad('${slug}')">
+      <summary><span>Production</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keywords · products · strategies</span>
+        <button onclick="event.preventDefault();event.stopPropagation();_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload keywords + strategies from Notion" style="margin-left:auto;font-weight:400;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">⟳</button>
+      </summary>
+      <div style="padding:4px 0 6px;">
         <div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="padding:5px 12px;display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;">
           <span style="flex-shrink:0;width:10px;"></span><span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span>
           <span style="font-size:11px;color:var(--text);">Keywords</span>
@@ -13859,80 +13862,22 @@ function renderHubsTab() {
           <span style="font-size:11px;color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>
           <button onclick="event.stopPropagation();hcStratModal('${slug}')" title="New strategy" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button></div>
         <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:2px 12px 4px 34px;">${renderHubContent(slug)}</div>
-        </div>
+        
       </div>
     </details>
 
     <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open)">
-      <summary><span>Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">direction · palette · fonts · image spec</span></summary>
-      <div style="padding:12px 14px;">
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;">
-          <a href="${hubUrl}" target="_blank" rel="noopener" title="Open the published hub (its custom domain if wired, else the GitHub Pages URL). Read-only." style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
-          ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this campaign's admin microsite. Read-only." style="font-size:11px;color:var(--text3);text-decoration:none;">microsite ↗</a>` : ''}
-          <button onclick="openHubBriefModal('${slug}')" title="Copy a paste-ready design brief (campaign research + this hub's current tokens/fonts) for a ChatGPT chat or your Visual Director project. Copy only — nothing is written back." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ ChatGPT brief prompt</button>
+      <summary><span>Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">direction · palette · fonts · image spec · layouts</span></summary>
+      <div style="padding:10px 12px;">
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+          <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);text-decoration:none;">live hub ↗</a>
+          ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" style="font-size:11px;color:var(--text3);text-decoration:none;">care-gap ↗</a>` : ''}
+          <span style="font-size:10.5px;color:var(--text3);">Same editor as care-gap's Design tab · saved on the campaign's Research record</span>
         </div>
-
-        <div title="These fields all live on this CAMPAIGN's 🔬 Research row (not the product, not hubs.design.json). Palette + fonts are STAGED as candidate versions when you regenerate; the direction fields save on ✎-edit. 'Publish design to hub' writes the selected palette/fonts to the record AND commits everything live. hubs.design.json only holds the resolved outputs. Everything visual downstream inherits from here." style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:8px;cursor:help;">Design — stored on the campaign's Research record (Stage 1)</div>
-        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
-          <div style="flex:1;min-width:250px;">
-            ${_hpImgData[slug] ? `<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding:5px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);">
-              <img src="${_hpImgData[slug].data}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex-shrink:0;">
-              <span style="flex:1;min-width:0;font-size:10px;color:var(--text2);line-height:1.4;">Reference image held — steers <b>↻ Regenerate palette</b> and <b>↻ Regenerate design direction</b>. It's the image that goes into the brief (as a written direction). </span>
-              <button onclick="hpClearImage('${slug}')" title="Remove the held image" style="flex-shrink:0;font-size:11px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕</button>
-            </div>` : ''}
-            <input id="hpImg" type="file" accept="image/*" onchange="hpSetImage('${slug}', this)" title="Optional reference image — held once picked (a thumbnail appears). ↻ Regenerate palette pulls colours from it; ↻ Regenerate design direction reads the whole vibe off it. To send it 'to the brief': regenerate direction from it → Post to brief." style="font-size:11px;display:block;margin-bottom:8px;max-width:100%;">
-            <input id="hpInstr" class="modal-input" type="text" value="${esc(_hpInstrVal[slug] || '')}" oninput="_hpInstrVal['${slug}'] = this.value" title="A one-off steer for THIS run — fed to ↻ Regenerate palette / fonts / design direction. Held in the field but not saved to the record. For standing direction that persists, use the Design notes ✎ field." placeholder="override: keep it dark · primary a deep teal · no orange" style="font-size:11px;margin-bottom:8px;">
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              <button id="hpGen" onclick="hpGen('${slug}')" title="Researches a 10-token palette from campaign + product research — or seeds it from the image above if one is attached. STAGED as a new candidate version (not written to the Research record). Pick it in the Palette dropdown, then Publish design to hub." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate palette</button>
-              <button id="hpGenFonts" onclick="hpGenFonts('${slug}')" title="Researches a display / body / mono pairing (now honours the override box). STAGED as a candidate version — pick it in the Fonts dropdown, then Publish. Not written to Research until then." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ Regenerate fonts</button>
-              <button id="hpGenDesign" onclick="hpGenDesign('${slug}')" title="Visual direction (register / photography / avoid), STAGED as a candidate. Source: if a reference image is held above, it reads the direction OFF THE IMAGE and all three fields describe it; otherwise it researches from campaign + product. Honours your Design notes + the override box. Review below, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid ${_hpImgData[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ ${_hpImgData[slug] ? 'direction from image' : 'Regenerate design direction'}</button>
-              <button id="hpGenDesignKw" onclick="openHubKwModal('${slug}')" title="Load the main product's keywords into a box, edit them, then regenerate the visual direction built around those keywords. Also staged — review, then Post to brief." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">↻ direction from keywords</button>
-            </div>
-            ${versionRows}
-            <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;">
-              <button id="hpPostBrief" onclick="hpPostBrief('${slug}')" ${dirty ? '' : 'disabled'} title="UPSTREAM. Writes the whole STAGE (palette / fonts / register / photography / avoid / notes) to the campaign Research record and refreshes the image plate spec. Does NOT touch the live hub." style="font-size:11px;padding:6px 11px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);color:var(--text);cursor:pointer;">Save to brief ↑</button>
-              <button id="hpPush" onclick="hpPush('${slug}')" ${pal ? '' : 'disabled'} title="DOWNSTREAM (includes the upstream save). Writes the STAGE to the Research record, commits palette + fonts into hubs.design.json + the hub HTML, regenerates + freezes the image spec, and redeploys (~1 min)." style="font-size:11px;padding:6px 11px;border:1px solid var(--accent);border-radius:6px;background:var(--accent);color:#0b0b0b;font-weight:600;cursor:pointer;">Push to hub ↓</button>
-            </div>
-            <div id="hpMsg" style="font-size:11px;margin-top:8px;min-height:14px;color:var(--text3);">${esc(_hpNote[slug] || '')}${dirty ? ' <span style="color:#ffb020;">unsaved — Save to brief / Push to hub</span>' : ''}</div>
-            <div title="The on-deck display · body · mono pairing — the STAGE value, else what's live. Save to brief / Push to hub commits it." style="font-size:10px;margin-top:6px;color:var(--text3);cursor:help;">Fonts: ${esc((selFonts && [selFonts.display,selFonts.body,selFonts.mono].filter(Boolean).join(' · ')) || (fonts.display ? [fonts.display,fonts.body,fonts.mono].join(' · ') : '—'))}</div>
-            ${(function(){
-              const d = _hpStageOf(slug), b = _hpBase[slug] || {};
-              const chg = (k,v) => JSON.stringify(v||'') !== JSON.stringify(b[k]||'');
-              const row = (key,l) => { const v = d[key]; return `<div style="margin-top:7px;"><span style="color:var(--text3);text-transform:uppercase;letter-spacing:.06em;font-size:8.5px;">${l}</span> <button onclick="openHubDesignFieldModal('${slug}','${key}')" title="Hand-edit this field — the value goes into the STAGE. Save to brief writes the whole stage to the campaign Research record. Design notes is your standing direction (re-consulted on every regenerate)." style="border:0;background:none;color:var(--accent);cursor:pointer;font-size:10px;padding:0 2px;">✎</button>${chg(key,v) ? '<span style="color:#ffb020;font-size:8.5px;"> ● unsaved</span>' : ''}<br><span style="opacity:${v?'1':'.5'}">${v ? esc(v) : '— not set —'}</span></div>`; };
-              return `<div style="font-size:10px;line-height:1.5;color:var(--text2);margin-top:8px;border-top:1px solid var(--border);padding-top:8px;">${row('register','Visual register')}${row('photography','Photography direction')}${row('avoid','Visual avoid')}${row('notes','Design notes (yours)')}</div>`;
-            })()}
-          </div>
-          <div style="flex:0 0 auto;">
-            <span title="Preview of the on-deck palette — whichever version the Palette dropdown has selected (or the live one). Single tokens aren't hand-editable; regenerate for a new candidate, pick it, then Publish." style="display:inline-flex;border:1px solid var(--border2);border-radius:4px;overflow:hidden;cursor:help;">${swStrip}</span>
-            <div style="margin-top:6px;max-width:280px;">${swDetail}</div>
-          </div>
-        </div>
-
-        <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px;">
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
-            <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Image plate spec</span>
-            <span title="Assembled live (getImageBrief → assembleImageBrief + writeImageSpec) from: the four direction fields above (authoritative) + campaign Research (Statement / Pain Points / Emotions / Unique Opportunity / Keywords) + the MAIN PRODUCT's 🔬 Product Research + this hub's pushed hubs.design.json tokens. NOT part of Push to hub — it's a read-only artifact. The exact same spec generateOfferImage renders offer plates against." style="font-size:10px;color:var(--text3);cursor:help;">assembled from this hub + the main product's research + your guidance. Wordless plates; type is set in Remotion. Same spec the offer image generator uses.</span>
-            <span style="margin-left:auto;display:flex;gap:6px;">
-              <button onclick="openHubDesignFieldModal('${slug}','notes')" title="Edit the Design notes field (same one as above). Goes into the STAGE; it overrides the derived choices in both the spec and every render." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✎ Design notes</button>
-              <button onclick="fetchHubSpecText('${slug}', true)" ${_hpSpecBusy[slug] ? 'disabled' : ''} title="Regenerate the spec in the box below from the STAGED brief — the palette / fonts / direction / notes currently on deck, saved or not. Changes the box only; hit 💾 Save spec to store it." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">↻ Regenerate staged</button>
-              <button id="hpSaveSpec-${slug}" onclick="hpSaveSpec('${slug}', this)" title="Save exactly what's in the box below onto the campaign Research record's Image Spec field — as-is, hand edits included. NOT a hub push: just freezes this text as the stored spec every offer plate + this card then reads." style="font-size:10px;padding:3px 10px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">💾 Save spec</button>
-              <button onclick="copyHubImageSpec('${slug}', this)" title="Copy the spec text to the clipboard — paste into an image model or a Remotion still job." style="font-size:10px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">📋 Copy</button>
-              <select id="hpTestAspect-${slug}" onchange="_hpTestAspect['${slug}']=this.value" title="Aspect ratio for the Grok test plate" style="font-size:10px;padding:2px 4px;border:1px solid var(--border2);border-radius:5px;background:var(--surface);color:var(--text2);">${['3:4','1:1','16:9'].map(a => `<option value="${a}"${(_hpTestAspect[slug] || '3:4') === a ? ' selected' : ''}>${a}</option>`).join('')}</select>
-              <button onclick="hpTestOnGrok('${slug}', this)" ${_hpTestBusy[slug] ? 'disabled' : ''} title="Throw the spec in the box below (exactly as shown — staged / hand-edited / unsaved all fine) at Grok Imagine and render one wordless test plate, so you can SEE this design direction before saving or pushing it. Writes nothing to Notion. Uses the override box above as a one-off steer." style="font-size:10px;padding:3px 10px;border:1px solid #b8f106;border-radius:5px;background:transparent;color:#b8f106;cursor:pointer;">${_hpTestBusy[slug] ? 'Rendering… (~20s)' : '✨ Test on Grok'}</button>
-            </span>
-          </div>
-          ${_hpSpec[slug] && _hpSpec[slug].dirtyEdit ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Hand-edited — not saved. 💾 Save spec to store it.</div>' : (_hpSpec[slug] && _hpSpec[slug].preview ? '<div style="font-size:9px;color:#ffb020;margin-bottom:4px;">Regenerated from the staged brief — not stored yet. 💾 Save spec to store it.</div>' : (_hpSpec[slug] && _hpSpec[slug].stored ? '<div style="font-size:9px;color:var(--text3);margin-bottom:4px;">Stored spec from the Research record.</div>' : ''))}
-          <textarea id="hubImgSpec-${slug}" rows="14" oninput="if(_hpSpec['${slug}']){_hpSpec['${slug}'].text=this.value;_hpSpec['${slug}'].dirtyEdit=true;}" title="Editable. Tweak it here, then 💾 Save spec to store it. Or use ↻ preview to reassemble from the staged brief." style="width:100%;box-sizing:border-box;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;line-height:1.55;color:var(--text2);background:var(--bg);border:1px solid var(--border2);border-radius:7px;padding:10px;resize:vertical;">${esc(hubImgSpecText2(slug))}</textarea>
-          ${(_hpTests[slug] || []).length ? `<div style="display:flex;gap:8px;overflow-x:auto;margin-top:8px;padding-bottom:4px;">${_hpTests[slug].map(t => `<a href="${esc(t.imageUrl)}" target="_blank" rel="noopener" title="${esc(t.aspect + ' · ' + t.prompt)}" style="flex:0 0 auto;"><img src="${esc(t.imageUrl)}" alt="Grok test plate" style="height:150px;border-radius:6px;border:1px solid var(--border2);display:block;"></a>`).join('')}</div><div style="font-size:9px;color:var(--text3);margin-top:2px;">Grok test plates this session — newest first; hover for the prompt, click to open full size.</div>` : ''}
-        </div>
-
-
-      </div>
-    </details>
-
-    <details class="hub-sec" ${hubSecOpen('layouts') ? 'open' : ''} ontoggle="hubSecToggle('layouts', this.open)">
-      <summary><span>Layouts</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">page text · images · logo · post templates</span></summary>
-      <div style="padding:12px 14px;">
+        <div id="dpHost-${slug}"></div>
+        <details ${hubSecOpen('layouts') ? 'open' : ''} ontoggle="hubSecToggle('layouts', this.open)" style="margin-top:10px;border:1px solid var(--border2);border-radius:8px;">
+          <summary style="cursor:pointer;padding:8px 10px;font-size:12.5px;font-weight:700;">Layouts <span style="font-weight:400;color:var(--text3);font-size:11px;">page text · images · logo · post templates</span></summary>
+          <div style="padding:12px 14px;">
         <div style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);margin-bottom:6px;">Hub page</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
           <button onclick="openHubTextModal('${slug}')" title="Every fixed string on the hub — brand name, hero copy, button labels, ribbon, nav, each section's eyebrow/heading/blurb/empty-state, footer. Blank = template default. Saves to content.json, commits + redeploys (~1 min)." style="font-size:10px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✎ Section text</button>
@@ -13958,8 +13903,9 @@ function renderHubsTab() {
           })()}
         </div>
       </div>
+        </details>
+      </div>
     </details>
-
     <details class="hub-sec" ${hubSecOpen('seo') ? 'open' : ''} ontoggle="hubSecToggle('seo', this.open)">
       <summary><span>On-page SEO</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">audit against the campaign's committed keywords</span></summary>
       <div style="padding:12px 14px;">
@@ -14011,8 +13957,20 @@ function renderHubsTab() {
   </div>
   </div>`;
   setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
+  hubDesignAttach(slug);
 }
 
+// ── Design: the shared design panel (shared/design-panel.js — the same editor care-gap's Design tab mounts).
+// One panel per hub, created once and re-attached after every card render so its state survives. ──
+const _hubDesignPanels = {};
+function hubDesignAttach(slug) {
+  const host = document.getElementById('dpHost-' + slug); if (!host) return;
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || !window.DesignPanel) return;
+  let p = _hubDesignPanels[slug];
+  if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
+    onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; } }) }; }
+  host.appendChild(p.el);
+}
 // ── Left-column collapsible sections (open/closed remembered per section) ──
 function hubSecOpen(k) { try { return !!(JSON.parse(localStorage.getItem('hubSecOpen:v1') || '{}')[k]); } catch (e) { return false; } }
 // ── Hub card lists share one grid: Title · Asset type · Method · Status · Date · links ──
