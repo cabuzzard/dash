@@ -12355,14 +12355,6 @@ the one aesthetic risk taken + why:`;
             { id: "mainproduct", phase: "Main offering", label: "Main product", mainOffering: true, products: campProducts,
               mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
             ...pageSections,
-            { id: "blog",       phase: "Blog",      label: "Blog posts live on the hub", link: "microsite",
-              done: postsN > 0, hint: postsN ? `${postsN} live` : "publish SEO posts from the microsite" },
-            { id: "email",      phase: "Email",     label: "Nurture sequence published for the main form", link: "microsite",
-              done: emailLive, hint: emailLive ? "" : "generate + publish the sequence from the microsite" },
-            { id: "domain",     phase: "Deploy",    label: "Custom domain", prompt: "domain", manual: true, done: man("domain"),
-              tip: "Point a real domain at this hub. The 📋 button copies a full wiring prompt for Claude Code: add the domain to the dash-hubs Cloudflare Pages project, map it in web/hub/_worker.js, add it to the worker's HUB_ORIGINS (CORS), set domain on the HUB_SITES entry, and set the campaign's live-site URL. Tick 'done' once it resolves." },
-            { id: "newsletter", phase: "Audit",     label: "Newsletter signup tested end-to-end", manual: true, build: true, done: man("newsletter"),
-              tip: "Manual check for now — submit the hub's signup form end to end (incl. Turnstile) and confirm the lead lands in Notion + ActiveCampaign. A real automated audit isn't built yet." },
           ];
           return json({ slug, campaignId, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
         }
