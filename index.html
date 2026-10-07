@@ -4423,7 +4423,7 @@ function renderFlowTable(k = 'main') {
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
   const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:none;overflow:hidden;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;';
   // fits the page: fixed layout, columns share the width, text wraps (never wider than the screen)
-  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this);flowAcHide()" onkeydown="flowAcKey(event)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this);flowAc('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
       <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`;
   const view = T.view ? fvBuild(k) : null, manual = !view || view.manual;
   const bodyHtml = view ? view.html(rowHtml) : F.rows.map(rowHtml).join('');
@@ -4619,6 +4619,46 @@ function flowGrow(t) {
   const full = Math.max(28, t.scrollHeight + 2);
   t.style.height = (document.activeElement === t ? full : Math.min(full, FLOW_CLAMP)) + 'px';
 }
+// autocomplete: while typing, suggest values already used in the same column (most-used first) — so repeating
+// entries are typed the same way every time. ↑/↓ choose, Enter or Tab picks, Esc closes; the ×N count shows how often
+// a value repeats in that column.
+let FLOW_AC = null;
+function flowAcHide() { const d = document.getElementById('flowAc'); if (d) d.style.display = 'none'; FLOW_AC = null; }
+function flowAc(k, ri, cid, t) {
+  const q = t.value.trim().toLowerCase();
+  if (!q) return flowAcHide();
+  const n = {};
+  FLOWS[k].data.rows.forEach((r, i) => { if (i === ri) return; const v = String(((r.cells || {})[cid]) || '').trim(); if (v) n[v] = (n[v] || 0) + 1; });
+  const list = Object.keys(n).filter(v => v.toLowerCase() !== q && v.toLowerCase().includes(q))
+    .sort((a, b) => (b.toLowerCase().startsWith(q) - a.toLowerCase().startsWith(q)) || n[b] - n[a] || a.localeCompare(b)).slice(0, 8);
+  if (!list.length) return flowAcHide();
+  FLOW_AC = { k, ri, cid, t, list, n, sel: 0 };
+  flowAcDraw();
+}
+function flowAcDraw() {
+  const A = FLOW_AC; if (!A) return;
+  let d = document.getElementById('flowAc');
+  if (!d) { d = document.createElement('div'); d.id = 'flowAc';
+    d.style.cssText = 'position:fixed;z-index:10000;max-width:min(460px,90vw);border:1px solid var(--border2);border-radius:8px;background:var(--surface);box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:12px;overflow:hidden;';
+    document.body.appendChild(d); }
+  d.innerHTML = A.list.map((v, i) => `<div data-i="${i}" onmousedown="event.preventDefault();flowAcPick(${i})" style="display:flex;gap:10px;justify-content:space-between;padding:5px 10px;cursor:pointer;${i === A.sel ? 'background:var(--surface2);' : ''}"><span style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(v.length > 120 ? v.slice(0, 120) + '…' : v)}</span><span style="color:var(--text3);flex:none;">×${A.n[v]}</span></div>`).join('');
+  d.style.display = 'block';
+  const r = A.t.getBoundingClientRect(), h = d.offsetHeight;
+  let y = r.bottom + 2; if (y + h > innerHeight - 8) y = Math.max(8, r.top - h - 2);
+  d.style.left = Math.max(8, Math.min(r.left, innerWidth - d.offsetWidth - 8)) + 'px'; d.style.top = y + 'px'; d.style.minWidth = Math.min(r.width, 460) + 'px';
+}
+function flowAcKey(ev) {
+  const A = FLOW_AC; if (!A || ev.target !== A.t) return;
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); A.sel = (A.sel + (ev.key === 'ArrowDown' ? 1 : -1) + A.list.length) % A.list.length; flowAcDraw(); }
+  else if (ev.key === 'Enter' || ev.key === 'Tab') { ev.preventDefault(); flowAcPick(A.sel); }
+  else if (ev.key === 'Escape') { ev.preventDefault(); flowAcHide(); }
+}
+function flowAcPick(i) {
+  const A = FLOW_AC; if (!A) return;
+  A.t.value = A.list[i]; flowAcHide();
+  flowCell(A.k, A.ri, A.cid, A.t);
+}
+window.addEventListener('scroll', () => { if (FLOW_AC) flowAcDraw(); }, true);
 // hover tip: the full text of a Flow / New Flow cell or column header
 function flowTipHide() { const d = document.getElementById('flowTip'); if (d) d.style.display = 'none'; }
 document.addEventListener('mouseover', ev => {
