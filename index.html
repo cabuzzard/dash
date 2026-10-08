@@ -13453,7 +13453,7 @@ async function himCall(payload, working){
     const r = await call('hubImage', { slug: HIM.slug, ...payload });
     HIM.content = r.content || HIM.content;
     himRender();
-    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min.';
+    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min. The preview on the right reloads by itself when it is.'; { const sl = HIM.slug; setTimeout(() => { const f = document.getElementById('hpiFrame-' + sl); if (f) try { f.contentWindow.location.reload(); } catch (e) {} }, 75000); }
   } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; himRender(); }
 }
 async function himUpload(kind, input){
