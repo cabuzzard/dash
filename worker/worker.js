@@ -13046,7 +13046,7 @@ Return: {
         const idxF = await gGet(`web/landing/${lpSlug}/index.html`);
         if (body.action === "generateLandingCopy" && idxF.missing) return json({ error: `web/landing/${lpSlug}/ not scaffolded yet — Scaffold first` }, 400);
 
-        const tplF = idxF.missing ? await gGet("web/landing/landing-template.html") : idxF;
+        const tplF = (idxF.missing || (lpMode.long && !String(idxF.text || "").includes('id="lpLong"'))) ? await gGet("web/landing/landing-template.html") : idxF;   // long mode on a page built before the long section → rebuild from the current template
         if (tplF.missing || !tplF.text) return json({ error: "could not read the landing template / page" }, 502);
         let html = tplF.text;
         const rootLp = [
