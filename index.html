@@ -931,6 +931,12 @@
       <span id="newFlowMsg" style="font-size:11px;color:var(--text3);"></span>
     </div>
     <div class="oc-bd"><div id="fvnewBar"></div><div id="fvnewPanel" style="display:none;"></div><div id="newFlowBody"></div></div></div>
+    <div class="oc-sec" data-ock="currentmethods"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:22px 0 8px;">
+      <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">Current Methods</h2>
+      <span style="font-size:11.5px;color:var(--text2);">The pillar → asset plan (moved from the Worksheet artifact): edit any cell or header, add rows and columns, same filters, sorting and grouping as All Output.</span>
+      <span id="cmFlowMsg" style="font-size:11px;color:var(--text3);"></span>
+    </div>
+    <div class="oc-bd"><div id="fvmethodsBar"></div><div id="fvmethodsPanel" style="display:none;"></div><div id="cmFlowBody"></div></div></div>
   </div>
 
   <div class="tab-panel" id="tabPublishing">
@@ -4413,6 +4419,7 @@ async function plSave(btn) {
 const FLOWS = {
   main: { name: '', body: 'flowBody', msg: 'flowMsg', data: null, t: null },
   new:  { name: 'newflow', body: 'newFlowBody', msg: 'newFlowMsg', data: null, t: null, view: true },
+  methods: { name: 'currentmethods', body: 'cmFlowBody', msg: 'cmFlowMsg', data: null, t: null, view: true },   // Current Methods (seeded 2026-10-08 from the Worksheet artifact)
 };
 const flowId = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 async function loadFlowTable(k = 'main') {
@@ -5564,7 +5571,7 @@ function loadTabContent(name) {
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); plLoad(); }
-  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('new'); }
+  if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('new'); loadFlowTable('methods'); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
