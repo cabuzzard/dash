@@ -10453,6 +10453,7 @@ function dev2RowKey(r) { return r.assetId ? ('a:' + r.assetId) : r.titleId ? ('t
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
   { key: 'hub',          label: 'Hub' },
+  { key: 'hubSection',   label: 'Hub section' },
   { key: 'group',        label: 'Group' },
   { key: 'productStack', label: 'Stack' },
   { key: 'product',      label: 'Product' },
@@ -10473,6 +10474,7 @@ const DEV2_EDIT = {
   title:        { type: 'text', rec: 'Content Strategy (title)', ok: r => !!r.titleId },
   assetName:    { type: 'text', rec: 'Assets', ok: r => !!r.assetId },
   assetType:    { type: 'list', rec: 'Assets (Asset Type)', ok: r => !!r.assetId, val: r => r.rawAssetType || '' },
+  hubSection:   { type: 'select', opts: ['', 'Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted'], rec: 'Assets (Hub Section)', ok: r => !!r.assetId },
   status:       { type: 'select', opts: ['Planning', 'Development', 'Publish', 'Published'], rec: r => r.kind === 'asset' ? 'Assets' : r.kind === 'title' ? 'Content Strategy (title)' : 'Products', ok: r => !!(r.assetId || r.titleId || r.productId) },
 };
 const DEV2_READONLY_WHY = { campaign: 'move records between campaigns from the microsite', hub: 'comes from the campaign' };
@@ -14608,8 +14610,11 @@ function hubLvl(head, body, headAttrs) {
 }   // build-checklist phases + Production: collapsed until opened
 // section heading summaries (right side): orange until the section has something live, then green
 function hubPhaseSummary(b, phase) {
-  const steps = (b.steps || []).filter(x => x.phase === phase), O = '#f6ad55', G = '#4ade80';
+  const steps = (b.steps || []).filter(x => x.phase === phase && !x.hidden), O = '#f6ad55', G = '#4ade80';
   const pill = (txt, ok) => `<span style="color:${ok ? G : O};font-weight:600;">${txt}</span>`;
+  if (steps.some(x => x.pageSection)) {   // 2026-10-08: sections feature assets — count them by stage
+    const its = steps.flatMap(x => x.items || []), pl = its.filter(i => !i.status || i.status === 'Planning').length, pub = its.filter(i => i.status === 'Published').length;
+    return pill(`${pl} planning · ${its.length - pl - pub} in progress · ${pub} published`, pub > 0); }
   const mo = steps.find(x => x.mainOffering);
   if (mo) { const all = mo.products || [], ids = mo.mainIds || (mo.mainId ? [mo.mainId] : []);
     const st = ids.map(id => (all.find(p => p.id === id) || {}).status || 'Planning'), plan = st.filter(x => x === 'Planning').length, act = st.length - plan;
@@ -14627,11 +14632,11 @@ function renderHubBuildRows(slug) {
   const h = HUB_SITES.find(x => x.slug === slug) || {};
   const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
   let lastPhase = '';
-  return b.steps.map(s => {
+  return b.steps.filter(s => !s.hidden).map(s => {
     const busy = _hubBuildBusy[slug + '|' + s.id];
     let dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
     const phOpen = !!_hubPhaseOpen[slug + '|' + s.phase];
-    const single = (s.pageSection || s.mainOffering) && b.steps.filter(x => x.phase === s.phase).length === 1;   // one row → no redundant inner header
+    const single = (s.pageSection || s.mainOffering) && b.steps.filter(x => x.phase === s.phase && !x.hidden).length === 1;   // one row → no redundant inner header
     const phHead = extra => `<div data-ph="${esc(s.phase)}" onclick="_hubPhaseOpen['${slug}|' + this.dataset.ph]=!_hubPhaseOpen['${slug}|' + this.dataset.ph];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}${extra ? `<span onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--text);cursor:default;">${extra}</span>` : ''}</div>`;
     const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, single ? '' : phHead(hubPhaseSummary(b, s.phase))) : '';
     const wrapRow = (head, body, attrs, headSingle) => single
@@ -14797,13 +14802,13 @@ async function hubMainOfferSet(slug, productId, op) {
   if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
 }
 // ✎ a published asset in a Page content / Interactive / CTA section: title, notes, status, which section it's listed in
-const HUB_SECTION_OPTS = [['', 'Default for its type'], ['offers', 'Products'], ['news', 'News (journal)'], ['articles', 'Articles'], ['interactive', 'Interactive'], ['cta', "CTA's"]];
+const HUB_SECTION_OPTS = [['', 'Default for its type'], ['main', 'Main offerings'], ['offers', 'Products'], ['news', 'News (journal)'], ['articles', 'Articles'], ['interactive', 'Interactive'], ['cta', "CTA's"], ['unlisted', 'Not listed anywhere']];
 function hubAssetEdit(slug, stepId, aid) {
   const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.id === stepId), it = st && (st.items || []).find(x => x.id === aid); if (!it) return;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
   const L = t => `<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${t}</label>`;
   const usesPlatform = !!(it.platformTitle || '').trim();
-  const sec = String(it.section || '').toLowerCase().replace(/^offers?$/, 'offers').replace(/^cta'?s?$/, 'cta');
+  const sec = String(it.section || '').toLowerCase().replace(/^offers?$/, 'offers').replace(/^cta'?s?$/, 'cta').replace(/^main offering$/, 'main');
   hcModal(`<h3 style="margin:0 0 10px;">Edit asset</h3>
     ${L(usesPlatform ? 'Title (the public title on the hub)' : 'Title')}<input id="haeTitle" value="${esc(it.title)}" style="${IN}">
     ${L('Notes')}<textarea id="haeNotes" rows="5" style="${IN}resize:vertical;">${esc(it.notes || '')}</textarea>
@@ -14816,7 +14821,7 @@ async function hubAssetSave(slug, stepId, aid) {
   const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.id === stepId), it = st && (st.items || []).find(x => x.id === aid); if (!it) return 'Asset not found';
   const title = document.getElementById('haeTitle').value.trim(), notes = document.getElementById('haeNotes').value, status = document.getElementById('haeStatus').value, section = document.getElementById('haeSection').value;
   if (!title) return 'The title can’t be empty';
-  const curSec = String(it.section || '').toLowerCase().replace(/^offers?$/, 'offers').replace(/^cta'?s?$/, 'cta');
+  const curSec = String(it.section || '').toLowerCase().replace(/^offers?$/, 'offers').replace(/^cta'?s?$/, 'cta').replace(/^main offering$/, 'main');
   try {
     const body = { assetId: aid };
     if (title !== it.title) { if ((it.platformTitle || '').trim()) body.platformTitle = title; else body.title = title; }

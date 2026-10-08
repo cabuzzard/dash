@@ -1102,6 +1102,8 @@ async function hubMainList(env, cid) {
 function hubSectionOf(props) {
   const o = String(props?.["Hub Section"]?.select?.name || "").trim().toLowerCase();
   if (o === "news" || o === "articles" || o === "offers" || o === "interactive" || o === "cta") return o;
+  if (o === "main offering" || o === "main") return "main";
+  if (o === "unlisted") return null;   // taken out of every section on purpose (2026-10-08) — never falls back to the type default
   const at = String(props?.["Asset Type"]?.select?.name || "").trim();
   if (/\bblog\b/i.test(at) && /\bnews\b/i.test(at)) return "news";
   if (/\bseo post\b/i.test(at)) return "articles";
@@ -12465,11 +12467,11 @@ the one aesthetic risk taken + why:`;
           const mainIds = ctxH.mainChosen ? (ctxH.mainIds || [productId]) : [], mainId = mainIds[0] || null;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
-          const HUB_BLOG_SECTIONS = [{ key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
+          const HUB_BLOG_SECTIONS = [{ key: "main", label: "Main offerings", phase: "Main offerings" }, { key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
             { key: "interactive", label: "Interactive", phase: "Interactive" }, { key: "cta", label: "CTA's", phase: "CTA's" }];   // CTA's: assets with Hub Section = CTA   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
           const listed = (await notionQuery(ASSETS_DB, { filter: { and: [
               { property: "Campaign", relation: { contains: dashHb(campaignId) } },
-              { or: [ { property: "Asset Status", select: { equals: "Publish" } }, { property: "Asset Status", select: { equals: "Published" } } ] } ] } }).catch(() => []))
+              { property: "Asset Status", select: { does_not_equal: "Delete" } } ] } }).catch(() => []))   // 2026-10-08: the card shows every asset in a section (Planning dummies too); the live hub still shows only Publish/Published
             .filter(r => { const h = r.properties?.["Content Hub"]?.select?.name || ""; return !h || h === slug; });
           // method names, so each row shows which method produced it (the Asset Type select alone can be a legacy label)
           const mIds = [...new Set(listed.map(r => (r.properties?.Method?.relation || [])[0]?.id).filter(Boolean))];
@@ -12487,13 +12489,13 @@ the one aesthetic risk taken + why:`;
                   section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
                   date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim() }; });
             return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
-              hint: items.length ? "" : "nothing published to this section yet" };
+              hint: items.length ? "" : "no assets in this section yet" };
           });
           for (const ps of pageSections) {
             // every page section holds hand-picked TITLES too (KV hub:sectiontitles:<key>:<cid>) — planned work for that slot
             let ids = []; try { ids = JSON.parse((await env.TRADES.get("hub:sectiontitles:" + ps.key + ":" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
             const txt = a => (a || []).map(t => t.plain_text).join("").trim();
-            ps.titleSlots = true;
+            ps.titleSlots = false;   // sections feature assets only now (2026-10-08); old hand-picked titles are cleared by hubDummies
             ps.titles = (await Promise.all(ids.map(async id => { try {
               const pg = await fetch(`https://api.notion.com/v1/pages/${dashHb(id)}`, { headers: nhdr }).then(r => r.json());
               if (!pg || pg.object === "error" || pg.archived) return null; const pp = pg.properties || {};
@@ -12507,12 +12509,15 @@ the one aesthetic risk taken + why:`;
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
             mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
           const steps = [
-            { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, products: campProducts, groupOrder: stackGroups.order || [], mainIds,
-              mainId, mainName, done: !!mainId, hint: mainId ? "" : "choose one of the campaign's products, or add one" },
+            // hidden: kept only as the product list Production › Products reads; Main offerings is an asset section now
+            { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: true, products: campProducts, groupOrder: stackGroups.order || [], mainIds,
+              mainId, mainName, done: !!mainId, hint: "" },
+            ...pageSections.filter(x => x.phase === "Main offerings"),
             ...pageSections.filter(x => x.phase === "CTA's"),   // right under Main offerings
-            ...pageSections.filter(x => x.phase !== "CTA's"),
+            ...pageSections.filter(x => x.phase !== "CTA's" && x.phase !== "Main offerings"),
           ];
-          return json({ slug, campaignId, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
+          const shown = steps.filter(s => !s.hidden);
+          return json({ slug, campaignId, steps, doneCount: shown.filter(s => s.done).length, total: shown.length });
         }
 
         if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);
@@ -12809,6 +12814,11 @@ Return: {
             body: JSON.stringify({ properties: { "live site": { url: `https://cabuzzard.github.io/dash/web/hub/${slug}/` } } }),
           }).catch(() => {});
 
+          if (!alreadyDone) {   // new hub → the section dummy set from the template (Planning titles + assets)
+            const hubRec = HUB_SITES.find(x => x.slug === slug) || { slug, name: campName, campaignId };
+            try { const dm = await hubDummiesCreate(env, { ...hubRec, name: hubRec.name || campName, campaignId: hubRec.campaignId || campaignId }, false); if (dm.created) committed.push(`${dm.created} section dummies`); }
+            catch (e) { console.error("scaffoldHub dummies:", e.message); }
+          }
           return json({
             success: true, slug, alreadyScaffolded: alreadyDone, committed,
             url: `https://cabuzzard.github.io/dash/web/hub/${slug}/`,
@@ -13550,6 +13560,7 @@ Return: {
             name: (p["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "",
             assetType: p["Asset Type"]?.select?.name || "",
             status: p["Asset Status"]?.select?.name || "",
+            hubSection: p["Hub Section"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash(p.Campaign.relation[0].id) : null,
             productId: (p.Product?.relation || [])[0]?.id ? dropDash(p.Product.relation[0].id) : null,
@@ -13574,7 +13585,7 @@ Return: {
         const assetFields = a => ({
           assetId: a.id, assetName: a.name,
           assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
-          rawAssetType: a.assetType || "", assetStatus: a.status || "",
+          rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "",
           datePublished: a.status === "Published" ? a.lastEditedTime : null,
         });
         Object.entries(titleById).forEach(([titleId, t]) => {
@@ -13608,7 +13619,7 @@ Return: {
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
               rawAssetType: a.assetType || "",
-              assetStatus: a.status || "",
+              assetStatus: a.status || "", hubSection: a.hubSection || "",
               datePublished: a.status === "Published" ? a.lastEditedTime : null,
             });
           });
@@ -13659,6 +13670,7 @@ Return: {
         else if (field === "titleNotes") { pageId = body.titleId; props = { Notes: rt(value) }; }
         else if (field === "assetName") { pageId = body.assetId; props = { "Asset Title": ti(value) }; }
         else if (field === "assetType") { pageId = body.assetId; props = { "Asset Type": value ? { select: { name: value.slice(0, 100) } } : { select: null } }; }
+        else if (field === "hubSection") { pageId = body.assetId; props = { "Hub Section": value ? { select: { name: value.slice(0, 60) } } : { select: null } }; }
         else if (field === "status") {
           const st = normStatus4(value);
           if (!STATUS4.includes(st)) return json({ error: "Status must be one of " + STATUS4.join(", ") }, 400);
@@ -34291,8 +34303,8 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
         // HUB_SITES, or "" to clear. getHubProducts reads this to decide which
         // hub an offer asset renders on.
         if (hubSection !== undefined) {
-          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers", "Interactive", "CTA"] } });
-          const hs = { news: "News", articles: "Articles", offers: "Offers", interactive: "Interactive", cta: "CTA" }[String(hubSection || "").toLowerCase()];
+          await ensureAssetsDbProperties({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, { "Hub Section": { type: "select", options: ["News", "Articles", "Offers", "Interactive", "CTA", "Main Offering", "Unlisted"] } });
+          const hs = { news: "News", articles: "Articles", offers: "Offers", interactive: "Interactive", cta: "CTA", main: "Main Offering", unlisted: "Unlisted" }[String(hubSection || "").toLowerCase()];
           props["Hub Section"] = { select: hs ? { name: hs } : null };   // "" = back to the type default
         }
         if (contentHub !== undefined) {
@@ -46276,6 +46288,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         const raw = await extractPillarContent(ph, body.titleId, { keepClips: true }).catch(() => "");
         return json({ success: true, clips: pillarClips(raw), hasPillar: !!raw.trim() });
       }
+      if (body.action === "hubDummies") {
+        try { return json(await handleHubDummies(body, env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "apiSpend") {
         try { return json(await handleApiSpend(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
@@ -47843,4 +47858,90 @@ Return ONLY a fenced \`\`\`json array.`;
   const items = (Array.isArray(out) ? out : []).filter(x => x && x.headline && ["idea", "news", "product", "benefit"].includes(x.pool)).slice(0, 16);
   await env.TRADES.put("digest:picks:" + cid, JSON.stringify(items), { expirationTtl: 60 * 60 * 24 * 30 });
   return { success: true, items };
+}
+
+// ════════ Hub section dummies (2026-10-08) ════════
+// Hub sections now feature ASSETS (not products / titles). The Current Methods table's hubsection mapping →
+// this template: for every hub, one Planning title + one Planning asset per slot, named "<hub> - <section> - <type>".
+// `clear` first takes whatever is in those sections out (Hub Section → "Unlisted", status → Planning) — assets,
+// hand-picked section titles and main-offering / section products alike. New hubs get the same set from scaffoldHub.
+// Template = KV hub:dummytemplate (falls back to HUB_DUMMY_TEMPLATE); record of what was made = KV hub:dummies:<slug>.
+const HUB_DUMMY_TEMPLATE = [
+  { section: "Main offerings", hubSection: "Main Offering", label: "Newsletter Free", assetType: "Newsletter Free", count: 1 },
+  { section: "Main offerings", hubSection: "Main Offering", label: "Products",        assetType: "Product",         count: 1 },
+  { section: "CTA's",          hubSection: "CTA",           label: "Newsletter Free", assetType: "Newsletter Free", count: 1 },
+  { section: "Products",       hubSection: "Offers",        label: "Sales Article",   assetType: "QA – Sales",      count: 3 },
+  { section: "Products",       hubSection: "Offers",        label: "Products",        assetType: "Product",         count: 3 },
+  { section: "News",           hubSection: "News",          label: "Blog News SEO",   assetType: "Blog - SEO - News", count: 3 },
+  { section: "Articles",       hubSection: "Articles",      label: "Blog Article",    assetType: "blog post",       count: 3 },
+];
+const HUB_DUMMY_SECTIONS = ["main", "cta", "offers", "news", "articles"];
+async function hubDummyTemplate(env) { try { const t = await env.TRADES.get("hub:dummytemplate", "json"); if (Array.isArray(t) && t.length) return t; } catch (e) {} return HUB_DUMMY_TEMPLATE; }
+
+async function hubSectionsClear(env, hub) {
+  const NT = (env.NOTION_TOKEN || "").trim(), h = { Authorization: `Bearer ${NT}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const cid = hub.campaignId.replace(/-/g, ""), d = s => { s = String(s).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const patch = (id, properties) => fetch(`https://api.notion.com/v1/pages/${d(id)}`, { method: "PATCH", headers: h, body: JSON.stringify({ properties }) }).then(r => r.ok);
+  const out = { assets: 0, titles: 0, products: 0 };
+  let made = []; try { made = ((await env.TRADES.get("hub:dummies:" + hub.slug, "json")) || {}).assetIds || []; } catch (e) {}
+  const assets = (await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: d(cid) } } }).catch(() => []))
+    .filter(r => { const p = r.properties || {}, st = p["Asset Status"]?.select?.name || "", hb = p["Content Hub"]?.select?.name || "";
+      return st !== "Delete" && (!hb || hb === hub.slug) && HUB_DUMMY_SECTIONS.includes(hubSectionOf(p)) && !made.includes(r.id.replace(/-/g, "")); });
+  for (const a of assets) if (await patch(a.id, { "Hub Section": { select: { name: "Unlisted" } }, "Asset Status": { select: { name: "Planning" } } })) out.assets++;
+  for (const sec of ["offers", "news", "articles", "interactive", "cta", "main"]) {
+    const k = "hub:sectiontitles:" + sec + ":" + cid; let ids = []; try { ids = JSON.parse((await env.TRADES.get(k)) || "[]"); } catch (e) {}
+    for (const id of ids) if (await patch(id, { Status: { select: { name: "Planning" } } })) out.titles++;
+    if (ids.length) await env.TRADES.delete(k);
+    const kp = "hub:sectionproducts:" + sec + ":" + cid; let pids = []; try { pids = JSON.parse((await env.TRADES.get(kp)) || "[]"); } catch (e) {}
+    for (const id of pids) if (await patch(id, { Status: { select: { name: "Planning" } } })) out.products++;
+    if (pids.length) await env.TRADES.delete(kp);
+  }
+  const mains = await hubMainList(env, cid);
+  for (const id of mains) if (await patch(id, { Status: { select: { name: "Planning" } } })) out.products++;
+  if (mains.length) await env.TRADES.delete("hub:mainproduct:" + cid);
+  return out;
+}
+
+async function hubDummiesCreate(env, hub, force) {
+  const NT = (env.NOTION_TOKEN || "").trim(), h = { Authorization: `Bearer ${NT}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const cid = hub.campaignId.replace(/-/g, ""), d = s => { s = String(s).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const recKey = "hub:dummies:" + hub.slug;
+  let rec = null; try { rec = await env.TRADES.get(recKey, "json"); } catch (e) {}
+  if (rec && rec.assetIds && rec.assetIds.length && !force) return { skipped: true, created: 0, note: "dummies already made for this hub" };
+  const tpl = await hubDummyTemplate(env), made = { titleIds: [], assetIds: [], at: new Date().toISOString() }, errors = [];
+  const mCache = {};
+  for (const slot of tpl) {
+    if (!(slot.assetType in mCache)) mCache[slot.assetType] = await resolveMethodIdByName(slot.assetType).catch(() => null);
+    const mid = mCache[slot.assetType];
+    for (let i = 0; i < (slot.count || 1); i++) {
+      const name = `${hub.name} - ${slot.section} - ${slot.label}${(slot.count || 1) > 1 ? " " + (i + 1) : ""}`;
+      try {
+        const tp = { Title: { title: [{ text: { content: name } }] }, Status: { select: { name: "Planning" } }, Campaign: { relation: [{ id: d(cid) }] } };
+        if (mid) tp.method = { relation: [{ id: d(mid) }] };
+        const tr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: h, body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: tp }) });
+        const td = await tr.json(); if (!tr.ok) throw new Error("title: " + (td.message || tr.status));
+        made.titleIds.push(td.id.replace(/-/g, ""));
+        const ap = { "Asset Title": { title: [{ text: { content: name } }] }, "Asset Type": { select: { name: slot.assetType } }, "Asset Status": { select: { name: "Planning" } },
+          "Hub Section": { select: { name: slot.hubSection } }, "Content Hub": { select: { name: hub.slug } }, Campaign: { relation: [{ id: d(cid) }] },
+          "Content Strategy": { relation: [{ id: td.id }] }, Notes: { rich_text: [{ text: { content: `Hub dummy (${slot.section} · ${slot.label}) — fill in, research and write later.` } }] } };
+        if (mid) ap.Method = { relation: [{ id: d(mid) }] };
+        const ar = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: h, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: ap }) });
+        const ad = await ar.json(); if (!ar.ok) throw new Error("asset: " + (ad.message || ar.status));
+        made.assetIds.push(ad.id.replace(/-/g, ""));
+      } catch (e) { errors.push(`${name}: ${e.message}`); }
+    }
+  }
+  await env.TRADES.put(recKey, JSON.stringify({ ...made, prev: rec || null }));
+  return { created: made.assetIds.length, titles: made.titleIds.length, errors };
+}
+
+async function handleHubDummies(body, env) {
+  if (body.action !== "hubDummies") return null;
+  const tpl = await hubDummyTemplate(env);
+  if (body.op === "template") { if (Array.isArray(body.template)) { await env.TRADES.put("hub:dummytemplate", JSON.stringify(body.template)); return { success: true, template: body.template }; } return { success: true, template: tpl }; }
+  const hub = HUB_SITES.find(x => x.slug === body.slug); if (!hub) return { error: "Unknown hub slug" };
+  if (body.op === "plan") return { success: true, hub: hub.slug, perHub: tpl.reduce((n, s) => n + (s.count || 1), 0), template: tpl };
+  const cleared = body.clear === false ? null : await hubSectionsClear(env, hub);
+  const created = await hubDummiesCreate(env, hub, !!body.force);
+  return { success: true, hub: hub.slug, cleared, ...created };
 }
