@@ -11467,7 +11467,7 @@ ${plate ? "\nAPPROVED PLATE:\n" + plate.slice(0, 2000) : ""}${body.guidance ? "\
               if (!ar.ok) return json({ error: ad.error?.message || "Claude API error" }, 502);
               const prompt = (ad.content?.[0]?.text || "").trim(); if (!prompt) return json({ error: "empty prompt" }, 502);
               const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST", headers: { "Authorization": `Bearer ${XAI}`, "content-type": "application/json" },
-                body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }) });
+                body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }) });
               const xd = await xr.json().catch(() => ({}));
               if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
               const imageUrl = xd.data?.[0]?.url || ""; if (!imageUrl) return json({ error: "Grok returned no image" }, 502);
@@ -16338,7 +16338,7 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
           const prompt = `${desc}. A single person, waist-up portrait, standing on the right half of the frame, body and face turned toward the camera, mouth closed in a calm neutral expression, both eyes open and clearly visible, shoulders square, arms relaxed at the sides. Plain flat solid light-grey studio background with nothing else in it — no props, no scenery, no shadows on the wall. Art style: ${style}. No text, no letters, no logos, no watermarks.`;
           const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST",
             headers: { "Authorization": "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" },
-            body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt, n: 1, aspect_ratio: "4:3", resolution: "2k" }) });
+            body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt, n: 1, aspect_ratio: "4:3", resolution: "2k" }) });
           const xd = await xr.json().catch(() => ({}));
           const gurl = xd.data && xd.data[0] && xd.data[0].url;
           if (!xr.ok || !gurl) return json({ error: (xd.error && (xd.error.message || xd.error)) || ("xAI image error (" + xr.status + ")") }, 502);
@@ -16915,7 +16915,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const prompt = ((ad.content && ad.content[0] && ad.content[0].text) || "").trim();
         const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST",
           headers: { "Authorization": "Bearer " + (env.XAI_API_KEY || "").trim(), "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "4:3", resolution: "1k" }) });
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "4:3", resolution: "1k" }) });
         const xd = await xr.json().catch(() => ({}));
         const gurl = xd.data && xd.data[0] && xd.data[0].url;
         if (!xr.ok || !gurl) return json({ error: (xd.error && (xd.error.message || xd.error)) || ("xAI image error (" + xr.status + ")") }, 502);
@@ -17004,7 +17004,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         const prompt = (ad.content?.[0]?.text || "").trim();
         const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }) });
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }) });
         const xd = await xr.json().catch(() => ({}));
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
         const imageUrl = xd.data?.[0]?.url || "";
@@ -29640,7 +29640,7 @@ ${spec.slice(0, 6000)}`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
         });
         const xd = await xr.json().catch(() => ({}));
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
@@ -29655,7 +29655,7 @@ ${spec.slice(0, 6000)}`;
           });
         } catch (e) { /* best-effort */ }
 
-        return json({ imageUrl, prompt, spec, kind, model: "grok-imagine-image-2.0", sync: true });
+        return json({ imageUrl, prompt, spec, kind, model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
       // -- generateBlogPostThumbnail: same "assemble spec → Claude writes the
@@ -29737,7 +29737,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -29750,7 +29750,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
           if (thumbOpts && !rtp("Thumbnail Text")) props["Thumbnail Text"] = { rich_text: [{ text: { content: thumbOpts.slice(0, 500) } }] };
           await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
         } catch (e) { /* best-effort */ }
-        return json({ imageUrl, prompt, kind: "blog-thumbnail", thumbText, model: "grok-imagine-image-2.0", sync: true });
+        return json({ imageUrl, prompt, kind: "blog-thumbnail", thumbText, model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
       if (body.action === "generateBlogPostThumbnail") {
@@ -29803,7 +29803,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "16:9", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -29819,7 +29819,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
           });
         } catch (e) { /* best-effort */ }
 
-        return json({ imageUrl, prompt, spec, kind: "blog-thumbnail", model: "grok-imagine-image-2.0", sync: true });
+        return json({ imageUrl, prompt, spec, kind: "blog-thumbnail", model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
       // -- generateSinglePostBackground: a wordless 3:4 (1080x1440) plate for a
@@ -29868,7 +29868,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
         });
         const xd = await xr.json().catch(() => ({}));
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
@@ -29975,7 +29975,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: aspect, resolution: "2k" }),
         });
         const xd = await xr.json().catch(() => ({}));
         if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
@@ -30068,7 +30068,7 @@ Portrait Instagram post, ready to publish.`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -30400,7 +30400,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
-          body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
+          body: JSON.stringify({ model: "grok-imagine-image-2.0", quality: "medium", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }),
         });
         const xdRaw = await xr.text();
         let xd = {}; try { xd = JSON.parse(xdRaw); } catch (e) {}
@@ -30409,7 +30409,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         if (!imageUrl) return json({ error: "xAI returned no image URL: " + xdRaw.slice(0, 300) }, 502);
 
         try { await env.TRADES.put(sceneKey, JSON.stringify([...recentScenes, { scene, at: new Date().toISOString(), assetId }].slice(-12))); } catch (e) {}
-        return json({ imageUrl, prompt, scene, kind: "post-image", model: "grok-imagine-image-2.0", sync: true });
+        return json({ imageUrl, prompt, scene, kind: "post-image", model: "grok-imagine-image-2.0", quality: "medium", sync: true });
       }
 
       // -- saveOfferImage (rehost a finished image on GitHub Pages and write
