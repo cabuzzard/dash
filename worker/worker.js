@@ -12393,9 +12393,9 @@ the one aesthetic risk taken + why:`;
             return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "nothing published to this section yet" };
           });
-          for (const ps of pageSections) if (ps.key === "cta") {
-            // CTA's holds hand-picked TITLES (KV hub:sectiontitles:cta:<cid>), resolved for the grid
-            let ids = []; try { ids = JSON.parse((await env.TRADES.get("hub:sectiontitles:cta:" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
+          for (const ps of pageSections) {
+            // every page section holds hand-picked TITLES too (KV hub:sectiontitles:<key>:<cid>) — planned work for that slot
+            let ids = []; try { ids = JSON.parse((await env.TRADES.get("hub:sectiontitles:" + ps.key + ":" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
             const txt = a => (a || []).map(t => t.plain_text).join("").trim();
             ps.titleSlots = true;
             ps.titles = (await Promise.all(ids.map(async id => { try {
