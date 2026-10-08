@@ -14269,8 +14269,13 @@ function hcTitleGo(btn, slug, sid) {
   else hcModalRun(btn, () => { const v = document.getElementById('hcNewTitleName').value.trim(); return v ? hubContentDo(slug, 'newTitle', { strategyId: sid, title: v }) : Promise.resolve('Enter a title'); });
 }
 // ✎ title modal: title text, notes, status — each changed field saved to the title's Content Strategy record
+const _hubTitleIdx = {};   // titleId -> the title object shown on the card (strategy titles, CTA product titles)
+function hubTitleFind(slug, sid, tid) {
+  if (sid) { const st = (_hubContent[slug] || []).find(x => x.id === sid); const t = st && st.titles.find(x => x.id === tid); if (t) return t; }
+  return _hubTitleIdx[tid] || null;
+}
 function hcTitleEdit(slug, sid, tid) {
-  const st = (_hubContent[slug] || []).find(x => x.id === sid), t = st && st.titles.find(x => x.id === tid); if (!t) return;
+  const t = hubTitleFind(slug, sid, tid); if (!t) return;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
   hcModal(`<h3 style="margin:0 0 10px;">Edit title</h3>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>
@@ -14282,7 +14287,7 @@ function hcTitleEdit(slug, sid, tid) {
     <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>`);
 }
 async function hcTitleSave(slug, sid, tid) {
-  const st = (_hubContent[slug] || []).find(x => x.id === sid), t = st && st.titles.find(x => x.id === tid); if (!t) return 'Title not found';
+  const t = hubTitleFind(slug, sid, tid); if (!t) return 'Title not found';
   const nv = { title: document.getElementById('hcEdTitle').value.trim(), titleNotes: document.getElementById('hcEdNotes').value, status: document.getElementById('hcEdStatus').value };
   const cur = { title: t.title, titleNotes: t.notes || '', status: t.status };
   if (!nv.title) return 'The title can’t be empty';
@@ -14290,7 +14295,7 @@ async function hcTitleSave(slug, sid, tid) {
     for (const f of ['title', 'titleNotes', 'status']) if (nv[f] !== cur[f]) {
       const r = await call('updateAllOutputField', { kind: 'title', field: f, value: nv[f], titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     }
-    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; hubContentRefresh(slug); return true;
+    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; hubContentRefresh(slug); hubBuildRefreshRows(slug); return true;
   } catch (e) { return e.message; }
 }
 function renderHubContent(slug) {
@@ -14363,12 +14368,17 @@ function renderHubBuildRows(slug) {
         const ids = s.productIds || []; np = ids.length;
         pick = `<select onclick="event.stopPropagation()" onchange="if(this.value)hubSectionProd('${slug}','${s.key}',this.value,'add')" style="font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:200px;">
           <option value="">+ Add a product…</option>${all.filter(p => !ids.includes(p.id)).map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>`;
-        if (open && ids.length) prodRows = (rows ? '' : hubGridHead(0)) + ids.map(id => { const p = byId[id] || {};
+        if (open && ids.length) prodRows = (rows ? '' : hubGridHead(0)) + ids.map(id => { const p = byId[id] || {}, ts = (s.productTitles || {})[id] || [];
+          ts.forEach(t => { _hubTitleIdx[t.id] = t; });
+          const titleRows = `<div style="padding-left:16px;">${ts.length ? ts.map(t => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[t.status] || '', title: t.title, type: 'Title', method: '', status: t.status, date: t.date,
+            links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join('')
+            : '<div style="font-size:11px;color:var(--text3);padding:2px 0 4px;">No titles for this product yet.</div>'}</div>`;
           return hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[p.status] || '', title: p.name || 'Product', type: 'Product', method: '', status: p.status || '', date: p.date,
-            links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${id}','remove')" title="Take this product out of ${esc(s.label)} (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('');
+            links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${id}','remove')" title="Take this product out of ${esc(s.label)} (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }) + titleRows; }).join('');
       }
       const countTxt = (s.productSlots ? `${np} product${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
-      return phaseHdr + hubLvl(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
+      if (open && s.productSlots && !n && !np) prodRows = '<div style="font-size:11px;color:var(--text3);padding:2px 0;">Nothing here yet — add a product with the picker on this line.</div>';
+      return phaseHdr + hubLvl(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np || s.productSlots ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
         <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="color:var(--text3);">— ${countTxt}</span></span>${pick}`, (rows ? rows.replace(hubGridHead(0), hubGridHead(0) + prodRows) : prodRows),
         `onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')"`);
     } else if (s.mainOffering) {

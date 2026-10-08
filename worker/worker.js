@@ -12371,6 +12371,14 @@ the one aesthetic risk taken + why:`;
           for (const ps of pageSections) if (ps.key === "cta") {
             let ids = []; try { ids = JSON.parse((await env.TRADES.get("hub:sectionproducts:cta:" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
             ps.productIds = ids; ps.productSlots = true; ps.done = ps.done || ids.length > 0;
+            // each CTA product's titles (any status) — listed under the product on the card
+            const txt = a => (a || []).map(t => t.plain_text).join("").trim();
+            ps.productTitles = {};
+            await Promise.all(ids.map(async pid => {
+              const rows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "product", relation: { contains: dashHb(pid) } } }).catch(() => []);
+              ps.productTitles[pid] = rows.map(t => ({ id: t.id.replace(/-/g, ""), title: txt(t.properties?.Title?.title) || "Untitled", status: t.properties?.Status?.select?.name || "",
+                notes: txt(t.properties?.Notes?.rich_text), date: (t.created_time || "").slice(0, 10) })).sort((a, b) => a.title.localeCompare(b.title));
+            }));
           }
           let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
