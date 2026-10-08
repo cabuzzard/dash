@@ -205,6 +205,13 @@ Reply with ONE fenced \`\`\`json block and nothing else:
         S.busy = ''; S.open.grok = true; say('Rendered — newest first. Hover a plate for its prompt.', 'ok'); }
       catch (err) { S.busy = ''; say('Grok test failed: ' + err.message, 'bad'); }
     }
+    async function grokMine() {
+      const p = (S.myPrompt || '').trim(); if (p.length < 10) return say('Type your prompt first.', 'bad');
+      S.busy = 'Grok is rendering your prompt, word for word…'; render();
+      try { const r = await call('renderSpecTest', { rawPrompt: p, aspect: S.aspect });
+        S.tests.unshift({ url: r.imageUrl, prompt: p, aspect: r.aspect || S.aspect, label: 'my prompt' }); S.busy = ''; S.open.grok = true; say('Rendered from your prompt.', 'ok'); }
+      catch (err) { S.busy = ''; say('Grok render failed: ' + err.message, 'bad'); }
+    }
     async function directionFromPlate(i) {
       const t = S.tests[i]; if (!t) return;
       await srcPlate(t.url);
@@ -291,12 +298,17 @@ Reply with ONE fenced \`\`\`json block and nothing else:
         <textarea data-in="spec" rows="14" style="${TA}font-size:11.5px;">${e(S.spec.busy ? 'Assembling…' : S.spec.text)}</textarea>`;
       const grok = () => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
           <select data-in="aspect" style="${SEL}">${['3:4', '1:1', '16:9'].map(a => `<option ${a === S.aspect ? 'selected' : ''}>${a}</option>`).join('')}</select>
-          <button ${dis} data-act="grok" style="${BTNP}">✨ Test on Grok</button><span style="font-size:11px;color:${C.ink3};">from the staged spec + staged palette</span></div>
+          <button ${dis} data-act="grok" style="${BTNP}">✨ Test on Grok</button><span style="font-size:11px;color:${C.ink3};">from the staged spec + staged palette (a short 2-3 sentence prompt is distilled from it)</span></div>
+        <div style="border:1px dashed ${C.line};border-radius:6px;padding:8px;margin-bottom:8px;">
+          <div style="${LBL}margin-bottom:3px;">✎ My prompt — sent to Grok word for word</div>
+          <textarea data-in="myPrompt" rows="2" placeholder="e.g. A row of brick garden apartments at golden hour, wide view from across a leafy street, warm and calm, no text" style="${TA}">${e(S.myPrompt || '')}</textarea>
+          <div style="margin-top:6px;"><button ${dis} data-act="grokMine" style="${BTN}">✨ Render my prompt</button></div></div>
         ${S.plate && S.plate.imageUrl ? `<div style="display:flex;align-items:center;gap:10px;padding:8px;border:1px solid ${C.ok};border-radius:6px;margin-bottom:8px;"><a href="${e(S.plate.imageUrl)}" target="_blank" rel="noopener"><img src="${e(S.plate.imageUrl)}" style="height:60px;border-radius:5px;display:block;"></a>
           <div style="flex:1;font-size:11px;color:${C.ink2};"><b>Approved campaign plate</b>${S.plate.approvedAt ? ' · ' + e(String(S.plate.approvedAt).slice(0, 10)) : ''}<br><span style="color:${C.ink3};">Saved. Every asset-level Grok render matches this look.</span></div><button data-act="plateClear" style="${BTN}">✕ clear</button></div>` : ''}
         <div style="display:flex;gap:10px;overflow-x:auto;padding-bottom:4px;">${S.tests.map((t, i) => `<div style="flex:0 0 auto;display:flex;flex-direction:column;gap:4px;width:180px;">
           <a href="${e(t.url)}" target="_blank" rel="noopener" title="${e(t.prompt)}"><img src="${e(t.url)}" style="height:150px;max-width:180px;object-fit:cover;border-radius:6px;border:1px solid ${C.line};display:block;"></a>
           <span style="font-size:9.5px;color:${C.ink3};">${e(t.label)} · ${e(t.aspect)}</span>
+          <details style="font-size:10px;color:${C.ink2};"><summary style="cursor:pointer;color:${C.ink3};">prompt</summary><div style="white-space:pre-wrap;margin-top:3px;">${e(t.prompt)}</div><button data-act="usePrompt" data-i="${i}" style="${BTN}font-size:10px;padding:2px 6px;margin-top:4px;">✎ Edit as my prompt</button></details>
           <button ${dis} data-act="fromPlate" data-i="${i}" title="Rewrite the staged direction from this image, then rebuild the staged spec" style="${BTN}font-size:10px;padding:3px 6px;">⟳ Direction from this</button>
           <textarea data-in="guide" data-i="${i}" rows="2" placeholder="Text request for a new image…" style="${TA}font-size:10.5px;">${e(t.guide || '')}</textarea>
           <button ${dis} data-act="regenPlate" data-i="${i}" title="A new image only — the staged fields don't change" style="${BTN}font-size:10px;padding:3px 6px;">⟳ Regen image</button>
@@ -328,7 +340,7 @@ Reply with ONE fenced \`\`\`json block and nothing else:
     root.addEventListener('input', ev => {
       const t = ev.target, k = t.dataset.in; if (!k) return;
       if (k === 'steer') S.steer = t.value; else if (k === 'stage') S.stage[t.dataset.k] = t.value; else if (k === 'kw') S.kw.text = t.value;
-      else if (k === 'gptReply') S.gpt.reply = t.value; else if (k === 'spec') S.spec.text = t.value; else if (k === 'specSteer') S.spec.steer = t.value;
+      else if (k === 'gptReply') S.gpt.reply = t.value; else if (k === 'spec') S.spec.text = t.value; else if (k === 'specSteer') S.spec.steer = t.value; else if (k === 'myPrompt') S.myPrompt = t.value;
       else if (k === 'guide') S.tests[+t.dataset.i].guide = t.value; else if (k === 'vg') S.voice.global = t.value; else if (k === 'vc') S.voice.campaign = t.value;
     });
     root.addEventListener('change', ev => {
@@ -370,6 +382,8 @@ Reply with ONE fenced \`\`\`json block and nothing else:
       else if (a === 'specUndo') { if (S.spec.prev != null) { const c = S.spec.text; S.spec.text = S.spec.prev; S.spec.prev = c; render(); } }
       else if (a === 'specCopy') { (navigator.clipboard ? navigator.clipboard.writeText(S.spec.text) : Promise.reject()).then(() => say('Image spec copied.', 'ok')).catch(() => say('Clipboard blocked.', 'bad')); }
       else if (a === 'grok') testGrok();
+      else if (a === 'grokMine') grokMine();
+      else if (a === 'usePrompt') { S.myPrompt = S.tests[i].prompt; render(); }
       else if (a === 'fromPlate') directionFromPlate(i);
       else if (a === 'regenPlate') { const g = (S.tests[i].guide || '').trim(); if (!g) return say('Type a text request for the new image first.', 'bad'); testGrok(g, S.tests[i].prompt); }
       else if (a === 'approve') approve(i);

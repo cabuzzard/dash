@@ -11458,7 +11458,7 @@ Return: the logo on a transparent background, plus one preview placed on the sit
                 headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
                 body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content:
 `Write ONE prompt for xAI Grok Imagine for ${role} of the website "${hub.name}". Portrait 3:4, shown in the right third of the page on desktop. Follow the art-direction spec exactly.${plate ? " Match the approved campaign plate's look (its prompt is below)." : ""}${body.guidance ? " Apply the operator's note." : ""}
-Plain descriptive prose, 120-200 words: subject and scene, composition, camera, light, colour (use the palette), medium and finish, mood. End with "No text, no letters, no logos, no watermarks." Return only the prompt.
+Two or three vivid sentences, 25-50 words, describing ONE picture: subject and setting, light and time of day, mood, a simple camera view. Describe only what IS in the picture (never mention things to avoid), colours as plain words (no hex codes), no lists or jargon. End with "no text". Return only the prompt.
 
 ART-DIRECTION SPEC:
 ${String(spec).slice(0, 9000)}
@@ -29611,18 +29611,21 @@ Rules:
           ? "a VERTICAL 3:4 background image for an Instagram post (a headline + 1-2 lines of body text get laid OVER it afterward — keep the top 40% and the vertical centre calm and near-empty)"
           : "a SQUARE 1:1 blog thumbnail plate (a headline gets laid over it afterward — keep the top ~45% calm and near-empty)";
         spec += approvedPlateBlock(brief);
-        const claudePrompt = `You are writing ONE image-generation prompt for xAI Grok Imagine. Output ONLY the prompt text — no preamble, no quotes, no alternatives. 60-110 words. One vivid paragraph.
+        // SHORT prompt on purpose (2026-10-07): Grok Imagine makes its best images from two or three vivid sentences.
+        // Long checklists, hex codes and "never/avoid" lists made worse plates (naming an avoided thing invites it).
+        const claudePrompt = `Write ONE prompt for xAI Grok Imagine. Output ONLY the prompt — no preamble, no quotes.
 
-WHAT IT IS: ${shape}. WORDLESS — no text, letters, numbers, logos, watermarks, UI or signage anywhere.
+Two or three vivid sentences, 25-50 words, describing ONE picture: the subject and setting, the light and time of day, the mood, and the camera view. A ${aspect} image.
 
-Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
-${spec}
+Rules:
+- Describe only what IS in the picture. Never mention anything to avoid — just leave it out.
+- Colours as plain words (e.g. "deep navy", "warm cream"), never hex codes.
+- No technical jargon, no lists, no camera specs beyond a simple view ("wide aerial view", "close-up at eye level").
+- Pick the single strongest, most beautiful scene the art direction allows.
+- Last words: "no text".
 
-THE OFFER THIS PARTICULAR IMAGE IS FOR (pick a scene from the spec's world that fits it — do NOT put its words in the image):
-${offerLines}
-${await bgLayersBlock(hdr, ap, kind === "ig-background" ? "vertical 3:4 Instagram post background; headline + body go over the top 40% / centre" : "square 1:1 thumbnail; headline goes over the top ~45%")}
-End the prompt with: "No text, no letters, no logos, no watermarks."`;
-
+ART DIRECTION (decides WHAT to show — do not copy it, distill one picture from it):
+${spec.slice(0, 6000)}`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
