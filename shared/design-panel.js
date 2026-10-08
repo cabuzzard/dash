@@ -244,9 +244,9 @@ Strip the // comments from the JSON.`;
       S.busy = 'Grok is rendering a test plate (~20s)…'; render();
       try {
         const s = S.stage;
-        const r = await call('renderSpecTest', { direction: { register: s.register, photography: s.photography, avoid: s.avoid }, palette: s.palette || undefined, aspect: S.aspect,
+        const r = await call('renderSpecTest', { spec: (S.spec.text || '').trim().length > 80 ? S.spec.text : undefined, direction: { register: s.register, photography: s.photography, avoid: s.avoid }, palette: s.palette || undefined, aspect: S.aspect,
           guidance: guidance || undefined, previousPrompt: guidance ? prevPrompt : undefined });
-        S.tests.unshift({ url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect || S.aspect, label: guidance ? 'guided: ' + guidance.slice(0, 50) : 'staged design' });
+        S.tests.unshift({ url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect || S.aspect, label: (guidance ? 'guided: ' + guidance.slice(0, 50) : 'staged design') + (S.spec.dirty ? ' · unsaved spec' : '') });
         S.busy = ''; S.open.grok = true; say('Rendered — newest first. Hover a plate for its prompt.', 'ok');
       } catch (err) { S.busy = ''; say('Grok test failed: ' + err.message, 'bad'); }
     }
@@ -327,7 +327,7 @@ Strip the // comments from the JSON.`;
         <textarea data-in="spec" rows="14" style="${TA}font-size:11.5px;">${e(S.spec.busy ? 'Assembling…' : S.spec.text)}</textarea>`;
       const grok = () => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
           <select data-in="aspect" style="${SEL}">${['3:4', '1:1', '16:9'].map(a => `<option ${a === S.aspect ? 'selected' : ''}>${a}</option>`).join('')}</select>
-          <button ${dis} data-act="grok" style="${BTNP}">✨ Test on Grok</button><span style="font-size:11px;color:${C.ink3};">renders one wordless plate from the staged direction + palette</span></div>
+          <button ${dis} data-act="grok" style="${BTNP}">✨ Test on Grok</button><span style="font-size:11px;color:${C.ink3};">renders one wordless plate from the spec in the Image spec box (saved or not) + the staged direction and palette</span></div>
         ${S.gpt.prompt ? `<div style="border:1px dashed ${C.line};border-radius:6px;padding:8px;margin-bottom:8px;"><div style="font-size:11px;color:${C.ink3};margin-bottom:4px;">ChatGPT's Grok prompt — sent word for word (${e(S.gpt.aspect)}).</div>
           <textarea data-in="gptPrompt" rows="5" style="${TA}">${e(S.gpt.prompt)}</textarea>
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><button ${dis} data-act="grokRaw" style="${BTN}">✨ Render on Grok</button>${S.gpt.lastUrl ? `<button ${dis} data-act="foldGpt" style="${BTN}">⟳ Direction from that render</button>` : ''}</div></div>` : ''}
