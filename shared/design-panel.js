@@ -228,6 +228,15 @@ Strip the // comments from the JSON.`;
       S.saving = ''; render();
     }
     async function specPreview() { S.spec.busy = true; render(); try { const r = await call('previewImageSpec', { slug: S.slug || undefined, staged: stagedForSpec() }); S.spec.text = r.text || ''; S.spec.dirty = true; S.open.spec = true; } catch (err) { say('Spec preview failed: ' + err.message, 'bad'); } S.spec.busy = false; render(); }
+    async function specRevise() {
+      const steer = (S.spec.steer || '').trim(); if (!steer) return say('Type the direction to add first.', 'bad');
+      if (!S.spec.text.trim()) return say('There is no spec yet — ↻ Rebuild from staged design first.', 'bad');
+      S.spec.busy = true; render();
+      try { const r = await call('reviseImageSpec', { text: S.spec.text, steer }); S.spec.prev = S.spec.text; S.spec.text = r.text || S.spec.text; S.spec.dirty = true; S.spec.steer = '';
+        say('Direction added to the spec — review it, then 💾 Save spec (↶ Undo spec edit to go back).', 'ok'); }
+      catch (err) { say('Could not add it: ' + err.message, 'bad'); }
+      S.spec.busy = false; render();
+    }
     async function specSave() { S.spec.busy = true; render(); try { await call('saveImageSpec', { text: S.spec.text }); S.spec.dirty = false; S.specOk = true; say('Image spec saved — asset image generation now uses it.', 'ok'); } catch (err) { say('Spec save failed: ' + err.message, 'bad'); } S.spec.busy = false; render(); }
 
     // ── Grok ──
@@ -309,6 +318,12 @@ Strip the // comments from the JSON.`;
       const spec = () => `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">The guidance every asset-level image generation reads (single-post backgrounds, offer plates, thumbnails). 💾 Save design rebuilds it automatically; edit by hand here if needed.</div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;"><button ${S.spec.busy ? 'disabled' : ''} data-act="specPrev" style="${BTN}">↻ Rebuild from staged design</button><button ${S.spec.busy ? 'disabled' : ''} data-act="specSave" style="${BTN}">💾 Save spec</button><button data-act="specCopy" style="${BTN}">📋 Copy</button>
           ${S.spec.dirty ? `<span style="font-size:10.5px;color:${C.warn};align-self:center;">● not saved</span>` : ''}</div>
+        <div style="border:1px dashed ${C.line};border-radius:6px;padding:8px;margin-bottom:8px;">
+          <div style="font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:${C.ink3};margin-bottom:3px;">Direction to add</div>
+          <textarea data-in="specSteer" rows="2" placeholder="e.g. golden-hour window light, older caregiver, more negative space top-left" style="${TA}">${e(S.spec.steer || '')}</textarea>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;"><button ${S.spec.busy ? 'disabled' : ''} data-act="specRevise" style="${BTNP}">＋ Add to spec</button>
+            ${S.spec.prev ? `<button data-act="specUndo" style="${BTN}">↶ Undo spec edit</button>` : ''}
+            <span style="font-size:10.5px;color:${C.ink3};align-self:center;">works it into the spec below, keeps everything else</span></div></div>
         <textarea data-in="spec" rows="14" style="${TA}font-size:11.5px;">${e(S.spec.busy ? 'Assembling…' : S.spec.text)}</textarea>`;
       const grok = () => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
           <select data-in="aspect" style="${SEL}">${['3:4', '1:1', '16:9'].map(a => `<option ${a === S.aspect ? 'selected' : ''}>${a}</option>`).join('')}</select>
@@ -357,7 +372,7 @@ Strip the // comments from the JSON.`;
     root.addEventListener('input', ev => {
       const t = ev.target, k = t.dataset.in; if (!k) return;
       if (k === 'steer') S.steer = t.value; else if (k === 'stage') S.stage[t.dataset.k] = t.value; else if (k === 'kw') S.kw.text = t.value;
-      else if (k === 'gptReply') S.gpt.reply = t.value; else if (k === 'gptPrompt') S.gpt.prompt = t.value; else if (k === 'spec') { S.spec.text = t.value; S.spec.dirty = true; }
+      else if (k === 'gptReply') S.gpt.reply = t.value; else if (k === 'gptPrompt') S.gpt.prompt = t.value; else if (k === 'spec') { S.spec.text = t.value; S.spec.dirty = true; } else if (k === 'specSteer') S.spec.steer = t.value;
       else if (k === 'guide') S.tests[+t.dataset.i].guide = t.value; else if (k === 'vg') S.voice.global = t.value; else if (k === 'vc') S.voice.campaign = t.value;
     });
     root.addEventListener('change', ev => {
@@ -385,6 +400,8 @@ Strip the // comments from the JSON.`;
       else if (a === 'gptStage') stageGpt();
       else if (a === 'specPrev') specPreview();
       else if (a === 'specSave') specSave();
+      else if (a === 'specRevise') specRevise();
+      else if (a === 'specUndo') { if (S.spec.prev != null) { S.spec.text = S.spec.prev; S.spec.prev = null; S.spec.dirty = true; render(); } }
       else if (a === 'specCopy') { (navigator.clipboard ? navigator.clipboard.writeText(S.spec.text) : Promise.reject()).then(() => say('Image spec copied.', 'ok')).catch(() => say('Clipboard blocked.', 'bad')); }
       else if (a === 'grok') testGrok();
       else if (a === 'grokRaw') grokVerbatim();

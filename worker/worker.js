@@ -30841,6 +30841,29 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         return json({ text, stored, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
       }
 
+      // -- reviseImageSpec: fold an operator's direction INTO the current image spec (additive — everything else kept).
+      //    Returns the revised text only; the card stages it and the operator saves it with saveImageSpec.
+      if (body.action === "reviseImageSpec") {
+        const spec = String(body.text || "").trim(), steer = String(body.steer || "").trim();
+        if (!spec || !steer) return json({ error: "text and steer required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content:
+`Below is an image art-direction spec for wordless plates, then a new direction from the operator. Rewrite the spec so the new direction is fully integrated — put it where it belongs (subject, light, palette, composition, avoid…), resolve any conflict in favour of the new direction, and keep everything else as it is: same structure, same headings, same level of detail. Return ONLY the full revised spec, no preamble.
+
+CURRENT SPEC:
+${spec.slice(0, 12000)}
+
+NEW DIRECTION TO ADD:
+${steer.slice(0, 3000)}` }] }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ error: d.error?.message || "Claude API error" }, 502);
+        const text = (d.content || []).filter(b => b.type === "text").map(b => b.text).join("").trim();
+        if (!text) return json({ error: "Empty response" }, 502);
+        return json({ ok: true, text });
+      }
+
       // -- saveImageGuidance (operator's "Design Notes" on the Research record) --
       // The operator's own field in the Research Design section — alongside
       // the generated Visual Register / Photography Direction / Visual Avoid.
