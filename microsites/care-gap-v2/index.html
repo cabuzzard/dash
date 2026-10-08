@@ -517,6 +517,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <option>Hook</option><option>Pain Point</option><option>Benefit</option><option>Informational</option><option>Customer Focus</option><option>Proof</option><option>Objection</option><option>Contrarian</option>
           </select>
         </label>
+        <!-- ✂️ Pillar clip sections (writePillarContent marks 2-4 "[CLIP n — hook: …]" passages):
+             single post / single post carousel / HyperFrames Reel can be written from the ticked ones. -->
+        <div id="caClipRow" style="display:none;font-size:11px;color:var(--ink2);">
+          <div style="display:flex;gap:6px;align-items:center;">✂️ Pillar clip sections <button class="iconbtn" type="button" onclick="caLoadClips(this)">Load</button></div>
+          <div id="caClipList" style="margin-top:4px;"></div>
+        </div>
         <label style="font-size:11px;color:var(--ink2);"><span id="caCountLabel">Count</span>
           <input type="number" id="caCount" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" min="1" max="12" value="4">
         </label>
@@ -5429,10 +5435,29 @@ async function openCreateAssetModal(titleId) {
     platSel.innerHTML = '<option value="">(load failed)</option>';
   }
 }
+let CA_CLIPS = { titleId: null, clips: [] };
+async function caLoadClips(btn) {
+  if (!CA_TITLE) return;
+  const box = document.getElementById('caClipList'); btn.disabled = true; btn.textContent = '⏳ Working…';
+  try {
+    const r = await w('getPillarClips', { titleId: CA_TITLE.id });
+    CA_CLIPS = { titleId: CA_TITLE.id, clips: r.clips || [] };
+    box.innerHTML = CA_CLIPS.clips.length ? CA_CLIPS.clips.map((c, i) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:3px 0;cursor:pointer;"><input type="checkbox" class="caClipCb" data-i="${i}" checked><span><b>${esc(c.hook || 'Clip ' + c.n)}</b> <span style="color:var(--ink3);">${esc(c.text.slice(0, 160))}${c.text.length > 160 ? '…' : ''}</span></span></label>`).join('')
+      : `<span style="color:var(--ink3);">${r.hasPillar ? 'This pillar has no clip markers — rewrite the pillar (new pillars get 2-4 automatically).' : 'This title has no pillar yet.'}</span>`;
+  } catch (e) { box.textContent = 'Load failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = 'Reload';
+}
+function caClipInstructions() {
+  const picked = [...document.querySelectorAll('.caClipCb:checked')].map(cb => CA_CLIPS.clips[+cb.dataset.i]).filter(Boolean);
+  if (!picked.length || document.getElementById('caClipRow').style.display === 'none') return '';
+  return 'BASE THE OUTPUT ON THESE CLIP SECTIONS FROM THE PILLAR (one per post/slide/beat where possible; keep each hook):\n' + picked.map(c => `- Hook: ${c.hook}\n  ${c.text}`).join('\n');
+}
 function caOnMethodChange() {
   const name = document.getElementById('caMethod').dataset.name || '';
   const isSinglePost = /single post/i.test(name), isSpCarousel = isSinglePost && /carousel/i.test(name);
   document.getElementById('caContentTypeRow').style.display = isSinglePost ? 'block' : 'none';
+  document.getElementById('caClipRow').style.display = (isSinglePost || /hyperframes/i.test(name)) ? 'block' : 'none';
+  if (CA_CLIPS.titleId !== (CA_TITLE ? CA_TITLE.id : null)) { CA_CLIPS = { titleId: null, clips: [] }; document.getElementById('caClipList').innerHTML = ''; }
   const countEl = document.getElementById('caCount');
   countEl.value = isSpCarousel ? 7 : isSinglePost ? 6 : 4;
   countEl.min = isSpCarousel ? 6 : 1;
@@ -5940,6 +5965,7 @@ Generating again creates a SECOND, separate asset (the first one keeps its rende
   const platformName = (platSel.options[platSel.selectedIndex] && platSel.options[platSel.selectedIndex].dataset.name) || undefined;
   const count = parseInt(document.getElementById('caCount').value) || 4;
   const override = (document.getElementById('caOverride').value || '').trim() || undefined;
+  const clipNotes = caClipInstructions();
   const isSinglePost = /single post/i.test(methodName);
   const contentType = isSinglePost ? document.getElementById('caContentType').value : undefined;
   const o = btn.textContent; btn.disabled = true; btn.textContent = 'Generating…';
@@ -5950,6 +5976,7 @@ Generating again creates a SECOND, separate asset (the first one keeps its rende
       title: CA_TITLE.title, platformId, platformName, count, researchInstructions: override,
     };
     if (contentType) payload.contentType = contentType;
+    if (clipNotes) payload.description = clipNotes;
     if (CA_TITLE.productId && CA_TITLE.productId !== '__none__') payload.productId = CA_TITLE.productId;
     const r = await w('generateTitleAssets', payload);
     const n = (typeof r.created === 'number') ? r.created : (Array.isArray(r.assets) ? r.assets.length : (typeof r.count === 'number' ? r.count : null));

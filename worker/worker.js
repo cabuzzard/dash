@@ -20,6 +20,8 @@ const PRODUCT_RESEARCH_DB = "a412ac1f57f349d3bbac8cfa94737c39"; // 🔬 Product 
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
+const REVIEWS_DB         = "ecd679a7c62e4f9f97bf720c24cfb1e3"; // ⭐ Reviews (2026-10-08) — Quote/Reviewer/Source/Rating/Date/Link/Product/Campaign/Status; only Approved show
+const SOCIAL_PROOF_DB    = "cf1fb8e63d9c42d0ba0f448343e570c2"; // 🏅 Social Proof (2026-10-08) — Type/Text/Source/Link/Image/Product/Campaign/Status; only Approved show
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
 const JOB_BOARDS_DB      = "ddd9b57f5c5e49ffaf549197c36aeccc"; // campaign-agnostic remote job board feeds, used by resume/Upwork-proposal generation
 const WORK_EXPERIENCE_DB = "d6b2114bceb1444382fa80bd2233a077"; // campaign-agnostic real career history, used by resume/Upwork-proposal generation
@@ -2464,10 +2466,39 @@ async function hubSiteTarget({ env, hdr, dash, campaignId, spec, sub }) {
   return { gh, getFile, putFile, basePath, campName, s, hub };
 }
 
-async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta }) {
+// Approved ⭐ Reviews + 🏅 Social Proof for a product (sales pages). Empty lists when none / DB unreadable —
+// the page then simply has no such section.
+async function salesProofFor(productId) {
+  const pid = String(productId || "").replace(/-/g, ""); if (pid.length !== 32) return { reviews: [], proof: [] };
+  const d = `${pid.slice(0,8)}-${pid.slice(8,12)}-${pid.slice(12,16)}-${pid.slice(16,20)}-${pid.slice(20)}`;
+  const f = { and: [{ property: "Product", relation: { contains: d } }, { property: "Status", select: { equals: "Approved" } }] };
+  const rt = (p, k) => (p?.[k]?.rich_text || p?.[k]?.title || []).map(t => t.plain_text).join("");
+  const [rv, pf] = await Promise.all([
+    notionQuery(REVIEWS_DB, { filter: f }).catch(e => { console.error("reviews query failed:", e.message); return []; }),
+    notionQuery(SOCIAL_PROOF_DB, { filter: f }).catch(e => { console.error("social proof query failed:", e.message); return []; }),
+  ]);
+  return {
+    reviews: rv.map(r => { const p = r.properties || {}; return { quote: rt(p, "Quote"), reviewer: rt(p, "Reviewer"), source: rt(p, "Source"), rating: p.Rating?.number || null, link: p.Link?.url || "" }; }).filter(x => x.quote),
+    proof: pf.map(r => { const p = r.properties || {}; return { type: p.Type?.select?.name || "", text: rt(p, "Text") || rt(p, "Name"), source: rt(p, "Source"), link: p.Link?.url || "", image: p.Image?.url || "" }; }).filter(x => x.text || x.image),
+  };
+}
+
+async function publishSeoPostToLiveSite({ env, hdr, dash, campaignId, spec, seoTitle, workingTitle, intro, sections, conclusion, sources, assetId, thumbnail, sub = 'blog', cta, productId }) {
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, spec, sub });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
+  // Sales pages: reviews / social proof / related products — each section only rendered when it has records.
+  let salesExtras = '';
+  if (sub === 'sales') {
+    const esc0 = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    const { reviews, proof } = productId ? await salesProofFor(productId) : { reviews: [], proof: [] };
+    let related = [];
+    if (t.hub) { try { const { text } = await getFile(`web/hub/${t.hub.slug}/offers/offers.json`); related = (text ? JSON.parse(text) : []).filter(o => o && o.slug).slice(0, 3); } catch (e) {} }
+    const proofHtml = proof.length ? `<section class="proof"><h2>Proof</h2><div class="proofgrid">${proof.map(x => `<div class="proofitem">${x.image ? `<img src="${esc0(x.image)}" alt="${esc0(x.source || x.type)}">` : ''}${x.text ? `<p>${esc0(x.text)}</p>` : ''}${x.source ? `<small>${x.link ? `<a href="${esc0(x.link)}" target="_blank" rel="noopener">${esc0(x.source)}</a>` : esc0(x.source)}</small>` : ''}</div>`).join('')}</div></section>` : '';
+    const revHtml = reviews.length ? `<section class="reviews"><h2>What people say</h2>${reviews.map(r => `<blockquote>${r.rating ? `<div class="stars">${'★'.repeat(Math.max(1, Math.min(5, Math.round(r.rating))))}</div>` : ''}<p>${esc0(r.quote)}</p><cite>${esc0(r.reviewer || 'Customer')}${r.source ? ` · ${r.link ? `<a href="${esc0(r.link)}" target="_blank" rel="noopener">${esc0(r.source)}</a>` : esc0(r.source)}` : ''}</cite></blockquote>`).join('')}</section>` : '';
+    const relHtml = related.length ? `<section class="related"><h2>Related</h2><ul class="postlist">${related.map(o => `<li><a href="../../offers/${esc0(o.slug)}/">${esc0(o.name)}</a><div class="excerpt">${esc0(o.promise || o.kicker || '')}</div></li>`).join('')}</ul></section>` : '';
+    salesExtras = (proofHtml || revHtml || relHtml) ? `<style>.proofgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px}.proofitem img{max-width:100%;max-height:60px;object-fit:contain}.proofitem small{opacity:.7}.reviews blockquote{margin:0 0 18px;padding:14px 18px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--ink) 4%,transparent);border-radius:6px}.reviews cite{font-size:.9rem;opacity:.75;font-style:normal}.stars{color:var(--accent);letter-spacing:2px}</style>${proofHtml}${revHtml}${relHtml}` : '';
+  }
 
   const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
   const displayTitle = String(seoTitle || workingTitle || 'Untitled Post');
@@ -2544,6 +2575,7 @@ ${bodyHtml}
 ${intro ? `<p>${esc(intro)}</p>` : ''}
 ${(sections || []).map(sec => `<h2>${esc(sec.heading)}</h2>\n${(sec.body ? String(sec.body).split(/\n{2,}/) : []).map(p => `<p>${esc(p.trim())}</p>`).join('\n')}`).join('\n')}
 ${conclusion ? `<p>${esc(conclusion)}</p>` : ''}
+${salesExtras}
 ${(Array.isArray(sources) && sources.filter(s => s && s.url).length) ? `<h2>Sources</h2>\n<ul>\n${sources.filter(s => s && s.url).map(s => `<li><a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.label || s.url)}</a></li>`).join('\n')}\n</ul>` : ''}
 ${(cta && cta.href) ? `<p style="margin-top:32px;"><a href="${esc(cta.href)}" style="display:inline-block;background:var(--accent);color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:700;">${esc(cta.label || 'Get Started')}</a></p>` : ''}`;
 
@@ -9776,7 +9808,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         env, hdr, dash, campaignId, spec: null,
         seoTitle: post.seoTitle, workingTitle: idea,
         intro: post.intro, sections, conclusion: post.conclusion, assetId,
-        sub: isSales ? "sales" : "blog",
+        sub: isSales ? "sales" : "blog", productId: state.productId,
       });
       if (siteResult.published && siteResult.liveUrl) {
         await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -46202,6 +46234,14 @@ Produce all of this by calling the submit_listing tool — do not include any of
       }
 
       // Digest research engine (Gemini Deep Research + Perplexity → ranked sources) — module scope.
+      // Pillar clip sections (2026-10-08): "[CLIP n — hook: …]" markers written by writePillarContent →
+      // short video / single post / carousel generators can be based on them.
+      if (body.action === "getPillarClips") {
+        if (!body.titleId) return json({ error: "titleId required" }, 400);
+        const ph = { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+        const raw = await extractPillarContent(ph, body.titleId, { keepClips: true }).catch(() => "");
+        return json({ success: true, clips: pillarClips(raw), hasPillar: !!raw.trim() });
+      }
       if (body.action === "interactiveTool") {
         try { return json(await handleInteractiveTool(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
