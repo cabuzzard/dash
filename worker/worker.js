@@ -11444,6 +11444,45 @@ Return: the logo on a transparent background, plus one preview placed on the sit
               // old versions" traced back to (2026-09-04).
               patch = { [kind]: { image: `./${name}.${ext}?v=${Date.now()}` } };
               commitMsg = `hub ${slug}: ${name} image (upload)`;
+            } else if (op === "grok") {
+              // Grok hero / signup image from the SAVED image spec (+ approved plate look, + optional guidance).
+              // Returns a candidate only — nothing is committed until op "adopt".
+              const XAI = (env.XAI_API_KEY || "").trim(); if (!XAI) return json({ error: "XAI_API_KEY not configured" }, 500);
+              const hub = HUB_SITES.find(h => h.slug === slug);
+              const brief = await assembleImageBrief(env, { campaignId: hub.campaignId });
+              const spec = (brief.storedSpec && brief.storedSpec.length > 200) ? brief.storedSpec : await writeImageSpec(env, brief);
+              let plate = ""; try { const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: hub.campaignId.replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5") } } }).catch(() => []);
+                for (const r of rows) { const t = (r.properties?.["Approved Plate"]?.rich_text || []).map(x => x.plain_text).join(""); if (t) { plate = t; break; } } } catch (e) {}
+              const role = body.kind === "signup" ? "the supporting image beside the email-signup section (calm, inviting, leaves room around the subject)" : "the HERO image at the top of the home page (the strongest, most iconic picture of what this hub is about)";
+              const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+                headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+                body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 700, messages: [{ role: "user", content:
+`Write ONE prompt for xAI Grok Imagine for ${role} of the website "${hub.name}". Portrait 3:4, shown in the right third of the page on desktop. Follow the art-direction spec exactly.${plate ? " Match the approved campaign plate's look (its prompt is below)." : ""}${body.guidance ? " Apply the operator's note." : ""}
+Plain descriptive prose, 120-200 words: subject and scene, composition, camera, light, colour (use the palette), medium and finish, mood. End with "No text, no letters, no logos, no watermarks." Return only the prompt.
+
+ART-DIRECTION SPEC:
+${String(spec).slice(0, 9000)}
+${plate ? "\nAPPROVED PLATE:\n" + plate.slice(0, 2000) : ""}${body.guidance ? "\nOPERATOR NOTE FOR THIS IMAGE: " + String(body.guidance).slice(0, 800) : ""}${body.previousPrompt ? "\nPREVIOUS PROMPT (revise it per the note):\n" + String(body.previousPrompt).slice(0, 2500) : ""}` }] }) });
+              const ad = await ar.json().catch(() => ({}));
+              if (!ar.ok) return json({ error: ad.error?.message || "Claude API error" }, 502);
+              const prompt = (ad.content?.[0]?.text || "").trim(); if (!prompt) return json({ error: "empty prompt" }, 502);
+              const xr = await fetch("https://api.x.ai/v1/images/generations", { method: "POST", headers: { "Authorization": `Bearer ${XAI}`, "content-type": "application/json" },
+                body: JSON.stringify({ model: "grok-imagine-image-2.0", prompt: prompt.slice(0, 5000), n: 1, aspect_ratio: "3:4", resolution: "2k" }) });
+              const xd = await xr.json().catch(() => ({}));
+              if (!xr.ok) return json({ error: (xd.error && (xd.error.message || xd.error)) || `xAI image error (${xr.status})` }, 502);
+              const imageUrl = xd.data?.[0]?.url || ""; if (!imageUrl) return json({ error: "Grok returned no image" }, 502);
+              return json({ ok: true, candidate: { imageUrl, prompt, kind: body.kind === "signup" ? "signup" : "hero" } });
+            } else if (op === "adopt") {
+              // commit a Grok candidate (its URL is temporary) into the hub as hero / signup image
+              const src = String(body.imageUrl || ""); if (!/^https:\/\//.test(src)) return json({ error: "imageUrl required" }, 400);
+              const ir = await fetch(src); if (!ir.ok) return json({ error: "could not fetch the image (" + ir.status + ")" }, 502);
+              const buf = new Uint8Array(await ir.arrayBuffer()); let bin = ""; for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode.apply(null, buf.subarray(i, i + 0x8000));
+              const ext = /png/i.test(ir.headers.get("content-type") || "") ? "png" : "jpg";
+              const name = body.kind === "signup" ? "signup" : "hero";
+              const cur = await getF(`web/hub/${slug}/${name}.${ext}`);
+              await putF(`web/hub/${slug}/${name}.${ext}`, btoa(bin), `hub ${slug}: ${name} image (Grok)`, cur.sha);
+              patch = { [kind]: { image: `./${name}.${ext}?v=${Date.now()}` } };
+              commitMsg = `hub ${slug}: ${name} image (Grok)`;
             } else if (op === "generate") {
               const OPENAI = (env.OPENAI_API_KEY || "").trim();
               if (!OPENAI) return json({ error: "OPENAI_API_KEY not configured" }, 500);

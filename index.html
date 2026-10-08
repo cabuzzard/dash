@@ -13394,12 +13394,35 @@ function himRender(){
         <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
           <label style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;color:var(--text3);">⬆ file<input type="file" accept="image/*" onchange="himUpload('${kind}',this)" style="display:none;"></label>
           <button onclick="himUrl('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">🔗 URL</button>
+          <button onclick="himGrok('${kind}')" title="Grok Imagine from the SAVED image spec (+ approved plate). You see a candidate first — nothing changes until Use this." style="font-size:10px;padding:2px 7px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">✨ Grok (saved spec)</button>
           <button onclick="himGen('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>
           ${u?`<button onclick="himClear('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕ clear</button>`:''}
         </div>
+        ${(HIM.cand || {})[kind] ? (c => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;padding:8px;border:1px dashed var(--border2);border-radius:6px;">
+          <a href="${esc(c.imageUrl)}" target="_blank" rel="noopener" title="${esc(c.prompt)}"><img src="${esc(c.imageUrl)}" style="height:110px;border-radius:5px;display:block;"></a>
+          <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;">
+            <div style="font-size:10.5px;color:var(--text3);">Grok candidate — not on the hub yet. Hover for its prompt.</div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;"><button onclick="himAdopt('${kind}')" style="font-size:10.5px;padding:3px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;font-weight:600;">✓ Use this</button>
+              <button onclick="himGrok('${kind}', true)" style="font-size:10.5px;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">⟳ Try again with note</button></div>
+            <input id="himNote-${kind}" placeholder="Note for the next try (optional) — e.g. warmer light, older caregiver" style="font-size:11px;padding:4px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
+          </div></div>`)(HIM.cand[kind]) : ''}
       </div>
     </div>`;
   }).join('');
+}
+async function himGrok(kind, withNote) {
+  const msg = document.getElementById('himMsg'); msg.style.color = 'var(--text3)'; msg.textContent = 'Grok is rendering the ' + kind + ' image from the saved spec (~25s)…';
+  const note = withNote ? ((document.getElementById('himNote-' + kind) || {}).value || '').trim() : '';
+  const prev = ((HIM.cand || {})[kind] || {}).prompt;
+  try { const r = await call('hubImage', { slug: HIM.slug, kind, op: 'grok', guidance: note || undefined, previousPrompt: note ? prev : undefined }); if (r.error) throw new Error(r.error);
+    (HIM.cand = HIM.cand || {})[kind] = r.candidate; himRender(); msg.textContent = 'Candidate ready — ✓ Use this to put it on the hub, or try again.'; }
+  catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+}
+async function himAdopt(kind) {
+  const c = (HIM.cand || {})[kind]; if (!c) return;
+  await himCall({ kind, op: 'adopt', imageUrl: c.imageUrl }, 'Putting it on the hub…');
+  delete HIM.cand[kind]; himRender();
+  const f = document.getElementById('hpiFrame-' + HIM.slug); if (f) setTimeout(() => { try { f.contentWindow.location.reload(); } catch (e) {} }, 70000);
 }
 async function himCall(payload, working){
   const msg = document.getElementById('himMsg');
@@ -13512,6 +13535,11 @@ function wireHubPreview(slug){
     st.textContent = '.hpi-hot{outline:2px dashed rgba(80,140,255,.7);outline-offset:1px;cursor:pointer;border-radius:2px;} .hpi-hot:hover,.hpi-hot:active{outline:2px solid #3b82f6;background:rgba(80,140,255,.16);}';
     d.head.appendChild(st);
   }
+  [['#heroAside', 'hero'], ['#reportAside', 'signup']].forEach(([sel, kind]) => {
+    const el = d.querySelector(sel); if (!el) return; el.classList.add('hpi-hot');
+    if (el._hpiImg) return; el._hpiImg = true;
+    el.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); openHubImageModal(slug); }, true);
+  });
   HPI_MAP.forEach(([sel, path, label, big])=>{
     const el = d.querySelector(sel); if (!el) return;
     el.classList.add('hpi-hot');
