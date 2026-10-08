@@ -12332,7 +12332,7 @@ the one aesthetic risk taken + why:`;
             .filter(p => !p.archived && !p.properties?.Archived?.checkbox)
             .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: p.properties?.Status?.select?.name || "",
               stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim(), type: (p.properties?.Type?.rich_text || []).map(t => t.plain_text).join("").trim(),
-              date: (p.created_time || "").slice(0, 10) }))
+              date: (p.created_time || "").slice(0, 10), notes: (p.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("") }))
             .sort((a, b) => a.name.localeCompare(b.name));
           // Group → Stack → Product: the campaign's product groups (KV stackgroups:<cid>, same as care-gap's Product Research tab)
           let stackGroups = { order: [], map: {} };
@@ -32165,6 +32165,7 @@ Call submit_product_stack_proposals with your result.`;
           uniqueAngle:    "Unique Angle",
           palette:        "Palette",
           fonts:          "Fonts",
+          notes:          "Notes",
         };
         const notionField = fieldMap[field];
         if (!notionField) return json({ error: "Unknown field: " + field }, 400);

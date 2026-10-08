@@ -14140,6 +14140,27 @@ function hubProdEdit(slug, pid) {
     <button class="modal-btn" onclick="document.getElementById('hubProdModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button></div></div>`;
   m.classList.add('open');
 }
+// ✎ product modal (Main offerings): name, notes, status — each changed field saved to the product record
+function hubProdFullEdit(slug, pid) {
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid); if (!p) return;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  hcModal(`<h3 style="margin:0 0 10px;">Edit product</h3>
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Name</label><input id="hpeName" value="${esc(p.name)}" style="${IN}">
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label><textarea id="hpeNotes" rows="6" style="${IN}resize:vertical;">${esc(p.notes || '')}</textarea>
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label><select id="hpeStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === p.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" id="hpeGo" onclick="hcModalRun(this, () => hubProdFullSave('${slug}','${pid}'))">Save</button>${HC_CANCEL}</div>`);
+}
+async function hubProdFullSave(slug, pid) {
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid); if (!p) return 'Product not found';
+  const name = document.getElementById('hpeName').value.trim(), notes = document.getElementById('hpeNotes').value, status = document.getElementById('hpeStatus').value;
+  if (!name) return 'The name can’t be empty';
+  try {
+    if (name !== p.name) { const r = await call('updateAllOutputField', { kind: 'product', field: 'product', value: name, productId: pid }); if (!r || r.error) throw new Error((r && r.error) || 'name not saved'); p.name = name; }
+    if (notes !== (p.notes || '')) { const r = await call('updateProductField', { productId: pid, field: 'notes', value: notes }); if (r && r.error) throw new Error(r.error); p.notes = notes; }
+    if (status !== p.status) { const r = await call('updateProductStatus', { productId: pid, status }); if (r && r.error) throw new Error(r.error); p.status = status; }
+    hubBuildRefreshRows(slug); const el = document.getElementById('hubProdTree-' + slug); if (el) el.innerHTML = hubProdTree(slug); return true;
+  } catch (e) { return e.message; }
+}
 async function hubProdSave(slug, pid) {
   const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid);
   const st = document.getElementById('hubProdSt').value, btn = document.getElementById('hubProdGo');
@@ -14402,7 +14423,7 @@ function renderHubBuildRows(slug) {
         // CTA's: hand-picked titles; + (on this line) adds a new or existing title
         const ts = s.titles || []; np = ts.length; ts.forEach(t => { _hubTitleIdx[t.id] = t; });
         pick = `<button onclick="event.stopPropagation();hcSectionTitleModal('${slug}','${s.key}')" title="Add a title (new or existing)" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>`;
-        if (open && np) prodRows = (rows ? '' : hubGridHead(0)) + ts.map(t => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[t.status] || '', title: t.title, type: 'Title', method: t.method || '', status: t.status, date: t.date,
+        if (open && np) prodRows = (rows ? '' : hubGridHead(0)) + ts.map(t => hubGridRow({ pad: 0, bar: t.status === 'Planning' || !t.status ? '#f6ad55' : '#4ade80', title: t.title, type: 'Title', method: t.method || '', status: t.status, date: t.date,
           links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${t.id}','remove','title')" title="Take this title out of ${esc(s.label)} (the title itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` })).join('');
       }
       const countTxt = (s.titleSlots ? `${np} title${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
@@ -14425,8 +14446,8 @@ function renderHubBuildRows(slug) {
         <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + add as main'}</button>
         <button onclick="_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">cancel</button></div>` : '';
       const grid = ids.length ? hubGridHead(0) + ids.map((id, n) => { const p = byId[id] || {};
-        return hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[p.status] || '', title: (p.name || (id === s.mainId ? s.mainName : '') || 'Product') + (n === 0 && ids.length > 1 ? ' ★' : ''), type: 'Product', method: '', status: p.status || '', date: p.date,
-          links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy ? 'disabled' : ''} onclick="hubMainOfferSet('${slug}','${id}','remove')" title="Remove from the main offerings (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('') : '';
+        return hubGridRow({ pad: 0, bar: p.status === 'Planning' || !p.status ? '#f6ad55' : '#4ade80', title: (p.name || (id === s.mainId ? s.mainName : '') || 'Product') + (n === 0 && ids.length > 1 ? ' ★' : ''), type: 'Product', method: '', status: p.status || '', date: p.date,
+          links: `<button onclick="hubProdFullEdit('${slug}','${id}')" title="Edit name, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy ? 'disabled' : ''} onclick="hubMainOfferSet('${slug}','${id}','remove')" title="Remove from the main offerings (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('') : '';
       return wrapRow(`<span style="font-size:10px;width:10px;"></span><span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;color:var(--text);line-height:1.35;">Main products <span style="color:var(--text3);">— ${ids.length ? ids.length + (ids.length > 1 ? ' (★ = primary: hub generation + image briefs)' : '') : 'add one or more of the campaign\'s products'}</span></span>${ctrl}`, add + grid, '', `<span style="flex-shrink:0;">${dot}</span><span style="color:var(--text3);">${ids.length ? ids.length + ' main product' + (ids.length === 1 ? '' : 's') + (ids.length > 1 ? ' · ★ = primary' : '') : 'add one or more of the campaign’s products'}</span>${ctrl}`);
     } else if (s.link === 'microsite') {
       ctrl = s.done
