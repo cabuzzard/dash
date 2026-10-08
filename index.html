@@ -699,9 +699,11 @@
     <button style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="Load the newest version (skips the cached copy)" onclick="verUpdate()">↻ Update</button>
     <button style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" title="See / copy / edit this page's address" onclick="verLink()">🔗 Link</button>
     <a href="https://claude.ai/artifact/3GYCaVeEtjipEWgsE5yEkX" target="_blank" rel="noopener" style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;color:var(--text2);text-decoration:none;" title="Open the Worksheet (editable table)">📝 Worksheet ↗</a>
+    <span id="spendChip" style="display:inline-flex;align-items:center;gap:4px;"></span>
   </span>
   <div class="lock-btn" onclick="lockApp()" title="Lock">🔒</div>
 </div>
+<div id="spendWarn" style="display:none;margin:6px 16px 0;padding:6px 10px;border-radius:8px;font-size:12px;"></div>
 <div id="verNew" style="display:none;margin:6px 16px 0;padding:6px 10px;border-radius:8px;background:#f6ad55;color:#1a1a1a;font-size:12px;cursor:pointer;" onclick="verUpdate()">⬆ A newer version of this page is out — tap to update</div>
 
 <!-- Main -->
@@ -9068,7 +9070,44 @@ function toggleSite(site) {
   renderTable();
 }
 
+// ── Research API spend (worker apiSpend): Perplexity has no cap on its side, so the worker keeps a monthly
+// one (default $45). Chip in the top bar; orange from 80%, red banner at the cap (research calls are refused).
+let _spend = null, _spendTimer = null;
+async function spendLoad() {
+  try { const r = await call('apiSpend', { op: 'get' }); if (r && r.providers) { _spend = r.providers; spendPaint(); } } catch (e) {}
+  clearTimeout(_spendTimer); _spendTimer = setTimeout(spendLoad, 10 * 60 * 1000);
+}
+function spendPaint() {
+  const chip = document.getElementById('spendChip'), warn = document.getElementById('spendWarn'); if (!chip || !_spend) return;
+  const b = 'font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;cursor:pointer;';
+  chip.innerHTML = _spend.filter(p => p.calls || p.provider === 'perplexity').map(p => {
+    const r = p.cap ? p.spent / p.cap : 0, col = r >= 1 ? '#f87171' : r >= 0.8 ? '#f6ad55' : 'var(--text2)';
+    return `<button style="${b}color:${col};" title="${p.provider} research spend this month (${p.month}) — ${p.calls} calls${p.estimated ? `, ${p.estimated} estimated` : ''}. Click to change the monthly cap." onclick="spendEdit('${p.provider}')">🔎 ${p.provider === 'perplexity' ? 'Perplexity' : 'Gemini'} $${p.spent.toFixed(2)} / $${p.cap}</button>`;
+  }).join('');
+  const over = _spend.filter(p => p.cap && p.spent >= p.cap * 0.8);
+  if (over.length) {
+    const hit = over.some(p => p.spent >= p.cap);
+    warn.style.display = ''; warn.style.background = hit ? '#f87171' : '#f6ad55'; warn.style.color = '#1a1a1a';
+    warn.innerHTML = over.map(p => p.spent >= p.cap
+      ? `⛔ ${p.provider === 'perplexity' ? 'Perplexity' : 'Gemini'} research is paused — $${p.spent.toFixed(2)} spent in ${p.month}, cap $${p.cap}. Raise the cap (top bar) to continue.`
+      : `⚠ ${p.provider === 'perplexity' ? 'Perplexity' : 'Gemini'} research at $${p.spent.toFixed(2)} of the $${p.cap} monthly cap.`).join(' &nbsp; ');
+  } else warn.style.display = 'none';
+}
+function spendEdit(provider) {
+  const p = (_spend || []).find(x => x.provider === provider) || { cap: 45 };
+  const chip = document.getElementById('spendChip');
+  chip.innerHTML = `<span style="font-size:10px;color:var(--text2);">${provider} cap $</span><input id="spendCapIn" type="number" min="0" max="1000" value="${p.cap}" style="width:56px;font-size:10px;padding:1px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
+    <button style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" onclick="spendSave('${provider}')">Save</button>
+    <button style="font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;" onclick="spendPaint()">✕</button>`;
+}
+async function spendSave(provider) {
+  const v = Number(document.getElementById('spendCapIn').value);
+  try { const r = await call('apiSpend', { op: 'setCap', provider, cap: v }); if (r && r.providers) _spend = r.providers; } catch (e) {}
+  spendPaint();
+}
+
 async function loadOverview() {
+  spendLoad();
   const el = document.getElementById('ovContent');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {

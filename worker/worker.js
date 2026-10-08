@@ -46276,6 +46276,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         const raw = await extractPillarContent(ph, body.titleId, { keepClips: true }).catch(() => "");
         return json({ success: true, clips: pillarClips(raw), hasPillar: !!raw.trim() });
       }
+      if (body.action === "apiSpend") {
+        try { return json(await handleApiSpend(body, env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "digestPicks") {
         try { return json(await handleDigestPicks(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
@@ -47421,6 +47424,50 @@ async function handleKeywordAction(body, env) {
 // for a NotebookLM notebook and takes the operator's notes back as tier-1 "editor insight".
 // Storage: KV digres:<jobId> (the run), digest:last:<cid> (previous ranked list → "what changed"),
 // digest:assoc:<cid> (approved association list), digest:sources:<titleId> (what a digest was written from).
+// ── Paid research API spend meter (2026-10-08) ──
+// Perplexity has no spending cap on its side, so the worker keeps one: every call's cost is added to
+// KV spend:<provider>:<YYYY-MM>; at or above the monthly cap (default $45, KV spend:cap:<provider>) further
+// calls are refused, and the dashboard top bar shows a warning from 80% of the cap.
+const SPEND_DEFAULT_CAP = 45;
+const spendMonth = () => new Date().toISOString().slice(0, 7);
+async function spendGet(env, provider) {
+  const month = spendMonth();
+  let rec = null, cap = null;
+  try { rec = await env.TRADES.get(`spend:${provider}:${month}`, "json"); } catch (e) {}
+  try { cap = await env.TRADES.get(`spend:cap:${provider}`, "json"); } catch (e) {}
+  rec = rec || { spent: 0, calls: 0, estimated: 0 };
+  return { provider, month, spent: Math.round((rec.spent || 0) * 100) / 100, calls: rec.calls || 0, estimated: rec.estimated || 0, cap: typeof cap === "number" ? cap : SPEND_DEFAULT_CAP, last: rec.last || null };
+}
+async function spendCheck(env, provider) {
+  const g = await spendGet(env, provider);
+  return g.spent >= g.cap ? `${provider} paused — $${g.spent.toFixed(2)} spent this month, cap $${g.cap}. Raise the cap in the dashboard top bar to continue.` : null;
+}
+async function spendAdd(env, provider, cost, estimated, usage) {
+  const key = `spend:${provider}:${spendMonth()}`;
+  let rec = null; try { rec = await env.TRADES.get(key, "json"); } catch (e) {}
+  rec = rec || { spent: 0, calls: 0, estimated: 0 };
+  rec.spent = (rec.spent || 0) + (Number(cost) || 0); rec.calls = (rec.calls || 0) + 1; if (estimated) rec.estimated = (rec.estimated || 0) + 1;
+  rec.last = { at: new Date().toISOString(), cost: Number(cost) || 0, estimated: !!estimated, usage: usage ? JSON.stringify(usage).slice(0, 600) : null };
+  await env.TRADES.put(key, JSON.stringify(rec), { expirationTtl: 60 * 60 * 24 * 400 });
+}
+// Perplexity Agent API usage → dollars. Reads the cost the API reports; if the shape isn't recognised it
+// records a conservative $1.50 estimate per call (flagged "estimated") rather than nothing.
+function pplxCost(usage) {
+  const u = usage || {}, c = u.cost;
+  const cands = [c && c.total_cost, c && c.total, typeof c === "number" ? c : null, u.total_cost, u.cost_usd];
+  for (const v of cands) if (typeof v === "number" && isFinite(v)) return { cost: v, estimated: false };
+  if (c && typeof c === "object") { const sum = Object.values(c).filter(v => typeof v === "number").reduce((a, b) => a + b, 0); if (sum > 0) return { cost: sum, estimated: false }; }
+  return { cost: 1.5, estimated: true };
+}
+async function handleApiSpend(body, env) {
+  if (body.action !== "apiSpend") return null;
+  if (body.op === "setCap") {
+    const cap = Number(body.cap); if (!(cap >= 0 && cap <= 1000)) return { error: "cap must be 0-1000" };
+    await env.TRADES.put(`spend:cap:${body.provider || "perplexity"}`, JSON.stringify(cap));
+  }
+  return { success: true, providers: [await spendGet(env, "perplexity"), await spendGet(env, "gemini")] };
+}
+
 const DR_GEMINI_AGENT = "deep-research-preview-04-2026";
 const DR_TTL = 60 * 60 * 24 * 45;
 
@@ -47481,12 +47528,14 @@ Write a concise findings report. Then END with a fenced \`\`\`json block: an arr
 
 async function drGeminiStart(env, job) {
   if (!env.GEMINI_API_KEY) return { status: "skipped", error: "GEMINI_API_KEY not set" };
+  const gCap = await spendCheck(env, "gemini"); if (gCap) return { status: "skipped", error: gCap };
   const r = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", { method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
     body: JSON.stringify({ input: drBrief(job), agent: DR_GEMINI_AGENT, background: true }) });
   const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
   if (r.status === 429 && /free tier|quota/i.test(t)) return { status: "failed", error: "Gemini Deep Research needs billing turned on for this API key's Google project (aistudio.google.com → Billing). Perplexity still runs." };
   if (!r.ok || !d?.id) return { status: "failed", error: `Gemini HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
+  await spendAdd(env, "gemini", 2, true, null).catch(() => {});   // per-run estimate — the API doesn't report Deep Research cost
   return { status: "running", id: d.id };
 }
 function drAllText(node, out) {
@@ -47513,11 +47562,13 @@ async function drGeminiPoll(env, g) {
 
 async function drPerplexity(env, job) {
   if (!env.PERPLEXITY_API_KEY) return { status: "skipped", error: "PERPLEXITY_API_KEY not set" };
+  const capMsg = await spendCheck(env, "perplexity"); if (capMsg) return { status: "skipped", error: capMsg };
   const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
     headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" },
     body: JSON.stringify({ preset: "medium", input: drBrief(job) }) });
   const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
   if (!r.ok || !d) return { status: "failed", error: `Perplexity HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
+  { const pc = pplxCost(d.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, d.usage).catch(e => console.error("spendAdd:", e.message)); }
   const results = [];
   (d.output || []).forEach(o => { if (o && o.type === "search_results") (o.results || []).forEach(x => results.push({ url: x.url, title: x.title, date: x.date || x.last_updated || "", snippet: (x.snippet || "").slice(0, 400) })); });
   const text = d.output_text || (d.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
