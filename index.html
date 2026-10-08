@@ -14270,6 +14270,19 @@ function hcTitleGo(btn, slug, sid) {
 }
 // + title on a CTA product: the same New / Existing modal, but it ties the title to the PRODUCT
 //   new → createDevTitle (Planning, campaign + product) · existing → updateTitleStrategy { productId }
+function hcSectionTitleModal(slug, section) {
+  hcTitleModal(slug, '');
+  const m = document.getElementById('hcModal'), sub = m.querySelector('h3 + div'); if (sub) sub.textContent = "to CTA's";
+  const pn = m.querySelector('#hcPaneNew div'); if (pn) pn.textContent = "Creates a title at Planning on this campaign and lists it under CTA's.";
+  document.getElementById('hcTitleGo').onclick = function () {
+    const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+    const add = async tid => { const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId: tid, op: 'add', kind: 'title' }); if (!r || r.error) return (r && r.error) || 'Not saved'; _hubTitlesNeedRefetch(slug); return true; };
+    if (window._hcTab === 'ex') hcModalRun(this, async () => window._hcPick ? add(window._hcPick) : 'Pick a title from the list');
+    else hcModalRun(this, async () => { const v = document.getElementById('hcNewTitleName').value.trim(); if (!v) return 'Enter a title';
+      const r = await call('createDevTitle', { title: v, campaignId: h.campaignId, status: 'Planning', skipPillar: true }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+      return add(r.id); });
+  };
+}
 function hcProdTitleModal(slug, pid) {
   const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid);
   hcTitleModal(slug, '');
@@ -14380,22 +14393,16 @@ function renderHubBuildRows(slug) {
       const n = (s.items || []).length;
       // sections that also hold hand-picked products (CTA's): product records first, then the assets
       let prodRows = '', pick = '', np = 0;
-      if (s.productSlots) {
-        const all = ((b.steps || []).find(x => x.mainOffering) || {}).products || [], byId = {}; all.forEach(p => { byId[p.id] = p; });
-        const ids = s.productIds || []; np = ids.length;
-        pick = `<select onclick="event.stopPropagation()" onchange="if(this.value)hubSectionProd('${slug}','${s.key}',this.value,'add')" style="font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:200px;">
-          <option value="">+ Add a product…</option>${all.filter(p => !ids.includes(p.id)).map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>`;
-        if (open && ids.length) prodRows = (rows ? '' : hubGridHead(0)) + ids.map(id => { const p = byId[id] || {}, ts = (s.productTitles || {})[id] || [];
-          ts.forEach(t => { _hubTitleIdx[t.id] = t; });
-          const titleRows = `<div style="padding-left:16px;">${ts.length ? ts.map(t => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[t.status] || '', title: t.title, type: 'Title', method: '', status: t.status, date: t.date,
-            links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join('')
-            : '<div style="font-size:11px;color:var(--text3);padding:2px 0 4px;">No titles for this product yet.</div>'}</div>`;
-          return hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[p.status] || '', title: p.name || 'Product', type: 'Product', method: '', status: p.status || '', date: p.date,
-            links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${id}','remove')" title="Take this product out of ${esc(s.label)} (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button> <button onclick="hcProdTitleModal('${slug}','${id}')" title="Add a title to this product (new or existing)" style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>` }) + titleRows; }).join('');
+      if (s.titleSlots) {
+        // CTA's: hand-picked titles; + (on this line) adds a new or existing title
+        const ts = s.titles || []; np = ts.length; ts.forEach(t => { _hubTitleIdx[t.id] = t; });
+        pick = `<button onclick="event.stopPropagation();hcSectionTitleModal('${slug}','${s.key}')" title="Add a title (new or existing)" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>`;
+        if (open && np) prodRows = (rows ? '' : hubGridHead(0)) + ts.map(t => hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[t.status] || '', title: t.title, type: 'Title', method: t.method, status: t.status, date: t.date,
+          links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${t.id}','remove','title')" title="Take this title out of ${esc(s.label)} (the title itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` })).join('');
       }
-      const countTxt = (s.productSlots ? `${np} product${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
-      if (open && s.productSlots && !n && !np) prodRows = '<div style="font-size:11px;color:var(--text3);padding:2px 0;">Nothing here yet — add a product with the picker on this line.</div>';
-      return phaseHdr + hubLvl(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np || s.productSlots ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
+      const countTxt = (s.titleSlots ? `${np} title${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
+      if (open && s.titleSlots && !n && !np) prodRows = '<div style="font-size:11px;color:var(--text3);padding:2px 0;">Nothing here yet — use + on this line to add a title.</div>';
+      return phaseHdr + hubLvl(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np || s.titleSlots ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
         <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="color:var(--text3);">— ${countTxt}</span></span>${pick}`, (rows ? rows.replace(hubGridHead(0), hubGridHead(0) + prodRows) : prodRows),
         `onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')"`);
     } else if (s.mainOffering) {
@@ -14539,9 +14546,10 @@ async function hubMainOfferAdd(slug) {
   _hubBuildBusy[slug + '|mainproduct'] = false; hubBuildRefreshRows(slug);
 }
 // products hand-placed in a checklist section (CTA's)
-async function hubSectionProd(slug, section, productId, op) {
+async function hubSectionProd(slug, section, productId, op, kind) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
-  try { const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId, op }); if (r && r.error) throw new Error(r.error);
+  try { const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId, op, kind: kind || 'product' }); if (r && r.error) throw new Error(r.error);
+    if (kind === 'title') { const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.key === section); if (st && op === 'remove') st.titles = (st.titles || []).filter(t => t.id !== productId); hubBuildRefreshRows(slug); return; }
     const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.key === section); if (st) { st.productIds = r.productIds || []; st.done = (st.items || []).length > 0 || st.productIds.length > 0; }
     _hubPageOpen[slug + '|page-' + section] = true; hubBuildRefreshRows(slug); }
   catch (e) { _hpNote[slug] = '✗ ' + e.message; hubBuildRefreshRows(slug); }
