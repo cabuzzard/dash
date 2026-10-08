@@ -3973,6 +3973,31 @@ Return ONLY this JSON, no other text: { "assetTitle": "short distinct option nam
 // artifact (a Product's Keywords, a Title's seed keywords, an asset's SEO
 // grade) faithful to its originating SEO cluster — top-down keyword
 // fidelity, same rule as regenerateKeywordCluster itself.
+// A new product's Product Stack = the keyword group it belongs to (2026-10-08, operator rule): the campaign's
+// SEO keyword groups (committed + staged clusters/topics, by name + keywords) scored by word overlap with the
+// product's name / description / keywords. No overlap → "Master" (the main keyword list). Used whenever a
+// product is created without an explicit stack (createProduct, createProductFromIdea).
+async function matchKeywordGroup(env, campaignId, text) {
+  const norm = s => String(s || "").replace(/-/g, "");
+  const cid = norm(campaignId); if (cid.length !== 32) return "";
+  const dash = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`;
+  const [committed, staged] = await Promise.all([
+    notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+    env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => []),
+  ]);
+  const groups = committed.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(), kw: (r.properties?.["Cluster Keywords"]?.rich_text || []).map(t => t.plain_text).join("") }))
+    .concat((staged || []).map(c => ({ name: String(c.name || "").trim(), kw: String(c.keywords || "") }))).filter(g => g.name);
+  if (!groups.length) return "Master";
+  const toks = str => new Set(String(str || "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").split(/\s+/).filter(w => w.length >= 3 && !KW_STOP.has(w)).map(w => w.replace(/(ies|es|s)$/, "")));
+  const mine = toks(text);
+  let best = null, bestScore = 0;
+  for (const g of groups) {
+    const nameT = toks(g.name), kwT = toks(g.kw);
+    let sc = 0; mine.forEach(w => { if (nameT.has(w)) sc += 3; else if (kwT.has(w)) sc += 1; });
+    if (sc > bestScore) { bestScore = sc; best = g.name; }
+  }
+  return best || "Master";
+}
 async function findClusterKeywordsForStack(env, hdr, stack, campaignId) {
   if (!stack || !campaignId) return "";
   const norm = s => String(s || "").replace(/-/g, "");
@@ -15191,7 +15216,9 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
         // straight off an SEO Cluster, its cluster name is passed as `stack`
         // here, which is also what generateProductKeywords later matches on
         // to keep this product's keywords faithful to that cluster.
-        if (stack) createProps["Product Stack"] = { rich_text: [{ type: "text", text: { content: String(stack).slice(0, 100) } }] };
+        // No stack given → the keyword group it matches (matchKeywordGroup), so every product lands in a stack.
+        const stackFinal = stack || (campaignId ? await matchKeywordGroup(env, campaignId, [title, description, keywords].filter(Boolean).join(" ")).catch(() => "") : "");
+        if (stackFinal) createProps["Product Stack"] = { rich_text: [{ type: "text", text: { content: String(stackFinal).slice(0, 100) } }] };
         if (description) createProps["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
         // Seeded at creation — e.g. handed down from an SEO Cluster's own
         // keywords when the product originates from one (see the Keywords &
@@ -32028,16 +32055,18 @@ Return via the submit_digest_ideas tool ONLY — nothing as plain text.`;
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
         const createProps = {
           "Name": { title: [{ type: "text", text: { content: String(name).slice(0, 200) } }] },
-          "Status": { select: { name: "Idea" } },
+          "Status": { select: { name: "Planning" } },   // four statuses only (was "Idea")
           "Campaigns": { relation: [{ id: dash(String(campaignId).replace(/-/g,"")) }] },
         };
+        const ideaStack = String(body.stack || "").trim() || await matchKeywordGroup(env, campaignId, [name, description].filter(Boolean).join(" ")).catch(() => "");
+        if (ideaStack) createProps["Product Stack"] = { rich_text: [{ type: "text", text: { content: ideaStack.slice(0, 100) } }] };
         if (description) createProps["Description"] = { rich_text: [{ type: "text", text: { content: String(description).slice(0, 1990) } }] };
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: PRODUCTS_DB }, properties: createProps }),
         });
         const out = await resp.json();
         if (!resp.ok || !out.id) return json({ error: out.message || "Product create failed" }, 502);
-        return json({ success: true, id: out.id.replace(/-/g, "") });
+        return json({ success: true, id: out.id.replace(/-/g, ""), stack: ideaStack || "" });
       }
 
       // Proposed product stacks off an UNCOMMITTED keyword cluster — per

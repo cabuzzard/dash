@@ -2726,7 +2726,7 @@ function addProductFromMainIdea(i) {
   const line = lines[i];
   if (!line) return;
   const m = line.match(/^([^:]+):\s*(.*)$/);
-  runCreateProductFromIdea(m ? m[1] : line, m ? m[2] : '', 'Master', 'main', i);
+  runCreateProductFromIdea(m ? m[1] : line, m ? m[2] : '', '', 'main', i);   // '' = the worker picks the matching keyword group (Master if none)
 }
 function viewSourcesForMainIdea(i) {
   const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -2755,7 +2755,7 @@ function viewSourcesForClusterIdea(clusterId, productId) {
 // list once it's a real product — 'main' (a = line index in the flat
 // Main Stack text) or 'cluster' (a = clusterId, b = the idea's own id).
 async function runCreateProductFromIdea(name, description, stack, kind, a, b) {
-  if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack}) in the ${CAMPAIGN_NAME} campaign?`)) return;
+  if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack || 'the keyword group it matches'}) in the ${CAMPAIGN_NAME} campaign?`)) return;
   try {
     const r = await w('createProduct', { title: name, description, stack, campaignId: CAMPAIGN_ID, status: 'Development' });
     alert(`Created — ${r.name}. Opening it in Notion.`);
