@@ -21,7 +21,8 @@
     "label": "Weekly Intelligence",
     "title": "The Multifamily Acquisitions Brief — deal flow, cap rate shifts, and underwriting insights every week.",
     "blurb": "Each issue covers off-market deal sourcing, value-add acquisition strategies, market pricing signals, and the underwriting moves separating disciplined buyers from overpaying ones. Concrete, operator-level, no filler.",
-    "buttonLabel": "Send me the weekly"
+    "buttonLabel": "Send me the weekly",
+    "image": "./signup.png?v=1791432623593"
   },
   "journal": {
     "title": "Acquisitions Journal",
