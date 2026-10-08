@@ -14268,6 +14268,31 @@ function hcTitleGo(btn, slug, sid) {
   if (window._hcTab === 'ex') hcModalRun(btn, () => window._hcPick ? hubContentDo(slug, 'addTitle', { strategyId: sid, titleId: window._hcPick }) : Promise.resolve('Pick a title from the list'));
   else hcModalRun(btn, () => { const v = document.getElementById('hcNewTitleName').value.trim(); return v ? hubContentDo(slug, 'newTitle', { strategyId: sid, title: v }) : Promise.resolve('Enter a title'); });
 }
+// ✎ title modal: title text, notes, status — each changed field saved to the title's Content Strategy record
+function hcTitleEdit(slug, sid, tid) {
+  const st = (_hubContent[slug] || []).find(x => x.id === sid), t = st && st.titles.find(x => x.id === tid); if (!t) return;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  hcModal(`<h3 style="margin:0 0 10px;">Edit title</h3>
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>
+    <input id="hcEdTitle" value="${esc(t.title)}" style="${IN}">
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label>
+    <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
+    <select id="hcEdStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>`);
+}
+async function hcTitleSave(slug, sid, tid) {
+  const st = (_hubContent[slug] || []).find(x => x.id === sid), t = st && st.titles.find(x => x.id === tid); if (!t) return 'Title not found';
+  const nv = { title: document.getElementById('hcEdTitle').value.trim(), titleNotes: document.getElementById('hcEdNotes').value, status: document.getElementById('hcEdStatus').value };
+  const cur = { title: t.title, titleNotes: t.notes || '', status: t.status };
+  if (!nv.title) return 'The title can’t be empty';
+  try {
+    for (const f of ['title', 'titleNotes', 'status']) if (nv[f] !== cur[f]) {
+      const r = await call('updateAllOutputField', { kind: 'title', field: f, value: nv[f], titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    }
+    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; hubContentRefresh(slug); return true;
+  } catch (e) { return e.message; }
+}
 function renderHubContent(slug) {
   const list = _hubContent[slug], B = 'font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
   const busy = _hubContentBusy[slug] ? 'disabled' : '', msg = _hubContentBusy[slug + '|msg'] || '';
@@ -14275,7 +14300,7 @@ function renderHubContent(slug) {
   const stratRows = list.map(st => {
     const open = !!_hubContentOpen[slug + '|' + st.id], n = st.titles.length;
     const inner = !open ? '' : `<div style="padding:2px 0 4px 16px;">${n ? hubGridHead(0) + st.titles.map(t => hubGridRow({ pad: 0, title: t.title, type: 'Title', method: t.method, status: t.status, date: t.date,
-        links: `<a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy} onclick="hubContentDo('${slug}','removeTitle',{titleId:'${t.id}'})" title="Take this title out of the strategy (the title itself stays)" style="${B}padding:0 6px;">✕</button>` })).join('') : '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No titles yet — use + on the line above.</div>'}</div>`;
+        links: `<button onclick="hcTitleEdit('${slug}','${st.id}','${t.id}')" title="Edit title, notes and status" style="${B}padding:0 6px;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy} onclick="hubContentDo('${slug}','removeTitle',{titleId:'${t.id}'})" title="Take this title out of the strategy (the title itself stays)" style="${B}padding:0 6px;">✕</button>` })).join('') : '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No titles yet — use + on the line above.</div>'}</div>`;
     return `<div style="border-left:3px solid #b794f4;padding-left:8px;margin-bottom:4px;">
       <div onclick="_hubContentOpen['${slug}|${st.id}']=!_hubContentOpen['${slug}|${st.id}'];hubContentRefresh('${slug}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;user-select:none;">
         <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>

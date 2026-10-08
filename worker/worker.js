@@ -13493,6 +13493,7 @@ Return: {
         if (field === "product") { pageId = body.productId; props = { Name: ti(value) }; }
         else if (field === "productStack") { pageId = body.productId; props = { "Product Stack": rt(value) }; }
         else if (field === "title") { pageId = body.titleId; props = { Title: ti(value) }; }
+        else if (field === "titleNotes") { pageId = body.titleId; props = { Notes: rt(value) }; }
         else if (field === "assetName") { pageId = body.assetId; props = { "Asset Title": ti(value) }; }
         else if (field === "assetType") { pageId = body.assetId; props = { "Asset Type": value ? { select: { name: value.slice(0, 100) } } : { select: null } }; }
         else if (field === "status") {
@@ -13584,7 +13585,8 @@ Return: {
             const mn = Object.fromEntries(await Promise.all(mids.map(async m => { try { const p = await fetch(`https://api.notion.com/v1/pages/${m}`, { headers: hdr }).then(r => r.json()); return [m, txt(p.properties?.Name?.title)]; } catch (e) { return [m, ""]; } })));
             return { id, name: txt(pg.properties?.["Strategy Name"]?.title) || "Untitled strategy", status: pg.properties?.Status?.select?.name || "",
               titles: titles.map(t => ({ id: t.id.replace(/-/g, ""), title: txt(t.properties?.Title?.title) || "Untitled", status: t.properties?.Status?.select?.name || "",
-                method: mn[(t.properties?.method?.relation || [])[0]?.id] || "", date: (t.created_time || "").slice(0, 10) }))
+                method: mn[(t.properties?.method?.relation || [])[0]?.id] || "", date: (t.created_time || "").slice(0, 10),
+                notes: txt(t.properties?.Notes?.rich_text) }))
                 .sort((a, b) => a.title.localeCompare(b.title)) };
           }));
           return json({ strategies: strategies.filter(Boolean) });
