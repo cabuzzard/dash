@@ -1545,6 +1545,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <div id="productBulkBar" class="bulkbar" style="display:none;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px;padding:8px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;">
           <span id="productBulkCount" style="font-size:11px;color:var(--ink2);font-weight:700;"></span>
           <button class="btn primary" id="productBulkRunBtn" onclick="openBulkProductRegenModal()">⟳ Bulk run all research</button>
+          <button class="btn" id="productBulkDelBtn" onclick="bulkArchiveProducts(this)" style="color:var(--stale);">🗑 Delete selected</button>
+          <button class="btn" onclick="SELECTED_PRODUCTS.clear();loadProductTab()">Clear</button>
         </div>
         <div id="productListBody"><div class="loadnote">Loading…</div></div>
       </div>
@@ -3541,6 +3543,26 @@ async function loadProductTab() {
 // Never hard-delete — same "archive via Status, keep as raw material"
 // convention the app already uses for Methods. updateProductStatus
 // already exists and is used elsewhere for this exact transition.
+// Bulk delete = archive (Status → Archived, kept in Notion), same as each product's ✕ — 5 at a time.
+async function bulkArchiveProducts(btn) {
+  const ids = [...SELECTED_PRODUCTS]; if (!ids.length) return;
+  const names = ids.map(id => (CAMPAIGN_PRODUCTS.find(p => p.id === id) || {}).name || id);
+  if (!confirm(`Delete (archive) ${ids.length} product${ids.length === 1 ? '' : 's'}? They stay in Notion (Status → Archived), just removed from this list.
+
+${names.slice(0, 15).join('
+')}${names.length > 15 ? '
+…' : ''}`)) return;
+  btn.disabled = true; let done = 0; const failed = [];
+  const queue = ids.slice();
+  const run = async () => { while (queue.length) { const id = queue.shift();
+    try { await w('updateProductStatus', { productId: id, status: 'Archived' }); CAMPAIGN_PRODUCTS = CAMPAIGN_PRODUCTS.filter(p => p.id !== id); SELECTED_PRODUCTS.delete(id); }
+    catch (e) { failed.push((CAMPAIGN_PRODUCTS.find(p => p.id === id) || {}).name || id); }
+    done++; btn.textContent = `⏳ ${done} / ${ids.length}…`; } };
+  await Promise.all(Array.from({ length: Math.min(5, ids.length) }, run));
+  btn.disabled = false; btn.textContent = '🗑 Delete selected';
+  if (failed.length) alert(`Could not archive ${failed.length}: ${failed.join(', ')}`);
+  loadProductTab();
+}
 async function archiveProduct(productId, btn) {
   const prod = CAMPAIGN_PRODUCTS.find(p => p.id === productId);
   if (!confirm(`Archive "${prod ? prod.name : productId}"? It stays in Notion (Status → Archived), just removed from this list.`)) return;
