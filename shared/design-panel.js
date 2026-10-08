@@ -28,7 +28,12 @@
   function mount(root, cfg) {
     const S = { cid: String(cfg.campaignId || '').replace(/-/g, ''), slug: cfg.slug || '', base: null, stage: null, hist: { palettes: [], fonts: [], directions: [] },
       open: {}, edit: {}, steer: '', img: null, busy: '', msg: '', msgKind: '', spec: { text: '', loaded: false, dirty: false, busy: false },
-      tests: [], aspect: '3:4', gpt: { reply: '', prompt: '', aspect: '3:4', lastUrl: '' }, plate: null, voice: null, saving: '', saveErr: '', specOk: true, kw: null };
+      tests: [], aspect: '3:4', gpt: { reply: '', prompt: '', aspect: '3:4', lastUrl: '' }, plate: null, voice: null, saving: '', saveErr: '', specOk: true, kw: null,
+      undo: [], preview: false };
+    // ↶ undo: every change to the staged design pushes the previous stage (session only, last 40)
+    const snap = () => { if (S.stage) { S.undo.push(clone(S.stage)); if (S.undo.length > 40) S.undo.shift(); } };
+    // 👁 preview: hand the staged palette + fonts to the host (the dashboard paints them onto its live hub preview)
+    const pushPreview = () => { if (cfg.preview) try { cfg.preview(S.preview ? { palette: S.stage && S.stage.palette, fonts: S.stage && S.stage.fonts } : null); } catch (e) {} };
     const call = async (a, b) => { const r = await cfg.call(a, Object.assign({ campaignId: S.cid }, b || {})); if (r && r.error) throw new Error(r.error); return r || {}; };
     root.__dp = S;
     const say = (m, kind) => { S.msg = m || ''; S.msgKind = kind || ''; render(); };
@@ -62,6 +67,7 @@
 
     // ── sources (each adds onto the current stage) ──
     async function genDirection(source, extra) {
+      snap();
       S.busy = source === 'image' ? 'Reading the direction off the image…' : source === 'keywords' ? 'Building the direction from those keywords…' : source === 'plate' ? 'Reading the direction off that plate…' : 'Claude is researching the visual direction…'; render();
       try {
         const s = S.stage;
@@ -73,6 +79,7 @@
       } catch (err) { S.busy = ''; say('Direction failed: ' + err.message, 'bad'); }
     }
     async function genPalette() {
+      snap();
       S.busy = S.img ? 'Pulling a palette from the image…' : 'Researching a palette…'; render();
       try {
         const r = await call('generateResearchPalette', { slug: S.slug || undefined, stage: true, image: S.img ? S.img.data : undefined, instructions: S.steer.trim() || undefined, current: S.stage.palette || undefined });
@@ -81,6 +88,7 @@
       } catch (err) { S.busy = ''; say('Palette failed: ' + err.message, 'bad'); }
     }
     async function genFonts() {
+      snap();
       S.busy = 'Researching a type pairing…'; render();
       try {
         const r = await call('generateResearchFonts', { slug: S.slug || undefined, stage: true, instructions: S.steer.trim() || undefined, current: S.stage.fonts || undefined });
@@ -91,6 +99,7 @@
     // Claude's initial design (the hub's hubs.design.json entry from creation) — added onto the stage: empty fields
     // are filled, the brief is appended to Design notes once. Nothing already there is replaced.
     async function claudeInitial() {
+      snap();
       if (!S.slug) return say('This campaign has no hub, so there is no Claude initial design.', 'bad');
       S.busy = 'Reading Claude’s initial design…'; render();
       try {
@@ -157,6 +166,7 @@ Use 120-200 words of plain descriptive prose (no bullet points, no weights or pa
 Strip the // comments from the JSON.`;
     }
     function stageGpt() {
+      snap();
       const raw = S.gpt.reply || '', f = raw.match(/```(?:json)?\s*([\s\S]*?)```/i), body = f ? f[1] : raw, a = body.indexOf('{'), b = body.lastIndexOf('}');
       let d; try { if (a < 0 || b <= a) throw new Error('no JSON object found'); d = JSON.parse(body.slice(a, b + 1).replace(/\/\/[^\n"]*$/gm, '').replace(/,\s*([}\]])/g, '$1')); }
       catch (err) { return say('Could not read the reply: ' + err.message + ' — paste the whole JSON block.', 'bad'); }
@@ -180,6 +190,7 @@ Strip the // comments from the JSON.`;
       say('Staged from ChatGPT: ' + got.join(', ') + '. Review, then 💾 Save.', 'ok');
     }
     function pickVersion(kind, val) {
+      snap();
       const s = S.stage, b = S.base, list = S.hist[kind === 'palette' ? 'palettes' : kind === 'fonts' ? 'fonts' : 'directions'] || [];
       const en = val === 'current' ? null : list.find(x => String(x.ts) === String(val));
       if (kind === 'palette') s.palette = en ? en.palette : clone(b.palette);
@@ -258,6 +269,7 @@ Strip the // comments from the JSON.`;
         <button data-act="edit" data-k="${k}" style="${BTN}padding:0 6px;margin-left:auto;">${S.edit[k] ? 'done' : '✎'}</button></div>
         ${S.edit[k] ? `<textarea data-in="stage" data-k="${k}" rows="${k === 'notes' ? 5 : 4}" style="${TA}">${e(s[k])}</textarea>` : `<div style="font-size:12px;color:${C.ink};white-space:pre-wrap;line-height:1.45;">${e(s[k]) || `<span style="color:${C.ink3};">(empty)</span>`}</div>`}</div>`; };
     function render() {
+      pushPreview();
       if (!S.stage) { root.innerHTML = `<div style="font-size:12px;color:${S.msgKind === 'bad' ? C.bad : C.ink3};padding:6px 0;">${e(S.msg || S.busy || 'Loading…')}</div>`; return; }
       const s = S.stage, dirty = dirtyParts();
       const status = S.busy || S.msg ? `<div style="font-size:11.5px;margin:0 0 8px;color:${S.busy ? C.ink3 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${e(S.busy || S.msg)}</div>` : '';
@@ -334,6 +346,9 @@ Strip the // comments from the JSON.`;
         + card('voice', '🗣 Your voice', 'learned from your edits', voice)
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${dirty.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
             <div style="flex:1;min-width:180px;">${bar}${S.saveErr ? `<br><span style="color:${C.bad};">Last try failed: ${e(S.saveErr)}</span>` : ''}</div>
+            <button ${S.undo.length ? '' : 'disabled'} data-act="undo" title="Undo the last change to the staged design" style="${BTN}">↶ Undo${S.undo.length ? ' (' + S.undo.length + ')' : ''}</button>
+            <button ${dirty.length ? '' : 'disabled'} data-act="revert" title="Throw away every staged change — back to what's saved on the record" style="${BTN}">↺ Revert to saved</button>
+            ${cfg.preview ? `<button data-act="preview" title="Paint the staged palette + fonts onto the hub preview on the right (nothing is saved)" style="${S.preview ? BTNP : BTN}">👁 Preview on hub${S.preview ? ': on' : ''}</button>` : ''}
             <button ${S.saving ? 'disabled' : ''} data-act="save" style="${BTNP}">${dirty.length ? '💾 Save design' : !S.specOk ? '↻ Rebuild image spec' : '💾 Save'}</button>
             ${S.slug ? `<button ${S.saving ? 'disabled' : ''} data-act="push" title="Also commit the palette + fonts into the live hub (redeploys ~1 min)" style="${BTN}">Push to hub ↓</button>` : ''}</div>`;
     }
@@ -356,7 +371,7 @@ Strip the // comments from the JSON.`;
       const b = ev.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
       const a = b.dataset.act, i = +b.dataset.i;
       if (a === 'toggle') { const k = b.dataset.k; S.open[k] = !S.open[k]; if (k === 'voice' && S.open.voice) loadVoice(); render(); }
-      else if (a === 'edit') { S.edit[b.dataset.k] = !S.edit[b.dataset.k]; render(); }
+      else if (a === 'edit') { if (!S.edit[b.dataset.k]) snap(); S.edit[b.dataset.k] = !S.edit[b.dataset.k]; render(); }
       else if (a === 'genDir') genDirection('research');
       else if (a === 'claudeInit') claudeInitial();
       else if (a === 'genImg') genDirection('image', { image: S.img && S.img.data });
@@ -381,6 +396,9 @@ Strip the // comments from the JSON.`;
       else if (a === 'voiceSave') saveVoice();
       else if (a === 'voiceReload') { S.voice = null; loadVoice(); }
       else if (a === 'save') save();
+      else if (a === 'undo') { if (S.undo.length) { S.stage = S.undo.pop(); render(); } }
+      else if (a === 'revert') { snap(); S.stage = clone(S.base); render(); }
+      else if (a === 'preview') { S.preview = !S.preview; render(); }
       else if (a === 'push') push();
     });
     window.addEventListener('beforeunload', ev => { if (root.isConnected && (S.saving || dirtyParts().length)) { ev.preventDefault(); ev.returnValue = ''; } });

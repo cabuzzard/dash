@@ -13458,6 +13458,7 @@ let _hpiFitTry = {}, _hpiRO = {};
 const HUB_RAIL_BASE_W = 1280;   // the desktop width the roll is rendered at, then scaled to the column
 function hpiDoc(slug){ try { const f = document.getElementById('hpiFrame-'+slug); return f ? f.contentDocument : null; } catch(e){ return null; } }
 function hubPreviewLoaded(slug){
+  try { hubPreviewPaint(slug); } catch (e) {}
   _hpiTry[slug] = 0; _hpiFitTry[slug] = 0;
   hubRailFit(slug);
   [300, 900, 2200, 4500].forEach(ms => setTimeout(() => hubRailFit(slug), ms));
@@ -13974,13 +13975,33 @@ function renderHubsTab() {
 
 // ── Design: the shared design panel (shared/design-panel.js — the same editor care-gap's Design tab mounts).
 // One panel per hub, created once and re-attached after every card render so its state survives. ──
-const _hubDesignPanels = {};
+const _hubDesignPanels = {}, _hubDesignPreview = {};
+// 👁 paint a staged palette + fonts onto the live hub preview (right rail) — CSS variables only, nothing saved.
+// Re-applied whenever the preview frame (re)loads; null removes it.
+function hubPreviewPaint(slug) {
+  const doc = hpiDoc(slug); if (!doc || !doc.documentElement) return;
+  const d = _hubDesignPreview[slug];
+  let st = doc.getElementById('dpPreviewStyle'), ln = doc.getElementById('dpPreviewFonts');
+  if (!d || (!d.palette && !(d.fonts && d.fonts.display))) { if (st) st.remove(); if (ln) ln.remove(); return; }
+  const p = d.palette || {}, f = d.fonts || {}, vars = [];
+  ['bg', 'surface', 'ink', 'ink-head', 'ink-soft', 'line', 'sea', 'deep', 'deep-ink', 'accent'].forEach(k => { if (p[k]) vars.push(`--${k}:${p[k]} !important;`); });
+  if (p.surface) vars.push(`--paper:${p.surface} !important;`);
+  if (f.display) vars.push(`--font-display:"${f.display}", Georgia, serif !important;`);
+  if (f.body) vars.push(`--font-body:"${f.body}", system-ui, sans-serif !important;`);
+  if (f.mono) vars.push(`--font-mono:"${f.mono}", ui-monospace, monospace !important;`);
+  if (!st) { st = doc.createElement('style'); st.id = 'dpPreviewStyle'; doc.head.appendChild(st); }
+  st.textContent = `:root{${vars.join('')}}`;
+  const fams = [f.display, f.body, f.mono].filter(Boolean);
+  if (fams.length) { if (!ln) { ln = doc.createElement('link'); ln.id = 'dpPreviewFonts'; ln.rel = 'stylesheet'; doc.head.appendChild(ln); }
+    ln.href = 'https://fonts.googleapis.com/css2?' + fams.map(x => 'family=' + encodeURIComponent(x).replace(/%20/g, '+') + ':wght@400;600;700').join('&') + '&display=swap'; }
+}
 function hubDesignAttach(slug) {
   const host = document.getElementById('dpHost-' + slug); if (!host) return;
   const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || !window.DesignPanel) return;
   let p = _hubDesignPanels[slug];
   if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
-    onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; } }) }; }
+    onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; },
+    preview: d => { _hubDesignPreview[slug] = d; hubPreviewPaint(slug); } }) }; }
   host.appendChild(p.el);
 }
 // ── Left-column collapsible sections (open/closed remembered per section) ──
