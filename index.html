@@ -13394,6 +13394,7 @@ function himRender(){
         <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
           <label style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;color:var(--text3);">⬆ file<input type="file" accept="image/*" onchange="himUpload('${kind}',this)" style="display:none;"></label>
           <button onclick="himUrl('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">🔗 URL</button>
+          <button onclick="himGptPrompt('${kind}', this)" title="Copy a ChatGPT image prompt built from the SAVED image spec — make the image in ChatGPT, then ⬆ file it here" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">📋 ChatGPT prompt</button>
           <button onclick="himGrok('${kind}')" title="Grok Imagine from the SAVED image spec (+ approved plate). You see a candidate first — nothing changes until Use this." style="font-size:10px;padding:2px 7px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">✨ Grok (saved spec)</button>
           <button onclick="himGen('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>
           ${u?`<button onclick="himClear('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕ clear</button>`:''}
@@ -13409,6 +13410,26 @@ function himRender(){
       </div>
     </div>`;
   }).join('');
+}
+// 📋 ChatGPT prompt for the hero / signup image — from the saved image spec, ready to paste into ChatGPT
+async function himGptPrompt(kind, btn) {
+  const h = HUB_SITES.find(x => x.slug === HIM.slug); if (!h) return;
+  const msg = document.getElementById('himMsg'), o = btn.textContent; btn.textContent = 'Building…';
+  try {
+    const r = await call('getImageBrief', { campaignId: h.campaignId }); if (r.error) throw new Error(r.error);
+    const role = kind === 'signup' ? 'the supporting image beside the email-signup section — calm and inviting, with room around the subject' : 'the HERO image at the top of the home page — the strongest, most iconic picture of what this site is about';
+    const prompt = `Create ${role} for the website "${h.name}".
+
+Format: portrait 3:4, high resolution. It sits in the right third of the page on desktop, so keep the subject clear and uncluttered.
+Absolutely no text, letters, logos or watermarks in the image.
+
+Follow this art-direction spec exactly:
+
+${(r.text || '').trim()}`;
+    await navigator.clipboard.writeText(prompt);
+    btn.textContent = '✓ Copied'; msg.style.color = 'var(--text3)'; msg.textContent = 'Prompt copied — paste it into ChatGPT, download the image, then ⬆ file it on the ' + kind + ' row.';
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = 'Could not build the prompt: ' + e.message; btn.textContent = o; return; }
+  setTimeout(() => { btn.textContent = o; }, 2500);
 }
 async function himGrok(kind, withNote) {
   const msg = document.getElementById('himMsg'); msg.style.color = 'var(--text3)'; msg.textContent = 'Grok is rendering the ' + kind + ' image from the saved spec (~25s)…';
