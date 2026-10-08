@@ -14918,6 +14918,12 @@ function renderLandingDeck(el) {
         · <a href="${url}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">live ↗</a>
         · <a href="${url}blog/" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">blog ↗</a>
       </div>
+      <!-- Long sales page mode (worker landing:mode:<slug>): the QA – Sales article re-cut as this page, own keywords, reviews/proof/FAQ -->
+      <div style="margin-top:8px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text2);">
+        <label style="display:flex;gap:4px;align-items:center;cursor:pointer;"><input type="checkbox" id="lpLong-${slug}" ${b && b.mode && b.mode.long ? 'checked' : ''}> Long sales page</label>
+        <input id="lpKw-${slug}" placeholder="this page's own keywords, comma-separated" value="${esc((b && b.mode && b.mode.keywords) || '')}" style="flex:1;min-width:200px;font-size:11px;padding:3px 7px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
+        <button onclick="landingLongSave('${slug}', this)" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Save + rewrite copy</button>
+      </div>
     </div>
     <div style="padding:9px 12px;background:var(--surface2);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;">
       <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text2);font-weight:700;">Build checklist</span>
@@ -14927,6 +14933,16 @@ function renderLandingDeck(el) {
     </div>
     <div id="landingBuildBody-${slug}">${renderLandingBuildRows(slug)}</div>
   </div>`;
+}
+async function landingLongSave(slug, btn) {
+  const l = _landingList.find(x => x.slug === slug) || {}, b = _landingBuild[slug] || {};
+  btn.disabled = true; btn.textContent = '⏳ Working…';
+  try {
+    const r = await call('generateLandingCopy', { campaignId: b.campaignId || l.campaignId, long: document.getElementById('lpLong-' + slug).checked, keywords: document.getElementById('lpKw-' + slug).value });
+    if (r && r.error) throw new Error(r.error);
+    btn.textContent = '✓ Rewritten — live in ~1 min'; _landingBuildFetched[slug] = false;
+  } catch (e) { btn.textContent = 'Failed: ' + e.message; }
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Save + rewrite copy'; }, 4000);
 }
 function renderLandingBuildRows(slug) {
   const b = _landingBuild[slug];

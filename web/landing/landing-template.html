@@ -98,6 +98,10 @@ footer{padding:34px 0 48px;text-align:center;color:var(--ink-soft);font-size:.82
 footer strong{color:var(--ink);font-family:var(--font-display)}
 
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+.long{padding:48px 0}.long h2{font-family:var(--font-display);margin:36px 0 12px}.long p{line-height:1.7}
+.long .proofgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}.long .proofgrid img{max-width:100%;max-height:56px;object-fit:contain}
+.long blockquote{margin:0 0 16px;padding:14px 18px;border-left:3px solid var(--accent);background:var(--surface);border-radius:6px}.long cite{font-style:normal;color:var(--ink-soft);font-size:.9rem}
+.long details{border-top:1px solid var(--line);padding:10px 0}.long summary{cursor:pointer;font-weight:600}
 </style>
 </head>
 <body>
@@ -123,6 +127,16 @@ footer strong{color:var(--ink);font-family:var(--font-display)}
 
   <div class="trust wrap" id="lpTrustWrap" hidden>
     <ul id="lpTrust"></ul>
+  </div>
+</section>
+
+<!-- Long sales page mode: filled from LP.long; every block stays hidden while empty -->
+<section class="long" id="lpLong" hidden>
+  <div class="wrap">
+    <div id="lpLongSections"></div>
+    <div id="lpProofWrap" hidden><h2>Proof</h2><div class="proofgrid" id="lpProof"></div></div>
+    <div id="lpReviewsWrap" hidden><h2>What people say</h2><div id="lpReviews"></div></div>
+    <div id="lpFaqWrap" hidden><h2>Questions</h2><div id="lpFaq"></div></div>
   </div>
 </section>
 
@@ -211,6 +225,14 @@ function render() {
   $("lpFootBrand").textContent = LP.brand;
   $("lpFootTagline").textContent = LP.footerTagline;
   if (LP.contactEmail) { const c = $("lpFootContact"); c.hidden = false; c.textContent = LP.contactEmail; c.href = "mailto:" + LP.contactEmail; }
+  if (LP.long) {
+    const L = LP.long, para = t => String(t || "").split(/\n{2,}/).map(p => `<p>${esc(p.trim())}</p>`).join("");
+    if ((L.sections || []).length) $("lpLongSections").innerHTML = L.sections.map(x => `<h2>${esc(x.h2)}</h2>${para(x.body)}`).join("");
+    if ((L.proof || []).length) { $("lpProof").innerHTML = L.proof.map(x => `<div>${x.image ? `<img src="${esc(x.image)}" alt="">` : ""}${x.text ? `<p>${esc(x.text)}</p>` : ""}${x.source ? `<small>${esc(x.source)}</small>` : ""}</div>`).join(""); $("lpProofWrap").hidden = false; }
+    if ((L.reviews || []).length) { $("lpReviews").innerHTML = L.reviews.map(r => `<blockquote><p>${esc(r.quote)}</p><cite>${esc(r.reviewer || "Customer")}${r.source ? " · " + esc(r.source) : ""}</cite></blockquote>`).join(""); $("lpReviewsWrap").hidden = false; }
+    if ((L.faq || []).length) { $("lpFaq").innerHTML = L.faq.map(f => `<details><summary>${esc(f.q)}</summary><p>${esc(f.a)}</p></details>`).join(""); $("lpFaqWrap").hidden = false; }
+    if ((L.sections || []).length || (L.proof || []).length || (L.reviews || []).length || (L.faq || []).length) $("lpLong").hidden = false;
+  }
   if (Array.isArray(LP.trust) && LP.trust.length) {
     $("lpTrustWrap").hidden = false;
     $("lpTrust").innerHTML = LP.trust.map(t => `<li>${esc(t)}</li>`).join("");

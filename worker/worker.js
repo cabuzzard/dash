@@ -12963,7 +12963,8 @@ Return: {
             { id: "domain",   phase: "Deploy",   label: "Custom domain (optional)", manual: true, done: man("domain") },
             { id: "formtest", phase: "Audit",    label: "Form tested end-to-end (submits, lands in Leads)", manual: true, done: man("formtest") },
           ];
-          return json({ slug: lpSlug, campaignId: lpCampId, url: lpUrl, keyword: lpKeyword, productName: lpProdName, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
+          let lpModeS = {}; try { lpModeS = (await env.TRADES.get("landing:mode:" + lpSlug, "json")) || {}; } catch (e) {}
+          return json({ slug: lpSlug, campaignId: lpCampId, url: lpUrl, keyword: lpKeyword, productName: lpProdName, mode: lpModeS, steps, doneCount: steps.filter(s => s.done).length, total: steps.length });
         }
 
         if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);
@@ -12972,6 +12973,22 @@ Return: {
         const rget = k => (rp[k]?.rich_text || []).map(t => t.plain_text).join("");
         const methodBodyLp = (await resolveMethodIdByName(LANDING_METHOD_NAME).then(id => id ? extractBlocksTextRecursive(nh, dLp(id)) : "").catch(() => "")).slice(0, 3500);
 
+        // Long sales page mode (2026-10-08): KV landing:mode:<slug> = {long:true, keywords:"…"} (set from the
+        // Landing Pages card or generateLandingCopy {long, keywords}). Long = the Sales Article (latest QA – Sales
+        // asset for this product) re-cut as a standalone page with its own keyword set, plus approved reviews/proof.
+        let lpMode = {}; try { lpMode = (await env.TRADES.get("landing:mode:" + lpSlug, "json")) || {}; } catch (e) {}
+        if (body.long !== undefined || body.keywords !== undefined) {
+          lpMode = { long: body.long !== undefined ? !!body.long : !!lpMode.long, keywords: body.keywords !== undefined ? String(body.keywords || "").slice(0, 1500) : (lpMode.keywords || "") };
+          await env.TRADES.put("landing:mode:" + lpSlug, JSON.stringify(lpMode));
+        }
+        let lpSalesText = "", lpProof = { reviews: [], proof: [] };
+        if (lpMode.long && lpProductId) {
+          try {
+            const sa = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Product", relation: { contains: dLp(lpProductId) } }, { property: "Asset Type", select: { equals: "QA – Sales" } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
+            if (sa[0]) lpSalesText = (await extractBlocksTextRecursive(nh, sa[0].id)).slice(0, 9000);
+          } catch (e) { console.error("landing long: sales article", e.message); }
+          lpProof = await salesProofFor(lpProductId).catch(() => lpProof);
+        }
         const lpEyebrow = String(lpAssetTitle || "").trim().slice(0, 90).replace(/["\\]/g, "");
         const lpPrompt = `Write the copy + palette for a standalone product landing page. It slices ONE product out of a broader campaign and sells it / captures leads on its own. Return ONLY JSON.
 
@@ -12981,7 +12998,12 @@ ${lpProdDesc ? `DESCRIPTION: ${lpProdDesc.slice(0, 600)}\n` : ""}${lpProdKw ? `P
 METHOD GUIDANCE (the "Landing Page" method — follow its conversion framework):
 ${methodBodyLp.slice(0, 2500)}
 
-The page is: eyebrow → H1 (the keyword AS the outcome) → subhead (mechanism + who it's for) → email form → trust strip → SEO blog posts → repeat CTA → footer. Real, specific copy, never placeholder. Button = the specific outcome, never "Submit".
+The page is: eyebrow → H1 (the keyword AS the outcome) → subhead (mechanism + who it's for) → email form → trust strip → ${lpMode.long ? "LONG SALES SECTIONS → FAQ → " : ""}SEO blog posts → repeat CTA → footer. Real, specific copy, never placeholder. Button = the specific outcome, never "Submit".
+${lpMode.long ? `\nLONG SALES PAGE MODE — this page has its OWN keyword strategy, separate from the hub:
+OWN KEYWORDS: ${lpMode.keywords || "(none given — use the primary keyword + product keywords)"}
+SOURCE SALES ARTICLE (re-cut it for this page — keep its facts, pains, benefits, proof and objections; invent nothing):
+${lpSalesText || "(no QA – Sales article yet for this product — build the sections from the product research above)"}
+Also return in "lp": "long": { "sections": [ { "h2": "keyword-rich section heading", "body": "2-4 short paragraphs, \\n\\n between them" } ]  (5-8 sections: problem → why it happens → the mechanism → what you get → who it's for / not for → objections → guarantee/next step), "faq": [ { "q": "...", "a": "..." } ] (4-6, from the own keywords) }` : ""}
 Fonts from: Space Grotesk, Inter, IBM Plex Sans, IBM Plex Mono, Newsreader, DM Serif Display, Fraunces, Archivo, Libre Franklin, Space Mono.
 Tokens are hex; AA contrast for ink on bg and deep-ink on deep.
 
@@ -13003,7 +13025,7 @@ Return: {
 }`;
         const aiLp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: lpPrompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: lpMode.long ? 8000 : 2000, messages: [{ role: "user", content: lpPrompt }] }),
         });
         const aiLpD = await aiLp.json();
         if (!aiLp.ok) return json({ error: aiLpD.error?.message || "Claude error" }, 502);
@@ -13071,6 +13093,8 @@ Return: {
   recapButton: "${sLp(lp.recapButton || "Get started")}",
 
   footerTagline: "${sLp(lp.footerTagline || lpProdName || lpCampName)}",
+
+  long: ${lpMode.long ? JSON.stringify({ sections: (lp.long?.sections || []).slice(0, 10).map(x => ({ h2: String(x.h2 || "").slice(0, 160), body: String(x.body || "").slice(0, 3000) })), faq: (lp.long?.faq || []).slice(0, 8).map(x => ({ q: String(x.q || "").slice(0, 200), a: String(x.a || "").slice(0, 800) })), reviews: lpProof.reviews.slice(0, 8), proof: lpProof.proof.slice(0, 8) }).replace(/</g, "\\u003c") : "null"},
 };`;
         html = html.replace(/const LP = \{[\s\S]*?\n\};/, lpObj.replace(/\n/g, "\r\n"));
         await gPut(`web/landing/${lpSlug}/index.html`, html, `landing: ${body.action === "generateLandingCopy" ? "regen copy" : "scaffold"} ${lpSlug}`, idxF.missing ? undefined : idxF.sha);
@@ -15941,6 +15965,15 @@ ${bodyText.slice(0, 6000)}`;
           } catch (e) { console.error("longformQuestions outliers:", e.message); }
         }
         const demand = await kwDemandBlock(env, keywords || seeds.join(", ")).catch(() => "");
+        // Hub ideas (2026-10-08): this campaign's existing titles + staged digest ideas, so YouTube questions get
+        // matched to what the hub already covers / plans. Ad-revenue intent: no product push by default.
+        let hubIdeas = [];
+        try {
+          const tRows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: nd(campaignId) } }, sorts: [{ timestamp: "created_time", direction: "descending" }] }).catch(() => []);
+          hubIdeas = tRows.slice(0, 40).map(r => (r.properties?.Title?.title || []).map(t => t.plain_text).join("")).filter(Boolean);
+          const di = (await env.TRADES.get("digest:ideas:" + String(campaignId).replace(/-/g, ""), "json")) || {};
+          hubIdeas = hubIdeas.concat((di.postIdeas || []).slice(0, 15).map(i => i.headline).filter(Boolean));
+        } catch (e) { console.error("longformQuestions hub ideas:", e.message); }
         const qPrompt = `${body.__voice || ""}You pick video topics for a faceless long-form YouTube channel that answers the questions its audience is already asking (Shane Hummus model: real questions → ranked lists, tier lists, or "is it worth it" verdicts).
 
 CAMPAIGN KEYWORDS: ${keywords.slice(0, 1500) || "(none)"}
@@ -15951,7 +15984,8 @@ ${autoUniq.map(x => `- ${x.q} [${x.src}]`).join("\n").slice(0, 6000)}
 
 YOUTUBE OUTLIERS (videos pulling N× their channel's average — proven demand):
 ${outliers.map(o2 => `- "${o2.title}" — ${o2.views.toLocaleString("en-US")} views, ${o2.ratio.toFixed(1)}× channel avg`).join("\n") || "(none)"}
-${demand ? `\nSEARCH DEMAND (Google Ads keyword data):\n${demand.slice(0, 3000)}\n` : ""}
+${demand ? `\nSEARCH DEMAND (Google Ads keyword data):\n${demand.slice(0, 3000)}\n` : ""}${hubIdeas.length ? `\nHUB IDEAS (titles and ideas this hub already has or plans — prefer questions that MATCH one of these, and say which in evidence):\n${hubIdeas.map(x => "- " + x).join("\n").slice(0, 3000)}\n` : ""}
+INTENT: these episodes earn from YouTube ads, not product sales — rank by watch-time potential and advertiser value (high-CPC topics), and do not pick questions that only make sense as a sales pitch.
 Pick the 12 best QUESTIONS for ~20 minute videos. Prefer questions that show up in more than one source, have real demand, and carry money intent (someone would pay to have it answered). Phrase each as the viewer would ask it. For each choose the format that fits the question best — spread across formats when several fit:
 ${LF_FORMAT_KEYS.map(k => `- "${k}": ${LF_FORMATS[k].label} — use when ${LF_FORMATS[k].use}. Title patterns: ${LF_FORMATS[k].titles}`).join("\n")}
 Give a YouTube title in that format. Call submit_questions.`;
