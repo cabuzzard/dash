@@ -14389,6 +14389,21 @@ const _hubPhaseOpen = {};
 function hubLvl(head, body, headAttrs) {
   return `<div style="margin:2px 12px 4px 22px;padding-left:11px;"><div ${headAttrs || ''} style="padding:3px 0;display:flex;align-items:center;gap:6px;user-select:none;font-size:11.5px;${headAttrs ? 'cursor:pointer;' : ''}">${head}</div>${body ? `<div style="padding:2px 0 4px 16px;">${body}</div>` : ''}</div>`;
 }   // build-checklist phases + Production: collapsed until opened
+// section heading summaries (right side): orange until the section has something live, then green
+function hubPhaseSummary(b, phase) {
+  const steps = (b.steps || []).filter(x => x.phase === phase), O = '#f6ad55', G = '#4ade80';
+  const pill = (txt, ok) => `<span style="color:${ok ? G : O};font-weight:600;">${txt}</span>`;
+  const mo = steps.find(x => x.mainOffering);
+  if (mo) { const all = mo.products || [], ids = mo.mainIds || (mo.mainId ? [mo.mainId] : []);
+    const st = ids.map(id => (all.find(p => p.id === id) || {}).status || 'Planning'), plan = st.filter(x => x === 'Planning').length, act = st.length - plan;
+    return pill(`${plan} planning · ${act} active`, act > 0); }
+  const cta = steps.find(x => x.titleSlots);
+  if (cta) { const ts = cta.titles || [], plan = ts.filter(t => !t.status || t.status === 'Planning').length, dev = ts.length - plan;
+    return pill(`${plan} planning · ${dev} dev`, dev > 0); }
+  const items = steps.flatMap(x => x.items || []), pub = items.filter(it => it.status === 'Published').length;
+  if (phase === 'Page content' || steps.some(x => x.pageSection)) return pill(`${pub} published`, pub > 0);
+  return '';
+}
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
@@ -14400,8 +14415,8 @@ function renderHubBuildRows(slug) {
     let dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
     const phOpen = !!_hubPhaseOpen[slug + '|' + s.phase];
     const single = (s.pageSection || s.mainOffering) && b.steps.filter(x => x.phase === s.phase).length === 1;   // one row → no redundant inner header
-    const phHead = extra => `<div data-ph="${esc(s.phase)}" onclick="_hubPhaseOpen['${slug}|' + this.dataset.ph]=!_hubPhaseOpen['${slug}|' + this.dataset.ph];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}${extra ? `<span onclick="event.stopPropagation()" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:6px;font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--text);cursor:default;">${extra}</span>` : ''}</div>`;
-    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, single ? '' : phHead('')) : '';
+    const phHead = extra => `<div data-ph="${esc(s.phase)}" onclick="_hubPhaseOpen['${slug}|' + this.dataset.ph]=!_hubPhaseOpen['${slug}|' + this.dataset.ph];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}${extra ? `<span onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--text);cursor:default;">${extra}</span>` : ''}</div>`;
+    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, single ? '' : phHead(hubPhaseSummary(b, s.phase))) : '';
     const wrapRow = (head, body, attrs, headSingle) => single
       ? phHead(headSingle) + (phOpen && body ? `<div style="margin:2px 12px 4px 22px;padding-left:11px;"><div style="padding:2px 0 4px 16px;">${body}</div></div>` : '')
       : phaseHdr + hubLvl(head, body, attrs);
@@ -14436,7 +14451,7 @@ function renderHubBuildRows(slug) {
       return wrapRow(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np || s.titleSlots ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
         <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="${cntCol}">— ${countTxt}</span></span>${pick}`, (rows ? rows.replace(hubGridHead(0), hubGridHead(0) + prodRows) : prodRows),
         `onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')"`,
-        `<span style="flex-shrink:0;">${dot}</span><span style="${cntCol}">${countTxt}</span>${pick}`);
+        `${hubPhaseSummary(b, s.phase)}${pick}`);
     } else if (s.mainOffering) {
       // the hub's main offering: one real Products record — pick one of the campaign's products, or add a new one
       const SEL = 'font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:220px;';
@@ -14453,7 +14468,7 @@ function renderHubBuildRows(slug) {
       const grid = ids.length ? hubGridHead(0) + ids.map((id, n) => { const p = byId[id] || {};
         return hubGridRow({ pad: 0, bar: p.status === 'Planning' || !p.status ? '#f6ad55' : '#4ade80', title: (p.name || (id === s.mainId ? s.mainName : '') || 'Product') + (n === 0 && ids.length > 1 ? ' ★' : ''), type: 'Product', method: '', status: p.status || '', date: p.date,
           links: `<button onclick="hubProdFullEdit('${slug}','${id}')" title="Edit name, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy ? 'disabled' : ''} onclick="hubMainOfferSet('${slug}','${id}','remove')" title="Remove from the main offerings (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('') : '';
-      return wrapRow(`<span style="font-size:10px;width:10px;"></span><span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;color:var(--text);line-height:1.35;">Main products <span style="color:var(--text3);">— ${ids.length ? ids.length + (ids.length > 1 ? ' (★ = primary: hub generation + image briefs)' : '') : 'add one or more of the campaign\'s products'}</span></span>${ctrl}`, add + grid, '', `<span style="flex-shrink:0;">${dot}</span><span style="color:var(--text3);">${ids.length ? ids.length + ' main product' + (ids.length === 1 ? '' : 's') + (ids.length > 1 ? ' · ★ = primary' : '') : 'add one or more of the campaign’s products'}</span>${ctrl}`);
+      return wrapRow(`<span style="font-size:10px;width:10px;"></span><span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;color:var(--text);line-height:1.35;">Main products <span style="color:var(--text3);">— ${ids.length ? ids.length + (ids.length > 1 ? ' (★ = primary: hub generation + image briefs)' : '') : 'add one or more of the campaign\'s products'}</span></span>${ctrl}`, add + grid, '', `${hubPhaseSummary(b, s.phase)}${ctrl}`);
     } else if (s.link === 'microsite') {
       ctrl = s.done
         ? `<span style="font-size:10px;color:#4ade80;flex-shrink:0;">${esc(s.doneText || 'live')}</span>`
