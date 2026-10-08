@@ -14504,7 +14504,7 @@ function renderHubBuildRows(slug) {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
         return hubGridRow({ pad: 0, title: it.title, type: it.type, typeTip: 'Asset Type' + (it.section ? ' · placed here by Hub Section = ' + it.section : ''),
           typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
-          links: (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
+          links: `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
       // sections that also hold hand-picked products (CTA's): product records first, then the assets
       let prodRows = '', pick = '', np = 0;
@@ -14652,6 +14652,37 @@ async function hubMainOfferSet(slug, productId, op) {
   catch (e) { _hpNote[slug] = '✗ Main offering: ' + e.message; }
   _hubBuildBusy[slug + '|mainproduct'] = false; _hubBuildFetched[slug] = false;
   if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
+}
+// ✎ a published asset in a Page content / Interactive / CTA section: title, notes, status, which section it's listed in
+const HUB_SECTION_OPTS = [['', 'Default for its type'], ['offers', 'Products'], ['news', 'News (journal)'], ['articles', 'Articles'], ['interactive', 'Interactive'], ['cta', "CTA's"]];
+function hubAssetEdit(slug, stepId, aid) {
+  const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.id === stepId), it = st && (st.items || []).find(x => x.id === aid); if (!it) return;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = t => `<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${t}</label>`;
+  const usesPlatform = !!(it.platformTitle || '').trim();
+  const sec = String(it.section || '').toLowerCase().replace(/^offers?$/, 'offers').replace(/^cta'?s?$/, 'cta');
+  hcModal(`<h3 style="margin:0 0 10px;">Edit asset</h3>
+    ${L(usesPlatform ? 'Title (the public title on the hub)' : 'Title')}<input id="haeTitle" value="${esc(it.title)}" style="${IN}">
+    ${L('Notes')}<textarea id="haeNotes" rows="5" style="${IN}resize:vertical;">${esc(it.notes || '')}</textarea>
+    ${L('Status')}<select id="haeStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === it.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
+    ${L('Listed in')}<select id="haeSection" style="${IN}">${HUB_SECTION_OPTS.map(([v, l]) => `<option value="${v}" ${v === sec ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 10px;">Only Publish / Published assets show on the hub. "Default" lets its asset type decide the section.</div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" id="haeGo" onclick="hcModalRun(this, () => hubAssetSave('${slug}','${stepId}','${aid}'))">Save</button>${HC_CANCEL}</div>`);
+}
+async function hubAssetSave(slug, stepId, aid) {
+  const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.id === stepId), it = st && (st.items || []).find(x => x.id === aid); if (!it) return 'Asset not found';
+  const title = document.getElementById('haeTitle').value.trim(), notes = document.getElementById('haeNotes').value, status = document.getElementById('haeStatus').value, section = document.getElementById('haeSection').value;
+  if (!title) return 'The title can’t be empty';
+  const curSec = String(it.section || '').toLowerCase().replace(/^offers?$/, 'offers').replace(/^cta'?s?$/, 'cta');
+  try {
+    const body = { assetId: aid };
+    if (title !== it.title) { if ((it.platformTitle || '').trim()) body.platformTitle = title; else body.title = title; }
+    if (status !== it.status) body.status = status;
+    if (section !== curSec) body.hubSection = section;
+    if (Object.keys(body).length > 1) { const r = await call('updatePublishFields', body); if (r && r.error) throw new Error(r.error); }
+    if (notes !== (it.notes || '')) { const r = await call('updateAssetField', { assetId: aid, field: 'Notes', value: notes }); if (r && r.error) throw new Error(r.error); }
+    _hubBuildFetched[slug] = false; renderHubsTab(); return true;   // re-check: status / section changes move it
+  } catch (e) { return e.message; }
 }
 // + on Main offerings: modal with Existing (campaign products not yet main) / New product
 function hubMainOfferModal(slug) {

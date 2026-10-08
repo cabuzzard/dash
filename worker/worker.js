@@ -12425,6 +12425,8 @@ the one aesthetic risk taken + why:`;
               .sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))
               .map(r => { const p = r.properties || {};
                 return { id: r.id.replace(/-/g, ""),
+                  assetTitle: (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim(), platformTitle: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim(),
+                  notes: (p.Notes?.rich_text || []).map(t => t.plain_text).join(""),
                   title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled",
                   type: p["Asset Type"]?.select?.name || "", method: mName[(p.Method?.relation || [])[0]?.id] || "",
                   section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
