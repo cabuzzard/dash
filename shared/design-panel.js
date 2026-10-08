@@ -253,7 +253,7 @@ Reply with ONE fenced \`\`\`json block and nothing else:
           <button ${dis} data-act="srcKeywords" title="Claude searches the campaign keywords and emulates the imagery of the sites ranking on page one" style="${BTN}">↻ Generate from keywords</button>
           <button data-act="kwToggle" style="${BTN}padding:4px 7px;" title="See / edit the keywords this pass uses">✎ keywords</button>
           <button ${dis} data-act="srcGrok" style="${BTN}">↻ Send to Grok</button>
-          <label style="${BTN}">🖼 Generate from image<input type="file" accept="image/*" data-act="srcImage" style="display:none;"></label>
+          <label data-act="imgLbl" style="${BTN}">🖼 Generate from image<input type="file" accept="image/*" data-act="srcImage" style="display:none;"></label>
           <button data-act="gptCopy" style="${BTN}">📋 Send prompt to chat</button>
         </div>
         ${S.kw ? `<div style="border:1px dashed ${C.line};border-radius:6px;padding:8px;margin-bottom:8px;"><div style="font-size:11px;color:${C.ink3};margin-bottom:4px;">${e(S.kw.note || '')}</div><textarea data-in="kw" rows="3" style="${TA}">${e(S.kw.text)}</textarea></div>` : ''}
@@ -319,6 +319,9 @@ Reply with ONE fenced \`\`\`json block and nothing else:
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${pending.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
             <div style="flex:1;min-width:180px;">${pending.length ? `<b style="color:${C.warn};">Staged, not saved: ${e(pending.join(' · '))}</b>` : `<b style="color:${C.ok};">✓ Everything saved</b>`}</div>
             <button ${S.undo.length ? '' : 'disabled'} data-act="undo" title="Undo the last staged change" style="${BTN}">↶ Undo${S.undo.length ? ' (' + S.undo.length + ')' : ''}</button></div>`;
+      if (S.working && !S.busy && !S.spec.busy) S.working = null;
+      if (S.working) { const w = root.querySelector(`[data-act="${S.working.a}"]${S.working.i != null ? `[data-i="${S.working.i}"]` : ''}`);
+        if (w) { w.disabled = true; w.style.opacity = '.8'; if (w.tagName === 'LABEL') w.firstChild.textContent = '⏳ Working… '; else w.textContent = '⏳ Working…'; } }
     }
 
     // ── events ──
@@ -334,12 +337,13 @@ Reply with ONE fenced \`\`\`json block and nothing else:
       if (a === 'dirVer') pickDirVersion(t.value);
       if (a === 'palVer') pickVersion('palette', t.value);
       if (a === 'fontVer') pickVersion('fonts', t.value);
-      if (a === 'srcImage') { const f = t.files && t.files[0]; t.value = ''; if (!f) return; if (f.size > 4000000) return say('Keep the image under 4 MB.', 'bad');
+      if (a === 'srcImage') { S.working = { a: 'imgLbl', i: null }; const f = t.files && t.files[0]; t.value = ''; if (!f) return; if (f.size > 4000000) return say('Keep the image under 4 MB.', 'bad');
         const rd = new FileReader(); rd.onload = () => srcImage(rd.result); rd.readAsDataURL(f); }
     });
     root.addEventListener('click', ev => {
       const b = ev.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
       const a = b.dataset.act, i = +b.dataset.i;
+      if (/^(src|pal|font|spec|grok|fromPlate|regenPlate|dirSave|publish)/.test(a) && !/Revert$|^specCopy$|^specUndo$/.test(a)) S.working = { a, i: b.dataset.i != null ? b.dataset.i : null };
       if (a === 'toggle') { const k = b.dataset.k; S.open[k] = !S.open[k]; if (k === 'voice' && S.open.voice) loadVoice(); render(); }
       else if (a === 'edit') { if (!S.edit[b.dataset.k]) snap(); S.edit[b.dataset.k] = !S.edit[b.dataset.k]; render(); }
       else if (a === 'srcOverride') srcOverride();
