@@ -916,6 +916,7 @@
       <button onclick="dev2PickFromRows('t')" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">their titles</button>
       <button onclick="dev2PickFromRows('p')" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">their products</button>
       <span id="dev2BkMsg" style="color:var(--text3);"></span>
+      <div id="dev2BkOut" style="flex-basis:100%;display:none;max-height:260px;overflow:auto;font-size:11.5px;border-top:1px solid var(--border2);padding-top:6px;"></div>
       <button onclick="dev2ClearSelection()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;">Clear selection</button>
     </div>
     <div id="dev2Panel" style="display:none;margin-bottom:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);font-size:12px;">
@@ -10725,10 +10726,16 @@ function dev2PickFromRows(kind) {
   DEV2_SELECTED.forEach(k => { const r = DEV2_ROWS.find(x => dev2RowKey(x) === k); if (!r) return; if (kind === 't' && r.titleId) DEV2_SEL_T.add(r.titleId); if (kind === 'p' && r.productId) DEV2_SEL_P.add(r.productId); });
   renderDev2();
 }
+// Pillar types (Current Methods pillars) → the writing brief passed to writeTitlePillar as styleGuidance
+const DEV2_PILLAR_TYPES = {
+  'Long Form Topical': 'PILLAR TYPE: Long Form Topical — an informational long-form piece on this sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people search; product only as a soft, late mention.',
+  'Long Form Sales': 'PILLAR TYPE: Long Form Sales — the sales pillar for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader’s awareness level; never hype.',
+  'Digest': 'PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).',
+};
 const DEV2_BULK = {
-  a: { label: 'Assets', acts: { status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
-  t: { label: 'Titles',   acts: { status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
-  p: { label: 'Products', acts: { status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
+  a: { label: 'Assets', acts: { edit: { label: 'Edit in publish modal' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
+  t: { label: 'Titles',   acts: { kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar', vals: Object.keys(DEV2_PILLAR_TYPES) }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
+  p: { label: 'Products', acts: { research: { label: 'Run all research' }, kw: { label: 'Examine / regen keywords' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
 };
 function dev2BulkForm(actChanged) {
   const ids = dev2BulkIds(), tSel = document.getElementById('dev2BkType'), aSel = document.getElementById('dev2BkAct'), vSel = document.getElementById('dev2BkVal'); if (!tSel) return;
@@ -10746,6 +10753,36 @@ async function dev2BulkApply(btn) {
   const ids = dev2BulkIds()[t] || [], msg = document.getElementById('dev2BkMsg'), label = DEV2_BULK[t].label.toLowerCase();
   if (!ids.length) return;
   if (act === 'thumb') return dev2BulkGenerateThumbnails();
+  const out = document.getElementById('dev2BkOut'), rowOf = (k, id) => DEV2_ROWS.find(r => (k === 'a' ? r.assetId : k === 't' ? r.titleId : r.productId) === id) || {};
+  const nameOf = id => { const r = rowOf(t, id); return t === 'a' ? (r.assetName || id) : t === 't' ? (r.title || id) : (r.product || id); };
+  if (act === 'edit') {   // the publish modal lives in care-gap: one link per asset (opens straight into its Publish modal)
+    const links = ids.map(id => { const r = rowOf('a', id); return `<div><a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId || '')}&asset=${esc(id)}" target="_blank" rel="noopener" style="color:var(--accent);">✎ ${esc(nameOf(id))} ↗</a> <span style="color:var(--text3);">${esc(r.campaign || '')}</span></div>`; });
+    out.style.display = ''; out.innerHTML = links.join('');
+    if (ids.length === 1) window.open(out.querySelector('a').href, '_blank', 'noopener');
+    msg.textContent = ids.length === 1 ? 'Opened in care-gap.' : `${ids.length} links below — each opens its Publish modal.`; return;
+  }
+  if (act === 'kw' || act === 'research' || act === 'pillar') {
+    if ((act === 'research' || act === 'pillar') && !confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one and can take a while.`)) return;
+    btn.disabled = true; out.style.display = ''; out.innerHTML = ''; let ok = 0, bad = 0;
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i], nm = nameOf(id), row = rowOf(t, id);
+      msg.textContent = `⏳ ${i + 1} / ${ids.length} — ${nm}`;
+      try {
+        let line = '';
+        if (act === 'kw') { const r = await call(t === 'p' ? 'generateProductKeywords' : 'regenerateTitleKeywords', t === 'p' ? { productId: id } : { titleId: id }); if (r.error) throw new Error(r.error); line = r.keywords || ''; }
+        else if (act === 'pillar') { const r = await call('writeTitlePillar', { titleId: id, styleGuidance: DEV2_PILLAR_TYPES[val] }); if (r.error) throw new Error(r.error); line = `${val} pillar written (${r.wordCount || '?'} words)`; }
+        else {   // product research: every strategy field, regenerated then saved (same as the Content Hubs product research modal)
+          const fails = [];
+          for (const f of HUB_STRATEGY_FIELDS) { msg.textContent = `⏳ ${i + 1} / ${ids.length} — ${nm}: ${f}`;
+            try { const r = await call('regenerateStrategyField', { productId: id, campaignId: row.campId, field: f }); if (r.error) throw new Error(r.error);
+              const u = await call('updateProductStrategyField', { productId: id, field: f, value: r.text }); if (u && u.error) throw new Error(u.error); } catch (e) { fails.push(f); } }
+          line = fails.length ? `research done, ${fails.length} field(s) failed: ${fails.join(', ')}` : `all ${HUB_STRATEGY_FIELDS.length} research fields refreshed`;
+        }
+        out.insertAdjacentHTML('beforeend', `<div style="padding:3px 0;border-bottom:1px solid var(--border);"><b>${esc(nm)}</b> — <span style="color:var(--text2);">${esc(line)}</span></div>`); ok++;
+      } catch (e) { out.insertAdjacentHTML('beforeend', `<div style="padding:3px 0;color:var(--danger);"><b>${esc(nm)}</b> — ${esc(e.message)}</div>`); bad++; }
+    }
+    msg.textContent = `✓ ${ok} done${bad ? ` · ${bad} failed` : ''}`; btn.disabled = false; return;
+  }
   if (act === 'del' && !confirm(`Delete (archive in Notion) ${ids.length} ${label}?`)) return;
   btn.disabled = true; let ok = 0, bad = 0;
   for (const id of ids) {

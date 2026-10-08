@@ -10076,6 +10076,9 @@ async function init() {
   loadMethods();
   loadNotes();
   loadContentHubsList();
+  // ?asset=<id> (dash All Output › Bulk actions › Assets › Edit in publish modal): open that asset's Publish modal
+  const openAsset = (new URLSearchParams(location.search).get('asset') || '').replace(/-/g, '');
+  if (openAsset) { try { await loadTitleAndAssetTab(); } catch (e) {} openPublishAssetModal(openAsset); }
 }
 
 // ── Version bar (for the iPhone home-screen shortcut, which has no address bar) ──
