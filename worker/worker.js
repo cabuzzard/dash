@@ -10544,10 +10544,7 @@ export default {
         const rows = await notionQuery(ASSETS_DB, {
           filter: { and: [
             { property: "Campaign", relation: { contains: dash(raw) } },
-            { or: [
-              { property: "Asset Status", select: { equals: "Publish" } },
-              { property: "Asset Status", select: { equals: "Published" } },
-            ] },
+            { property: "Asset Status", select: { equals: "Published" } },   // 2026-10-08: live on the hub = Published + a section designation (Publish = not yet)
           ] },
         });
         // Services/Products card list — any Offer asset (Pillar or Content
@@ -10658,10 +10655,7 @@ export default {
         const rows = await notionQuery(ASSETS_DB, {
           filter: { and: [
             { property: "Campaign", relation: { contains: dash(raw) } },
-            { or: [
-              { property: "Asset Status", select: { equals: "Publish" } },
-              { property: "Asset Status", select: { equals: "Published" } },
-            ] },
+            { property: "Asset Status", select: { equals: "Published" } },   // 2026-10-08: live on the hub = Published + a section designation (Publish = not yet)
           ] },
         });
         // The hub splits its editorial feed in two: "news" (Blog - SEO -
