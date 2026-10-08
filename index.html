@@ -14268,6 +14268,23 @@ function hcTitleGo(btn, slug, sid) {
   if (window._hcTab === 'ex') hcModalRun(btn, () => window._hcPick ? hubContentDo(slug, 'addTitle', { strategyId: sid, titleId: window._hcPick }) : Promise.resolve('Pick a title from the list'));
   else hcModalRun(btn, () => { const v = document.getElementById('hcNewTitleName').value.trim(); return v ? hubContentDo(slug, 'newTitle', { strategyId: sid, title: v }) : Promise.resolve('Enter a title'); });
 }
+// + title on a CTA product: the same New / Existing modal, but it ties the title to the PRODUCT
+//   new → createDevTitle (Planning, campaign + product) · existing → updateTitleStrategy { productId }
+function hcProdTitleModal(slug, pid) {
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid);
+  hcTitleModal(slug, '');
+  const m = document.getElementById('hcModal'), sub = m.querySelector('h3 + div'); if (sub) sub.textContent = 'for the product ' + ((p && p.name) || '');
+  const pn = m.querySelector('#hcPaneNew div'); if (pn) pn.textContent = 'Creates a title at Planning on this campaign, tied to this product.';
+  document.getElementById('hcTitleGo').onclick = function () { hcProdTitleGo(this, slug, pid); };
+}
+function hcProdTitleGo(btn, slug, pid) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const done = async r => { if (!r || r.error) return (r && r.error) || 'Not saved'; _hubTitlesNeedRefetch(slug); return true; };
+  if (window._hcTab === 'ex') hcModalRun(btn, async () => window._hcPick ? done(await call('updateTitleStrategy', { titleId: window._hcPick, productId: pid })) : 'Pick a title from the list');
+  else hcModalRun(btn, async () => { const v = document.getElementById('hcNewTitleName').value.trim(); if (!v) return 'Enter a title';
+    return done(await call('createDevTitle', { title: v, campaignId: h.campaignId, productId: pid, status: 'Planning', skipPillar: true })); });
+}
+function _hubTitlesNeedRefetch(slug) { _hubContentTitles[slug] = null; _hubPageOpen[slug + '|page-cta'] = true; _hubBuildFetched[slug] = false; renderHubsTab(); }
 // ✎ title modal: title text, notes, status — each changed field saved to the title's Content Strategy record
 const _hubTitleIdx = {};   // titleId -> the title object shown on the card (strategy titles, CTA product titles)
 function hubTitleFind(slug, sid, tid) {
@@ -14374,7 +14391,7 @@ function renderHubBuildRows(slug) {
             links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` })).join('')
             : '<div style="font-size:11px;color:var(--text3);padding:2px 0 4px;">No titles for this product yet.</div>'}</div>`;
           return hubGridRow({ pad: 0, bar: HUB_STATUS_COLOR[p.status] || '', title: p.name || 'Product', type: 'Product', method: '', status: p.status || '', date: p.date,
-            links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${id}','remove')" title="Take this product out of ${esc(s.label)} (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }) + titleRows; }).join('');
+            links: `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${id}','remove')" title="Take this product out of ${esc(s.label)} (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button> <button onclick="hcProdTitleModal('${slug}','${id}')" title="Add a title to this product (new or existing)" style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>` }) + titleRows; }).join('');
       }
       const countTxt = (s.productSlots ? `${np} product${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
       if (open && s.productSlots && !n && !np) prodRows = '<div style="font-size:11px;color:var(--text3);padding:2px 0;">Nothing here yet — add a product with the picker on this line.</div>';
