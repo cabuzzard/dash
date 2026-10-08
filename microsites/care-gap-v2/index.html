@@ -3547,11 +3547,7 @@ async function loadProductTab() {
 async function bulkArchiveProducts(btn) {
   const ids = [...SELECTED_PRODUCTS]; if (!ids.length) return;
   const names = ids.map(id => (CAMPAIGN_PRODUCTS.find(p => p.id === id) || {}).name || id);
-  if (!confirm(`Delete (archive) ${ids.length} product${ids.length === 1 ? '' : 's'}? They stay in Notion (Status → Archived), just removed from this list.
-
-${names.slice(0, 15).join('
-')}${names.length > 15 ? '
-…' : ''}`)) return;
+  if (!confirm(`Delete (archive) ${ids.length} product${ids.length === 1 ? '' : 's'}? They stay in Notion (Status → Archived), just removed from this list.\n\n${names.slice(0, 15).join('\n')}${names.length > 15 ? '\n…' : ''}`)) return;
   btn.disabled = true; let done = 0; const failed = [];
   const queue = ids.slice();
   const run = async () => { while (queue.length) { const id = queue.shift();
