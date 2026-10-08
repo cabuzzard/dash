@@ -14348,7 +14348,7 @@ function renderHubBuildRows(slug) {
     const busy = _hubBuildBusy[slug + '|' + s.id];
     const dot = s.done ? '<span style="color:#4ade80;">●</span>' : '<span style="color:var(--text3);">○</span>';
     const phOpen = !!_hubPhaseOpen[slug + '|' + s.phase];
-    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div onclick="_hubPhaseOpen['${slug}|${esc(s.phase)}']=!_hubPhaseOpen['${slug}|${esc(s.phase)}'];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
+    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, `<div data-ph="${esc(s.phase)}" onclick="_hubPhaseOpen['${slug}|' + this.dataset.ph]=!_hubPhaseOpen['${slug}|' + this.dataset.ph];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}</div>`) : '';
     if (!phOpen) return phaseHdr;
     let ctrl;
     if (s.pageSection) {
