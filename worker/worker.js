@@ -47133,6 +47133,36 @@ async function kwSendKeywords(env, body) {
     return json({ ok: true, added: add.length, skipped: keywords.length - add.length, researchId: norm(research.id) });
   }
 
+  if (mode === "cluster" && body.each) {
+    if (!body.campaignId) return json({ error: "campaignId required" }, 400);
+    const key = "seoclusters:staged:" + norm(body.campaignId);
+    let staged = []; try { staged = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+    const have = new Set(staged.map(t => String(t.name || "").toLowerCase()));
+    const volOf = Object.fromEntries(mets.map(r => [r.text, r]));
+    const made = [], skipped = [];
+    byVol.slice(0, 100).forEach((kw, i) => {
+      if (have.has(kw.toLowerCase())) { skipped.push(kw); return; }
+      const m = volOf[kw] || {};
+      made.push({ id: "s" + Date.now().toString(36) + i.toString(36) + Math.random().toString(36).slice(2, 5), name: kw.slice(0, 100), keywords: kw,
+        rationale: `From Google keyword research: ${Number(m.vol || 0).toLocaleString()} searches/mo${m.intent ? `; intent ${(KW_INTENTS[m.intent] || {}).label || m.intent}` : ""}.`,
+        searchIntent: m.intent ? KW_TO_SEARCH_INTENT[m.intent] || "" : "", source: "keywords-tab" });
+      have.add(kw.toLowerCase());
+    });
+    staged.push(...made);
+    await env.TRADES.put(key, JSON.stringify(staged));
+    const topicCluster = String(body.topicCluster || "").trim().slice(0, 100);
+    let cname = "";
+    if (topicCluster && made.length) {
+      const tkey = "seotopicclusters:" + norm(body.campaignId);
+      let tc = null; try { tc = await env.TRADES.get(tkey, "json"); } catch (e) {}
+      tc = tc && typeof tc === "object" ? { clusters: Array.isArray(tc.clusters) ? tc.clusters : [], assign: tc.assign || {} } : { clusters: [], assign: {} };
+      cname = tc.clusters.find(c => c.toLowerCase() === topicCluster.toLowerCase()) || topicCluster;
+      if (!tc.clusters.includes(cname)) tc.clusters.push(cname);
+      made.forEach(t => { tc.assign[t.id] = cname; });
+      await env.TRADES.put(tkey, JSON.stringify(tc));
+    }
+    return json({ ok: true, each: true, created: made.length, skipped, topicCluster: cname, capped: byVol.length > 100 ? byVol.length - 100 : 0 });
+  }
   if (mode === "cluster") {
     if (!body.campaignId) return json({ error: "campaignId required" }, 400);
     let list = byVol, kwText = list.join(", ");

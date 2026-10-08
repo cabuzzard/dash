@@ -1227,7 +1227,8 @@
         <input id="kwTopicName" placeholder="topic name (blank = top keyword)" style="width:190px;">
         <select id="kwTopicCluster" class="kw-sel" style="max-width:200px;" onchange="document.getElementById('kwTopicClusterNew').style.display=this.value==='__new__'?'':'none'" title="The 🧩 cluster to file this topic under"><option value="">no cluster (Unclustered)</option></select>
         <input id="kwTopicClusterNew" placeholder="new cluster name" style="width:150px;display:none;">
-        <button class="kw-btn" onclick="kwSend('cluster')" title="All selected keywords become ONE new topic in the campaign, filed under the chosen 🧩 cluster (or Unclustered)">+ Topic</button>
+        <button class="kw-btn" onclick="kwSend('cluster')" title="All selected keywords become ONE new topic in the campaign, filed under the chosen 🧩 cluster (or Unclustered)">+ One topic</button>
+        <button class="kw-btn" onclick="kwSend('cluster', true)" title="Each selected keyword becomes its OWN topic (named after the keyword), all filed under the chosen 🧩 cluster (or Unclustered). Keywords that already have a topic of that name are skipped.">+ Topic per keyword</button>
         <span style="color:var(--text3);">|</span>
         <input id="kwSendName" placeholder="new campaign name (optional)" style="width:170px;">
         <button class="kw-btn" onclick="kwSend('campaign')" title="Create a new campaign (Status: Planning) with a Research record whose Main Keywords are the selection">+ New campaign</button>
@@ -6105,7 +6106,7 @@ async function kwLoadTopicClusters() {
     sel.innerHTML = '<option value="">no cluster (Unclustered)</option>' + cl.map(c => `<option value="${esc(c)}">🧩 ${esc(c)}</option>`).join('') + '<option value="__new__">＋ new cluster…</option>'; }
   catch (e) { /* picker stays with no cluster / new */ }
 }
-async function kwSend(mode) {
+async function kwSend(mode, each) {
   const msg = document.getElementById('kwSendMsg');
   const campaignId = document.getElementById('kwSendCampaign').value;
   const name = (mode === 'cluster' ? document.getElementById('kwTopicName') : document.getElementById('kwSendName')).value.trim();
@@ -6116,7 +6117,8 @@ async function kwSend(mode) {
   const camp = (KW.campaigns || []).find(c => c.id === campaignId);
   msg.textContent = 'Sending…';
   try {
-    const r = await call('kwSendKeywords', { mode, campaignId, campaignName: camp && camp.name, name, topicCluster, keywords: [...KW.selected] });
+    const r = await call('kwSendKeywords', { mode, campaignId, campaignName: camp && camp.name, name, topicCluster, each: !!each, keywords: [...KW.selected] });
+    if (r.each) { msg.textContent = `✓ ${r.created} topic${r.created === 1 ? '' : 's'} created in ${camp.name}${r.topicCluster ? ` under 🧩 ${r.topicCluster}` : ' (Unclustered)'}${r.skipped && r.skipped.length ? ` · ${r.skipped.length} skipped (topic already exists)` : ''}${r.capped ? ` · ${r.capped} over the 100 limit not sent` : ''}`; if (tcSel === '__new__') kwLoadTopicClusters(); return; }
     if (mode === 'cluster' && r.cluster && r.cluster.topicCluster) { msg.textContent = `✓ Topic "${r.cluster.name}" (${KW.selected.size} keywords) filed under 🧩 ${r.cluster.topicCluster} in ${camp.name}${r.trimmed ? ` (${r.trimmed} keywords trimmed to fit)` : ''}`; if (tcSel === '__new__') kwLoadTopicClusters(); return; }
     if (mode === 'main') msg.textContent = r.added ? `✓ Added ${r.added} to ${camp.name} Main Keywords${r.skipped ? ` (${r.skipped} already there)` : ''}` : '✓ ' + (r.note || 'Nothing new to add');
     else if (mode === 'cluster') msg.textContent = `✓ Staged topic "${r.cluster.name}" in ${camp.name} — open its microsite → Keywords → Unclustered topics, then move it under a 🧩 cluster${r.trimmed ? ` (${r.trimmed} lowest-volume keywords trimmed to fit)` : ''}`;
