@@ -1246,6 +1246,7 @@
         <span id="kwSendMsg" style="color:var(--text3);"></span>
       </div>
       <div id="kwSortBar" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text3);margin-bottom:6px;"></div>
+      <div id="kwIntentChip" style="display:none;margin:4px 0 6px;"></div>
       <div id="kwResults" style="overflow-x:auto;"></div>
       <div id="kwPager" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;margin-top:8px;font-size:12px;"></div>
     </div>
@@ -5951,7 +5952,18 @@ function kwFilters() {
 const kwIntentLabel = k => (KW.meta && KW.meta[k] && KW.meta[k].label) || k || '–';
 
 // Local render — no network. (Name kept: every sort/filter/page control calls it.)
+// Active intent filter → a visible chip with ✕ above the results, the dropdown highlighted, the intent-map row marked.
+function kwIntentClear() { const f = document.getElementById('kwIntentF'); f.value = ''; kwLoadResults(0); }
+function kwIntentChipPaint() {
+  const f = document.getElementById('kwIntentF'), chip = document.getElementById('kwIntentChip'); if (!f || !chip) return;
+  const k = f.value, label = k ? ((f.options[f.selectedIndex] || {}).text || k) : '';
+  f.style.outline = k ? '2px solid #4cff4c' : ''; f.title = k ? 'Filtering by intent — choose "any intent" or click ✕ above the results to remove' : '';
+  chip.style.display = k ? '' : 'none';
+  chip.innerHTML = k ? `<span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 6px 3px 10px;border-radius:12px;background:rgba(76,255,76,.12);border:1px solid #2a5a2a;">Intent: <b>${esc(label)}</b><button onclick="kwIntentClear()" title="Remove the intent filter" style="font-size:12px;line-height:1;padding:1px 6px;border:1px solid #2a5a2a;border-radius:10px;background:transparent;color:var(--text);cursor:pointer;">✕ remove</button></span>` : '';
+  document.querySelectorAll('#kwIntentMap tr[data-intent]').forEach(tr => { const on = tr.dataset.intent === k; tr.style.background = on ? 'rgba(76,255,76,.10)' : ''; tr.style.outline = on ? '1px solid #2a5a2a' : ''; tr.title = on ? 'Filtering by this intent — click again to remove' : tr.dataset.tip; });
+}
 function kwLoadResults(offset) {
+  setTimeout(kwIntentChipPaint, 0);
   KW.offset = offset || 0;
   const el = document.getElementById('kwResults');
   if (KW.selOnly && !KW.selected.size) KW.selOnly = false;
@@ -6010,7 +6022,7 @@ function kwLoadIntentMap() {
   const rows = order.filter(k => by[k]).sort((a, b) => (by[b].vol || 0) - (by[a].vol || 0)).map(k => {
     const i = by[k], share = (i.vol || 0) / total;
     const tops = d.tops.filter(t => t.intent === k).map(t => esc(t.keyword)).join(' · ');
-    return `<tr onclick="kwFilterIntent('${k}')" title="Show only ${esc(lab(k))} keywords">
+    return `<tr data-intent="${k}" data-tip="Show only ${esc(lab(k))} keywords (click again to remove)" onclick="kwFilterIntent('${k}')" title="Show only ${esc(lab(k))} keywords (click again to remove)">
       <td style="text-align:left;"><b>${esc(lab(k))}</b></td><td>${kwNum(i.n)}</td><td>${kwNum(i.vol)}</td>
       <td><span style="display:inline-block;vertical-align:middle;width:70px;height:6px;border-radius:3px;background:var(--surface2);"><span style="display:block;height:6px;border-radius:3px;background:#4cff4c;width:${Math.round(share * 70)}px;"></span></span> ${Math.round(share * 100)}%</td>
       <td>${kwMoney(i.bid)}</td>
