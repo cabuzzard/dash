@@ -14457,10 +14457,7 @@ function renderHubBuildRows(slug) {
       const SEL = 'font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:220px;';
       const ids = s.mainIds || (s.mainId ? [s.mainId] : []), byId = {}; (s.products || []).forEach(p => { byId[p.id] = p; });
       const others = (s.products || []).filter(p => !ids.includes(p.id));
-      ctrl = `<span style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;flex-shrink:0;">
-        <select style="${SEL}" ${busy ? 'disabled' : ''} onchange="if(this.value)hubMainOfferSet('${slug}', this.value, 'add')"><option value="">+ Add a main product…</option>${others.map(p => `<option value="${esc(p.id)}">${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>
-        <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAddOpen('${slug}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">+ New product</button>
-        ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this campaign in the care-gap microsite" style="font-size:10px;color:var(--text3);text-decoration:none;">care-gap ↗</a>` : ''}</span>`;
+      ctrl = `<button ${busy ? 'disabled' : ''} onclick="hubMainOfferModal('${slug}')" title="Add a main product (existing or new)" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>`;
       const add = _hubMainAdd[slug] ? `<div style="padding:2px 0 6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
         <input id="hubMainAddName-${slug}" placeholder="New product name" onkeydown="if(event.key==='Enter')hubMainOfferAdd('${slug}');if(event.key==='Escape'){_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')}" style="flex:1;min-width:160px;font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
         <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + add as main'}</button>
@@ -14581,6 +14578,47 @@ async function hubMainOfferSet(slug, productId, op) {
   catch (e) { _hpNote[slug] = '✗ Main offering: ' + e.message; }
   _hubBuildBusy[slug + '|mainproduct'] = false; _hubBuildFetched[slug] = false;
   if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
+}
+// + on Main offerings: modal with Existing (campaign products not yet main) / New product
+function hubMainOfferModal(slug) {
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering); if (!mo) return;
+  const ids = mo.mainIds || (mo.mainId ? [mo.mainId] : []), others = (mo.products || []).filter(p => !ids.includes(p.id));
+  const h = HUB_SITES.find(x => x.slug === slug) || {};
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 9px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);';
+  window._hmoPick = null; window._hmoTab = 'ex';
+  hcModal(`<h3 style="margin:0 0 10px;">Add a main product</h3>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <button id="hmoTabEx" class="modal-btn" onclick="hmoTab('ex')" style="flex:1;">Existing product</button>
+      <button id="hmoTabNew" class="modal-btn" onclick="hmoTab('new')" style="flex:1;background:transparent;border-color:var(--border2);color:var(--text2);">New product</button></div>
+    <div id="hmoPaneEx"><input id="hmoSearch" placeholder="Search the campaign's products…" oninput="hmoDraw()" style="${IN}">
+      <div id="hmoList" style="max-height:260px;overflow:auto;margin-top:6px;border:1px solid var(--border);border-radius:6px;"></div></div>
+    <div id="hmoPaneNew" style="display:none;"><input id="hmoName" placeholder="New product name" style="${IN}" onkeydown="if(event.key==='Enter')document.getElementById('hmoGo').click()">
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">Creates the product (Planning), links it to this campaign and adds it as a main product.</div></div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:10px;"><button class="modal-btn" id="hmoGo" onclick="hmoGo(this,'${slug}')">Add</button>${HC_CANCEL}
+      ${h.campaignId ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" style="margin-left:auto;font-size:11px;color:var(--text3);text-decoration:none;">care-gap ↗</a>` : ''}</div>`);
+  window._hmoOthers = others; hmoDraw();
+}
+function hmoTab(t) {
+  window._hmoTab = t;
+  document.getElementById('hmoPaneEx').style.display = t === 'ex' ? '' : 'none';
+  document.getElementById('hmoPaneNew').style.display = t === 'new' ? '' : 'none';
+  [['hmoTabEx', 'ex'], ['hmoTabNew', 'new']].forEach(([id, k]) => { const b = document.getElementById(id); b.style.background = k === t ? '' : 'transparent'; b.style.borderColor = k === t ? '' : 'var(--border2)'; b.style.color = k === t ? '' : 'var(--text2)'; });
+  setTimeout(() => { const f = document.getElementById(t === 'ex' ? 'hmoSearch' : 'hmoName'); if (f) f.focus(); }, 30);
+}
+function hmoDraw() {
+  const el = document.getElementById('hmoList'); if (!el) return;
+  const q = (document.getElementById('hmoSearch').value || '').trim().toLowerCase();
+  const list = (window._hmoOthers || []).filter(p => !q || p.name.toLowerCase().includes(q));
+  el.innerHTML = list.map(p => `<div onclick="window._hmoPick='${p.id}';hmoDraw()" style="padding:5px 8px;font-size:11.5px;cursor:pointer;display:flex;gap:8px;border-bottom:1px solid var(--border);${window._hmoPick === p.id ? 'background:var(--surface2);font-weight:600;' : ''}">
+    <span style="flex:1;min-width:0;">${esc(p.name)}</span><span style="color:var(--text3);font-size:10.5px;">${esc(p.status || '')}</span></div>`).join('') || '<div style="padding:8px;font-size:11px;color:var(--text3);">No other products on this campaign — use New product.</div>';
+}
+function hmoGo(btn, slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const add = async pid => { const r = await call('setHubMainOffering', { campaignId: h.campaignId, productId: pid, op: 'add' }); if (!r || r.error) return (r && r.error) || 'Not saved'; _hubBuildFetched[slug] = false; renderHubsTab(); return true; };
+  if (window._hmoTab === 'ex') hcModalRun(btn, async () => window._hmoPick ? add(window._hmoPick) : 'Pick a product from the list');
+  else hcModalRun(btn, async () => { const v = document.getElementById('hmoName').value.trim(); if (!v) return 'Enter a product name';
+    const r = await call('createProduct', { title: v, campaignId: h.campaignId, status: 'Planning' }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+    return add(r.id); });
 }
 async function hubMainOfferAdd(slug) {
   const h = HUB_SITES.find(x => x.slug === slug), inp = document.getElementById('hubMainAddName-' + slug);
