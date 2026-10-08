@@ -3998,6 +3998,59 @@ async function matchKeywordGroup(env, campaignId, text) {
   }
   return best || "Master";
 }
+// Product Group default = the CLUSTER of the topic its stack is named after (KV seotopicclusters:<cid>.assign
+// topicId → cluster name). Written to the stack-group map (KV stackgroups:<cid>) only when that stack has no
+// group yet — a group the operator saved always wins. Stack "Master" / unknown topics → no group.
+async function ensureStackGroup(env, campaignId, stack) {
+  const cid = String(campaignId || "").replace(/-/g, ""), st = String(stack || "").trim();
+  if (cid.length !== 32 || !st || st === "Master") return "";
+  const gkey = "stackgroups:" + cid;
+  let groups = null; try { groups = await env.TRADES.get(gkey, "json"); } catch (e) {}
+  groups = groups && typeof groups === "object" ? { order: Array.isArray(groups.order) ? groups.order : [], map: groups.map || {} } : { order: [], map: {} };
+  if (groups.map[st]) return groups.map[st];
+  let tc = null; try { tc = await env.TRADES.get("seotopicclusters:" + cid, "json"); } catch (e) {}
+  const assign = (tc && tc.assign) || {}; if (!Object.keys(assign).length) return "";
+  const dash = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`;
+  const [committed, staged] = await Promise.all([
+    notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { property: "Campaign", relation: { contains: dash } } }).catch(() => []),
+    env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => []),
+  ]);
+  const ids = [];
+  committed.forEach(r => { if ((r.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() === st) ids.push(r.id, r.id.replace(/-/g, "")); });
+  (staged || []).forEach(c => { if (String(c.name || "").trim() === st && c.id) ids.push(c.id); });
+  const cluster = ids.map(id => assign[id]).find(Boolean);
+  if (!cluster) return "";
+  groups.map[st] = cluster;
+  if (!groups.order.includes(cluster)) groups.order.push(cluster);
+  await env.TRADES.put(gkey, JSON.stringify(groups));
+  return cluster;
+}
+// Backfill for existing products: every stack named after a topic gets that topic's cluster as its group —
+// once per stack (KV stackgroups:auto:<cid> remembers which were done), never over a group the operator saved,
+// and never again after the operator moves it (so taking a stack out of a group sticks).
+async function autoGroupStacks(env, cid, stacks, groups) {
+  const want = [...new Set(stacks.map(s => String(s || "").trim()).filter(s => s && s !== "Master" && s !== "No Stack"))];
+  let done = []; try { done = (await env.TRADES.get("stackgroups:auto:" + cid, "json")) || []; } catch (e) {}
+  const todo = want.filter(s => !groups.map[s] && !done.includes(s));
+  if (!todo.length) return false;
+  let tc = null; try { tc = await env.TRADES.get("seotopicclusters:" + cid, "json"); } catch (e) {}
+  const assign = (tc && tc.assign) || {};
+  const byName = {};
+  if (Object.keys(assign).length) {
+    const dash = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`;
+    const [committed, staged] = await Promise.all([
+      notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { property: "Campaign", relation: { contains: dash } } }).catch(() => []),
+      env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => []),
+    ]);
+    committed.forEach(r => { const n = (r.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); const c = assign[r.id] || assign[r.id.replace(/-/g, "")]; if (n && c) byName[n] = c; });
+    (staged || []).forEach(t => { const n = String(t.name || "").trim(); if (n && t.id && assign[t.id]) byName[n] = assign[t.id]; });
+  }
+  let changed = false;
+  todo.forEach(st => { const c = byName[st]; if (c) { groups.map[st] = c; if (!groups.order.includes(c)) groups.order.push(c); changed = true; } });
+  await env.TRADES.put("stackgroups:auto:" + cid, JSON.stringify(done.concat(todo).slice(-500)));
+  if (changed) await env.TRADES.put("stackgroups:" + cid, JSON.stringify(groups));
+  return changed;
+}
 async function findClusterKeywordsForStack(env, hdr, stack, campaignId) {
   if (!stack || !campaignId) return "";
   const norm = s => String(s || "").replace(/-/g, "");
@@ -15235,7 +15288,8 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ success: true, id: result.id.replace(/-/g,""), name: title });
+        const groupFinal = (campaignId && stackFinal) ? await ensureStackGroup(env, campaignId, stackFinal).catch(() => "") : "";
+        return json({ success: true, id: result.id.replace(/-/g,""), name: title, stack: stackFinal || "", group: groupFinal || "" });
       }
 
       // ── moveProductToCampaign ──────────────────────────────────────────────
@@ -32066,7 +32120,8 @@ Return via the submit_digest_ideas tool ONLY — nothing as plain text.`;
         });
         const out = await resp.json();
         if (!resp.ok || !out.id) return json({ error: out.message || "Product create failed" }, 502);
-        return json({ success: true, id: out.id.replace(/-/g, ""), stack: ideaStack || "" });
+        const ideaGroup = ideaStack ? await ensureStackGroup(env, campaignId, ideaStack).catch(() => "") : "";
+        return json({ success: true, id: out.id.replace(/-/g, ""), stack: ideaStack || "", group: ideaGroup || "" });
       }
 
       // Proposed product stacks off an UNCOMMITTED keyword cluster — per
@@ -42590,6 +42645,8 @@ ${assemblyManifest}`;
           empty = (await env.TRADES.get(ekey, "json")) || [];
           groups = (await env.TRADES.get(gkey, "json")) || groups;
         } catch (e) {}
+        groups = { order: Array.isArray(groups.order) ? groups.order : [], map: groups.map || {} };
+        await autoGroupStacks(env, cid, order.concat(empty, Array.isArray(body.stacks) ? body.stacks : []), groups).catch(e => console.error("autoGroupStacks:", e.message));
         return json({ ok: true, order, empty, groups });
       }
 

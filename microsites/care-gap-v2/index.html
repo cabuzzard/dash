@@ -2758,7 +2758,8 @@ async function runCreateProductFromIdea(name, description, stack, kind, a, b) {
   if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack || 'the keyword group it matches'}) in the ${CAMPAIGN_NAME} campaign?`)) return;
   try {
     const r = await w('createProduct', { title: name, description, stack, campaignId: CAMPAIGN_ID, status: 'Development' });
-    alert(`Created — ${r.name}. Opening it in Notion.`);
+    _stackOrderLoaded = null;   // the worker may have filed its stack under the topic's cluster group — reload groups
+    alert(`Created — ${r.name}\nGroup: ${r.group || 'No Group'} › Stack: ${r.stack || stack || 'No Stack'}\nOpening it in Notion.`);
     window.open(notionUrl(r.id), '_blank', 'noopener');
     CAMPAIGN_PRODUCTS = [];
     if (kind === 'main') {
@@ -3221,7 +3222,7 @@ let EMPTY_STACKS = [];   // stacks kept even with zero products (KV, alongside t
 let STACK_GROUPS = { order: [], map: {} };   // map: stack name → group name
 let _stackOrderLoaded = null;
 function ensureStackOrder() {
-  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID }).then(r => {
+  if (!_stackOrderLoaded) _stackOrderLoaded = w('getStackOrder', { campaignId: CAMPAIGN_ID, stacks: [...new Set((CAMPAIGN_PRODUCTS || []).map(p => p.stack).filter(Boolean))] }).then(r => {   // stacks → the worker files topic stacks under their cluster (once)
     STACK_ORDER = r.order || []; EMPTY_STACKS = r.empty || [];
     const g = r.groups || {}; STACK_GROUPS = { order: g.order || [], map: g.map || {} };
   }).catch(() => {});
@@ -3521,7 +3522,16 @@ async function loadProductTab() {
         <div class="kwgbody" style="padding-left:6px;">${stacks.map(stackBlock).join('') || '<div class="loadnote">Empty — drag stacks here by their ⠿.</div>'}</div>
       </div>`;
     }).join('');
-    body.innerHTML = groupsHtml + order.filter(s => !groupOf(s)).map(stackBlock).join('');
+    // always show the full hierarchy: stacks with no group sit under a "No Group" group (it isn't a real group —
+    // drag a stack into a named group to file it)
+    const loose = order.filter(s => !groupOf(s) && (s !== 'No Stack' || groups[s].length));
+    const looseN = loose.reduce((n, s) => n + groups[s].length, 0);
+    const noGroupHtml = loose.length ? `
+      <div class="kwgroup" data-ckey="prodgroup-__none__" style="--kwc:#9aa0a6;">
+        <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>No Group <span style="font-weight:400;text-transform:none;color:var(--ink3);">(${loose.length} stack${loose.length === 1 ? '' : 's'} · ${looseN} product${looseN === 1 ? '' : 's'})</span></div>
+        <div class="kwgbody" style="padding-left:6px;">${loose.map(stackBlock).join('')}</div>
+      </div>` : '';
+    body.innerHTML = groupsHtml + noGroupHtml + (groups['No Stack'] && !groups['No Stack'].length ? stackBlock('No Stack') : '');   // empty No Stack stays as the hidden drop target
     applyCollapseState(body);
     updateProductBulkBar();
   } catch (e) {
@@ -4332,6 +4342,7 @@ async function loadTitleAndAssetTab() {
   const assetBody = document.getElementById('assetTree');
   titleBody.innerHTML = '<div class="loadnote">Loading…</div>';
   assetBody.innerHTML = '<div class="loadnote">Loading…</div>';
+  await ensureCampaignProducts().catch(() => {});   // products first, so getStackOrder can file their stacks under topic clusters
   await ensureStackOrder();   // stack groups follow the operator's drag order (Product Research tab)
   SELECTED_TITLE_IDS.clear(); SELECTED_ASSET_IDS.clear();
   document.getElementById('titleBulkBar').style.display = 'none';
