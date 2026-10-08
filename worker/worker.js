@@ -2833,7 +2833,24 @@ footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in s
 // section, not a flat dump of the whole page). Returns "" if the title has
 // no pillar section yet (e.g. a legacy title predating this feature, or a
 // prior writePillarContent call failed).
-async function extractPillarContent(hdr, titleId) {
+// Clip markers (2026-10-08): pillars mark 2-4 self-contained passages with a line
+// "[CLIP n — hook: …]" (writePillarContent). Every normal reader gets them stripped;
+// pillarClips() returns them for the short-video / single-post / carousel cutters.
+const PILLAR_CLIP_RX = /^\[CLIP\s*\d+[^\]]*\]\s*$/i;
+function pillarClips(text) {
+  const paras = String(text || "").split(/\n{2,}/), out = [];
+  for (let i = 0; i < paras.length; i++) {
+    const m = paras[i].trim().match(/^\[CLIP\s*(\d+)\s*[—-]?\s*(?:hook:\s*)?([^\]]*)\]$/i);
+    if (m && paras[i + 1]) out.push({ n: Number(m[1]), hook: m[2].trim(), text: paras[i + 1].trim() });
+  }
+  return out;
+}
+async function extractPillarContent(hdr, titleId, opts) {
+  const raw = await extractPillarContentRaw(hdr, titleId);
+  if (opts && opts.keepClips) return raw;
+  return raw.split(/\n{2,}/).filter(p => !PILLAR_CLIP_RX.test(p.trim())).join("\n\n");
+}
+async function extractPillarContentRaw(hdr, titleId) {
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
   const blocks = blocksResp.results || [];
@@ -3018,7 +3035,13 @@ TITLE: ${titleText}
 
 ${groundingBlock}
 
-Write 800-1500 words of substantive, specific, well-organized prose — real claims and examples grounded in the material above, not generic filler. Plain paragraphs, no headers, no meta-commentary ("in this piece we will..."). Return ONLY the piece itself, nothing else.`;
+Write 800-1500 words of substantive, specific, well-organized prose — real claims and examples grounded in the material above, not generic filler. Plain paragraphs, no headers, no meta-commentary ("in this piece we will..."). Return ONLY the piece itself, nothing else.
+
+INTENT ORDER (2026-10-08 operator rule): first engage the reader, then hold attention and work the keywords in; ${productId ? "only AFTER those two, bring in the product as a natural next step — never open with it" : "there is no product attached, so do not sell anything"}.
+
+CLIP SECTIONS: mark 2-4 self-contained passages (each 60-150 words, strongest on pain points and benefits) that can be cut into short videos or single posts on their own. Put a marker line on its own paragraph directly before each one, exactly in this form:
+[CLIP 1 — hook: <a 6-12 word spoken hook>]
+The passage after a marker must make sense without the rest of the piece. Do not mark the whole piece.`;
 
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -46179,6 +46202,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
       }
 
       // Digest research engine (Gemini Deep Research + Perplexity → ranked sources) — module scope.
+      if (body.action === "interactiveTool") {
+        try { return json(await handleInteractiveTool(body, env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "digestResearch") {
         try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
@@ -46807,7 +46833,9 @@ Call submit_ideas.` }],
         complexity: Math.max(1, Math.min(5, parseInt(x.complexity) || 3)), pages: (x.pages || []).slice(0, 6).map(v => String(v).slice(0, 120)) };
       return Object.assign(idea, utilScore(idea));
     }).filter(x => x.primary && x.volume > 0).sort((a, b) => b.volume - a.volume);
-    const sc = { seed, slug, at: Date.now(), market: market.geoLabels.join(", "), searches: util.length, ideas };
+    const sc = { seed, slug, at: Date.now(), market: market.geoLabels.join(", "), searches: util.length, ideas,
+      allSearches: util.map(r => ({ t: r.t, v: r.v || 0, ci: r.ci == null ? null : r.ci, hb: r.hb == null ? null : r.hb })),   // lossless (2026-10-08)
+      traffic: [] };   // placeholder for traffic-strategy notes (worked on later)
     await env.TRADES.put(key, JSON.stringify(sc));
     let idx = []; try { idx = (await env.TRADES.get("util:scouts", "json")) || []; } catch (e) {}
     idx = [{ seed, slug, at: sc.at, ideas: ideas.length }].concat(idx.filter(x => x.slug !== slug)).slice(0, 100);
@@ -47543,4 +47571,104 @@ function drPublic(job, full) {
   return { id: job.id, keywords: job.keywords, createdAt: job.createdAt, standing: { creators: job.standing.creators.length, associations: job.standing.associations.length },
     gemini: st(job.gemini), perplexity: st(job.perplexity), notes: job.notes || "", ranked: job.ranked || null, rankedAt: job.rankedAt || null,
     ...(full ? { geminiText: job.gemini?.text || "", perplexityText: job.perplexity?.text || "" } : {}) };
+}
+
+// ════════ 🛠 Interactive tools: page + widget from a Utility-scout idea (2026-10-08) ════════
+// Interactivity pillar (worksheet rows Interactivity / Interactive Page / Interactive Widget):
+//   🧰 Utility site scout (seed → tool searches → ideas → Google top 10) picks WHAT to build;
+//   this builds it: one Claude call writes the tool (self-contained HTML + vanilla JS) plus SEO
+//   copy around it, then publishes TWO outputs from the same code:
+//     web/hub/<hub>/tools/<tool>/index.html  — standalone SEO page with AdSense slots (empty until a client id is set)
+//     web/hub/<hub>/tools/<tool>/widget.js   — embed: <div data-hub-tool="<tool>"></div><script src=".../widget.js"></script>
+//   + web/hub/<hub>/tools/tools.json (index) + an Asset (Type "Interactive Page", Hub Section "Interactive").
+// Every search the scout found and the idea's Google top 10 are kept on the asset's notes (lossless) for later traffic work.
+async function handleInteractiveTool(body, env) {
+  if (body.action !== "interactiveTool") return null;
+  const op = body.op || "list";
+  const NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const hdr = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+  const dash = s => { s = String(s).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const cid = String(body.campaignId || "").replace(/-/g, "");
+  if (!cid) return { error: "campaignId required" };
+  const t = await hubSiteTarget({ env, hdr, dash, campaignId: cid, sub: "tools" });
+  if (t.error) return { error: t.error };
+  const { getFile, putFile, basePath, campName, s, hub } = t;
+  const idxPath = `${basePath}/tools.json`;
+  const readIdx = async () => { try { const { text } = await getFile(idxPath); return text ? JSON.parse(text) : []; } catch (e) { return []; } };
+  if (op === "list") return { success: true, tools: await readIdx(), base: hub ? `https://dash-hubs.pages.dev/${hub.slug}/tools/` : "" };
+
+  if (op === "build") {
+    const sc = await env.TRADES.get("util:scout:" + utilSlug(body.seed), "json");
+    if (!sc) return { error: "No scout for that seed — run the Utility site scout first" };
+    const idea = (sc.ideas || []).find(x => x.id === body.ideaId);
+    if (!idea) return { error: "Idea not found in that scout" };
+    const slug = utilSlug(idea.primary || idea.name);
+    const kwList = (idea.keywords || []).map(k => `${k.t} (${k.v}/mo)`).join(", ");
+    const serp = idea.serp ? idea.serp.results.map(r => `${r.pos}. ${r.host} — ${r.title}${r.years != null ? ` (${r.years}y old)` : ""}${r.ugc ? " [forum/UGC]" : ""}`).join("\n") : "(not checked)";
+    const prompt = `Build a small, genuinely useful web TOOL plus the SEO page around it.
+
+TOOL IDEA: ${idea.name} — ${idea.what}
+PRIMARY SEARCH: ${idea.primary}
+OTHER SEARCHES IT MUST ANSWER: ${kwList}
+WHAT CURRENTLY RANKS (beat these on usefulness and clarity):
+${serp}
+SITE: ${campName}${body.guidance ? `\nOPERATOR NOTES: ${body.guidance}` : ""}
+
+Rules for the tool:
+- Plain HTML + vanilla JS in ONE snippet: a root <div class="ht-tool"> with inputs, a button-free live result (recalculate on input), and a short "how this is calculated" line. No external libraries, no network calls, no localStorage.
+- Use ONLY these CSS variables for colour/font: var(--ht-bg), var(--ht-ink), var(--ht-accent), var(--ht-line), var(--ht-font). Scope every CSS rule under .ht-tool. Mobile-first, inputs at least 44px tall, labels on every input.
+- Put all JS inside an IIFE that finds its own root via document.currentScript?.previousElementSibling OR document.querySelectorAll('.ht-tool') — it must work when the snippet appears twice on one page.
+- Formulas must be real and stated; when a value depends on location or market, use a clearly labelled editable default.
+
+Return ONLY a fenced \`\`\`json block:
+{"title": "<= 60 chars, contains the primary search", "metaDescription": "<= 155 chars", "h1": "...", "intro": "2-3 sentences",
+ "toolHtml": "<style>…</style><div class=\\"ht-tool\\">…</div><script>…</script>",
+ "sections": [{"h2": "...", "body": "plain paragraphs, use \\n\\n between paragraphs"}],   // 3-5 sections, 500-900 words total, answering the other searches
+ "faq": [{"q": "...", "a": "..."}]}   // 4-6, taken from the real searches above`;
+    const out = drJson(await drClaude(env, prompt, 12000));
+    if (!out || !out.toolHtml) return { error: "Tool generation returned nothing usable — try again" };
+    const e = x => String(x || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    const vars = `--ht-bg:${s.bg};--ht-ink:${s.ink};--ht-accent:${s.accent};--ht-line:color-mix(in srgb, ${s.ink} 18%, transparent);--ht-font:${s.bodyStack || `"${s.bodyFont}", system-ui, sans-serif`};`;
+    const paras = txt => String(txt || "").split(/\n{2,}/).map(p => `<p>${e(p.trim())}</p>`).join("");
+    const faqLd = { "@context": "https://schema.org", "@type": "FAQPage", mainEntity: (out.faq || []).map(f => ({ "@type": "Question", name: f.q, acceptedAnswer: { "@type": "Answer", text: f.a } })) };
+    const page = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${e(out.title)}</title><meta name="description" content="${e(out.metaDescription)}">
+${s.fontQuery ? `<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=${s.fontQuery}&display=swap">` : ""}
+<script type="application/ld+json">${JSON.stringify(faqLd).replace(/</g, "\\u003c")}</script>
+<!-- AdSense: paste your <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-…"> here once approved; .ad-slot blocks stay hidden until then -->
+<style>:root{${vars}}body{margin:0;background:${s.bg};color:${s.ink};font-family:var(--ht-font);line-height:1.6}
+main{max-width:760px;margin:0 auto;padding:24px 16px 60px}h1,h2{font-family:${s.headlineStack || `"${s.headlineFont}", Georgia, serif`};line-height:1.2}h1{font-size:clamp(28px,5vw,40px)}
+.ad-slot{display:none;margin:24px 0}.ad-slot:has(ins){display:block}a{color:${s.accent}}.crumb{font-size:14px}details{border-top:1px solid var(--ht-line);padding:10px 0}summary{cursor:pointer;font-weight:600}</style></head>
+<body><main><div class="crumb"><a href="../../">${e(campName)}</a> › Tools</div>
+<h1>${e(out.h1 || out.title)}</h1><p>${e(out.intro)}</p>
+${out.toolHtml}
+<div class="ad-slot" data-slot="after-tool"></div>
+${(out.sections || []).map(x => `<h2>${e(x.h2)}</h2>${paras(x.body)}`).join("\n")}
+<div class="ad-slot" data-slot="mid"></div>
+${(out.faq || []).length ? `<h2>Questions</h2>${out.faq.map(f => `<details><summary>${e(f.q)}</summary><p>${e(f.a)}</p></details>`).join("")}` : ""}
+</main></body></html>`;
+    const widget = `/* ${idea.name} — embeddable widget. Usage: <div data-hub-tool="${slug}"></div><script src="THIS_URL"></script> */
+(function(){var html=${JSON.stringify(out.toolHtml)};var vars=${JSON.stringify(vars)};
+document.querySelectorAll('[data-hub-tool="${slug}"]').forEach(function(host){if(host.dataset.loaded)return;host.dataset.loaded=1;host.setAttribute('style',(host.getAttribute('style')||'')+';'+vars);
+var tmp=document.createElement('div');tmp.innerHTML=html;Array.prototype.slice.call(tmp.childNodes).forEach(function(n){if(n.tagName==='SCRIPT'){var sc=document.createElement('script');sc.textContent=n.textContent;host.appendChild(sc);}else host.appendChild(n);});});})();`;
+    await putFile(`${basePath}/${slug}/index.html`, page, `Interactive tool page: ${idea.name}`);
+    await putFile(`${basePath}/${slug}/widget.js`, widget, `Interactive tool widget: ${idea.name}`);
+    const live = hub ? `https://dash-hubs.pages.dev/${hub.slug}/tools/${slug}/` : "";
+    const idx = (await readIdx()).filter(x => x.slug !== slug);
+    idx.unshift({ slug, name: idea.name, title: out.title, primary: idea.primary, volume: idea.volume, url: live, widget: live ? live + "widget.js" : "", at: new Date().toISOString(), seed: sc.seed });
+    await putFile(idxPath, JSON.stringify(idx, null, 1), `Tools index: ${idea.name}`);
+    // Asset record — lossless: every search + the Google top 10 go in Notes / Source References.
+    let assetId = null;
+    try {
+      const notes = `Scout seed: ${sc.seed} (${sc.market}) · score ${idea.score} ${idea.verdict} · ${idea.volume}/mo\nSearches: ${(idea.keywords || []).map(k => `${k.t} ${k.v}`).join("; ")}`;
+      const props = { "Asset Title": { title: [{ text: { content: out.title.slice(0, 200) } }] }, "Asset Type": { select: { name: "Interactive Page" } },
+        "Asset Status": { select: { name: "Published" } }, "Hub Section": { select: { name: "Interactive" } }, Campaign: { relation: [{ id: dash(cid) }] },
+        Notes: { rich_text: [{ text: { content: notes.slice(0, 1990) } }] }, "Source References": { rich_text: [{ text: { content: serp.slice(0, 1990) } }] },
+        ...(live ? { "Site URL": { url: live } } : {}), ...(await assetMethodProp(null, "Interactive Page").catch(() => ({}))) };
+      const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+      const d = await r.json(); if (r.ok) assetId = d.id.replace(/-/g, ""); else console.error("interactive asset create:", d.message);
+    } catch (err) { console.error("interactive asset create:", err.message); }
+    return { success: true, slug, url: live, widget: live ? live + "widget.js" : "", embed: `<div data-hub-tool="${slug}"></div><script src="${live}widget.js"></script>`, assetId, title: out.title };
+  }
+  return { error: "Unknown interactiveTool op" };
 }

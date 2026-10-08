@@ -13926,6 +13926,10 @@ function renderHubsTab() {
           <span style="color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>
           <button onclick="event.stopPropagation();hcStratModal('${slug}')" title="New strategy" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button></div>
         <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubContent(slug)}</div></div>
+        <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|it']=!_hubContentOpen['${slug}|it'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|it']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|it']?'▼':'▶';if(_hubContentOpen['${slug}|it'])hubToolsLoad('${slug}')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;padding:3px 0;">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|it'] ? '▼' : '▶'}</span>
+          <span style="color:var(--text);flex:1;">🛠 Interactive tools <span style="color:var(--text3);">${_hubTools[slug] ? '— ' + (_hubTools[slug].tools || []).length + ' built' : ''}</span></span></div>
+        <div id="hubToolsBody-${slug}" style="display:${_hubContentOpen[slug + '|it'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubTools(slug)}</div></div>
         
       </div>
     </details>
@@ -14115,6 +14119,73 @@ function renderHubKw(slug) {
   if (!topics.length && !(K.tc.clusters || []).length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
   return out;
 }
+// ── Production → 🛠 Interactive tools (worker interactiveTool + utilityScout) ──
+// Pick a seed → Utility site scout finds tool searches and groups them into ideas → 🔎 checks Google's top 10
+// → 🛠 builds the SEO tool page + embeddable widget on the hub (web/hub/<hub>/tools/<tool>/). Methods:
+// Interactivity / Interactive Page / Interactive Widget (Notion, Development).
+const _hubTools = {};   // slug → { tools, base, scout, busy, msg }
+function hubToolsCid(slug) { const h = HUB_SITES.find(x => x.slug === slug); return h && h.campaignId; }
+async function hubToolsLoad(slug, force) {
+  if (_hubTools[slug] && !force) return hubToolsPaint(slug);
+  _hubTools[slug] = Object.assign(_hubTools[slug] || {}, { msg: 'Loading…' }); hubToolsPaint(slug);
+  try {
+    const [t, sc] = await Promise.all([call('interactiveTool', { op: 'list', campaignId: hubToolsCid(slug) }), call('utilityScout', { op: 'list' })]);
+    Object.assign(_hubTools[slug], { tools: (t && t.tools) || [], base: (t && t.base) || '', scouts: (sc && sc.scouts) || [], msg: (t && t.error) || '' });
+  } catch (e) { _hubTools[slug].msg = e.message; }
+  hubToolsPaint(slug);
+}
+function hubToolsPaint(slug) { const el = document.getElementById('hubToolsBody-' + slug); if (el) el.innerHTML = renderHubTools(slug); }
+function renderHubTools(slug) {
+  const T = _hubTools[slug]; if (!T) return '<div style="font-size:11px;color:var(--text3);padding:4px 0;">Open to load.</div>';
+  const btn = 'font-size:10.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
+  const tools = (T.tools || []).map(x => `<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;padding:3px 0;border-bottom:1px solid var(--border);">
+      <span style="flex:1;">${esc(x.name)} <span style="color:var(--text3);">· ${esc(x.primary || '')}${x.volume ? ' · ' + Number(x.volume).toLocaleString() + '/mo' : ''}</span></span>
+      ${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-size:10.5px;">page ↗</a>` : ''}
+      ${x.widget ? `<button style="${btn}" onclick="navigator.clipboard.writeText('<div data-hub-tool=&quot;${esc(x.slug)}&quot;></div><script src=&quot;${esc(x.widget)}&quot;></'+'script>').then(()=>{this.textContent='✓ copied'})">📋 embed</button>` : ''}</div>`).join('');
+  const sc = T.scout;
+  const ideas = sc ? (sc.ideas || []).map(i => `<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;padding:4px 0;border-bottom:1px solid var(--border);">
+      <span style="flex:1;"><b>${esc(i.name)}</b> <span style="color:var(--text3);">${esc(i.primary)} · ${Number(i.volume || 0).toLocaleString()}/mo · complexity ${i.complexity}</span><br><span style="color:var(--text3);">${esc(i.what || '')}</span></span>
+      <span style="font-size:10.5px;white-space:nowrap;color:${i.verdict === 'Strong' ? '#4ade80' : i.verdict === 'Worth a look' ? '#f6ad55' : 'var(--text3)'};">${esc(i.verdict || '')}${i.serp ? ' · ' + i.score : ''}</span>
+      ${i.serp ? '' : `<button style="${btn}" onclick="hubToolsSerp('${slug}','${i.id}',this)" title="Check Google's top 10 + domain ages (Apify)">🔎 top 10</button>`}
+      <button style="${btn}" onclick="hubToolsBuild('${slug}','${i.id}',this)" title="Write the tool + SEO page and publish the page and widget on this hub">🛠 Build page + widget</button></div>`).join('') : '';
+  return `<div style="font-size:11px;color:var(--text3);margin:2px 0 6px;">Tool ideas come from the 🧰 Utility site scout (every search it finds is saved). One build publishes the SEO page (AdSense slots stay hidden until you add your AdSense code) and the embeddable widget.</div>
+    ${T.msg ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">${esc(T.msg)}</div>` : ''}
+    <div style="font-size:11px;font-weight:600;color:var(--text2);margin:4px 0 2px;">Built on this hub</div>${tools || '<div style="font-size:11px;color:var(--text3);">None yet.</div>'}
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:10px 0 4px;">
+      <input id="hubToolSeed-${slug}" placeholder="seed keyword, e.g. rent" style="font-size:11.5px;padding:4px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);min-width:160px;" value="${esc(sc ? sc.seed : '')}">
+      <button style="${btn}" onclick="hubToolsScout('${slug}',this)">🧰 Find tool ideas</button>
+      ${(T.scouts || []).length ? `<select style="font-size:11px;padding:3px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);" onchange="if(this.value)hubToolsOpenScout('${slug}',this.value)"><option value="">saved scouts…</option>${T.scouts.map(x => `<option value="${esc(x.seed)}">${esc(x.seed)} (${x.ideas})</option>`).join('')}</select>` : ''}
+    </div>${ideas}`;
+}
+async function hubToolsScout(slug, b) {
+  const seed = (document.getElementById('hubToolSeed-' + slug) || {}).value || ''; if (!seed.trim()) return;
+  b.disabled = true; b.textContent = '⏳ Working…';
+  try { const r = await call('utilityScout', { op: 'start', seed: seed.trim() }); if (r.error) throw new Error(r.error); _hubTools[slug].scout = r.scout; _hubTools[slug].msg = `${r.scout.ideas.length} ideas from ${r.scout.searches} tool-style searches (all saved).`; }
+  catch (e) { _hubTools[slug].msg = 'Scout failed: ' + e.message; }
+  hubToolsPaint(slug);
+}
+async function hubToolsOpenScout(slug, seed) {
+  try { const r = await call('utilityScout', { op: 'get', seed }); if (r.error) throw new Error(r.error); _hubTools[slug].scout = r.scout; _hubTools[slug].msg = ''; }
+  catch (e) { _hubTools[slug].msg = e.message; }
+  hubToolsPaint(slug);
+}
+async function hubToolsSerp(slug, id, b) {
+  b.disabled = true; b.textContent = '⏳ Working…';
+  try { const r = await call('utilityScout', { op: 'serp', seed: _hubTools[slug].scout.seed, ids: [id] }); if (r.error) throw new Error(r.error); _hubTools[slug].scout = r.scout; }
+  catch (e) { _hubTools[slug].msg = 'Top-10 check failed: ' + e.message; }
+  hubToolsPaint(slug);
+}
+async function hubToolsBuild(slug, id, b) {
+  b.disabled = true; b.textContent = '⏳ Working… (about a minute)';
+  try {
+    const r = await call('interactiveTool', { op: 'build', campaignId: hubToolsCid(slug), seed: _hubTools[slug].scout.seed, ideaId: id });
+    if (r.error) throw new Error(r.error);
+    _hubTools[slug].msg = `✓ Built "${r.title}" — live in about a minute at ${r.url}`;
+    const t = await call('interactiveTool', { op: 'list', campaignId: hubToolsCid(slug) }); _hubTools[slug].tools = (t && t.tools) || [];
+  } catch (e) { _hubTools[slug].msg = 'Build failed: ' + e.message; }
+  hubToolsPaint(slug);
+}
+
 // ── Production → Products: Group → Stack → Product, every level collapsible (collapsed by default) ──
 const _hubProdOpen = {}, _hubProdHide = {};
 // ── Product research state (getCampaignStrategies → researchState: updated / off-main / empty) + the research modal ──
