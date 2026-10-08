@@ -47151,6 +47151,19 @@ async function kwSendKeywords(env, body) {
     try { staged = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
     staged.push(cluster);
     await env.TRADES.put(key, JSON.stringify(staged));
+    // optional: file the new topic under a 🧩 cluster (existing or new) — KV seotopicclusters:<cid> (same store as care-gap's Keywords tab)
+    const topicCluster = String(body.topicCluster || "").trim().slice(0, 100);
+    if (topicCluster) {
+      const tkey = "seotopicclusters:" + norm(body.campaignId);
+      let tc = null; try { tc = await env.TRADES.get(tkey, "json"); } catch (e) {}
+      tc = tc && typeof tc === "object" ? { clusters: Array.isArray(tc.clusters) ? tc.clusters : [], assign: tc.assign || {} } : { clusters: [], assign: {} };
+      const existing = tc.clusters.find(c => c.toLowerCase() === topicCluster.toLowerCase());
+      const cname = existing || topicCluster;
+      if (!existing) tc.clusters.push(cname);
+      tc.assign[cluster.id] = cname;
+      await env.TRADES.put(tkey, JSON.stringify(tc));
+      cluster.topicCluster = cname;
+    }
     return json({ ok: true, cluster, trimmed: byVol.length - list.length });
   }
 
