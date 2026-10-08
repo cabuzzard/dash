@@ -2610,7 +2610,7 @@ async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
     const assetPage = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
     const p = assetPage.properties || {};
     const assetType = p["Asset Type"]?.select?.name || "";
-    const isBlog = /seo post/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
+    const isBlog = /seo post/i.test(assetType) || /^blog (post|article)$/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
     if (!isBlog) return { skipped: "not a blog asset" };
     const existingUrl = (p["Content URL"]?.url || "").trim();
     if (!existingUrl) return { skipped: "not published yet — nothing live to update" };
@@ -10934,7 +10934,7 @@ export default {
           }).catch(() => []);
           const blogAssets = rows.filter(r => {
             const at = r.properties?.["Asset Type"]?.select?.name || "";
-            return /seo post/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)) || /^QA\s*[–-]\s*Story$/i.test(at);
+            return /seo post/i.test(at) || /^blog (post|article)$/i.test(at) || (/\bblog\b/i.test(at) && /\bseo\b|\bnews\b/i.test(at)) || /^QA\s*[–-]\s*Story$/i.test(at);
           });
           for (const a of blogAssets) {
             const aid = a.id.replace(/-/g,"");
@@ -26091,7 +26091,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         // path (single finished article, publish immediately, push live to
         // the campaign /blog/ site, flip the title) with no dedicated branch.
         // Any assetType that reads as a blog+SEO/news post routes here.
-        const isSeoPost = /seo post/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
+        const isSeoPost = /seo post/i.test(assetType) || /^blog (post|article)$/i.test(assetType) || (/\bblog\b/i.test(assetType) && /\bseo\b|\bnews\b/i.test(assetType));
 
         // ── Guarantee: every asset reshapes REAL source material, always.
         // This replaces the old manual "📝 Write Pillar" button entirely —

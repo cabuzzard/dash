@@ -10674,7 +10674,7 @@ async function dev2BulkGenerateThumbnails() {
     if (countEl) countEl.textContent = 'Generating ' + (i + 1) + '/' + keys.length + ': ' + label + '…';
     const type = row.rawAssetType || '';
     const isOffer = /\boffer\b/i.test(type);
-    const isBlogType = /\bseo post\b/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type)) || /^QA\s*[–-]\s*Story$/i.test(type);
+    const isBlogType = /\bseo post\b/i.test(type) || /^blog (post|article)$/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type)) || /^QA\s*[–-]\s*Story$/i.test(type);
     const isSinglePost = /single post/i.test(type);
     try {
       if (isOffer) {

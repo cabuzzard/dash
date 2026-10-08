@@ -5378,7 +5378,7 @@ async function bulkGenerateBackgrounds() {
     statusEl.textContent = `Generating ${i + 1}/${ids.length}: ${label}…`;
     const type = data.type || '';
     const isOffer = /\boffer\b/i.test(type);
-    const isBlogType = /\bseo post\b/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type)) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(type);
+    const isBlogType = /\bseo post\b/i.test(type) || /^blog (post|article)$/i.test(type) || (/\bblog\b/i.test(type) && /\bseo\b|\bnews\b/i.test(type)) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(type);
     const isSinglePost = /single post/i.test(type);
     try {
       if (isOffer) { await generateBackgroundForKind(id, true, 'blog-thumbnail'); await generateBackgroundForKind(id, true, 'ig-background'); }
@@ -6339,7 +6339,7 @@ function openPublishAssetModal(assetId) {
   // (ebook/checklist/etc.), never a published page, so a blog banner
   // doesn't apply.
   const isOffer = /\boffer\b/i.test(data.type || '');
-  const isBlogType = /\bseo post\b/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || '')) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(data.type || '');
+  const isBlogType = /\bseo post\b/i.test(data.type || '') || /^blog (post|article)$/i.test(data.type || '') || (/\bblog\b/i.test(data.type || '') && /\bseo\b|\bnews\b/i.test(data.type || '')) || /^QA\s*[–-]\s*(Sales|Story)$/i.test(data.type || '');
   const isYtThumb = /\byoutube\b/i.test(data.type || '');
   const hubPublishable = isBlogType || isOffer || /^QA\s*[–-]/i.test(data.type || '');
   document.getElementById('pubHubSectionWrap').style.display = hubPublishable ? 'block' : 'none';
