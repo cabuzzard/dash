@@ -13395,16 +13395,16 @@ function himRender(){
           <label style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;color:var(--text3);">⬆ file<input type="file" accept="image/*" onchange="himUpload('${kind}',this)" style="display:none;"></label>
           <button onclick="himUrl('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">🔗 URL</button>
           <button onclick="himGptPrompt('${kind}', this)" title="Copy a ChatGPT image prompt built from the SAVED image spec — make the image in ChatGPT, then ⬆ file it here" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">📋 ChatGPT prompt</button>
-          <button onclick="himGrok('${kind}')" title="Grok Imagine from the SAVED image spec (+ approved plate). You see a candidate first — nothing changes until Use this." style="font-size:10px;padding:2px 7px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">✨ Grok (saved spec)</button>
-          <button onclick="himGen('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>
+          <button onclick="himBusyBtn(this);himGrok('${kind}')" title="Grok Imagine from the SAVED image spec (+ approved plate). You see a candidate first — nothing changes until Use this." style="font-size:10px;padding:2px 7px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">✨ Grok (saved spec)</button>
+          <button onclick="himGen('${kind}', this)" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>
           ${u?`<button onclick="himClear('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕ clear</button>`:''}
         </div>
         ${(HIM.cand || {})[kind] ? (c => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;padding:8px;border:1px dashed var(--border2);border-radius:6px;">
           <a href="${esc(c.imageUrl)}" target="_blank" rel="noopener" title="${esc(c.prompt)}"><img src="${esc(c.imageUrl)}" style="height:110px;border-radius:5px;display:block;"></a>
           <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;">
             <div style="font-size:10.5px;color:var(--text3);">Grok candidate — not on the hub yet. Hover for its prompt.</div>
-            <div style="display:flex;gap:5px;flex-wrap:wrap;"><button onclick="himAdopt('${kind}')" style="font-size:10.5px;padding:3px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;font-weight:600;">✓ Use this</button>
-              <button onclick="himGrok('${kind}', true)" style="font-size:10.5px;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">⟳ Try again with note</button></div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;"><button onclick="himBusyBtn(this);himAdopt('${kind}')" style="font-size:10.5px;padding:3px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;font-weight:600;">✓ Use this</button>
+              <button onclick="himBusyBtn(this);himGrok('${kind}', true)" style="font-size:10.5px;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">⟳ Try again with note</button></div>
             <input id="himNote-${kind}" placeholder="Note for the next try (optional) — e.g. warmer light, older caregiver" style="font-size:11px;padding:4px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
           </div></div>`)(HIM.cand[kind]) : ''}
       </div>
@@ -13431,13 +13431,14 @@ ${(r.text || '').trim()}`;
   } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = 'Could not build the prompt: ' + e.message; btn.textContent = o; return; }
   setTimeout(() => { btn.textContent = o; }, 2500);
 }
+function himBusyBtn(b) { if (!b) return; b.disabled = true; b.dataset.label = b.textContent; b.textContent = '⏳ Working…'; b.style.opacity = '.8'; }
 async function himGrok(kind, withNote) {
   const msg = document.getElementById('himMsg'); msg.style.color = 'var(--text3)'; msg.textContent = 'Grok is rendering the ' + kind + ' image from the saved spec (~25s)…';
   const note = withNote ? ((document.getElementById('himNote-' + kind) || {}).value || '').trim() : '';
   const prev = ((HIM.cand || {})[kind] || {}).prompt;
   try { const r = await call('hubImage', { slug: HIM.slug, kind, op: 'grok', guidance: note || undefined, previousPrompt: note ? prev : undefined }); if (r.error) throw new Error(r.error);
     (HIM.cand = HIM.cand || {})[kind] = r.candidate; himRender(); msg.textContent = 'Candidate ready — ✓ Use this to put it on the hub, or try again.'; }
-  catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; himRender(); }
 }
 async function himAdopt(kind) {
   const c = (HIM.cand || {})[kind]; if (!c) return;
@@ -13453,7 +13454,7 @@ async function himCall(payload, working){
     HIM.content = r.content || HIM.content;
     himRender();
     msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min.';
-  } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; }
+  } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; himRender(); }
 }
 async function himUpload(kind, input){
   const f = input.files && input.files[0]; input.value = '';
@@ -13463,7 +13464,7 @@ async function himUpload(kind, input){
   himCall({ kind, op:'upload', fileName:f.name, contentType:f.type, fileData:String(dataUrl).split(',')[1] }, 'Uploading…');
 }
 function himUrl(kind){ const u = prompt('Paste an image URL for the ' + kind + ' image:'); if(u && u.trim()) himCall({ kind, op:'url', url:u.trim() }, 'Setting…'); }
-function himGen(kind){ if(confirm('Generate a '+kind+' image from this campaign\'s research + palette? (~15s, uses image credits)')) himCall({ kind, op:'generate' }, 'Generating image (~15s)…'); }
+function himGen(kind, btn){ if(confirm('Generate a '+kind+' image from this campaign\'s research + palette? (~15s, uses image credits)')) (himBusyBtn(btn), himCall({ kind, op:'generate' }, 'Generating image (~15s)…')); }
 function himClear(kind){ if(confirm('Clear the '+kind+' image? The placeholder gradient shows instead.')) himCall({ kind, op:'clear' }, 'Clearing…'); }
 
 // ── Tap-to-edit the live preview — one field at a time, same field set as
