@@ -903,10 +903,19 @@
     <!-- Bulk action bar — hidden until at least one row is checked. Delete
          is the first action; more will land here later (same bar, more
          buttons), per operator direction. -->
-    <div id="dev2BulkBar" style="display:none;align-items:center;gap:10px;margin-bottom:10px;padding:8px 12px;background:rgba(255,80,80,.08);border:1px solid #5a2020;border-radius:4px;">
-      <span id="dev2BulkCount" style="font-size:12px;color:var(--text2);font-weight:600;"></span>
-      <button onclick="dev2BulkGenerateThumbnails()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #3a5a3a;border-radius:4px;background:transparent;color:#7ed321;cursor:pointer;">🖼️ Generate Thumbnail</button>
-      <button onclick="dev2BulkDelete()" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid #a33;border-radius:4px;background:transparent;color:#ff6b6b;cursor:pointer;">🗑 Delete</button>
+    <!-- Bulk actions for any record type: the row checkbox picks the ASSET (or the title / product of a row with none);
+         the small boxes in the Title and Product cells pick those records. The form acts on one type at a time. -->
+    <div id="dev2BulkBar" style="display:none;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:rgba(255,80,80,.08);border:1px solid #5a2020;border-radius:6px;font-size:12px;">
+      <b style="color:var(--text2);">Bulk actions</b>
+      <span id="dev2BulkCount" style="color:var(--text2);"></span>
+      <select id="dev2BkType" onchange="dev2BulkForm()" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"></select>
+      <select id="dev2BkAct" onchange="dev2BulkForm(true)" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"></select>
+      <select id="dev2BkVal" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;"></select>
+      <button id="dev2BkGo" onclick="dev2BulkApply(this)" style="font-size:11px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);cursor:pointer;">Apply</button>
+      <span style="color:var(--text3);">pick from checked rows:</span>
+      <button onclick="dev2PickFromRows('t')" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">their titles</button>
+      <button onclick="dev2PickFromRows('p')" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">their products</button>
+      <span id="dev2BkMsg" style="color:var(--text3);"></span>
       <button onclick="dev2ClearSelection()" style="font-size:11px;padding:4px 10px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:auto;">Clear selection</button>
     </div>
     <div id="dev2Panel" style="display:none;margin-bottom:10px;padding:10px 12px;border:1px solid var(--border2);border-radius:8px;background:var(--surface);font-size:12px;">
@@ -10700,16 +10709,67 @@ function dev2ToggleAll(checked) {
   renderDev2();
 }
 function dev2ClearSelection() {
-  DEV2_SELECTED.clear();
+  DEV2_SELECTED.clear(); DEV2_SEL_T.clear(); DEV2_SEL_P.clear();
   renderDev2();
+}
+// ── bulk actions for any record type ──
+const DEV2_SEL_T = new Set(), DEV2_SEL_P = new Set();
+function dev2ToggleRec(t, id, on) { const S = t === 't' ? DEV2_SEL_T : DEV2_SEL_P; if (on) S.add(id); else S.delete(id); dev2UpdateBulkBar(); }
+// the record ids each type acts on: assets = checked asset rows; titles / products = their own boxes + checked title-only / product-only rows
+function dev2BulkIds() {
+  const a = new Set(), t = new Set(DEV2_SEL_T), p = new Set(DEV2_SEL_P);
+  DEV2_SELECTED.forEach(k => { const id = k.slice(2); if (k.startsWith('a:')) a.add(id); else if (k.startsWith('t:')) t.add(id); else if (k.startsWith('p:')) p.add(id); });
+  return { a: [...a], t: [...t], p: [...p] };
+}
+function dev2PickFromRows(kind) {
+  DEV2_SELECTED.forEach(k => { const r = DEV2_ROWS.find(x => dev2RowKey(x) === k); if (!r) return; if (kind === 't' && r.titleId) DEV2_SEL_T.add(r.titleId); if (kind === 'p' && r.productId) DEV2_SEL_P.add(r.productId); });
+  renderDev2();
+}
+const DEV2_BULK = {
+  a: { label: 'Assets', acts: { status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
+  t: { label: 'Titles',   acts: { status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
+  p: { label: 'Products', acts: { status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
+};
+function dev2BulkForm(actChanged) {
+  const ids = dev2BulkIds(), tSel = document.getElementById('dev2BkType'), aSel = document.getElementById('dev2BkAct'), vSel = document.getElementById('dev2BkVal'); if (!tSel) return;
+  const cur = tSel.value;
+  tSel.innerHTML = Object.entries(DEV2_BULK).map(([k, d]) => `<option value="${k}" ${ids[k].length ? '' : 'disabled'} ${k === cur ? 'selected' : ''}>${d.label} (${ids[k].length})</option>`).join('');
+  if (!ids[tSel.value] || !ids[tSel.value].length) { const first = Object.keys(DEV2_BULK).find(k => ids[k].length); if (first) tSel.value = first; }
+  const acts = DEV2_BULK[tSel.value].acts, curA = aSel.value;
+  if (!actChanged) aSel.innerHTML = Object.entries(acts).map(([k, d]) => `<option value="${k}" ${k === curA ? 'selected' : ''}>${d.label}</option>`).join('');
+  const act = acts[aSel.value] || acts[Object.keys(acts)[0]];
+  vSel.style.display = act.vals ? '' : 'none';
+  if (act.vals) vSel.innerHTML = act.vals.map(v => `<option>${v}</option>`).join('');
+}
+async function dev2BulkApply(btn) {
+  const t = document.getElementById('dev2BkType').value, act = document.getElementById('dev2BkAct').value, val = document.getElementById('dev2BkVal').value;
+  const ids = dev2BulkIds()[t] || [], msg = document.getElementById('dev2BkMsg'), label = DEV2_BULK[t].label.toLowerCase();
+  if (!ids.length) return;
+  if (act === 'thumb') return dev2BulkGenerateThumbnails();
+  if (act === 'del' && !confirm(`Delete (archive in Notion) ${ids.length} ${label}?`)) return;
+  btn.disabled = true; let ok = 0, bad = 0;
+  for (const id of ids) {
+    msg.textContent = `⏳ ${ok + bad + 1} / ${ids.length}…`;
+    try {
+      let r;
+      if (act === 'del') r = await call(t === 'a' ? 'deleteAsset' : 'deleteTitle', t === 'a' ? { assetId: id } : { titleId: id });
+      else if (act === 'hubSection') r = await call('updateAllOutputField', { field: 'hubSection', assetId: id, value: /^\(none/.test(val) ? '' : val });
+      else r = await call('updateAllOutputField', { field: 'status', kind: t === 'a' ? 'asset' : t === 'p' ? 'product' : 'title', assetId: t === 'a' ? id : undefined, titleId: t === 't' ? id : undefined, productId: t === 'p' ? id : undefined, value: val });
+      if (r && r.error) throw new Error(r.error); ok++;
+    } catch (e) { bad++; }
+  }
+  msg.textContent = `✓ ${ok} ${label} updated${bad ? ` · ${bad} failed` : ''}`; btn.disabled = false;
+  if (t === 't') DEV2_SEL_T.clear(); if (t === 'p') DEV2_SEL_P.clear(); if (t === 'a') DEV2_SELECTED.clear();
+  loadDev2();
 }
 function dev2UpdateBulkBar() {
   const bar = document.getElementById('dev2BulkBar');
   if (!bar) return;
-  const n = DEV2_SELECTED.size;
+  const ids = dev2BulkIds(), n = ids.a.length + ids.t.length + ids.p.length;
   bar.style.display = n ? 'flex' : 'none';
   const countEl = document.getElementById('dev2BulkCount');
-  if (countEl) countEl.textContent = n + ' selected';
+  if (countEl) countEl.textContent = `${ids.a.length} assets · ${ids.t.length} titles · ${ids.p.length} products selected`;
+  if (n) dev2BulkForm();
 }
 // Bulk delete — an asset-backed row deletes the asset (deleteAsset); a
 // blank/no-asset placeholder row has nothing to delete but the title
@@ -10923,10 +10983,11 @@ function renderDev2() {
       <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"><button title="Edit this row's fields" onclick="dev2EditOpen('${esc(key)}')" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${esc(r.hubSection || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.group || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
-      <td style="padding:6px 10px;font-size:12px;">${productCell}</td>
-      <td style="padding:6px 10px;font-size:12px;">${titleCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${r.productId ? `<input type="checkbox" title="Select this product for bulk actions" ${DEV2_SEL_P.has(r.productId) ? 'checked' : ''} onclick="dev2ToggleRec('p','${esc(r.productId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${productCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${r.titleId ? `<input type="checkbox" title="Select this title for bulk actions" ${DEV2_SEL_T.has(r.titleId) ? 'checked' : ''} onclick="dev2ToggleRec('t','${esc(r.titleId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${titleCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
