@@ -4444,8 +4444,9 @@ function renderFlowTable(k = 'main') {
   const xbtn = 'font-size:10px;padding:0 5px;border:none;background:transparent;color:var(--text3);cursor:pointer;';
   const ta = 'width:100%;box-sizing:border-box;min-height:28px;font-size:12px;line-height:1.35;padding:4px 6px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;resize:none;overflow:hidden;font-family:inherit;white-space:pre-wrap;overflow-wrap:anywhere;';
   // fits the page: fixed layout, columns share the width, text wraps (never wider than the screen)
-  const optCell = (c, r, ri) => { const v = (r.cells || {})[c.id] || '', opts = c.options.includes(v) || !v ? c.options : [v].concat(c.options);
-    return `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;"><select style="width:100%;box-sizing:border-box;font-size:12px;padding:4px;background:transparent;color:var(--text);border:1px solid transparent;border-radius:4px;" onchange="(FLOWS['${k}'].data.rows[${ri}].cells=FLOWS['${k}'].data.rows[${ri}].cells||{})['${esc(c.id)}']=this.value;flowSaveSoon('${k}')"><option value=""></option>${opts.map(o => `<option ${o === v ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select></td>`; };
+  // option columns: multi-pick (stored as "A; B" so filters / sort still read plain text); picker = flowOptOpen
+  const optCell = (c, r, ri) => { const vals = flowOptVals((r.cells || {})[c.id]);
+    return `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;cursor:pointer;" onclick="flowOptOpen(event,'${k}',${ri},'${esc(c.id)}')" title="Click to choose (several allowed)"><div style="display:flex;flex-wrap:wrap;gap:3px;min-height:24px;padding:2px;">${vals.length ? vals.map(v => `<span style="font-size:11px;padding:1px 6px;border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);">${esc(v)}</span>`).join('') : '<span style="font-size:11px;color:var(--text3);">＋ choose</span>'}</div></td>`; };
   const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => Array.isArray(c.options) && c.options.length ? optCell(c, r, ri) : `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this);flowAcHide()" onkeydown="flowAcKey(event)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this);flowAc('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
       <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`;
   const view = T.view ? fvBuild(k) : null, manual = !view || view.manual;
@@ -4703,6 +4704,28 @@ document.addEventListener('mouseover', ev => {
 });
 document.addEventListener('mouseout', ev => { if (ev.target.closest && ev.target.closest('.flow-tbl textarea, .flow-tbl th input')) flowTipHide(); });
 window.addEventListener('scroll', flowTipHide, true);
+// ── option-column picker: checkbox popover in the dashboard's own colours (native <option> text was unreadable) ──
+function flowOptVals(v) { return String(v || '').split(/\s*;\s*/).map(x => x.trim()).filter(Boolean); }
+function flowOptOpen(e, k, ri, cid) {
+  e.stopPropagation();
+  const F = FLOWS[k].data, col = F.columns.find(c => c.id === cid), row = F.rows[ri]; if (!col || !row) return;
+  let pop = document.getElementById('flowOptPop');
+  if (!pop) { pop = document.createElement('div'); pop.id = 'flowOptPop'; document.body.appendChild(pop);
+    document.addEventListener('click', ev => { const p = document.getElementById('flowOptPop'); if (p && p.style.display !== 'none' && !p.contains(ev.target)) { p.style.display = 'none'; if (p._done) p._done(); } }); }
+  const cur = flowOptVals((row.cells || {})[cid]), extra = cur.filter(v => !col.options.includes(v)), all = col.options.concat(extra);
+  pop.style.cssText = 'position:fixed;z-index:9999;background:var(--surface);color:var(--text);border:1px solid var(--border2);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);padding:6px;max-height:60vh;overflow:auto;min-width:240px;font-size:12px;';
+  pop.innerHTML = all.map((o, i) => `<label style="display:flex;gap:7px;align-items:center;padding:4px 6px;border-radius:5px;cursor:pointer;color:var(--text);" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background=''"><input type="checkbox" data-o="${i}" ${cur.includes(o) ? 'checked' : ''}> ${esc(o)}</label>`).join('')
+    + `<div style="display:flex;justify-content:space-between;gap:6px;margin-top:4px;padding-top:4px;border-top:1px solid var(--border);"><button style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;" data-act="clear">Clear</button><button style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);cursor:pointer;" data-act="done">Done</button></div>`;
+  const apply = () => { const picked = [...pop.querySelectorAll('input[data-o]')].filter(x => x.checked).map(x => all[+x.dataset.o]);
+    row.cells = row.cells || {}; const v = picked.join('; '); if (v) row.cells[cid] = v; else delete row.cells[cid]; flowSaveSoon(k); };
+  pop.onchange = apply;
+  pop.onclick = ev => { const a = ev.target.dataset && ev.target.dataset.act; if (a === 'clear') { pop.querySelectorAll('input').forEach(x => { x.checked = false; }); apply(); } if (a === 'done') { pop.style.display = 'none'; pop._done(); } ev.stopPropagation(); };
+  pop._done = () => { pop._done = null; renderFlowTable(k); };
+  pop.style.display = 'block';
+  const r = e.currentTarget.getBoundingClientRect(), ph = Math.min(pop.scrollHeight, innerHeight * 0.6);
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
+  pop.style.top = (r.bottom + ph + 8 < innerHeight ? r.bottom + 4 : Math.max(8, r.top - ph - 4)) + 'px';
+}
 function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
 function flowAddRow(k) {
   const T = FLOWS[k], r = { id: flowId('r'), cells: {} };
