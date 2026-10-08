@@ -46178,6 +46178,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
         return json({ success: true, imageUrl });
       }
 
+      // Digest research engine (Gemini Deep Research + Perplexity → ranked sources) — module scope.
+      if (body.action === "digestResearch") {
+        try { return json(await handleDigestResearch(body, env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
+
       // Keyword Research tab (kw* actions) — module-scope handleKeywordAction.
       const kwResp = await handleKeywordAction(body, env);
       if (kwResp) return kwResp;
@@ -47298,4 +47303,244 @@ async function handleKeywordAction(body, env) {
   }
 
   return json({ error: "Unknown keyword action" }, 400);
+}
+
+// ════════ 🔬 Digest research engine (2026-10-08) ════════
+// Premium-curation process for the digest pillar (operator-approved worksheet row "Digest"):
+//   keywords (operator-typed, + YouTube/Google autocomplete suggestions) + standing sources
+//   (🧑 Creators ticked "Digest Source", per-hub industry associations, operator URLs)
+//   → Gemini Deep Research (background agent, polled) ∥ Perplexity Agent API (preset "medium")
+//   → one Claude pass merges + scores every source (authority tier, freshness, corroboration,
+//     keyword fit) and splits Free vs Premium → ranked list the digest + its children write from.
+// NotebookLM has no consumer API, so it stays a manual step: the modal copies the top sources
+// for a NotebookLM notebook and takes the operator's notes back as tier-1 "editor insight".
+// Storage: KV digres:<jobId> (the run), digest:last:<cid> (previous ranked list → "what changed"),
+// digest:assoc:<cid> (approved association list), digest:sources:<titleId> (what a digest was written from).
+const DR_GEMINI_AGENT = "deep-research-preview-04-2026";
+const DR_TTL = 60 * 60 * 24 * 45;
+
+async function drSuggest(q) {
+  q = String(q || "").trim(); if (!q) return { youtube: [], google: [] };
+  const get = async ds => {
+    try {
+      const r = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox${ds ? "&ds=" + ds : ""}&q=${encodeURIComponent(q)}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+      const j = JSON.parse(await r.text()); return Array.isArray(j[1]) ? j[1].filter(s => s && s.toLowerCase() !== q.toLowerCase()).slice(0, 10) : [];
+    } catch (e) { return []; }
+  };
+  const [youtube, google] = await Promise.all([get("yt"), get("")]);
+  return { youtube, google };
+}
+
+async function drClaude(env, prompt, maxTokens) {
+  const r = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: maxTokens || 8000, messages: [{ role: "user", content: prompt }] });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d?.error?.message || `Claude HTTP ${r.status}`);
+  return (d.content || []).map(c => c.text || "").join("");
+}
+function drJson(text) {
+  const m = String(text || "").match(/```json\s*([\s\S]*?)```/i);
+  const raw = m ? m[1] : String(text || "").slice(String(text || "").search(/[\[{]/));
+  try { return JSON.parse(raw); } catch (e) { return null; }
+}
+
+async function drStandingSources(env, campaignId) {
+  const creators = await notionQuery(CREATORS_DB, { filter: { property: "Digest Source", checkbox: { equals: true } } })
+    .catch(e => { console.error("digest creators query failed:", e.message); return []; });
+  const rt = (p, k) => (p?.[k]?.rich_text || p?.[k]?.title || []).map(t => t.plain_text).join("");
+  const creatorList = creators.map(c => {
+    const p = c.properties || {};
+    return { name: rt(p, "Name"), handles: rt(p, "Handles"), subject: rt(p, "Subject Matter"), url: p.URL?.url || "" };
+  }).filter(c => c.name);
+  let assoc = []; try { assoc = (await env.TRADES.get("digest:assoc:" + campaignId, "json")) || []; } catch (e) {}
+  return { creators: creatorList, associations: assoc };
+}
+
+function drBrief(job) {
+  const kw = job.keywords.join(", ");
+  const cr = job.standing.creators.map(c => `- ${c.name}${c.handles ? ` (${c.handles})` : ""}${c.url ? ` ${c.url}` : ""}${c.subject ? ` — ${c.subject}` : ""}`).join("\n");
+  const as = job.standing.associations.map(a => `- ${a.name}${a.publication ? ` — ${a.publication}` : ""}${a.url ? ` ${a.url}` : ""}`).join("\n");
+  const urls = (job.urls || []).map(u => `- ${u}`).join("\n");
+  return `Research the latest, most useful information for a weekly industry digest.
+
+TOPIC KEYWORDS: ${kw}
+${job.hubName ? `AUDIENCE / HUB: ${job.hubName}\n` : ""}${job.guidance ? `FOCUS: ${job.guidance}\n` : ""}
+Prioritise, in this order:
+1. Primary sources: industry associations and their journals / reports, government and regulator data, company filings, original datasets and studies.
+2. Recognised trade press and named experts.
+3. General news only when nothing better covers the item.
+Prefer items from the last 30 days; include older items only if they are the definitive source.
+Look for things a paid subscriber would value: real numbers, changes in rules or prices, patterns across several sources, and practical how-to.
+${cr ? `\nCheck recent posts from these creators:\n${cr}\n` : ""}${as ? `\nCheck these professional associations and their publications:\n${as}\n` : ""}${urls ? `\nAlso check these pages:\n${urls}\n` : ""}
+Write a concise findings report. Then END with a fenced \`\`\`json block: an array of every source you used, each {"url","title","publisher","date":"YYYY-MM-DD or empty","claim":"the one key fact or finding, max 40 words"}.`;
+}
+
+async function drGeminiStart(env, job) {
+  if (!env.GEMINI_API_KEY) return { status: "skipped", error: "GEMINI_API_KEY not set" };
+  const r = await fetch("https://generativelanguage.googleapis.com/v1beta/interactions", { method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": env.GEMINI_API_KEY.trim() },
+    body: JSON.stringify({ input: drBrief(job), agent: DR_GEMINI_AGENT, background: true }) });
+  const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+  if (r.status === 429 && /free tier|quota/i.test(t)) return { status: "failed", error: "Gemini Deep Research needs billing turned on for this API key's Google project (aistudio.google.com → Billing). Perplexity still runs." };
+  if (!r.ok || !d?.id) return { status: "failed", error: `Gemini HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
+  return { status: "running", id: d.id };
+}
+function drAllText(node, out) {
+  if (!node) return out;
+  if (typeof node === "string") return out;
+  if (Array.isArray(node)) { node.forEach(n => drAllText(n, out)); return out; }
+  if (typeof node === "object") { if (typeof node.text === "string") out.push(node.text); for (const k of Object.keys(node)) if (k !== "text") drAllText(node[k], out); }
+  return out;
+}
+async function drGeminiPoll(env, g) {
+  if (!g || g.status !== "running") return g;
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/interactions/${g.id}`, { headers: { "x-goog-api-key": env.GEMINI_API_KEY.trim() } });
+  const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+  if (!r.ok || !d) return { ...g, status: "failed", error: `Gemini poll HTTP ${r.status}: ${t.slice(0, 200)}` };
+  if (d.status === "completed") {
+    const steps = d.steps || d.outputs || [];
+    const last = Array.isArray(steps) && steps.length ? steps[steps.length - 1] : d;
+    const text = drAllText(last, []).join("\n").trim() || drAllText(d, []).join("\n").trim();
+    return { ...g, status: "done", text: text.slice(0, 60000) };
+  }
+  if (d.status === "failed" || d.status === "cancelled") return { ...g, status: "failed", error: "Gemini research " + d.status + (d.error?.message ? ": " + d.error.message : "") };
+  return g;
+}
+
+async function drPerplexity(env, job) {
+  if (!env.PERPLEXITY_API_KEY) return { status: "skipped", error: "PERPLEXITY_API_KEY not set" };
+  const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
+    headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ preset: "medium", input: drBrief(job) }) });
+  const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+  if (!r.ok || !d) return { status: "failed", error: `Perplexity HTTP ${r.status}: ${(d?.error?.message || t).slice(0, 300)}` };
+  const results = [];
+  (d.output || []).forEach(o => { if (o && o.type === "search_results") (o.results || []).forEach(x => results.push({ url: x.url, title: x.title, date: x.date || x.last_updated || "", snippet: (x.snippet || "").slice(0, 400) })); });
+  const text = d.output_text || (d.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
+  return { status: "done", text: String(text || "").slice(0, 40000), results: results.slice(0, 80) };
+}
+
+async function drRank(env, job) {
+  let prev = []; try { prev = ((await env.TRADES.get("digest:last:" + job.campaignId, "json")) || {}).sources || []; } catch (e) {}
+  let demand = ""; try { demand = await kwDemandBlock(env, job.keywords.join(", ")); } catch (e) {}
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `You are the research editor of a paid industry newsletter. Merge the research below into ONE ranked source list.
+
+TODAY: ${today}
+KEYWORDS: ${job.keywords.join(", ")}
+${demand ? `SEARCH DEMAND (real Google data — high volume = broad/free interest, high CPC + commercial intent = premium value):\n${demand.slice(0, 3000)}\n` : ""}
+STANDING ASSOCIATIONS (count as tier 1 when cited): ${job.standing.associations.map(a => a.name).join("; ") || "none"}
+STANDING CREATORS: ${job.standing.creators.map(c => c.name).join("; ") || "none"}
+${job.notes ? `\nEDITOR NOTES (the operator's own NotebookLM / expert notes — treat as tier-1 insight; add them as a source with url "editor-notes"):\n${job.notes.slice(0, 8000)}\n` : ""}
+=== GEMINI DEEP RESEARCH REPORT ===
+${(job.gemini?.text || "(not available)").slice(0, 30000)}
+
+=== PERPLEXITY RESEARCH ===
+${(job.perplexity?.text || "(not available)").slice(0, 15000)}
+PERPLEXITY SEARCH RESULTS:
+${(job.perplexity?.results || []).map(x => `- ${x.title} | ${x.url} | ${x.date} | ${x.snippet}`).join("\n").slice(0, 12000)}
+
+LAST WEEK'S SOURCES (mark "isNew": false for any URL in this list):
+${prev.map(s => s.url).join("\n").slice(0, 4000) || "(none)"}
+
+Rules:
+- Deduplicate by URL (and by the same story from several outlets — keep the best one, count the others as corroboration).
+- tier: 1 = primary (association, journal, government/regulator, company filing, original data or study, editor notes); 2 = trade press or named expert; 3 = general news, blogs, forums.
+- freshnessDays: days between the source date and today (999 if unknown).
+- corroboration: how many OTHER sources in this research support the same claim (0-5).
+- fit: 0-10, how directly it serves the keywords.
+- split: "premium" if tier 1, or it needs synthesis (a pattern across 3+ sources, real numbers, rule/price changes, a how-to); otherwise "free".
+- Never invent a URL — only use URLs that appear above.
+
+Return ONLY a fenced \`\`\`json block: {"sources":[{"url","title","publisher","date","claim","tier","freshnessDays","corroboration","fit","split","isNew","why":"max 20 words"}],"freeAngle":"one-line hook for the free issue","premiumAngle":"one-line hook for the premium issue","whatChanged":"one or two sentences on what is new versus last week"}`;
+  const out = drJson(await drClaude(env, prompt, 12000));
+  if (!out || !Array.isArray(out.sources)) throw new Error("Ranking step returned no source list");
+  const tierW = { 1: 40, 2: 25, 3: 10 };
+  out.sources.forEach(s => {
+    const fd = Number(s.freshnessDays); const fresh = isFinite(fd) && fd < 999 ? Math.max(0, 25 - fd * 0.8) : 5;
+    s.score = Math.round((tierW[s.tier] || 10) + fresh + Math.min(15, (Number(s.corroboration) || 0) * 5) + Math.min(20, (Number(s.fit) || 0) * 2));
+  });
+  out.sources.sort((a, b) => b.score - a.score);
+  return out;
+}
+
+async function handleDigestResearch(body, env) {
+  if (body.action !== "digestResearch") return null;
+  const op = body.op;
+  const cid = String(body.campaignId || "").replace(/-/g, "");
+  if (op === "suggest") return { success: true, ...(await drSuggest(body.q)) };
+
+  if (op === "assoc") {
+    if (!cid) return { error: "campaignId required" };
+    const key = "digest:assoc:" + cid;
+    if (body.sub === "save") { const list = (Array.isArray(body.list) ? body.list : []).filter(a => a && a.name).slice(0, 40); await env.TRADES.put(key, JSON.stringify(list)); return { success: true, list }; }
+    if (body.sub === "propose") {
+      const kw = (body.keywords || []).join(", ");
+      const out = drJson(await drClaude(env, `List the professional associations, industry bodies, regulators and their journals / reports that publish authoritative, primary information for this audience.
+
+HUB / CAMPAIGN: ${body.hubName || ""}
+KEYWORDS: ${kw}
+
+Only real organisations you are confident exist. 8-15 entries, most authoritative first.
+Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journal / report / newsroom","url":"homepage or newsroom URL","why":"max 15 words"}.`, 3000));
+      return { success: true, proposed: Array.isArray(out) ? out : [] };
+    }
+    let list = []; try { list = (await env.TRADES.get(key, "json")) || []; } catch (e) {}
+    return { success: true, list };
+  }
+
+  if (op === "start") {
+    if (!cid) return { error: "campaignId required" };
+    const keywords = (Array.isArray(body.keywords) ? body.keywords : String(body.keywords || "").split(/[,\n]/)).map(s => String(s).trim()).filter(Boolean).slice(0, 30);
+    if (!keywords.length) return { error: "Enter at least one keyword" };
+    const job = { id: "dr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6), campaignId: cid, hubName: body.hubName || "",
+      keywords, guidance: String(body.guidance || "").slice(0, 2000), urls: (body.urls || []).filter(u => /^https?:\/\//.test(u)).slice(0, 20),
+      notes: String(body.notes || "").slice(0, 20000), createdAt: new Date().toISOString() };
+    job.standing = await drStandingSources(env, cid);
+    job.gemini = await drGeminiStart(env, job).catch(e => ({ status: "failed", error: e.message }));
+    job.perplexity = { status: env.PERPLEXITY_API_KEY ? "pending" : "skipped", error: env.PERPLEXITY_API_KEY ? undefined : "PERPLEXITY_API_KEY not set" };
+    await env.TRADES.put("digres:" + job.id, JSON.stringify(job), { expirationTtl: DR_TTL });
+    return { success: true, job: drPublic(job) };
+  }
+
+  const key = "digres:" + String(body.jobId || "");
+  const job = body.jobId ? await env.TRADES.get(key, "json") : null;
+  if (!job) return { error: "Research run not found (it may have expired)" };
+  const save = () => env.TRADES.put(key, JSON.stringify(job), { expirationTtl: DR_TTL });
+
+  if (op === "perplexity") {   // long synchronous call — the modal fires it right after start and waits
+    if (job.perplexity?.status === "done") return { success: true, job: drPublic(job) };
+    job.perplexity = await drPerplexity(env, job).catch(e => ({ status: "failed", error: e.message }));
+    const fresh = await env.TRADES.get(key, "json"); if (fresh) { fresh.perplexity = job.perplexity; Object.assign(job, fresh); }
+    await save(); return { success: true, job: drPublic(job) };
+  }
+  if (op === "status") {
+    if (job.gemini?.status === "running") {
+      const g = await drGeminiPoll(env, job.gemini).catch(e => ({ ...job.gemini, status: "failed", error: e.message }));
+      const fresh = (await env.TRADES.get(key, "json")) || job; fresh.gemini = g; Object.assign(job, fresh); await save();   // re-read: the Perplexity call may have saved meanwhile
+    }
+    return { success: true, job: drPublic(job) };
+  }
+  if (op === "notes") { job.notes = String(body.notes || "").slice(0, 20000); await save(); return { success: true }; }
+  if (op === "rank") {
+    const gOk = job.gemini?.status === "done", pOk = job.perplexity?.status === "done";
+    if (!gOk && !pOk && !job.notes) return { error: "No research finished yet — wait for Gemini or Perplexity" };
+    if (body.notes !== undefined) job.notes = String(body.notes || "").slice(0, 20000);
+    job.ranked = await drRank(env, job); job.rankedAt = new Date().toISOString();
+    await save();
+    await env.TRADES.put("digest:last:" + job.campaignId, JSON.stringify({ jobId: job.id, at: job.rankedAt, sources: job.ranked.sources.map(s => ({ url: s.url, title: s.title })) }));
+    return { success: true, job: drPublic(job) };
+  }
+  if (op === "attach") {   // record which sources a written digest title used
+    if (!body.titleId) return { error: "titleId required" };
+    await env.TRADES.put("digest:sources:" + String(body.titleId).replace(/-/g, ""), JSON.stringify({ jobId: job.id, keywords: job.keywords, sources: body.sources || [], at: new Date().toISOString() }));
+    return { success: true };
+  }
+  if (op === "get") return { success: true, job: drPublic(job, true) };
+  return { error: "Unknown digestResearch op" };
+}
+function drPublic(job, full) {
+  const st = x => x ? { status: x.status, error: x.error, chars: (x.text || "").length, results: (x.results || []).length } : null;
+  return { id: job.id, keywords: job.keywords, createdAt: job.createdAt, standing: { creators: job.standing.creators.length, associations: job.standing.associations.length },
+    gemini: st(job.gemini), perplexity: st(job.perplexity), notes: job.notes || "", ranked: job.ranked || null, rankedAt: job.rankedAt || null,
+    ...(full ? { geminiText: job.gemini?.text || "", perplexityText: job.perplexity?.text || "" } : {}) };
 }

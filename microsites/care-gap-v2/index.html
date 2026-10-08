@@ -705,7 +705,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
        (createDevTitle + writeTitlePillar, same primitives as Create Pillar
        above), then generateDigestIdeas stages the two idea backlogs. -->
   <div class="modaloverlay" id="digestRunModal">
-    <div class="modalbox" style="max-width:560px;">
+    <div class="modalbox" style="max-width:720px;">
       <div class="mtitle">Run Digest</div>
       <div style="display:flex;flex-direction:column;gap:10px;">
         <label style="font-size:11px;color:var(--ink2);">Product <span style="color:var(--ink3);">— grounds the pillar's soft mention and the premium ideas' offer angle</span>
@@ -715,10 +715,37 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <textarea id="digestGuidance" rows="4" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;color:var(--ink);background:var(--surface2);border:1px solid var(--border);border-radius:6px;padding:6px 9px;" placeholder="e.g. lean into the respite-care angle this week; skip anything about funding cuts."></textarea>
         </label>
       </div>
+      <!-- 🔬 Research step (digestResearch worker action): keywords → Gemini Deep Research ∥ Perplexity
+           → Claude ranks every source (tier / freshness / corroboration / fit) → Free vs Premium.
+           Optional: the operator's NotebookLM notes go in as tier-1 editor insight. -->
+      <div id="drBox" style="margin-top:12px;border-top:1px solid var(--border);padding-top:10px;display:flex;flex-direction:column;gap:9px;">
+        <div style="font-size:12px;font-weight:700;">🔬 Research <span style="font-weight:400;color:var(--ink3);">— optional; the digest is written from the sources you keep</span></div>
+        <label style="font-size:11px;color:var(--ink2);">Keywords <span style="color:var(--ink3);">(one per line or comma-separated — your own)</span>
+          <textarea id="drKeywords" rows="3" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;"></textarea>
+        </label>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+          <input id="drSuggestQ" class="finput" placeholder="suggest from a phrase…" style="flex:1;min-width:140px;" onkeydown="if(event.key==='Enter'){event.preventDefault();drSuggest();}">
+          <button class="btn" onclick="drSuggest()">💡 YouTube + Google suggestions</button>
+        </div>
+        <div id="drSuggestOut" style="display:none;font-size:11px;"></div>
+        <details id="drAssocBox" style="font-size:11.5px;"><summary style="cursor:pointer;color:var(--ink2);">🏛 Industry associations <span id="drAssocCount" style="color:var(--ink3);"></span> · 🧑 creators ticked "Digest Source" in Notion are included automatically</summary>
+          <div id="drAssocList" style="margin:6px 0;"></div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn" onclick="drAssocPropose(this)">✨ Propose list</button><button class="btn" onclick="drAssocAdd()">＋ add</button><button class="btn primary" onclick="drAssocSave(this)">Save list</button></div>
+          <div id="drAssocProposed" style="margin-top:6px;"></div>
+        </details>
+        <label style="font-size:11px;color:var(--ink2);">Extra pages to check <span style="color:var(--ink3);">(optional URLs, one per line)</span>
+          <textarea id="drUrls" rows="2" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;"></textarea>
+        </label>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><button class="btn primary" id="drRunBtn" onclick="drStart()">🔎 Run research</button><span id="drStatus" style="font-size:11px;color:var(--ink3);"></span></div>
+        <label style="font-size:11px;color:var(--ink2);">Editor notes <span style="color:var(--ink3);">— paste your NotebookLM notes here (counted as top-tier sources), then ↻ Re-rank</span>
+          <textarea id="drNotes" rows="3" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;"></textarea>
+        </label>
+        <div id="drRanked"></div>
+      </div>
       <div id="digestRunResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
       <div class="modalrow">
         <button class="btn" onclick="closeDigestRunModal()">Cancel</button>
-        <button class="btn primary" id="digestRunBtn" onclick="runDigestRun()">▶ Run</button>
+        <button class="btn primary" id="digestRunBtn" onclick="runDigestRun()">▶ Write digest</button>
       </div>
     </div>
   </div>
@@ -4662,8 +4689,9 @@ async function openDigestRunModal() {
   document.getElementById('digestGuidance').value = '';
   document.getElementById('digestRunResult').textContent = '';
   const btn = document.getElementById('digestRunBtn');
-  btn.disabled = false; btn.textContent = '▶ Run';
+  btn.disabled = false; btn.textContent = '▶ Write digest';
   document.getElementById('digestRunModal').classList.add('open');
+  drOpen();
 }
 function closeDigestRunModal() { document.getElementById('digestRunModal').classList.remove('open'); }
 async function runDigestRun() {
@@ -4684,10 +4712,13 @@ async function runDigestRun() {
     const created = await w('createDevTitle', { title: titleName, campaignId: CAMPAIGN_ID, productId, methodId: digestMethod ? digestMethod.id : undefined, status: 'Development' });
     if (created.error) throw new Error(created.error);
     resEl.textContent = 'Writing pillar…';
-    const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: guidance || undefined });
+    const drPicked = drSelectedSources();
+    const drBlock = drSourcesBlock(drPicked);
+    if (DR.job && drPicked.length) w('digestResearch', { op: 'attach', jobId: DR.job.id, titleId: created.id, sources: drPicked }).catch(() => {});
+    const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: [guidance, drBlock].filter(Boolean).join('\n\n') || undefined });
     if (pillarRes.error) throw new Error(pillarRes.error);
     resEl.textContent = 'Generating idea backlog…';
-    const ideasRes = await w('generateDigestIdeas', { campaignId: CAMPAIGN_ID, productId, guidance: guidance || undefined });
+    const ideasRes = await w('generateDigestIdeas', { campaignId: CAMPAIGN_ID, productId, guidance: [guidance, drPicked.filter(s => s.split === 'premium').length ? 'Premium-tier sources this week:\n' + drPicked.filter(s => s.split === 'premium').map(s => '- ' + s.claim + ' (' + (s.publisher || s.url) + ')').join('\n') : ''].filter(Boolean).join('\n\n') || undefined });
     if (ideasRes.error) throw new Error(ideasRes.error);
     DIGEST_IDEAS = { postIdeas: ideasRes.postIdeas || [], premiumIdeas: ideasRes.premiumIdeas || [] };
     renderDigestIdeas();
@@ -4698,9 +4729,163 @@ async function runDigestRun() {
     loadTitleAndAssetTab();
   } catch (e) {
     resEl.style.color = 'var(--stale)'; resEl.textContent = 'Error: ' + e.message;
-    btn.disabled = false; btn.textContent = '▶ Run';
+    btn.disabled = false; btn.textContent = '▶ Write digest';
   }
 }
+
+// ── 🔬 DIGEST RESEARCH (worker digestResearch) ───────────────────────
+// Keywords + standing sources → Gemini Deep Research (background, polled) ∥ Perplexity
+// (one long call) → Claude ranks + splits Free / Premium. The current run id is kept per
+// campaign in localStorage so closing the modal mid-research loses nothing.
+const DR = { job: null, timer: null, assoc: [], picked: {} };
+const drLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } };
+function drKeywords() { return document.getElementById('drKeywords').value.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }
+async function drOpen() {
+  const kw = drLS('dr:kw:' + CAMPAIGN_ID); if (kw && !document.getElementById('drKeywords').value) document.getElementById('drKeywords').value = kw;
+  drAssocLoad();
+  const jid = drLS('dr:job:' + CAMPAIGN_ID);
+  if (jid && (!DR.job || DR.job.id !== jid)) { try { const r = await w('digestResearch', { op: 'status', jobId: jid }); DR.job = r.job; } catch (e) { drLS('dr:job:' + CAMPAIGN_ID, null); } }
+  if (DR.job) { document.getElementById('drNotes').value = DR.job.notes || ''; drRender(); drPollMaybe(); }
+}
+async function drSuggest() {
+  const q = document.getElementById('drSuggestQ').value.trim() || drKeywords()[0] || '';
+  const out = document.getElementById('drSuggestOut'); if (!q) { out.style.display = 'block'; out.textContent = 'Type a phrase first.'; return; }
+  out.style.display = 'block'; out.textContent = 'Loading suggestions…';
+  try {
+    const r = await w('digestResearch', { op: 'suggest', q });
+    const chips = (list, label) => list.length ? `<div style="margin:4px 0;"><b style="color:var(--ink2);">${label}</b> ${list.map(s => `<button class="iconbtn" style="margin:2px;" onclick="drAddKw(this.dataset.k, this)" data-k="${esc(s)}">＋ ${esc(s)}</button>`).join('')}</div>` : '';
+    out.innerHTML = (chips(r.youtube || [], '▶ YouTube') + chips(r.google || [], '🔍 Google')) || 'No suggestions for that phrase.';
+  } catch (e) { out.textContent = 'Suggestions failed: ' + e.message; }
+}
+function drAddKw(k, btn) {
+  const cur = drKeywords(); if (!cur.map(x => x.toLowerCase()).includes(k.toLowerCase())) cur.push(k);
+  document.getElementById('drKeywords').value = cur.join('\n'); if (btn) { btn.disabled = true; btn.textContent = '✓ ' + k; }
+}
+async function drAssocLoad() {
+  try { const r = await w('digestResearch', { op: 'assoc', campaignId: CAMPAIGN_ID }); DR.assoc = r.list || []; } catch (e) { DR.assoc = []; }
+  drAssocRender();
+}
+function drAssocRender() {
+  document.getElementById('drAssocCount').textContent = `(${DR.assoc.length})`;
+  document.getElementById('drAssocList').innerHTML = DR.assoc.length ? DR.assoc.map((a, i) => `<div style="display:flex;gap:6px;align-items:center;margin:3px 0;">
+      <input class="finput" value="${esc(a.name)}" oninput="DR.assoc[${i}].name=this.value" placeholder="Organisation">
+      <input class="finput" value="${esc(a.publication || '')}" oninput="DR.assoc[${i}].publication=this.value" placeholder="Publication / report">
+      <input class="finput" value="${esc(a.url || '')}" oninput="DR.assoc[${i}].url=this.value" placeholder="https://…">
+      <button class="iconbtn" title="Remove" onclick="DR.assoc.splice(${i},1);drAssocRender()">✕</button></div>`).join('')
+    : '<div style="color:var(--ink3);">No associations yet — ✨ Propose list, or ＋ add your own. Saved per campaign.</div>';
+}
+function drAssocAdd() { DR.assoc.push({ name: '', publication: '', url: '' }); drAssocRender(); }
+async function drAssocSave(btn) {
+  btn.disabled = true; btn.textContent = 'Saving…';
+  try { const r = await w('digestResearch', { op: 'assoc', sub: 'save', campaignId: CAMPAIGN_ID, list: DR.assoc.filter(a => a.name.trim()) }); DR.assoc = r.list || []; drAssocRender(); btn.textContent = '✓ Saved'; }
+  catch (e) { btn.textContent = 'Save failed'; alert(e.message); }
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Save list'; }, 1500);
+}
+async function drAssocPropose(btn) {
+  btn.disabled = true; btn.textContent = '⏳ Working…';
+  const box = document.getElementById('drAssocProposed');
+  try {
+    const r = await w('digestResearch', { op: 'assoc', sub: 'propose', campaignId: CAMPAIGN_ID, hubName: CAMPAIGN_NAME, keywords: drKeywords() });
+    const have = new Set(DR.assoc.map(a => a.name.toLowerCase()));
+    const list = (r.proposed || []).filter(a => !have.has((a.name || '').toLowerCase()));
+    DR.proposed = list;
+    box.innerHTML = list.length ? `<div style="color:var(--ink3);margin-bottom:4px;">Tick the ones to add, then Save list. Check each before relying on it.</div>` + list.map((a, i) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:3px 0;cursor:pointer;"><input type="checkbox" onchange="drAssocTake(${i}, this)"><span><b>${esc(a.name)}</b>${a.publication ? ' — ' + esc(a.publication) : ''} ${a.url ? `<a href="${esc(a.url)}" target="_blank" rel="noopener">↗</a>` : ''}<br><span style="color:var(--ink3);">${esc(a.why || '')}</span></span></label>`).join('') : 'Nothing new proposed.';
+  } catch (e) { box.textContent = 'Propose failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = '✨ Propose list';
+}
+function drAssocTake(i, cb) {
+  const a = DR.proposed[i]; if (!a) return;
+  if (cb.checked) DR.assoc.push({ name: a.name, publication: a.publication || '', url: a.url || '' });
+  else DR.assoc = DR.assoc.filter(x => x.name !== a.name);
+  drAssocRender();
+}
+async function drStart() {
+  const keywords = drKeywords(); const st = document.getElementById('drStatus');
+  if (!keywords.length) { st.textContent = 'Enter at least one keyword.'; st.style.color = 'var(--stale)'; return; }
+  drLS('dr:kw:' + CAMPAIGN_ID, keywords.join('\n'));
+  const btn = document.getElementById('drRunBtn'); btn.disabled = true; btn.textContent = '⏳ Starting…'; st.style.color = 'var(--ink3)';
+  try {
+    const r = await w('digestResearch', { op: 'start', campaignId: CAMPAIGN_ID, hubName: CAMPAIGN_NAME, keywords,
+      guidance: document.getElementById('digestGuidance').value.trim(), notes: document.getElementById('drNotes').value.trim(),
+      urls: document.getElementById('drUrls').value.split(/\s+/).filter(Boolean) });
+    DR.job = r.job; DR.picked = {}; drLS('dr:job:' + CAMPAIGN_ID, DR.job.id);
+    drRender();
+    if (DR.job.perplexity && DR.job.perplexity.status === 'pending') {
+      w('digestResearch', { op: 'perplexity', jobId: DR.job.id }).then(x => { if (DR.job && x.job.id === DR.job.id) { DR.job = x.job; drRender(); drMaybeRank(); } })
+        .catch(e => { if (DR.job) { DR.job.perplexity = { status: 'failed', error: e.message }; drRender(); drMaybeRank(); } });
+    }
+    drPollMaybe();
+  } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = '🔎 Run research';
+}
+function drPollMaybe() {
+  clearTimeout(DR.timer);
+  if (!DR.job || DR.job.ranked) return;
+  if (DR.job.gemini && DR.job.gemini.status === 'running') DR.timer = setTimeout(drPoll, 15000);
+  else drMaybeRank();
+}
+async function drPoll() {
+  if (!DR.job) return;
+  try { const r = await w('digestResearch', { op: 'status', jobId: DR.job.id }); const keepP = DR.job.perplexity; DR.job = r.job; if (keepP && keepP.status !== 'pending' && r.job.perplexity.status === 'pending') DR.job.perplexity = keepP; drRender(); }
+  catch (e) { /* keep polling */ }
+  drPollMaybe();
+}
+function drDone(x) { return !x || ['done', 'failed', 'skipped'].includes(x.status); }
+async function drMaybeRank(force) {
+  const j = DR.job; if (!j || DR.ranking) return;
+  if (!force && (j.ranked || !drDone(j.gemini) || !drDone(j.perplexity))) return;
+  DR.ranking = true; drRender();
+  try { const r = await w('digestResearch', { op: 'rank', jobId: j.id, notes: document.getElementById('drNotes').value.trim() }); DR.job = r.job; DR.picked = {}; }
+  catch (e) { document.getElementById('drStatus').textContent = 'Ranking failed: ' + e.message; }
+  DR.ranking = false; drRender();
+}
+function drSrcState(x, label) {
+  if (!x) return '';
+  const m = { running: '⏳ researching (a few minutes)…', pending: '⏳ researching…', done: `✓ done${x.results ? ` · ${x.results} results` : ''}`, failed: '✗ ' + (x.error || 'failed'), skipped: '– skipped: ' + (x.error || '') };
+  return `<div><b>${label}</b> ${esc(m[x.status] || x.status)}</div>`;
+}
+function drRender() {
+  const j = DR.job, st = document.getElementById('drStatus'), box = document.getElementById('drRanked');
+  if (!j) { box.innerHTML = ''; return; }
+  st.style.color = 'var(--ink3)';
+  st.textContent = DR.ranking ? '⏳ Ranking sources…' : j.ranked ? `Ranked ${new Date(j.rankedAt).toLocaleString()}` : `Run ${j.id} · ${j.keywords.length} keywords · ${j.standing.creators} creators · ${j.standing.associations} associations`;
+  let h = `<div style="font-size:11px;background:var(--surface2);border-radius:6px;padding:6px 8px;">${drSrcState(j.gemini, 'Gemini Deep Research:')}${drSrcState(j.perplexity, 'Perplexity:')}
+    <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${!j.ranked && !DR.ranking ? '<button class="iconbtn" onclick="drMaybeRank(true)">Rank now with what has finished</button>' : ''}${j.ranked ? '<button class="iconbtn" onclick="drMaybeRank(true)">↻ Re-rank (uses editor notes)</button><button class="iconbtn" onclick="drCopyNotebook(this)">📋 Copy sources for NotebookLM</button>' : ''}<button class="iconbtn" onclick="drClear()">✕ Clear run</button></div></div>`;
+  if (j.ranked) {
+    const R = j.ranked, srcs = R.sources || [];
+    if (R.whatChanged) h += `<div style="font-size:11.5px;margin:8px 0 2px;"><b>What changed:</b> ${esc(R.whatChanged)}</div>`;
+    const group = (split, title, angle) => {
+      const list = srcs.filter(s => s.split === split);
+      return `<div style="margin-top:8px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);">${title} (${list.length})</div>${angle ? `<div style="font-size:11px;color:var(--ink3);margin:2px 0 4px;">${esc(angle)}</div>` : ''}
+        ${list.map(s => { const i = srcs.indexOf(s); const on = DR.picked[i] !== false; return `<label style="display:flex;gap:7px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:11.5px;">
+          <input type="checkbox" ${on ? 'checked' : ''} onchange="DR.picked[${i}]=this.checked">
+          <span style="flex:1;"><span style="font-family:var(--mono);font-size:10px;color:var(--ink3);">${s.score} · T${s.tier}${s.date ? ' · ' + esc(s.date) : ''}${s.isNew === false ? '' : ' · 🆕'}</span>
+          <b>${esc(s.title || s.url)}</b> <span style="color:var(--ink3);">${esc(s.publisher || '')}</span> ${/^https?:/.test(s.url) ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">↗</a>` : ''}<br>${esc(s.claim || '')}</span></label>`; }).join('') || '<div style="font-size:11px;color:var(--ink3);">none</div>'}</div>`;
+    };
+    h += group('premium', '💎 Premium', R.premiumAngle) + group('free', '📰 Free', R.freeAngle);
+    h += `<div style="font-size:11px;color:var(--ink3);margin-top:6px;">Ticked sources go into the digest when you press ▶ Write digest.</div>`;
+  }
+  box.innerHTML = h;
+}
+function drSelectedSources() { const s = (DR.job && DR.job.ranked && DR.job.ranked.sources) || []; return s.filter((x, i) => DR.picked[i] !== false); }
+function drSourcesBlock(list) {
+  if (!list.length) return '';
+  const line = s => `- [T${s.tier}, ${s.date || 'undated'}] ${s.claim} — ${s.publisher || ''} ${/^https?:/.test(s.url) ? s.url : ''}`.trim();
+  const prem = list.filter(s => s.split === 'premium'), free = list.filter(s => s.split !== 'premium');
+  const R = DR.job.ranked || {};
+  return `RESEARCHED SOURCES (ranked; write ONLY from these facts and cite the publisher by name):
+${R.whatChanged ? 'What changed this week: ' + R.whatChanged + '\n' : ''}FREE-TIER ITEMS${R.freeAngle ? ' (angle: ' + R.freeAngle + ')' : ''}:
+${free.map(line).join('\n') || '- none'}
+PREMIUM ITEMS — tease these in the free issue, do not give them away${R.premiumAngle ? ' (angle: ' + R.premiumAngle + ')' : ''}:
+${prem.map(line).join('\n') || '- none'}`;
+}
+async function drCopyNotebook(btn) {
+  const list = drSelectedSources();
+  const txt = list.filter(s => /^https?:/.test(s.url)).map(s => s.url).join('\n');
+  try { await navigator.clipboard.writeText(txt); btn.textContent = `✓ ${list.length} URLs copied — paste into NotebookLM › Add source › Website`; }
+  catch (e) { btn.textContent = 'Copy failed'; }
+}
+function drClear() { clearTimeout(DR.timer); DR.job = null; DR.picked = {}; drLS('dr:job:' + CAMPAIGN_ID, null); document.getElementById('drStatus').textContent = ''; drRender(); }
 
 // ── PUBLISH DIGEST EMAIL ─────────────────────────────────────────────
 let PUB_DIGEST_TITLE_ID = null;
