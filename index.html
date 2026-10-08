@@ -905,6 +905,7 @@
          buttons), per operator direction. -->
     <!-- Bulk actions for any record type: the row checkbox picks the ASSET (or the title / product of a row with none);
          the small boxes in the Title and Product cells pick those records. The form acts on one type at a time. -->
+    <div id="dev2BkJobs" style="display:none;margin-bottom:10px;padding:8px 12px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);font-size:11.5px;max-height:340px;overflow:auto;"></div>
     <div id="dev2BulkBar" style="display:none;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:rgba(255,80,80,.08);border:1px solid #5a2020;border-radius:6px;font-size:12px;">
       <b style="color:var(--text2);">Bulk actions</b>
       <span id="dev2BulkCount" style="color:var(--text2);"></span>
@@ -10761,43 +10762,61 @@ async function dev2BulkApply(btn) {
     if (ids.length === 1) window.open(out.querySelector('a').href, '_blank', 'noopener');
     msg.textContent = ids.length === 1 ? 'Opened in care-gap.' : `${ids.length} links below — each opens its Publish modal.`; return;
   }
-  // Every action runs up to DEV2_BULK_CONC items at once; each item has its own live line (queued → working → ✓ / ✗).
-  if (act === 'research' || act === 'pillar') { if (!confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one (${DEV2_BULK_CONC} at a time).`)) return; }
+  // ── queue it: snapshot the batch, clear the selection (pick the next set while this runs), return at once.
+  // All batches share one pool of DEV2_BULK_CONC; each item has a live line in the jobs panel.
+  if (act === 'research' || act === 'pillar') { if (!confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one (up to ${DEV2_BULK_CONC} at a time across all batches).`)) return; }
   if (act === 'del' && !confirm(`Delete (archive in Notion) ${ids.length} ${label}?`)) return;
-  btn.disabled = true; out.style.display = '';
-  out.innerHTML = ids.map((id, n) => `<div id="dev2BkI${n}" style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);"><span class="st" style="width:84px;flex-shrink:0;color:var(--text3);">queued</span><b style="flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(nameOf(id))}</b><span class="ln" style="color:var(--text2);"></span></div>`).join('');
-  const line = (n, st, txt, col) => { const el = document.getElementById('dev2BkI' + n); if (!el) return; const a = el.querySelector('.st'); a.textContent = st; a.style.color = col || 'var(--text3)'; if (txt !== undefined) el.querySelector('.ln').textContent = txt; };
-  let ok = 0, bad = 0, next = 0, running = 0;
-  const tick = () => { msg.textContent = `${ok + bad} / ${ids.length} done · ${running} working${bad ? ` · ${bad} failed` : ''}`; };
-  const runOne = async n => {
-    const id = ids[n], row = rowOf(t, id), step = txt => line(n, '⏳ working', txt, '#f6ad55');
-    step('');
-    if (act === 'kw') { const r = await call(t === 'p' ? 'generateProductKeywords' : 'regenerateTitleKeywords', t === 'p' ? { productId: id } : { titleId: id }); if (r.error) throw new Error(r.error); return r.keywords || ''; }
-    if (act === 'pillar') { step('writing ' + val + ' pillar…'); const r = await call('writeTitlePillar', { titleId: id, styleGuidance: DEV2_PILLAR_TYPES[val] }); if (r.error) throw new Error(r.error); return `${val} pillar written (${r.wordCount || '?'} words)`; }
-    if (act === 'research') {   // every strategy field, regenerated then saved (same as the Content Hubs product research modal)
-      const fails = [];
-      for (let f = 0; f < HUB_STRATEGY_FIELDS.length; f++) { const fld = HUB_STRATEGY_FIELDS[f]; step(`${fld} (${f + 1}/${HUB_STRATEGY_FIELDS.length})`);
-        try { const r = await call('regenerateStrategyField', { productId: id, campaignId: row.campId, field: fld }); if (r.error) throw new Error(r.error);
-          const u = await call('updateProductStrategyField', { productId: id, field: fld, value: r.text }); if (u && u.error) throw new Error(u.error); } catch (e) { fails.push(fld); } }
-      if (fails.length === HUB_STRATEGY_FIELDS.length) throw new Error('every field failed');
-      return fails.length ? `done — ${fails.length} field(s) failed: ${fails.join(', ')}` : `all ${HUB_STRATEGY_FIELDS.length} research fields refreshed`;
-    }
-    let r;
-    if (act === 'del') r = await call(t === 'a' ? 'deleteAsset' : 'deleteTitle', t === 'a' ? { assetId: id } : { titleId: id });
-    else if (act === 'hubSection') r = await call('updateAllOutputField', { field: 'hubSection', assetId: id, value: /^\(none/.test(val) ? '' : val });
-    else r = await call('updateAllOutputField', { field: 'status', kind: t === 'a' ? 'asset' : t === 'p' ? 'product' : 'title', assetId: t === 'a' ? id : undefined, titleId: t === 't' ? id : undefined, productId: t === 'p' ? id : undefined, value: val });
-    if (r && r.error) throw new Error(r.error);
-    return act === 'del' ? 'archived' : 'set to ' + val;
-  };
-  const worker = async () => { while (next < ids.length) { const n = next++; running++; tick();
-    try { const res = await runOne(n); ok++; line(n, '✓ done', res, '#4ade80'); } catch (e) { bad++; line(n, '✗ failed', e.message, 'var(--danger)'); }
-    running--; tick(); } };
-  await Promise.all(Array.from({ length: Math.min(DEV2_BULK_CONC, ids.length) }, worker));
-  msg.textContent = `✓ ${ok} ${label} done${bad ? ` · ${bad} failed` : ''}`; btn.disabled = false;
-  if (act === 'status' || act === 'hubSection' || act === 'del') {
-    if (t === 't') DEV2_SEL_T.clear(); if (t === 'p') DEV2_SEL_P.clear(); if (t === 'a') DEV2_SELECTED.clear();
-    loadDev2();   // the result lines stay in the form (it is outside the table)
+  const b = ++DEV2_JOBS.n, jobs = document.getElementById('dev2BkJobs');
+  const rows = ids.map(id => ({ id, row: rowOf(t, id), name: nameOf(id) }));
+  const head = `${DEV2_BULK[t].label} · ${DEV2_BULK[t].acts[act].label}${DEV2_BULK[t].acts[act].vals ? ' → ' + val : ''}`;
+  jobs.style.display = '';
+  jobs.insertAdjacentHTML('afterbegin', `<div id="dev2Jb${b}" style="margin-bottom:8px;"><div style="display:flex;gap:8px;align-items:center;font-weight:600;color:var(--text);"><span>Batch ${b}: ${esc(head)}</span><span class="bs" style="font-weight:400;color:var(--text3);"></span><button onclick="this.closest('[id^=dev2Jb]').remove();dev2JobsTidy()" style="margin-left:auto;font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;" title="Hide this batch's lines (does not stop it)">✕</button></div>
+    ${rows.map((x, n) => `<div id="dev2Jb${b}i${n}" style="display:flex;gap:8px;padding:2px 0 2px 10px;border-bottom:1px solid var(--border);"><span class="st" style="width:84px;flex-shrink:0;color:var(--text3);">queued</span><b style="flex-shrink:0;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.name)}</b><span class="ln" style="color:var(--text2);"></span></div>`).join('')}</div>`);
+  const batch = { b, t, act, val, total: rows.length, ok: 0, bad: 0 };
+  rows.forEach((x, n) => DEV2_JOBS.q.push({ batch, n, ...x }));
+  if (t === 't') DEV2_SEL_T.clear(); if (t === 'p') DEV2_SEL_P.clear(); if (t === 'a') DEV2_SELECTED.clear();
+  msg.textContent = `Batch ${b} queued (${rows.length}) — select the next set any time.`;
+  renderDev2();
+  dev2JobsPump();
+}
+// ── shared bulk job pool ──
+const DEV2_JOBS = { n: 0, q: [], running: 0 };
+function dev2JobLine(it, st, txt, col) {
+  const el = document.getElementById(`dev2Jb${it.batch.b}i${it.n}`); if (!el) return;
+  const a = el.querySelector('.st'); a.textContent = st; a.style.color = col || 'var(--text3)'; if (txt !== undefined) el.querySelector('.ln').textContent = txt;
+}
+function dev2JobBatchStatus(batch) {
+  const el = document.querySelector(`#dev2Jb${batch.b} .bs`); if (!el) return;
+  const done = batch.ok + batch.bad;
+  el.textContent = done < batch.total ? `${done} / ${batch.total} done${batch.bad ? ` · ${batch.bad} failed` : ''}` : `✓ finished — ${batch.ok} ok${batch.bad ? ` · ${batch.bad} failed` : ''}${/^(status|hubSection|del)$/.test(batch.act) ? ' · ↻ reload the table to see it' : ''}`;
+}
+function dev2JobsTidy() { const j = document.getElementById('dev2BkJobs'); if (j && !j.children.length) j.style.display = 'none'; }
+function dev2JobsPump() {
+  while (DEV2_JOBS.running < DEV2_BULK_CONC && DEV2_JOBS.q.length) {
+    const it = DEV2_JOBS.q.shift(); DEV2_JOBS.running++;
+    dev2JobRun(it).then(res => { it.batch.ok++; dev2JobLine(it, '✓ done', res, '#4ade80'); }, e => { it.batch.bad++; dev2JobLine(it, '✗ failed', e.message, 'var(--danger)'); })
+      .finally(() => { DEV2_JOBS.running--; dev2JobBatchStatus(it.batch); dev2JobsPump(); });
   }
+}
+async function dev2JobRun(it) {
+  const { t, act, val } = it.batch, id = it.id, row = it.row, step = txt => dev2JobLine(it, '⏳ working', txt, '#f6ad55');
+  step(''); dev2JobBatchStatus(it.batch);
+  if (act === 'kw') { const r = await call(t === 'p' ? 'generateProductKeywords' : 'regenerateTitleKeywords', t === 'p' ? { productId: id } : { titleId: id }); if (r.error) throw new Error(r.error); return r.keywords || ''; }
+  if (act === 'pillar') { step('writing ' + val + ' pillar…'); const r = await call('writeTitlePillar', { titleId: id, styleGuidance: DEV2_PILLAR_TYPES[val] }); if (r.error) throw new Error(r.error); return `${val} pillar written (${r.wordCount || '?'} words)`; }
+  if (act === 'research') {   // every strategy field, regenerated then saved (same as the Content Hubs product research modal)
+    const fails = [];
+    for (let f = 0; f < HUB_STRATEGY_FIELDS.length; f++) { const fld = HUB_STRATEGY_FIELDS[f]; step(`${fld} (${f + 1}/${HUB_STRATEGY_FIELDS.length})`);
+      try { const r = await call('regenerateStrategyField', { productId: id, campaignId: row.campId, field: fld }); if (r.error) throw new Error(r.error);
+        const u = await call('updateProductStrategyField', { productId: id, field: fld, value: r.text }); if (u && u.error) throw new Error(u.error); } catch (e) { fails.push(fld); } }
+    if (fails.length === HUB_STRATEGY_FIELDS.length) throw new Error('every field failed');
+    return fails.length ? `done — ${fails.length} field(s) failed: ${fails.join(', ')}` : `all ${HUB_STRATEGY_FIELDS.length} research fields refreshed`;
+  }
+  let r;
+  if (act === 'del') r = await call(t === 'a' ? 'deleteAsset' : 'deleteTitle', t === 'a' ? { assetId: id } : { titleId: id });
+  else if (act === 'hubSection') r = await call('updateAllOutputField', { field: 'hubSection', assetId: id, value: /^\(none/.test(val) ? '' : val });
+  else r = await call('updateAllOutputField', { field: 'status', kind: t === 'a' ? 'asset' : t === 'p' ? 'product' : 'title', assetId: t === 'a' ? id : undefined, titleId: t === 't' ? id : undefined, productId: t === 'p' ? id : undefined, value: val });
+  if (r && r.error) throw new Error(r.error);
+  return act === 'del' ? 'archived' : 'set to ' + val;
 }
 function dev2UpdateBulkBar() {
   const bar = document.getElementById('dev2BulkBar');
