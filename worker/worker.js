@@ -10616,14 +10616,7 @@ export default {
         const _seen = new Set();
         const products = cards.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
         return json({ products, hasIndex });
-      } catch (e) {
-        if (slug) {
-          try {
-            const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/offers/offers.json`);
-            const list = pr.ok ? await pr.json() : [];
-            if (Array.isArray(list) && list.length) return json({ hasIndex: true, products: list.slice(0, 24).map(o => ({ kicker: String(o.kicker || ""), title: String(o.name || "Untitled"), excerpt: String(o.promise || ""), url: `./offers/${o.slug}/` })) });
-          } catch (e2) {}
-        }
+      } catch (e) {   // assets only (2026-10-08): no static offers.json fallback — a Notion error shows an empty section, never old items
         return json({ products: [], error: e.message });
       }
     }
@@ -10733,15 +10726,7 @@ export default {
         const _seen = new Set();
         const deduped = posts.filter(c => { if (!c.url) return false; if (_seen.has(c.url)) return false; _seen.add(c.url); return true; });
         return json({ posts: deduped, hasIndex });
-      } catch (e) {
-        // Notion failed — last-ditch posts.json so the hub isn't blanked
-        if (slug) {
-          try {
-            const pr = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/blog/posts.json`);
-            const list = pr.ok ? await pr.json() : [];
-            if (Array.isArray(list) && list.length) return json({ hasIndex: true, posts: list.slice(0, lim).map(p => ({ kicker: "Article", title: String(p.title || "Untitled"), excerpt: String(p.intro || ""), url: `./blog/${p.slug}/` })) });
-          } catch (e2) {}
-        }
+      } catch (e) {   // assets only (2026-10-08): no static posts.json fallback — a Notion error shows an empty section, never old items
         return json({ posts: [], error: e.message });
       }
     }
