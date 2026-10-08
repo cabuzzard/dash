@@ -12102,7 +12102,7 @@ Return ONLY this minified JSON object, nothing before or after:
             // just-saved brief and FREEZE it on the Research record. Every
             // offer plate + the card's spec field read this stored version.
             let specNote = "";
-            if (researchId && env.ANTHROPIC_API_KEY) {
+            if (researchId && env.ANTHROPIC_API_KEY && !body.keepSpec) {   // keepSpec: the Design editor saves the spec on its own
               try {
                 const db = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { headers: hdr }).then(r => r.json());
                 if (!db.properties?.["Image Spec"]) await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, {
@@ -30878,6 +30878,79 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         if (!override && brief.storedSpec && brief.storedSpec.length > 200) { text = brief.storedSpec; stored = true; }
         else { try { text = await writeImageSpec(env, brief); } catch (e) { return json({ error: e.message }, 502); } }
         return json({ text, stored, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
+      }
+
+      // -- designFromRankedSites: the visual direction the TOP-RANKED sites for this campaign's keywords already use.
+      //    One web_search Claude call looks at what ranks for the main keywords and writes Visual Register /
+      //    Photography Direction / Visual Avoid to emulate that proven look (staged by the Design editor, not saved here).
+      if (body.action === "designFromRankedSites") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const dashed = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`;
+        let kw = String(body.keywords || "").trim(), campName = "";
+        try {
+          const camp = await fetch(`https://api.notion.com/v1/pages/${dashed}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+          campName = (camp.properties?.Name?.title || []).map(t => t.plain_text).join("");
+          if (!kw) {
+            const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashed } } }).catch(() => []);
+            const k = r => (r.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").trim();
+            kw = rows.map(k).sort((a, b) => b.length - a.length)[0] || (camp.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+          }
+        } catch (e) {}
+        const terms = kw.split(/[,\n;]/).map(x => x.trim()).filter(Boolean).slice(0, 6);
+        if (!terms.length) return json({ error: "No keywords on this campaign — add Main Keywords first" }, 400);
+        const prompt = `Research the visual language of the TOP-RANKING websites for these Google searches (the campaign "${campName}"):
+${terms.map(t => "- " + t).join("\n")}
+
+Use web search on the main 3-4 terms. For the organic results that rank on page one (skip ads and marketplaces), look at what their imagery shows: subjects and settings, people or not, camera viewpoint (aerial/drone, street level, interior, close-up), light (time of day, warm/cool), colour and grade, photo vs illustration. Find the shared pattern — that is the proven look for this search intent.
+
+Then write the campaign's visual direction to EMULATE that proven look (same visual family, so the site reads as belonging in these results) without copying any one site:
+- "register": 1-2 sentences, the overall look and mood
+- "photography": 3-5 sentences, the real images that belong — subjects, settings, viewpoint, light, colour, finish; say plainly whether people belong, based on what ranks
+- "avoid": semicolon-separated looks that ranking sites do NOT use or that would read wrong for this audience
+- "notes": 1-3 sentences a designer must keep in mind for this look
+- "sites": up to 6 strings "domain — one line on its imagery"
+Base every choice on what you actually saw ranking, not on generic design taste.${(body.current && (body.current.register || body.current.photography || body.current.avoid)) ? `
+CURRENT DIRECTION (build on it where it agrees with what ranks; where it contradicts what ranks, follow what ranks):
+Register: ${String(body.current.register || "").slice(0, 600)}
+Photography: ${String(body.current.photography || "").slice(0, 1200)}
+Avoid: ${String(body.current.avoid || "").slice(0, 600)}${body.current.notes ? "\nNotes: " + String(body.current.notes).slice(0, 1500) : ""}` : ""}${body.instructions ? `
+OPERATOR'S REQUEST: ${String(body.instructions).slice(0, 1200)}` : ""}
+Reply with ONE JSON object only: {"register":"…","photography":"…","avoid":"…","notes":"…","sites":["…"]}`;
+        const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 6 }], messages: [{ role: "user", content: prompt }] }) });
+        const ad = await ar.json().catch(() => ({}));
+        if (!ar.ok) return json({ error: ad.error?.message || "Claude API error" }, 502);
+        let raw = ""; for (const b of (ad.content || [])) if (b.type === "text") raw += b.text;
+        let d; try { const a = raw.indexOf("{"), z = raw.lastIndexOf("}"); d = JSON.parse(sanitizeJsonControlChars(raw.slice(a, z + 1))); }
+        catch (e) { return json({ error: "Couldn't read the research result" }, 502); }
+        return json({ ok: true, keywords: terms, design: { register: String(d.register || "").trim(), photography: String(d.photography || "").trim(), avoid: String(d.avoid || "").trim(), notes: String(d.notes || "").trim() },
+          sites: Array.isArray(d.sites) ? d.sites.slice(0, 6).map(x => String(x).slice(0, 200)) : [] });
+      }
+
+      // -- designFromGrok: Grok (xAI chat) writes the visual direction from the campaign record — additive to the
+      //    current staged direction. Same four fields the Design editor stages: register / photography / avoid / notes.
+      if (body.action === "designFromGrok") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const XAI = (env.XAI_API_KEY || "").trim(); if (!XAI) return json({ error: "XAI_API_KEY not configured" }, 500);
+        const brief = await assembleImageBrief(env, { campaignId: cid });
+        const cur = body.current || {};
+        const prompt = `You are setting the VISUAL DIRECTION for a campaign website and every image made for it. Use what you know about this niche and what currently ranks and performs for it.
+CAMPAIGN RECORD (keywords, research, product research):
+${brief.facts.join("\n").slice(0, 12000)}
+${(cur.register || cur.photography || cur.avoid) ? `\nCURRENT DIRECTION (build on it — keep what fits, sharpen or replace what doesn't):\nRegister: ${String(cur.register || "").slice(0, 600)}\nPhotography: ${String(cur.photography || "").slice(0, 1200)}\nAvoid: ${String(cur.avoid || "").slice(0, 600)}\nNotes: ${String(cur.notes || "").slice(0, 1500)}\n` : ""}${body.instructions ? `\nOPERATOR'S REQUEST FOR THIS RUN: ${String(body.instructions).slice(0, 1500)}\n` : ""}
+Reply with ONE JSON object only:
+{"register":"1-2 sentences — the overall look and mood, concrete to this subject","photography":"3-5 sentences — the real images that belong: subjects, settings, viewpoint, light (time of day, warm/cool), colour, finish; say whether people belong","avoid":"semicolon-separated looks to reject","notes":"1-3 sentences a designer must keep in mind (optional)"}`;
+        const r = await fetch("https://api.x.ai/v1/chat/completions", { method: "POST", headers: { "Authorization": `Bearer ${XAI}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "grok-4.6", messages: [{ role: "user", content: prompt }], max_tokens: 1500 }) });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) return json({ error: (d.error && (d.error.message || d.error)) || `xAI error (${r.status})` }, 502);
+        const raw = String(d.choices?.[0]?.message?.content || "");
+        let o; try { const a = raw.indexOf("{"), z = raw.lastIndexOf("}"); o = JSON.parse(sanitizeJsonControlChars(raw.slice(a, z + 1))); } catch (e) { return json({ error: "Couldn't read Grok's reply" }, 502); }
+        return json({ ok: true, design: { register: String(o.register || "").trim(), photography: String(o.photography || "").trim(), avoid: String(o.avoid || "").trim(), notes: String(o.notes || "").trim() } });
       }
 
       // -- reviseImageSpec: fold an operator's direction INTO the current image spec (additive — everything else kept).
