@@ -1061,6 +1061,31 @@ async function bufferDecrypt(env, rec) {
   const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: u(rec.iv) }, await bufferCipherKey(env), u(rec.ct));
   return new TextDecoder().decode(pt);
 }
+// Claude's initial hub design (the hubs.design.json entry scaffoldHub writes) → campaign Research fields.
+// ADDITIVE: a field already holding text is left alone; the brief (signature / risk / type / avoided) is added to
+// Design Notes once (marker line), so nothing a later save wrote is overwritten. Returns the Notion property patch.
+const HUB_INITIAL_MARK = "— Initial design (Claude, hub creation) —";
+function hubInitialDesignProps(entry, props) {
+  const rt = k => ((props || {})[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  const R = v => { const t = String(v || ""), out = []; for (let i = 0; i < Math.max(t.length, 1); i += 1900) out.push({ type: "text", text: { content: t.slice(i, i + 1900) } }); return { rich_text: out }; };
+  const d = (entry && entry.design) || {}, tk = (entry && entry.tokens) || {}, f = (entry && entry.fonts) || {}, patch = {};
+  const PK = ["bg", "surface", "ink", "ink-head", "ink-soft", "line", "sea", "deep", "deep-ink", "accent"];
+  if (!rt("Palette") && PK.every(k => tk[k])) { const pal = Object.fromEntries(PK.map(k => [k, tk[k]]));
+    patch.Palette = R(`Initial palette — Claude, at hub creation.\n\n${PK.map(k => `${k} ${pal[k]}`).join(" · ")}\n\n${JSON.stringify(pal)}`); }
+  if (!rt("Fonts") && f.display) patch.Fonts = R(`Initial fonts — Claude, at hub creation.\n\n${JSON.stringify({ display: f.display, body: f.body || "Inter", mono: f.mono || "IBM Plex Mono" })}`);
+  const reg = d.register || [d.subject, d.job].filter(Boolean).join(" — ");
+  if (!rt("Visual Register") && reg) patch["Visual Register"] = R(reg);
+  if (!rt("Photography Direction") && d.photography) patch["Photography Direction"] = R(d.photography);
+  const avoid = d.avoid || (Array.isArray(d.avoided) ? d.avoided.join("; ") : "");
+  if (!rt("Visual Avoid") && avoid) patch["Visual Avoid"] = R(avoid);
+  const notes = rt("Design Notes");
+  if (!notes.includes(HUB_INITIAL_MARK)) {
+    const brief = [d.audience && `Audience: ${d.audience}`, d.type && `Type: ${d.type}`, d.signature && `Signature element: ${d.signature}`, d.risk && `Aesthetic risk: ${d.risk}`,
+      Array.isArray(d.avoided) && d.avoided.length && `Avoided: ${d.avoided.join("; ")}`].filter(Boolean).join("\n");
+    if (brief) patch["Design Notes"] = R([notes, HUB_INITIAL_MARK + "\n" + brief].filter(Boolean).join("\n\n"));
+  }
+  return patch;
+}
 // Main offerings: KV hub:mainproduct:<campaignId> = JSON list of product ids (first = primary — what hub
 // generation / image briefs read). A bare id is the old single-choice format.
 async function hubMainList(env, cid) {
@@ -12486,7 +12511,8 @@ Fonts must be chosen from: Space Grotesk, Inter, IBM Plex Sans, IBM Plex Mono, J
 Tokens are hex; aim for WCAG AA text contrast (ink on bg, ink-soft on bg, deep-ink on deep).
 
 Return: {
- "design": { "subject": "...", "audience": "...", "job": "...", "type": "one sentence on the type pairing + why", "signature": "the signature visual element", "risk": "the one aesthetic risk", "avoided": ["2-3 things deliberately avoided"] },
+ "design": { "subject": "...", "audience": "...", "job": "...", "type": "one sentence on the type pairing + why", "signature": "the signature visual element", "risk": "the one aesthetic risk", "avoided": ["2-3 things deliberately avoided"],
+   "register": "1-2 sentences — the overall look and mood, concrete to this subject", "photography": "3-4 sentences — the real images that belong: subjects and settings, the light, how the palette shows up in a photo, the medium/finish; say whether people belong", "avoid": "semicolon-separated AI / stock-photo / cliché looks to reject" },
  "tokens": { "bg": "#..", "surface": "#..", "ink": "#..", "ink-head": "#..", "ink-soft": "#..", "line": "#..", "sea": "#..", "deep": "#..", "deep-ink": "#..", "accent": "#.." },
  "fonts": { "display": "..", "body": "..", "mono": ".." },
  "hub": {
@@ -12629,12 +12655,19 @@ Return: {
                 job: String(p.design?.job || "").slice(0, 300), type: String(p.design?.type || "").slice(0, 400),
                 signature: String(p.design?.signature || "").slice(0, 400), risk: String(p.design?.risk || "").slice(0, 400),
                 avoided: Array.isArray(p.design?.avoided) ? p.design.avoided.slice(0, 4).map(x => String(x).slice(0, 200)) : [],
+                register: String(p.design?.register || "").slice(0, 600), photography: String(p.design?.photography || "").slice(0, 1200), avoid: String(p.design?.avoid || "").slice(0, 600),
                 superseded: "First palette — seeded by scaffoldHub.",
               },
             };
             spec.hubs = Object.fromEntries(Object.entries(spec.hubs).sort());
             await ghPut("web/hub/hubs.design.json", JSON.stringify(spec, null, 2) + "\n", `hub: ${slug} design.json entry`, dsF.sha);
             committed.push("hubs.design.json");
+            if (researchId) { try {
+              const rpg = await fetch(`https://api.notion.com/v1/pages/${dashHb(researchId)}`, { headers: nhdr }).then(r => r.json());
+              const patch = hubInitialDesignProps(spec.hubs[slug], rpg.properties || {});
+              if (Object.keys(patch).length) { const wr = await fetch(`https://api.notion.com/v1/pages/${dashHb(researchId)}`, { method: "PATCH", headers: nhdr, body: JSON.stringify({ properties: patch }) });
+                if (wr.ok) committed.push("research design (" + Object.keys(patch).join(", ") + ")"); }
+            } catch (e) { /* the hub still ships; the backfill can fill the record later */ } }
           }
 
           // 5. register the hub. worker.js is too big for the Contents API

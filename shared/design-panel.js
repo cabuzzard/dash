@@ -88,6 +88,33 @@
         S.stage.fonts = r.fonts; S.busy = ''; S.open.fonts = true; say('Fonts updated: ' + [r.fonts.display, r.fonts.body, r.fonts.mono].join(' · ') + ' — staged.', 'ok');
       } catch (err) { S.busy = ''; say('Fonts failed: ' + err.message, 'bad'); }
     }
+    // Claude's initial design (the hub's hubs.design.json entry from creation) — added onto the stage: empty fields
+    // are filled, the brief is appended to Design notes once. Nothing already there is replaced.
+    async function claudeInitial() {
+      if (!S.slug) return say('This campaign has no hub, so there is no Claude initial design.', 'bad');
+      S.busy = 'Reading Claude’s initial design…'; render();
+      try {
+        const dj = await fetch('https://raw.githubusercontent.com/cabuzzard/dash/main/web/hub/hubs.design.json?t=' + Date.now()).then(r => r.json());
+        const en = (dj.hubs || {})[S.slug]; if (!en) throw new Error('no entry for this hub');
+        const d = en.design || {}, s = S.stage, got = [];
+        const keys = ROLES.map(([k]) => k);
+        if (!s.palette && en.tokens && keys.every(k => en.tokens[k])) { s.palette = Object.fromEntries(keys.map(k => [k, en.tokens[k]])); got.push('palette'); }
+        if (!(s.fonts && s.fonts.display) && en.fonts && en.fonts.display) { s.fonts = { display: en.fonts.display, body: en.fonts.body || 'Inter', mono: en.fonts.mono || 'IBM Plex Mono' }; got.push('fonts'); }
+        const reg = d.register || [d.subject, d.job].filter(Boolean).join(' — ');
+        if (!s.register && reg) { s.register = reg; got.push('register'); }
+        if (!s.photography && d.photography) { s.photography = d.photography; got.push('photography'); }
+        const av = d.avoid || (Array.isArray(d.avoided) ? d.avoided.join('; ') : '');
+        if (!s.avoid && av) { s.avoid = av; got.push('avoid'); }
+        const MARK = '— Initial design (Claude, hub creation) —';
+        if (!(s.notes || '').includes(MARK)) {
+          const brief = [d.audience && 'Audience: ' + d.audience, d.type && 'Type: ' + d.type, d.signature && 'Signature element: ' + d.signature, d.risk && 'Aesthetic risk: ' + d.risk,
+            Array.isArray(d.avoided) && d.avoided.length && 'Avoided: ' + d.avoided.join('; ')].filter(Boolean).join('\n');
+          if (brief) { s.notes = [s.notes, MARK + '\n' + brief].filter(Boolean).join('\n\n'); got.push('notes (brief added)'); }
+        }
+        S.busy = ''; S.open.direction = true;
+        say(got.length ? 'Added from Claude’s initial design: ' + got.join(', ') + '. 💾 Save to keep it.' : 'Everything from Claude’s initial design is already in this design.', 'ok');
+      } catch (err) { S.busy = ''; say('Could not read the initial design: ' + err.message, 'bad'); }
+    }
     async function openKeywords() {
       S.kw = { text: 'Loading the keywords…', note: '', loading: true }; render();
       try { const r = await call('getHubKeywords', { slug: S.slug }); S.kw = { text: r.keywords || '', note: r.keywords ? 'From the ' + (r.source || 'campaign') + (r.productName ? ' — ' + r.productName : '') + '. Edit freely.' : 'No keywords on file — type some.' }; }
@@ -241,6 +268,7 @@ Strip the // comments from the JSON.`;
         <textarea data-in="steer" rows="2" placeholder="e.g. keep it dark · primary a deep teal · warmer light · no orange" style="${TA}margin:3px 0 8px;">${e(S.steer)}</textarea>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">
           <button ${dis} data-act="genDir" style="${BTNP}">↻ Claude design</button>
+          ${S.slug ? `<button ${dis} data-act="claudeInit" title="Add the design Claude made when the hub was created (fills empty fields, adds its brief to Design notes)" style="${BTN}">＋ Claude initial</button>` : ''}
           <button ${dis} data-act="kwOpen" style="${BTN}">↻ From keywords…</button>
           <label style="${BTN}">🖼 ${S.img ? 'Change image' : 'Hold an image'}<input type="file" accept="image/*" data-act="img" style="display:none;"></label>
           ${S.img ? `<button ${dis} data-act="genImg" style="${BTN}">↻ Direction from image</button><button data-act="imgClear" style="${BTN}">✕ image</button>` : ''}
@@ -297,7 +325,7 @@ Strip the // comments from the JSON.`;
       else if (!S.specOk) bar = `<b style="color:${C.bad};">The image spec isn't built from the saved design yet.</b>`;
       else bar = `<b style="color:${C.ok};">✓ Design saved</b> <span style="color:${C.ink3};">· image spec up to date</span>`;
       root.innerHTML = status
-        + card('sources', 'Sources', 'override · Claude · keywords · image · ChatGPT', sources)
+        + card('sources', 'Sources', 'override · Claude · Claude initial · keywords · image · ChatGPT', sources)
         + card('direction', 'Visual direction', 'register · photography · avoid · your notes', direction)
         + card('palette', 'Palette', s.palette ? '10 colours' : 'none yet', palette)
         + card('fonts', 'Fonts', s.fonts ? e(s.fonts.display) : 'none yet', fonts)
@@ -330,6 +358,7 @@ Strip the // comments from the JSON.`;
       if (a === 'toggle') { const k = b.dataset.k; S.open[k] = !S.open[k]; if (k === 'voice' && S.open.voice) loadVoice(); render(); }
       else if (a === 'edit') { S.edit[b.dataset.k] = !S.edit[b.dataset.k]; render(); }
       else if (a === 'genDir') genDirection('research');
+      else if (a === 'claudeInit') claudeInitial();
       else if (a === 'genImg') genDirection('image', { image: S.img && S.img.data });
       else if (a === 'imgClear') { S.img = null; render(); }
       else if (a === 'genPal') genPalette();
