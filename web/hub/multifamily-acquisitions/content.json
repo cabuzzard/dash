@@ -14,8 +14,7 @@
     },
     "ctaSecondary": {
       "label": "Get the Weekly Brief"
-    },
-    "image": "./hero.png?v=1791433693091"
+    }
   },
   "report": {
     "label": "Weekly Intelligence",
