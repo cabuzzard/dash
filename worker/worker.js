@@ -17300,7 +17300,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       if (body.action === "saveInfoFlowTable") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const t = body.table || {};
-        const columns = (Array.isArray(t.columns) ? t.columns : []).slice(0, 40).map(c => ({ id: String(c?.id || "").slice(0, 40), name: String(c?.name || "").slice(0, 120), ...(Array.isArray(c?.options) && c.options.length ? { options: c.options.slice(0, 60).map(o => String(o || "").slice(0, 120)).filter(Boolean) } : {}), ...(c?.w ? { w: Math.max(60, Math.min(800, +c.w || 0)) } : {}) })).filter(c => c.id);
+        const columns = (Array.isArray(t.columns) ? t.columns : []).slice(0, 120).map(c => ({ id: String(c?.id || "").slice(0, 40), name: String(c?.name || "").slice(0, 120), ...(c?.check ? { check: true } : {}), ...(c?.ro ? { ro: true } : {}), ...(Array.isArray(c?.options) && c.options.length ? { options: c.options.slice(0, 60).map(o => String(o || "").slice(0, 120)).filter(Boolean) } : {}), ...(c?.w ? { w: Math.max(60, Math.min(800, +c.w || 0)) } : {}) })).filter(c => c.id);
         const colIds = new Set(columns.map(c => c.id));
         const rows = (Array.isArray(t.rows) ? t.rows : []).slice(0, 500).map(r => {
           const cells = {}; Object.entries(r?.cells || {}).forEach(([k, v]) => { if (colIds.has(k)) { const x = String(v || "").slice(0, 4000); if (x) cells[k] = x; } });
