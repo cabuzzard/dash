@@ -747,6 +747,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           <textarea id="drNotes" rows="3" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;font-family:var(--sans);font-size:12px;"></textarea>
         </label>
         <div id="drRanked"></div>
+        <details id="nlPickBox" style="font-size:11.5px;" ontoggle="if(this.open&&!NL.items)nlPropose()"><summary style="cursor:pointer;color:var(--ink2);">📰 Free newsletter picks <span style="color:var(--ink3);">— latest ideas · news items · new products · benefits not pushed lately</span></summary>
+          <div style="display:flex;gap:6px;margin:6px 0;"><button class="iconbtn" onclick="nlPropose(true)">↻ Regen</button><span id="nlMsg" style="font-size:11px;color:var(--ink3);"></span></div>
+          <div id="nlList"></div>
+        </details>
       </div>
       <div id="digestRunResult" style="font-size:11.5px;margin-top:10px;min-height:14px;"></div>
       <div class="modalrow">
@@ -4719,7 +4723,7 @@ async function runDigestRun() {
     if (created.error) throw new Error(created.error);
     resEl.textContent = 'Writing pillar…';
     const drPicked = drSelectedSources();
-    const drBlock = drSourcesBlock(drPicked);
+    const drBlock = [drSourcesBlock(drPicked), nlPickedBlock()].filter(Boolean).join('\n\n');
     if (DR.job && drPicked.length) w('digestResearch', { op: 'attach', jobId: DR.job.id, titleId: created.id, sources: drPicked }).catch(() => {});
     const pillarRes = await w('writeTitlePillar', { titleId: created.id, researchOverride: [guidance, drBlock].filter(Boolean).join('\n\n') || undefined });
     if (pillarRes.error) throw new Error(pillarRes.error);
@@ -4869,9 +4873,31 @@ function drRender() {
           <b>${esc(s.title || s.url)}</b> <span style="color:var(--ink3);">${esc(s.publisher || '')}</span> ${/^https?:/.test(s.url) ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">↗</a>` : ''}<br>${esc(s.claim || '')}</span></label>`; }).join('') || '<div style="font-size:11px;color:var(--ink3);">none</div>'}</div>`;
     };
     h += group('premium', '💎 Premium', R.premiumAngle) + group('free', '📰 Free', R.freeAngle);
-    h += `<div style="font-size:11px;color:var(--ink3);margin-top:6px;">Ticked sources go into the digest when you press ▶ Write digest.</div>`;
+    h += `<div style="font-size:11px;color:var(--ink3);margin-top:6px;">Ticked sources go into the digest when you press ▶ Write digest.</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;align-items:center;"><button class="iconbtn" onclick="drToBlog(this)">📝 Blog News SEO from ticked sources</button><span id="drBlogMsg" style="font-size:11px;color:var(--ink3);"></span></div>`;
   }
   box.innerHTML = h;
+}
+// Digest → Blog News SEO: one Development title (method Blog - SEO - News, pillar written) built from the
+// ticked ranked sources; then Generate Assets on it as usual. Product link = second intent, per the method.
+async function drToBlog(btn) {
+  const picked = drSelectedSources().filter(s => s.split !== 'premium' || true).slice(0, 6);
+  const msg = document.getElementById('drBlogMsg');
+  if (!picked.length) { msg.textContent = 'Tick at least one source.'; return; }
+  btn.disabled = true; btn.textContent = '⏳ Working… (~60s)';
+  const R = DR.job.ranked || {};
+  const payload = { campaignId: CAMPAIGN_ID, productId: document.getElementById('digestProductSelect').value || undefined,
+    newsTitle: (R.freeAngle || picked[0].title || '').slice(0, 300),
+    newsBody: picked.map(s => `${s.title}: ${s.claim}`).join('\n\n'),
+    newsSource: picked.map(s => /^https?:/.test(s.url) ? s.url : (s.publisher || '')).filter(Boolean).join(' '),
+    newsDate: picked[0].date || undefined };
+  try {
+    let r = await w('createNewsBlogTitle', payload);
+    if (r.duplicate) r = await w('createNewsBlogTitle', { ...payload, allowDuplicate: true });
+    msg.style.color = 'var(--fresh)'; msg.textContent = `✓ "${r.headline || 'Title'}" created in Development — open it and Generate Assets › Blog - SEO - News.`;
+    if (typeof loadTitleAndAssetTab === 'function') loadTitleAndAssetTab().catch(() => {});
+  } catch (e) { msg.style.color = 'var(--stale)'; msg.textContent = 'Failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = '📝 Blog News SEO from ticked sources';
 }
 function drSelectedSources() { const s = (DR.job && DR.job.ranked && DR.job.ranked.sources) || []; return s.filter((x, i) => DR.picked[i] !== false); }
 function drSourcesBlock(list) {
@@ -4892,6 +4918,27 @@ async function drCopyNotebook(btn) {
   catch (e) { btn.textContent = 'Copy failed'; }
 }
 function drClear() { clearTimeout(DR.timer); DR.job = null; DR.picked = {}; drLS('dr:job:' + CAMPAIGN_ID, null); document.getElementById('drStatus').textContent = ''; drRender(); }
+
+// ── 📰 Free newsletter picks (worker digestPicks) — ticked items are written into the free tier ──
+const NL = { items: null, picked: {} };
+async function nlPropose(force) {
+  const box = document.getElementById('nlList'), msg = document.getElementById('nlMsg');
+  msg.textContent = '⏳ Working…';
+  try {
+    const r = await w('digestPicks', { campaignId: CAMPAIGN_ID, productId: document.getElementById('digestProductSelect').value || undefined,
+      sources: drSelectedSources().slice(0, 15), regen: !!force });
+    NL.items = r.items || []; NL.picked = {}; msg.textContent = '';
+    const pools = { idea: '💡 Latest ideas', news: '📰 News', product: '🆕 New products', benefit: '⭐ Benefits not pushed lately' };
+    box.innerHTML = Object.keys(pools).map(k => { const list = NL.items.map((x, i) => [x, i]).filter(([x]) => x.pool === k);
+      return list.length ? `<div style="margin:6px 0 2px;font-weight:700;color:var(--ink2);">${pools[k]}</div>` + list.map(([x, i]) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:3px 0;cursor:pointer;"><input type="checkbox" onchange="NL.picked[${i}]=this.checked" ${x.suggested ? 'checked' : ''}><span><b>${esc(x.headline)}</b> <span style="color:var(--ink3);">${esc(x.why || '')}</span></span></label>`).join('') : ''; }).join('') || '<span style="color:var(--ink3);">Nothing to propose yet.</span>';
+    NL.items.forEach((x, i) => { if (x.suggested) NL.picked[i] = true; });
+  } catch (e) { msg.textContent = 'Failed: ' + e.message; }
+}
+function nlPickedBlock() {
+  if (!NL.items) return '';
+  const p = NL.items.filter((x, i) => NL.picked[i]);
+  return p.length ? 'FREE ISSUE — FEATURE THESE PICKS (the operator chose them):\n' + p.map(x => `- [${x.pool}] ${x.headline}${x.detail ? ' — ' + x.detail : ''}`).join('\n') : '';
+}
 
 // ── PUBLISH DIGEST EMAIL ─────────────────────────────────────────────
 let PUB_DIGEST_TITLE_ID = null;

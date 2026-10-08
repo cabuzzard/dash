@@ -46242,6 +46242,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         const raw = await extractPillarContent(ph, body.titleId, { keepClips: true }).catch(() => "");
         return json({ success: true, clips: pillarClips(raw), hasPillar: !!raw.trim() });
       }
+      if (body.action === "digestPicks") {
+        try { return json(await handleDigestPicks(body, env)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "interactiveTool") {
         try { return json(await handleInteractiveTool(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
@@ -47711,4 +47714,48 @@ var tmp=document.createElement('div');tmp.innerHTML=html;Array.prototype.slice.c
     return { success: true, slug, url: live, widget: live ? live + "widget.js" : "", embed: `<div data-hub-tool="${slug}"></div><script src="${live}widget.js"></script>`, assetId, title: out.title };
   }
   return { error: "Unknown interactiveTool op" };
+}
+
+// ════════ 📰 Free newsletter picks (2026-10-08) ════════
+// Worksheet row "Digest - Newsletter Free": at creation time propose items from four pools — latest ideas
+// (staged digest post ideas), news (the ticked ranked sources), new products (created in the last 45 days),
+// and product benefits not pushed lately (main products' Product Research Benefits vs. what was published
+// in the last 6 weeks). Claude picks + phrases; the modal ticks, ↻ Regen asks for a different set.
+async function handleDigestPicks(body, env) {
+  if (body.action !== "digestPicks") return null;
+  const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return { error: "campaignId required" };
+  const d = s => { s = String(s).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+  const hdr = { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+  const rt = (p, k) => (p?.[k]?.rich_text || p?.[k]?.title || []).map(t => t.plain_text).join("");
+  let ideas = { postIdeas: [] }; try { ideas = (await env.TRADES.get("digest:ideas:" + cid, "json")) || ideas; } catch (e) {}
+  const since45 = new Date(Date.now() - 45 * 864e5).toISOString(), since42 = new Date(Date.now() - 42 * 864e5).toISOString();
+  const [prods, recentAssets, mainIds] = await Promise.all([
+    notionQuery(PRODUCTS_DB, { filter: { and: [{ property: "Campaigns", relation: { contains: d(cid) } }, { timestamp: "created_time", created_time: { after: since45 } }] } }).catch(() => []),
+    notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: d(cid) } }, { timestamp: "created_time", created_time: { after: since42 } }] } }).catch(() => []),
+    hubMainList(env, cid).catch(() => []),
+  ]);
+  const pids = [...new Set([...(mainIds || []), body.productId].filter(Boolean).map(x => String(x).replace(/-/g, "")))].slice(0, 3);
+  const research = await Promise.all(pids.map(pid => findBestProductResearchRecord(hdr, pid).catch(() => null)));
+  const benefits = research.filter(Boolean).map(r => rt(r.properties, "Benefits")).filter(Boolean).join("\n").slice(0, 3000);
+  const recentTitles = recentAssets.map(a => rt(a.properties, "Asset Title")).filter(Boolean).slice(0, 60);
+  let prev = []; try { prev = (await env.TRADES.get("digest:picks:" + cid, "json")) || []; } catch (e) {}
+  const prompt = `Propose items for the FREE issue of a weekly newsletter. Return 8-14 items across four pools.
+
+POOL "idea" — latest staged ideas:
+${(ideas.postIdeas || []).slice(0, 12).map(i => `- ${i.headline}${i.body ? ": " + String(i.body).slice(0, 160) : ""}`).join("\n") || "(none)"}
+POOL "news" — this week's researched sources:
+${(body.sources || []).slice(0, 15).map(s => `- ${s.title}: ${s.claim} (${s.publisher || s.url})`).join("\n") || "(none)"}
+POOL "product" — products added in the last 45 days:
+${prods.map(p => `- ${rt(p.properties, "Name")}: ${rt(p.properties, "Description").slice(0, 160)}`).join("\n") || "(none)"}
+POOL "benefit" — main products' benefits (pick ones NOT covered by the recent titles below):
+${benefits || "(none)"}
+RECENTLY PUBLISHED / MADE (last 6 weeks — avoid repeating these):
+${recentTitles.map(t => "- " + t).join("\n") || "(none)"}
+${body.regen && prev.length ? `\nLAST PROPOSAL (the operator asked for a DIFFERENT set — do not repeat these):\n${prev.map(x => "- " + x.headline).join("\n")}\n` : ""}
+Each item: {"pool":"idea|news|product|benefit","headline":"max 12 words, reader-facing","detail":"one sentence","why":"max 12 words — why it fits this week","suggested":true|false}. Mark 4-6 as suggested (the best mix for one free issue: one featured news item, at most one product).
+Return ONLY a fenced \`\`\`json array.`;
+  const out = drJson(await drClaude(env, prompt, 3000));
+  const items = (Array.isArray(out) ? out : []).filter(x => x && x.headline && ["idea", "news", "product", "benefit"].includes(x.pool)).slice(0, 16);
+  await env.TRADES.put("digest:picks:" + cid, JSON.stringify(items), { expirationTtl: 60 * 60 * 24 * 30 });
+  return { success: true, items };
 }
