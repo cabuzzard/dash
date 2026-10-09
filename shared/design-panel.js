@@ -557,7 +557,7 @@
       if (!S.schema.length) { root.innerHTML = `<div style="font-size:12px;color:${S.msgKind === 'bad' ? C.bad : C.ink3};padding:6px 0;">${e(S.msg || S.busy || 'Loading…')}</div>`; return; }
       const total = S.schema.reduce((n, s) => n + s.fields.length, 0), filled = Object.keys(S.staged).filter(k => (S.staged[k] || {}).v).length, diff = diffKeys(), dis = S.busy ? 'disabled' : '';
       const sugg = Object.values(S.staged).filter(f => f && f.alt).length;
-      const status = S.busy || S.msg ? `<div style="font-size:11.5px;margin:0 0 8px;color:${S.busy ? C.ink3 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${S.busy ? '⏳ ' : ''}${e(S.busy || S.msg)}</div>` : '';
+      const status = S.busy || S.msg ? `<div style="font-size:11.5px;margin:0 0 8px;color:${S.busy ? C.ink3 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${S.busy ? '⏳ ' : ''}${e(S.busy || S.msg)}${!S.busy && S.msg ? ` <button data-act="msgClear" title="Dismiss" style="${BTN}font-size:9.5px;padding:0 6px;margin-left:4px;">✕</button>` : ''}</div>` : '';
       const tierCount = t => { const fs = S.schema.filter(s => s.tier === t).flatMap(s => s.fields); return `${fs.filter(([k]) => fv(k)).length}/${fs.length} filled`; };
       root.innerHTML = status
         + card('inputs', 'Inputs', 'keywords → seed photo → ChatGPT → text override → Grok', inputsBody)
@@ -571,7 +571,7 @@
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
         + card('voice', '🗣 Your voice', 'learned from your edits', voiceBody)
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${diff.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
-            ${S.busy || S.msg ? `<div style="flex-basis:100%;font-size:11.5px;color:${S.busy ? C.ink2 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${S.busy ? '⏳ <span data-timer>' + (S.work ? '' : '') + '</span> ' : ''}${e(S.busy || S.msg)}${S.pipe && S.work ? pipeList() : ''}</div>` : ''}
+            ${S.busy || S.msg ? `<div style="flex-basis:100%;font-size:11.5px;color:${S.busy ? C.ink2 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${S.busy ? '⏳ <span data-timer>' + (S.work ? '' : '') + '</span> ' : ''}${e(S.busy || S.msg)}${!S.busy && S.msg ? ` <button data-act="msgClear" title="Dismiss" style="${BTN}font-size:9.5px;padding:0 6px;margin-left:4px;">✕</button>` : ''}${S.pipe && S.work ? pipeList() : ''}</div>` : ''}
             <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
             ${stale() ? wb('visuals', BTN, '🔁 Update visuals') : ''}
             ${cfg.preview ? `<button data-act="preview" style="${S.preview ? BTNP : BTN}">👁 Preview${S.preview ? ': on' : ''}</button>` : ''}
@@ -617,6 +617,7 @@
       else if (a === 'revClaude') reviewRun('claude');
       else if (a === 'revGrok') reviewRun('grok');
       else if (a === 'revAll') { S.revOnly.clear(); render(); }
+      else if (a === 'msgClear') { S.msg = ''; render(); }
       else if (a === 'cardCopy') cardCopy();
       else if (a === 'cardGrok') cardGrok();
       else if (a === 'cardDel') { if (confirm('Remove this card?')) ds('card', { remove: k }).then(r => { take(r); render(); }).catch(err => say(err.message, 'bad')); }

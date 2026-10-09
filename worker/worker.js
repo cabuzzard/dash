@@ -48711,19 +48711,19 @@ Reply with ONE JSON object only (plain language, concrete, no fluff):
         for (const [k, u] of imgSwaps) html = html.split(snap.images[k]).join(u);
         if (!changed.length) return imgSwaps.length ? storePage(html, "images", []) : out({ page: inputs.page, applied: [], suggested: [], unchanged: true });
         const STRUCT = /^(layout\.(section|grid|columns|nav|hero_layout)|content\.section_order|components\.)/;
-        if (changed.length <= 25 && !changed.some(k => STRUCT.test(k) && changed.length > 8)) {
+        if (!changed.some(k => STRUCT.test(k))) {   // any number of style / copy fields → patch; a section-order / grid / component change → full build
           const ptext = `This HOME PAGE html was built from a design spec. Some spec fields changed. Update the html so it follows the NEW values — change ONLY what those fields control (CSS variables, font links/families, sizes, spacing, radii, colors, copy rules, a section's markup…). Keep everything else byte-identical.
 
 CHANGED FIELDS (old → new):
 ${changed.map(k => `${k}: ${JSON.stringify((snap.spec || {})[k] || "(empty)")} → ${JSON.stringify(snapNow[k] || "(empty)")}`).join("\n").slice(0, 8000)}
 
 CURRENT HTML:
-${html.slice(0, 60000)}
+${html.slice(0, 120000)}
 
 Reply with ONE JSON object only: {"edits": [{"find": "an EXACT substring of the current html, unique, with enough context", "replace": "its new text"}]}
 If the changes need most of the page rewritten, reply {"rebuild": true}.`;
           try {
-            const raw = await claude(ptext, 12000, false), j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ["{}"])[0]);
+            const raw = await claude(ptext, 16000, false), j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ["{}"])[0]);
             if (!j.rebuild && Array.isArray(j.edits) && j.edits.length) {
               let h2 = html, ok = true;
               for (const ed of j.edits) { const f = String(ed.find || ""); if (!f || h2.split(f).length !== 2) { ok = false; break; } h2 = h2.replace(f, () => String(ed.replace ?? "")); }
@@ -48741,6 +48741,7 @@ Follow the DESIGN SPEC exactly — it is the authority on every visual decision:
 - content.* rules decide the words: use the HUB COPY where it exists, write the rest to the content rules and the research — real, specific copy, never lorem ipsum
 - include: header with brand + nav, hero (headline, subline, two CTAs, hero image), the sections in content.section_order (services/offers cards, a newsletter signup band with an email field + button, articles/news cards, proof, disclaimer), footer. A responsive layout that works at 375px and 1440px.
 - no JavaScript frameworks, no external CSS; one compact inline <style> (CSS variables, no repeated rules); images by URL with alt text.
+- KEEP IT LEAN — it is a preview: under ~30 KB total. Short class names, no comments, no unused CSS, no SVG paths longer than a few points (use simple shapes or emoji for icons), 3-4 cards per section, copy as short as the content rules allow.
 
 DESIGN SPEC:
 ${dsSpecText(sp, true)}
