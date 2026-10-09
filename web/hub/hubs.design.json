@@ -347,17 +347,17 @@
       },
       "logoText": "Medicare Services Consulting",
       "tokens": {
-        "bg": "#FBFAF7",
-        "surface": "#FFFFFF",
-        "ink": "#22343C",
-        "ink-head": "#12303A",
-        "ink-soft": "#56626B",
-        "line": "#E6DEF0",
-        "sea": "#5B45A3",
-        "deep": "#12303A",
-        "deep-ink": "#EEF4F3",
-        "accent": "#3D7A4F",
-        "paper": "#FFFFFF"
+        "bg": "#fbfaf7",
+        "surface": "#ffffff",
+        "ink": "#22343c",
+        "ink-head": "#12303a",
+        "ink-soft": "#5b6771",
+        "line": "#e4e0f5",
+        "sea": "#5b45a3",
+        "deep": "#12303a",
+        "deep-ink": "#f3f0ff",
+        "accent": "#3d7a4f",
+        "paper": "#ffffff"
       },
       "tokenNotes": {
         "bg": "warm off-white card ground (seed photo)",
