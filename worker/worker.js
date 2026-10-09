@@ -635,6 +635,48 @@ async function runAllHubProductIdeas(env) {
   st.running = false; st.current = ""; st.finishedAt = new Date().toISOString(); await save();
   return st;
 }
+// ── Full Product Research for every hub's MAIN products that aren't up to date (2026-10-09) ──
+// Same action as the 🔬 modal / All Output "run all research" (regenerateAllStrategyFields: every field, saved, stamped
+// with the campaign's Keywords Version). Up to date = care-gap's ✓ badge (getCampaignStrategies researchState 'updated').
+// The "<Hub> - Main Offering" placeholders are skipped. Progress → KV bulk:research (dash top banner).
+async function runMainProductResearch(env) {
+  const K = "bulk:research";
+  const prev = await env.TRADES.get(K, "json").catch(() => null);
+  if (prev && prev.running && Date.now() - Date.parse(prev.at) < 60 * 60000) return { error: "a main-product research run is already going" };
+  await hubSitesMerge(env);
+  const token = await signToken((env.HMAC_SECRET || "").trim());
+  const call = (action, extra) => (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
+    body: JSON.stringify({ action, token, ...extra }) }).then(r => r.json()).catch(e => ({ error: String(e.message || e) }));
+  const st = { running: true, at: new Date().toISOString(), phase: "checking", total: 0, done: 0, current: "", results: [], upToDate: 0, placeholders: 0 };
+  const save = () => env.TRADES.put(K, JSON.stringify(st)).catch(() => {});
+  await save();
+  const targets = [];
+  for (const hub of HUB_SITES) {
+    const cid = String(hub.campaignId || "").replace(/-/g, ""); if (!cid) continue;
+    const mains = await hubMainList(env, cid); if (!mains.length) continue;
+    st.current = "checking " + (hub.name || hub.slug); await save();
+    const cs = await call("getCampaignStrategies", { campaignId: cid });
+    const byId = Object.fromEntries((cs.products || []).map(p => [String(p.productId).replace(/-/g, ""), p]));
+    for (const pidRaw of mains) {
+      const pid = String(pidRaw).replace(/-/g, ""), p = byId[pid] || {};
+      let name = p.productName || "";
+      if (!name) { try { const pg = await fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+        name = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
+      if (/ - Main Offering$/.test(name)) { st.placeholders++; continue; }
+      if (p.researchState === "updated") { st.upToDate++; continue; }
+      targets.push({ pid, cid, name: name || pid, hub: hub.name || hub.slug, state: p.researchState || "empty" });
+    }
+  }
+  st.phase = "researching"; st.total = targets.length; await save();
+  for (const t of targets) {
+    st.current = `${t.name} (${t.hub})`; await save();
+    const r = await call("regenerateAllStrategyFields", { productId: t.pid, campaignId: t.cid });
+    st.results.push({ name: t.name, hub: t.hub, was: t.state, ok: !!(r && r.success), error: r && r.error ? String(r.error).slice(0, 160) : undefined });
+    st.done++; await save();
+  }
+  st.running = false; st.current = ""; st.phase = "done"; st.finishedAt = new Date().toISOString(); await save();
+  return st;
+}
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -26243,7 +26285,8 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // Archives an Asset record (Notion soft-delete) — used by the ✕ on
       // asset rows under publish titles.
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
-      if (body.action === "getBulkJobs") { const pi = await env.TRADES.get("bulk:prodideas", "json").catch(() => null); return json({ prodideas: pi }); }
+      if (body.action === "runMainProductResearch") return json(await runMainProductResearch(env));
+      if (body.action === "getBulkJobs") { const [pi, rs] = await Promise.all([env.TRADES.get("bulk:prodideas", "json").catch(() => null), env.TRADES.get("bulk:research", "json").catch(() => null)]); return json({ prodideas: pi, research: rs }); }
       if (body.action === "getHubSitesExtra") {   // hubs registered only in KV (scaffolded after the files outgrew the Contents API)
         let extra = []; try { extra = (await env.TRADES.get("hub:sites:extra", "json")) || []; } catch (e) {}
         return json({ hubs: extra.filter(e => e && e.slug && e.campaignId) });
