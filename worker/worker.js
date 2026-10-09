@@ -48354,6 +48354,10 @@ async function handleDesignSpec(body, env, ctx) {
   if (op === "inputs") {   // operator-edited inputs: keywords / override text
     if (body.keywords != null) inputs.keywords = String(body.keywords).slice(0, 2000);
     if (body.override != null) inputs.override = String(body.override).slice(0, 3000);
+    if (body.renders && typeof body.renders === "object") {   // asset images rendered from the spec: {id: {url, aspect, at}}
+      inputs.renders = Object.fromEntries(Object.entries(body.renders).filter(([k, r]) => /^[a-z_]{2,30}$/.test(k) && r && /^https:\/\//.test(String(r.url || "")))
+        .map(([k, r]) => [k, { url: String(r.url).slice(0, 500), aspect: String(r.aspect || "").slice(0, 10), at: r.at || Date.now(), live: !!r.live }]));
+    }
     await put(K.inputs, inputs); return out();
   }
   if (op === "photo") {    // seed photo → R2 (public URL Claude can read)
@@ -48480,6 +48484,46 @@ Reply with ONE JSON object only (plain language, concrete, no fluff):
     if (!wrote.length) return { error: errors.join(" · ") };
     return out({ research: j, wrote, errors, applied: [], suggested: [] });
   }
+  if (op === "page") {     // the whole home page, built from the STAGED spec + the hub's copy + the rendered images
+    const sp = staged, slug = hubSlugForCampaign(cid);
+    if (Object.keys(sp).length < 20) return { error: "the spec is mostly empty — ✨ Build fields first" };
+    let copy = ""; if (slug) { try { const r = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/content.json?v=${Date.now()}`); if (r.ok) copy = JSON.stringify(await r.json(), null, 1); } catch (e) {} }
+    const imgs = Object.entries(body.images || {}).filter(([k, u]) => /^https:\/\//.test(String(u || ""))).map(([k, u]) => `${k}: ${u}`).join("\n");
+    const text = `Write the complete HOME PAGE for "${campName || "this campaign"}" as ONE self-contained HTML file — a finished, production-quality page, not a wireframe.
+
+Follow the DESIGN SPEC exactly — it is the authority on every visual decision:
+- tier 1 (color, type, layout, components, content, motion) decides the page: put every color in :root CSS variables with the spec's hexes, load the spec's fonts from Google Fonts with the spec's weights, and use the spec's sizes, line-heights, max width, spacing, radii, borders, shadows, buttons, badges, eyebrows, inputs, section order and mobile rules
+- tier 2 + 3 decide the images: use the IMAGE URLS below where the spec places them (hero, signup); size and frame them per asset.hero.* / asset.signup.* and layout.hero_image_*
+- content.* rules decide the words: use the HUB COPY where it exists, write the rest to the content rules and the research — real, specific copy, never lorem ipsum
+- include: header with brand + nav, hero (headline, subline, two CTAs, hero image), the sections in content.section_order (services/offers cards, a newsletter signup band with an email field + button, articles/news cards, proof, disclaimer), footer. A responsive layout that works at 375px and 1440px.
+- no JavaScript frameworks, no external CSS; inline <style> only; images by URL with alt text.
+
+DESIGN SPEC:
+${dsSpecText(sp, true)}
+
+IMAGE URLS:
+${imgs || "(none rendered — leave tasteful spaces the spec's background color, no stock images)"}
+
+HUB COPY (content.json):
+${copy.slice(0, 8000) || "(none — write it from the content rules + research)"}
+
+RESEARCH:
+${facts.slice(0, 5000)}
+
+Reply with the HTML only, in one \`\`\`html block.`;
+    let raw; try { raw = await claude(text, 20000, false); } catch (e) { return { error: e.message }; }
+    const m = raw.match(/```html\s*([\s\S]*?)```/i), html = (m ? m[1] : raw.slice(raw.indexOf("<!"))).trim();
+    if (!/<html[\s>]/i.test(html) || html.length < 1500) return { error: "the page came back incomplete — try again" };
+    if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
+    const key = `design/${cid}/page-${Date.now().toString(36)}.html`;
+    await env.MEDIA.put(key, html, { httpMetadata: { contentType: "text/html; charset=utf-8", cacheControl: "public, max-age=31536000, immutable" } });
+    // sig = the spec this page was built from (same hash as the panel's sig()) — the panel flags the visuals stale when it changes
+    const sigSrc = Object.keys(sp).sort().filter(k => sp[k] && sp[k].v).map(k => k + "=" + sp[k].v).join("\n");
+    let h = 5381; for (let i = 0; i < sigSrc.length; i++) h = ((h * 33) ^ sigSrc.charCodeAt(i)) >>> 0;
+    const page = { url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key, at: new Date().toISOString(), images: body.images || {}, sig: h.toString(36) };
+    inputs.page = page; await put(K.inputs, inputs);
+    return out({ page, applied: [], suggested: [] });
+  }
   if (op === "build") {    // round 1: keywords (+ live search of the ranked sites) + seed photo
     const inp = { ...inputs, keywords: inputs.keywords || kwFallback };
     const text = `You are the lead web + brand designer for "${campName || "this campaign"}". Build its whole visual system as a FIELD → VALUE spec.
@@ -48565,7 +48609,7 @@ Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", 
   };
   // build / text / grok take 1-3 minutes. They run INSIDE this request (ctx.waitUntil only survives ~30s after
   // the response, too short for them); the job record lets a second tab see a pass is in flight.
-  if (["build", "text", "grok", "research"].includes(op)) {
+  if (["build", "text", "grok", "research", "page"].includes(op)) {
     if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 5 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
     await put(K.job, { op, status: "running", at: new Date().toISOString() });
     let r; try { r = await engine(); } catch (e) { r = { error: e.message }; }

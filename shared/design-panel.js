@@ -37,7 +37,7 @@
   function mount(root, cfg) {
     const S = { cid: String(cfg.campaignId || '').replace(/-/g, ''), slug: cfg.slug || '', schema: [], tiers: [], saved: null, savedAt: null, staged: {}, inputs: {}, job: null,
       open: { inputs: true }, edit: null, busy: '', msg: '', msgKind: '', kw: null, override: null, gptReply: '', preview: false,
-      tests: [], aspect: '3:4', plate: null, voice: null, myPrompt: '' };
+      tests: [], aspect: '3:4', plate: null, voice: null, myPrompt: '', renders: {} };
     const call = async (a, b) => { const r = await cfg.call(a, Object.assign({ campaignId: S.cid }, b || {})); if (r && r.error) throw new Error(r.error); return r || {}; };
     const ds = (op, b) => call('designSpec', Object.assign({ op }, b || {}));
     root.__dp = S;
@@ -56,7 +56,7 @@
     async function load() {
       S.busy = 'Loading the design spec…'; render();
       try { take(await ds('get')); } catch (err) { S.busy = ''; return say('Could not load the design spec: ' + err.message, 'bad'); }
-      S.kw = S.inputs.keywords || ''; S.override = S.inputs.override || '';
+      S.kw = S.inputs.keywords || ''; S.override = S.inputs.override || ''; S.renders = Object.assign({}, S.inputs.renders || {});
       if (!S.kw && S.slug) call('getHubKeywords', { slug: S.slug }).then(r => { if (!S.kw && r.keywords) { S.kw = r.keywords; render(); } }).catch(() => {});
       S.busy = ''; render();
       if (S.job && S.job.status === 'running') poll();
@@ -65,11 +65,11 @@
 
     // ── engines (run inside the request, 1-3 min; a pass started in another tab is polled) ──
     const LABEL = { build: 'Build from keywords + seed photo', text: 'Text override', grok: 'Grok search' };
-    function report(j) {
+    function report(j, secs) {
       j = j || {};
       if (j.status === 'error') return say(`${LABEL[j.op] || j.op} failed: ${j.error}`, 'bad');
       S.open.spec_web = S.open.spec_image = S.open.spec_asset = true;
-      say(`${LABEL[j.op] || j.op}: ${(j.applied || []).length} fields set${(j.suggested || []).length ? `, ${j.suggested.length} suggestions to review (✓ use / ✕)` : ''}. Review, then 💾 Save spec.`, 'ok');
+      say(`${LABEL[j.op] || j.op}${secs ? ` (${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')})` : ''}: ${(j.applied || []).length} fields set${(j.suggested || []).length ? `, ${j.suggested.length} suggestions to review (✓ use / ✕)` : ''}. Review, then 💾 Save spec.`, 'ok');
     }
     async function poll() {
       S.busy = (LABEL[S.job.op] || S.job.op) + ' is running (started elsewhere) — waiting for it…'; render();
@@ -83,39 +83,130 @@
       if (S.job && S.job.status === 'running') return say('That pass looks stuck — run it again.', 'bad');
       report(S.job);
     }
+    // working state: the pressed button turns into "⏳ m:ss working…" (ticking without a re-render, so typing isn't lost)
+    const ACT = { build: 'build', text: 'override', grok: 'grok' };
+    function startWork(act, busy) {
+      S.work = { act, start: Date.now() }; S.busy = busy; render();
+      clearInterval(S.workTick);
+      S.workTick = setInterval(() => { if (!S.work) return clearInterval(S.workTick); const s = Math.round((Date.now() - S.work.start) / 1000);
+        root.querySelectorAll('[data-timer]').forEach(n => { n.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }); }, 1000);
+    }
+    function endWork() { const s = S.work ? Math.round((Date.now() - S.work.start) / 1000) : 0; S.work = null; clearInterval(S.workTick); S.busy = ''; return s; }
     async function run(op, extra) {
-      S.busy = (LABEL[op] || op) + ' — filling the fields (1-3 min, keep this tab open)…'; render();
-      try { const r = await ds(op, extra); take(r); S.busy = ''; report(r.job || { op, status: 'done', applied: r.applied, suggested: r.suggested }); }
-      catch (err) { S.busy = ''; say(err.message, 'bad'); }
+      startWork(ACT[op] || op, (LABEL[op] || op) + ' — filling the fields (1-5 min, keep this tab open)…');
+      try { const r = await ds(op, extra); take(r); const s = endWork(); report(Object.assign({ op, status: 'done', applied: r.applied, suggested: r.suggested }, r.job || {}), s); }
+      catch (err) { endWork(); say(err.message, 'bad'); }
+    }
+    // ── asset images: rendered on Grok from the staged spec's asset.<id>.* fields + the every-image fields ──
+    const ASPECTS = ['3:4', '1:1', '16:9'];
+    const nearest = v => { const m = /(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)/.exec(String(v || '')); if (!m) return '3:4'; const r = m[1] / m[2];
+      return ASPECTS.slice().sort((a, b) => Math.abs(a.split(':')[0] / a.split(':')[1] - r) - Math.abs(b.split(':')[0] / b.split(':')[1] - r))[0]; };
+    const assetSecs = () => S.schema.filter(s => s.tier === 'asset');
+    async function renderAsset(id) {
+      const sp = S.staged, v = k => (sp[k] || {}).v || '', sec = assetSecs().find(s => s.id === 'asset.' + id), label = sec ? sec.label.split(' — ')[0] : id;
+      const asset = Object.keys(sp).filter(k => k.startsWith(`asset.${id}.`) && v(k)).map(k => `${k}: ${v(k)}`).join('\n');
+      if (!asset) throw new Error(`the ${label} fields are empty — ✨ Build first`);
+      const base = Object.keys(sp).filter(k => /^(img|ovl|avoid|color)\./.test(k) && v(k)).map(k => `${k}: ${v(k)}`).join('\n');
+      const r = await call('renderSpecTest', { spec: `${asset}\n\n${base}`, palette: palette(sp) || undefined, aspect: nearest(v(`asset.${id}.aspect`)),
+        steer: `This is the ${label}. Follow every asset.${id}.* line exactly (subject, composition, background, safe area). No text, letters or numbers in the image.` });
+      S.renders[id] = { url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect, at: Date.now() };
+      return r;
+    }
+    async function renderAssets(ids, after) {
+      for (const id of ids) {
+        startWork('render_' + id, `Rendering the ${id.replace(/_/g, ' ')} image on Grok (~20s)…`); S.open.assets = true; render();
+        try { await renderAsset(id); endWork(); }
+        catch (err) { endWork(); return say(`${after ? after + ' — but the ' : ''}${id.replace(/_/g, ' ')} image failed: ${err.message}`, 'bad'); }
+      }
+      await persistRenders();
+      say(`${after ? after + ' ' : ''}Rendered: ${ids.map(x => x.replace(/_/g, ' ')).join(' + ')} — see 🖼 Asset images.${S.slug ? ' ✓ Set on hub puts one live.' : ''}`, 'ok');
+    }
+    async function setOnHub(id) {
+      const rr = S.renders[id]; if (!rr) return;
+      if (!confirm(`Put this ${id} image on the live hub page? (live in ~1 min)`)) return;
+      startWork('set_' + id, 'Setting the image on the hub…');
+      try { await call('hubImage', { slug: S.slug, kind: id === 'signup' ? 'signup' : 'hero', op: 'url', url: rr.url }); endWork(); rr.live = true; persistRenders(); say(`The ${id} image is set on the hub — live in about a minute.`, 'ok'); }
+      catch (err) { endWork(); say('Could not set it: ' + err.message, 'bad'); }
     }
     async function saveInputs() { try { take(await ds('inputs', { keywords: S.kw, override: S.override })); } catch (err) { say('Could not save the inputs: ' + err.message, 'bad'); } }
-    async function build() { await saveInputs(); run('build'); }
+    // ✨ Build = the whole first pass off the inputs: research fields → every spec field → saved to the Research
+    // record → hero + signup images → the whole page. Each step shows ⏳ / ✅ / ❌; a failure stops the run.
+    const PIPE = [['research', 'Research fields → Research + Campaign records'], ['spec', 'All spec fields'], ['save', 'Save the spec → Image Spec, Palette, Fonts, direction'],
+      ['images', 'Hero + signup images'], ['page', 'The whole page (preview)']];
+    const sig = sp => { const s = Object.keys(sp || {}).sort().filter(k => sp[k] && sp[k].v).map(k => k + '=' + sp[k].v).join('\n'); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
+    const stale = () => { const pg = (S.inputs || {}).page; return !!(pg && pg.sig && pg.sig !== sig(S.staged)); };
+    const iterBar = () => (S.inputs || {}).page ? `<div style="margin:0 0 12px 13px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        ${wb('visuals', stale() ? BTNP : BTN, '🔁 Update visuals')}${wb('reread', BTN, '↻ Re-read inputs into the spec')}
+        <span style="font-size:10.5px;color:${stale() ? C.warn : C.ink3};">${stale() ? '● the spec changed since the visuals were made' : 'visuals match the spec'} · iterating keeps your edits</span></div>` : '';
+    const imageUrls = () => Object.fromEntries(Object.entries(S.renders).map(([k, r]) => [k, r.url]));
+    async function persistRenders() { try { take(await ds('inputs', { renders: S.renders })); } catch (err) {} }
+    async function build() {
+      if (!String(S.kw || '').trim()) return say('Add the keywords first.', 'bad');
+      if (!confirm('Build everything from these inputs?\n\nRewrites the campaign research fields, every design-spec field, the saved Image Spec / Palette / Fonts on the Research record, and renders the images + a full page preview. Fields you edited by hand are kept. The live hub page only changes when you press ⇪ Publish or ✓ Set on hub.')) return;
+      return runPipe('build', PIPE.map(x => x[0]), 'Building everything from the inputs (6-9 min, keep this tab open)…', 'First pass done');
+    }
+    // iterate: the spec has changed (edits, override, ChatGPT, Grok) → save it and redo the images + the page from it
+    const updateVisuals = () => runPipe('visuals', ['save', 'images', 'page'], 'Updating the visuals from the current spec (2-3 min)…', 'Visuals updated');
+    // iterate: new photo / keywords → refresh the spec from the inputs (manual edits kept), nothing else
+    const reread = async () => { await saveInputs(); return runPipe('reread', ['spec'], 'Re-reading the inputs into the spec (3-5 min)…', 'Spec refreshed from the inputs'); };
+    async function runPipe(act, keys, busyMsg, doneMsg) {
+      await saveInputs();
+      S.pipe = {}; PIPE.filter(([k]) => keys.includes(k)).forEach(([k]) => { S.pipe[k] = { s: '' }; });
+      startWork(act, busyMsg);
+      const step = (k, s, d) => { S.pipe[k] = { s, d: d || '' }; S.busy = s === 'run' ? `${PIPE.find(x => x[0] === k)[1]}…` : S.busy; render(); };
+      for (const [k] of PIPE.filter(([x]) => keys.includes(x))) {
+        step(k, 'run');
+        try {
+          if (k === 'research') { const r = await ds('research', { keywords: S.kw }); take(r); step(k, 'ok', `${(r.wrote || []).join(' + ')} written${(r.errors || []).length ? ' — ' + r.errors.join('; ') : ''}`); }
+          else if (k === 'spec') { const r = await ds('build'); take(r); const j = r.job || {}; step(k, 'ok', `${(j.applied || []).length} fields set${(j.suggested || []).length ? `, ${j.suggested.length} suggestions` : ''}`); }
+          else if (k === 'save') { const r = await ds('save'); take(r); if (r.notionError) throw new Error(r.notionError); step(k, 'ok', `${Object.keys(r.saved || {}).length} fields saved; ${(r.wrote || []).length} Research fields written`); }
+          else if (k === 'images') { for (const id of ['hero', 'signup']) { step(k, 'run', `rendering the ${id}…`); await renderAsset(id); } await persistRenders(); step(k, 'ok', 'hero + signup rendered — see 🖼 Asset images'); }
+          else if (k === 'page') { const r = await ds('page', { images: imageUrls() }); take(r); S.open.page = true; step(k, 'ok', 'built — see 📄 Page preview'); }
+        } catch (err) {
+          step(k, 'err', err.message); PIPE.slice(PIPE.findIndex(x => x[0] === k) + 1).filter(([x]) => keys.includes(x)).forEach(([x]) => { S.pipe[x] = { s: 'skip' }; });
+          const s = endWork(); return say(`Build stopped at "${PIPE.find(x => x[0] === k)[1]}" after ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}: ${err.message}`, 'bad');
+        }
+      }
+      const s = endWork(); S.open.spec_web = S.open.spec_image = S.open.spec_asset = true; S.open.assets = true;
+      say(`${doneMsg} in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}.${act === 'build' ? ' Now refine: edit fields, 📋 ChatGPT, text override, Grok — then 🔁 Update visuals.' : act === 'reread' ? ' 🔁 Update visuals to see it.' : ''}`, 'ok');
+    }
+    async function rebuildPage() {
+      startWork('page', 'Building the whole page from the staged spec (~1-2 min)…');
+      try { const r = await ds('page', { images: imageUrls() }); take(r); endWork(); S.open.page = true; say('Page rebuilt — see 📄 Page preview.', 'ok'); }
+      catch (err) { endWork(); say('Page build failed: ' + err.message, 'bad'); }
+    }
+    function pipeList() {
+      if (!S.pipe) return '';
+      const icon = s => ({ run: '⏳', ok: '✅', err: '❌', skip: '⏭' })[s] || '·';
+      return `<div style="margin-top:6px;border:1px solid ${C.line};border-radius:6px;padding:4px 8px;">${PIPE.filter(([k]) => S.pipe[k]).map(([k, label]) => { const st = S.pipe[k] || {};
+        return `<div style="font-size:11px;padding:2px 0;color:${st.s === 'err' ? C.bad : C.ink};">${icon(st.s)} ${e(label)}${st.d ? ` <span style="color:${st.s === 'err' ? C.bad : C.ink3};">— ${e(st.d)}</span>` : ''}</div>`; }).join('')}</div>`;
+    }
     async function applyOverride() { if (!(S.override || '').trim()) return say('Type the override first.', 'bad'); await saveInputs(); run('text', { override: S.override }); }
     async function grok() { await saveInputs(); run('grok'); }
     async function uploadPhoto(file) {
-      if (!file) return; S.busy = 'Uploading the seed photo…'; render();
+      if (!file) return; startWork('photo', 'Uploading the seed photo…');
       try {
         const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
         const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
         const sc = Math.min(1, 1600 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
         cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
         take(await ds('photo', { data: cv.toDataURL('image/jpeg', 0.9) }));
-        S.busy = ''; say('Seed photo stored. Now ✨ Build fields from inputs.', 'ok');
-      } catch (err) { S.busy = ''; say('Photo upload failed: ' + err.message, 'bad'); }
+        endWork(); say((S.inputs || {}).page ? 'Seed photo replaced — ↻ Re-read inputs to refresh the photo-led fields, then 🔁 Update visuals.' : 'Seed photo stored. Now ✨ Build everything from inputs.', 'ok');
+      } catch (err) { endWork(); say('Photo upload failed: ' + err.message, 'bad'); }
     }
     async function copyChat() {
-      S.busy = 'Writing the ChatGPT prompt…'; render();
-      try { const r = await ds('chatPrompt'); S.busy = '';
+      startWork('chatCopy', 'Writing the ChatGPT prompt…');
+      try { const r = await ds('chatPrompt'); endWork();
         await navigator.clipboard.writeText(r.prompt);
         say('ChatGPT prompt copied. In ChatGPT: attach the seed photo, paste, then paste its JSON reply below and 📥 Merge.', 'ok'); }
-      catch (err) { S.busy = ''; say('Could not copy the prompt: ' + err.message, 'bad'); }
+      catch (err) { endWork(); say('Could not copy the prompt: ' + err.message, 'bad'); }
     }
     async function mergeChat() {
       if (!S.gptReply.trim()) return say('Paste ChatGPT\'s reply first.', 'bad');
-      S.busy = 'Merging ChatGPT\'s fields…'; render();
-      try { const r = await ds('chatReply', { text: S.gptReply }); take(r); S.gptReply = ''; S.busy = ''; S.open.spec_web = S.open.spec_image = S.open.spec_asset = true;
+      startWork('chatMerge', 'Merging ChatGPT\'s fields…');
+      try { const r = await ds('chatReply', { text: S.gptReply }); take(r); S.gptReply = ''; endWork(); S.open.spec_web = S.open.spec_image = S.open.spec_asset = true;
         say(`ChatGPT: ${(r.applied || []).length} empty fields filled${(r.suggested || []).length ? `, ${r.suggested.length} suggestions to review` : ''}.`, 'ok'); }
-      catch (err) { S.busy = ''; say('Merge failed: ' + err.message, 'bad'); }
+      catch (err) { endWork(); say('Merge failed: ' + err.message, 'bad'); }
     }
 
     // ── field edits ──
@@ -178,6 +269,25 @@
     const badge = src => { const b = SRC[src] || [src || '?', '#888']; return `<span title="set by ${e(b[0])}" style="font-size:9px;padding:0 5px;border-radius:8px;border:1px solid ${b[1]};color:${b[1]};white-space:nowrap;">${e(b[0])}</span>`; };
     const swatch = v => { const h = hexOf(v); return h ? `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid ${C.line};background:${h};vertical-align:-2px;margin-right:5px;"></span>` : ''; };
     const step = (n, title, body) => `<div style="border-left:3px solid ${C.line};padding:2px 0 2px 10px;margin-bottom:12px;"><div style="${LBL}margin-bottom:4px;">${n} · ${title}</div>${body}</div>`;
+    const elapsed = () => { const s = S.work ? Math.round((Date.now() - S.work.start) / 1000) : 0; return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); };
+    // a run button: while its own job runs it reads "⏳ m:ss working…"; every other button is disabled meanwhile
+    const wb = (act, style, label) => S.work && S.work.act === act
+      ? `<button disabled data-act="${act}" style="${style}opacity:.9;cursor:wait;">⏳ <span data-timer>${elapsed()}</span> working…</button>`
+      : `<button ${S.busy ? 'disabled' : ''} data-act="${act}" style="${style}">${label}</button>`;
+    // which inputs are on file right now — what ✨ Build will read
+    function loadedInputs() {
+      const inp = S.inputs || {}, rk = inp.ranked || {}, d = x => x ? ' · ' + String(x).slice(0, 10) : '';
+      const nKw = String(S.kw || '').split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
+      const chip = (ok, text, title) => `<span title="${e(title || '')}" style="display:inline-block;font-size:10.5px;padding:2px 8px;margin:2px 4px 2px 0;border-radius:10px;border:1px solid ${ok ? C.ok : C.line};color:${ok ? C.ok : C.ink3};">${ok ? '✓' : '○'} ${e(text)}</span>`;
+      return `<div style="margin-top:6px;"><span style="${LBL}margin-right:4px;">Loaded inputs</span>`
+        + chip(nKw > 0, nKw ? `${nKw} keyword${nKw > 1 ? 's' : ''}` : 'no keywords — required', S.kw)
+        + chip(!!rk.look, rk.look ? `ranked-site look · ${(rk.sites || []).length} sites${d(rk.at)}` : 'ranked sites — searched during the build', rk.look)
+        + chip(!!(inp.photo && inp.photo.url), inp.photo && inp.photo.url ? `seed photo${inp.photo.read ? ' (read)' : ''}${d(inp.photo.at)}` : 'no seed photo — look comes from the keywords')
+        + chip(!!String(S.override || '').trim(), String(S.override || '').trim() ? 'text override (Build follows it)' : 'no text override', S.override)
+        + chip(!!inp.chatgpt, inp.chatgpt ? `ChatGPT merged${d(inp.chatgpt.at)}` : 'ChatGPT not merged')
+        + chip(!!(inp.grok && inp.grok.notes), inp.grok && inp.grok.notes ? `Grok notes${d(inp.grok.at)}` : 'no Grok notes', inp.grok && inp.grok.notes)
+        + `</div>`;
+    }
     function inputsBody() {
       const dis = S.busy ? 'disabled' : '', inp = S.inputs || {}, ph = inp.photo || {}, rk = inp.ranked || {};
       return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Every engine reads these in order — a later input wins where they conflict, except ChatGPT and Grok, which only add (their changes to filled fields show as suggestions).</div>`
@@ -186,18 +296,18 @@
           + (rk.look ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;"><b>Page one looks like:</b> ${e(rk.look)}${(rk.sites || []).map(x => `<div>· ${e(x)}</div>`).join('')}</div>` : ''))
         + step('②', 'Seed photo — the style seed',
           `<div style="display:flex;gap:10px;align-items:flex-start;">${ph.url ? `<a href="${e(ph.url)}" target="_blank" rel="noopener"><img src="${e(ph.url)}" style="height:70px;border-radius:6px;border:1px solid ${C.line};display:block;"></a>` : ''}
-            <div style="flex:1;"><label style="${BTN}display:inline-block;">${ph.url ? '⟳ Replace photo' : '⬆ Upload seed photo'}<input type="file" accept="image/*" data-act="photo" style="display:none;"></label>
+            <div style="flex:1;"><label style="${BTN}display:inline-block;">${S.work && S.work.act === 'photo' ? '⏳ uploading…' : ph.url ? '⟳ Replace photo' : '⬆ Upload seed photo'}<input type="file" accept="image/*" data-act="photo" style="display:none;"></label>
             ${ph.read ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(ph.read)}</div>` : ''}</div></div>`)
-        + `<div style="margin:0 0 12px 13px;"><button ${dis} data-act="build" style="${BTNP}">✨ Build fields from inputs</button> <span style="font-size:10.5px;color:${C.ink3};">Claude: keywords + live search of the ranked sites + the seed photo → every field (1-3 min)</span></div>`
+        + `<div style="margin:0 0 12px 13px;">${wb('build', BTNP, '✨ Build everything from inputs')} <span style="font-size:10.5px;color:${C.ink3};">first pass at everything: research fields, every spec field (saved to the record), hero + signup images and the whole page (6-9 min)</span>${pipeList()}${loadedInputs()}</div>${iterBar()}`
         + step('③', 'ChatGPT — additive',
-          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;"><button ${dis} data-act="chatCopy" style="${BTN}">📋 Copy ChatGPT prompt</button><span style="font-size:10.5px;color:${C.ink3};align-self:center;">attach the seed photo in ChatGPT, paste, then paste its reply here</span></div>
+          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy ChatGPT prompt')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">attach the seed photo in ChatGPT, paste, then paste its reply here</span></div>
           <textarea data-in="gpt" rows="3" placeholder="Paste ChatGPT's reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
-          <div style="margin-top:6px;"><button ${dis} data-act="chatMerge" style="${BTN}">📥 Merge ChatGPT's fields</button>${inp.chatgpt ? ` <span style="font-size:10.5px;color:${C.ink3};">last merged ${e(String(inp.chatgpt.at || '').slice(0, 10))}</span>` : ''}</div>`)
+          <div style="margin-top:6px;">${wb('chatMerge', BTN, "📥 Merge ChatGPT's fields")}${inp.chatgpt ? ` <span style="font-size:10.5px;color:${C.ink3};">last merged ${e(String(inp.chatgpt.at || '').slice(0, 10))}</span>` : ''}</div>`)
         + step('④', 'Text override — your words win',
           `<textarea data-in="override" rows="2" placeholder="e.g. headlines heavier · buttons sage green · no gradients anywhere" style="${TA}">${e(S.override || '')}</textarea>
-          <div style="margin-top:6px;"><button ${dis} data-act="override" style="${BTN}">Apply override</button></div>`)
+          <div style="margin-top:6px;">${wb('override', BTN, 'Apply override')}</div>`)
         + step('⑤', 'Grok search — additive (web + X)',
-          `<button ${dis} data-act="grok" style="${BTN}">⚡ Grok search</button>${inp.grok && inp.grok.notes ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(inp.grok.notes)}</div>` : ''}`);
+          `${wb('grok', BTN, '⚡ Grok search')}${inp.grok && inp.grok.notes ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(inp.grok.notes)}</div>` : ''}`);
     }
     function fieldRow([k, label, hint]) {
       const f = S.staged[k] || {}, sv = (S.saved || {})[k] || {}, changed = (f.v || '') !== (sv.v || ''), ed = S.edit === k;
@@ -214,6 +324,23 @@
         return `<div style="margin-bottom:4px;"><div data-act="toggle" data-k="${key}" style="cursor:pointer;user-select:none;font-size:12px;padding:4px 0;color:${C.ink};">
           <span style="font-size:9px;color:${C.ink3};">${o ? '▼' : '▶'}</span> <b>${e(s.label)}</b> <span style="font-size:10.5px;color:${n === s.fields.length ? C.ok : C.ink3};">${n}/${s.fields.length}</span></div>
           ${o ? `<div style="padding-left:12px;">${s.fields.map(fieldRow).join('')}</div>` : ''}</div>`; }).join('');
+    }
+    function assetsBody() {
+      const ids = assetSecs().map(s => s.id.slice(6));
+      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:8px;">Each image is rendered on Grok from that format's asset fields (tier 3) plus the every-image fields (tier 2), from the STAGED spec. ✨ Build renders the hero + signup automatically.</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">${ids.map(id => { const rr = S.renders[id], sec = assetSecs().find(s => s.id === 'asset.' + id), label = sec ? sec.label.split(' — ')[0] : id;
+          return `<div style="width:170px;display:flex;flex-direction:column;gap:4px;">
+            <div style="font-size:11px;color:${C.ink};font-weight:600;">${e(label)}</div>
+            ${rr ? `<a href="${e(rr.url)}" target="_blank" rel="noopener" title="${e(rr.prompt)}"><img src="${e(rr.url)}" style="width:170px;height:150px;object-fit:contain;background:${C.surf2};border-radius:6px;border:1px solid ${C.line};display:block;"></a>`
+              : `<div style="width:170px;height:150px;border:1px dashed ${C.line};border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:${C.ink3};">not rendered</div>`}
+            ${wb('render_' + id, BTN + 'font-size:10.5px;padding:3px 6px;', rr ? '⟳ Re-render' : '🖼 Render')}
+            ${rr && S.slug && (id === 'hero' || id === 'signup') ? wb('set_' + id, BTNP + 'font-size:10.5px;padding:3px 6px;', rr.live ? '✓ On the hub' : '✓ Set on hub') : ''}</div>`; }).join('')}</div>`;
+    }
+    function pageBody() {
+      const pg = (S.inputs || {}).page;
+      return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">${wb('page', BTN, pg ? '↻ Rebuild page from the staged spec' : '📄 Build the page')}
+          ${pg ? `<a href="${e(pg.url)}" target="_blank" rel="noopener" style="font-size:11px;color:${C.acc};">open full page ↗</a><span style="font-size:10.5px;color:${C.ink3};">built ${e(String(pg.at || '').slice(0, 16).replace('T', ' '))} · a preview, not the live hub</span>` : `<span style="font-size:10.5px;color:${C.ink3};">Claude writes the whole home page from the spec, the hub copy and the rendered images.</span>`}</div>
+        ${pg ? `<iframe src="${e(pg.url)}" title="Page preview" style="width:100%;height:760px;border:1px solid ${C.line};border-radius:8px;background:#fff;"></iframe>` : ''}`;
     }
     function grokBody() {
       const dis = S.busy ? 'disabled' : '';
@@ -246,10 +373,13 @@
       root.innerHTML = status
         + card('inputs', 'Inputs', 'keywords → seed photo → ChatGPT → text override → Grok', inputsBody)
         + (S.tiers || []).map(([t, tl]) => card('spec_' + t, tl, tierCount(t), () => tierBody(t))).join('')
+        + card('page', '📄 Page preview', (S.inputs || {}).page ? 'built ' + e(String(S.inputs.page.at || '').slice(0, 10)) : 'the whole page, from the spec', pageBody)
+        + card('assets', '🖼 Asset images', Object.keys(S.renders).length ? Object.keys(S.renders).length + ' rendered' : 'hero · signup · posts · thumbnails — from the spec', assetsBody)
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
         + card('voice', '🗣 Your voice', 'learned from your edits', voiceBody)
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${diff.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
-            <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}</div>
+            <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
+            ${stale() ? wb('visuals', BTN, '🔁 Update visuals') : ''}
             ${cfg.preview ? `<button data-act="preview" style="${S.preview ? BTNP : BTN}">👁 Preview${S.preview ? ': on' : ''}</button>` : ''}
             <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert</button>
             <button ${diff.length && !S.busy ? '' : 'disabled'} data-act="save" style="${BTNP}">💾 Save spec</button>
@@ -275,6 +405,11 @@
       const a = b.dataset.act, i = +b.dataset.i, k = b.dataset.k;
       if (a === 'toggle') { S.open[k] = !S.open[k]; if (k === 'voice' && S.open.voice) loadVoice(); render(); }
       else if (a === 'build') build();
+      else if (a.startsWith('render_')) renderAssets([a.slice(7)]);
+      else if (a === 'page') rebuildPage();
+      else if (a === 'visuals') updateVisuals();
+      else if (a === 'reread') reread();
+      else if (a.startsWith('set_')) setOnHub(a.slice(4));
       else if (a === 'chatCopy') copyChat();
       else if (a === 'chatMerge') mergeChat();
       else if (a === 'override') applyOverride();
