@@ -14395,7 +14395,7 @@ function hubDesignAttach(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || !window.DesignPanel) return;
   let p = _hubDesignPanels[slug];
   if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
-    onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; },
+    onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; hubRailAfterPush(slug, r); },
     preview: d => { _hubDesignPreview[slug] = d; hubPreviewPaint(slug); },
     onBuilt: url => { if (url) { _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); renderHubsTab(); } },
     beforeBuild: () => hubFlowPreflight(slug), onSaved: () => { _hubBuildFetched[slug] = false; } }) }; }
@@ -14867,6 +14867,21 @@ function hubFlowDesign(slug) {
 function hubFlowPreflight(slug) {
   const st = ((_hubBuild[slug] || {}).steps || []).filter(x => x.flow && /^flow-(scaffold|keywords|research)$/.test(x.id) && !x.done);
   return st.length ? 'Hub build steps not done yet:\n' + st.map(x => '  ○ ' + x.label).join('\n') + '\n\nThe first design build reads the scaffold, keyword research, research and products — build anyway?' : '';
+}
+// ⇪ Publish to hub → the rail flips to Live, waits for the hub to redeploy (polls the live page for the new accent
+// color, up to ~3 min), then reloads the frame with a cache-buster — so it never shows the old build.
+async function hubRailAfterPush(slug, r) {
+  delete _hubRailMock[slug]; _hubDesignPreview[slug] = null; renderHubsTab();
+  const url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/', want = String(((r && r.palette) || {}).accent || '').toLowerCase();
+  const lbl = () => document.getElementById('hpiWait-' + slug);
+  const show = t => { let el = lbl(); const f = document.getElementById('hpiFrame-' + slug); if (!el && f && f.parentElement) { el = document.createElement('div'); el.id = 'hpiWait-' + slug; el.style.cssText = 'font-size:11px;color:var(--text3);padding:4px 8px;'; f.parentElement.parentElement.insertBefore(el, f.parentElement); } if (el) el.textContent = t; };
+  show('⏳ Waiting for the hub to redeploy with the new design…');
+  for (let i = 0; i < 18; i++) {
+    await new Promise(res => setTimeout(res, 10000));
+    try { const t = await (await fetch(url + '?x=' + Date.now(), { cache: 'no-store' })).text(); if (!want || t.toLowerCase().includes(want)) break; } catch (e) {}
+  }
+  const f = document.getElementById('hpiFrame-' + slug); if (f) f.src = url + '?v=' + Date.now();
+  show('✓ Live hub reloaded with the published design.'); setTimeout(() => { const el = lbl(); if (el) el.remove(); }, 8000);
 }
 function hubSecToggle(k, open) {
   let m = {}; try { m = JSON.parse(localStorage.getItem('hubSecOpen:v1') || '{}'); } catch (e) {}
