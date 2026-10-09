@@ -48291,11 +48291,8 @@ Rules:
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
 - Image fields describe images that look like the seed photo, so every image in the project feels like one set.
 
-FIELDS (key — what it controls (format)):
-${dsSchemaText()}
-
-CURRENT VALUES (empty ones must be filled):
-${dsSpecText(spec)}
+FIELDS — key — what it controls (format): current value. Fill every "(empty)"; improve the rest only with a clearly better value:
+${DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h}): ${(spec[k] && spec[k].v) || "(empty)"}`).join("\n")).join("\n")).join("\n\n")}
 
 Reply with ONE fenced \`\`\`json block and nothing else:
 {"fields": {"color.bg": {"v": "#FBFAF7", "why": "warm off-white like the seed card"}, "...every key above...": {"v": "…", "why": "…"}}}
