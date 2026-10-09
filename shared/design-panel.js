@@ -36,7 +36,7 @@
 
   function mount(root, cfg) {
     const S = { cid: String(cfg.campaignId || '').replace(/-/g, ''), slug: cfg.slug || '', schema: [], tiers: [], saved: null, savedAt: null, staged: {}, inputs: {}, job: null,
-      open: { inputs: true }, edit: null, busy: '', msg: '', msgKind: '', kw: null, override: null, gptReply: '', preview: false,
+      open: {}, edit: null, busy: '', msg: '', msgKind: '', kw: null, override: null, gptReply: '', preview: false,
       tests: [], aspect: '3:4', plate: null, voice: null, myPrompt: '', renders: {} };
     const call = async (a, b) => { const r = await cfg.call(a, Object.assign({ campaignId: S.cid }, b || {})); if (r && r.error) throw new Error(r.error); return r || {}; };
     const ds = (op, b) => call('designSpec', Object.assign({ op }, b || {}));
@@ -114,7 +114,7 @@
     }
     async function renderAssets(ids, after) {
       for (const id of ids) {
-        startWork('render_' + id, `Rendering the ${id.replace(/_/g, ' ')} image on Grok (~20s)…`); S.open.assets = true; render();
+        startWork('render_' + id, `Rendering the ${id.replace(/_/g, ' ')} image on Grok (~20s)…`); render();
         try { await renderAsset(id); endWork(); }
         catch (err) { endWork(); return say(`${after ? after + ' — but the ' : ''}${id.replace(/_/g, ' ')} image failed: ${err.message}`, 'bad'); }
       }
@@ -161,19 +161,19 @@
           else if (k === 'spec') { const r = await ds('build'); take(r); const j = r.job || {}; step(k, 'ok', `${(j.applied || []).length} fields set${(j.suggested || []).length ? `, ${j.suggested.length} suggestions` : ''}`); }
           else if (k === 'save') { const r = await ds('save'); take(r); if (r.notionError) throw new Error(r.notionError); step(k, 'ok', `${Object.keys(r.saved || {}).length} fields saved; ${(r.wrote || []).length} Research fields written`); }
           else if (k === 'images') { for (const id of ['hero', 'signup']) { step(k, 'run', `rendering the ${id}…`); await renderAsset(id); } await persistRenders(); step(k, 'ok', 'hero + signup rendered — see 🖼 Asset images'); }
-          else if (k === 'page') { const r = await ds('page', { images: imageUrls() }); take(r); S.open.page = true; step(k, 'ok', 'built — see 📄 Page preview'); }
+          else if (k === 'page') { const r = await ds('page', { images: imageUrls() }); take(r); step(k, 'ok', 'built — see 📄 Page preview'); }
         } catch (err) {
           step(k, 'err', err.message); PIPE.slice(PIPE.findIndex(x => x[0] === k) + 1).filter(([x]) => keys.includes(x)).forEach(([x]) => { S.pipe[x] = { s: 'skip' }; });
           const s = endWork(); return say(`Build stopped at "${PIPE.find(x => x[0] === k)[1]}" after ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}: ${err.message}`, 'bad');
         }
       }
-      const s = endWork(); S.open.spec_web = S.open.spec_image = S.open.spec_asset = true; S.open.assets = true;
+      const s = endWork();
       if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} }
       say(`${doneMsg} in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}.${act === 'build' ? ' Now refine: edit fields, 📋 ChatGPT, text override, Grok — then 🔁 Update visuals.' : act === 'reread' ? ' 🔁 Update visuals to see it.' : ''}`, 'ok');
     }
     async function rebuildPage() {
       startWork('page', 'Building the whole page from the staged spec (~1-2 min)…');
-      try { const r = await ds('page', { images: imageUrls() }); take(r); endWork(); S.open.page = true; say('Page rebuilt — see 📄 Page preview.', 'ok'); if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} } }
+      try { const r = await ds('page', { images: imageUrls() }); take(r); endWork(); say('Page rebuilt — see 📄 Page preview.', 'ok'); if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} } }
       catch (err) { endWork(); say('Page build failed: ' + err.message, 'bad'); }
     }
     function pipeList() {
@@ -429,7 +429,7 @@
     // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
     async function previewStaged() {
       startWork('pstaged', 'Previewing the staged spec: hero + signup images, then the mockup page (2-3 min)…');
-      try { for (const id of ['hero', 'signup']) await renderAsset(id); await persistRenders(); const r = await ds('page', { images: imageUrls() }); take(r); endWork(); S.open.page = true;
+      try { for (const id of ['hero', 'signup']) await renderAsset(id); await persistRenders(); const r = await ds('page', { images: imageUrls() }); take(r); endWork();
         say('Preview ready from the STAGED spec — see 📄 Page preview / the Mockup on the right. Keep it with 💾 Save, or ↺ Revert.', 'ok');
         if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} } }
       catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); }
