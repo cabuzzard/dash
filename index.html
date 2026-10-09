@@ -14169,6 +14169,8 @@ async function hubSitesExtraLoad() {
     if (added) renderHubsTab();
   } catch (e) { _hubExtraLoaded = false; }
 }
+// registry hubs merge as soon as the page is signed in — before Content Hubs is opened, so no extra re-render
+setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 function renderHubsTab() {
   hubSitesExtraLoad();
   const el = document.getElementById('hubsTabContent');
@@ -14194,10 +14196,12 @@ function renderHubsTab() {
       if (HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
     }).catch(() => {});
   }
-  if (h.campaignId && !_hubBuildFetched[slug]) {
+  if (h.campaignId && !_hubBuildFetched[slug] && (hubSecOpen('build') || hubSecOpen('production'))) {   // lazy: only when a section that shows it is open
     _hubBuildFetched[slug] = true;
+    // the last checklist for this hub paints immediately (saved in this browser); the fresh one replaces it
+    if (!_hubBuild[slug]) { try { const c = JSON.parse(localStorage.getItem('hubBuild:v1:' + slug) || 'null'); if (c && c.steps) _hubBuild[slug] = { ...c, cached: true }; } catch (e) {} }
     call('getHubBuildStatus', { campaignId: h.campaignId }).then(r => {
-      if (r && r.steps) _hubBuild[slug] = r;
+      if (r && r.steps) { _hubBuild[slug] = r; try { localStorage.setItem('hubBuild:v1:' + slug, JSON.stringify(r)); } catch (e) {} }
       if (HUB_SITES[_hubIdx] && HUB_SITES[_hubIdx].slug === slug) renderHubsTab();
     }).catch(() => {});
   }
@@ -14270,7 +14274,7 @@ function renderHubsTab() {
       </div>
     </div>
 
-    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open)">
+    <details class="hub-sec" ${hubSecOpen('build') ? 'open' : ''} ontoggle="hubSecToggle('build', this.open);if(this.open&&!_hubBuildFetched['${slug}'])renderHubsTab()">
       <summary>
         <span>Build checklist</span>
         <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
@@ -14280,7 +14284,7 @@ function renderHubsTab() {
       <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
     </details>
 
-    <details class="hub-sec" ${hubSecOpen('production') ? 'open' : ''} ontoggle="hubSecToggle('production', this.open);if(this.open)hubContentLoad('${slug}')">
+    <details class="hub-sec" ${hubSecOpen('production') ? 'open' : ''} ontoggle="hubSecToggle('production', this.open);if(this.open){hubContentLoad('${slug}');if(!_hubBuildFetched['${slug}'])renderHubsTab();}">
       <summary><span>Production</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keywords · products · strategies</span>
         <button onclick="event.preventDefault();event.stopPropagation();_hubKw['${slug}']=null;hubContentLoad('${slug}', true);if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" title="Reload keywords + strategies from Notion" style="margin-left:auto;font-weight:400;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">⟳</button>
       </summary>
@@ -14309,7 +14313,7 @@ function renderHubsTab() {
       </div>
     </details>
 
-    <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open)">
+    <details class="hub-sec" ${hubSecOpen('design') ? 'open' : ''} ontoggle="hubSecToggle('design', this.open);if(this.open)hubDesignAttach('${slug}')">
       <summary><span>Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">direction · palette · fonts · image spec · layouts</span></summary>
       <div style="padding:10px 12px;">
         <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
@@ -14403,7 +14407,7 @@ function renderHubsTab() {
   </div>
   </div>`;
   setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
-  hubDesignAttach(slug);
+  if (hubSecOpen('design') || _hubDesignPanels[slug]) hubDesignAttach(slug);   // lazy: mounts on first open of Design, then stays
 }
 
 // ── ⟲ Re-run from keywords: the shared rebuild modal (shared/hub-rerun.js) for one hub
@@ -14421,7 +14425,7 @@ async function hubRailMode(slug, mode) {
   delete _hubRailMock[slug];
   if (mode === 'mock') {
     const api = _hubDesignPanels[slug] && _hubDesignPanels[slug].api;
-    if (!api || !api.previewStaged) { alert('Open the Design section once so the panel loads, then try again.'); return; }
+    if (!api || !api.previewStaged) { hubSecToggle('design', true); renderHubsTab(); alert('The Design panel is loading (it opens with the Design section) — press Preview staged again in a few seconds.'); return; }
     const b = document.getElementById('hpiStaged-' + slug); if (b) { b.disabled = true; b.textContent = '⏳ repainting…'; }
     try { await api.previewStaged(); } catch (e) { if (b) { b.disabled = false; b.textContent = 'Preview staged'; } return; }
   } else { _hubDesignPreview[slug] = null; }

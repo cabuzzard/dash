@@ -582,6 +582,7 @@ const SINGLE_POST_FIELDS = ["Headline Primary", "Headline Accent", "Body"];
 // a new hub is registered ONLY in KV hub:sites:extra. Merge it into HUB_SITES once a minute per isolate, so every
 // HUB_SITES lookup (hub slug for a campaign, feeds, design repaint, crons…) sees new hubs without a code edit.
 let _hubExtraAt = 0;
+const _hubMethodNames = new Map();   // method page id → name (methods rarely rename; per isolate)
 async function hubSitesMerge(env) {
   if (Date.now() - _hubExtraAt < 60000) return; _hubExtraAt = Date.now();
   try { const extra = (await env.TRADES.get("hub:sites:extra", "json")) || [];
@@ -12482,8 +12483,21 @@ the one aesthetic risk taken + why:`;
 
         // ── getHubBuildStatus ── the checklist + derived done-state.
         if (body.action === "getHubBuildStatus") {
+          // speed (2026-10-09): every independent query starts NOW, in parallel; each is awaited where it's used
+          const cidN0 = String(campaignId).replace(/-/g, ""), campRel = { property: "Campaign", relation: { contains: dashHb(campaignId) } };
+          const P_kv = env.TRADES.get("hub:build:" + slug, "json").catch(() => null);
+          const P_prods = notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashHb(campaignId) } } }).catch(() => []);
+          const P_sg = env.TRADES.get("stackgroups:" + cidN0, "json").catch(() => null);
+          const P_dev = notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [campRel, { property: "Status", select: { equals: "Development" } }] } }).catch(() => []);
+          const P_listed = notionQuery(ASSETS_DB, { filter: { and: [campRel, { property: "Asset Status", select: { does_not_equal: "Delete" } }] } }).catch(() => []);
+          const P_secIds = Promise.all(["main", "offers", "news", "articles", "interactive", "cta"].map(k => env.TRADES.get("hub:sectiontitles:" + k + ":" + cidN0).then(v => [k, v]).catch(() => [k, null])));
+          const P_flow = Promise.all([
+            notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [campRel, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+            env.TRADES.get("seoclusters:staged:" + cidN0, "json").catch(() => null),
+            env.TRADES.get("design:spec:" + cidN0, "json").catch(() => null),
+            env.TRADES.get("design:inputs:" + cidN0, "json").catch(() => null)]);
           let kv = {};
-          try { kv = (await env.TRADES.get("hub:build:" + slug, "json")) || {}; } catch (e) {}
+          try { kv = (await P_kv) || {}; } catch (e) {}
           const [idxF, dsF, contentF, postsF, designJson, offerAssets, emailAssets, researchRows] = await Promise.all([
             ghGet(`web/hub/${slug}/index.html`),
             ghGet(`web/hub/hubs.design.json`),
@@ -12523,7 +12537,7 @@ the one aesthetic risk taken + why:`;
           // just reports whether the result is live and links out.
           // Main offering: the one product the hub is built around (the Content Hub asset's Product, else the
           // campaign's first product — same resolution as getHubMainProduct)
-          const campProducts = (await notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashHb(campaignId) } } }).catch(() => []))
+          const campProducts = (await P_prods)
             .filter(p => !p.archived && !p.properties?.Archived?.checkbox)
             .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() || "Untitled", status: p.properties?.Status?.select?.name || "",
               stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim(), type: (p.properties?.Type?.rich_text || []).map(t => t.plain_text).join("").trim(),
@@ -12531,11 +12545,10 @@ the one aesthetic risk taken + why:`;
             .sort((a, b) => a.name.localeCompare(b.name));
           // Group → Stack → Product: the campaign's product groups (KV stackgroups:<cid>, same as care-gap's Product Research tab)
           let stackGroups = { order: [], map: {} };
-          try { stackGroups = (await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json")) || stackGroups; } catch (e) {}
+          try { stackGroups = (await P_sg) || stackGroups; } catch (e) {}
           campProducts.forEach(p => { p.group = (stackGroups.map || {})[p.stack || ""] || ""; });
           // how many Development-status titles hang off each product
-          { const dev = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [
-                { property: "Campaign", relation: { contains: dashHb(campaignId) } }, { property: "Status", select: { equals: "Development" } } ] } }).catch(() => []);
+          { const dev = await P_dev;
             const n = {}; dev.forEach(t => (t.properties?.product?.relation || []).forEach(r => { const id = r.id.replace(/-/g, ""); n[id] = (n[id] || 0) + 1; }));
             campProducts.forEach(p => { p.devTitles = n[p.id] || 0; }); }
           const mainIds = ctxH.mainChosen ? (ctxH.mainIds || [productId]) : [], mainId = mainIds[0] || null;
@@ -12543,14 +12556,13 @@ the one aesthetic risk taken + why:`;
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
           const HUB_BLOG_SECTIONS = [{ key: "main", label: "Main offerings", phase: "Main offerings" }, { key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
             { key: "interactive", label: "Interactive", phase: "Interactive" }, { key: "cta", label: "CTA's", phase: "CTA's" }];   // CTA's: assets with Hub Section = CTA   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
-          const listed = (await notionQuery(ASSETS_DB, { filter: { and: [
-              { property: "Campaign", relation: { contains: dashHb(campaignId) } },
-              { property: "Asset Status", select: { does_not_equal: "Delete" } } ] } }).catch(() => []))   // 2026-10-08: the card shows every asset in a section (Planning dummies too); the live hub still shows only Publish/Published
+          const listed = (await P_listed)   // 2026-10-08: the card shows every asset in a section (Planning dummies too); the live hub still shows only Publish/Published
             .filter(r => { const h = r.properties?.["Content Hub"]?.select?.name || ""; return !h || h === slug; });
           // method names, so each row shows which method produced it (the Asset Type select alone can be a legacy label)
           const mIds = [...new Set(listed.map(r => (r.properties?.Method?.relation || [])[0]?.id).filter(Boolean))];
-          const mName = Object.fromEntries(await Promise.all(mIds.map(async id => { try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
-            return [id, (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim()]; } catch (e) { return [id, ""]; } })));
+          const mName = Object.fromEntries(await Promise.all(mIds.map(async id => { if (_hubMethodNames.has(id)) return [id, _hubMethodNames.get(id)];
+            try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
+            const nm = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); if (nm) _hubMethodNames.set(id, nm); return [id, nm]; } catch (e) { return [id, ""]; } })));
           const pageSections = HUB_BLOG_SECTIONS.map(sec => {
             const items = listed.filter(r => hubSectionOf(r.properties) === sec.key)
               .sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))
@@ -12565,9 +12577,10 @@ the one aesthetic risk taken + why:`;
             return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "no assets in this section yet" };
           });
+          const secIds = Object.fromEntries(await P_secIds);
           for (const ps of pageSections) {
             // every page section holds hand-picked TITLES too (KV hub:sectiontitles:<key>:<cid>) — planned work for that slot
-            let ids = []; try { ids = JSON.parse((await env.TRADES.get("hub:sectiontitles:" + ps.key + ":" + String(campaignId).replace(/-/g, ""))) || "[]"); } catch (e) {}
+            let ids = []; try { ids = JSON.parse(secIds[ps.key] || "[]"); } catch (e) {}
             const txt = a => (a || []).map(t => t.plain_text).join("").trim();
             ps.titleSlots = false;   // sections feature assets only now (2026-10-08); old hand-picked titles are cleared by hubDummies
             ps.titles = (await Promise.all(ids.map(async id => { try {
@@ -12585,11 +12598,7 @@ the one aesthetic risk taken + why:`;
           // ── Hub build (2026-10-09): the operator's order — keywords → keyword research (on the scaffold) → main products
           // (keyword tool / care-gap) → design build (Claude fills every field) → review rounds (Claude / ChatGPT / Grok → save).
           const cidN = String(campaignId).replace(/-/g, "");
-          const [topicRows, stagedTopics, dsSaved, dsInputs] = await Promise.all([
-            notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dashHb(campaignId) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
-            env.TRADES.get("seoclusters:staged:" + cidN, "json").catch(() => null),
-            env.TRADES.get("design:spec:" + cidN, "json").catch(() => null),
-            env.TRADES.get("design:inputs:" + cidN, "json").catch(() => null)]);
+          const [topicRows, stagedTopics, dsSaved, dsInputs] = await P_flow;
           const kwTxt = String(ctxH.campKeywords || (dsInputs && dsInputs.keywords) || "").trim(), nTopics = topicRows.length + (Array.isArray(stagedTopics) ? stagedTopics.length : 0);
           const scaffolded = !idxF.missing, nSpec = Object.keys((dsSaved && dsSaved.spec) || {}).length, rv = (dsInputs && dsInputs.review) || null;
           const reviewSaved = !!(rv && dsSaved && dsSaved.at && rv.at && dsSaved.at >= rv.at);
