@@ -6186,7 +6186,7 @@ async function kwStartHub() {
   if (!KW.selected.size) { msg.textContent = 'Select the keywords for the hub first (e.g. select all in a run).'; return; }
   if (!KW.campaigns) { try { KW.campaigns = ((await call('getCampaigns')).campaigns || []).filter(c => c.name && c.status !== 'Delete').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) { KW.campaigns = []; } }
   const top = kwCoreSort((KW.rows || []).filter(r => KW.selected.has(r.keyword)), [{ col: 'vol', dir: 'desc' }])[0];
-  const sug = top ? top.keyword.replace(/\w/g, c => c.toUpperCase()) : '';
+  const sug = top ? top.keyword.replace(/\b\w/g, c => c.toUpperCase()) : '';
   document.getElementById('kwHubModal')?.remove();
   const m = document.createElement('div'); m.id = 'kwHubModal';
   m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
