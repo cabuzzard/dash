@@ -142,8 +142,8 @@
     async function persistRenders() { try { take(await ds('inputs', { renders: S.renders })); } catch (err) {} }
     async function build() {
       if (!String(S.kw || '').trim()) return say('Add the keywords first.', 'bad');
-      if (!confirm('Build everything from these inputs?\n\nRewrites the campaign research fields, every design-spec field, the saved Image Spec / Palette / Fonts on the Research record, and renders the images + a full page preview. Fields you edited by hand are kept. The live hub page only changes when you press ⇪ Publish or ✓ Set on hub.')) return;
-      return runPipe('build', PIPE.map(x => x[0]), 'Building everything from the inputs (6-9 min, keep this tab open)…', 'First pass done');
+      if (!confirm('Build everything from these inputs?\n\nRewrites every design-spec field (reading — not changing — the campaign research), the saved Image Spec / Palette / Fonts on the Research record, and renders the images + a full page preview. Fields you edited by hand are kept. The live hub page only changes when you press ⇪ Publish or ✓ Set on hub.')) return;
+      return runPipe('build', PIPE.map(x => x[0]).filter(k => k !== 'research'), 'Building everything from the inputs (6-9 min, keep this tab open)…', 'First pass done');
     }
     // iterate: the spec has changed (edits, override, ChatGPT, Grok) → save it and redo the images + the page from it
     const updateVisuals = () => runPipe('visuals', ['save', 'images', 'page'], 'Updating the visuals from the current spec (2-3 min)…', 'Visuals updated');
@@ -320,7 +320,7 @@
         + `<div style="margin:4px 0 12px;padding:10px;border:1px solid ${C.ok};border-radius:8px;background:${C.surf2};">
             <div style="${LBL}margin-bottom:6px;">${built ? 'Rebuild' : 'Build'} from the inputs above</div>
             ${wb('build', BTNP, built ? '↻ Rebuild everything from these inputs' : '✨ Build everything from these inputs')}
-            <div style="font-size:10.5px;color:${C.ink3};margin-top:5px;">Writes the research fields, every spec field (saved to the record), renders the hero + signup images and builds the whole page — 6-9 min.${built ? ' A rebuild starts the spec over from the inputs: hand edits below are replaced.' : ''}</div>
+            <div style="font-size:10.5px;color:${C.ink3};margin-top:5px;">Reads the campaign research, writes every design field (saved), renders the hero + signup images and builds the whole page — 6-9 min.${built ? ' A rebuild starts the spec over from the inputs: hand edits below are replaced.' : ''}</div>
             ${pipeList()}${loadedInputs()}</div>`
         // ── after a build: iterate without starting over ──
         + (built ? `<div style="margin:0 0 4px;padding:10px;border:1px dashed ${C.line};border-radius:8px;">
@@ -374,12 +374,34 @@
         if (ev.target === m || g === 'cancel') return m.remove();
         if (g === 'ok') { ev.target.disabled = true; ev.target.textContent = '⏳ Working…'; try { await onOk(m); m.remove(); } catch (err) { m.querySelector('[data-g="msg"]').textContent = err.message; ev.target.disabled = false; ev.target.textContent = okLabel; } } });
     }
-    const secById = id => S.schema.find(x => x.id === id);
+    // Sections (2026-10-09): clear numbered sections, each built from spec groups; every section has the same toolbar
+    // and its ✎ Edit fields modal shows ALL its fields under sub-headings. Unknown/new groups land in "Other".
+    const DP_SECTIONS = [
+      ['direction', '1 · Site direction & audience', g => g.id === 'intent', 'reads the campaign research — research itself is edited in the Research tab'],
+      ['colors', '2 · Colors', g => g.id === 'color'],
+      ['type', '3 · Typography', g => g.id === 'type'],
+      ['layout', '4 · Web & content layout', g => ['layout', 'components', 'content', 'motion'].includes(g.id)],
+      ['imagery', '5 · Visual plate & imagery', g => ['imagery', 'avoid'].includes(g.id)],
+      ['overlay', '6 · Text on images', g => g.id === 'overlay'],
+      ['assets', '7 · Asset image specs (per format)', g => g.tier === 'asset'],
+    ];
+    const dpSections = () => {
+      const used = new Set(), out = DP_SECTIONS.map(([id, label, f, note]) => { const secs = S.schema.filter(g => f(g)); secs.forEach(g => used.add(g.id));
+        return { id: 'S_' + id, label, note: note || '', secs, fields: secs.flatMap(g => g.fields) }; });
+      const rest = S.schema.filter(g => !used.has(g.id)); if (rest.length) out.push({ id: 'S_other', label: '8 · Other', note: '', secs: rest, fields: rest.flatMap(g => g.fields) });
+      return out.filter(x => x.fields.length);
+    };
+    const secById = id => dpSections().find(x => x.id === id) || S.schema.find(x => x.id === id);
+    function sectionBody(sec) {
+      return (sec.note ? `<div style="font-size:10.5px;color:${C.ink3};margin:0 0 6px;">${e(sec.note)}</div>` : '') + groupBar(sec)
+        + sec.secs.map(g => `${sec.secs.length > 1 ? `<div style="${LBL}margin:8px 0 2px;">${e(g.label)}</div>` : ''}${g.fields.map(fieldRow).join('')}`).join('');
+    }
     function gEdit(id) {
       const sec = secById(id); if (!sec) return;
       gModal(`✎ Edit fields — ${e(sec.label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:8px;">Your values override any source. They go to STAGED — preview, then 💾 Save or ↺ Revert.</div>`
-        + sec.fields.map(([k, label, hint]) => `<label style="display:block;margin-bottom:7px;font-size:11px;color:${C.ink2};">${e(label)} <span style="color:${C.ink3};font-size:9.5px;">${e(k)}</span>
-          <input data-gk="${e(k)}" value="${e(fv(k) || '')}" placeholder="${e(hint || '')}" style="${TA}padding:4px 7px;margin-top:2px;"></label>`).join(''),
+        + (sec.secs || [sec]).map(g => `${(sec.secs || []).length > 1 ? `<div style="${LBL}margin:12px 0 4px;border-top:1px solid ${C.line};padding-top:8px;">${e(g.label)}</div>` : ''}`
+          + g.fields.map(([k, label, hint]) => `<label style="display:block;margin-bottom:7px;font-size:11px;color:${C.ink2};">${e(label)} <span style="color:${C.ink3};font-size:9.5px;">${e(k)}</span>
+          <input data-gk="${e(k)}" value="${e(fv(k) || '')}" placeholder="${e(hint || '')}" style="${TA}padding:4px 7px;margin-top:2px;"></label>`).join('')).join(''),
         'Stage changes', async m => {
           const ch = [...m.querySelectorAll('[data-gk]')].filter(x => x.value.trim() !== (fv(x.dataset.gk) || ''));
           for (const x of ch) take(await ds('edit', { key: x.dataset.gk, v: x.value.trim() }));
@@ -388,7 +410,7 @@
     }
     async function gSource(id, src) {
       const sec = secById(id); if (!sec) return; const keys = secKeys(sec), label = sec.label;
-      const after = r => { take(r); S.open['sec_' + id] = true; say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
+      const after = r => { take(r); S.open[id] = true; say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
       if (src === 'text') return gModal(`Text override → ${e(label)}`, `<textarea data-gt rows="4" placeholder="e.g. headlines heavier · sage green buttons · no gradients" style="${TA}">${e(S.override || '')}</textarea>`, 'Apply to staged', async m => {
         const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Type the override first.');
         startWork('gsrc', `Applying the override to ${label}…`); try { after(await ds('text', { override: t, keys })); } finally { endWork(); render(); } });
@@ -459,7 +481,8 @@
       const tierCount = t => { const fs = S.schema.filter(s => s.tier === t).flatMap(s => s.fields); return `${fs.filter(([k]) => fv(k)).length}/${fs.length} filled`; };
       root.innerHTML = status
         + card('inputs', 'Inputs', 'keywords → seed photo → ChatGPT → text override → Grok', inputsBody)
-        + (S.tiers || []).map(([t, tl]) => card('spec_' + t, tl, tierCount(t), () => tierBody(t))).join('')
+        + dpSections().map(sec => { const n = sec.fields.filter(([k]) => fv(k)).length, nd = secDiff(sec);
+            return card(sec.id, e(sec.label), `${n}/${sec.fields.length} filled${nd ? ` · <span style="color:${C.warn};">● ${nd} staged</span>` : ''}`, () => sectionBody(sec)); }).join('')
         + card('page', '📄 Page preview', (S.inputs || {}).page ? 'built ' + e(String(S.inputs.page.at || '').slice(0, 10)) : 'the whole page, from the spec', pageBody)
         + card('assets', '🖼 Asset images', Object.keys(S.renders).length ? Object.keys(S.renders).length + ' rendered' : 'hero · signup · posts · thumbnails — from the spec', assetsBody)
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
