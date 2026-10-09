@@ -45,7 +45,8 @@
     "title": "The Medicare questions worth asking — before December 7",
     "blurb": "A one-page checklist of the questions we hear most, in the order to ask them: which doctors and prescriptions to check first, Medigap or Medicare Advantage, what changes if you're still working at 65, and the enrollment deadlines that carry lifelong penalties. Then one short email a week through Open Enrollment, answering the questions people were afraid to ask.",
     "note": "One email a week. Unsubscribe in one click. We never share or sell your address.",
-    "buttonLabel": "Send me the checklist"
+    "buttonLabel": "Send me the checklist",
+    "image": "./signup.png?v=1791517087260"
   },
   "projectExperience": {
     "label": "Questions we've answered",
