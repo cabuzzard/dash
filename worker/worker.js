@@ -48671,12 +48671,12 @@ async function handleDesignSpec(body, env, ctx) {
   }
 
   const engine = async () => {
-  const claude = async (content, maxTokens, search) => {
+  const claude = async (content, maxTokens, search, model) => {
     if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
     const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
       headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(search ? { "anthropic-beta": "web-search-2025-03-05" } : {}) },
       // streamed: a 1-3 min non-streaming call gets cut off with a 524 at the API edge
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, stream: true, ...(search ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] } : {}), messages: [{ role: "user", content }] }) });
+      body: JSON.stringify({ model: model || "claude-sonnet-4-6", max_tokens: maxTokens, stream: true, ...(search ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] } : {}), messages: [{ role: "user", content }] }) });
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error?.message || "Claude API error " + r.status); }
     const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "", raw = "", stop = "";
     for (;;) {
@@ -48906,7 +48906,7 @@ CLASSES ON THE PAGE: ${classes}
 IDS ON THE PAGE: ${ids}
 
 Reply with ONE \`\`\`css block only.`;
-    let raw; try { raw = await claude(ptext, 8000, false); } catch (e) { return { error: e.message }; }
+    let raw; try { raw = await claude(ptext, 6000, false, "claude-haiku-4-5-20251001"); } catch (e) { return { error: e.message }; }   // css from fields is mechanical → the fast model
     const css = dsRepaintSanitize((raw.match(/```css\s*([\s\S]*?)```/i) || [null, raw])[1]).trim();
     if (css.length < 80) return { error: "the repaint came back empty — try again" };
     await put(K_RP, { sig: sg, css, at: new Date().toISOString(), from: body.from === "saved" ? "saved" : "staged" });

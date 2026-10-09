@@ -502,6 +502,7 @@
       const todo = [], noImg = ['hero', 'signup'].filter(id => !(S.renders[id] && S.renders[id].url)), oldImg = ['hero', 'signup'].filter(id => S.renders[id] && S.renders[id].url && hasAssetFields(id) && !imgCurrent(id));   // images are rendered separately (🖼 Asset images) — never by the preview
       startWork('pstaged', `Repainting the hub page from the staged fields${todo.length ? ` + rendering ${todo.join(' + ')} on Grok` : ''}…`);
       try {
+        if (cfg.preview) { S.repaintData = { palette: palette(S.staged), fonts: fonts(S.staged), css: (S.repaintData && S.repaintData.css) || ' ', images: imageUrls() }; cfg.preview(S.repaintData); }   // instant: colors + fonts now
         const [r] = await Promise.all([ds('repaint'), Promise.all(todo.map(id => renderAsset(id).catch(err => { noImg.push(id + ' (render failed: ' + err.message + ')'); })))]);
         if (todo.length) await persistRenders();
         S.repaintSig = sig(S.staged); const s = endWork();
