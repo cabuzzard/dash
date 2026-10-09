@@ -4191,7 +4191,8 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=202610091215"></script>
+<script src="shared/design-panel.js?v=202610091300"></script>
+<script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -14188,7 +14189,8 @@ function renderHubsTab() {
       <summary>
         <span>Build checklist</span>
         <span style="font-weight:400;color:var(--text3);letter-spacing:0;">${_hubBuild[slug] ? _hubBuild[slug].doneCount + '/' + _hubBuild[slug].total : '…'}</span>
-        <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status from the live site + Notion" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳ re-check</button>
+        <button onclick="event.preventDefault();event.stopPropagation();hubRerunOpen('${slug}')" title="Rebuild this hub from scratch off its keywords: research, design spec, publish, copy, images, dummies" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">⟲ Re-run from keywords</button>
+        <button onclick="event.stopPropagation();_hubBuildFetched['${slug}']=false;renderHubsTab()" title="Re-check status from the live site + Notion" style="margin-left:6px;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳ re-check</button>
       </summary>
       <div id="hubBuildBody-${slug}" style="padding:4px 0;">${renderHubBuildRows(slug)}</div>
     </details>
@@ -14316,6 +14318,11 @@ function renderHubsTab() {
   hubDesignAttach(slug);
 }
 
+// ── ⟲ Re-run from keywords: the shared rebuild modal (shared/hub-rerun.js) for one hub
+function hubRerunOpen(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId) return alert('This hub has no campaign linked.');
+  window.HubRerun.open({ call, slug, campaignId: h.campaignId, name: h.name, onDone: () => { _hubBuildFetched[slug] = false; renderHubsTab(); } });
+}
 // ── Design: the shared design panel (shared/design-panel.js — the same editor care-gap's Design tab mounts).
 // One panel per hub, created once and re-attached after every card render so its state survives. ──
 const _hubDesignPanels = {}, _hubDesignPreview = {};

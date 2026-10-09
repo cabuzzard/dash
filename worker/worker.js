@@ -12586,7 +12586,11 @@ the one aesthetic risk taken + why:`;
           const idxF = await ghGet(`web/hub/${slug}/index.html`);
           if (idxF.missing) return json({ error: `web/hub/${slug}/ not scaffolded yet — run Scaffold first` }, 400);
           if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+          // the saved design spec's voice + content-layout fields are rules the copy must follow
+          let dsRules = ""; try { const ds = await env.TRADES.get("design:spec:" + campaignId, "json");
+            const sp = (ds && ds.spec) || {}; dsRules = Object.keys(sp).filter(k => /^(content\.|intent\.(voice|tagline|page_job|audience|arrival_emotion))/.test(k)).map(k => `${k}: ${sp[k].v}`).join("\n"); } catch (e) {}
           const prompt = `You are writing the copy for a content-hub home page. Return ONLY JSON.
+${dsRules ? `\nDESIGN SPEC — voice + content rules (follow them exactly: word limits, CTA wording, reading level, disclaimers):\n${dsRules}\n` : ""}
 
 HUB: "${campName}"${g.productName ? ` — built around the product "${g.productName}"` : ""}
 CAMPAIGN KEYWORDS: ${ctxH.campKeywords || "(none)"}
@@ -48303,6 +48307,37 @@ ${["hero", "signup", "social_square"].map((a, i) => { const g = f => (spec[`asse
 Use the asset fields from your JSON for anything still blank above.`;
 }
 
+// spec → the hub's 10 tokens / 3 fonts / the legacy direction fields (every role must be a hex, or no palette)
+const DS_TOKEN_MAP = [["bg", "color.bg"], ["surface", "color.surface"], ["ink", "color.ink"], ["ink-head", "color.ink_head"], ["ink-soft", "color.ink_soft"], ["line", "color.line"],
+  ["sea", "color.primary"], ["deep", "color.deep"], ["deep-ink", "color.deep_ink"], ["accent", "color.accent"]];
+function dsPalette(sp) { const p = {}; for (const [t, k] of DS_TOKEN_MAP) { const m = /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b/i.exec(String((sp[k] || {}).v || "")); if (!m) return null; p[t] = m[0].toUpperCase(); } return p; }
+function dsFonts(sp) { const fam = k => String((sp[k] || {}).v || "").split(/[,(;·]| — | - /)[0].replace(/["']/g, "").trim();
+  const d = fam("type.display_font"), b = fam("type.body_font"), m = fam("type.label_font"); return d && b ? { display: d, body: b, mono: m || b } : null; }
+function dsDirection(sp) {
+  const g = k => (sp[k] || {}).v || "", ln = ks => ks.map(k => g(k) ? `${k.split(".").pop().replace(/_/g, " ")}: ${g(k)}` : "").filter(Boolean).join("; ");
+  return { register: [g("img.mood"), g("intent.voice") && "Voice: " + g("intent.voice"), g("intent.differentiator")].filter(Boolean).join(". "),
+    photography: ln(["img.medium", "img.line", "img.fill", "img.background", "img.accents", "img.people", "img.representation", "img.cast", "img.poses", "img.settings", "img.camera", "img.light", "img.palette_use"]),
+    avoid: ["avoid.visual", "avoid.subjects", "avoid.colors", "avoid.type", "avoid.stock_ai"].map(g).filter(Boolean).join("; "),
+    notes: `The design spec (${Object.keys(sp).length} fields) is the authority — Research "Image Spec" holds every field. Page job: ${g("intent.page_job") || "—"}.` };
+}
+const dsDash = s => { s = String(s).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+const dsRt = s => ({ rich_text: (s => { const o = []; for (let i = 0; i < s.length && o.length < 90; i += 1900) o.push({ text: { content: s.slice(i, i + 1900) } }); return o; })(String(s || "")) });
+// the campaign's Research record (the richest one, same scoring as everywhere else); created if missing
+async function dsResearchRecord(env, cid, campName) {
+  const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dsDash(cid) } } }).catch(() => []);
+  const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const score = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + rtx(r, k).length, 0);
+  const rec = rows.slice().sort((a, b) => score(b) - score(a))[0];
+  if (rec) return rec.id.replace(/-/g, "");
+  const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ parent: { database_id: RESEARCH_DB }, properties: { Name: { title: [{ text: { content: (campName || "Research").slice(0, 200) } }] }, Campaign: { relation: [{ id: dsDash(cid) }] }, Status: { select: { name: "Draft" } } } }) }).then(r => r.json());
+  return r && r.id ? r.id.replace(/-/g, "") : null;
+}
+async function dsPatch(env, pageId, props) {
+  const r = await fetch(`https://api.notion.com/v1/pages/${dsDash(pageId)}`, { method: "PATCH", headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion write failed " + r.status); }
+}
+
 async function handleDesignSpec(body, env, ctx) {
   if (body.action !== "designSpec") return null;
   const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return { error: "campaignId required" };
@@ -48348,7 +48383,27 @@ async function handleDesignSpec(body, env, ctx) {
     const clean = {}; for (const [k, f] of Object.entries(staged)) if (DS_KEYS.has(k) && f && f.v) clean[k] = { v: f.v, why: f.why || "", src: f.src || "manual" };
     const rec = { spec: clean, at: new Date().toISOString(), prev: saved ? { spec: saved.spec, at: saved.at } : null };
     await put(K.saved, rec); staged = clean; await put(K.stage, staged);
-    return { ...out(), saved: clean, savedAt: rec.at, text: dsSpecText(clean, true) };
+    // mirror onto the Research record: every field as text (all image engines read Image Spec) + the legacy fields
+    const text = `# Design spec (field → value — why). Saved ${rec.at.slice(0, 10)}.\n\n${dsSpecText(clean, true)}`;
+    const palette = dsPalette(clean), fonts = dsFonts(clean), dir = dsDirection(clean), wrote = [];
+    let notionError = null;
+    try {
+      const rid = await dsResearchRecord(env, cid, "");
+      if (!rid) throw new Error("no Research record");
+      const props = { "Image Spec": dsRt(text.slice(0, 30000)), "Visual Register": dsRt(dir.register), "Photography Direction": dsRt(dir.photography), "Visual Avoid": dsRt(dir.avoid), "Design Notes": dsRt(dir.notes) };
+      if (palette) props.Palette = dsRt(`Design spec palette — saved ${rec.at.slice(0, 10)}.\n\n${JSON.stringify(palette)}`);
+      if (fonts) props.Fonts = dsRt(`Design spec fonts — saved ${rec.at.slice(0, 10)}.\n\n${JSON.stringify(fonts)}`);
+      await dsPatch(env, rid, props); wrote.push(...Object.keys(props));
+    } catch (e) { notionError = e.message; }
+    return { ...out(), saved: clean, savedAt: rec.at, text, palette, fonts, wrote, notionError };
+  }
+  if (op === "reset") {    // start over: empty staged spec; keep keywords + seed photo, take the new override
+    staged = {};
+    const keep = { keywords: body.keywords != null ? String(body.keywords).slice(0, 2000) : inputs.keywords, photo: inputs.photo, override: body.override != null ? String(body.override).slice(0, 3000) : inputs.override };
+    for (const k of Object.keys(inputs)) delete inputs[k];
+    Object.assign(inputs, keep);
+    await Promise.all([put(K.stage, staged), put(K.inputs, inputs), env.TRADES.delete(K.job)]);
+    return out({ job: null });
   }
 
   // ── the engines ──
@@ -48391,6 +48446,40 @@ async function handleDesignSpec(body, env, ctx) {
   };
   const RULES = `Every "v" is DATA — hex codes, px, Google Font names, ratios, aspect ratios, short lists; max ~15 words, no prose. Every "why" is one plain sentence a non-designer understands (max 14 words). Body text on the background and white text on the accent must pass WCAG AA (4.5:1).`;
 
+  if (op === "research") { // the campaign's core research, rebuilt from the keywords (+ Google demand data + a live search)
+    const kw = String(body.keywords || inputs.keywords || kwFallback || "").trim(); if (!kw) return { error: "keywords required" };
+    inputs.keywords = kw.slice(0, 2000);
+    const demand = await kwDemandBlock(env, kw).catch(() => "");
+    const text = `You are researching the market for a content hub + consulting/product business named "${campName || "this campaign"}". Build its core campaign research from its KEYWORDS.
+
+KEYWORDS (the searches it must win): ${kw}
+${demand ? `\nREAL GOOGLE SEARCH DEMAND (volumes, bids, intent):\n${demand}\n` : ""}${inputs.override ? `\nOPERATOR'S NOTE: ${String(inputs.override).slice(0, 1500)}\n` : ""}
+Use web search: who ranks on page one for the top keywords, what they promise, how they're paid / priced, what buyers complain about (forums, reviews). Then find the open lane.
+
+Reply with ONE JSON object only (plain language, concrete, no fluff):
+{"statement": "2-3 sentences — what this is, for whom, the outcome",
+ "uniqueOpportunity": "4-6 sentences — what ranks, the demand data that matters, the gap, the lane to own",
+ "keyMessage": "one line the whole site is built around",
+ "characters": "3-5 numbered audience characters: name, age, situation, the fear or job that brings them",
+ "contentTopics": "6-10 topic areas, semicolon-separated",
+ "marketingIntelligence": "the competitors seen (domain — positioning), pricing / pay models, buyer distrust signals, positioning to take",
+ "targetAudience": "1-2 sentences", "painPoints": "semicolon-separated", "campaignGoal": "1 sentence — the measurable goal", "cta": "the main call to action, max 6 words"}`;
+    let j; try { j = dsParseJson(await claude(text, 6000, true)); } catch (e) { return { error: e.message }; }
+    if (!j || !j.statement) return { error: "Couldn't read the research pass — try again" };
+    const s = k => String(j[k] || "").trim();
+    const rid = await dsResearchRecord(env, cid, campName);
+    if (!rid) return { error: "couldn't find or create the Research record" };
+    const wrote = [], errors = [];
+    try { await dsPatch(env, rid, { Statement: dsRt(s("statement")), "Unique Opportunity": dsRt(s("uniqueOpportunity")), "Key Message": dsRt(s("keyMessage")), Keywords: dsRt(kw),
+      Characters: dsRt(s("characters")), "Content Topics": dsRt(s("contentTopics")), "Marketing Intelligence": dsRt(s("marketingIntelligence")) }); wrote.push("Research"); }
+    catch (e) { errors.push("Research: " + e.message); }
+    try { await dsPatch(env, cid, { "Target Audience": dsRt(s("targetAudience")), "Pain Points": dsRt(s("painPoints")), "Key Message": dsRt(s("keyMessage")),
+      "Campaign Goal": dsRt(s("campaignGoal")), CTA: dsRt(s("cta")), Keywords: dsRt(kw) }); wrote.push("Campaign"); }
+    catch (e) { errors.push("Campaign: " + e.message); }
+    await put(K.inputs, inputs);
+    if (!wrote.length) return { error: errors.join(" · ") };
+    return out({ research: j, wrote, errors, applied: [], suggested: [] });
+  }
   if (op === "build") {    // round 1: keywords (+ live search of the ranked sites) + seed photo
     const inp = { ...inputs, keywords: inputs.keywords || kwFallback };
     const text = `You are the lead web + brand designer for "${campName || "this campaign"}". Build its whole visual system as a FIELD → VALUE spec.
@@ -48476,7 +48565,7 @@ Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", 
   };
   // build / text / grok take 1-3 minutes. They run INSIDE this request (ctx.waitUntil only survives ~30s after
   // the response, too short for them); the job record lets a second tab see a pass is in flight.
-  if (["build", "text", "grok"].includes(op)) {
+  if (["build", "text", "grok", "research"].includes(op)) {
     if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 5 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
     await put(K.job, { op, status: "running", at: new Date().toISOString() });
     let r; try { r = await engine(); } catch (e) { r = { error: e.message }; }

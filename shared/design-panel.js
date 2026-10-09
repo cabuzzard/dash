@@ -127,19 +127,11 @@
     async function save() {
       S.busy = 'Saving the spec…'; render();
       try {
+        // the worker writes Image Spec + Palette / Fonts / direction fields onto the Research record itself
         const r = await ds('save'); take(r);
-        const sp = S.saved || {}, g = k => (sp[k] || {}).v || '';
-        const ln = keys => keys.map(k => g(k) ? `${k.split('.').pop().replace(/_/g, ' ')}: ${g(k)}` : '').filter(Boolean).join('; ');
-        await call('saveImageSpec', { text: `# Design spec (field → value — why). Saved ${new Date().toISOString().slice(0, 10)}.\n\n${r.text}` });
-        const brief = { slug: S.slug || undefined,
-          direction: { register: [g('img.mood'), g('intent.voice') && 'Voice: ' + g('intent.voice'), g('intent.differentiator')].filter(Boolean).join('. '),
-            photography: ln(['img.medium', 'img.line', 'img.fill', 'img.background', 'img.accents', 'img.people', 'img.representation', 'img.cast', 'img.poses', 'img.settings', 'img.camera', 'img.light', 'img.palette_use']),
-            avoid: ['avoid.visual', 'avoid.subjects', 'avoid.colors', 'avoid.type', 'avoid.stock_ai'].map(g).filter(Boolean).join('; ') },
-          notes: `The design spec (${Object.keys(sp).length} fields) is the authority — Research "Image Spec" holds every field. Page job: ${g('intent.page_job') || '—'}.` };
-        const p = palette(sp), f = fonts(sp);
-        if (p) brief.palette = p; if (f) brief.fonts = f;
-        await call('saveHubBrief', brief);
-        S.busy = ''; say(`Saved — ${Object.keys(sp).length} fields. Image Spec, palette, fonts and direction updated on the record. ⇪ Publish puts the palette + fonts on the live hub.`, 'ok');
+        S.busy = '';
+        if (r.notionError) return say(`Saved the spec, but the Research record write failed: ${r.notionError}`, 'bad');
+        say(`Saved — ${Object.keys(S.saved || {}).length} fields. Image Spec, palette, fonts and direction updated on the record. ⇪ Publish puts the palette + fonts on the live hub.`, 'ok');
       } catch (err) { S.busy = ''; say('Save failed: ' + err.message, 'bad'); }
     }
     async function publish() {
