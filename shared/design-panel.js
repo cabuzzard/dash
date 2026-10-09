@@ -11,9 +11,13 @@
 //     The direction fields save to the record with their own 💾.
 //  2. PALETTE, FONTS and IMAGE SPEC are each regenerated FROM the staged direction, with their own
 //     ↻ Regen from staged · 👁 Preview · ↺ Revert to saved · 💾 Save to database.
-//  3. TEST ON GROK renders from the staged spec + palette. Per plate: ⟳ Direction from this (re-reads
-//     the staged direction + rebuilds the staged spec from the image) · regenerate the image with a
-//     note (image only) · ✓ Approve as campaign plate (saved).
+//     The spec also has ✨ Generate from inputs (previewImageSpec fresh:true — campaign research, keywords,
+//     main product + the SAVED design, ignoring the staged fields); Regen from staged falls back to it
+//     when nothing is staged.
+//  3. TEST ON GROK renders from the SAVED spec + palette (nothing saved → the worker builds the spec from
+//     the inputs); 🧪 Test staged renders the unsaved edits instead. Per plate: ⟳ Direction from this
+//     (re-reads the staged direction + rebuilds the staged spec from the image) · regenerate the image
+//     with a note (same source as the plate) · ✓ Approve as campaign plate (saved).
 //
 //   DesignPanel.mount(el, { call(action, body) → Promise<json>, campaignId, slug, preview?(d), onPushed?(r) })
 (function () {
@@ -174,7 +178,17 @@ Reply with ONE fenced \`\`\`json block and nothing else:
     }
     const stagedForSpec = () => { const s = S.stage, u = v => (v && String(v).trim()) ? v : undefined;
       return { register: u(s.register), photography: u(s.photography), avoid: u(s.avoid), notes: u(s.notes), palette: s.palette || undefined, fonts: (s.fonts && s.fonts.display) ? s.fonts : undefined }; };
+    // Nothing staged to build from (no direction text, no palette) → build from the inputs instead.
+    const hasStaged = () => DIR.some(([k]) => (S.stage[k] || '').trim()) || !!S.stage.palette;
+    async function specFromInputs(auto) {
+      S.spec.busy = true; render();
+      try { const r = await call('previewImageSpec', { slug: S.slug || undefined, fresh: true }); S.spec.prev = S.spec.text; S.spec.text = r.text || '';
+        say((auto ? 'Nothing staged to build from, so the ' : 'The ') + 'image spec was generated from the inputs (campaign research, keywords, main product and the saved design). 💾 Save to database to use it for assets.', 'ok'); }
+      catch (err) { say('Spec generation failed: ' + err.message, 'bad'); }
+      S.spec.busy = false; render();
+    }
     async function regenSpec() {
+      if (!hasStaged()) return specFromInputs(true);
       S.spec.busy = true; render();
       try { const r = await call('previewImageSpec', { slug: S.slug || undefined, staged: stagedForSpec() }); S.spec.prev = S.spec.text; S.spec.text = r.text || ''; say('Image spec regenerated from the staged direction + palette — 💾 Save to database to use it for assets.', 'ok'); }
       catch (err) { say('Spec regen failed: ' + err.message, 'bad'); }
@@ -182,7 +196,7 @@ Reply with ONE fenced \`\`\`json block and nothing else:
     }
     async function specRevise() {
       const st = (S.spec.steer || '').trim(); if (!st) return say('Type the direction to add first.', 'bad');
-      if (!S.spec.text.trim()) return say('There is no spec yet — ↻ Regen from staged first.', 'bad');
+      if (!S.spec.text.trim()) return say('There is no spec yet — ✨ Generate from inputs first.', 'bad');
       S.spec.busy = true; render();
       try { const r = await call('reviseImageSpec', { text: S.spec.text, steer: st }); S.spec.prev = S.spec.text; S.spec.text = r.text || S.spec.text; S.spec.steer = ''; say('Added to the staged spec — review, then 💾 Save to database.', 'ok'); }
       catch (err) { say('Could not add it: ' + err.message, 'bad'); }
@@ -195,13 +209,19 @@ Reply with ONE fenced \`\`\`json block and nothing else:
       S.spec.busy = false; render();
     }
 
-    // ── 3. TEST ON GROK — staged spec + staged palette ──
-    async function testGrok(guidance, prevPrompt) {
-      S.busy = 'Grok is rendering from the staged spec (~20s)…'; render();
+    // ── 3. TEST ON GROK — the SAVED spec + palette by default; mode 'staged' = the unsaved edits ──
+    // Saved: no spec/direction sent, so the worker reads the record's saved Image Spec + design (no saved
+    // spec → it writes one from the inputs); the saved palette rides along explicitly.
+    async function testGrok(guidance, prevPrompt, mode) {
+      const staged = mode === 'staged', fromSaved = !!(S.spec.saved || '').trim();
+      S.busy = staged ? 'Grok is rendering from the staged (unsaved) spec (~20s)…' : fromSaved ? 'Grok is rendering from the saved spec (~20s)…' : 'No saved spec — building one from the inputs, then rendering (~40s)…'; render();
       try { const s = S.stage;
-        const r = await call('renderSpecTest', { spec: (S.spec.text || '').trim().length > 80 ? S.spec.text : undefined, direction: { register: s.register, photography: s.photography, avoid: s.avoid },
-          palette: s.palette || undefined, aspect: S.aspect, guidance: guidance || undefined, previousPrompt: guidance ? prevPrompt : undefined });
-        S.tests.unshift({ url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect || S.aspect, label: guidance ? 'regen: ' + guidance.slice(0, 50) : 'staged spec' + (specDirty() ? ' (unsaved)' : '') });
+        const body = staged
+          ? { spec: (S.spec.text || '').trim().length > 80 ? S.spec.text : undefined, direction: { register: s.register, photography: s.photography, avoid: s.avoid }, palette: s.palette || undefined }
+          : { palette: S.base.palette || undefined };
+        const r = await call('renderSpecTest', Object.assign(body, { aspect: S.aspect, guidance: guidance || undefined, previousPrompt: guidance ? prevPrompt : undefined }));
+        const src = staged ? 'staged' : fromSaved ? 'saved spec' : 'from inputs';
+        S.tests.unshift({ url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect || S.aspect, mode: staged ? 'staged' : 'saved', label: guidance ? `regen (${src}): ` + guidance.slice(0, 50) : src });
         S.busy = ''; S.open.grok = true; say('Rendered — newest first. Hover a plate for its prompt.', 'ok'); }
       catch (err) { S.busy = ''; say('Grok test failed: ' + err.message, 'bad'); }
     }
@@ -288,8 +308,8 @@ Reply with ONE fenced \`\`\`json block and nothing else:
         return partBar('font', fontDirty())
           + (S.hist.fonts.length ? `<div style="margin-bottom:8px;"><select style="${SEL}" data-act="fontVer"><option value="current">Saved on the record</option>${S.hist.fonts.slice(0, 30).map(x => `<option value="${e(x.ts)}" ${same(x.fonts, f) ? 'selected' : ''}>Fonts · ${e([x.fonts.display, x.fonts.body].join(' / '))} · ${ago(x.ts)}</option>`).join('')}</select></div>` : '')
           + `<div style="font-size:12.5px;color:${C.ink};">${f ? e([f.display, f.body, f.mono].filter(Boolean).join(' · ')) : `<span style="color:${C.ink3};">No fonts yet — ↻ Regen from staged.</span>`}</div>`; };
-      const spec = () => partBar('spec', specDirty())
-        + `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Every asset-level image generation reads the SAVED spec. Test on Grok uses what's in the box.</div>
+      const spec = () => partBar('spec', specDirty(), `<button ${S.busy || S.spec.busy ? 'disabled' : ''} data-act="specInputs" title="Write a fresh spec from the campaign research, keywords, main product and the SAVED design — ignores the staged fields" style="${BTN}">✨ Generate from inputs</button>`)
+        + `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Every asset-level image generation reads the SAVED spec, and so does Test on Grok. ↻ Regen from staged builds from the staged direction + palette; ✨ Generate from inputs builds from the research (Regen falls back to it when nothing is staged).</div>
         <div style="border:1px dashed ${C.line};border-radius:6px;padding:8px;margin-bottom:8px;">
           <div style="${LBL}margin-bottom:3px;">Direction to add</div>
           <textarea data-in="specSteer" rows="2" placeholder="e.g. golden-hour window light, more negative space top-left" style="${TA}">${e(S.spec.steer || '')}</textarea>
@@ -298,7 +318,7 @@ Reply with ONE fenced \`\`\`json block and nothing else:
         <textarea data-in="spec" rows="14" style="${TA}font-size:11.5px;">${e(S.spec.busy ? 'Assembling…' : S.spec.text)}</textarea>`;
       const grok = () => `<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
           <select data-in="aspect" style="${SEL}">${['3:4', '1:1', '16:9'].map(a => `<option ${a === S.aspect ? 'selected' : ''}>${a}</option>`).join('')}</select>
-          <button ${dis} data-act="grok" style="${BTNP}">✨ Test on Grok</button><span style="font-size:11px;color:${C.ink3};">from the staged spec + staged palette (a short 2-3 sentence prompt is distilled from it)</span></div>
+          <button ${dis} data-act="grok" style="${BTNP}">✨ Test on Grok</button>${(dirDirty() || palDirty() || specDirty()) ? `<button ${dis} data-act="grokStaged" title="Render the unsaved staged spec + direction + palette instead" style="${BTN}">🧪 Test staged</button>` : ''}<span style="font-size:11px;color:${C.ink3};">${(S.spec.saved || '').trim() ? 'from the SAVED spec + palette' : 'no saved spec yet, so it is built from the inputs'} (a short 2-3 sentence prompt is distilled from it)</span></div>
         <div style="border:1px dashed ${C.line};border-radius:6px;padding:8px;margin-bottom:8px;">
           <div style="${LBL}margin-bottom:3px;">✎ My prompt — sent to Grok word for word</div>
           <textarea data-in="myPrompt" rows="2" placeholder="e.g. A row of brick garden apartments at golden hour, wide view from across a leafy street, warm and calm, no text" style="${TA}">${e(S.myPrompt || '')}</textarea>
@@ -325,8 +345,8 @@ Reply with ONE fenced \`\`\`json block and nothing else:
         + card('direction', '2 · Visual direction', (dirDirty() ? '● staged' : 'saved') + ' · register · photography · avoid · notes', direction)
         + card('palette', '3 · Palette', (palDirty() ? '● staged' : 'saved') + ' · from the staged direction', palette)
         + card('fonts', '4 · Fonts', (fontDirty() ? '● staged' : 'saved') + (s.fonts ? ' · ' + e(s.fonts.display) : ''), fonts)
-        + card('spec', '5 · Image spec', (specDirty() ? '● staged' : 'saved') + ' · from the staged direction + palette', spec)
-        + card('grok', '6 · Test on Grok', S.plate ? 'approved plate set' : 'staged spec → plate', grok)
+        + card('spec', '5 · Image spec', (specDirty() ? '● staged' : 'saved') + ' · from the staged direction or the inputs', spec)
+        + card('grok', '6 · Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grok)
         + card('voice', '🗣 Your voice', 'learned from your edits', voice)
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${pending.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
             <div style="flex:1;min-width:180px;">${pending.length ? `<b style="color:${C.warn};">Staged, not saved: ${e(pending.join(' · '))}</b>` : `<b style="color:${C.ok};">✓ Everything saved</b>`}</div>
@@ -382,10 +402,12 @@ Reply with ONE fenced \`\`\`json block and nothing else:
       else if (a === 'specUndo') { if (S.spec.prev != null) { const c = S.spec.text; S.spec.text = S.spec.prev; S.spec.prev = c; render(); } }
       else if (a === 'specCopy') { (navigator.clipboard ? navigator.clipboard.writeText(S.spec.text) : Promise.reject()).then(() => say('Image spec copied.', 'ok')).catch(() => say('Clipboard blocked.', 'bad')); }
       else if (a === 'grok') testGrok();
+      else if (a === 'grokStaged') testGrok(null, null, 'staged');
+      else if (a === 'specInputs') specFromInputs();
       else if (a === 'grokMine') grokMine();
       else if (a === 'usePrompt') { S.myPrompt = S.tests[i].prompt; render(); }
       else if (a === 'fromPlate') directionFromPlate(i);
-      else if (a === 'regenPlate') { const g = (S.tests[i].guide || '').trim(); if (!g) return say('Type a text request for the new image first.', 'bad'); testGrok(g, S.tests[i].prompt); }
+      else if (a === 'regenPlate') { const g = (S.tests[i].guide || '').trim(); if (!g) return say('Type a text request for the new image first.', 'bad'); testGrok(g, S.tests[i].prompt, S.tests[i].mode); }
       else if (a === 'approve') approve(i);
       else if (a === 'plateClear') clearPlate();
       else if (a === 'voiceSave') saveVoice();

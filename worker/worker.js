@@ -31042,7 +31042,8 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         } : undefined;
         const brief = await assembleImageBrief(env, { campaignId: cid, assetId, override });
         let text = "", stored = false;
-        if (!override && brief.storedSpec && brief.storedSpec.length > 200) { text = brief.storedSpec; stored = true; }
+        // fresh: "✨ Generate from inputs" — always write a new spec from the research inputs, never echo the saved one.
+        if (!override && !body.fresh && brief.storedSpec && brief.storedSpec.length > 200) { text = brief.storedSpec; stored = true; }
         else { try { text = await writeImageSpec(env, brief); } catch (e) { return json({ error: e.message }, 502); } }
         return json({ text, stored, hubSlug: brief.hubSlug, guidance: brief.guidance, product: brief.product });
       }
