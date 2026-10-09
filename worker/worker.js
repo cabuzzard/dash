@@ -46358,6 +46358,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
       if (body.action === "hubDummies") {
         try { return json(await handleHubDummies(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "designSpec") {
+        try { return json(await handleDesignSpec(body, env, ctx)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       // Trades "since last update": KV tradebaseline = {at, marks:{tradeId: contract %}} — the dash Trades tab compares
       // every trade's current contract % with its mark at the baseline (and counts trades opened after it).
       if (body.action === "tradeBaseline") {
@@ -48086,6 +48089,393 @@ async function handleHubDummies(body, env) {
   const cleared = body.clear === false ? null : await hubSectionsClear(env, hub);
   const created = await hubDummiesCreate(env, hub, !!body.force);
   return { success: true, hub: hub.slug, cleared, ...created };
+}
+
+// ════════ DESIGN SPEC — structured field → value (2026-10-09) ════════
+// The campaign's whole visual system as ~100 fields, each {v: the value as data, why: a plain one-line
+// reason, src: which input set it}. Replaces the free-text image spec as the thing the Design panel edits;
+// on 💾 Save the panel renders it to "field: value — why" lines into Research "Image Spec" (so every image
+// engine that reads the stored spec gets it) and maps it onto the legacy Palette / Fonts / Visual Register /
+// Photography Direction / Visual Avoid / Design Notes fields.
+// ESTABLISHED INPUTS, in order (KV design:inputs:<cid>): keywords + what the page-one sites look like →
+// seed photo → text override → Grok search (additive) → ChatGPT (additive). Every engine that fills fields
+// gets the same dsInputsBlock(). Merge (dsMerge): a field takes a new value when it is empty or the new
+// source ranks at least as high as the one that set it (manual 5 · text 4 · photo 3 · keywords 2);
+// Grok / ChatGPT only fill empty fields — elsewhere their value is kept as a suggestion (alt) to ✓ accept.
+// KV: design:spec:<cid> (saved) · design:stage:<cid> (staged) · design:inputs:<cid>.
+const DS_SCHEMA = [
+  { id: "intent", tier: "web", label: "Search intent & audience", fields: [
+    ["intent.keywords", "Main keywords", "the 3-6 searches this site must win"],
+    ["intent.search_intent", "Search intent", "hire / compare / learn / buy — and the local share"],
+    ["intent.ranked_look", "What page one looks like", "the shared look of the organic sites ranking for the keywords"],
+    ["intent.ranked_sites", "Ranked sites", "3-6 domains seen on page one"],
+    ["intent.differentiator", "How we look different", "one visual move that separates us from page one"],
+    ["intent.audience", "Audience", "who arrives, in plain words"],
+    ["intent.arrival_emotion", "How they feel arriving", "1-3 emotions"],
+    ["intent.page_job", "The page's one job", "the single action the design pushes"],
+    ["intent.voice", "Brand voice", "3 adjectives"],
+    ["intent.tagline", "Signature line", "the line the design is built around"],
+  ] },
+  { id: "color", tier: "web", label: "Color", fields: [
+    ["color.bg", "Page background", "hex"], ["color.surface", "Cards / raised surfaces", "hex"],
+    ["color.ink", "Body text", "hex"], ["color.ink_head", "Headings", "hex"], ["color.ink_soft", "Muted text", "hex"],
+    ["color.line", "Hairlines / borders", "hex"], ["color.primary", "Primary brand (links, badges)", "hex"],
+    ["color.deep", "Dark band background", "hex"], ["color.deep_ink", "Text on the dark band", "hex"],
+    ["color.accent", "Buttons (white text on it)", "hex"], ["color.highlight", "Small highlight / spark color", "hex"],
+    ["color.hero_tint", "Hero section background", "hex"], ["color.image_bg", "Background inside illustrations", "hex"],
+    ["color.ratio", "Color ratio", "e.g. 60 bg / 30 primary family / 10 accent"],
+    ["color.contrast", "Contrast rule", "e.g. WCAG AA: 4.5:1 body, 3:1 large text"],
+    ["color.dark_sections", "Where the dark band appears", "which sections"],
+    ["color.gradients", "Gradients", "none, or exactly where"],
+  ] },
+  { id: "type", tier: "web", label: "Typography", fields: [
+    ["type.display_font", "Headline font", "a Google Font family"], ["type.display_weight", "Headline weight", "100-900"],
+    ["type.display_case", "Headline case", "sentence / title / upper"], ["type.display_tracking", "Headline letter-spacing", "em"],
+    ["type.display_leading", "Headline line-height", "unitless"], ["type.h1_size", "H1 size", "CSS clamp() or px desktop/mobile"],
+    ["type.h2_size", "H2 size", "px"], ["type.h3_size", "H3 size", "px"],
+    ["type.body_font", "Body font", "a Google Font family"], ["type.body_size", "Body size", "px"],
+    ["type.body_leading", "Body line-height", "unitless"], ["type.measure", "Line length", "characters per line"],
+    ["type.label_font", "Label / UI font (eyebrows, buttons, nav)", "a Google Font family"],
+    ["type.label_style", "Label style", "case, letter-spacing, size, weight"],
+    ["type.emphasis", "How emphasis is shown", "e.g. one word in primary color, bold"],
+    ["type.numerals", "Numbers", "e.g. lining, in circular badges"],
+  ] },
+  { id: "layout", tier: "web", label: "Layout & spacing", fields: [
+    ["layout.max_width", "Content max width", "px"], ["layout.grid", "Grid", "columns + gutter"],
+    ["layout.spacing_scale", "Spacing scale", "px steps"], ["layout.section_padding", "Section padding", "px desktop / mobile"],
+    ["layout.hero_split", "Hero split", "text % / image %, which side"], ["layout.hero_align", "Hero text alignment", "left / center"],
+    ["layout.hero_image_aspect", "Hero image aspect", "e.g. 3:4"], ["layout.hero_image_frame", "Hero image frame", "radius, border, shadow, background"],
+    ["layout.card_style", "Card style", "fill, border, shadow, padding"], ["layout.radius_card", "Card radius", "px"],
+    ["layout.radius_button", "Button radius", "px or pill"], ["layout.radius_image", "Image radius", "px"],
+    ["layout.borders", "Borders", "width + color role"], ["layout.shadows", "Shadows", "none, or the exact shadow"],
+    ["layout.dividers", "Section dividers", "how sections separate"], ["layout.density", "Density", "airy / balanced / dense"],
+    ["layout.mobile", "Mobile rules", "stacking order, sizes"],
+  ] },
+  { id: "components", tier: "web", label: "Components", fields: [
+    ["comp.button_primary", "Primary button", "fill, text color, shape, size"], ["comp.button_secondary", "Secondary button", "fill, border, text"],
+    ["comp.badge", "Badges / numbered markers", "shape, color, size"], ["comp.eyebrow", "Eyebrow labels", "style"],
+    ["comp.input", "Form inputs", "fill, border, radius"], ["comp.icons", "Icon style", "line/filled, stroke, color"],
+    ["comp.lists", "Lists", "marker style"], ["comp.callout", "Callouts / quotes", "style"],
+  ] },
+  { id: "content", tier: "web", label: "Content layout", fields: [
+    ["content.section_order", "Page section order", "top to bottom"],
+    ["content.hero_headline", "Hero headline rule", "max words, voice, what it must say"],
+    ["content.hero_sub", "Hero subline rule", "max words, what it adds"],
+    ["content.cta", "Call-to-action wording", "verb-first labels, max words"],
+    ["content.card", "Card copy", "kicker / title / excerpt lengths"],
+    ["content.reading_level", "Reading level", "grade + sentence length"],
+    ["content.proof", "Proof elements", "what trust signals appear and where"],
+    ["content.disclaimer", "Required disclaimers", "wording + placement"],
+  ] },
+  { id: "imagery", tier: "image", label: "Imagery & photo direction", fields: [
+    ["img.medium", "Medium", "photo / flat vector illustration / 3D …"], ["img.line", "Line work", "outline weight + color"],
+    ["img.fill", "Fills", "flat / gradient, how many tones"], ["img.shading", "Shading", "none / soft / cel"],
+    ["img.texture", "Texture / finish", "none, grain, paper …"], ["img.background", "Image background", "color + shapes behind subjects"],
+    ["img.accents", "Decorative accents", "e.g. small yellow spark strokes"], ["img.people", "People", "whether and how many"],
+    ["img.representation", "Who is shown", "ages, abilities, diversity"], ["img.cast", "Recurring characters", "name + look of each, kept consistent"],
+    ["img.poses", "Poses", "e.g. eye-level, kneeling beside, seated together"], ["img.expressions", "Expressions", "e.g. warm, mid-conversation"],
+    ["img.wardrobe", "Wardrobe", "colors + items"], ["img.settings", "Settings", "where scenes happen"],
+    ["img.props", "Props", "objects that recur"], ["img.camera", "Viewpoint", "eye level / overhead …"],
+    ["img.framing", "Framing", "full body / waist up; breathing room"], ["img.composition", "Composition", "subject placement, balance"],
+    ["img.negative_space", "Negative space", "where and how much"], ["img.light", "Light", "flat / directional, warm / cool"],
+    ["img.palette_use", "How the palette shows in images", "which colors where"], ["img.mood", "Mood", "1 line"],
+  ] },
+  { id: "overlay", tier: "image", label: "Text on images (all assets)", fields: [
+    ["ovl.headline_font", "Overlay headline font", "family + weight"], ["ovl.headline_size", "Overlay headline size", "% of image height or px at 1080"],
+    ["ovl.max_words", "Max words", "number"], ["ovl.position", "Position", "zone"],
+    ["ovl.highlight", "Highlighted word style", "color / underline"], ["ovl.badge", "Number badge", "shape, color, position"],
+  ] },
+  { id: "motion", tier: "web", label: "Motion", fields: [
+    ["motion.style", "Motion style", "e.g. gentle fade-up"], ["motion.duration", "Duration", "ms"], ["motion.easing", "Easing", "curve"],
+  ] },
+  { id: "avoid", tier: "image", label: "Never", fields: [
+    ["avoid.visual", "Visual looks to avoid", "semicolon list"], ["avoid.subjects", "Subjects to avoid", "semicolon list"],
+    ["avoid.colors", "Colors to avoid", "semicolon list"], ["avoid.type", "Type to avoid", "semicolon list"],
+    ["avoid.stock_ai", "Stock / AI clichés to avoid", "semicolon list"],
+  ] },
+];
+// Tier 3 — one block per asset image the project makes; every block has the same tight field set.
+const DS_ASSETS = [
+  ["hero", "Hub hero image", "the hero section beside the headline"],
+  ["signup", "Signup-section image", "the dark newsletter band"],
+  ["social_square", "Single post (1:1)", "Instagram / LinkedIn single post"],
+  ["carousel_slide", "Carousel slide (4:5)", "each slide of a carousel"],
+  ["story", "Story / Reel cover (9:16)", "stories, reels, shorts"],
+  ["blog_thumb", "Blog thumbnail (16:9)", "article cards + Open Graph"],
+  ["youtube_thumb", "YouTube thumbnail (16:9)", "video thumbnails"],
+  ["offer_bg", "Offer background (3:4)", "product / offer posts"],
+];
+const DS_ASSET_FIELDS = [
+  ["aspect", "Aspect + pixel size", "e.g. 3:4 · 1080×1440"],
+  ["subject", "Subject", "who / what is shown"],
+  ["composition", "Composition", "where the subject sits, in % of the frame"],
+  ["background", "Background", "hex + shapes"],
+  ["safe_area", "Safe area", "margins kept clear, %"],
+  ["text_zone", "Text zone", "where words go, or none"],
+  ["overlay", "Words on it", "headline font/size/max words, or none"],
+  ["variation", "How images in this slot vary", "what changes vs stays fixed across a series"],
+];
+DS_SCHEMA.push(...DS_ASSETS.map(([id, label, use]) => ({ id: "asset." + id, tier: "asset", label: label + " — " + use,
+  fields: DS_ASSET_FIELDS.map(([f, l, h]) => [`asset.${id}.${f}`, l, h]) })));
+const DS_TIERS = [["web", "1 · Web & content layout"], ["image", "2 · Image specifications (every image)"], ["asset", "3 · Asset image specifications (per format)"]];
+const DS_FIELDS = DS_SCHEMA.flatMap(s => s.fields);
+const DS_KEYS = new Set(DS_FIELDS.map(f => f[0]));
+const DS_PRI = { manual: 5, text: 4, photo: 3, keywords: 2, grok: 1, chatgpt: 1 };
+const DS_ADDITIVE = new Set(["grok", "chatgpt"]);
+
+function dsSchemaText() {
+  return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h})`).join("\n")).join("\n")).join("\n\n");
+}
+function dsSpecText(spec, onlyFilled) {
+  spec = spec || {};
+  return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.filter(([k]) => !onlyFilled || (spec[k] && spec[k].v)).map(([k]) => {
+    const f = spec[k] || {}; return `${k}: ${f.v || "(empty)"}${f.why ? " — " + f.why : ""}`; }).join("\n")).join("\n")).join("\n\n");
+}
+function dsInputsBlock(inp, fallbackKeywords) {
+  inp = inp || {};
+  const kw = String(inp.keywords || fallbackKeywords || "").trim(), r = inp.ranked || {}, ph = inp.photo || {};
+  const out = [`ESTABLISHED INPUTS — in order. A later input wins over an earlier one where they conflict, EXCEPT the additive ones (Grok, ChatGPT), which only add what is missing.`];
+  out.push(`1. KEYWORDS (what the audience searches — decides intent, audience, and what imagery belongs): ${kw || "(none)"}`
+    + (r.look ? `\n   What the page-one sites for them look like: ${r.look}` : "") + ((r.sites || []).length ? `\n   Ranked sites: ${r.sites.join(" | ")}` : ""));
+  out.push(`2. SEED PHOTO (the style seed — decides medium, palette, line, character style, mood): ${ph.url ? (ph.read ? ph.read : "attached; not described yet") : "(none uploaded)"}`);
+  out.push(`3. TEXT OVERRIDE (the operator's own words — beats 1 and 2 on anything it mentions): ${String(inp.override || "").trim() || "(none)"}`);
+  if (inp.grok && inp.grok.notes) out.push(`4. GROK SEARCH (additive): ${String(inp.grok.notes).slice(0, 1500)}`);
+  if (inp.chatgpt && inp.chatgpt.at) out.push(`5. CHATGPT (additive): its values are already merged into the spec.`);
+  return out.join("\n");
+}
+function dsClean(fields, defaultSrc, allowSrc) {
+  const out = {};
+  for (const [k, raw] of Object.entries(fields || {})) {
+    if (!DS_KEYS.has(k) || raw == null) continue;
+    const o = typeof raw === "object" ? raw : { v: raw };
+    const v = String(Array.isArray(o.v) ? o.v.join("; ") : (o.v != null ? o.v : o.value != null ? o.value : "")).trim().slice(0, 400);
+    if (!v) continue;
+    const src = allowSrc && allowSrc.includes(o.src) ? o.src : defaultSrc;
+    out[k] = { v, why: String(o.why || "").trim().slice(0, 200), src };
+  }
+  return out;
+}
+function dsMerge(spec, incoming) {
+  spec = JSON.parse(JSON.stringify(spec || {}));
+  const applied = [], suggested = [];
+  for (const [k, n] of Object.entries(incoming)) {
+    const cur = spec[k];
+    if (!cur || !cur.v) { spec[k] = n; applied.push(k); continue; }
+    if (cur.v === n.v) { if (!cur.why && n.why) cur.why = n.why; continue; }
+    if (!DS_ADDITIVE.has(n.src) && (DS_PRI[n.src] || 0) >= (DS_PRI[cur.src] || 0)) { spec[k] = n; applied.push(k); }
+    else { cur.alt = n; suggested.push(k); }
+  }
+  return { spec, applied, suggested };
+}
+function dsParseJson(raw) {
+  const s = String(raw || ""), f = s.match(/```(?:json)?\s*([\s\S]*?)```/i), body = f ? f[1] : s, a = body.indexOf("{"), z = body.lastIndexOf("}");
+  if (a < 0 || z <= a) return null;
+  try { return JSON.parse(sanitizeJsonControlChars(body.slice(a, z + 1)).replace(/,\s*([}\]])/g, "$1")); } catch (e) { return null; }
+}
+// The ChatGPT handoff: the seed photo attached by the operator, every field, the current values, the inputs.
+function dsChatPrompt(name, inp, spec, facts) {
+  return `You are the lead web + brand designer for "${name}". Build ONE cohesive visual system for the whole project — the website, its hero images, social posts and thumbnails — as a tight FIELD → VALUE spec.
+
+I have attached the SEED PHOTO (if it isn't attached, ask me for it before you answer). It is the style seed: match its medium, line work, palette and character style.
+
+${dsInputsBlock(inp)}
+
+THE CAMPAIGN (keywords and research):
+${String(facts || "").slice(0, 6000)}
+
+Search the web for what the sites ranking on page one for the keywords look like, then fill EVERY field below.
+Rules:
+- "v" is DATA: hex codes, px, font names (Google Fonts only), ratios, aspect ratios, short lists. Max ~15 words. No prose paragraphs.
+- "why" is one plain sentence a non-designer understands (max 14 words).
+- Keep what is already filled unless you have a clearly better value; never contradict the seed photo or the text override.
+- Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
+- Image fields describe images that look like the seed photo, so every image in the project feels like one set.
+
+FIELDS (key — what it controls (format)):
+${dsSchemaText()}
+
+CURRENT VALUES (empty ones must be filled):
+${dsSpecText(spec)}
+
+Reply with ONE fenced \`\`\`json block and nothing else:
+{"fields": {"color.bg": {"v": "#FBFAF7", "why": "warm off-white like the seed card"}, "...every key above...": {"v": "…", "why": "…"}}}
+
+AFTER the JSON block, generate these images to the spec, one at a time, all clearly one set — same style, palette and recurring characters — with no text, letters, logos or numbers in them:
+${["hero", "signup", "social_square"].map((a, i) => { const g = f => (spec[`asset.${a}.${f}`] || {}).v; const lbl = (DS_ASSETS.find(x => x[0] === a) || [])[1];
+  return `${i + 1}. ${lbl} — ${[g("aspect"), g("subject"), g("composition"), g("background") && "background " + g("background"), g("safe_area") && "safe area " + g("safe_area"), g("text_zone") && "leave room for text: " + g("text_zone")].filter(Boolean).join("; ") || "use the asset fields you just wrote"}.`; }).join("\n")}
+Use the asset fields from your JSON for anything still blank above.`;
+}
+
+async function handleDesignSpec(body, env, ctx) {
+  if (body.action !== "designSpec") return null;
+  const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return { error: "campaignId required" };
+  const K = { saved: "design:spec:" + cid, stage: "design:stage:" + cid, inputs: "design:inputs:" + cid, job: "design:job:" + cid };
+  const kvj = async k => { try { return (await env.TRADES.get(k, "json")) || null; } catch (e) { return null; } };
+  const put = (k, v) => env.TRADES.put(k, JSON.stringify(v));
+  const [saved, staged0, inputs0, job] = await Promise.all([kvj(K.saved), kvj(K.stage), kvj(K.inputs), kvj(K.job)]);
+  let staged = staged0 || (saved ? JSON.parse(JSON.stringify(saved.spec || {})) : {});
+  const inputs = inputs0 || {};
+  const op = body.op || "get";
+  const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, ...extra });
+
+  if (op === "get") return out();
+  if (op === "inputs") {   // operator-edited inputs: keywords / override text
+    if (body.keywords != null) inputs.keywords = String(body.keywords).slice(0, 2000);
+    if (body.override != null) inputs.override = String(body.override).slice(0, 3000);
+    await put(K.inputs, inputs); return out();
+  }
+  if (op === "photo") {    // seed photo → R2 (public URL Claude can read)
+    const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/i.exec(String(body.data || ""));
+    if (!m) return { error: "send the photo as a data: URL (png / jpg / webp)" };
+    if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
+    const bytes = Uint8Array.from(atob(m[3]), c => c.charCodeAt(0));
+    if (bytes.length > 4.5e6) return { error: "keep the photo under 4.5 MB" };
+    const key = `design/${cid}/seed-${Date.now().toString(36)}.${m[2].toLowerCase().replace("jpeg", "jpg")}`;
+    await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: "public, max-age=31536000, immutable" } });
+    inputs.photo = { url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key, at: new Date().toISOString() };
+    await put(K.inputs, inputs); return out({ note: "Seed photo stored — ✨ Build fields from inputs reads it." });
+  }
+  if (op === "edit") {     // a manual edit — the highest-ranked source
+    const k = String(body.key || ""); if (!DS_KEYS.has(k)) return { error: "unknown field " + k };
+    const v = String(body.v || "").trim().slice(0, 400);
+    if (!v) delete staged[k]; else staged[k] = { v, why: String(body.why != null ? body.why : (staged[k] && staged[k].why) || "").slice(0, 200), src: "manual" };
+    await put(K.stage, staged); return out();
+  }
+  if (op === "accept" || op === "dismiss") {
+    const k = String(body.key || ""), f = staged[k]; if (!f || !f.alt) return { error: "no suggestion on " + k };
+    if (op === "accept") staged[k] = f.alt; else delete f.alt;
+    await put(K.stage, staged); return out();
+  }
+  if (op === "revert") { staged = saved ? JSON.parse(JSON.stringify(saved.spec || {})) : {}; await put(K.stage, staged); return out(); }
+  if (op === "save") {
+    const clean = {}; for (const [k, f] of Object.entries(staged)) if (DS_KEYS.has(k) && f && f.v) clean[k] = { v: f.v, why: f.why || "", src: f.src || "manual" };
+    const rec = { spec: clean, at: new Date().toISOString(), prev: saved ? { spec: saved.spec, at: saved.at } : null };
+    await put(K.saved, rec); staged = clean; await put(K.stage, staged);
+    return { ...out(), saved: clean, savedAt: rec.at, text: dsSpecText(clean, true) };
+  }
+
+  // ── the engines ──
+  const brief = await assembleImageBrief(env, { campaignId: cid }).catch(() => ({ facts: [] }));
+  const facts = (brief.facts || []).join("\n");
+  const kwFallback = ((facts.match(/KEYWORDS[^:]*:\s*([^\n]+)/i) || [])[1] || "").slice(0, 600);
+  let campName = ""; try { const cp = await fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()); campName = (cp.properties?.Name?.title || []).map(t => t.plain_text).join(""); } catch (e) {}
+
+  if (op === "chatPrompt") return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts) });
+  if (op === "chatReply") {
+    const j = dsParseJson(body.text); if (!j) return { error: "no JSON found — paste the whole ```json block" };
+    const m = dsMerge(staged, dsClean(j.fields || j, "chatgpt"));
+    staged = m.spec; inputs.chatgpt = { at: new Date().toISOString() }; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
+    return out({ applied: m.applied, suggested: m.suggested });
+  }
+
+  const engine = async () => {
+  const claude = async (content, maxTokens, search) => {
+    if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+    const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(search ? { "anthropic-beta": "web-search-2025-03-05" } : {}) },
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, ...(search ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] } : {}), messages: [{ role: "user", content }] }) });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(d.error?.message || "Claude API error " + r.status);
+    let raw = ""; for (const b of (d.content || [])) if (b.type === "text") raw += b.text;
+    return raw;
+  };
+  const RULES = `Every "v" is DATA — hex codes, px, Google Font names, ratios, aspect ratios, short lists; max ~15 words, no prose. Every "why" is one plain sentence a non-designer understands (max 14 words). Body text on the background and white text on the accent must pass WCAG AA (4.5:1).`;
+
+  if (op === "build") {    // round 1: keywords (+ live search of the ranked sites) + seed photo
+    const inp = { ...inputs, keywords: inputs.keywords || kwFallback };
+    const text = `You are the lead web + brand designer for "${campName || "this campaign"}". Build its whole visual system as a FIELD → VALUE spec.
+
+${dsInputsBlock(inp)}
+
+THE CAMPAIGN RECORD (keywords first, then research and main-product research):
+${facts.slice(0, 10000)}
+
+Steps:
+1. Use web search on the top 3-4 keywords. Look at the ORGANIC sites on page one (skip ads/marketplaces): layout, imagery, colors, type. Summarise their shared look.
+2. ${inp.photo && inp.photo.url ? "Read the attached SEED PHOTO closely: medium, line, palette (exact hexes), type character, people, mood." : "No seed photo — derive the look from the keywords and research."}
+3. Fill EVERY field. The seed photo decides the visual style (color, type character, imagery, medium); the keywords decide intent, audience, layout conventions and what the images show; the text override wins on anything it mentions. Tag each field's "src": "photo", "keywords" or "text" — whichever input decided it.
+${RULES}
+
+FIELDS (key — what it controls (format)):
+${dsSchemaText()}
+${Object.keys(staged).length ? `\nCURRENT VALUES (improve them; manual edits are kept regardless):\n${dsSpecText(staged, true)}\n` : ""}
+Reply with ONE JSON object only:
+{"ranked": {"look": "one line", "sites": ["domain — one line on its look"]}, "photo_read": "${inp.photo && inp.photo.url ? "3-4 lines describing the seed photo as data: medium, palette hexes, line, type, people, mood" : ""}", "fields": {"intent.keywords": {"v": "…", "why": "…", "src": "keywords"}, "...every key...": {"v": "…", "why": "…", "src": "photo"}}}`;
+    const content = inp.photo && inp.photo.url ? [{ type: "image", source: { type: "url", url: inp.photo.url } }, { type: "text", text }] : text;
+    let j; try { j = dsParseJson(await claude(content, 16000, true)); } catch (e) { return { error: e.message }; }
+    if (!j || !j.fields) return { error: "Couldn't read the design pass — try again" };
+    const m = dsMerge(staged, dsClean(j.fields, "keywords", ["photo", "keywords", "text"]));
+    staged = m.spec;
+    if (j.ranked && (j.ranked.look || (j.ranked.sites || []).length)) inputs.ranked = { look: String(j.ranked.look || "").slice(0, 600), sites: (j.ranked.sites || []).slice(0, 6).map(x => String(x).slice(0, 200)), at: new Date().toISOString() };
+    if (j.photo_read && inputs.photo) inputs.photo.read = String(j.photo_read).slice(0, 1500);
+    if (!inputs.keywords && kwFallback) inputs.keywords = kwFallback;
+    await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
+    return out({ applied: m.applied, suggested: m.suggested });
+  }
+  if (op === "text") {     // the operator's override — authoritative on whatever it mentions
+    const ov = String(body.override != null ? body.override : inputs.override || "").trim(); if (!ov) return { error: "type the override first" };
+    inputs.override = ov.slice(0, 3000);
+    const text = `Apply the operator's TEXT OVERRIDE to this design spec. Change every field the override affects — directly or by consequence (e.g. a new primary color also changes badges and how the palette shows in images) — and nothing else.
+${RULES}
+
+${dsInputsBlock(inputs, kwFallback)}
+
+FIELDS:
+${dsSchemaText()}
+
+CURRENT SPEC:
+${dsSpecText(staged)}
+
+Reply with ONE JSON object only — just the fields you change: {"fields": {"key": {"v": "…", "why": "…"}}}`;
+    let j; try { j = dsParseJson(await claude(text, 8000, false)); } catch (e) { return { error: e.message }; }
+    if (!j || !j.fields) return { error: "Couldn't read the override pass — try again" };
+    const m = dsMerge(staged, dsClean(j.fields, "text"));
+    staged = m.spec; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
+    return out({ applied: m.applied, suggested: m.suggested });
+  }
+  if (op === "grok") {     // Grok with live web + X search — additive
+    if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" };
+    const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
+    const prompt = `Search the web and X for what is working visually right now for: ${inputs.keywords || kwFallback}. Then, for the design spec below, fill the EMPTY fields and suggest better values only where you found real evidence. Never contradict the seed photo or the text override.
+${RULES}
+
+${dsInputsBlock(inputs, kwFallback)}
+
+FIELDS:
+${dsSchemaText()}
+
+CURRENT SPEC:
+${dsSpecText(staged)}
+
+Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", "fields": {"key": {"v": "…", "why": "…"}}}`;
+    const r = await fetch("https://api.x.ai/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${(env.XAI_API_KEY || "").trim()}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "grok-4.7", input: [{ role: "user", content: prompt }], tools: [{ type: "web_search" }, { type: "x_search" }] }) });
+    const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+    if (!r.ok || !d) return { error: `xAI HTTP ${r.status}: ${(d?.error?.message || d?.error || t).toString().slice(0, 200)}` };
+    const u = d.usage || {}, st = u.server_side_tool_usage_details || {};
+    const cost = (st.x_posts_fetched || 0) * 0.005 + (st.web_search_calls || 0) * 0.01 + ((u.input_tokens || 0) * 3 + (u.output_tokens || 0) * 15) / 1e6;
+    await spendAdd(env, "grok", cost, false, { in: u.input_tokens, out: u.output_tokens }).catch(() => {});
+    const j = dsParseJson(d.output_text || drAllText((d.output || []).filter(o => o && o.type === "message"), []).join("\n"));
+    if (!j || !j.fields) return { error: "Grok returned no fields" };
+    const m = dsMerge(staged, dsClean(j.fields, "grok"));
+    staged = m.spec; inputs.grok = { notes: String(j.notes || "").slice(0, 1500), at: new Date().toISOString() };
+    await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
+    return out({ applied: m.applied, suggested: m.suggested });
+  }
+  return { error: "unknown op " + op };
+  };
+  // build / text / grok take 1-3 minutes — run them in the background and let the panel poll op:"get" for the job.
+  if (["build", "text", "grok"].includes(op)) {
+    if (!ctx || body.sync) return engine();
+    if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 6 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
+    const j0 = { op, status: "running", at: new Date().toISOString() };
+    await put(K.job, j0);
+    ctx.waitUntil(engine()
+      .then(r => put(K.job, { op, status: r && r.error ? "error" : "done", error: (r && r.error) || undefined, applied: (r && r.applied) || [], suggested: (r && r.suggested) || [], at: new Date().toISOString() }))
+      .catch(e => put(K.job, { op, status: "error", error: e.message, at: new Date().toISOString() })));
+    return { ...out(), job: j0 };
+  }
+  return engine();
 }
 
 // ════════ SENTIMENT_REBOUND_V1 — oversold screen + X sentiment pass (2026-10-08) ════════
