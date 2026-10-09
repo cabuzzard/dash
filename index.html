@@ -4201,7 +4201,7 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=202610082145"></script>
+<script src="shared/design-panel.js?v=2026100822012"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -14315,11 +14315,14 @@ function renderHubsTab() {
   <div class="hub-rail">
     <div class="hub-rail-head">
       <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Full roll</span>
+      <span style="display:inline-flex;border:1px solid var(--border2);border-radius:5px;overflow:hidden;" title="Live = the hub as it is now · Mockup = the page the Design panel built from the spec">
+        <button onclick="hubRailMode('${slug}','live')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'transparent' : 'var(--accent)'};color:${_hubRailMock[slug] ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;">Live</button>
+        <button onclick="hubRailMode('${slug}','mock')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'var(--accent)' : 'transparent'};color:${_hubRailMock[slug] ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;">Mockup</button></span>
       <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid ${HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:transparent;color:${HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">✎ Tap-to-edit: ${HPI_ON[slug] ? 'on' : 'off'}</button>
-      <a href="${hubUrl}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">open ↗</a>
+      <a href="${_hubRailMock[slug] || hubUrl}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">open ↗</a>
     </div>
     <div class="hub-rail-frame" id="hpiWrap-${slug}" style="height:600px;">
-      <iframe id="hpiFrame-${slug}" src="${hubUrl}" title="${esc(h.name)} — full roll" loading="lazy" onload="hubPreviewLoaded('${slug}')" style="width:1280px;height:600px;"></iframe>
+      <iframe id="hpiFrame-${slug}" src="${_hubRailMock[slug] || hubUrl}" title="${esc(h.name)} — full roll" loading="lazy" onload="hubPreviewLoaded('${slug}')" style="width:1280px;height:600px;"></iframe>
     </div>
     <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the column — no height limit. ${HPI_ON[slug] ? 'Click any heading / blurb to edit that field.' : 'Turn tap-to-edit on to click a section into its editor.'}</div>
   </div>
@@ -14336,6 +14339,16 @@ function hubRerunOpen(slug) {
 // ── Design: the shared design panel (shared/design-panel.js — the same editor care-gap's Design tab mounts).
 // One panel per hub, created once and re-attached after every card render so its state survives. ──
 const _hubDesignPanels = {}, _hubDesignPreview = {};
+// Full-roll rail: Live hub vs the Design panel's built mockup page (slug → mockup url while in Mockup mode)
+const _hubRailMock = {};
+function hubRailMode(slug, mode) {
+  if (mode === 'mock') {
+    const st = _hubDesignPanels[slug] && _hubDesignPanels[slug].api && _hubDesignPanels[slug].api.state, pg = st && st.inputs && st.inputs.page;
+    if (!pg || !pg.url) { alert('No mockup yet — open Design and press ✨ Build everything from these inputs (or 📄 Build the page).'); return; }
+    _hubRailMock[slug] = pg.url + (pg.url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+  } else delete _hubRailMock[slug];
+  renderHubsTab();
+}
 // 👁 paint a staged palette + fonts onto the live hub preview (right rail) — CSS variables only, nothing saved.
 // Re-applied whenever the preview frame (re)loads; null removes it.
 function hubPreviewPaint(slug) {
@@ -14361,7 +14374,8 @@ function hubDesignAttach(slug) {
   let p = _hubDesignPanels[slug];
   if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
     onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; },
-    preview: d => { _hubDesignPreview[slug] = d; hubPreviewPaint(slug); } }) }; }
+    preview: d => { _hubDesignPreview[slug] = d; hubPreviewPaint(slug); },
+    onBuilt: url => { if (url) { _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); renderHubsTab(); } } }) }; }
   host.appendChild(p.el);
 }
 // ── Left-column collapsible sections (open/closed remembered per section) ──

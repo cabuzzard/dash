@@ -168,11 +168,12 @@
         }
       }
       const s = endWork(); S.open.spec_web = S.open.spec_image = S.open.spec_asset = true; S.open.assets = true;
+      if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} }
       say(`${doneMsg} in ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}.${act === 'build' ? ' Now refine: edit fields, 📋 ChatGPT, text override, Grok — then 🔁 Update visuals.' : act === 'reread' ? ' 🔁 Update visuals to see it.' : ''}`, 'ok');
     }
     async function rebuildPage() {
       startWork('page', 'Building the whole page from the staged spec (~1-2 min)…');
-      try { const r = await ds('page', { images: imageUrls() }); take(r); endWork(); S.open.page = true; say('Page rebuilt — see 📄 Page preview.', 'ok'); }
+      try { const r = await ds('page', { images: imageUrls() }); take(r); endWork(); S.open.page = true; say('Page rebuilt — see 📄 Page preview.', 'ok'); if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} } }
       catch (err) { endWork(); say('Page build failed: ' + err.message, 'bad'); }
     }
     function pipeList() {
@@ -289,26 +290,45 @@
         + chip(!!(inp.grok && inp.grok.notes), inp.grok && inp.grok.notes ? `Grok notes${d(inp.grok.at)}` : 'no Grok notes', inp.grok && inp.grok.notes)
         + `</div>`;
     }
+    // Inputs in order ① → ⑤, each marked green once it's loaded; ONE build/rebuild button after all of them;
+    // then a separate, explained "after you edit fields" block (Update visuals / Re-read).
     function inputsBody() {
-      const dis = S.busy ? 'disabled' : '', inp = S.inputs || {}, ph = inp.photo || {}, rk = inp.ranked || {};
-      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Every engine reads these in order — a later input wins where they conflict, except ChatGPT and Grok, which only add (their changes to filled fields show as suggestions).</div>`
-        + step('①', 'Keywords — what the audience searches (Claude also searches the sites ranking for them)',
+      const inp = S.inputs || {}, ph = inp.photo || {}, rk = inp.ranked || {}, built = !!inp.page;
+      const nKw = String(S.kw || '').split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
+      const ok = { kw: nKw > 0, photo: !!ph.url, gpt: !!inp.chatgpt, ovr: !!String(S.override || '').trim(), grok: !!(inp.grok && inp.grok.notes) };
+      const mark = (on, yes, no) => `<span style="font-size:10.5px;font-weight:600;margin-left:6px;padding:1px 8px;border-radius:10px;border:1px solid ${on ? C.ok : C.line};color:${on ? C.ok : C.ink3};">${on ? '✓ ' + yes : no}</span>`;
+      const row = (n, title, on, yes, no, body) => `<div style="border-left:3px solid ${on ? C.ok : C.line};padding:2px 0 2px 10px;margin-bottom:12px;">
+        <div style="${LBL}margin-bottom:4px;">${n} · ${title}${mark(on, yes, no)}</div>${body}</div>`;
+      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Fill the inputs in order (only ① is required), then press the build button at the bottom. A green border = loaded. Later inputs win where they conflict, except ChatGPT and Grok, which only add suggestions.</div>`
+        + row('①', 'Keywords — what the audience searches (Claude also reads the sites ranking for them)', ok.kw, `${nKw} keyword${nKw === 1 ? '' : 's'}`, 'required',
           `<textarea data-in="kw" rows="2" placeholder="medicare services consulting, medicare advisor near me…" style="${TA}">${e(S.kw || '')}</textarea>`
           + (rk.look ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;"><b>Page one looks like:</b> ${e(rk.look)}${(rk.sites || []).map(x => `<div>· ${e(x)}</div>`).join('')}</div>` : ''))
-        + step('②', 'Seed photo — the style seed',
+        + row('②', 'Seed photo — the style seed', ok.photo, 'photo loaded', 'optional',
           `<div style="display:flex;gap:10px;align-items:flex-start;">${ph.url ? `<a href="${e(ph.url)}" target="_blank" rel="noopener"><img src="${e(ph.url)}" style="height:70px;border-radius:6px;border:1px solid ${C.line};display:block;"></a>` : ''}
             <div style="flex:1;"><label style="${BTN}display:inline-block;">${S.work && S.work.act === 'photo' ? '⏳ uploading…' : ph.url ? '⟳ Replace photo' : '⬆ Upload seed photo'}<input type="file" accept="image/*" data-act="photo" style="display:none;"></label>
             ${ph.read ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(ph.read)}</div>` : ''}</div></div>`)
-        + `<div style="margin:0 0 12px 13px;">${wb('build', BTNP, '✨ Build everything from inputs')} <span style="font-size:10.5px;color:${C.ink3};">first pass at everything: research fields, every spec field (saved to the record), hero + signup images and the whole page (6-9 min)</span>${pipeList()}${loadedInputs()}</div>${iterBar()}`
-        + step('③', 'ChatGPT — additive',
+        + row('③', 'ChatGPT — adds suggestions', ok.gpt, 'merged ' + String((inp.chatgpt || {}).at || '').slice(0, 10), 'optional',
           `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy ChatGPT prompt')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">attach the seed photo in ChatGPT, paste, then paste its reply here</span></div>
           <textarea data-in="gpt" rows="3" placeholder="Paste ChatGPT's reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
-          <div style="margin-top:6px;">${wb('chatMerge', BTN, "📥 Merge ChatGPT's fields")}${inp.chatgpt ? ` <span style="font-size:10.5px;color:${C.ink3};">last merged ${e(String(inp.chatgpt.at || '').slice(0, 10))}</span>` : ''}</div>`)
-        + step('④', 'Text override — your words win',
+          <div style="margin-top:6px;">${wb('chatMerge', BTN, "📥 Merge ChatGPT's fields")}</div>`)
+        + row('④', 'Text override — your words win', ok.ovr, 'override saved', 'optional',
           `<textarea data-in="override" rows="2" placeholder="e.g. headlines heavier · buttons sage green · no gradients anywhere" style="${TA}">${e(S.override || '')}</textarea>
-          <div style="margin-top:6px;">${wb('override', BTN, 'Apply override')}</div>`)
-        + step('⑤', 'Grok search — additive (web + X)',
-          `${wb('grok', BTN, '⚡ Grok search')}${inp.grok && inp.grok.notes ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(inp.grok.notes)}</div>` : ''}`);
+          <div style="margin-top:6px;">${wb('override', BTN, 'Apply override to the fields now')}</div>`)
+        + row('⑤', 'Grok search — adds suggestions (web + X)', ok.grok, 'Grok notes ' + String((inp.grok || {}).at || '').slice(0, 10), 'optional',
+          `${wb('grok', BTN, '⚡ Run Grok search')}${inp.grok && inp.grok.notes ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(inp.grok.notes)}</div>` : ''}`)
+        // ── the ONE build button, after every input ──
+        + `<div style="margin:4px 0 12px;padding:10px;border:1px solid ${C.ok};border-radius:8px;background:${C.surf2};">
+            <div style="${LBL}margin-bottom:6px;">${built ? 'Rebuild' : 'Build'} from the inputs above</div>
+            ${wb('build', BTNP, built ? '↻ Rebuild everything from these inputs' : '✨ Build everything from these inputs')}
+            <div style="font-size:10.5px;color:${C.ink3};margin-top:5px;">Writes the research fields, every spec field (saved to the record), renders the hero + signup images and builds the whole page — 6-9 min.${built ? ' A rebuild starts the spec over from the inputs: hand edits below are replaced.' : ''}</div>
+            ${pipeList()}${loadedInputs()}</div>`
+        // ── after a build: iterate without starting over ──
+        + (built ? `<div style="margin:0 0 4px;padding:10px;border:1px dashed ${C.line};border-radius:8px;">
+            <div style="${LBL}margin-bottom:6px;">After you edit fields below</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">${wb('visuals', stale() ? BTNP : BTN, '🔁 Update visuals')}
+              <span style="font-size:10.5px;color:${C.ink3};">saves the current spec, then re-renders the hero + signup images and the page from it — keeps your edits. ${stale() ? `<b style="color:${C.warn};">The spec changed since the visuals were made.</b>` : 'Visuals match the spec.'}</span></div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">${wb('reread', BTN, '↻ Re-read inputs into the spec')}
+              <span style="font-size:10.5px;color:${C.ink3};">after changing the keywords or the photo: refreshes the spec fields from the inputs (keeps hand edits), no images.</span></div></div>` : '');
     }
     function fieldRow([k, label, hint]) {
       const f = S.staged[k] || {}, sv = (S.saved || {})[k] || {}, changed = (f.v || '') !== (sv.v || ''), ed = S.edit === k;
