@@ -272,7 +272,7 @@
       if (!confirm('Repaint the live hub page from the SAVED design fields? (colors, fonts, the restyle css — the page structure is untouched; live in ~1 min)')) return;
       S.busy = 'Repainting the live hub from the saved fields…'; render();
       try { let css; if (cfg.repaint) { const rp = await ds('repaint', { from: 'saved' }); css = rp.css; }
-        const r = await call('publishHubDesign', { slug: S.slug, keepSpec: true, palette: p, fonts: f || undefined, repaintCss: css }); S.busy = ''; say('Published — live in about a minute.', 'ok'); if (cfg.onPushed) cfg.onPushed(r); }
+        const r = await call('publishHubDesign', { slug: S.slug, keepSpec: true, palette: p, fonts: f || undefined, repaintCss: css }); S.busy = ''; say('Published — live in about a minute.', 'ok'); if (cfg.onPushed) cfg.onPushed({ ...r, repaintCss: css }); }
       catch (err) { S.busy = ''; say('Publish failed: ' + err.message, 'bad'); }
     }
 
