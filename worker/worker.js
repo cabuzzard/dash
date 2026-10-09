@@ -48405,7 +48405,7 @@ async function handleDesignSpec(body, env, ctx) {
     if (body.override != null) inputs.override = String(body.override).slice(0, 3000);
     if (body.renders && typeof body.renders === "object") {   // asset images rendered from the spec: {id: {url, aspect, at}}
       inputs.renders = Object.fromEntries(Object.entries(body.renders).filter(([k, r]) => /^[a-z_]{2,30}$/.test(k) && r && /^https:\/\//.test(String(r.url || "")))
-        .map(([k, r]) => [k, { url: String(r.url).slice(0, 500), aspect: String(r.aspect || "").slice(0, 10), at: r.at || Date.now(), live: !!r.live }]));
+        .map(([k, r]) => [k, { url: String(r.url).slice(0, 500), aspect: String(r.aspect || "").slice(0, 10), at: r.at || Date.now(), live: !!r.live, sig: String(r.sig || "").slice(0, 20) }]));
     }
     await put(K.inputs, inputs); return out();
   }
@@ -48542,6 +48542,54 @@ Reply with ONE JSON object only (plain language, concrete, no fluff):
     if (Object.keys(sp).length < 20) return { error: "the spec is mostly empty — ✨ Build fields first" };
     let copy = ""; if (slug) { try { const r = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/content.json?v=${Date.now()}`); if (r.ok) copy = JSON.stringify(await r.json(), null, 1); } catch (e) {} }
     const imgs = Object.entries(body.images || {}).filter(([k, u]) => /^https:\/\//.test(String(u || ""))).map(([k, u]) => `${k}: ${u}`).join("\n");
+    // change-aware (2026-10-09): the page remembers the field values + image urls it was built from (KV design:pagesnap:<cid>).
+    // Next preview: nothing changed → same page; only image urls → swapped in place (no AI); a few fields → Claude patches
+    // just those parts of the old HTML; many fields / structural / a failed patch → the full build below.
+    const K_SNAP = "design:pagesnap:" + cid, snapNow = Object.fromEntries(Object.keys(sp).filter(k => sp[k] && sp[k].v).map(k => [k, String(sp[k].v)]));
+    const storePage = async (html, mode, changed) => {
+      if (!env.MEDIA) throw new Error("R2 bucket MEDIA not bound");
+      const key = `design/${cid}/page-${Date.now().toString(36)}.html`;
+      await env.MEDIA.put(key, html, { httpMetadata: { contentType: "text/html; charset=utf-8", cacheControl: "public, max-age=31536000, immutable" } });
+      const sigSrc = Object.keys(sp).sort().filter(k => sp[k] && sp[k].v).map(k => k + "=" + sp[k].v).join("\n");
+      let h = 5381; for (let i = 0; i < sigSrc.length; i++) h = ((h * 33) ^ sigSrc.charCodeAt(i)) >>> 0;
+      const page = { url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key, key, at: new Date().toISOString(), images: body.images || {}, sig: h.toString(36), mode, changed: (changed || []).slice(0, 40) };
+      inputs.page = page; await put(K.inputs, inputs); await put(K_SNAP, { key, spec: snapNow, images: body.images || {} });
+      return out({ page, applied: [], suggested: [] });
+    };
+    const snap = body.full ? null : await kvj(K_SNAP);
+    const prevObj = snap && snap.key && env.MEDIA ? await env.MEDIA.get(snap.key).catch(() => null) : null;
+    if (prevObj) {
+      let html = await prevObj.text();
+      const keys = new Set([...Object.keys(snap.spec || {}), ...Object.keys(snapNow)]);
+      const changed = [...keys].filter(k => (snap.spec || {})[k] !== snapNow[k]);
+      const imgSwaps = Object.entries(body.images || {}).filter(([k, u]) => u && (snap.images || {})[k] && snap.images[k] !== u);
+      const imgOk = Object.entries(body.images || {}).every(([k, u]) => !u || (snap.images || {})[k]);   // a NEW image slot needs the full build
+      if (imgOk) {
+        for (const [k, u] of imgSwaps) html = html.split(snap.images[k]).join(u);
+        if (!changed.length) return imgSwaps.length ? storePage(html, "images", []) : out({ page: inputs.page, applied: [], suggested: [], unchanged: true });
+        const STRUCT = /^(layout\.(section|grid|columns|nav|hero_layout)|content\.section_order|components\.)/;
+        if (changed.length <= 25 && !changed.some(k => STRUCT.test(k) && changed.length > 8)) {
+          const ptext = `This HOME PAGE html was built from a design spec. Some spec fields changed. Update the html so it follows the NEW values — change ONLY what those fields control (CSS variables, font links/families, sizes, spacing, radii, colors, copy rules, a section's markup…). Keep everything else byte-identical.
+
+CHANGED FIELDS (old → new):
+${changed.map(k => `${k}: ${JSON.stringify((snap.spec || {})[k] || "(empty)")} → ${JSON.stringify(snapNow[k] || "(empty)")}`).join("\n").slice(0, 8000)}
+
+CURRENT HTML:
+${html.slice(0, 60000)}
+
+Reply with ONE JSON object only: {"edits": [{"find": "an EXACT substring of the current html, unique, with enough context", "replace": "its new text"}]}
+If the changes need most of the page rewritten, reply {"rebuild": true}.`;
+          try {
+            const raw = await claude(ptext, 12000, false), j = JSON.parse((raw.match(/\{[\s\S]*\}/) || ["{}"])[0]);
+            if (!j.rebuild && Array.isArray(j.edits) && j.edits.length) {
+              let h2 = html, ok = true;
+              for (const ed of j.edits) { const f = String(ed.find || ""); if (!f || h2.split(f).length !== 2) { ok = false; break; } h2 = h2.replace(f, () => String(ed.replace ?? "")); }
+              if (ok && /<html[\s>]/i.test(h2)) return storePage(h2, "patched", changed);
+            }
+          } catch (e) { console.error("design page patch:", e.message); }
+        }
+      }
+    }
     const text = `Write the complete HOME PAGE for "${campName || "this campaign"}" as ONE self-contained HTML file — a finished, production-quality page, not a wireframe.
 
 Follow the DESIGN SPEC exactly — it is the authority on every visual decision:
@@ -48567,15 +48615,7 @@ Reply with the HTML only, in one \`\`\`html block.`;
     let raw; try { raw = await claude(text, 32000, false); } catch (e) { return { error: e.message }; }
     const m = raw.match(/```html\s*([\s\S]*?)```/i), html = (m ? m[1] : raw.slice(raw.indexOf("<!"))).trim();
     if (!/<html[\s>]/i.test(html) || html.length < 1500) return { error: "the page came back incomplete — try again" };
-    if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
-    const key = `design/${cid}/page-${Date.now().toString(36)}.html`;
-    await env.MEDIA.put(key, html, { httpMetadata: { contentType: "text/html; charset=utf-8", cacheControl: "public, max-age=31536000, immutable" } });
-    // sig = the spec this page was built from (same hash as the panel's sig()) — the panel flags the visuals stale when it changes
-    const sigSrc = Object.keys(sp).sort().filter(k => sp[k] && sp[k].v).map(k => k + "=" + sp[k].v).join("\n");
-    let h = 5381; for (let i = 0; i < sigSrc.length; i++) h = ((h * 33) ^ sigSrc.charCodeAt(i)) >>> 0;
-    const page = { url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key, at: new Date().toISOString(), images: body.images || {}, sig: h.toString(36) };
-    inputs.page = page; await put(K.inputs, inputs);
-    return out({ page, applied: [], suggested: [] });
+    try { return await storePage(html, "full", []); } catch (e) { return { error: e.message }; }
   }
   if (op === "build") {    // round 1: keywords (+ live search of the ranked sites) + seed photo
     const inp = { ...inputs, keywords: inputs.keywords || kwFallback };

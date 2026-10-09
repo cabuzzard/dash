@@ -109,9 +109,12 @@
       const base = Object.keys(sp).filter(k => /^(img|ovl|avoid|color)\./.test(k) && v(k)).map(k => `${k}: ${v(k)}`).join('\n');
       const r = await call('renderSpecTest', { spec: `${asset}\n\n${base}`, palette: palette(sp) || undefined, aspect: nearest(v(`asset.${id}.aspect`)),
         steer: `This is the ${label}. Follow every asset.${id}.* line exactly (subject, composition, background, safe area). No text, letters or numbers in the image.` });
-      S.renders[id] = { url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect, at: Date.now() };
+      S.renders[id] = { url: r.imageUrl, prompt: r.prompt || '', aspect: r.aspect, at: Date.now(), sig: imgSig(id) };
       return r;
     }
+    // the fields an image is rendered from — a render is current while these are unchanged
+    const imgSig = id => sig(Object.fromEntries(Object.entries(S.staged || {}).filter(([k]) => k.startsWith(`asset.${id}.`) || /^(img|ovl|avoid|color)\./.test(k))));
+    const imgCurrent = id => { const rr = S.renders[id]; return !!(rr && rr.url && rr.sig && rr.sig === imgSig(id)); };
     async function renderAssets(ids, after) {
       for (const id of ids) {
         startWork('render_' + id, `Rendering the ${id.replace(/_/g, ' ')} image on Grok (~20s)…`); render();
@@ -427,12 +430,19 @@
       catch (err) { endWork(); say('Save failed: ' + err.message, 'bad'); }
     }
     // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
-    async function previewStaged() {
-      startWork('pstaged', 'Previewing the staged spec: hero + signup images, then the mockup page (2-3 min)…');
-      try { for (const id of ['hero', 'signup']) await renderAsset(id); await persistRenders(); const r = await ds('page', { images: imageUrls() }); take(r); endWork();
-        say('Preview ready from the STAGED spec — see 📄 Page preview / the Mockup on the right. Keep it with 💾 Save, or ↺ Revert.', 'ok');
-        if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} } }
-      catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); }
+    // change-aware: re-renders only the images whose fields changed; the worker swaps / patches / rebuilds the page as needed
+    async function previewStaged(quiet) {
+      const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
+      startWork('pstaged', `Previewing the staged spec: ${todo.length ? `re-rendering ${todo.join(' + ')} (fields changed), then ` : 'images unchanged — '}updating the page…`);
+      try {
+        for (const id of todo) { S.busy = `Rendering the ${id} image on Grok (~20s)…`; render(); await renderAsset(id); }
+        if (todo.length) await persistRenders();
+        S.busy = 'Updating the page — only what changed…'; render();
+        const r = await ds('page', { images: imageUrls() }); take(r); const s = endWork(), pg = r.page || {};
+        const how = r.unchanged ? 'nothing changed — same page' : pg.mode === 'images' ? 'new images swapped in' : pg.mode === 'patched' ? `patched ${(pg.changed || []).length} changed field${(pg.changed || []).length === 1 ? '' : 's'}` : 'full page build';
+        if (!quiet) say(`Preview ready in ${s}s (${todo.length ? todo.join(' + ') + ' re-rendered, ' : ''}${how}) — on the right. Keep it with 💾 Save, or ↺ Revert.`, 'ok');
+        if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} }
+      } catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); throw err; }
     }
     function assetsBody() {
       const ids = assetSecs().map(s => s.id.slice(6));
@@ -536,7 +546,7 @@
       else if (a === 'gEdit') gEdit(b.dataset.sec);
       else if (a === 'gRevert') gRevert(b.dataset.keys.split(','));
       else if (a === 'gSave') gSave(b.dataset.keys.split(','));
-      else if (a === 'pstaged') previewStaged();
+      else if (a === 'pstaged') previewStaged().catch(() => {});
       else if (a === 'revert') revert();
       else if (a === 'publish') publish();
       else if (a === 'preview') { S.preview = !S.preview; render(); }
@@ -554,8 +564,8 @@
     // the host's "Preview staged" switch: page url if it matches the staged spec, else rebuild the page from staged first
     async function stagedPageUrl() {
       const pg = (S.inputs || {}).page;
-      if (pg && pg.url && !stale()) return pg.url;
-      await rebuildPage();
+      if (pg && pg.url && !stale() && ['hero', 'signup'].every(imgCurrent)) return pg.url;
+      await previewStaged();
       const p2 = (S.inputs || {}).page; if (!p2 || !p2.url) throw new Error('the page build failed — see the Design panel');
       return p2.url;
     }
