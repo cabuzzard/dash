@@ -202,15 +202,17 @@
       startWork('chatCopy', 'Writing the ChatGPT prompt…');
       try { const r = await ds('chatPrompt'); endWork();
         await navigator.clipboard.writeText(r.prompt);
-        say('ChatGPT prompt copied. In ChatGPT: attach the seed photo, paste, then paste its JSON reply below and 📥 Merge.', 'ok'); }
+        say('Prompt copied — it carries every field Claude built. Paste it into ChatGPT or Grok (attach the seed photo), then paste the reply below and 📥 Paste back.', 'ok'); }
       catch (err) { endWork(); say('Could not copy the prompt: ' + err.message, 'bad'); }
     }
     async function mergeChat() {
       if (!S.gptReply.trim()) return say('Paste ChatGPT\'s reply first.', 'bad');
-      startWork('chatMerge', 'Merging ChatGPT\'s fields…');
-      try { const r = await ds('chatReply', { text: S.gptReply }); take(r); S.gptReply = ''; endWork(); S.open.spec_web = S.open.spec_image = S.open.spec_asset = true;
-        say(`ChatGPT: ${(r.applied || []).length} empty fields filled${(r.suggested || []).length ? `, ${r.suggested.length} suggestions to review` : ''}.`, 'ok'); }
-      catch (err) { endWork(); say('Merge failed: ' + err.message, 'bad'); }
+      startWork('chatMerge', 'Staging the reviewed fields…');
+      try { const r = await ds('chatReply', { text: S.gptReply }); take(r); S.gptReply = ''; endWork();
+        const n = (r.applied || []).length; say(`${n} field${n === 1 ? '' : 's'} changed and staged — building the preview…`, 'ok');
+        if (n) await previewStaged(true).catch(() => {});
+        say(`${n} field${n === 1 ? '' : 's'} changed by the review and staged${n ? ' — preview on the right' : ''}. Keep with 💾 Save, or ↺ Revert (per section or all).`, 'ok'); }
+      catch (err) { endWork(); say('Paste back failed: ' + err.message, 'bad'); }
     }
 
     // ── field edits ──
@@ -302,7 +304,7 @@
       const mark = (on, yes, no) => `<span style="font-size:10.5px;font-weight:600;margin-left:6px;padding:1px 8px;border-radius:10px;border:1px solid ${on ? C.ok : C.line};color:${on ? C.ok : C.ink3};">${on ? '✓ ' + yes : no}</span>`;
       const row = (n, title, on, yes, no, body) => `<div style="border-left:3px solid ${on ? C.ok : C.line};padding:2px 0 2px 10px;margin-bottom:12px;">
         <div style="${LBL}margin-bottom:4px;">${n} · ${title}${mark(on, yes, no)}</div>${body}</div>`;
-      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Fill the inputs in order (only ① is required), then press the build button at the bottom. A green border = loaded. Later inputs win where they conflict, except ChatGPT and Grok, which only add suggestions.</div>`
+      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Fill the inputs in order (only ① is required), then press the build button at the bottom. A green border = loaded. Later inputs win where they conflict. ChatGPT / Grok is a review round: they get everything Claude built, rewrite the fields their way, and the reply replaces the STAGED values (↺ Revert brings back the saved ones).</div>`
         + row('①', 'Keywords — what the audience searches (Claude also reads the sites ranking for them)', ok.kw, `${nKw} keyword${nKw === 1 ? '' : 's'}`, 'required',
           `<textarea data-in="kw" rows="2" placeholder="medicare services consulting, medicare advisor near me…" style="${TA}">${e(S.kw || '')}</textarea>`
           + (rk.look ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;"><b>Page one looks like:</b> ${e(rk.look)}${(rk.sites || []).map(x => `<div>· ${e(x)}</div>`).join('')}</div>` : ''))
@@ -310,14 +312,14 @@
           `<div style="display:flex;gap:10px;align-items:flex-start;">${ph.url ? `<a href="${e(ph.url)}" target="_blank" rel="noopener"><img src="${e(ph.url)}" style="height:70px;border-radius:6px;border:1px solid ${C.line};display:block;"></a>` : ''}
             <div style="flex:1;"><label style="${BTN}display:inline-block;">${S.work && S.work.act === 'photo' ? '⏳ uploading…' : ph.url ? '⟳ Replace photo' : '⬆ Upload seed photo'}<input type="file" accept="image/*" data-act="photo" style="display:none;"></label>
             ${ph.read ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(ph.read)}</div>` : ''}</div></div>`)
-        + row('③', 'ChatGPT — adds suggestions', ok.gpt, 'merged ' + String((inp.chatgpt || {}).at || '').slice(0, 10), 'optional',
-          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy ChatGPT prompt')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">attach the seed photo in ChatGPT, paste, then paste its reply here</span></div>
-          <textarea data-in="gpt" rows="3" placeholder="Paste ChatGPT's reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
-          <div style="margin-top:6px;">${wb('chatMerge', BTN, "📥 Merge ChatGPT's fields")}</div>`)
+        + row('③', 'ChatGPT / Grok review — they rewrite every field', ok.gpt, 'merged ' + String((inp.chatgpt || {}).at || '').slice(0, 10), 'optional',
+          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy prompt (everything Claude built)')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">paste into ChatGPT or Grok (attach the seed photo), then paste its reply here</span></div>
+          <textarea data-in="gpt" rows="3" placeholder="Paste the ChatGPT or Grok reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
+          <div style="margin-top:6px;">${wb('chatMerge', BTN, '📥 Paste back → stage + preview')}</div>`)
         + row('④', 'Text override — your words win', ok.ovr, 'override saved', 'optional',
           `<textarea data-in="override" rows="2" placeholder="e.g. headlines heavier · buttons sage green · no gradients anywhere" style="${TA}">${e(S.override || '')}</textarea>
           <div style="margin-top:6px;">${wb('override', BTN, 'Apply override to the fields now')}</div>`)
-        + row('⑤', 'Grok search — adds suggestions (web + X)', ok.grok, 'Grok notes ' + String((inp.grok || {}).at || '').slice(0, 10), 'optional',
+        + row('⑤', 'Grok search (in-app, web + X) — rewrites every field', ok.grok, 'Grok notes ' + String((inp.grok || {}).at || '').slice(0, 10), 'optional',
           `${wb('grok', BTN, '⚡ Run Grok search')}${inp.grok && inp.grok.notes ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(inp.grok.notes)}</div>` : ''}`)
         // ── the ONE build button, after every input ──
         + `<div style="margin:4px 0 12px;padding:10px;border:1px solid ${C.ok};border-radius:8px;background:${C.surf2};">
@@ -413,11 +415,11 @@
     }
     async function gSource(id, src) {
       const sec = secById(id); if (!sec) return; const keys = secKeys(sec), label = sec.label;
-      const after = r => { take(r); S.open[id] = true; say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
+      const after = r => { take(r); S.open[id] = true; if ((src === 'chat' || src === 'grok') && (r.applied || []).length) previewStaged(true).catch(() => {}); say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
       if (src === 'text') return gModal(`Text override → ${e(label)}`, `<textarea data-gt rows="4" placeholder="e.g. headlines heavier · sage green buttons · no gradients" style="${TA}">${e(S.override || '')}</textarea>`, 'Apply to staged', async m => {
         const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Type the override first.');
         startWork('gsrc', `Applying the override to ${label}…`); try { after(await ds('text', { override: t, keys })); } finally { endWork(); render(); } });
-      if (src === 'chat') return gModal(`ChatGPT reply → ${e(label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Use 📋 Copy ChatGPT prompt in Inputs ③, then paste the reply — only this group's fields are taken.</div><textarea data-gt rows="6" placeholder="Paste ChatGPT's reply…" style="${TA}"></textarea>`, 'Merge into staged', async m => {
+      if (src === 'chat') return gModal(`ChatGPT reply → ${e(label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Use 📋 Copy prompt in Inputs ③, paste it into ChatGPT or Grok, then paste the reply — only this section's fields are taken, they replace the staged values, and the preview rebuilds.</div><textarea data-gt rows="6" placeholder="Paste the ChatGPT or Grok reply…" style="${TA}"></textarea>`, 'Merge into staged', async m => {
         const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Paste the reply first.');
         after(await ds('chatReply', { text: t, keys })); });
       startWork('gsrc', `${src === 'grok' ? 'Grok search' : 'Reading the keywords + photo'} for ${label} (1-3 min)…`);

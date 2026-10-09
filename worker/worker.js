@@ -48292,11 +48292,12 @@ async function dsSaveReferenceSites(env, cid, ranked) {
       await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: h, body: JSON.stringify({ parent: { database_id: REFERENCE_SITES_DB }, properties: props }) }); }
   }
 }
-function dsMerge(spec, incoming) {
+function dsMerge(spec, incoming, force) {
   spec = JSON.parse(JSON.stringify(spec || {}));
   const applied = [], suggested = [];
   for (const [k, n] of Object.entries(incoming)) {
     const cur = spec[k];
+    if (force) { if (!cur || cur.v !== n.v) { spec[k] = n; applied.push(k); } else if (!cur.why && n.why) cur.why = n.why; continue; }
     if (!cur || !cur.v) { spec[k] = n; applied.push(k); continue; }
     if (cur.v === n.v) { if (!cur.why && n.why) cur.why = n.why; continue; }
     if (!DS_ADDITIVE.has(n.src) && (DS_PRI[n.src] || 0) >= (DS_PRI[cur.src] || 0)) { spec[k] = n; applied.push(k); }
@@ -48311,7 +48312,7 @@ function dsParseJson(raw) {
 }
 // The ChatGPT handoff: the seed photo attached by the operator, every field, the current values, the inputs.
 function dsChatPrompt(name, inp, spec, facts) {
-  return `You are the lead web + brand designer for "${name}". Build ONE cohesive visual system for the whole project — the website, its hero images, social posts and thumbnails — as a tight FIELD → VALUE spec.
+  return `You are the lead web + brand designer for "${name}", reviewing a visual system another designer (Claude) built for the whole project — the website, its hero images, social posts and thumbnails — as a FIELD → VALUE spec. Give YOUR version of it.
 
 I have attached the SEED PHOTO (if it isn't attached, ask me for it before you answer). It is the style seed: match its medium, line work, palette and character style.
 
@@ -48320,15 +48321,15 @@ ${dsInputsBlock(inp)}
 THE CAMPAIGN (keywords and research):
 ${String(facts || "").slice(0, 6000)}
 
-Search the web for what the sites ranking on page one for the keywords look like, then fill EVERY field below.
+Search the web for what the sites ranking on page one for the keywords look like. Then go through EVERY field below and give your own value for every one: change anything you would do differently, keep a value only if you genuinely agree with it, fill anything empty.
 Rules:
 - "v" is DATA: hex codes, px, font names (Google Fonts only), ratios, aspect ratios, short lists. Max ~15 words. No prose paragraphs.
 - "why" is one plain sentence a non-designer understands (max 14 words).
-- Keep what is already filled unless you have a clearly better value; never contradict the seed photo or the text override.
+- Return EVERY key, changed or not. Never contradict the seed photo or the text override.
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
 - Image fields describe images that look like the seed photo, so every image in the project feels like one set.
 
-FIELDS — key — what it controls (format): current value. Fill every "(empty)"; improve the rest only with a clearly better value:
+FIELDS — key — what it controls (format): Claude's current value. Return every key with your value:
 ${DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h}): ${(spec[k] && spec[k].v) || "(empty)"}`).join("\n")).join("\n")).join("\n\n")}
 
 Reply with ONE fenced \`\`\`json block and nothing else:
@@ -48472,7 +48473,7 @@ async function handleDesignSpec(body, env, ctx) {
   if (op === "chatPrompt") return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts) });
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "no JSON found — paste the whole ```json block" };
-    const m = dsMerge(staged, dsClean(j.fields || j, "chatgpt"));
+    const m = dsMerge(staged, dsClean(j.fields || j, body.source === "grok" ? "grok" : "chatgpt"), true);   // review round: replaces staged
     staged = m.spec; inputs.chatgpt = { at: new Date().toISOString() }; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
     return out({ applied: m.applied, suggested: m.suggested });
   }
@@ -48673,7 +48674,7 @@ Reply with ONE JSON object only — just the fields you change: {"fields": {"key
   if (op === "grok") {     // Grok with live web + X search — additive
     if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" };
     const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
-    const prompt = `Search the web and X for what is working visually right now for: ${inputs.keywords || kwFallback}. Then, for the design spec below, fill the EMPTY fields and suggest better values only where you found real evidence. Never contradict the seed photo or the text override.
+    const prompt = `Search the web and X for what is working visually right now for: ${inputs.keywords || kwFallback}. Then review the design spec below (built by another designer) and give YOUR value for EVERY field — change anything you would do differently, keep a value only if you agree, fill anything empty. Return every key. Never contradict the seed photo or the text override.
 ${RULES}
 
 ${dsInputsBlock(inputs, kwFallback)}
@@ -48694,7 +48695,7 @@ Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", 
     await spendAdd(env, "grok", cost, false, { in: u.input_tokens, out: u.output_tokens }).catch(() => {});
     const j = dsParseJson(d.output_text || drAllText((d.output || []).filter(o => o && o.type === "message"), []).join("\n"));
     if (!j || !j.fields) return { error: "Grok returned no fields" };
-    const m = dsMerge(staged, dsClean(j.fields, "grok"));
+    const m = dsMerge(staged, dsClean(j.fields, "grok"), true);   // review round: replaces staged
     staged = m.spec; inputs.grok = { notes: String(j.notes || "").slice(0, 1500), at: new Date().toISOString() };
     await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
     return out({ applied: m.applied, suggested: m.suggested });
