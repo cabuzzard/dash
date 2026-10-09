@@ -12752,7 +12752,7 @@ the one aesthetic risk taken + why:`;
             // hidden: kept only as the product list Production › Products reads; Main offerings is an asset section now
             { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: false,   // shown again 2026-10-09 (operator): the ★ main products, listed under Main offerings beside its assets products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: "" },
-            ...pageSections.filter(x => x.phase === "Main offerings"),
+            // (2026-10-09, operator) Main offerings = products only — they publish nowhere; assets get built off them in other sections
             ...pageSections.filter(x => x.phase === "CTA's"),   // right under Main offerings
             ...pageSections.filter(x => x.phase !== "CTA's" && x.phase !== "Main offerings"),
           ];
@@ -48212,8 +48212,6 @@ Return ONLY a fenced \`\`\`json array.`;
 // hand-picked section titles and main-offering / section products alike. New hubs get the same set from scaffoldHub.
 // Template = KV hub:dummytemplate (falls back to HUB_DUMMY_TEMPLATE); record of what was made = KV hub:dummies:<slug>.
 const HUB_DUMMY_TEMPLATE = [
-  { section: "Main offerings", hubSection: "Main Offering", label: "Newsletter Free", assetType: "Newsletter Free", count: 1 },
-  { section: "Main offerings", hubSection: "Main Offering", label: "Products",        assetType: "Product",         count: 1 },
   { section: "CTA's",          hubSection: "CTA",           label: "Newsletter Free", assetType: "Newsletter Free", count: 1 },
   { section: "Products",       hubSection: "Offers",        label: "Sales Article",   assetType: "QA – Sales",      count: 3 },
   { section: "Products",       hubSection: "Offers",        label: "Products",        assetType: "Product",         count: 3 },
