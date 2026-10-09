@@ -1779,6 +1779,15 @@
 
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
   <div class="tab-panel" id="tabTrades">
+    <!-- Since last update: each source's results now vs. the saved baseline (worker tradeBaseline) -->
+    <div id="tbSection" style="margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-sm);">
+      <div onclick="const b=document.getElementById('tbBody');b.style.display=b.style.display==='none'?'':'none'" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);cursor:pointer;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4ade80;">Since last update</span>
+        <span id="tbStatus" style="font-size:10.5px;color:var(--text3);"></span>
+        <button onclick="event.stopPropagation();tbSet(this)" style="margin-left:auto;font-size:10px;font-weight:700;padding:3px 9px;border:1px solid #2a5a2a;border-radius:4px;background:transparent;color:#4ade80;cursor:pointer;" title="Save every trade's current result as the new starting point">📌 Set new baseline</button>
+      </div>
+      <div id="tbBody" style="padding:10px 12px;"></div>
+    </div>
 
     <!-- Strategies Section — RSI/Bollinger mean-reversion candidates, discovered
          by scanning Yahoo's top-100 most-active tickers merged with the saved
@@ -20271,6 +20280,7 @@ async function loadTrades() {
     const data = await call('getTrades');
     tradesCache = data.trades || [];
     renderTradeTable();
+    tbRender();
     const syncEl = document.getElementById('tradesLastSync');
     if (syncEl) {
       // Price tracking is the worker's runTradePoll cron (not a local script)
@@ -20289,6 +20299,44 @@ async function loadTrades() {
     if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="error-msg">' + e.message + '</td></tr>';
   }
   loadTradingTd();
+}
+
+// ── SINCE LAST UPDATE ── per source: open trades' change in contract % since the baseline + trades opened after it.
+// Source = strategy tag, else @-tweet import ("Twitter"), else other auto (screener), else manual.
+let TB = null;
+function tbSource(t) {
+  if (t.strategy) return t.strategy.replace(/_V\d+$/, '');
+  if (t.auto_created) return /Auto-created from @/.test(t.notes || '') ? 'Twitter (@ imports)' : 'Screener calls';
+  return 'Manual';
+}
+async function tbRender() {
+  const body = document.getElementById('tbBody'), st = document.getElementById('tbStatus'); if (!body) return;
+  if (!TB) { try { TB = (await call('tradeBaseline', { op: 'get' })).baseline || null; } catch (e) { TB = null; } }
+  if (!TB) { st.textContent = 'no baseline yet'; body.innerHTML = '<div style="font-size:12px;color:var(--text3);">Press 📌 Set new baseline to start tracking from now.</div>'; return; }
+  const at = new Date(TB.at), pct = t => typeof t.contract_pct === 'number' ? t.contract_pct : null;
+  st.textContent = 'baseline ' + at.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const rows = {};
+  (tradesCache || []).forEach(t => { const p = pct(t); if (p == null) return; const s = tbSource(t), r = rows[s] = rows[s] || { held: [], fresh: [] };
+    if (TB.marks[t.id] != null) r.held.push({ t, d: p - TB.marks[t.id], now: p }); else if (Date.parse(t.entry_time || 0) > at.getTime()) r.fresh.push({ t, now: p }); });
+  const f = x => (x >= 0 ? '+' : '') + x.toFixed(1) + '%', avg = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : 0;
+  const col = x => x > 0 ? '#4ade80' : x < 0 ? '#ff6b6b' : 'var(--text2)';
+  const order = Object.keys(rows).sort((a, b) => (rows[b].held.length + rows[b].fresh.length) - (rows[a].held.length + rows[a].fresh.length));
+  const tr = order.map(s => { const r = rows[s], hd = r.held.map(x => x.d), up = hd.filter(x => x > 0).length, fr = r.fresh.map(x => x.now);
+    const best = r.held.concat(r.fresh).sort((a, b) => (b.d ?? b.now) - (a.d ?? a.now))[0];
+    return `<tr><td style="text-align:left;"><b>${esc(s)}</b></td><td>${r.held.length}</td><td style="color:${col(avg(hd))};">${r.held.length ? f(avg(hd)) : '—'}</td><td>${r.held.length ? up + ' / ' + r.held.length : '—'}</td>
+      <td>${r.fresh.length}</td><td style="color:${col(avg(fr))};">${r.fresh.length ? f(avg(fr)) : '—'}</td><td>${r.fresh.length ? Math.round(fr.filter(x => x > 0).length / fr.length * 100) + '%' : '—'}</td>
+      <td style="text-align:left;color:var(--text3);">${best ? esc(best.t.ticker + ' ' + (best.t.direction || '')) + ' ' + f(best.d ?? best.now) : ''}</td></tr>`; }).join('');
+  body.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:12px;" class="tb-tbl"><thead><tr style="color:var(--text3);font-size:10.5px;text-align:right;">
+    <th style="text-align:left;">Source</th><th>Open at baseline</th><th>Avg change since</th><th>Improved</th><th>New since</th><th>New: avg now</th><th>New: win %</th><th style="text-align:left;">Best mover</th></tr></thead>
+    <tbody style="text-align:right;">${tr || '<tr><td colspan="8" style="color:var(--text3);text-align:left;">No priced trades.</td></tr>'}</tbody></table>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:6px;">"Avg change since" = each trade's contract % now minus its contract % at the baseline (percentage points). Paper marks; open trades only move until they expire.</div>`;
+}
+async function tbSet(btn) {
+  if (!confirm('Save every trade\'s current result as the new baseline? The "since" numbers restart from now.')) return;
+  btn.disabled = true;
+  const marks = {}; (tradesCache || []).forEach(t => { if (typeof t.contract_pct === 'number') marks[t.id] = t.contract_pct; });
+  try { TB = (await call('tradeBaseline', { op: 'set', marks })).baseline; } catch (e) { alert('Could not save: ' + e.message); }
+  btn.disabled = false; tbRender();
 }
 
 // ── STRATEGIES SECTION ───────────────────────────────────────────────

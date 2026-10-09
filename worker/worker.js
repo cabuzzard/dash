@@ -46356,6 +46356,20 @@ Produce all of this by calling the submit_listing tool — do not include any of
       if (body.action === "hubDummies") {
         try { return json(await handleHubDummies(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
+      // Trades "since last update": KV tradebaseline = {at, marks:{tradeId: contract %}} — the dash Trades tab compares
+      // every trade's current contract % with its mark at the baseline (and counts trades opened after it).
+      if (body.action === "tradeBaseline") {
+        if (body.op === "set") {
+          const marks = {}; Object.entries(body.marks || {}).slice(0, 2000).forEach(([k, v]) => { if (typeof v === "number" && isFinite(v)) marks[String(k).slice(0, 80)] = Math.round(v * 100) / 100; });
+          const rec = { at: new Date().toISOString(), marks };
+          let prev = null; try { prev = await env.TRADES.get("tradebaseline", "json"); } catch (e) {}
+          if (prev) await env.TRADES.put("tradebaseline:prev", JSON.stringify(prev));
+          await env.TRADES.put("tradebaseline", JSON.stringify(rec));
+          return json({ success: true, baseline: rec });
+        }
+        let b = null; try { b = await env.TRADES.get("tradebaseline", "json"); } catch (e) {}
+        return json({ success: true, baseline: b });
+      }
       if (body.action === "apiSpend") {
         try { return json(await handleApiSpend(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
