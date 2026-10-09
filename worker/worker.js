@@ -46370,6 +46370,13 @@ Produce all of this by calling the submit_listing tool — do not include any of
         let b = null; try { b = await env.TRADES.get("tradebaseline", "json"); } catch (e) {}
         return json({ success: true, baseline: b });
       }
+      if (body.action === "crowdSentiment") {
+        try {
+          if (body.op === "run") return json(await runCrowdSentiment(env, { force: true }));
+          let last = null, history = []; try { last = await env.TRADES.get("crowd:last", "json"); history = (await env.TRADES.get("crowd:history", "json")) || []; } catch (e) {}
+          return json({ success: true, last, history, rules: CROWD });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "sentimentRebound") {
         try {
           if (body.op === "run") return json(await runSentimentRebound(env, { force: true }));
@@ -46411,6 +46418,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // ETF_MOMENTUM_V1 + FEAR_DIP_V1 — once per session at ~09:45 ET (self-gated).
       ctx.waitUntil(runSwingStrategies(env).catch(e => console.error('runSwingStrategies failed:', e.message)));
       // SENTIMENT_REBOUND_V1 — oversold screen + X sentiment, once per session ~10:30 ET (self-gated)
+      // CROWD_SENTIMENT_V1 — X crowd calls, twice per session (~10:00 / ~13:00 ET, self-gated)
+      ctx.waitUntil(runCrowdSentiment(env).then(r => { if (r.ran) console.log(`crowdSentiment: ${(r.calls || []).length} calls, ${r.traded.length} traded${r.error ? ' — ' + r.error : ''}`); }).catch(e => console.error('runCrowdSentiment failed:', e.message)));
       // SENTIMENT_REBOUND_V1 paused 2026-10-08 (operator pivoting to pure X sentiment) — manual ▶ Run now only
       return;
     }
@@ -48182,5 +48191,94 @@ async function runSentimentRebound(env, { force = false } = {}) {
   const rec = { at: new Date().toISOString(), scanned: universe.length, oversold: oversold.length, shortlist: shortlist.length, picks,
     nearMisses: oversold.slice(SR.shortlist, SR.shortlist + 10).map(s => ({ sym: s.sym, rsi: s.rsi, price: s.price })) };
   await env.TRADES.put("sentrebound:last", JSON.stringify(rec));
+  return { ran: true, ...rec };
+}
+
+// ════════ CROWD_SENTIMENT_V1 — pure X sentiment, calls categorized by strategy + duration (2026-10-08) ════════
+// Twice per market day (~10:00 and ~13:00 ET, self-gated on the */5 market-hours cron) one Grok Responses-API call with
+// the x_search tool reads the last ~24h of stock-call posts across X (NOT a fixed account list) and returns every
+// actionable call: ticker, long/short, strategy category, duration, how many distinct posters, conviction, levels.
+// Every call is stored (KV crowd:last, crowd:history = last 40 scans) for the Trades-tab panel; only SWING calls
+// with ≥2 distinct posters and conviction ≥60 become paper trades (strategy CROWD_SENTIMENT_V1, tagged
+// meta.category + meta.duration) with a ~3-week call/put — same tracker + price polling as everything else.
+// Spend: provider "grok" on the shared monthly cap (x_search $5 / 1k posts + tokens).
+const CROWD = { slots: [10 * 60, 13 * 60], window: 90, minPosters: 2, minConviction: 60, maxTrades: 6, dte: 21,
+  categories: ["breakout", "momentum", "oversold-bounce", "earnings", "news-catalyst", "bearish-thesis", "options-flow", "squeeze-meme", "value-longterm", "other"],
+  durations: ["day", "swing", "position", "long-term"] };
+
+async function crowdScan(env) {
+  const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
+  const from = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const prompt = `Search X for stock and options TRADE CALLS posted in roughly the last 24 hours — posts where someone says to buy, sell, short, or take a calls/puts position on a US-listed ticker (cashtags like $NVDA). Look broadly across many accounts, not a few.
+Group posts by ticker + direction. Ignore pure news headlines, price reports and ads with no trade view.
+For each call return:
+- ticker (no $), direction "long" or "short"
+- category: one of ${CROWD.categories.map(c => `"${c}"`).join(", ")}
+- duration: one of "day" (same-day/scalp), "swing" (about 2-10 trading days), "position" (weeks), "long-term" (months+)
+- posters: how many DISTINCT accounts made this same call
+- conviction: 0-100 — how strong and specific the calls are (levels, catalyst, consistency across posters)
+- entry, target, stop: numbers if posters gave them, else null
+- catalyst: short phrase, why they expect the move
+- examples: 1-2 short quotes
+Return 10-30 calls, strongest first. Return ONLY a fenced \`\`\`json array.`;
+  const r = await fetch("https://api.x.ai/v1/responses", { method: "POST",
+    headers: { Authorization: `Bearer ${(env.XAI_API_KEY || "").trim()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "grok-4.7", input: [{ role: "user", content: prompt }], tools: [{ type: "x_search", from_date: from }] }) });
+  const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+  if (!r.ok || !d) return { error: `xAI HTTP ${r.status}: ${(d?.error?.message || d?.error || t).toString().slice(0, 200)}` };
+  const u = d.usage || {}, st = u.server_side_tool_usage_details || {};
+  const cost = (st.x_posts_fetched || 0) * 0.005 + (st.x_users_fetched || 0) * 0.01 + ((u.input_tokens || 0) * 3 + (u.output_tokens || 0) * 15) / 1e6;
+  await spendAdd(env, "grok", cost, !st.x_posts_fetched, { posts: st.x_posts_fetched, calls: st.x_search_calls, in: u.input_tokens, out: u.output_tokens }).catch(() => {});
+  const text = d.output_text || drAllText((d.output || []).filter(o => o && o.type === "message"), []).join("\n");
+  const arr = drJson(text);
+  if (!Array.isArray(arr)) return { error: "Grok returned no call list", raw: String(text).slice(0, 300), cost };
+  const calls = arr.map(c => ({
+    ticker: String(c.ticker || "").replace(/^\$/, "").toUpperCase().trim(), direction: /short|bear|put/i.test(c.direction || "") ? "short" : "long",
+    category: CROWD.categories.includes(c.category) ? c.category : "other", duration: CROWD.durations.includes(c.duration) ? c.duration : "swing",
+    posters: Math.max(1, parseInt(c.posters) || 1), conviction: Math.max(0, Math.min(100, parseInt(c.conviction) || 0)),
+    entry: Number(c.entry) || null, target: Number(c.target) || null, stop: Number(c.stop) || null,
+    catalyst: String(c.catalyst || "").slice(0, 200), examples: (Array.isArray(c.examples) ? c.examples : []).slice(0, 2).map(x => String(x).slice(0, 220)),
+  })).filter(c => /^[A-Z.]{1,6}$/.test(c.ticker));
+  return { calls, posts: st.x_posts_fetched || 0, cost: Math.round(cost * 100) / 100 };
+}
+
+async function runCrowdSentiment(env, { force = false } = {}) {
+  const et = orbNowET();
+  let slot = null;
+  if (!force) {
+    if (et.isWeekend) return { ran: false, reason: "weekend" };
+    slot = CROWD.slots.findIndex(m => et.minutes >= m && et.minutes < m + CROWD.window);
+    if (slot < 0) return { ran: false, reason: "outside the ~10:00 / ~13:00 ET scan windows" };
+    if (await env.TRADES.get(`crowd:ran:${et.dateStr}:${slot}`)) return { ran: false, reason: "this slot already ran today" };
+    await env.TRADES.put(`crowd:ran:${et.dateStr}:${slot}`, new Date().toISOString(), { expirationTtl: 3 * 86400 });
+  }
+  const scan = await crowdScan(env);
+  const rec = { at: new Date().toISOString(), slot, ...scan, traded: [] };
+  if (!scan.error) {
+    const keys = await env.TRADES.list({ prefix: "trades:" });
+    const open = new Set((await Promise.all(keys.keys.map(k => env.TRADES.get(k.name, "json")))).filter(t => t && !t.expired && t.strategy === "CROWD_SENTIMENT_V1").map(t => t.ticker + ":" + t.direction));
+    const pick = scan.calls.filter(c => c.duration === "swing" && c.posters >= CROWD.minPosters && c.conviction >= CROWD.minConviction)
+      .sort((a, b) => (b.posters * b.conviction) - (a.posters * a.conviction)).slice(0, CROWD.maxTrades);
+    for (const c of pick) {
+      const dir = c.direction === "short" ? "P" : "C";
+      if (open.has(c.ticker + ":" + dir)) { c.skip = "already open"; continue; }
+      try {
+        const k = await pickTwitterCallContract(c.ticker, dir, CROWD.dte);
+        if (!k || k.price == null) { c.skip = "no option chain / price"; continue; }
+        const now = new Date(), id = `${c.ticker}_${now.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
+        const trade = { id, ticker: c.ticker, strike: k.strike, expiry: k.expiry, direction: dir, strategy: "CROWD_SENTIMENT_V1",
+          notes: `CROWD · ${c.direction.toUpperCase()} · ${c.category} · ${c.duration} · ${c.posters} posters · conviction ${c.conviction}${c.catalyst ? " · " + c.catalyst : ""}${c.target ? " · target " + c.target : ""}${c.stop ? " · stop " + c.stop : ""} · ${dir === "P" ? "put" : "call"} ~${k.dte}d ~${Math.abs(k.delta || 0).toFixed(2)}Δ`,
+          entry_time: now.toISOString(), entry_price: k.underlying ?? null, price_captured: k.underlying != null, current_price: null, current_pct: null, max_high: null, max_high_time: null, max_low: null, max_low_time: null,
+          strike_reached: false, strike_reached_time: null, last_updated: null, expired: false, entry_contract: k.price, contract_captured: true,
+          current_contract: null, contract_pct: null, contract_max_high: null, contract_max_high_time: null, contract_max_low: null, contract_max_low_time: null,
+          auto_created: true, meta: { strategy_id: "CROWD_SENTIMENT_V1", category: c.category, duration: c.duration, posters: c.posters, conviction: c.conviction, crowd_direction: c.direction, examples: c.examples } };
+        await env.TRADES.put(`trades:${id}`, JSON.stringify(trade)); c.tradeId = id; rec.traded.push(id); open.add(c.ticker + ":" + dir);
+      } catch (e) { c.skip = "error: " + e.message; }
+    }
+  }
+  await env.TRADES.put("crowd:last", JSON.stringify(rec));
+  let hist = []; try { hist = (await env.TRADES.get("crowd:history", "json")) || []; } catch (e) {}
+  hist.unshift({ at: rec.at, error: rec.error, posts: rec.posts, cost: rec.cost, traded: rec.traded.length, calls: (rec.calls || []).map(c => ({ t: c.ticker, d: c.direction, cat: c.category, dur: c.duration, p: c.posters, cv: c.conviction })) });
+  await env.TRADES.put("crowd:history", JSON.stringify(hist.slice(0, 40)));
   return { ran: true, ...rec };
 }
