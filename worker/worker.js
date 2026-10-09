@@ -48233,7 +48233,7 @@ DS_SCHEMA.push(...DS_ASSETS.map(([id, label, use]) => ({ id: "asset." + id, tier
 const DS_TIERS = [["web", "1 · Web & content layout"], ["image", "2 · Image specifications (every image)"], ["asset", "3 · Asset image specifications (per format)"]];
 const DS_FIELDS = DS_SCHEMA.flatMap(s => s.fields);
 const DS_KEYS = new Set(DS_FIELDS.map(f => f[0]));
-const DS_PRI = { manual: 5, text: 4, photo: 3, keywords: 2, grok: 1, chatgpt: 1 };
+const DS_PRI = { manual: 5, text: 4, photo: 3, keywords: 2, grok: 1, chatgpt: 1, claude: 1 };
 const DS_ADDITIVE = new Set(["grok", "chatgpt"]);
 
 function dsSchemaText() {
@@ -48252,8 +48252,6 @@ function dsInputsBlock(inp, fallbackKeywords) {
     + (r.look ? `\n   What the page-one sites for them look like: ${r.look}` : "") + ((r.sites || []).length ? `\n   Ranked sites: ${r.sites.join(" | ")}` : ""));
   out.push(`2. SEED PHOTO (the style seed — decides medium, palette, line, character style, mood): ${ph.url ? (ph.read ? ph.read : "attached; not described yet") : "(none uploaded)"}`);
   out.push(`3. TEXT OVERRIDE (the operator's own words — beats 1 and 2 on anything it mentions): ${String(inp.override || "").trim() || "(none)"}`);
-  if (inp.grok && inp.grok.notes) out.push(`4. GROK SEARCH notes (web + X): ${String(inp.grok.notes).slice(0, 1500)}`);
-  if (inp.chatgpt && inp.chatgpt.at) out.push(`5. An earlier ChatGPT / Grok review round is already in the current values.`);
   return out.join("\n");
 }
 function dsClean(fields, defaultSrc, allowSrc) {
@@ -48311,37 +48309,52 @@ function dsParseJson(raw) {
   try { return JSON.parse(sanitizeJsonControlChars(body.slice(a, z + 1)).replace(/,\s*([}\]])/g, "$1")); } catch (e) { return null; }
 }
 // The ChatGPT handoff: the seed photo attached by the operator, every field, the current values, the inputs.
-function dsChatPrompt(name, inp, spec, facts) {
-  return `You are the lead web + brand designer for "${name}", reviewing a visual system another designer (Claude) built for the whole project — the website, its hero images, social posts and thumbnails — as a FIELD → VALUE spec. Give YOUR version of it.
+// The REVIEW prompt (2026-10-09): the sources + the CURRENT fields → a reviewer (Claude / ChatGPT / Grok) fills the fields
+// with ITS values — rewriting any it would do differently. Reviewers are not sources: they work off what is in the fields,
+// and whatever gets saved is in the next send. opts.only = just these keys; opts.note = the operator's ask for this round.
+function dsChatPrompt(name, inp, spec, facts, opts) {
+  opts = opts || {};
+  const only = Array.isArray(opts.only) && opts.only.length ? new Set(opts.only.map(String).filter(k => DS_KEYS.has(k))) : null;
+  const fieldLine = ([k, l, h]) => `${k} — ${l} (${h}): ${(spec[k] && spec[k].v) || "(empty)"}`;
+  const list = keep => DS_TIERS.map(([t, tl]) => {
+    const g = DS_SCHEMA.filter(x => x.tier === t).map(x => { const fs = x.fields.filter(([k]) => keep(k)); return fs.length ? `## ${x.label}\n` + fs.map(fieldLine).join("\n") : ""; }).filter(Boolean);
+    return g.length ? `# ${tl}\n` + g.join("\n") : ""; }).filter(Boolean).join("\n\n");
+  const imgs = [inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
+    ...Object.entries(inp.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => `- current ${k.replace(/_/g, " ")} image, rendered from the current fields — judge it: ${r.url}`),
+    inp.page && inp.page.url ? `- the current mockup page built from the current fields (open it): ${inp.page.url}` : ""].filter(Boolean);
+  return `You are the lead web + brand designer for "${name}". Below are the SOURCES (keywords, keyword research, the campaign and its main products, images) and the CURRENT design spec — a FIELD → VALUE spec for one cohesive visual system: the website, its hero images, social posts and thumbnails.
+Give your expert opinion AS VALUES: fill ${only ? "every field under FIELDS TO FILL" : "EVERY field"} with the value YOU would choose. Rewrite any current value you would do differently, keep it only if you agree, fill anything empty.
 
-I have attached these images (if any is missing, open its URL; if you can't, ask me for it before you answer):
-${[inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
-   ...Object.entries(inp.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => `- current ${k.replace(/_/g, " ")} image, rendered from Claude's spec — judge it and fix the fields behind it: ${r.url}`),
-   inp.page && inp.page.url ? `- the current mockup page built from Claude's spec (open it): ${inp.page.url}` : ""].filter(Boolean).join("\n") || "- (no images uploaded yet — derive the look from the keywords and research)"}
+IMAGES${opts.inApp ? "" : " (I have attached them; if one is missing, open its URL; if you can't, ask me before you answer)"}:
+${imgs.join("\n") || "- (none yet — derive the look from the keywords and research)"}
 
 ${dsInputsBlock(inp)}
-
-THE CAMPAIGN (keywords and research):
+${opts.demand ? `\nKEYWORD RESEARCH (real Google demand — volumes, bids, intent):\n${String(opts.demand).slice(0, 4000)}\n` : ""}
+THE CAMPAIGN (research + main products):
 ${String(facts || "").slice(0, 6000)}
-
-Search the web for what the sites ranking on page one for the keywords look like. Then go through EVERY field below and give your own value for every one: change anything you would do differently, keep a value only if you genuinely agree with it, fill anything empty.
+${opts.note ? `\nTHE OPERATOR'S ASK FOR THIS ROUND (follow it):\n${String(opts.note).slice(0, 1500)}\n` : ""}
+Search the web for what the sites ranking on page one for the keywords look like, then give your values.
 Rules:
 - "v" is DATA: hex codes, px, font names (Google Fonts only), ratios, aspect ratios, short lists. Max ~15 words. No prose paragraphs.
 - "why" is one plain sentence a non-designer understands (max 14 words).
-- Return EVERY key, changed or not. Never contradict the seed photo or the text override.
+- Never contradict the seed photo or the text override.
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
 - Image fields describe images that look like the seed photo, so every image in the project feels like one set.
 
-FIELDS — key — what it controls (format): current value [which source set it]. Fill EVERY field with your value and return every key:
-${DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h}): ${(spec[k] && spec[k].v) ? `${spec[k].v}  [source: ${spec[k].src || "?"}]` : "(empty)"}`).join("\n")).join("\n")).join("\n\n")}
+${only ? `FIELDS TO FILL — key — what it controls (format): current value. Return ONLY these keys:
+${list(k => only.has(k))}
 
-Reply with ONE fenced \`\`\`json block and nothing else:
-{"fields": {"color.bg": {"v": "#FBFAF7", "why": "warm off-white like the seed card"}, "...every key above...": {"v": "…", "why": "…"}}}
+THE REST OF THE SPEC — context only, do NOT return these:
+${list(k => !only.has(k) && spec[k] && spec[k].v) || "(empty)"}` : `FIELDS — key — what it controls (format): current value. Return EVERY key:
+${list(() => true)}`}
 
-AFTER the JSON block, generate these images to the spec, one at a time, all clearly one set — same style, palette and recurring characters — with no text, letters, logos or numbers in them:
+Reply with ONE fenced \`\`\`json block${opts.inApp || only ? " and nothing else" : ""}:
+{"notes": "2-4 lines: what you changed and why", "fields": {"key": {"v": "…", "why": "…"}}}${opts.inApp || only ? "" : `
+
+AFTER the JSON block, generate these images to your spec, one at a time, all clearly one set — same style, palette and recurring characters — with no text, letters, logos or numbers in them:
 ${["hero", "signup", "social_square"].map((a, i) => { const g = f => (spec[`asset.${a}.${f}`] || {}).v; const lbl = (DS_ASSETS.find(x => x[0] === a) || [])[1];
   return `${i + 1}. ${lbl} — ${[g("aspect"), g("subject"), g("composition"), g("background") && "background " + g("background"), g("safe_area") && "safe area " + g("safe_area"), g("text_zone") && "leave room for text: " + g("text_zone")].filter(Boolean).join("; ") || "use the asset fields you just wrote"}.`; }).join("\n")}
-Use the asset fields from your JSON for anything still blank above.`;
+Use the asset fields from your JSON for anything still blank above.`}`;
 }
 
 // spec → the hub's 10 tokens / 3 fonts / the legacy direction fields (every role must be a hex, or no palette)
@@ -48473,10 +48486,15 @@ async function handleDesignSpec(body, env, ctx) {
   const kwFallback = ((facts.match(/KEYWORDS[^:]*:\s*([^\n]+)/i) || [])[1] || "").slice(0, 600);
   let campName = ""; try { const cp = await fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()); campName = (cp.properties?.Name?.title || []).map(t => t.plain_text).join(""); } catch (e) {}
 
-  if (op === "chatPrompt") return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts) });
+  if (op === "chatPrompt") {
+    const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
+    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts, { only: body.only, note: body.note, demand }) });
+  }
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "no JSON found — paste the whole ```json block" };
-    const m = dsMerge(staged, dsClean(j.fields || j, body.source === "grok" ? "grok" : "chatgpt"), true);   // review round: replaces staged
+    let f = dsClean(j.fields || j, body.source === "grok" ? "grok" : "chatgpt");
+    if (Array.isArray(body.only) && body.only.length) f = Object.fromEntries(Object.entries(f).filter(([k]) => body.only.includes(k)));
+    const m = dsMerge(staged, f, true);   // review round: replaces staged
     staged = m.spec; inputs.chatgpt = { at: new Date().toISOString() }; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
     return out({ applied: m.applied, suggested: m.suggested });
   }
@@ -48674,7 +48692,35 @@ Reply with ONE JSON object only — just the fields you change: {"fields": {"key
     staged = m.spec; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
     return out({ applied: m.applied, suggested: m.suggested });
   }
-  if (op === "grok") {     // Grok with live web + X search — additive
+  if (op === "review") {   // in-app reviewer (Claude or Grok): the sources + current fields → its values → staged
+    const who = body.reviewer === "grok" ? "grok" : "claude";
+    const only = Array.isArray(body.only) && body.only.length ? body.only.map(String).filter(k => DS_KEYS.has(k)) : null;
+    const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
+    const ptext = dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts, { only, note: body.note, demand, inApp: true });
+    const photo = inputs.photo && inputs.photo.url;
+    let raw = "";
+    if (who === "claude") raw = await claude(photo ? [{ type: "image", source: { type: "url", url: photo } }, { type: "text", text: ptext }] : ptext, 32000, true);
+    else {
+      if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" };
+      const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
+      const call = content => fetch("https://api.x.ai/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${(env.XAI_API_KEY || "").trim()}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ model: "grok-4.7", input: [{ role: "user", content }], tools: [{ type: "web_search" }, { type: "x_search" }] }) });
+      let r = await call(photo ? [{ type: "input_text", text: ptext }, { type: "input_image", image_url: photo }] : ptext);
+      if (!r.ok && photo) r = await call(ptext);
+      const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+      if (!r.ok || !d) return { error: `xAI HTTP ${r.status}: ${(d?.error?.message || d?.error || t).toString().slice(0, 200)}` };
+      const u = d.usage || {}, st = u.server_side_tool_usage_details || {};
+      await spendAdd(env, "grok", (st.x_posts_fetched || 0) * 0.005 + (st.web_search_calls || 0) * 0.01 + ((u.input_tokens || 0) * 3 + (u.output_tokens || 0) * 15) / 1e6, false, { in: u.input_tokens, out: u.output_tokens }).catch(() => {});
+      raw = d.output_text || drAllText((d.output || []).filter(o => o && o.type === "message"), []).join("\n");
+    }
+    const j = dsParseJson(raw); if (!j || !j.fields) return { error: `${who} returned no fields — try again` };
+    let f = dsClean(j.fields, who); if (only) f = Object.fromEntries(Object.entries(f).filter(([k]) => only.includes(k)));
+    const m = dsMerge(staged, f, true);
+    staged = m.spec; inputs.review = { who, notes: String(j.notes || "").slice(0, 1500), at: new Date().toISOString(), n: m.applied.length };
+    await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
+    return out({ applied: m.applied, suggested: [], notes: inputs.review.notes });
+  }
+  if (op === "grok") {     // (legacy) Grok with live web + X search
     if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" };
     const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
     const prompt = `Search the web and X for what is working visually right now for: ${inputs.keywords || kwFallback}. Then review the design spec below (built by another designer) and give YOUR value for EVERY field — change anything you would do differently, keep a value only if you agree, fill anything empty. Return every key. Never contradict the seed photo or the text override.
@@ -48707,7 +48753,7 @@ Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", 
   };
   // build / text / grok take 1-3 minutes. They run INSIDE this request (ctx.waitUntil only survives ~30s after
   // the response, too short for them); the job record lets a second tab see a pass is in flight.
-  if (["build", "text", "grok", "research", "page"].includes(op)) {
+  if (["build", "text", "grok", "research", "page", "review"].includes(op)) {
     if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 5 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
     await put(K.job, { op, status: "running", at: new Date().toISOString() });
     let r; try { r = await engine(); } catch (e) { r = { error: e.message }; }

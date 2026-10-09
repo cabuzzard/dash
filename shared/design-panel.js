@@ -27,7 +27,7 @@
   const TA = `width:100%;box-sizing:border-box;font-family:inherit;font-size:12px;padding:6px 8px;border:1px solid ${C.line};border-radius:6px;background:${C.surf};color:${C.ink};`;
   const SEL = `font-size:11px;padding:2px 4px;border:1px solid ${C.line};border-radius:5px;background:${C.surf};color:${C.ink};`;
   const LBL = `font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:${C.ink3};`;
-  const SRC = { keywords: ['kw', '#2f6fb0'], photo: ['photo', '#7a4fb5'], text: ['text', '#b26a00'], chatgpt: ['chatgpt', '#2a8a6a'], grok: ['grok', '#555'], manual: ['you', '#c0392b'] };
+  const SRC = { keywords: ['kw', '#2f6fb0'], photo: ['photo', '#7a4fb5'], text: ['text', '#b26a00'], chatgpt: ['chatgpt', '#2a8a6a'], grok: ['grok', '#555'], claude: ['claude', '#b5651d'], manual: ['you', '#c0392b'] };
   // spec → hub tokens / fonts (the hub's 10 roles) and the legacy direction fields
   const TOKEN_MAP = [['bg', 'color.bg'], ['surface', 'color.surface'], ['ink', 'color.ink'], ['ink-head', 'color.ink_head'], ['ink-soft', 'color.ink_soft'], ['line', 'color.line'],
     ['sea', 'color.primary'], ['deep', 'color.deep'], ['deep-ink', 'color.deep_ink'], ['accent', 'color.accent']];
@@ -200,15 +200,15 @@
     }
     async function copyChat() {
       startWork('chatCopy', 'Writing the ChatGPT prompt…');
-      try { const r = await ds('chatPrompt'); endWork();
+      try { const r = await ds('chatPrompt', { only: revKeys(), note: S.revNote }); endWork();
         await navigator.clipboard.writeText(r.prompt);
-        say('Prompt copied — every field Claude built + the image links. Paste it into ChatGPT or Grok, drag the thumbnails under ③ in as attachments, then paste the reply below and 📥 Paste back.', 'ok'); }
+        say(`Prompt copied — the sources + ${revKeys() ? revKeys().length + ' picked fields (the rest as context)' : 'every field'} + the image links. Paste it into ChatGPT or Grok, drag in the thumbnails, then paste the reply and 📥 Paste back.`, 'ok'); }
       catch (err) { endWork(); say('Could not copy the prompt: ' + err.message, 'bad'); }
     }
     async function mergeChat() {
       if (!S.gptReply.trim()) return say('Paste ChatGPT\'s reply first.', 'bad');
       startWork('chatMerge', 'Staging the reviewed fields…');
-      try { const r = await ds('chatReply', { text: S.gptReply }); take(r); S.gptReply = ''; endWork();
+      try { const r = await ds('chatReply', { text: S.gptReply, only: revKeys() }); take(r); S.gptReply = ''; endWork();
         const n = (r.applied || []).length; say(`${n} field${n === 1 ? '' : 's'} changed and staged — building the preview…`, 'ok');
         if (n) await previewStaged(true).catch(() => {});
         say(`${n} field${n === 1 ? '' : 's'} changed by the review and staged${n ? ' — preview on the right' : ''}. Keep with 💾 Save, or ↺ Revert (per section or all).`, 'ok'); }
@@ -297,6 +297,38 @@
     }
     // Inputs in order ① → ⑤, each marked green once it's loaded; ONE build/rebuild button after all of them;
     // then a separate, explained "after you edit fields" block (Update visuals / Re-read).
+    // ── Send for review: Claude / ChatGPT / Grok work off the CURRENT fields (+ the sources) and rewrite them to their
+    // opinion → staged → preview. Not sources: what you save is simply in the next send. Pick fields to limit a round.
+    S.revOnly = S.revOnly || new Set(); S.revOpen = S.revOpen || new Set(); S.revNote = S.revNote || '';
+    const revKeys = () => S.revOnly.size ? [...S.revOnly] : null;
+    function reviewBox() {
+      const inp = S.inputs || {}, ph = inp.photo || {}, rv = inp.review || {}, n = S.revOnly.size;
+      const ims = [ph.url ? ['seed photo', ph.url] : null, ...Object.entries(S.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => [k.replace(/_/g, ' '), r.url])].filter(Boolean);
+      const secs = dpSections().map(sec => { const ks = secKeys(sec), on = ks.filter(k => S.revOnly.has(k)).length;
+        return `<details data-revsec="${e(sec.id)}" ${S.revOpen.has(sec.id) ? 'open' : ''} style="margin:2px 0;"><summary style="font-size:11px;cursor:pointer;"><label onclick="event.stopPropagation()"><input type="checkbox" data-act="revSec" data-sec="${e(sec.id)}" ${on === ks.length ? 'checked' : ''}> ${e(sec.label)}</label> <span style="color:${C.ink3};font-size:10px;">${on ? on + '/' + ks.length + ' picked' : ''}</span></summary>
+          <div style="padding:2px 0 4px 18px;columns:2;font-size:10.5px;">${sec.fields.map(([k, l]) => `<label style="display:block;"><input type="checkbox" data-act="revKey" data-k="${e(k)}" ${S.revOnly.has(k) ? 'checked' : ''}> ${e(l)}</label>`).join('')}</div></details>`; }).join('');
+      return `<div style="margin:4px 0 12px;padding:10px;border:1px solid ${C.line};border-radius:8px;">
+        <div style="${LBL}margin-bottom:4px;">Send for review — Claude · ChatGPT · Grok rewrite the fields → staged → preview</div>
+        <div style="font-size:10.5px;color:${C.ink3};margin-bottom:6px;">They get the sources (keywords, keyword research, campaign + main products, images) and the CURRENT fields, and give their own value for each — rewriting anything they'd do differently. Their values replace the staged ones; 💾 Save keeps them (and they're in the next send), ↺ Revert brings back the saved ones.</div>
+        <div style="font-size:11px;margin-bottom:4px;"><b>Fields:</b> ${n ? `${n} picked <button data-act="revAll" style="${BTN}font-size:10px;padding:1px 7px;">✕ clear → all fields</button>` : 'all fields (tick sections or fields below to send only those)'}</div>
+        <div style="max-height:220px;overflow:auto;border:1px solid ${C.line};border-radius:6px;padding:4px 8px;margin-bottom:6px;">${secs}</div>
+        <textarea data-in="revNote" rows="2" placeholder="Optional ask for this round — e.g. make it warmer · bolder headlines · don't touch the colors" style="${TA}margin-bottom:6px;">${e(S.revNote)}</textarea>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${wb('revClaude', BTNP, '🤖 Claude review (in-app)')}${wb('revGrok', BTN, '⚡ Grok review (in-app, web + X)')}</div>
+        <div style="${LBL}margin-bottom:4px;">or by hand in ChatGPT / Grok</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy prompt')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">paste it in, drag in the images below, then paste the reply here</span></div>
+        ${ims.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${ims.map(([l, u]) => `<a href="${e(u)}" target="_blank" rel="noopener" title="drag into ChatGPT / Grok" style="text-align:center;font-size:9.5px;color:${C.ink3};text-decoration:none;"><img src="${e(u)}" draggable="true" style="height:56px;border-radius:5px;border:1px solid ${C.line};display:block;">${e(l)}</a>`).join('')}</div>` : ''}
+        <textarea data-in="gpt" rows="3" placeholder="Paste the ChatGPT or Grok reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
+        <div style="margin-top:6px;">${wb('chatMerge', BTN, '📥 Paste back → stage + preview')}</div>
+        ${rv.at ? `<div style="font-size:11px;color:${C.ink2};margin-top:6px;white-space:pre-wrap;"><b>Last ${e(rv.who || '')} review</b> ${e(String(rv.at).slice(0, 16).replace('T', ' '))} · ${rv.n || 0} fields changed${rv.notes ? '\n' + e(rv.notes) : ''}</div>` : ''}</div>`;
+    }
+    async function reviewRun(who, only) {
+      const keys = only || revKeys();
+      startWork(who === 'grok' ? 'revGrok' : 'revClaude', `${who === 'grok' ? 'Grok' : 'Claude'} is reviewing ${keys ? keys.length + ' fields' : 'every field'} (1-4 min, keep this tab open)…`);
+      try { await saveInputs(); const r = await ds('review', { reviewer: who, only: keys, note: S.revNote }); take(r); endWork();
+        const n = (r.applied || []).length; say(`${who === 'grok' ? 'Grok' : 'Claude'} changed ${n} field${n === 1 ? '' : 's'} — staged${n ? ', building the preview…' : '.'}`, 'ok');
+        if (n) { await previewStaged(true).catch(() => {}); say(`${who === 'grok' ? 'Grok' : 'Claude'} changed ${n} field${n === 1 ? '' : 's'} — preview on the right. 💾 Save keeps them, ↺ Revert brings back the saved ones.`, 'ok'); } }
+      catch (err) { endWork(); say('Review failed: ' + err.message, 'bad'); }
+    }
     function inputsBody() {
       const inp = S.inputs || {}, ph = inp.photo || {}, rk = inp.ranked || {}, built = !!inp.page;
       const nKw = String(S.kw || '').split(/[,;\n]/).map(x => x.trim()).filter(Boolean).length;
@@ -304,7 +336,7 @@
       const mark = (on, yes, no) => `<span style="font-size:10.5px;font-weight:600;margin-left:6px;padding:1px 8px;border-radius:10px;border:1px solid ${on ? C.ok : C.line};color:${on ? C.ok : C.ink3};">${on ? '✓ ' + yes : no}</span>`;
       const row = (n, title, on, yes, no, body) => `<div style="border-left:3px solid ${on ? C.ok : C.line};padding:2px 0 2px 10px;margin-bottom:12px;">
         <div style="${LBL}margin-bottom:4px;">${n} · ${title}${mark(on, yes, no)}</div>${body}</div>`;
-      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Fill the inputs in order (only ① is required), then press the build button at the bottom. A green border = loaded. Later inputs win where they conflict. ChatGPT / Grok is a review round: they get everything Claude built, rewrite the fields their way, and the reply replaces the STAGED values (↺ Revert brings back the saved ones).</div>`
+      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Fill the inputs in order (only ① is required), then press the build button at the bottom. A green border = loaded. Later inputs win where they conflict. Then send the fields for review (below the build button) — Claude, ChatGPT or Grok rewrite them to their opinion.</div>`
         + row('①', 'Keywords — what the audience searches (Claude also reads the sites ranking for them)', ok.kw, `${nKw} keyword${nKw === 1 ? '' : 's'}`, 'required',
           `<textarea data-in="kw" rows="2" placeholder="medicare services consulting, medicare advisor near me…" style="${TA}">${e(S.kw || '')}</textarea>`
           + (rk.look ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;"><b>Page one looks like:</b> ${e(rk.look)}${(rk.sites || []).map(x => `<div>· ${e(x)}</div>`).join('')}</div>` : ''))
@@ -312,23 +344,16 @@
           `<div style="display:flex;gap:10px;align-items:flex-start;">${ph.url ? `<a href="${e(ph.url)}" target="_blank" rel="noopener"><img src="${e(ph.url)}" style="height:70px;border-radius:6px;border:1px solid ${C.line};display:block;"></a>` : ''}
             <div style="flex:1;"><label style="${BTN}display:inline-block;">${S.work && S.work.act === 'photo' ? '⏳ uploading…' : ph.url ? '⟳ Replace photo' : '⬆ Upload seed photo'}<input type="file" accept="image/*" data-act="photo" style="display:none;"></label>
             ${ph.read ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(ph.read)}</div>` : ''}</div></div>`)
-        + row('③', 'ChatGPT / Grok review — they rewrite every field', ok.gpt, 'merged ' + String((inp.chatgpt || {}).at || '').slice(0, 10), 'optional',
-          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy prompt (everything Claude built)')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">paste into ChatGPT or Grok, drag in the images below, then paste its reply here</span></div>
-          ${(() => { const ims = [ph.url ? ['seed photo', ph.url] : null, ...Object.entries(S.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => [k.replace(/_/g, ' '), r.url])].filter(Boolean);
-            return ims.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${ims.map(([l, u]) => `<a href="${e(u)}" target="_blank" rel="noopener" title="drag into ChatGPT / Grok" style="text-align:center;font-size:9.5px;color:${C.ink3};text-decoration:none;"><img src="${e(u)}" draggable="true" style="height:56px;border-radius:5px;border:1px solid ${C.line};display:block;">${e(l)}</a>`).join('')}</div>` : ''; })()}
-          <textarea data-in="gpt" rows="3" placeholder="Paste the ChatGPT or Grok reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
-          <div style="margin-top:6px;">${wb('chatMerge', BTN, '📥 Paste back → stage + preview')}</div>`)
-        + row('④', 'Text override — your words win', ok.ovr, 'override saved', 'optional',
+        + row('③', 'Text override — your words win', ok.ovr, 'override saved', 'optional',
           `<textarea data-in="override" rows="2" placeholder="e.g. headlines heavier · buttons sage green · no gradients anywhere" style="${TA}">${e(S.override || '')}</textarea>
           <div style="margin-top:6px;">${wb('override', BTN, 'Apply override to the fields now')}</div>`)
-        + row('⑤', 'Grok search (in-app, web + X) — rewrites every field', ok.grok, 'Grok notes ' + String((inp.grok || {}).at || '').slice(0, 10), 'optional',
-          `${wb('grok', BTN, '⚡ Run Grok search')}${inp.grok && inp.grok.notes ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(inp.grok.notes)}</div>` : ''}`)
         // ── the ONE build button, after every input ──
         + `<div style="margin:4px 0 12px;padding:10px;border:1px solid ${C.ok};border-radius:8px;background:${C.surf2};">
             <div style="${LBL}margin-bottom:6px;">${built ? 'Rebuild' : 'Build'} from the inputs above</div>
             ${wb('build', BTNP, built ? '↻ Rebuild everything from these inputs' : '✨ Build everything from these inputs')}
             <div style="font-size:10.5px;color:${C.ink3};margin-top:5px;">Reads the campaign research, writes every design field (saved), renders the hero + signup images and builds the whole page — 6-9 min.${built ? ' A rebuild starts the spec over from the inputs: hand edits below are replaced.' : ''}</div>
             ${pipeList()}${loadedInputs()}</div>`
+        + reviewBox()
         // ── after a build: iterate without starting over ──
         + (built ? `<div style="margin:0 0 4px;padding:10px;border:1px dashed ${C.line};border-radius:8px;">
             <div style="${LBL}margin-bottom:6px;">After you edit fields below</div>
@@ -356,7 +381,7 @@
       const B = `${BTN}font-size:10px;padding:2px 7px;`;
       return `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:2px 0 6px 12px;">
         <button ${dis} data-act="gEdit" data-sec="${e(sec.id)}" style="${B}">✎ Edit fields</button>
-        <select ${dis} data-act="gSource" data-sec="${e(sec.id)}" style="${B}"><option value="">⟳ From source → staged…</option><option value="build">keywords + photo (the inputs)</option><option value="grok">Grok search (web + X)</option><option value="chat">ChatGPT reply</option><option value="text">text override</option></select>
+        <select ${dis} data-act="gSource" data-sec="${e(sec.id)}" style="${B}"><option value="">⟳ From source → staged…</option><option value="build">rebuild from the inputs (keywords + photo)</option><option value="claude">🤖 Claude review</option><option value="grok">⚡ Grok review (web + X)</option><option value="chat">ChatGPT / Grok reply (paste)</option><option value="text">text override</option></select>
         <button ${nd && !S.busy ? '' : 'disabled'} data-act="gRevert" data-keys="${keys}" style="${B}">↺ Revert${nd ? ' ' + nd : ''}</button>
         <button ${nd && !S.busy ? '' : 'disabled'} data-act="gSave" data-keys="${keys}" style="${nd ? BTNP : BTN}font-size:10px;padding:2px 7px;">💾 Save${nd ? ' ' + nd : ''}</button>
         ${nd ? `<span style="font-size:10px;color:${C.warn};">● ${nd} staged, not saved</span>` : `<span style="font-size:10px;color:${C.ok};">saved</span>`}</div>`;
@@ -417,14 +442,15 @@
     }
     async function gSource(id, src) {
       const sec = secById(id); if (!sec) return; const keys = secKeys(sec), label = sec.label;
-      const after = r => { take(r); S.open[id] = true; if ((src === 'chat' || src === 'grok') && (r.applied || []).length) previewStaged(true).catch(() => {}); say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
+      const after = r => { take(r); S.open[id] = true; if (src === 'chat' && (r.applied || []).length) previewStaged(true).catch(() => {}); say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
       if (src === 'text') return gModal(`Text override → ${e(label)}`, `<textarea data-gt rows="4" placeholder="e.g. headlines heavier · sage green buttons · no gradients" style="${TA}">${e(S.override || '')}</textarea>`, 'Apply to staged', async m => {
         const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Type the override first.');
         startWork('gsrc', `Applying the override to ${label}…`); try { after(await ds('text', { override: t, keys })); } finally { endWork(); render(); } });
-      if (src === 'chat') return gModal(`ChatGPT reply → ${e(label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Use 📋 Copy prompt in Inputs ③, paste it into ChatGPT or Grok, then paste the reply — only this section's fields are taken, they replace the staged values, and the preview rebuilds.</div><textarea data-gt rows="6" placeholder="Paste the ChatGPT or Grok reply…" style="${TA}"></textarea>`, 'Merge into staged', async m => {
+      if (src === 'chat') return gModal(`ChatGPT reply → ${e(label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Use 📋 Copy prompt in Send for review (tick this section's fields to send only them), paste it into ChatGPT or Grok, then paste the reply — only this section's fields are taken, they replace the staged values, and the preview rebuilds.</div><textarea data-gt rows="6" placeholder="Paste the ChatGPT or Grok reply…" style="${TA}"></textarea>`, 'Merge into staged', async m => {
         const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Paste the reply first.');
         after(await ds('chatReply', { text: t, keys })); });
-      startWork('gsrc', `${src === 'grok' ? 'Grok search' : 'Reading the keywords + photo'} for ${label} (1-3 min)…`);
+      if (src === 'claude' || src === 'grok') return reviewRun(src, keys);
+      startWork('gsrc', `Reading the keywords + photo for ${label} (1-3 min)…`);
       try { await saveInputs(); after(await ds(src, { keys })); } catch (err) { say(`${label} from ${src} failed: ${err.message}`, 'bad'); } finally { endWork(); render(); }
     }
     async function gRevert(keys) { try { take(await ds('revert', { keys })); say(`Reverted ${keys.length} field${keys.length === 1 ? '' : 's'} to the saved values.`, 'ok'); } catch (err) { say(err.message, 'bad'); } }
@@ -515,17 +541,20 @@
     // ── events ──
     root.addEventListener('input', ev => {
       const t = ev.target, k = t.dataset.in; if (!k) return;
-      if (k === 'kw') S.kw = t.value; else if (k === 'override') S.override = t.value; else if (k === 'gpt') S.gptReply = t.value; else if (k === 'myPrompt') S.myPrompt = t.value;
+      if (k === 'kw') S.kw = t.value; else if (k === 'override') S.override = t.value; else if (k === 'gpt') S.gptReply = t.value; else if (k === 'revNote') S.revNote = t.value; else if (k === 'myPrompt') S.myPrompt = t.value;
       else if (k === 'fedit') S.editVal = t.value; else if (k === 'guide') S.tests[+t.dataset.i].guide = t.value;
       else if (k === 'vg') S.voice.global = t.value; else if (k === 'vc') S.voice.campaign = t.value;
     });
     root.addEventListener('change', ev => {
       const t = ev.target;
       if (t.dataset.in === 'aspect') S.aspect = t.value;
+      if (t.dataset.act === 'revKey') { if (t.checked) S.revOnly.add(t.dataset.k); else S.revOnly.delete(t.dataset.k); render(); return; }
+      if (t.dataset.act === 'revSec') { const sec = secById(t.dataset.sec); if (sec) secKeys(sec).forEach(k => t.checked ? S.revOnly.add(k) : S.revOnly.delete(k)); render(); return; }
       if (t.dataset.act === 'photo') { const f = t.files && t.files[0]; t.value = ''; uploadPhoto(f); }
       if (t.dataset.act === 'gSource' && t.value) { const v = t.value; t.value = ''; gSource(t.dataset.sec, v); }
       if (t.dataset.in === 'kw' || t.dataset.in === 'override') saveInputs();
     });
+    root.addEventListener('toggle', ev => { const d = ev.target; if (d && d.dataset && d.dataset.revsec) { if (d.open) S.revOpen.add(d.dataset.revsec); else S.revOpen.delete(d.dataset.revsec); } }, true);
     root.addEventListener('keydown', ev => { const t = ev.target; if (t.dataset && t.dataset.in === 'fedit') { if (ev.key === 'Enter') editField(t.dataset.k, t.value); if (ev.key === 'Escape') { S.edit = null; render(); } } });
     root.addEventListener('click', ev => {
       const b = ev.target.closest('[data-act]'); if (!b || b.tagName === 'SELECT' || b.tagName === 'INPUT') return;
@@ -541,6 +570,9 @@
       else if (a === 'chatMerge') mergeChat();
       else if (a === 'override') applyOverride();
       else if (a === 'grok') grok();
+      else if (a === 'revClaude') reviewRun('claude');
+      else if (a === 'revGrok') reviewRun('grok');
+      else if (a === 'revAll') { S.revOnly.clear(); render(); }
       else if (a === 'fedit') { S.edit = k; S.editVal = fv(k); render(); const inp = root.querySelector('input[data-in="fedit"]'); if (inp) inp.focus(); }
       else if (a === 'fsave') editField(k, S.editVal != null ? S.editVal : fv(k));
       else if (a === 'fcancel') { S.edit = null; render(); }
