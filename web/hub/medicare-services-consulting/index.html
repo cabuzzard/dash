@@ -3,15 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Medicare Clarity — Understand your Medicare options before anyone tries to sell you one</title>
-<meta name="description" content="We publish straight-talk guides on Original Medicare, Medigap, Medicare Advantage, and Part D — then offer one-on-one consulting that checks plans against your ">
-<meta property="og:title" content="Medicare Clarity">
-<meta property="og:description" content="We publish straight-talk guides on Original Medicare, Medigap, Medicare Advantage, and Part D — then offer one-on-one consulting that checks plans against your ">
+<title>Medicare Clarity — friendly, independent Medicare help. Ask us anything.</title>
+<meta name="description" content="Plain-English Medicare guides and one-on-one help from an independent advisor who isn't tied to one insurance company. Compare Medicare Advantage, Medigap and Part D with no pressure.">
+<meta property="og:title" content="Medicare Clarity — there are no dumb questions here">
+<meta property="og:description" content="Friendly, independent Medicare help: plain-English guides, a free starter checklist, and a no-pressure call when you're ready.">
 <meta property="og:type" content="website">
 <meta name="robots" content="index,follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bree+Serif:wght@400;500;600;700&family=Nunito+Sans:wght@400;500;600;700&family=Nunito+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Nunito+Sans:wght@400;500;600;700&family=Nunito+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <style>
 /* ============================================================
@@ -21,19 +21,19 @@
    Also swap the Google Fonts <link> above to match --font-*.
    ============================================================ */
 :root{
-  --bg:        #fbfaf7;   /* page ground */
-  --surface:   #fffdf9;   /* raised card */
-  --ink:       #263b3c;   /* body ink */
-  --ink-head:  #25443b;   /* headings */
-  --ink-soft:  #5e6673;   /* secondary text */
-  --line:      #ddd8d0;   /* hairline */
-  --sea:       #5b45a3;   /* primary */
-  --deep:      #30264f;   /* dark band */
-  --deep-ink:  #ffffff;   /* text on --deep */
-  --accent:    #6540a8;   /* used once, loudly */
-  --paper:     #fffdf9;
+  --bg:        #fbf8f2;   /* warm cream — the room in the illustrations */
+  --surface:   #ffffff;   /* clean white card */
+  --ink:       #2b3a3d;   /* deep teal ink — soft, never black */
+  --ink-head:  #1f3036;   /* headings — a shade deeper than body ink */
+  --ink-soft:  #5b686b;   /* secondary text, still AA on cream */
+  --line:      #e7e0d4;   /* warm hairline */
+  --sea:       #6a4fb0;   /* purple primary — buttons, links (the advisor's polo and clipboard) */
+  --deep:      #2f2753;   /* deep aubergine band — signup + footer */
+  --deep-ink:  #f3efff;   /* text on --deep */
+  --accent:    #3e7c4f;   /* sage-forest green from the plants — used once, for the one thing to do next */
+  --paper:     #ffffff;
 
-  --font-display: "Bree Serif", system-ui, sans-serif;
+  --font-display: "Fraunces", Georgia, serif;
   --font-body:    "Nunito Sans", system-ui, sans-serif;
   --font-mono:    "Nunito Sans", system-ui, sans-serif;
 
@@ -349,48 +349,57 @@ const HUB = {
   logoImg: null,
 
   nav: [
-    { label: "Medicare Guides", href: "#journal" },
-    { label: "Plan Comparisons", href: "#news" },
-    { label: "Book a Consult", href: "#trips" },
+    { label: "Guides", href: "#journal" },
+    { label: "What's changing", href: "#news" },
+    { label: "Free checklist", href: "#report" },
+    { label: "Work with us", href: "#trips" },
   ],
 
-  ribbon: [ "Education before enrollment", "Independent — no carrier quotas", "Transparent about how we're paid" ],
+  ribbon: [ "No dumb questions — ever", "Independent: not tied to one insurance company", "Plain English, no pressure" ],
 
   hero: {
-    eyebrow: "Medicare Services Consulting",
-    headline: "Understand your Medicare options before anyone tries to sell you one.",
-    sub: "We publish straight-talk guides on Original Medicare, Medigap, Medicare Advantage, and Part D — then offer one-on-one consulting that checks plans against your actual doctors, prescriptions, and budget. No spam calls. No carrier incentives. Just clarity.",
-    ctaPrimary:   { label: "Book a Free Intro Call", href: "#report" },
-    ctaSecondary: { label: "Start with the Guides", href: "#trips" },
+    eyebrow: "Independent Medicare help",
+    headline: "Ask us anything about Medicare. There are no dumb questions here.",
+    sub: "Friendly, plain-English help from an advisor who isn't tied to one insurance company — so you can compare Medicare Advantage, Medigap and Part D and choose with confidence.",
+    ctaPrimary:   { label: "Get the free starter checklist", href: "#report" },
+    ctaSecondary: { label: "Read the guides", href: "#journal" },
   },
 
   journal: {
-    label: "Blog", title: "Medicare Clarity Blog", note: "", items: [],
-    empty: { heading: "Deep-dive guides publishing soon.", body: "We're building the most honest library of Medicare explainers on the internet — covering Part D changes, Medigap trade-offs, Medicare Advantage fine print, secondary payer rules, and late-enrollment penalties. Check back shortly, or book a consult and ask us anything now." },
+    label: "Guides", title: "Medicare, explained at eye level", note: "Plain-English answers to the questions people actually ask.", items: [],
+    empty: { heading: "The first guides are on their way.", body: "Enrollment windows, Medigap vs. Medicare Advantage, Part D drug plans, working past 65 — explained the way you'd explain it to a friend. In the meantime, the free checklist below covers the basics." },
   },
 
   news: {
-    label: "News", title: "Medicare Policy Watch", note: "", items: [],
-    empty: { heading: "Policy updates and regulatory news coming soon.", body: "From CMS rule changes and IRMAA thresholds to Senate legislation like the BROKERS TIME Act, we track what's changing in Medicare and translate it into plain English for people making real coverage decisions." },
+    label: "What's changing", title: "Medicare news, in plain English", note: "", items: [],
+    empty: { heading: "Nothing new to explain just yet.", body: "When a rule, a cost or a deadline changes, we'll say what it means for you here — in a paragraph, not a press release." },
   },
 
   report: {
-    label: "Free Clarity Guide",
-    title: "The Independent Medicare Playbook: What Agents Don't Tell You",
-    blurb: "A plain-English breakdown of every plan type, every enrollment window, how advisors are paid (and what that means for you), and the five questions to ask before you sign anything. No email required — just read it.",
-    note: "No spam. Unsubscribe in one click. We never share your address.",
-    buttonLabel: "Download the Free Guide",
+    label: "Free checklist",
+    title: "The Medicare Starter Checklist",
+    blurb: "Every enrollment window, every plan type, and the five questions to ask before you sign anything — on one friendly page.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Send me the checklist",
     link: null,
   },
 
   trips: {
-    label: "Products", title: "Consulting Sessions", note: "", items: [],
-    empty: { heading: "Your first session notes will appear here.", body: "After your Medicare Clarity Consult, a plain-English summary of your options, the plans we reviewed, and any follow-up steps lives here — your personal record of the conversation, with no pressure and no sales pitch attached." },
+    label: "Work with us", title: "One-on-one Medicare help", note: "Sit down (or call) with an independent advisor and go through your doctors, prescriptions and budget together.", items: [],
+    empty: { heading: "Ways to work with us are coming soon.", body: "A short, no-pressure conversation is the best place to start: bring your questions — all of them — and leave with a clear next step." },
   },
 
-  social: { label: "Follow", items: [ { label: "LinkedIn", url: "#" } ] },
+  articles: {
+    label: "More reading", title: "More questions, answered", note: "", items: [],
+  },
 
-  footer: { tagline: "Medicare Services Consulting — independent advisors who educate first, always.", legal: "\u00A9 2026 Medicare Clarity" },
+  projectExperience: {
+    label: "Questions we've answered", title: "Real questions, plain answers", note: "The things people actually ask us — especially the 'is this a dumb question?' ones.", items: [],
+  },
+
+  social: { label: "Follow", items: [] },
+
+  footer: { tagline: "Medicare Clarity — friendly, independent Medicare help. No dumb questions, no pressure.", legal: "\u00A9 2026 Medicare Clarity" },
 };
 
 /* ============================================================

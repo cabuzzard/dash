@@ -343,58 +343,56 @@
     },
     "medicare-services-consulting": {
       "meta": {
-        "title": "Medicare Clarity — Understand your Medicare options before anyone tries to sell you one",
-        "description": "We publish straight-talk guides on Original Medicare, Medigap, Medicare Advantage, and Part D — then offer one-on-one consulting that checks plans against your ",
-        "ogTitle": "Medicare Clarity",
-        "ogDescription": "We publish straight-talk guides on Original Medicare, Medigap, Medicare Advantage, and Part D — then offer one-on-one consulting that checks plans against your "
+        "title": "Medicare Clarity — friendly, independent Medicare help. Ask us anything.",
+        "description": "Plain-English Medicare guides and one-on-one help from an independent advisor who isn't tied to one insurance company. Compare Medicare Advantage, Medigap and Part D with no pressure.",
+        "ogTitle": "Medicare Clarity — there are no dumb questions here",
+        "ogDescription": "Friendly, independent Medicare help: plain-English guides, a free starter checklist, and a no-pressure call when you're ready."
       },
       "fonts": {
-        "display": "Bree Serif",
+        "display": "Fraunces",
         "body": "Nunito Sans",
         "mono": "Nunito Sans"
       },
       "logoText": "Medicare Clarity",
       "tokens": {
-        "bg": "#fbfaf7",
-        "surface": "#fffdf9",
-        "ink": "#263b3c",
-        "ink-head": "#25443b",
-        "ink-soft": "#5e6673",
-        "line": "#ddd8d0",
-        "sea": "#5b45a3",
-        "deep": "#30264f",
-        "deep-ink": "#ffffff",
-        "accent": "#6540a8",
-        "paper": "#fffdf9"
+        "bg": "#fbf8f2",
+        "surface": "#ffffff",
+        "ink": "#2b3a3d",
+        "ink-head": "#1f3036",
+        "ink-soft": "#5b686b",
+        "line": "#e7e0d4",
+        "sea": "#6a4fb0",
+        "deep": "#2f2753",
+        "deep-ink": "#f3efff",
+        "accent": "#3e7c4f",
+        "paper": "#ffffff"
       },
       "tokenNotes": {
-        "bg": "page ground",
-        "surface": "raised card",
-        "ink": "body ink",
-        "ink-head": "headings",
-        "ink-soft": "secondary text",
-        "line": "hairline",
-        "sea": "primary",
-        "deep": "dark band",
+        "bg": "warm cream — the room in the illustrations",
+        "surface": "clean white card",
+        "ink": "deep teal ink — soft, never black",
+        "ink-head": "headings — a shade deeper than body ink",
+        "ink-soft": "secondary text, still AA on cream",
+        "line": "warm hairline",
+        "sea": "purple primary — buttons, links (the advisor's polo and clipboard)",
+        "deep": "deep aubergine band — signup + footer",
         "deep-ink": "text on --deep",
-        "accent": "used once, loudly"
+        "accent": "sage-forest green from the plants — used once, for the one thing to do next"
       },
       "design": {
-        "subject": "An education-first Medicare consulting hub that helps Americans ages 62–67 cut through plan confusion, enrollment traps, and carrier-paid broker noise to make confident, unbiased coverage decisions.",
-        "audience": "Pre-retirees (62–67), newly eligible 65-year-olds, and working seniors navigating late enrollment — people who distrust the spam-call industry, want to understand Medicare before anyone tries to sell them something, and are looking for a human advisor they can actually trust.",
-        "job": "Convince a skeptical, information-hungry visitor that this is the one place on the internet that educates without an agenda — then move them to book a consultation.",
-        "type": "Newsreader (display) paired with Hanken Grotesk (body) — Newsreader's editorial authority signals 'trusted publication, not insurance sales page,' while Hanken's clean geometric warmth keeps the experience approachable and readable at the longer line-lengths that Medicare explainers require.",
-        "signature": "A deep federal-blue surface band anchoring the hero, carrying white Newsreader serif headlines — the visual equivalent of an official, trustworthy document rewritten in plain English.",
-        "risk": "Leading with a navy-dominant palette in a category where every competitor uses either sterile white or aggressive red-white-blue patriot kitsch — the bet is that restrained, document-inspired depth reads as 'serious advisor' rather than 'government form.'",
+        "subject": "A friendly, independent Medicare help hub: plain-English guides plus one-on-one help from an advisor who isn't tied to one insurance company.",
+        "audience": "People turning 65 (and 62–67 planning ahead), working seniors, and adult children helping a parent — buried in mailers and sales calls, and worried their questions sound 'dumb'.",
+        "job": "Make the visitor feel safe to ask, give them one useful thing right away (the free Medicare starter checklist), then invite a no-pressure call.",
+        "type": "Fraunces (600) for headlines — a soft, warm serif: friendly authority, never corporate. Nunito Sans for body AND labels — rounded and very readable at larger sizes for older eyes. Deliberately no monospace: nothing on the page should feel technical.",
+        "signature": "The illustrated pair at eye level — an advisor kneeling beside the person she's helping, on a soft lavender blob — carried by the headline 'There are no dumb questions here.' The cream, lavender, purple and sage come straight from the illustrations, so the page and the pictures read as one set.",
+        "risk": "A warm, illustrated, almost storybook look in a category of stock photos and insurance-blue. It reads human and approachable; if it ever tips toward childish, the Fraunces headlines, plain copy and generous spacing keep it grown-up.",
         "avoided": [
-          "Red, white, and blue flag-wave patriot color schemes that signal insurance-sales landing pages",
-          "Stock photography of smiling silver-haired couples on beaches — the single most mistrusted visual cliché in the Medicare category",
-          "Rounded pill-button, gradient-card UI that reads as fintech or Medicare Advantage carrier app"
+          "Insurance-blue and red-white-blue 'patriotic' sales palettes",
+          "Stock photos of smiling silver-haired couples on beaches or golf courses",
+          "Medical crosses, stethoscopes and heartbeat lines — this is about choices, not illness",
+          "Urgency, countdowns and 'call now' sales tactics"
         ],
-        "register": "Calm, authoritative, and slightly formal — like a trusted financial advisor's office with good lighting and no sales brochures on the table. The page should feel like a well-edited reference publication: structured, unhurried, and visibly on the reader's side.",
-        "photography": "Real people: a 64-year-old woman at a kitchen table with reading glasses and a folder of Medicare paperwork, natural window light from the left, slight grain, muted tones that let the deep-blue and warm-cream palette absorb into the scene. A 66-year-old man on a phone call in a home office — not staged, slightly candid, warm afternoon light. No stock smiles. The palette shows up in photographs as navy shadows, cream and linen highlights, and the occasional amber-toned wood surface. Medium: editorial documentary finish, not corporate lifestyle.",
-        "avoid": "AI-generated soft-focus couples; beach retirement scenes; stethoscopes or pill bottles as metaphor; glowing holographic health icons; 'diverse group laughing at laptop' compositions; any image that could appear on a Medicare Advantage mailer",
-        "superseded": "First palette — seeded by scaffoldHub."
+        "photography": "No photography — flat vector illustration in the hero's style: closed dark outlines, flat fills with one cel-shade tone, soft lavender (#D8D0F0) background blobs, leafy sage plants, warm wood and cream home interiors, purple accents (#A78CD4 / #6A4FB0). Real people of varied ages and backgrounds at eye level, mid-conversation, smiling; kitchen tables, armchairs, front porches. Never clinical, never a sales floor."
       }
     },
     "mountainwize": {
