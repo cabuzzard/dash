@@ -115,6 +115,7 @@
     }
     // the fields an image is rendered from — a render is current while these are unchanged
     const imgSig = id => sig(Object.fromEntries(Object.entries(S.staged || {}).filter(([k]) => k.startsWith(`asset.${id}.`) || /^(img|ovl|avoid|color)\./.test(k))));
+    const hasAssetFields = id => Object.keys(S.staged || {}).some(k => k.startsWith(`asset.${id}.`) && (S.staged[k] || {}).v);   // no fields → keep the placeholder
     const imgCurrent = id => { const rr = S.renders[id]; return !!(rr && rr.url && rr.sig && rr.sig === imgSig(id)); };
     async function renderAssets(ids, after) {
       for (const id of ids) {
@@ -498,28 +499,28 @@
     // change-aware: re-renders only the images whose fields changed; the worker swaps / patches / rebuilds the page as needed
     // hub repaint preview: the staged cosmetic fields → override css → painted onto the live hub page in the right rail
     async function repaintPreview(quiet) {
-      const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
+      const todo = ['hero', 'signup'].filter(id => hasAssetFields(id) && !imgCurrent(id)), noImg = ['hero', 'signup'].filter(id => !hasAssetFields(id));
       startWork('pstaged', `Repainting the hub page from the staged fields${todo.length ? ` + rendering ${todo.join(' + ')} on Grok` : ''}…`);
       try {
-        const [r] = await Promise.all([ds('repaint'), Promise.all(todo.map(id => renderAsset(id)))]);
+        const [r] = await Promise.all([ds('repaint'), Promise.all(todo.map(id => renderAsset(id).catch(err => { noImg.push(id + ' (render failed: ' + err.message + ')'); })))]);
         if (todo.length) await persistRenders();
         S.repaintSig = sig(S.staged); const s = endWork();
         cfg.preview({ palette: palette(S.staged), fonts: fonts(S.staged), css: r.css, images: imageUrls() });
-        if (!quiet) say(`Staged repaint on the right in ${s}s${r.cached ? ' (no style changes since the last one)' : ''} — the hub's own page, restyled. 💾 Save, then ⇪ Publish to hub puts this exact repaint live.`, 'ok');
+        if (!quiet) say(`Staged repaint on the right in ${s}s${r.cached ? ' (no style changes since the last one)' : ''} — the hub's own page, restyled${noImg.length ? ` · images left as placeholders: ${noImg.join(', ')}` : ''}. 💾 Save, then ⇪ Publish to hub puts this exact repaint live.`, 'ok');
       } catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); throw err; }
     }
     async function previewStaged(quiet) {
       if (S.slug && cfg.repaint) { if (!quiet && String(S.gptReply || '').trim()) return mergeChat(); return repaintPreview(quiet); }
       if (!quiet && String(S.gptReply || '').trim()) return mergeChat();   // a reply is waiting in the box → stage it first (mergeChat previews)
       if (!quiet && !diffKeys().length) say('Heads up: staged = saved — nothing new is staged, so this preview shows the saved spec. Paste a reply back (📥) or edit fields first.', 'bad');
-      const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
+      const todo = ['hero', 'signup'].filter(id => hasAssetFields(id) && !imgCurrent(id)), noImg = ['hero', 'signup'].filter(id => !hasAssetFields(id));
       startWork('pstaged', `Previewing the staged spec: ${todo.length ? `re-rendering ${todo.join(' + ')} (fields changed), then ` : 'images unchanged — '}updating the page…`);
       try {
         // in parallel: the changed images render on Grok while the page builds (with the current images);
         // then the new image urls are swapped into the finished page (no AI — instant)
         S.busy = `${todo.length ? `Rendering ${todo.join(' + ')} on Grok while ` : ''}updating the page — only what changed…`; render();
         const oldUrls = imageUrls();
-        const [r0] = await Promise.all([ds('page', { images: oldUrls }), Promise.all(todo.map(id => renderAsset(id)))]);
+        const [r0] = await Promise.all([ds('page', { images: oldUrls }), Promise.all(todo.map(id => renderAsset(id).catch(err => { noImg.push(id + ' (render failed: ' + err.message + ')'); })))]);
         let r = r0; take(r);
         if (todo.length) { await persistRenders(); S.busy = 'Swapping the new images into the page…'; render();
           const r2 = await ds('page', { images: imageUrls() }); take(r2); if (!r2.unchanged) r = { ...r2, page: { ...(r2.page || {}), mode: (r0.page || {}).mode || (r2.page || {}).mode, changed: (r0.page || {}).changed } }; }
