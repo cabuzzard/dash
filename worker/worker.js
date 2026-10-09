@@ -417,6 +417,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
       if (rDesign.register)    out.facts.push(`VISUAL REGISTER (from research): ${rDesign.register}`);
       if (rDesign.photography) out.facts.push(`PHOTOGRAPHY DIRECTION (from research — the images that belong): ${rDesign.photography}`);
       if (rDesign.avoid)       out.facts.push(`VISUAL AVOID (from research): ${rDesign.avoid}`);
+      if (rDesign.notes)       out.facts.push(`DESIGN BRIEF — why the design works as a whole (signature element, aesthetic risk, what it deliberately avoids). Keep every decision consistent with it: ${String(rDesign.notes).slice(0, 2500)}`);
       // The WHOLE campaign Research record feeds the image flow (Grok renders
       // included), not a hand-picked subset. Keywords lead and dominate
       // (Information Flow Contract, Stage 1: keywords are the root). Design
@@ -30231,7 +30232,9 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: claudePrompt + lfGuide }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 600, messages: [{ role: "user", content: (brief && brief.approvedPlate && brief.approvedPlate.imageUrl)
+            ? [{ type: "image", source: { type: "url", url: brief.approvedPlate.imageUrl } }, { type: "text", text: claudePrompt + lfGuide + "\n\nTHE ATTACHED IMAGE is the APPROVED CAMPAIGN PLATE — the visual authority. Write the prompt so this image looks like the same set: same medium, line, palette, light, finish and recurring characters. Choose this asset's own subject and composition; never copy the plate's scene." }]
+            : claudePrompt + lfGuide }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
@@ -48494,7 +48497,8 @@ function dsChatPrompt(name, inp, spec, facts, opts) {
   const list = keep => DS_TIERS.map(([t, tl]) => {
     const g = DS_SCHEMA.filter(x => x.tier === t).map(x => { const fs = x.fields.filter(([k]) => keep(k)); return fs.length ? `## ${x.label}\n` + fs.map(fieldLine).join("\n") : ""; }).filter(Boolean);
     return g.length ? `# ${tl}\n` + g.join("\n") : ""; }).filter(Boolean).join("\n\n");
-  const imgs = [inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
+  const imgs = [inp.plate ? `- APPROVED CAMPAIGN PLATE — the visual authority every image must belong with: ${inp.plate}` : "",
+    inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
     ...Object.entries(inp.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => `- current ${k.replace(/_/g, " ")} image, rendered from the current fields — judge it: ${r.url}`),
     inp.page && inp.page.url ? `- the current mockup page built from the current fields (open it): ${inp.page.url}` : "",
     (inp.cards || [])[0] ? `- the current SITE SPEC CARD (a design board of the whole system): ${inp.cards[0].url}` : ""].filter(Boolean);
@@ -48696,12 +48700,13 @@ async function handleDesignSpec(body, env, ctx) {
   // ── the engines ──
   const brief = await assembleImageBrief(env, { campaignId: cid }).catch(() => ({ facts: [] }));
   const facts = (brief.facts || []).join("\n");
+  const plateUrl = (brief.approvedPlate && brief.approvedPlate.imageUrl) || "";   // the approved campaign plate — a visual reference in every handoff
   const kwFallback = ((facts.match(/KEYWORDS[^:]*:\s*([^\n]+)/i) || [])[1] || "").slice(0, 600);
   let campName = ""; try { const cp = await fetch(`https://api.notion.com/v1/pages/${cid}`, { headers: { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()); campName = (cp.properties?.Name?.title || []).map(t => t.plain_text).join(""); } catch (e) {}
 
   if (op === "chatPrompt") {
     const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
-    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts, { only: body.only, note: body.note, demand }) });
+    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, staged, facts, { only: body.only, note: body.note, demand }) });
   }
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "couldn't find any spec fields in that text (looking for lines like \"color.bg\": {\"v\": \"#FBFAF7\"}) — paste ChatGPT's whole reply" };
@@ -48886,7 +48891,8 @@ ${dsSchemaText(onlyK)}
 ${Object.keys(staged).length ? `\nCURRENT VALUES (improve them; manual edits are kept regardless):\n${dsSpecText(staged, true)}\n` : ""}
 Reply with ONE JSON object only:
 {"ranked": {"look": "one line", "sites": [{"domain": "example.com", "url": "https://…", "keyword": "the keyword it ranks for", "position": 1, "look": "one line on its look"}]}, "photo_read": "${inp.photo && inp.photo.url ? "3-4 lines describing the seed photo as data: medium, palette hexes, line, type, people, mood" : ""}", "fields": {"intent.keywords": {"v": "…", "why": "…", "src": "keywords"}, "...every key...": {"v": "…", "why": "…", "src": "photo"}}}`;
-    const content = inp.photo && inp.photo.url ? [{ type: "image", source: { type: "url", url: inp.photo.url } }, { type: "text", text }] : text;
+    const bRefs = [inp.photo && inp.photo.url, plateUrl].filter(u => /^https:\/\//.test(u || ""));
+    const content = bRefs.length ? [...bRefs.map(u => ({ type: "image", source: { type: "url", url: u } })), { type: "text", text: text + (plateUrl ? "\n\nAn attached image is the APPROVED CAMPAIGN PLATE — the visual authority: the image fields must describe images that belong with it." : "") }] : text;
     let j; try { j = dsParseJson(await claude(content, onlyK ? 5000 : 16000, !onlyK)); } catch (e) { return { error: e.message }; }   // one section: no web search, small reply
     if (!j || !j.fields) return { error: "Couldn't read the design pass — try again" };
     const m = dsMerge(staged, dsClean(j.fields, "keywords", ["photo", "keywords", "text"]));
@@ -48959,17 +48965,18 @@ Reply with ONE \`\`\`css block only.`;
     const who = body.reviewer === "grok" ? "grok" : "claude";
     const only = Array.isArray(body.only) && body.only.length ? body.only.map(String).filter(k => DS_KEYS.has(k)) : null;
     const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
-    const ptext = dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts, { only, note: body.note, demand, inApp: true });
+    const ptext = dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, staged, facts, { only, note: body.note, demand, inApp: true });
     const photo = inputs.photo && inputs.photo.url;
+    const refs = [...new Set([photo, plateUrl, ((inputs.cards || [])[0] || {}).url, ((inputs.renders || {}).hero || {}).url].filter(u => /^https:\/\//.test(u || "")))].slice(0, 4);
     let raw = "";
-    if (who === "claude") raw = await claude(photo ? [{ type: "image", source: { type: "url", url: photo } }, { type: "text", text: ptext }] : ptext, 32000, true);
+    if (who === "claude") raw = await claude(refs.length ? [...refs.map(u => ({ type: "image", source: { type: "url", url: u } })), { type: "text", text: ptext }] : ptext, 32000, true);
     else {
       if (!(env.XAI_API_KEY || "").trim()) return { error: "XAI_API_KEY not configured" };
       const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
       const call = content => fetch("https://api.x.ai/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${(env.XAI_API_KEY || "").trim()}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: "grok-4.7", input: [{ role: "user", content }], tools: [{ type: "web_search" }, { type: "x_search" }] }) });
-      let r = await call(photo ? [{ type: "input_text", text: ptext }, { type: "input_image", image_url: photo }] : ptext);
-      if (!r.ok && photo) r = await call(ptext);
+      let r = await call(refs.length ? [{ type: "input_text", text: ptext }, ...refs.map(u => ({ type: "input_image", image_url: u }))] : ptext);
+      if (!r.ok && refs.length) r = await call(ptext);
       const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
       if (!r.ok || !d) return { error: `xAI HTTP ${r.status}: ${(d?.error?.message || d?.error || t).toString().slice(0, 200)}` };
       const u = d.usage || {}, st = u.server_side_tool_usage_details || {};
