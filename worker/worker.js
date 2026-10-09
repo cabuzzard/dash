@@ -48338,10 +48338,31 @@ function dsFieldsOf(j) {
     else if (v && typeof v === "object" && !Array.isArray(v) && !("v" in v) && !("value" in v)) walk(v, key); } };
   walk(raw, ""); return out;
 }
+// Reviewer replies arrive pasted from chat UIs: fences lost or kept, curly quotes, // comments, prose after the block,
+// or cut off mid-way. Try strict → repaired → balanced block → salvage every "key.sub": {...} pair found in the text.
 function dsParseJson(raw) {
-  const s = String(raw || ""), f = s.match(/```(?:json)?\s*([\s\S]*?)```/i), body = f ? f[1] : s, a = body.indexOf("{"), z = body.lastIndexOf("}");
-  if (a < 0 || z <= a) return null;
-  try { return JSON.parse(sanitizeJsonControlChars(body.slice(a, z + 1)).replace(/,\s*([}\]])/g, "$1")); } catch (e) { return null; }
+  const s0 = String(raw || "").replace(/[\u201C\u201D\u201E\u201F\u2033]/g, '"').replace(/[\u2018\u2019\u201A\u201B\u2032]/g, "'").replace(/\u00A0/g, " ");
+  const f = s0.match(/```(?:json)?\s*([\s\S]*?)```/i), body = f ? f[1] : s0;
+  const fix = t => sanitizeJsonControlChars(t).replace(/^\s*\/\/.*$/gm, "").replace(/,\s*([}\]])/g, "$1");
+  const tryP = t => { try { return JSON.parse(t); } catch (e) { try { return JSON.parse(fix(t)); } catch (e2) { return null; } } };
+  const a = body.indexOf("{");
+  if (a >= 0) {
+    // the balanced object starting at the first "{" (string-aware), so prose or a second block after it doesn't break it
+    let d = 0, q = false, esc = false, end = -1;
+    for (let i = a; i < body.length; i++) { const c = body[i];
+      if (q) { if (esc) esc = false; else if (c === "\\") esc = true; else if (c === '"') q = false; continue; }
+      if (c === '"') q = true; else if (c === "{") d++; else if (c === "}") { d--; if (!d) { end = i; break; } } }
+    const j = end > a ? tryP(body.slice(a, end + 1)) : null; if (j) return j;
+    const z = body.lastIndexOf("}"); if (z > a) { const j2 = tryP(body.slice(a, z + 1)); if (j2) return j2; }
+  }
+  // salvage: every  "section.key": {"v": "…", "why": "…"}  or  "section.key": "…"  in the text (a cut-off reply keeps what arrived)
+  const fields = {}, str = '"((?:[^"\\\\]|\\\\.)*)"';
+  const reObj = new RegExp('"([a-z_]+(?:\\.[a-z0-9_]+)+)"\\s*:\\s*\\{([^{}]*)\\}', "g");
+  for (const m of s0.matchAll(reObj)) { const v = m[2].match(new RegExp('"(?:v|value)"\\s*:\\s*' + str)), w = m[2].match(new RegExp('"why"\\s*:\\s*' + str));
+    if (v) { try { fields[m[1]] = { v: JSON.parse('"' + v[1] + '"'), why: w ? JSON.parse('"' + w[1] + '"') : "" }; } catch (e) { fields[m[1]] = { v: v[1], why: w ? w[1] : "" }; } } }
+  const reStr = new RegExp('"([a-z_]+(?:\\.[a-z0-9_]+)+)"\\s*:\\s*' + str, "g");
+  for (const m of s0.matchAll(reStr)) if (!fields[m[1]]) { try { fields[m[1]] = { v: JSON.parse('"' + m[2] + '"') }; } catch (e) { fields[m[1]] = { v: m[2] }; } }
+  return Object.keys(fields).length ? { fields, salvaged: true } : null;
 }
 // The ChatGPT handoff: the seed photo attached by the operator, every field, the current values, the inputs.
 // The REVIEW prompt (2026-10-09): the sources + the CURRENT fields → a reviewer (Claude / ChatGPT / Grok) fills the fields
@@ -48526,7 +48547,7 @@ async function handleDesignSpec(body, env, ctx) {
     return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback }, staged, facts, { only: body.only, note: body.note, demand }) });
   }
   if (op === "chatReply") {
-    const j = dsParseJson(body.text); if (!j) return { error: "no JSON found — paste the whole ```json block" };
+    const j = dsParseJson(body.text); if (!j) return { error: "couldn't find any spec fields in that text (looking for lines like \"color.bg\": {\"v\": \"#FBFAF7\"}) — paste ChatGPT's whole reply" };
     let f = dsClean(dsFieldsOf(j), body.source === "grok" ? "grok" : "chatgpt");
     if (!Object.keys(f).length) return { error: `found JSON but none of its keys are spec fields (expected keys like "color.bg"; got ${Object.keys(j.fields || j).slice(0, 5).join(", ") || "nothing"}) — ask ChatGPT to reply in the exact JSON format from the prompt` };
     if (Array.isArray(body.only) && body.only.length) f = Object.fromEntries(Object.entries(f).filter(([k]) => body.only.includes(k)));
