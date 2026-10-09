@@ -269,10 +269,10 @@
     async function publish() {
       const p = palette(S.saved || {}), f = fonts(S.saved || {});
       if (!p) return say('The saved spec needs all ten color fields as hex before it can publish.', 'bad');
-      if (!confirm('Repaint the live hub page from the SAVED design fields? (colors, fonts, the restyle css — the page structure is untouched; live in ~1 min)')) return;
-      S.busy = 'Repainting the live hub from the saved fields…'; render();
-      try { let css; if (cfg.repaint) { const rp = await ds('repaint', { from: 'saved' }); css = rp.css; }
-        const r = await call('publishHubDesign', { slug: S.slug, keepSpec: true, palette: p, fonts: f || undefined, repaintCss: css }); S.busy = ''; say('Published — live in about a minute.', 'ok'); if (cfg.onPushed) cfg.onPushed({ ...r, repaintCss: css }); }
+      if (!confirm('Publish the SAVED colors + fonts to the live hub? (the 10 tokens, 3 fonts and the meta from the Research record — nothing else on the page changes; live in ~1 min)')) return;
+      S.busy = 'Publishing the saved colors + fonts to the live hub…'; render();
+      try { const css = '';   // the AI repaint is retired — publish = the original 3 regions (meta, fonts link, :root tokens)
+        const r = await call('publishHubDesign', { slug: S.slug, keepSpec: true, palette: p, fonts: f || undefined }); S.busy = ''; say('Published — live in about a minute.', 'ok'); if (cfg.onPushed) cfg.onPushed({ ...r, repaintCss: css }); }
       catch (err) { S.busy = ''; say('Publish failed: ' + err.message, 'bad'); }
     }
 
@@ -498,20 +498,12 @@
     // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
     // change-aware: re-renders only the images whose fields changed; the worker swaps / patches / rebuilds the page as needed
     // hub repaint preview: the staged cosmetic fields → override css → painted onto the live hub page in the right rail
-    async function repaintPreview(quiet) {
-      const todo = [], noImg = ['hero', 'signup'].filter(id => !(S.renders[id] && S.renders[id].url)), oldImg = ['hero', 'signup'].filter(id => S.renders[id] && S.renders[id].url && hasAssetFields(id) && !imgCurrent(id));   // images are rendered separately (🖼 Asset images) — never by the preview
-      startWork('pstaged', `Repainting the hub page from the staged fields${todo.length ? ` + rendering ${todo.join(' + ')} on Grok` : ''}…`);
-      try {
-        if (cfg.preview) { S.repaintData = { palette: palette(S.staged), fonts: fonts(S.staged), css: (S.repaintData && S.repaintData.css) || ' ', images: imageUrls() }; cfg.preview(S.repaintData); }   // instant: colors + fonts now
-        const [r] = await Promise.all([ds('repaint'), Promise.all(todo.map(id => renderAsset(id).catch(err => { noImg.push(id + ' (render failed: ' + err.message + ')'); })))]);
-        if (todo.length) await persistRenders();
-        S.repaintSig = sig(S.staged); const s = endWork();
-        S.repaintData = { palette: palette(S.staged), fonts: fonts(S.staged), css: r.css, images: imageUrls() }; cfg.preview(S.repaintData);
-        if (!quiet) say(`Staged repaint on the right in ${s}s${r.cached ? ' (no style changes since the last one)' : ''} — the hub's own page, restyled${noImg.length ? ` · no image yet (placeholder): ${noImg.join(', ')}` : ''}${oldImg.length ? ` · ${oldImg.join(' + ')} image is from older fields — re-render it in 🖼 Asset images if you want it updated` : ''}. 💾 Save, then ⇪ Publish to hub puts this exact repaint live.`, 'ok');
-      } catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); throw err; }
+    async function repaintPreview(quiet) {   // the original process: staged 10 color tokens + 3 fonts on the hub's own page — instant, no AI
+      const p = palette(S.staged), f = fonts(S.staged), noImg = ['hero', 'signup'].filter(id => !(S.renders[id] && S.renders[id].url));
+      if (!p && !f) return say('Nothing to paint yet — the color fields need hex values (Colors section) and the type fields need font names (Typography).', 'bad');
+      S.repaintData = { palette: p, fonts: f, images: imageUrls(), css: ' ' }; cfg.preview(S.repaintData); S.repaintSig = sig(S.staged);
+      if (!quiet) say(`Staged colors + fonts on the right — the hub's own page${p ? '' : ' (colors incomplete: all ten color fields need a hex)'}${noImg.length ? ` · no image yet: ${noImg.join(', ')}` : ''}. 💾 Save, then ⇪ Publish to hub makes it live.`, p ? 'ok' : 'bad');
     }
-    // 🖼 Generate hero images: hero + signup rendered on Grok together, from the STAGED fields (slots with no fields are skipped),
-    // then dropped into the preview. Separate from Preview staged, which only restyles. Per-image editing stays in 🖼 Asset images.
     async function genImages() {
       const ids = ['hero', 'signup'].filter(hasAssetFields);
       if (!ids.length) return say('No hero / signup image fields are staged yet — fill them (section 7 · Asset image specs) or edit them in 🖼 Asset images.', 'bad');

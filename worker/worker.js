@@ -1079,6 +1079,44 @@ async function bufferDecrypt(env, rec) {
 // ADDITIVE: a field already holding text is left alone; the brief (signature / risk / type / avoided) is added to
 // Design Notes once (marker line), so nothing a later save wrote is overwritten. Returns the Notion property patch.
 const HUB_INITIAL_MARK = "— Initial design (Claude, hub creation) —";
+// THE ORIGINAL HUB DESIGN PROCESS, ON THE RESEARCH RECORD (2026-10-09). Per hub: 10 color tokens (Palette), 3 fonts
+// (Fonts), meta (title / description / og), logo text, email, token notes + the brief (Visual Register / Photography
+// Direction / Visual Avoid / Design Notes). The record is the source; web/hub/hubs.design.json is the build mirror that
+// scripts/build-hubs.mjs reads; publish writes only the 3 original regions of the hub page (meta, fonts link, :root tokens).
+const HUB_RECORD_FIELDS = { "Meta Title": ["meta", "title"], "Meta Description": ["meta", "description"], "OG Title": ["meta", "ogTitle"], "OG Description": ["meta", "ogDescription"], "Logo Text": ["logoText"], "Hub Email": ["email"], "Token Notes": ["tokenNotes"] };
+let _hubRecordPropsOk = false;
+async function hubRecordEnsureProps(env) {
+  if (_hubRecordPropsOk) return;
+  const H = { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const r = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: Object.fromEntries(Object.keys(HUB_RECORD_FIELDS).map(k => [k, { rich_text: {} }])) }) });
+  if (r.ok) _hubRecordPropsOk = true; else throw new Error("could not add the hub record fields to Research");
+}
+// record ⇄ JSON entry: fields missing on the record are filled from the JSON (migration); the record then wins.
+async function hubRecordSync(env, researchId, props, entry) {
+  const H = { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const rt = k => ((props || {})[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  const getE = path => path.reduce((o, k) => (o || {})[k], entry);
+  const fill = {}, wrote = [];
+  for (const [field, path] of Object.entries(HUB_RECORD_FIELDS)) {
+    let v = getE(path); if (v && typeof v === "object") v = JSON.stringify(v);
+    if (!rt(field) && v) { fill[field] = { rich_text: [{ type: "text", text: { content: String(v).slice(0, 1990) } }] }; wrote.push(field); }
+  }
+  if (wrote.length && researchId) {
+    const id = String(researchId).replace(/-/g, ""), dashed = `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
+    const r = await fetch(`https://api.notion.com/v1/pages/${dashed}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: fill }) });
+    if (!r.ok) throw new Error("record write failed");
+  }
+  const val = f => rt(f) || ((fill[f] || {}).rich_text || [{}])[0]?.text?.content || "";
+  const out = { meta: { ...(entry.meta || {}) } };
+  if (val("Meta Title")) out.meta.title = val("Meta Title");
+  if (val("Meta Description")) out.meta.description = val("Meta Description");
+  if (val("OG Title")) out.meta.ogTitle = val("OG Title");
+  if (val("OG Description")) out.meta.ogDescription = val("OG Description");
+  if (val("Logo Text")) out.logoText = val("Logo Text");
+  if (val("Hub Email")) out.email = val("Hub Email");
+  if (val("Token Notes")) { try { out.tokenNotes = JSON.parse(val("Token Notes")); } catch (e) {} }
+  return { out, wrote };
+}
 function hubInitialDesignProps(entry, props) {
   const rt = k => ((props || {})[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
   const R = v => { const t = String(v || ""), out = []; for (let i = 0; i < Math.max(t.length, 1); i += 1900) out.push({ type: "text", text: { content: t.slice(i, i + 1900) } }); return { rich_text: out }; };
@@ -12196,6 +12234,8 @@ Return ONLY this minified JSON object, nothing before or after:
             if (spec.hubs[slug].bespoke) return json({ error: `${slug} is a hand-designed hub — edit its file directly` }, 400);
             for (const k of PKEYS) spec.hubs[slug].tokens[k] = palette[k];
             spec.hubs[slug].tokens.paper = palette.surface;
+            let recSync = null;   // the Research record ⇄ the JSON entry (missing record fields migrate from the JSON; the record wins)
+            try { await hubRecordEnsureProps(env); recSync = await hubRecordSync(env, researchId, resProps, spec.hubs[slug]); Object.assign(spec.hubs[slug], recSync.out); } catch (e) { console.error("hub record sync:", e.message); }
             if (fonts) {
               spec.hubs[slug].fonts = { display: fonts.display, body: fonts.body, mono: fonts.mono };
               spec.fontRegistry = spec.fontRegistry || {};
@@ -12222,11 +12262,14 @@ Return ONLY this minified JSON object, nothing before or after:
               const link = `<link href="https://fonts.googleapis.com/css2?family=${fontQuery(fonts.display)}&family=${fontQuery(fonts.body)}&family=${fontQuery(fonts.mono)}&display=swap" rel="stylesheet">`;
               html = html.replace(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?[^"]*" rel="stylesheet">/, link);
             }
-            if (typeof body.repaintCss === "string") {   // the design pass's override stylesheet — the page itself is untouched
-              const css = dsRepaintSanitize(body.repaintCss).trim(), block = css ? `<style id="ds-repaint">\n${css}\n</style>` : "";
-              if (/<style id="ds-repaint">[\s\S]*?<\/style>/.test(html)) html = html.replace(/<style id="ds-repaint">[\s\S]*?<\/style>/, () => block);
-              else if (block) html = html.replace(/<\/head>/i, () => block + "\n</head>");
-            }
+            // the original process: only the 3 regions — meta (from the record), the fonts link, the :root tokens. The AI
+            // repaint stylesheet (2026-10-09, retired the same day) is removed if a page still carries it.
+            html = html.replace(/\s*<style id="ds-repaint">[\s\S]*?<\/style>/, "");
+            const m = spec.hubs[slug].meta || {}, escH = v => String(v || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+            if (m.title) html = html.replace(/<title>[^<]*<\/title>/, () => `<title>${escH(m.title)}</title>`);
+            if (m.description) html = html.replace(/<meta name="description" content="[^"]*">/, () => `<meta name="description" content="${escH(m.description)}">`);
+            if (m.ogTitle) html = html.replace(/<meta property="og:title" content="[^"]*">/, () => `<meta property="og:title" content="${escH(m.ogTitle)}">`);
+            if (m.ogDescription) html = html.replace(/<meta property="og:description" content="[^"]*">/, () => `<meta property="og:description" content="${escH(m.ogDescription)}">`);
             await putFile(htmlPath, html, `hub design: ${slug} — live (research)`, htmlF.sha);
 
             // ── image spec goes live in the same save ──────────────────────
