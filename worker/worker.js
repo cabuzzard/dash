@@ -747,6 +747,7 @@ const HUB_SITES = [
   { slug: "mountainwize",         name: "Mountainwize",         campaignId: "3921f7d3a4bb81d7a061e31ebc2ddef1", domain: "mountainwize.com" },
   { slug: "sustainable-aquarium", name: "Sustainable Aquarium", campaignId: "3d41f7d3a4bb8168b7f5cbec84e5758e", domain: "sustainableaquarium.com" },
   { slug: "multifamily-acquisitions", name: "Multifamily Acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", domain: null },
+  { slug: "medicare-services-consulting", name: "Medicare Services Consulting", campaignId: "3f41f7d3a4bb813395dfd4e95b1dfddc", domain: null },
 ];
 
 // Landing pages — a niche product sliced off a hub and published as its own
