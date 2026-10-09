@@ -48329,6 +48329,15 @@ function dsMerge(spec, incoming, force) {
   }
   return { spec, applied, suggested };
 }
+function dsFieldsOf(j) {
+  const raw = j && (j.fields || j.spec || j);
+  if (Array.isArray(raw)) return Object.fromEntries(raw.filter(x => x && (x.key || x.k || x.field)).map(x => [String(x.key || x.k || x.field), x]));
+  const out = {};
+  const walk = (o, pre) => { for (const [k, v] of Object.entries(o || {})) { const key = pre ? pre + "." + k : k;
+    if (DS_KEYS.has(key)) out[key] = v;
+    else if (v && typeof v === "object" && !Array.isArray(v) && !("v" in v) && !("value" in v)) walk(v, key); } };
+  walk(raw, ""); return out;
+}
 function dsParseJson(raw) {
   const s = String(raw || ""), f = s.match(/```(?:json)?\s*([\s\S]*?)```/i), body = f ? f[1] : s, a = body.indexOf("{"), z = body.lastIndexOf("}");
   if (a < 0 || z <= a) return null;
@@ -48518,7 +48527,8 @@ async function handleDesignSpec(body, env, ctx) {
   }
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "no JSON found — paste the whole ```json block" };
-    let f = dsClean(j.fields || j, body.source === "grok" ? "grok" : "chatgpt");
+    let f = dsClean(dsFieldsOf(j), body.source === "grok" ? "grok" : "chatgpt");
+    if (!Object.keys(f).length) return { error: `found JSON but none of its keys are spec fields (expected keys like "color.bg"; got ${Object.keys(j.fields || j).slice(0, 5).join(", ") || "nothing"}) — ask ChatGPT to reply in the exact JSON format from the prompt` };
     if (Array.isArray(body.only) && body.only.length) f = Object.fromEntries(Object.entries(f).filter(([k]) => body.only.includes(k)));
     const m = dsMerge(staged, f, true);   // review round: replaces staged
     staged = m.spec; inputs.chatgpt = { at: new Date().toISOString() }; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
@@ -48750,8 +48760,8 @@ Reply with ONE JSON object only — just the fields you change: {"fields": {"key
       await spendAdd(env, "grok", (st.x_posts_fetched || 0) * 0.005 + (st.web_search_calls || 0) * 0.01 + ((u.input_tokens || 0) * 3 + (u.output_tokens || 0) * 15) / 1e6, false, { in: u.input_tokens, out: u.output_tokens }).catch(() => {});
       raw = d.output_text || drAllText((d.output || []).filter(o => o && o.type === "message"), []).join("\n");
     }
-    const j = dsParseJson(raw); if (!j || !j.fields) return { error: `${who} returned no fields — try again` };
-    let f = dsClean(j.fields, who); if (only) f = Object.fromEntries(Object.entries(f).filter(([k]) => only.includes(k)));
+    const j = dsParseJson(raw); if (!j) return { error: `${who} returned no fields — try again` };
+    let f = dsClean(dsFieldsOf(j), who); if (!Object.keys(f).length) return { error: `${who} returned no spec fields — try again` }; if (only) f = Object.fromEntries(Object.entries(f).filter(([k]) => only.includes(k)));
     const m = dsMerge(staged, f, true);
     staged = m.spec; inputs.review = { who, notes: String(j.notes || "").slice(0, 1500), at: new Date().toISOString(), n: m.applied.length };
     await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);

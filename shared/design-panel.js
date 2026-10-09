@@ -210,10 +210,10 @@
       if (!S.gptReply.trim()) return say('Paste ChatGPT\'s reply first.', 'bad');
       startWork('chatMerge', 'Staging the reviewed fields…');
       try { const r = await ds('chatReply', { text: S.gptReply, only: revKeys() }); take(r); S.gptReply = ''; endWork();
-        const n = (r.applied || []).length; say(`${n} field${n === 1 ? '' : 's'} changed and staged — building the preview…`, 'ok');
+        const n = (r.applied || []).length; say(n ? `${n} field${n === 1 ? '' : 's'} changed and staged — building the preview…` : 'The reply was read, but every value matches what is already staged — nothing changed.', n ? 'ok' : 'bad');
         if (n) await previewStaged(true).catch(() => {});
         say(`${n} field${n === 1 ? '' : 's'} changed by the review and staged${n ? ' — preview on the right' : ''}. Keep with 💾 Save, or ↺ Revert (per section or all).`, 'ok'); }
-      catch (err) { endWork(); say('Paste back failed: ' + err.message, 'bad'); }
+      catch (err) { endWork(); say('Paste back failed — nothing was staged: ' + err.message, 'bad'); alert('Paste back failed — nothing was staged.\n\n' + err.message); }
     }
 
     // ── field edits ──
@@ -463,6 +463,8 @@
     // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
     // change-aware: re-renders only the images whose fields changed; the worker swaps / patches / rebuilds the page as needed
     async function previewStaged(quiet) {
+      if (!quiet && String(S.gptReply || '').trim()) return mergeChat();   // a reply is waiting in the box → stage it first (mergeChat previews)
+      if (!quiet && !diffKeys().length) say('Heads up: staged = saved — nothing new is staged, so this preview shows the saved spec. Paste a reply back (📥) or edit fields first.', 'bad');
       const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
       startWork('pstaged', `Previewing the staged spec: ${todo.length ? `re-rendering ${todo.join(' + ')} (fields changed), then ` : 'images unchanged — '}updating the page…`);
       try {
