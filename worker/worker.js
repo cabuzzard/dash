@@ -590,6 +590,51 @@ async function hubSitesMerge(env) {
     for (const e of extra) if (e && e.slug && e.campaignId && !HUB_SITES.some(h => h.slug === e.slug)) HUB_SITES.push({ slug: e.slug, name: e.name || e.slug, campaignId: e.campaignId, domain: e.domain || null });
   } catch (e) {}
 }
+// ── Product Ideas (care-gap Keywords › Main Stack 🔎): campaign main keywords → 15 staged ideas on Research "Product Ideas" ──
+const PRODUCT_IDEAS_SYSTEM = `You are a product strategist. Given campaign keywords, identify 15 specific product or offer ideas that would sell well to this audience. Focus on digital products, info products, services, or physical products that directly address the audience's pain points and desires.
+
+FORMAT — output exactly 15 lines, one per idea:
+PRODUCT NAME: one-line description of the product and who it's for
+
+Rules:
+- PRODUCT NAME is 2-5 words, title case
+- Description is max 15 words, specific and monetizable
+- No bullets, no numbering, no markdown, no preamble or closing remarks
+- Output only the 15 lines, nothing else`;
+// every hub, one at a time (the same call care-gap's 🔎 makes per campaign); progress → KV bulk:prodideas
+async function runAllHubProductIdeas(env) {
+  const K = "bulk:prodideas", H = { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const prev = await env.TRADES.get(K, "json").catch(() => null);
+  if (prev && prev.running && Date.now() - Date.parse(prev.at) < 15 * 60000) return { error: "a product-ideas run is already going" };
+  await hubSitesMerge(env);
+  const hubs = HUB_SITES.slice(), st = { running: true, at: new Date().toISOString(), total: hubs.length, done: 0, current: "", results: [] };
+  const save = () => env.TRADES.put(K, JSON.stringify(st)).catch(() => {});
+  await save();
+  for (const hub of hubs) {
+    st.current = hub.name || hub.slug; await save();
+    const row = { slug: hub.slug, name: hub.name || hub.slug };
+    try {
+      const cid = String(hub.campaignId).replace(/-/g, ""), dc = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`;
+      const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []);
+      const kwOf = r => (r.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").trim();
+      const rec = rows.find(r => kwOf(r)) || null;
+      if (!rec) { row.skip = rows.length ? "no main keywords on the Research record" : "no Research record"; }
+      else {
+        const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "Content-Type": "application/json", "x-api-key": env.ANTHROPIC_API_KEY || "", "anthropic-version": "2023-06-01" },
+          body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 1200, system: PRODUCT_IDEAS_SYSTEM, messages: [{ role: "user", content: `Campaign keywords: ${kwOf(rec)}` }] }) });
+        const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+        const text = (d.content?.[0]?.text || "").trim();
+        const p = await fetch(`https://api.notion.com/v1/pages/${rec.id}`, { method: "PATCH", headers: H, body: JSON.stringify({ properties: { "Product Ideas": { rich_text: [{ type: "text", text: { content: text.slice(0, 2000) } }] } } }) });
+        if (!p.ok) throw new Error("Notion write failed");
+        row.ideas = text.split("\n").filter(l => l.trim()).length;
+      }
+    } catch (e) { row.error = e.message; }
+    st.results.push(row); st.done++; await save();
+    await new Promise(res => setTimeout(res, 600));
+  }
+  st.running = false; st.current = ""; st.finishedAt = new Date().toISOString(); await save();
+  return st;
+}
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -26193,6 +26238,8 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // ── deleteAsset ──
       // Archives an Asset record (Notion soft-delete) — used by the ✕ on
       // asset rows under publish titles.
+      if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
+      if (body.action === "getBulkJobs") { const pi = await env.TRADES.get("bulk:prodideas", "json").catch(() => null); return json({ prodideas: pi }); }
       if (body.action === "getHubSitesExtra") {   // hubs registered only in KV (scaffolded after the files outgrew the Contents API)
         let extra = []; try { extra = (await env.TRADES.get("hub:sites:extra", "json")) || []; } catch (e) {}
         return json({ hubs: extra.filter(e => e && e.slug && e.campaignId) });
@@ -32943,16 +32990,7 @@ Rules:
           body: JSON.stringify({
             model: 'claude-haiku-4-5-20251001',
             max_tokens: 1200,
-            system: `You are a product strategist. Given campaign keywords, identify 15 specific product or offer ideas that would sell well to this audience. Focus on digital products, info products, services, or physical products that directly address the audience's pain points and desires.
-
-FORMAT — output exactly 15 lines, one per idea:
-PRODUCT NAME: one-line description of the product and who it's for
-
-Rules:
-- PRODUCT NAME is 2-5 words, title case
-- Description is max 15 words, specific and monetizable
-- No bullets, no numbering, no markdown, no preamble or closing remarks
-- Output only the 15 lines, nothing else`,
+            system: PRODUCT_IDEAS_SYSTEM,
             messages: [{ role: 'user', content: `Campaign keywords: ${keywords}${omitBlock(kwOmit)}` }]
           })
         });
