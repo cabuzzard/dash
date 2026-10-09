@@ -48404,13 +48404,20 @@ THE REST OF THE SPEC — context only, do NOT return these:
 ${list(k => !only.has(k) && spec[k] && spec[k].v) || "(empty)"}` : `FIELDS — key — what it controls (format): current value. Return EVERY key:
 ${list(() => true)}`}
 
-Reply with ONE fenced \`\`\`json block${opts.inApp || only ? " and nothing else" : ""}:
-{"notes": "2-4 lines: what you changed and why", "fields": {"key": {"v": "…", "why": "…"}}}${opts.inApp || only ? "" : `
+HOW TO REPLY — exactly this, nothing else (it is read by a program):
+- ONE code block marked json, and NO text before or after it. No images, no explanations outside the block.
+- Straight double quotes only. No comments. No trailing commas.
+- Under "fields", use the field keys EXACTLY as listed above (flat, like "color.bg" — not nested).
+- Return ${only ? "every key under FIELDS TO FILL" : "every key"}. Keep each "why" under 10 words so the whole reply fits; if you still run out of room, stop after a complete field — I will ask you to continue.
 
-AFTER the JSON block, generate these images to your spec, one at a time, all clearly one set — same style, palette and recurring characters — with no text, letters, logos or numbers in them:
-${["hero", "signup", "social_square"].map((a, i) => { const g = f => (spec[`asset.${a}.${f}`] || {}).v; const lbl = (DS_ASSETS.find(x => x[0] === a) || [])[1];
-  return `${i + 1}. ${lbl} — ${[g("aspect"), g("subject"), g("composition"), g("background") && "background " + g("background"), g("safe_area") && "safe area " + g("safe_area"), g("text_zone") && "leave room for text: " + g("text_zone")].filter(Boolean).join("; ") || "use the asset fields you just wrote"}.`; }).join("\n")}
-Use the asset fields from your JSON for anything still blank above.`}`;
+\`\`\`json
+{"notes": "2-4 lines: what you changed and why",
+ "fields": {
+  "color.bg": {"v": "#FBFAF7", "why": "warm off-white like the seed photo"},
+  "type.display_font": {"v": "Fraunces", "why": "soft serif matches the illustration"}
+ }}
+\`\`\`
+(The two fields above only show the format — use your own values for every key.)`;
 }
 
 // spec → the hub's 10 tokens / 3 fonts / the legacy direction fields (every role must be a hex, or no palette)
