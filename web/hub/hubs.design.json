@@ -333,6 +333,62 @@
         "superseded": "Was manila #eae6dc + hunter-green #3f5e4c + barn-red #c14b2a."
       }
     },
+    "medicare-services-consulting": {
+      "meta": {
+        "title": "Medicare Consulting Hub — Medicare decisions are permanent — make yours with an expert in ",
+        "description": "We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a dead",
+        "ogTitle": "Medicare Consulting Hub",
+        "ogDescription": "We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a dead"
+      },
+      "fonts": {
+        "display": "Newsreader",
+        "body": "IBM Plex Sans",
+        "mono": "IBM Plex Mono"
+      },
+      "logoText": "Medicare Consulting Hub",
+      "tokens": {
+        "bg": "#F5F4F0",
+        "surface": "#EDECEA",
+        "ink": "#1A1C2A",
+        "ink-head": "#0F1120",
+        "ink-soft": "#5A5C6E",
+        "line": "#D4D2CB",
+        "sea": "#1B3A6B",
+        "deep": "#102347",
+        "deep-ink": "#EEF2FA",
+        "accent": "#C4922A",
+        "paper": "#EDECEA"
+      },
+      "tokenNotes": {
+        "bg": "page ground",
+        "surface": "raised card",
+        "ink": "body ink",
+        "ink-head": "headings",
+        "ink-soft": "secondary text",
+        "line": "hairline",
+        "sea": "primary",
+        "deep": "dark band",
+        "deep-ink": "text on --deep",
+        "accent": "used once, loudly"
+      },
+      "design": {
+        "subject": "Medicare services consulting — helping individuals, families, and employers navigate Medicare plan selection, enrollment, and ongoing coverage decisions with clarity and confidence.",
+        "audience": "Adults approaching 65, early retirees, caregivers managing a parent's coverage, and HR benefits managers overseeing Medicare-eligible employees who feel overwhelmed by plan complexity and afraid of costly mistakes.",
+        "job": "Establish immediate trust and authority so a visitor books a consultation or downloads the guide before leaving the page.",
+        "type": "Newsreader for display headlines pairs with IBM Plex Sans for body — the serif signals expertise and longevity (think professional journals and annual reports) while the humanist sans keeps the interface approachable and readable at small sizes for an older demographic.",
+        "signature": "A deep navy field anchored by a warm gold accent rule — the 'seal stripe' — that runs beneath section headings, evoking the official credentialing ribbons on Medicare documentation and government correspondence.",
+        "risk": "Using a dark, almost ink-blue hero instead of the bright white clinical look common in healthcare marketing — betting that gravitas reads as more trustworthy than cheerfulness to this audience.",
+        "avoided": [
+          "Stock-photo-style smiling-seniors-on-beach imagery and the pastel palette that goes with it",
+          "Startup-gradient hero sections that undermine the authority signal",
+          "Icon-heavy infographic layouts that visually compete with the consulting credibility message"
+        ],
+        "register": "Authoritative without being cold — the palette, type, and layout feel closer to a respected financial planning firm than a hospital brochure. Every surface is calm, well-spaced, and structured, projecting the same steady confidence a good Medicare advisor should project in person.",
+        "photography": "Real images belong here: a consultant seated across a desk from a couple in their mid-60s, reviewing printed plan comparison sheets under warm office window light — not posed, slightly candid. A close detail shot of a hand annotating a Medicare Summary Notice with a pen, navy jacket sleeve visible, warm amber desk lamp glow catching the page edge. Group shots, if any, should be small — two or three people, never a crowd. The deep navy and warm gold of the palette appear as deep shadows and the honey tone of natural wood or manila folders in the frame. Prefer matte, editorial-style finish over bright lifestyle photography.",
+        "avoid": "Gleaming-white-background stock photos of seniors jogging; doctor-in-white-coat clinical imagery; abstract health cross or heartbeat-line icons; AI-generated faces; cartoon or illustrated characters",
+        "superseded": "First palette — seeded by scaffoldHub."
+      }
+    },
     "mountainwize": {
       "email": "info@mountainwize.com",
       "meta": {
