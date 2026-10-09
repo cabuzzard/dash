@@ -509,6 +509,21 @@
         if (!quiet) say(`Staged repaint on the right in ${s}s${r.cached ? ' (no style changes since the last one)' : ''} — the hub's own page, restyled${noImg.length ? ` · no image yet (placeholder): ${noImg.join(', ')}` : ''}${oldImg.length ? ` · ${oldImg.join(' + ')} image is from older fields — re-render it in 🖼 Asset images if you want it updated` : ''}. 💾 Save, then ⇪ Publish to hub puts this exact repaint live.`, 'ok');
       } catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); throw err; }
     }
+    // 🖼 Generate hero images: hero + signup rendered on Grok together, from the STAGED fields (slots with no fields are skipped),
+    // then dropped into the preview. Separate from Preview staged, which only restyles. Per-image editing stays in 🖼 Asset images.
+    async function genImages() {
+      const ids = ['hero', 'signup'].filter(hasAssetFields);
+      if (!ids.length) return say('No hero / signup image fields are staged yet — fill them (section 7 · Asset image specs) or edit them in 🖼 Asset images.', 'bad');
+      startWork('genimg', `Generating ${ids.join(' + ')} on Grok (~30-60s)…`);
+      const failed = [];
+      try {
+        await Promise.all(ids.map(id => renderAsset(id).catch(err => { failed.push(`${id}: ${err.message}`); })));
+        await persistRenders(); const s = endWork();
+        if (S.slug && cfg.repaint && cfg.preview) { const d = { palette: palette(S.staged), fonts: fonts(S.staged), images: imageUrls() };
+          try { const r = await ds('repaint'); d.css = r.css; } catch (err) {} cfg.preview(d); }
+        say(`Images generated in ${s}s${failed.length ? ` — failed: ${failed.join('; ')}` : ''} — in the preview on the right; edit any one in 🖼 Asset images. ✓ Set on hub puts one live.`, failed.length ? 'bad' : 'ok');
+      } catch (err) { endWork(); say('Image generation failed: ' + err.message, 'bad'); }
+    }
     async function previewStaged(quiet) {
       if (S.slug && cfg.repaint) { if (!quiet && String(S.gptReply || '').trim()) return mergeChat(); return repaintPreview(quiet); }
       if (!quiet && String(S.gptReply || '').trim()) return mergeChat();   // a reply is waiting in the box → stage it first (mergeChat previews)
@@ -591,7 +606,7 @@
             <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
             ${stale() ? wb('visuals', BTN, '🔁 Update visuals') : ''}
             ${cfg.preview ? `<button data-act="preview" style="${S.preview ? BTNP : BTN}">👁 Preview${S.preview ? ': on' : ''}</button>` : ''}
-            ${wb('pstaged', stale() || !(S.inputs || {}).page ? `font-size:11px;padding:4px 10px;border:1px solid ${ORG};border-radius:6px;background:${ORG};color:#fff;font-weight:600;cursor:pointer;` : BTN, stale() ? '👁 Preview staged ● changed' : '👁 Preview staged')}
+            ${wb('pstaged', stale() || !(S.inputs || {}).page ? `font-size:11px;padding:4px 10px;border:1px solid ${ORG};border-radius:6px;background:${ORG};color:#fff;font-weight:600;cursor:pointer;` : BTN, stale() ? '👁 Preview staged ● changed' : '👁 Preview staged')}${wb('genimg', BTN, '🖼 Generate hero images')}
             <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert all</button>
             ${S.work && S.work.act === 'save' ? `<button disabled style="${BTNP}opacity:.9;cursor:wait;">⏳ <span data-timer>0:00</span> saving…</button>` : `<button ${S.busy ? 'disabled' : ''} data-act="save" style="${BTNP}">💾 Save all</button>`}
             ${S.slug ? `<button ${dis} data-act="publish" title="Put the SAVED spec's palette + fonts on the live hub" style="${BTN}">⇪ Publish to hub</button>` : ''}</div>`;
@@ -648,6 +663,7 @@
       else if (a === 'gRevert') gRevert(b.dataset.keys.split(','));
       else if (a === 'gSave') gSave(b.dataset.keys.split(','));
       else if (a === 'pstaged') previewStaged().catch(() => {});
+      else if (a === 'genimg') genImages();
       else if (a === 'revert') revert();
       else if (a === 'publish') publish();
       else if (a === 'preview') { S.preview = !S.preview; render(); }
@@ -670,7 +686,7 @@
       const p2 = (S.inputs || {}).page; if (!p2 || !p2.url) throw new Error('the page build failed — see the Design panel');
       return p2.url;
     }
-    return { reload: load, state: S, stagedPageUrl, previewStaged: () => previewStaged() };
+    return { reload: load, state: S, stagedPageUrl, previewStaged: () => previewStaged(), genImages };
   }
   window.DesignPanel = { mount };
 })();
