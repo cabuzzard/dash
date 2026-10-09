@@ -335,16 +335,82 @@
       return `<div style="display:grid;grid-template-columns:minmax(120px,30%) 1fr;gap:8px;padding:5px 0;border-top:1px solid ${C.surf2};align-items:start;">
         <div style="font-size:11px;color:${C.ink2};">${e(label)}<div style="font-size:9.5px;color:${C.ink3};">${e(k)}</div></div>
         <div>${ed ? `<input data-in="fedit" data-k="${e(k)}" value="${e(f.v || '')}" placeholder="${e(hint)}" style="${TA}padding:3px 6px;"><div style="margin-top:3px;"><button data-act="fsave" data-k="${e(k)}" style="${BTNP}font-size:10px;padding:2px 8px;">save</button> <button data-act="fcancel" style="${BTN}font-size:10px;padding:2px 8px;">cancel</button></div>`
-          : `<div data-act="fedit" data-k="${e(k)}" title="click to edit" style="cursor:text;font-size:12px;color:${f.v ? C.ink : C.ink3};">${f.v ? swatch(f.v) + e(f.v) : '<i>' + e(hint) + '</i>'} ${f.v ? badge(f.src) : ''}${changed ? ` <span style="font-size:9px;color:${C.warn};">● staged</span>` : ''}</div>
+          : `<div data-act="fedit" data-k="${e(k)}" title="click to edit" style="cursor:text;font-size:12px;color:${f.v ? C.ink : C.ink3};">${f.v ? swatch(f.v) + e(f.v) : '<i>' + e(hint) + '</i>'} ${f.v ? badge(f.src) : ''}${changed ? ` <span style="font-size:9px;color:${C.warn};">● staged</span> <button data-act="gRevert" data-keys="${e(k)}" title="Revert this field to the saved value" style="${BTN}font-size:9.5px;padding:0 5px;">↺</button> <button data-act="gSave" data-keys="${e(k)}" title="Save just this field" style="${BTN}font-size:9.5px;padding:0 5px;">💾</button>` : ''}</div>
             ${f.why ? `<div style="font-size:10.5px;color:${C.ink3};margin-top:1px;">${e(f.why)}</div>` : ''}`}
           ${f.alt ? `<div style="margin-top:3px;font-size:11px;padding:4px 6px;border:1px dashed ${C.line};border-radius:5px;">${badge(f.alt.src)} suggests: ${swatch(f.alt.v)}<b>${e(f.alt.v)}</b>${f.alt.why ? ` <span style="color:${C.ink3};">— ${e(f.alt.why)}</span>` : ''}
             <button data-act="altUse" data-k="${e(k)}" style="${BTN}font-size:10px;padding:1px 6px;">✓ use</button> <button data-act="altNo" data-k="${e(k)}" style="${BTN}font-size:10px;padding:1px 6px;">✕</button></div>` : ''}</div></div>`;
     }
+    // Every group (section) has the SAME toolbar: ✎ Edit fields · ⟳ From source → staged · ↺ Revert to saved · 💾 Save.
+    // Staged changes show per field (↺ / 💾 per field too); 👁 Preview staged (sticky bar) renders images + mockup from staged.
+    const secKeys = sec => sec.fields.map(([k]) => k);
+    const secDiff = sec => { const d = new Set(diffKeys()); return secKeys(sec).filter(k => d.has(k)).length; };
+    function groupBar(sec) {
+      const keys = e(secKeys(sec).join(',')), nd = secDiff(sec), dis = S.busy ? 'disabled' : '';
+      const B = `${BTN}font-size:10px;padding:2px 7px;`;
+      return `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;margin:2px 0 6px 12px;">
+        <button ${dis} data-act="gEdit" data-sec="${e(sec.id)}" style="${B}">✎ Edit fields</button>
+        <select ${dis} data-act="gSource" data-sec="${e(sec.id)}" style="${B}"><option value="">⟳ From source → staged…</option><option value="build">keywords + photo (the inputs)</option><option value="grok">Grok search (web + X)</option><option value="chat">ChatGPT reply</option><option value="text">text override</option></select>
+        <button ${nd && !S.busy ? '' : 'disabled'} data-act="gRevert" data-keys="${keys}" style="${B}">↺ Revert${nd ? ' ' + nd : ''}</button>
+        <button ${nd && !S.busy ? '' : 'disabled'} data-act="gSave" data-keys="${keys}" style="${nd ? BTNP : BTN}font-size:10px;padding:2px 7px;">💾 Save${nd ? ' ' + nd : ''}</button>
+        ${nd ? `<span style="font-size:10px;color:${C.warn};">● ${nd} staged, not saved</span>` : `<span style="font-size:10px;color:${C.ok};">saved</span>`}</div>`;
+    }
     function tierBody(tier) {
-      return S.schema.filter(s => s.tier === tier).map(s => { const n = s.fields.filter(([k]) => fv(k)).length, key = 'sec_' + s.id, o = !!S.open[key];
-        return `<div style="margin-bottom:4px;"><div data-act="toggle" data-k="${key}" style="cursor:pointer;user-select:none;font-size:12px;padding:4px 0;color:${C.ink};">
-          <span style="font-size:9px;color:${C.ink3};">${o ? '▼' : '▶'}</span> <b>${e(s.label)}</b> <span style="font-size:10.5px;color:${n === s.fields.length ? C.ok : C.ink3};">${n}/${s.fields.length}</span></div>
+      return S.schema.filter(s => s.tier === tier).map(s => { const n = s.fields.filter(([k]) => fv(k)).length, key = 'sec_' + s.id, o = !!S.open[key], nd = secDiff(s);
+        return `<div style="margin-bottom:6px;border-bottom:1px solid ${C.surf2};padding-bottom:4px;"><div data-act="toggle" data-k="${key}" style="cursor:pointer;user-select:none;font-size:12px;padding:4px 0;color:${C.ink};">
+          <span style="font-size:9px;color:${C.ink3};">${o ? '▼' : '▶'}</span> <b>${e(s.label)}</b> <span style="font-size:10.5px;color:${n === s.fields.length ? C.ok : C.ink3};">${n}/${s.fields.length}</span>${nd ? ` <span style="font-size:10px;color:${C.warn};">● ${nd} staged</span>` : ''}</div>
+          ${groupBar(s)}
           ${o ? `<div style="padding-left:12px;">${s.fields.map(fieldRow).join('')}</div>` : ''}</div>`; }).join('');
+    }
+    // ── group actions ──
+    function gModal(title, html, okLabel, onOk) {
+      let m = document.getElementById('dpGModal'); if (m) m.remove();
+      m = document.createElement('div'); m.id = 'dpGModal';
+      m.style.cssText = 'position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;overflow:auto;';
+      m.innerHTML = `<div style="background:${C.surf2};color:${C.ink};border:1px solid ${C.line};border-radius:10px;padding:16px;max-width:640px;width:100%;">
+        <div style="font-weight:700;margin-bottom:10px;">${title}</div>${html}
+        <div style="display:flex;gap:8px;margin-top:12px;"><button data-g="ok" style="${BTNP}">${okLabel}</button><button data-g="cancel" style="${BTN}">Cancel</button><span data-g="msg" style="font-size:11px;color:${C.ink3};align-self:center;"></span></div></div>`;
+      document.body.appendChild(m);
+      m.addEventListener('click', async ev => { const g = ev.target.dataset && ev.target.dataset.g;
+        if (ev.target === m || g === 'cancel') return m.remove();
+        if (g === 'ok') { ev.target.disabled = true; ev.target.textContent = '⏳ Working…'; try { await onOk(m); m.remove(); } catch (err) { m.querySelector('[data-g="msg"]').textContent = err.message; ev.target.disabled = false; ev.target.textContent = okLabel; } } });
+    }
+    const secById = id => S.schema.find(x => x.id === id);
+    function gEdit(id) {
+      const sec = secById(id); if (!sec) return;
+      gModal(`✎ Edit fields — ${e(sec.label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:8px;">Your values override any source. They go to STAGED — preview, then 💾 Save or ↺ Revert.</div>`
+        + sec.fields.map(([k, label, hint]) => `<label style="display:block;margin-bottom:7px;font-size:11px;color:${C.ink2};">${e(label)} <span style="color:${C.ink3};font-size:9.5px;">${e(k)}</span>
+          <input data-gk="${e(k)}" value="${e(fv(k) || '')}" placeholder="${e(hint || '')}" style="${TA}padding:4px 7px;margin-top:2px;"></label>`).join(''),
+        'Stage changes', async m => {
+          const ch = [...m.querySelectorAll('[data-gk]')].filter(x => x.value.trim() !== (fv(x.dataset.gk) || ''));
+          for (const x of ch) take(await ds('edit', { key: x.dataset.gk, v: x.value.trim() }));
+          say(ch.length ? `${ch.length} field${ch.length === 1 ? '' : 's'} staged in ${sec.label} — 👁 Preview staged, then 💾 Save or ↺ Revert.` : 'No changes.', 'ok');
+        });
+    }
+    async function gSource(id, src) {
+      const sec = secById(id); if (!sec) return; const keys = secKeys(sec), label = sec.label;
+      const after = r => { take(r); S.open['sec_' + id] = true; say(`${label}: ${(r.applied || (r.job || {}).applied || []).length} fields staged from ${src}${((r.suggested || (r.job || {}).suggested) || []).length ? `, ${(r.suggested || r.job.suggested).length} suggestions` : ''} — 👁 Preview staged, then 💾 Save or ↺ Revert.`, 'ok'); };
+      if (src === 'text') return gModal(`Text override → ${e(label)}`, `<textarea data-gt rows="4" placeholder="e.g. headlines heavier · sage green buttons · no gradients" style="${TA}">${e(S.override || '')}</textarea>`, 'Apply to staged', async m => {
+        const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Type the override first.');
+        startWork('gsrc', `Applying the override to ${label}…`); try { after(await ds('text', { override: t, keys })); } finally { endWork(); render(); } });
+      if (src === 'chat') return gModal(`ChatGPT reply → ${e(label)}`, `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">Use 📋 Copy ChatGPT prompt in Inputs ③, then paste the reply — only this group's fields are taken.</div><textarea data-gt rows="6" placeholder="Paste ChatGPT's reply…" style="${TA}"></textarea>`, 'Merge into staged', async m => {
+        const t = m.querySelector('[data-gt]').value.trim(); if (!t) throw new Error('Paste the reply first.');
+        after(await ds('chatReply', { text: t, keys })); });
+      startWork('gsrc', `${src === 'grok' ? 'Grok search' : 'Reading the keywords + photo'} for ${label} (1-3 min)…`);
+      try { await saveInputs(); after(await ds(src, { keys })); } catch (err) { say(`${label} from ${src} failed: ${err.message}`, 'bad'); } finally { endWork(); render(); }
+    }
+    async function gRevert(keys) { try { take(await ds('revert', { keys })); say(`Reverted ${keys.length} field${keys.length === 1 ? '' : 's'} to the saved values.`, 'ok'); } catch (err) { say(err.message, 'bad'); } }
+    async function gSave(keys) {
+      startWork('gsave', `Saving ${keys.length} field${keys.length === 1 ? '' : 's'}…`);
+      try { const r = await ds('save', { keys }); take(r); endWork(); say(`Saved ${keys.length} field${keys.length === 1 ? '' : 's'}${r.notionError ? ` — but the Research record write failed: ${r.notionError}` : ' — the Research record is updated.'}`, r.notionError ? 'bad' : 'ok'); }
+      catch (err) { endWork(); say('Save failed: ' + err.message, 'bad'); }
+    }
+    // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
+    async function previewStaged() {
+      startWork('pstaged', 'Previewing the staged spec: hero + signup images, then the mockup page (2-3 min)…');
+      try { for (const id of ['hero', 'signup']) await renderAsset(id); await persistRenders(); const r = await ds('page', { images: imageUrls() }); take(r); endWork(); S.open.page = true;
+        say('Preview ready from the STAGED spec — see 📄 Page preview / the Mockup on the right. Keep it with 💾 Save, or ↺ Revert.', 'ok');
+        if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} } }
+      catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); }
     }
     function assetsBody() {
       const ids = assetSecs().map(s => s.id.slice(6));
@@ -403,8 +469,9 @@
             <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
             ${stale() ? wb('visuals', BTN, '🔁 Update visuals') : ''}
             ${cfg.preview ? `<button data-act="preview" style="${S.preview ? BTNP : BTN}">👁 Preview${S.preview ? ': on' : ''}</button>` : ''}
-            <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert</button>
-            ${S.work && S.work.act === 'save' ? `<button disabled style="${BTNP}opacity:.9;cursor:wait;">⏳ <span data-timer>0:00</span> saving…</button>` : `<button ${S.busy ? 'disabled' : ''} data-act="save" style="${BTNP}">💾 Save spec</button>`}
+            ${wb('pstaged', BTN, '👁 Preview staged')}
+            <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert all</button>
+            ${S.work && S.work.act === 'save' ? `<button disabled style="${BTNP}opacity:.9;cursor:wait;">⏳ <span data-timer>0:00</span> saving…</button>` : `<button ${S.busy ? 'disabled' : ''} data-act="save" style="${BTNP}">💾 Save all</button>`}
             ${S.slug ? `<button ${dis} data-act="publish" title="Put the SAVED spec's palette + fonts on the live hub" style="${BTN}">⇪ Publish to hub</button>` : ''}</div>`;
     }
 
@@ -419,6 +486,7 @@
       const t = ev.target;
       if (t.dataset.in === 'aspect') S.aspect = t.value;
       if (t.dataset.act === 'photo') { const f = t.files && t.files[0]; t.value = ''; uploadPhoto(f); }
+      if (t.dataset.act === 'gSource' && t.value) { const v = t.value; t.value = ''; gSource(t.dataset.sec, v); }
       if (t.dataset.in === 'kw' || t.dataset.in === 'override') saveInputs();
     });
     root.addEventListener('keydown', ev => { const t = ev.target; if (t.dataset && t.dataset.in === 'fedit') { if (ev.key === 'Enter') editField(t.dataset.k, t.value); if (ev.key === 'Escape') { S.edit = null; render(); } } });
@@ -442,6 +510,10 @@
       else if (a === 'altUse') alt(k, true);
       else if (a === 'altNo') alt(k, false);
       else if (a === 'save') save();
+      else if (a === 'gEdit') gEdit(b.dataset.sec);
+      else if (a === 'gRevert') gRevert(b.dataset.keys.split(','));
+      else if (a === 'gSave') gSave(b.dataset.keys.split(','));
+      else if (a === 'pstaged') previewStaged();
       else if (a === 'revert') revert();
       else if (a === 'publish') publish();
       else if (a === 'preview') { S.preview = !S.preview; render(); }

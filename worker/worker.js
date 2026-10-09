@@ -48359,6 +48359,22 @@ async function handleDesignSpec(body, env, ctx) {
   const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, ...extra });
 
   if (op === "get") return out();
+  // ── group / field scoping (2026-10-09): body.keys limits revert, save and the source passes to those fields ──
+  const scoped = Array.isArray(body.keys) && body.keys.length ? new Set(body.keys.map(String).filter(k => DS_KEYS.has(k))) : null;
+  if (scoped && op === "revert") {
+    for (const k of scoped) { const sv = saved && saved.spec && saved.spec[k]; if (sv) staged[k] = JSON.parse(JSON.stringify(sv)); else delete staged[k]; }
+    await put(K.stage, staged); return out({ reverted: [...scoped] });
+  }
+  if (scoped && ["build", "text", "grok", "chatReply"].includes(op)) {
+    const before = JSON.parse(JSON.stringify(staged));
+    const r = await handleDesignSpec({ ...body, keys: null }, env, ctx);
+    if (!r || r.error) return r;
+    const after = r.staged || {}, fixed = before;
+    for (const k of scoped) { if (after[k]) fixed[k] = after[k]; else delete fixed[k]; }
+    await put(K.stage, fixed);
+    const inScope = a => (a || []).filter(k => scoped.has(k));
+    return { ...r, staged: fixed, applied: inScope(r.applied), suggested: inScope(r.suggested), job: r.job ? { ...r.job, applied: inScope(r.job.applied), suggested: inScope(r.job.suggested) } : r.job, scoped: [...scoped] };
+  }
   if (op === "inputs") {   // operator-edited inputs: keywords / override text
     if (body.keywords != null) inputs.keywords = String(body.keywords).slice(0, 2000);
     if (body.override != null) inputs.override = String(body.override).slice(0, 3000);
@@ -48392,9 +48408,13 @@ async function handleDesignSpec(body, env, ctx) {
   }
   if (op === "revert") { staged = saved ? JSON.parse(JSON.stringify(saved.spec || {})) : {}; await put(K.stage, staged); return out(); }
   if (op === "save") {
-    const clean = {}; for (const [k, f] of Object.entries(staged)) if (DS_KEYS.has(k) && f && f.v) clean[k] = { v: f.v, why: f.why || "", src: f.src || "manual" };
+    // scoped save = the saved spec with ONLY these fields replaced by their staged values; the rest stay staged, unsaved
+    const src = scoped ? Object.assign(JSON.parse(JSON.stringify((saved && saved.spec) || {})), Object.fromEntries([...scoped].map(k => [k, staged[k] || null]))) : staged;
+    const clean = {}; for (const [k, f] of Object.entries(src)) if (DS_KEYS.has(k) && f && f.v) clean[k] = { v: f.v, why: f.why || "", src: f.src || "manual" };
     const rec = { spec: clean, at: new Date().toISOString(), prev: saved ? { spec: saved.spec, at: saved.at } : null };
-    await put(K.saved, rec); staged = clean; await put(K.stage, staged);
+    await put(K.saved, rec);
+    if (!scoped) staged = clean; else for (const k of scoped) { if (clean[k]) staged[k] = JSON.parse(JSON.stringify(clean[k])); else delete staged[k]; }
+    await put(K.stage, staged);
     // mirror onto the Research record: every field as text (all image engines read Image Spec) + the legacy fields
     const text = `# Design spec (field → value — why). Saved ${rec.at.slice(0, 10)}.\n\n${dsSpecText(clean, true)}`;
     const palette = dsPalette(clean), fonts = dsFonts(clean), dir = dsDirection(clean), wrote = [];
