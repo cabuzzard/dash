@@ -48247,13 +48247,13 @@ function dsSpecText(spec, onlyFilled) {
 function dsInputsBlock(inp, fallbackKeywords) {
   inp = inp || {};
   const kw = String(inp.keywords || fallbackKeywords || "").trim(), r = inp.ranked || {}, ph = inp.photo || {};
-  const out = [`ESTABLISHED INPUTS — in order. A later input wins over an earlier one where they conflict, EXCEPT the additive ones (Grok, ChatGPT), which only add what is missing.`];
+  const out = [`ESTABLISHED INPUTS (the sources) — in order. A later input wins over an earlier one where they conflict.`];
   out.push(`1. KEYWORDS (what the audience searches — decides intent, audience, and what imagery belongs): ${kw || "(none)"}`
     + (r.look ? `\n   What the page-one sites for them look like: ${r.look}` : "") + ((r.sites || []).length ? `\n   Ranked sites: ${r.sites.join(" | ")}` : ""));
   out.push(`2. SEED PHOTO (the style seed — decides medium, palette, line, character style, mood): ${ph.url ? (ph.read ? ph.read : "attached; not described yet") : "(none uploaded)"}`);
   out.push(`3. TEXT OVERRIDE (the operator's own words — beats 1 and 2 on anything it mentions): ${String(inp.override || "").trim() || "(none)"}`);
-  if (inp.grok && inp.grok.notes) out.push(`4. GROK SEARCH (additive): ${String(inp.grok.notes).slice(0, 1500)}`);
-  if (inp.chatgpt && inp.chatgpt.at) out.push(`5. CHATGPT (additive): its values are already merged into the spec.`);
+  if (inp.grok && inp.grok.notes) out.push(`4. GROK SEARCH notes (web + X): ${String(inp.grok.notes).slice(0, 1500)}`);
+  if (inp.chatgpt && inp.chatgpt.at) out.push(`5. An earlier ChatGPT / Grok review round is already in the current values.`);
   return out.join("\n");
 }
 function dsClean(fields, defaultSrc, allowSrc) {
@@ -48332,8 +48332,8 @@ Rules:
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
 - Image fields describe images that look like the seed photo, so every image in the project feels like one set.
 
-FIELDS — key — what it controls (format): Claude's current value. Return every key with your value:
-${DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h}): ${(spec[k] && spec[k].v) || "(empty)"}`).join("\n")).join("\n")).join("\n\n")}
+FIELDS — key — what it controls (format): current value [which source set it]. Fill EVERY field with your value and return every key:
+${DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h}): ${(spec[k] && spec[k].v) ? `${spec[k].v}  [source: ${spec[k].src || "?"}]` : "(empty)"}`).join("\n")).join("\n")).join("\n\n")}
 
 Reply with ONE fenced \`\`\`json block and nothing else:
 {"fields": {"color.bg": {"v": "#FBFAF7", "why": "warm off-white like the seed card"}, "...every key above...": {"v": "…", "why": "…"}}}
