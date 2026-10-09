@@ -202,7 +202,7 @@
       startWork('chatCopy', 'Writing the ChatGPT prompt…');
       try { const r = await ds('chatPrompt'); endWork();
         await navigator.clipboard.writeText(r.prompt);
-        say('Prompt copied — it carries every field Claude built. Paste it into ChatGPT or Grok (attach the seed photo), then paste the reply below and 📥 Paste back.', 'ok'); }
+        say('Prompt copied — every field Claude built + the image links. Paste it into ChatGPT or Grok, drag the thumbnails under ③ in as attachments, then paste the reply below and 📥 Paste back.', 'ok'); }
       catch (err) { endWork(); say('Could not copy the prompt: ' + err.message, 'bad'); }
     }
     async function mergeChat() {
@@ -313,7 +313,9 @@
             <div style="flex:1;"><label style="${BTN}display:inline-block;">${S.work && S.work.act === 'photo' ? '⏳ uploading…' : ph.url ? '⟳ Replace photo' : '⬆ Upload seed photo'}<input type="file" accept="image/*" data-act="photo" style="display:none;"></label>
             ${ph.read ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;white-space:pre-wrap;">${e(ph.read)}</div>` : ''}</div></div>`)
         + row('③', 'ChatGPT / Grok review — they rewrite every field', ok.gpt, 'merged ' + String((inp.chatgpt || {}).at || '').slice(0, 10), 'optional',
-          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy prompt (everything Claude built)')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">paste into ChatGPT or Grok (attach the seed photo), then paste its reply here</span></div>
+          `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;">${wb('chatCopy', BTN, '📋 Copy prompt (everything Claude built)')}<span style="font-size:10.5px;color:${C.ink3};align-self:center;">paste into ChatGPT or Grok, drag in the images below, then paste its reply here</span></div>
+          ${(() => { const ims = [ph.url ? ['seed photo', ph.url] : null, ...Object.entries(S.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => [k.replace(/_/g, ' '), r.url])].filter(Boolean);
+            return ims.length ? `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px;">${ims.map(([l, u]) => `<a href="${e(u)}" target="_blank" rel="noopener" title="drag into ChatGPT / Grok" style="text-align:center;font-size:9.5px;color:${C.ink3};text-decoration:none;"><img src="${e(u)}" draggable="true" style="height:56px;border-radius:5px;border:1px solid ${C.line};display:block;">${e(l)}</a>`).join('')}</div>` : ''; })()}
           <textarea data-in="gpt" rows="3" placeholder="Paste the ChatGPT or Grok reply (the JSON block is found automatically)…" style="${TA}">${e(S.gptReply)}</textarea>
           <div style="margin-top:6px;">${wb('chatMerge', BTN, '📥 Paste back → stage + preview')}</div>`)
         + row('④', 'Text override — your words win', ok.ovr, 'override saved', 'optional',

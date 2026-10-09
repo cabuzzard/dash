@@ -48314,7 +48314,10 @@ function dsParseJson(raw) {
 function dsChatPrompt(name, inp, spec, facts) {
   return `You are the lead web + brand designer for "${name}", reviewing a visual system another designer (Claude) built for the whole project — the website, its hero images, social posts and thumbnails — as a FIELD → VALUE spec. Give YOUR version of it.
 
-I have attached the SEED PHOTO (if it isn't attached, ask me for it before you answer). It is the style seed: match its medium, line work, palette and character style.
+I have attached these images (if any is missing, open its URL; if you can't, ask me for it before you answer):
+${[inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
+   ...Object.entries(inp.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => `- current ${k.replace(/_/g, " ")} image, rendered from Claude's spec — judge it and fix the fields behind it: ${r.url}`),
+   inp.page && inp.page.url ? `- the current mockup page built from Claude's spec (open it): ${inp.page.url}` : ""].filter(Boolean).join("\n") || "- (no images uploaded yet — derive the look from the keywords and research)"}
 
 ${dsInputsBlock(inp)}
 
