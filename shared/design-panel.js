@@ -63,25 +63,29 @@
       call('getApprovedPlate').then(r => { S.plate = r.plate || null; render(); }).catch(() => {});
     }
 
-    // ── engines (background jobs; poll until done) ──
+    // ── engines (run inside the request, 1-3 min; a pass started in another tab is polled) ──
     const LABEL = { build: 'Build from keywords + seed photo', text: 'Text override', grok: 'Grok search' };
+    function report(j) {
+      j = j || {};
+      if (j.status === 'error') return say(`${LABEL[j.op] || j.op} failed: ${j.error}`, 'bad');
+      S.open.spec_web = S.open.spec_image = S.open.spec_asset = true;
+      say(`${LABEL[j.op] || j.op}: ${(j.applied || []).length} fields set${(j.suggested || []).length ? `, ${j.suggested.length} suggestions to review (✓ use / ✕)` : ''}. Review, then 💾 Save spec.`, 'ok');
+    }
     async function poll() {
-      S.busy = (LABEL[S.job.op] || S.job.op) + ' is running — filling the fields (1-3 min)…'; render();
-      for (let i = 0; i < 90; i++) {
+      S.busy = (LABEL[S.job.op] || S.job.op) + ' is running (started elsewhere) — waiting for it…'; render();
+      for (let i = 0; i < 75; i++) {
         await new Promise(r => setTimeout(r, 4000));
         let r; try { r = await ds('get'); } catch (err) { continue; }
         take(r);
         if (!S.job || S.job.status !== 'running') break;
       }
       S.busy = '';
-      const j = S.job || {};
-      if (j.status === 'error') return say(`${LABEL[j.op] || j.op} failed: ${j.error}`, 'bad');
-      if (j.status === 'running') return say('Still running — reopen the panel in a minute to see it.', 'bad');
-      S.open.spec_web = S.open.spec_image = S.open.spec_asset = true;
-      say(`${LABEL[j.op] || j.op}: ${(j.applied || []).length} fields set${(j.suggested || []).length ? `, ${j.suggested.length} suggestions to review (✓ use / ✕)` : ''}. Review, then 💾 Save spec.`, 'ok');
+      if (S.job && S.job.status === 'running') return say('That pass looks stuck — run it again.', 'bad');
+      report(S.job);
     }
     async function run(op, extra) {
-      try { const r = await ds(op, extra); take(r); if (r.job && r.job.status === 'running') await poll(); }
+      S.busy = (LABEL[op] || op) + ' — filling the fields (1-3 min, keep this tab open)…'; render();
+      try { const r = await ds(op, extra); take(r); S.busy = ''; report(r.job || { op, status: 'done', applied: r.applied, suggested: r.suggested }); }
       catch (err) { S.busy = ''; say(err.message, 'bad'); }
     }
     async function saveInputs() { try { take(await ds('inputs', { keywords: S.kw, override: S.override })); } catch (err) { say('Could not save the inputs: ' + err.message, 'bad'); } }

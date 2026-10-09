@@ -48464,16 +48464,15 @@ Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", 
   }
   return { error: "unknown op " + op };
   };
-  // build / text / grok take 1-3 minutes — run them in the background and let the panel poll op:"get" for the job.
+  // build / text / grok take 1-3 minutes. They run INSIDE this request (ctx.waitUntil only survives ~30s after
+  // the response, too short for them); the job record lets a second tab see a pass is in flight.
   if (["build", "text", "grok"].includes(op)) {
-    if (!ctx || body.sync) return engine();
-    if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 6 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
-    const j0 = { op, status: "running", at: new Date().toISOString() };
-    await put(K.job, j0);
-    ctx.waitUntil(engine()
-      .then(r => put(K.job, { op, status: r && r.error ? "error" : "done", error: (r && r.error) || undefined, applied: (r && r.applied) || [], suggested: (r && r.suggested) || [], at: new Date().toISOString() }))
-      .catch(e => put(K.job, { op, status: "error", error: e.message, at: new Date().toISOString() })));
-    return { ...out(), job: j0 };
+    if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 5 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
+    await put(K.job, { op, status: "running", at: new Date().toISOString() });
+    let r; try { r = await engine(); } catch (e) { r = { error: e.message }; }
+    const done = { op, status: r && r.error ? "error" : "done", error: (r && r.error) || undefined, applied: (r && r.applied) || [], suggested: (r && r.suggested) || [], at: new Date().toISOString() };
+    await put(K.job, done);
+    return r && r.error ? r : { ...r, job: done };
   }
   return engine();
 }
