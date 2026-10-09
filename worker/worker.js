@@ -47284,6 +47284,7 @@ async function kwSendKeywords(env, body) {
       Campaign: { relation: [{ id: cd.id }] }, Status: { select: { name: "Draft" } },
       Keywords: { rich_text: await kwNotionRichText(byVol.join(", ")) } } }) });
     const rd = await rr.json();
+    if (body.hub) await fetch(`https://api.notion.com/v1/pages/${cd.id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { Keywords: { rich_text: await kwNotionRichText(byVol.join(", ")) } } }) }).catch(() => {});
     return json({ ok: true, campaignId: norm(cd.id), name, researchId: rr.ok ? norm(rd.id) : null,
       warning: rr.ok ? null : "Campaign created, but the Research record failed: " + (rd.message || rr.status) });
   }
