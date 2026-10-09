@@ -49,7 +49,7 @@
     const palette = spec => { const p = {}; for (const [t, k] of TOKEN_MAP) { const h = hexOf((spec[k] || {}).v); if (!h) return null; p[t] = h; } return p; };
     const fonts = spec => { const d = famOf((spec['type.display_font'] || {}).v), b = famOf((spec['type.body_font'] || {}).v), m = famOf((spec['type.label_font'] || {}).v);
       return d && b ? { display: d, body: b, mono: m || b } : null; };
-    const pushPreview = () => { if (cfg.preview) try { cfg.preview(S.preview ? { palette: palette(S.staged), fonts: fonts(S.staged) } : null); } catch (err) {} };
+    const pushPreview = () => { if (cfg.preview) try { cfg.preview(S.repaintData || (S.preview ? { palette: palette(S.staged), fonts: fonts(S.staged) } : null)); } catch (err) {} };
     const diffKeys = () => { const a = S.staged || {}, b = S.saved || {}; const ks = new Set([...Object.keys(a), ...Object.keys(b)]);
       return [...ks].filter(k => ((a[k] || {}).v || '') !== ((b[k] || {}).v || '')); };
 
@@ -505,7 +505,7 @@
         const [r] = await Promise.all([ds('repaint'), Promise.all(todo.map(id => renderAsset(id).catch(err => { noImg.push(id + ' (render failed: ' + err.message + ')'); })))]);
         if (todo.length) await persistRenders();
         S.repaintSig = sig(S.staged); const s = endWork();
-        cfg.preview({ palette: palette(S.staged), fonts: fonts(S.staged), css: r.css, images: imageUrls() });
+        S.repaintData = { palette: palette(S.staged), fonts: fonts(S.staged), css: r.css, images: imageUrls() }; cfg.preview(S.repaintData);
         if (!quiet) say(`Staged repaint on the right in ${s}s${r.cached ? ' (no style changes since the last one)' : ''} — the hub's own page, restyled${noImg.length ? ` · no image yet (placeholder): ${noImg.join(', ')}` : ''}${oldImg.length ? ` · ${oldImg.join(' + ')} image is from older fields — re-render it in 🖼 Asset images if you want it updated` : ''}. 💾 Save, then ⇪ Publish to hub puts this exact repaint live.`, 'ok');
       } catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); throw err; }
     }
@@ -520,7 +520,7 @@
         await Promise.all(ids.map(id => renderAsset(id).catch(err => { failed.push(`${id}: ${err.message}`); })));
         await persistRenders(); const s = endWork();
         if (S.slug && cfg.repaint && cfg.preview) { const d = { palette: palette(S.staged), fonts: fonts(S.staged), images: imageUrls() };
-          try { const r = await ds('repaint'); d.css = r.css; } catch (err) {} cfg.preview(d); }
+          try { const r = await ds('repaint'); d.css = r.css; } catch (err) {} S.repaintData = d; cfg.preview(d); }
         say(`Images generated in ${s}s${failed.length ? ` — failed: ${failed.join('; ')}` : ''} — in the preview on the right; edit any one in 🖼 Asset images. ✓ Set on hub puts one live.`, failed.length ? 'bad' : 'ok');
       } catch (err) { endWork(); say('Image generation failed: ' + err.message, 'bad'); }
     }
@@ -686,7 +686,7 @@
       const p2 = (S.inputs || {}).page; if (!p2 || !p2.url) throw new Error('the page build failed — see the Design panel');
       return p2.url;
     }
-    return { reload: load, state: S, stagedPageUrl, previewStaged: () => previewStaged(), genImages };
+    return { reload: load, state: S, stagedPageUrl, previewStaged: () => previewStaged(), genImages, clearRepaint: () => { S.repaintData = null; } };
   }
   window.DesignPanel = { mount };
 })();

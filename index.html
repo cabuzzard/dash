@@ -4202,7 +4202,7 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=2026100914075"></script>
+<script src="shared/design-panel.js?v=2026100914096"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -14428,7 +14428,7 @@ async function hubRailMode(slug, mode) {
     if (!api || !api.previewStaged) { hubSecToggle('design', true); renderHubsTab(); alert('The Design panel is loading (it opens with the Design section) — press Preview staged again in a few seconds.'); return; }
     const b = document.getElementById('hpiStaged-' + slug); if (b) { b.disabled = true; b.textContent = '⏳ repainting…'; }
     try { await api.previewStaged(); } catch (e) { if (b) { b.disabled = false; b.textContent = 'Preview staged'; } return; }
-  } else { _hubDesignPreview[slug] = null; }
+  } else { _hubDesignPreview[slug] = null; const api = _hubDesignPanels[slug] && _hubDesignPanels[slug].api; if (api && api.clearRepaint) api.clearRepaint(); }
   renderHubsTab(); hubPreviewPaint(slug);
 }
 // 👁 paint a staged palette + fonts onto the live hub preview (right rail) — CSS variables only, nothing saved.
@@ -14938,7 +14938,7 @@ function hubFlowPreflight(slug) {
 // ⇪ Publish to hub → the rail flips to Live, waits for the hub to redeploy (polls the live page for the new accent
 // color, up to ~3 min), then reloads the frame with a cache-buster — so it never shows the old build.
 async function hubRailAfterPush(slug, r) {
-  delete _hubRailMock[slug]; _hubDesignPreview[slug] = null; renderHubsTab();
+  delete _hubRailMock[slug]; _hubDesignPreview[slug] = null; { const api = _hubDesignPanels[slug] && _hubDesignPanels[slug].api; if (api && api.clearRepaint) api.clearRepaint(); } renderHubsTab();
   const url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/', want = String(((r && r.palette) || {}).accent || '').toLowerCase();
   const lbl = () => document.getElementById('hpiWait-' + slug);
   const show = t => { let el = lbl(); const f = document.getElementById('hpiFrame-' + slug); if (!el && f && f.parentElement) { el = document.createElement('div'); el.id = 'hpiWait-' + slug; el.style.cssText = 'font-size:11px;color:var(--text3);padding:4px 8px;'; f.parentElement.parentElement.insertBefore(el, f.parentElement); } if (el) el.textContent = t; };
