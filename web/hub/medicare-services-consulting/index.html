@@ -478,7 +478,7 @@ async function renderHubJournal() {
   // until something actually resolves. See renderHubArticles for the
   // other half (blog posts + any QA method that isn't QA – Sales).
   const sec = document.getElementById('journal');
-  const s = HUB.journal;
+  const s = HUB.journal; if (!s) return;   // this hub has no data for the section → it stays hidden, no crash
   $("journalLabel").textContent = s.label;
   $("journalTitle").textContent = s.title;
   $("journalNote").textContent = s.note || "";
@@ -513,7 +513,7 @@ async function renderHubArticles() {
   // renderHubJournal (the "news" half); same no-placeholder, hidden-
   // until-populated behavior.
   const sec = document.getElementById('articles');
-  const s = HUB.articles;
+  const s = HUB.articles; if (!s) return;   // this hub has no data for the section → it stays hidden, no crash
   $("articlesLabel").textContent = s.label;
   $("articlesTitle").textContent = s.title;
   $("articlesNote").textContent = s.note || "";
@@ -566,7 +566,7 @@ async function renderHubProjectExperience() {
   // hides the WHOLE section (no "coming soon" placeholder, per operator
   // direction) — the section starts display:none in the markup and only
   // ever gets revealed once real entries exist.
-  const s = HUB.projectExperience;
+  const s = HUB.projectExperience; if (!s) return;   // this hub has no data for the section → it stays hidden, no crash
   const section = $("projectExperience");
   $("projectExperienceLabel").textContent = s.label;
   $("projectExperienceTitle").textContent = s.title;
@@ -691,7 +691,7 @@ async function renderHubProducts() {
   // (getHubProducts), each a card linking to its live page. No
   // placeholder — the section stays hidden until something resolves.
   const sec = document.getElementById('trips');
-  const s = HUB.trips;
+  const s = HUB.trips; if (!s) return;   // this hub has no data for the section → it stays hidden, no crash
   $("tripsLabel").textContent = s.label;
   $("tripsTitle").textContent = s.title;
   $("tripsNote").textContent = s.note || "";
