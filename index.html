@@ -14459,7 +14459,10 @@ function hubDesignAttach(slug) {
   if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
     onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; hubRailAfterPush(slug, r); },
     repaint: true,   // hubs: Preview staged repaints the EXISTING page (css + images) instead of building a new one
-    preview: d => { _hubDesignPreview[slug] = d; if (d && d.css && _hubRailMock[slug]) { delete _hubRailMock[slug]; } renderHubsTab(); hubPreviewPaint(slug); },
+    preview: d => {   // the panel reports on EVERY draw — re-render the card only when the staged repaint turns on/off (else it loops)
+      const had = !!(_hubDesignPreview[slug] && _hubDesignPreview[slug].css), has = !!(d && d.css);
+      _hubDesignPreview[slug] = d; if (has && _hubRailMock[slug]) delete _hubRailMock[slug];
+      if (had !== has) renderHubsTab(); hubPreviewPaint(slug); },
     onBuilt: url => { if (url) { _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); renderHubsTab(); } },
     beforeBuild: () => hubFlowPreflight(slug), onSaved: () => { _hubBuildFetched[slug] = false; } }) }; }
   host.appendChild(p.el);
