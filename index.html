@@ -14169,6 +14169,25 @@ async function hubSitesExtraLoad() {
     if (added) renderHubsTab();
   } catch (e) { setTimeout(() => { _hubExtraLoaded = false; }, 30000); }   // one retry window, never a retry per draw
 }
+// ── Bulk job banner (top of dash): long server-side runs report progress in KV; shown while running + once when done ──
+async function bulkJobsPoll() {
+  if (!SESSION_TOKEN) return setTimeout(bulkJobsPoll, 15000);
+  let pi = null; try { pi = (await call('getBulkJobs')).prodideas; } catch (e) {}
+  let bar = document.getElementById('bulkJobBar');
+  const seen = (() => { try { return localStorage.getItem('bulkSeen:prodideas') || ''; } catch (e) { return ''; } })();
+  const show = pi && (pi.running || (pi.finishedAt && pi.finishedAt !== seen && Date.now() - Date.parse(pi.finishedAt) < 6 * 3600e3));
+  if (!show) { if (bar) bar.remove(); return setTimeout(bulkJobsPoll, 30000); }
+  if (!bar) { bar = document.createElement('div'); bar.id = 'bulkJobBar'; document.body.appendChild(bar); }
+  bar.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:10001;padding:9px 14px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:center;flex-wrap:wrap;background:var(--surface2);color:var(--text);border-bottom:2px solid ${pi.running ? '#e67e22' : '#4ade80'};`;
+  if (pi.running) bar.textContent = `⏳ Product ideas for every hub — ${pi.done}/${pi.total} done${pi.current ? ' · now: ' + pi.current : ''}`;
+  else {
+    const ok = (pi.results || []).filter(r => r.ideas).length, bad = (pi.results || []).filter(r => !r.ideas);
+    bar.innerHTML = `✓ Product ideas staged for ${ok} of ${pi.total} hubs — each hub's Keywords › Product Ideas (Main Stack)${bad.length ? ` · skipped: ${bad.map(r => esc(r.name) + ' (' + esc(r.skip || r.error || '?') + ')').join(', ')}` : ''}
+      <button onclick="try{localStorage.setItem('bulkSeen:prodideas','${pi.finishedAt}')}catch(e){};this.parentElement.remove()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text);cursor:pointer;">OK</button>`;
+  }
+  setTimeout(bulkJobsPoll, pi.running ? 8000 : 60000);
+}
+setTimeout(bulkJobsPoll, 2500);
 // registry hubs merge as soon as the page is signed in — before Content Hubs is opened, so no extra re-render
 setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 function renderHubsTab() {
