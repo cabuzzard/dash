@@ -6232,9 +6232,9 @@ async function kwHubReadyWatch(slug, name) {
   for (let i = 0; i < 36; i++) {
     await new Promise(r => setTimeout(r, 10000));
     try {
-      const [d, h] = await Promise.all([fetch('https://cabuzzard.github.io/dash/?x=' + Date.now(), { cache: 'no-store' }).then(r => r.text()),
+      const [d, h] = await Promise.all([call('getHubSitesExtra').then(r => r.hubs || []).catch(() => []),
         fetch('https://cabuzzard.github.io/dash/web/hub/' + slug + '/?x=' + Date.now(), { cache: 'no-store' }).then(r => r.ok)]);
-      if (h && d.includes('slug: "' + slug + '"')) {
+      if (h && (d.some(x => x.slug === slug) || HUB_SITES.some(x => x.slug === slug))) {
         bar.style.borderBottomColor = '#4ade80';
         bar.innerHTML = `✓ The "${esc(name)}" hub is ready. <button onclick="location.reload()" style="font-size:12px;font-weight:700;padding:4px 14px;border:1px solid #4ade80;border-radius:5px;background:#4ade80;color:#06210f;cursor:pointer;">↻ Reload to open it</button> <button onclick="this.parentElement.remove()" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">later</button>`;
         return;
@@ -14159,7 +14159,18 @@ function copyHubImageSpec(slug, btn) {
   else { ta.select(); document.execCommand('copy'); flash(); }
 }
 
+// hubs registered only in KV (new scaffolds) → merged into HUB_SITES once per page load
+let _hubExtraLoaded = false;
+async function hubSitesExtraLoad() {
+  if (_hubExtraLoaded || !SESSION_TOKEN) return; _hubExtraLoaded = true;
+  try { const r = await call('getHubSitesExtra'); let added = 0;
+    for (const e of (r.hubs || [])) if (!HUB_SITES.some(h => h.slug === e.slug)) { HUB_SITES.push({ name: e.name || e.slug, slug: e.slug, campaignId: String(e.campaignId).replace(/-/g, ''), campaign: e.name || e.slug,
+      microsite: null, domain: e.domain || null, contact: null, products: 0, blogPosts: 0, routing: 'pending', routingNote: 'Scaffolded from dash — registered in KV hub:sites:extra.', domainOptions: [] }); added++; }
+    if (added) renderHubsTab();
+  } catch (e) { _hubExtraLoaded = false; }
+}
 function renderHubsTab() {
+  hubSitesExtraLoad();
   const el = document.getElementById('hubsTabContent');
   if (!el) return;
   fetchHubSpec();

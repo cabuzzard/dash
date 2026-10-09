@@ -578,6 +578,16 @@ const SINGLE_POST_CONTENT_TYPES = ["Hook", "Pain Point", "Benefit", "Information
 // box positions/sizes vary per template, resolved at port time). Budgets are
 // read off the reference template and enforced in the copy prompt.
 const SINGLE_POST_FIELDS = ["Headline Primary", "Headline Accent", "Body"];
+// The scaffold can't edit worker.js / index.html any more (both are past the GitHub Contents API's 1 MB read limit), so
+// a new hub is registered ONLY in KV hub:sites:extra. Merge it into HUB_SITES once a minute per isolate, so every
+// HUB_SITES lookup (hub slug for a campaign, feeds, design repaint, crons…) sees new hubs without a code edit.
+let _hubExtraAt = 0;
+async function hubSitesMerge(env) {
+  if (Date.now() - _hubExtraAt < 60000) return; _hubExtraAt = Date.now();
+  try { const extra = (await env.TRADES.get("hub:sites:extra", "json")) || [];
+    for (const e of extra) if (e && e.slug && e.campaignId && !HUB_SITES.some(h => h.slug === e.slug)) HUB_SITES.push({ slug: e.slug, name: e.name || e.slug, campaignId: e.campaignId, domain: e.domain || null });
+  } catch (e) {}
+}
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -10117,6 +10127,7 @@ async function productDirectStep(env, job) {
 
 export default {
   async fetch(request, env, ctx) {
+    await hubSitesMerge(env);
     // Load secrets from environment on every request (.trim() guards against
     // trailing newlines that piped input (e.g. PowerShell) can introduce)
     NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -26129,6 +26140,10 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // ── deleteAsset ──
       // Archives an Asset record (Notion soft-delete) — used by the ✕ on
       // asset rows under publish titles.
+      if (body.action === "getHubSitesExtra") {   // hubs registered only in KV (scaffolded after the files outgrew the Contents API)
+        let extra = []; try { extra = (await env.TRADES.get("hub:sites:extra", "json")) || []; } catch (e) {}
+        return json({ hubs: extra.filter(e => e && e.slug && e.campaignId) });
+      }
       if (body.action === "deleteAsset") {
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
@@ -46456,6 +46471,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
   },
 
   async scheduled(event, env, ctx) {
+    await hubSitesMerge(env);
     if (event.cron === "*/5 12-16 * * MON-FRI") {
       // MON-FRI, not 1-5: Cloudflare numbers weekdays 1=Sunday, so "1-5" ran
       // Sun-Thu and silently skipped every Friday session.
