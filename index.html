@@ -1788,6 +1788,15 @@
       </div>
       <div id="tbBody" style="padding:10px 12px;"></div>
     </div>
+    <!-- SENTIMENT_REBOUND_V1: oversold screen + X sentiment pass (worker sentimentRebound; runs itself ~10:30 ET) -->
+    <div id="srSection" style="margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-sm);">
+      <div onclick="const b=document.getElementById('srBody');const o=b.style.display==='none';b.style.display=o?'':'none';if(o)srLoad()" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);cursor:pointer;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#63b3ed;">Oversold + X sentiment</span>
+        <span id="srStatus" style="font-size:10.5px;color:var(--text3);">RSI ≤ 25 · stretched · near 20-day low → Grok reads X → rebound picks become paper trades</span>
+        <button onclick="event.stopPropagation();srRun(this)" style="margin-left:auto;font-size:10px;font-weight:700;padding:3px 9px;border:1px solid #63b3ed;border-radius:4px;background:transparent;color:#63b3ed;cursor:pointer;" title="Run the scan now (uses Grok X search — metered on the Grok spend cap)">▶ Run now</button>
+      </div>
+      <div id="srBody" style="display:none;padding:10px 12px;font-size:12px;"></div>
+    </div>
 
     <!-- Strategies Section — RSI/Bollinger mean-reversion candidates, discovered
          by scanning Yahoo's top-100 most-active tickers merged with the saved
@@ -9191,7 +9200,7 @@ function spendPaint() {
   const b = 'font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;cursor:pointer;';
   chip.innerHTML = _spend.filter(p => p.calls || p.provider === 'perplexity').map(p => {
     const r = p.cap ? p.spent / p.cap : 0, col = r >= 1 ? '#f87171' : r >= 0.8 ? '#f6ad55' : 'var(--text2)';
-    return `<button style="${b}color:${col};" title="${p.provider} research spend this month (${p.month}) — ${p.calls} calls${p.estimated ? `, ${p.estimated} estimated` : ''}. Click to change the monthly cap." onclick="spendEdit('${p.provider}')">🔎 ${p.provider === 'perplexity' ? 'Perplexity' : 'Gemini'} $${p.spent.toFixed(2)} / $${p.cap}</button>`;
+    return `<button style="${b}color:${col};" title="${p.provider} spend this month (${p.month}) — ${p.calls} calls${p.estimated ? `, ${p.estimated} estimated` : ''}. Click to change the monthly cap." onclick="spendEdit('${p.provider}')">🔎 ${({ perplexity: 'Perplexity', gemini: 'Gemini', grok: 'Grok' })[p.provider] || p.provider} $${p.spent.toFixed(2)} / $${p.cap}</button>`;
   }).join('');
   const over = _spend.filter(p => p.cap && p.spent >= p.cap * 0.8);
   if (over.length) {
@@ -20337,6 +20346,28 @@ async function tbSet(btn) {
   const marks = {}; (tradesCache || []).forEach(t => { if (typeof t.contract_pct === 'number') marks[t.id] = t.contract_pct; });
   try { TB = (await call('tradeBaseline', { op: 'set', marks })).baseline; } catch (e) { alert('Could not save: ' + e.message); }
   btn.disabled = false; tbRender();
+}
+
+// ── OVERSOLD + X SENTIMENT (SENTIMENT_REBOUND_V1) ──
+async function srLoad() { const b = document.getElementById('srBody'); b.innerHTML = 'Loading…'; try { const r = await call('sentimentRebound', { op: 'last' }); srPaint(r.last); } catch (e) { b.textContent = 'Load failed: ' + e.message; } }
+async function srRun(btn) {
+  const b = document.getElementById('srBody'); b.style.display = ''; btn.disabled = true; btn.textContent = '⏳ Working… (1-3 min)';
+  try { const r = await call('sentimentRebound', { op: 'run' }); if (r.error) throw new Error(r.error); srPaint(r); if (r.picks && r.picks.some(p => p.traded)) loadTrades(); }
+  catch (e) { b.textContent = 'Run failed: ' + e.message; }
+  btn.disabled = false; btn.textContent = '▶ Run now'; spendLoad();
+}
+function srPaint(L) {
+  const b = document.getElementById('srBody');
+  if (!L) { b.innerHTML = '<span style="color:var(--text3);">No scan yet — it runs itself on market days at ~10:30 ET, or press ▶ Run now.</span>'; return; }
+  document.getElementById('srStatus').textContent = `last scan ${new Date(L.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${L.scanned} scanned · ${L.oversold} oversold · ${(L.picks || []).filter(p => p.traded).length} traded`;
+  const vc = v => v === 'rebound' ? '#4ade80' : v === 'falling-knife' ? '#ff6b6b' : 'var(--text2)';
+  b.innerHTML = (L.picks || []).length ? `<table style="width:100%;border-collapse:collapse;"><thead><tr style="color:var(--text3);font-size:10.5px;text-align:left;"><th>Ticker</th><th>RSI</th><th>vs 20d avg</th><th>Attention</th><th>Bearish</th><th>Cause</th><th>Verdict</th><th>Score</th><th></th></tr></thead><tbody>${L.picks.map(p => { const s = p.sentiment || {};
+      return `<tr style="border-top:1px solid var(--border);vertical-align:top;"><td style="padding:4px 6px 4px 0;"><b>${esc(p.sym)}</b> $${p.price}</td><td>${p.rsi}${p.extreme ? ' 🔥' : ''}</td><td>−${p.below20}%</td>
+        <td>${esc(s.attention || '—')}${s.capitulation ? ' · capitulation' : ''}</td><td>${s.bearishBefore != null ? esc(String(s.bearishBefore)) + '%→' : ''}${s.bearishNow != null ? esc(String(s.bearishNow)) + '%' : ''}</td>
+        <td title="${esc(s.why || '')}">${esc(s.cause || (s.error ? 'error' : '—'))}<div style="color:var(--text3);font-size:11px;max-width:320px;">${esc(String(s.why || s.error || '').slice(0, 160))}</div></td>
+        <td style="color:${vc(s.verdict)};font-weight:600;">${esc(s.verdict || '—')}</td><td>${s.score ?? '—'}</td><td>${p.traded ? '<span style="color:#4ade80;">✓ traded</span>' : ''}</td></tr>`; }).join('')}</tbody></table>
+      ${(L.nearMisses || []).length ? `<div style="margin-top:6px;color:var(--text3);font-size:11px;">Also oversold (not checked): ${L.nearMisses.map(n => esc(n.sym) + ' ' + n.rsi).join(' · ')}</div>` : ''}`
+    : '<span style="color:var(--text3);">Nothing passed the oversold screen this time.</span>';
 }
 
 // ── STRATEGIES SECTION ───────────────────────────────────────────────

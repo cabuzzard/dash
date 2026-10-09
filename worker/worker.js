@@ -46370,6 +46370,13 @@ Produce all of this by calling the submit_listing tool — do not include any of
         let b = null; try { b = await env.TRADES.get("tradebaseline", "json"); } catch (e) {}
         return json({ success: true, baseline: b });
       }
+      if (body.action === "sentimentRebound") {
+        try {
+          if (body.op === "run") return json(await runSentimentRebound(env, { force: true }));
+          let last = null; try { last = await env.TRADES.get("sentrebound:last", "json"); } catch (e) {}
+          return json({ success: true, last, rules: SR });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "apiSpend") {
         try { return json(await handleApiSpend(body, env)); } catch (e) { return json({ error: e.message }, 500); }
       }
@@ -46403,6 +46410,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       ctx.waitUntil(runOrbStrategy(env).catch(e => console.error('runOrbStrategy failed:', e.message)));
       // ETF_MOMENTUM_V1 + FEAR_DIP_V1 — once per session at ~09:45 ET (self-gated).
       ctx.waitUntil(runSwingStrategies(env).catch(e => console.error('runSwingStrategies failed:', e.message)));
+      // SENTIMENT_REBOUND_V1 — oversold screen + X sentiment, once per session ~10:30 ET (self-gated)
+      // SENTIMENT_REBOUND_V1 paused 2026-10-08 (operator pivoting to pure X sentiment) — manual ▶ Run now only
       return;
     }
     if (event.cron === "*/30 * * * *") {
@@ -47602,7 +47611,7 @@ async function handleApiSpend(body, env) {
     const cap = Number(body.cap); if (!(cap >= 0 && cap <= 1000)) return { error: "cap must be 0-1000" };
     await env.TRADES.put(`spend:cap:${body.provider || "perplexity"}`, JSON.stringify(cap));
   }
-  return { success: true, providers: [await spendGet(env, "perplexity"), await spendGet(env, "gemini")] };
+  return { success: true, providers: [await spendGet(env, "perplexity"), await spendGet(env, "gemini"), await spendGet(env, "grok")] };
 }
 
 const DR_GEMINI_AGENT = "deep-research-preview-04-2026";
@@ -48066,4 +48075,112 @@ async function handleHubDummies(body, env) {
   const cleared = body.clear === false ? null : await hubSectionsClear(env, hub);
   const created = await hubDummiesCreate(env, hub, !!body.force);
   return { success: true, hub: hub.slug, cleared, ...created };
+}
+
+// ════════ SENTIMENT_REBOUND_V1 — oversold screen + X sentiment pass (2026-10-08) ════════
+// Step 1 (free): Yahoo most-active 100 + screener watchlist → daily bars → RSI(14) ≤ 25 (≤ 20 = extreme),
+//   stretched (below the lower Bollinger band or ≥ 7% under its 20-day average), within 5% of its 20-day low,
+//   price ≥ $5 and 20-day avg volume ≥ 500k. Shortlist = the most oversold 8.
+// Step 2 (paid, metered): Grok (Responses API, x_search tool) reads the last ~3 days of X posts per shortlisted
+//   ticker → attention vs usual, bearish share now vs a few days ago, capitulation signs, and WHY it fell
+//   (fundamental problem vs plain selloff) → verdict rebound / falling-knife / neutral + score.
+// Step 3: picks with verdict "rebound" and score ≥ 60 become paper trades (strategy SENTIMENT_REBOUND_V1) with a
+//   swing call from pickSwingCallContract — same tracker, same price polling as every other strategy.
+// Spend: provider "grok" on the shared monthly cap ($45 default; x_search = $5 / 1k posts fetched + tokens).
+// Runs once per session ~10:30 ET from the */5 market-hours cron; manual run from the Trades tab.
+const SR = { rsiMax: 25, rsiExtreme: 20, stretchPct: 7, nearLowPct: 5, minPrice: 5, minVol: 500000, shortlist: 8, minScore: 60, runMin: 10 * 60 + 30 };
+
+function srStats(sym, data) {
+  const res = data?.chart?.result?.[0]; const q = res?.indicators?.quote?.[0];
+  if (!q) return null;
+  const rows = (res.timestamp || []).map((t, i) => ({ c: q.close?.[i], l: q.low?.[i], v: q.volume?.[i] })).filter(r => r.c != null);
+  if (rows.length < 30) return null;
+  const closes = rows.map(r => r.c), n = closes.length, last = closes[n - 1];
+  let g = 0, l = 0; for (let i = n - 14; i < n; i++) { const d = closes[i] - closes[i - 1]; if (d >= 0) g += d; else l -= d; }
+  const rsi = l === 0 ? 100 : 100 - 100 / (1 + (g / 14) / (l / 14));
+  const w = closes.slice(n - 20), sma20 = w.reduce((s, c) => s + c, 0) / 20;
+  const sd = Math.sqrt(w.reduce((s, c) => s + (c - sma20) ** 2, 0) / 20), bbLower = sma20 - 2 * sd;
+  const low20 = Math.min(...rows.slice(n - 20).map(r => r.l ?? r.c));
+  const avgVol = rows.slice(n - 20).reduce((s, r) => s + (r.v || 0), 0) / 20;
+  const below20 = (1 - last / sma20) * 100, nearLow = (last / low20 - 1) * 100;
+  const sma200 = n >= 200 ? closes.slice(n - 200).reduce((s, c) => s + c, 0) / 200 : null;
+  return { sym, price: +last.toFixed(2), rsi: +rsi.toFixed(1), sma20: +sma20.toFixed(2), bbLower: +bbLower.toFixed(2), below20: +below20.toFixed(1),
+    nearLow: +nearLow.toFixed(1), avgVol: Math.round(avgVol), aboveSma200: sma200 ? last > sma200 : null };
+}
+
+async function srSentiment(env, s) {
+  const capMsg = await spendCheck(env, "grok"); if (capMsg) return { error: capMsg };
+  const from = new Date(Date.now() - 3 * 864e5).toISOString().slice(0, 10);
+  const prompt = `$${s.sym} is deeply oversold: RSI(14) ${s.rsi}, ${s.below20}% below its 20-day average, ${s.nearLow}% above its 20-day low, last $${s.price}.
+Search X posts about $${s.sym} from the last 3 days and judge whether this looks like a setup to get bought back up, or a falling knife.
+Report:
+- attention: mention volume vs its usual level ("spike", "elevated", "normal", "quiet")
+- bearishNow: % of recent posts that are bearish; bearishBefore: % a few days earlier (your best estimate)
+- capitulation: true if posts show giving up / forced selling / "I'm out" / bagholder despair
+- cause: "fundamental" (fraud, bankruptcy risk, guidance cut, lawsuit, dilution, failed trial…), "selloff" (sector / market / profit-taking / no real news) or "unknown", plus a one-line summary of WHY it fell
+- verdict: "rebound" (oversold on no lasting damage, fear peaking or easing), "falling-knife" (real problem or selling still accelerating) or "neutral"
+- score: 0-100 confidence in a bounce within ~2 weeks
+- posts: 2-3 short representative post quotes
+Return ONLY a fenced \`\`\`json block: {"attention","bearishNow","bearishBefore","capitulation","cause","why","verdict","score","posts":[]}`;
+  const r = await fetch("https://api.x.ai/v1/responses", { method: "POST",
+    headers: { Authorization: `Bearer ${(env.XAI_API_KEY || "").trim()}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ model: "grok-4.7", input: [{ role: "user", content: prompt }], tools: [{ type: "x_search", from_date: from }] }) });
+  const t = await r.text(); let d = null; try { d = JSON.parse(t); } catch (e) {}
+  if (!r.ok || !d) return { error: `xAI HTTP ${r.status}: ${(d?.error?.message || d?.error || t).toString().slice(0, 200)}` };
+  // cost: x_search posts/users fetched + a token estimate (grok pricing changes — the posts are the bulk)
+  const u = d.usage || {}, st = u.server_side_tool_usage_details || {};
+  const cost = (st.x_posts_fetched || 0) * 0.005 + (st.x_users_fetched || 0) * 0.01 + ((u.input_tokens || 0) * 3 + (u.output_tokens || 0) * 15) / 1e6;
+  await spendAdd(env, "grok", cost, !st.x_posts_fetched, { posts: st.x_posts_fetched, calls: st.x_search_calls, in: u.input_tokens, out: u.output_tokens }).catch(() => {});
+  const text = d.output_text || drAllText((d.output || []).filter(o => o && o.type === "message"), []).join("\n");
+  const j = drJson(text);
+  if (!j) return { error: "Grok returned no JSON", raw: String(text).slice(0, 300) };
+  return { ...j, posts_fetched: st.x_posts_fetched || 0, cost: Math.round(cost * 100) / 100 };
+}
+
+async function runSentimentRebound(env, { force = false } = {}) {
+  const et = orbNowET();
+  if (!force) {
+    if (et.isWeekend) return { ran: false, reason: "weekend" };
+    if (et.minutes < SR.runMin || et.minutes > 13 * 60) return { ran: false, reason: "outside 10:30-13:00 ET run window" };
+    if (await env.TRADES.get(`sentrebound:ran:${et.dateStr}`)) return { ran: false, reason: "already ran today" };
+  }
+  await env.TRADES.put(`sentrebound:ran:${et.dateStr}`, new Date().toISOString(), { expirationTtl: 3 * 86400 });
+  // universe = the same one the oversold scan uses
+  let mostActive = [];
+  try { const r = await fetch("https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved?scrIds=most_actives&count=100&formatted=false&lang=en-US&region=US", { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (r.ok) mostActive = ((await r.json())?.finance?.result?.[0]?.quotes || []).map(q => q.symbol).filter(Boolean); } catch (e) {}
+  let watch = []; try { watch = JSON.parse((await env.TRADES.get("screener:watchlist")) || "[]"); } catch (e) {}
+  const universe = [...new Set([...mostActive, ...watch])].slice(0, 140);
+  const stats = (await Promise.allSettled(universe.map(async s => srStats(s, await fetchChart(s, "1d", "1y"))))).map(r => r.status === "fulfilled" ? r.value : null).filter(Boolean);
+  const oversold = stats.filter(s => s.rsi <= SR.rsiMax && s.price >= SR.minPrice && s.avgVol >= SR.minVol && (s.price <= s.bbLower || s.below20 >= SR.stretchPct) && s.nearLow <= SR.nearLowPct)
+    .sort((a, b) => a.rsi - b.rsi);
+  const shortlist = oversold.slice(0, SR.shortlist);
+  // open trades → don't double up on a ticker
+  const keys = await env.TRADES.list({ prefix: "trades:" });
+  const open = new Set((await Promise.all(keys.keys.map(k => env.TRADES.get(k.name, "json")))).filter(t => t && !t.expired).map(t => t.ticker));
+  const picks = [];
+  for (const s of shortlist) {
+    const sen = await srSentiment(env, s).catch(e => ({ error: e.message }));
+    const p = { ...s, extreme: s.rsi <= SR.rsiExtreme, sentiment: sen, traded: false };
+    if (!sen.error && sen.verdict === "rebound" && Number(sen.score) >= SR.minScore && !open.has(s.sym)) {
+      try {
+        const pick = await pickSwingCallContract(s.sym);
+        if (pick) {
+          const now = new Date(), id = `${s.sym}_${now.toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}`;
+          const trade = { id, ticker: s.sym, strike: pick.strike, expiry: pick.expiry, direction: "C", strategy: "SENTIMENT_REBOUND_V1",
+            notes: `SENTIMENT REBOUND · RSI ${s.rsi}${p.extreme ? " (extreme)" : ""} · ${s.below20}% under 20d avg · ${s.nearLow}% off 20d low · X: ${sen.attention || "?"} attention, bearish ${sen.bearishBefore ?? "?"}%→${sen.bearishNow ?? "?"}%${sen.capitulation ? ", capitulation" : ""} · cause ${sen.cause || "?"}: ${String(sen.why || "").slice(0, 140)} · score ${sen.score} · swing C ~${pick.dte}d ~${pick.delta.toFixed(2)}Δ`,
+            entry_time: now.toISOString(), entry_price: s.price, price_captured: true, current_price: null, current_pct: null, max_high: null, max_high_time: null, max_low: null, max_low_time: null,
+            strike_reached: false, strike_reached_time: null, last_updated: null, expired: false, entry_contract: pick.price, contract_captured: pick.price != null,
+            current_contract: null, contract_pct: null, contract_max_high: null, contract_max_high_time: null, contract_max_low: null, contract_max_low_time: null,
+            auto_created: true, meta: { strategy_id: "SENTIMENT_REBOUND_V1", rsi: s.rsi, below20: s.below20, nearLow: s.nearLow, aboveSma200: s.aboveSma200, sentiment: sen } };
+          await env.TRADES.put(`trades:${id}`, JSON.stringify(trade)); p.traded = true; p.tradeId = id; open.add(s.sym);
+        }
+      } catch (e) { p.tradeError = e.message; }
+    }
+    picks.push(p);
+  }
+  const rec = { at: new Date().toISOString(), scanned: universe.length, oversold: oversold.length, shortlist: shortlist.length, picks,
+    nearMisses: oversold.slice(SR.shortlist, SR.shortlist + 10).map(s => ({ sym: s.sym, rsi: s.rsi, price: s.price })) };
+  await env.TRADES.put("sentrebound:last", JSON.stringify(rec));
+  return { ran: true, ...rec };
 }
