@@ -47621,7 +47621,7 @@ async function handleApiSpend(body, env) {
     const cap = Number(body.cap); if (!(cap >= 0 && cap <= 1000)) return { error: "cap must be 0-1000" };
     await env.TRADES.put(`spend:cap:${body.provider || "perplexity"}`, JSON.stringify(cap));
   }
-  return { success: true, providers: [await spendGet(env, "perplexity"), await spendGet(env, "gemini"), await spendGet(env, "grok")] };
+  return { success: true, providers: [await spendGet(env, "perplexity"), await spendGet(env, "gemini"), await spendGet(env, "grok"), await spendGet(env, "apify")] };
 }
 
 const DR_GEMINI_AGENT = "deep-research-preview-04-2026";
@@ -48253,7 +48253,7 @@ async function runCrowdSentiment(env, { force = false } = {}) {
     if (await env.TRADES.get(`crowd:ran:${et.dateStr}:${slot}`)) return { ran: false, reason: "this slot already ran today" };
     await env.TRADES.put(`crowd:ran:${et.dateStr}:${slot}`, new Date().toISOString(), { expirationTtl: 3 * 86400 });
   }
-  const scan = await crowdScan(env);
+  const scan = await crowdScanTiers(env);   // Apify X + Claude → StockTwits → Grok x_search
   const rec = { at: new Date().toISOString(), slot, ...scan, traded: [] };
   if (!scan.error) {
     const keys = await env.TRADES.list({ prefix: "trades:" });
@@ -48272,14 +48272,109 @@ async function runCrowdSentiment(env, { force = false } = {}) {
           entry_time: now.toISOString(), entry_price: k.underlying ?? null, price_captured: k.underlying != null, current_price: null, current_pct: null, max_high: null, max_high_time: null, max_low: null, max_low_time: null,
           strike_reached: false, strike_reached_time: null, last_updated: null, expired: false, entry_contract: k.price, contract_captured: true,
           current_contract: null, contract_pct: null, contract_max_high: null, contract_max_high_time: null, contract_max_low: null, contract_max_low_time: null,
-          auto_created: true, meta: { strategy_id: "CROWD_SENTIMENT_V1", category: c.category, duration: c.duration, posters: c.posters, conviction: c.conviction, crowd_direction: c.direction, examples: c.examples } };
+          auto_created: true, meta: { strategy_id: "CROWD_SENTIMENT_V1", category: c.category, duration: c.duration, posters: c.posters, conviction: c.conviction, crowd_direction: c.direction, examples: c.examples, source: scan.source, stocktwits: c.stocktwits || null } };
         await env.TRADES.put(`trades:${id}`, JSON.stringify(trade)); c.tradeId = id; rec.traded.push(id); open.add(c.ticker + ":" + dir);
       } catch (e) { c.skip = "error: " + e.message; }
     }
   }
   await env.TRADES.put("crowd:last", JSON.stringify(rec));
   let hist = []; try { hist = (await env.TRADES.get("crowd:history", "json")) || []; } catch (e) {}
-  hist.unshift({ at: rec.at, error: rec.error, posts: rec.posts, cost: rec.cost, traded: rec.traded.length, calls: (rec.calls || []).map(c => ({ t: c.ticker, d: c.direction, cat: c.category, dur: c.duration, p: c.posters, cv: c.conviction })) });
+  hist.unshift({ at: rec.at, source: rec.source, error: rec.error, posts: rec.posts, cost: rec.cost, traded: rec.traded.length, calls: (rec.calls || []).map(c => ({ t: c.ticker, d: c.direction, cat: c.category, dur: c.duration, p: c.posters, cv: c.conviction })) });
   await env.TRADES.put("crowd:history", JSON.stringify(hist.slice(0, 40)));
   return { ran: true, ...rec };
+}
+
+// ── Crowd scan tiers (2026-10-08): 1) Apify X search (~1,500 posts) + Claude Haiku extraction — cheapest per post;
+// 2) StockTwits (free): trending symbols' streams (posters self-tag Bullish/Bearish) + Claude — fallback;
+// 3) Grok x_search (crowdScan) — last resort. Every scan is enriched with StockTwits' bull/bear split per ticker.
+const CROWD_QUERIES = [   // ≥1 like filters out most bots; broad wording, cashtag posts kept downstream
+  '("buying calls" OR "loaded calls" OR "bought calls" OR "adding calls" OR "grabbed calls") lang:en -filter:retweets min_faves:1',
+  '("buying puts" OR "loaded puts" OR "bought puts" OR "adding puts" OR "shorting" OR "short here") lang:en -filter:retweets min_faves:1',
+  '("swing trade" OR "swing long" OR "swing short" OR "swing setup" OR "swing idea") lang:en -filter:retweets min_faves:1',
+  '(breakout OR "breaking out" OR "bull flag" OR "bear flag") (setup OR watchlist OR target OR "price target") lang:en -filter:retweets min_faves:2',
+  '("oversold bounce" OR "dip buy" OR "buying the dip" OR "short squeeze" OR "unusual options" OR "options flow") lang:en -filter:retweets min_faves:1',
+  '(calls OR puts) ("this week" OR "next week" OR "by friday" OR expiry OR "exp") lang:en -filter:retweets min_faves:2',
+  '(entry OR "entry zone") (stop OR "stop loss") (target OR pt) lang:en -filter:retweets min_faves:1',
+];
+async function crowdExtract(env, lines, sourceNote) {
+  const prompt = `Below are recent social posts about stocks (${sourceNote}). Extract every actionable TRADE CALL on a US-listed ticker — someone saying to buy, sell, short, or take calls/puts.
+Group by ticker + direction. Ignore pure news, price reports, ads, crypto-only and posts with no trade view.
+For each call: ticker (no $), direction "long"|"short", category one of ${CROWD.categories.map(c => `"${c}"`).join(", ")},
+duration "day"|"swing" (2-10 trading days)|"position" (weeks)|"long-term", posters = list of the DISTINCT usernames making this call,
+conviction 0-100 (specific levels, catalyst, agreement across posters), entry/target/stop numbers if given else null, catalyst (short phrase), examples (1-2 short quotes).
+Return 10-30 calls, strongest first, ONLY a fenced \`\`\`json array.
+
+POSTS:
+${lines.join("\n").slice(0, 300000)}`;
+  const r = await claudeStream(env, { model: "claude-haiku-4-5-20251001", max_tokens: 8000, messages: [{ role: "user", content: prompt }] });
+  const d = await r.json(); if (!r.ok) throw new Error(d?.error?.message || "Claude extraction failed");
+  const arr = drJson((d.content || []).map(c => c.text || "").join(""));
+  if (!Array.isArray(arr)) throw new Error("extraction returned no call list");
+  const u = d.usage || {};
+  return { calls: arr, claudeCost: ((u.input_tokens || 0) * 1 + (u.output_tokens || 0) * 5) / 1e6 };
+}
+function crowdNormalize(arr) {
+  return arr.map(c => ({
+    ticker: String(c.ticker || "").replace(/^\$/, "").toUpperCase().trim(), direction: /short|bear|put/i.test(c.direction || "") ? "short" : "long",
+    category: CROWD.categories.includes(c.category) ? c.category : "other", duration: CROWD.durations.includes(c.duration) ? c.duration : "swing",
+    posters: Array.isArray(c.posters) ? new Set(c.posters.map(x => String(x).toLowerCase())).size : Math.max(1, parseInt(c.posters) || 1),
+    conviction: Math.max(0, Math.min(100, parseInt(c.conviction) || 0)),
+    entry: Number(c.entry) || null, target: Number(c.target) || null, stop: Number(c.stop) || null,
+    catalyst: String(c.catalyst || "").slice(0, 200), examples: (Array.isArray(c.examples) ? c.examples : []).slice(0, 2).map(x => String(x).slice(0, 220)),
+  })).filter(c => /^[A-Z.]{1,6}$/.test(c.ticker));
+}
+async function stStream(sym) {
+  const r = await fetch(`https://api.stocktwits.com/api/2/streams/symbol/${encodeURIComponent(sym)}.json`, { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!r.ok) throw new Error("StockTwits HTTP " + r.status);
+  return ((await r.json()).messages || []);
+}
+async function crowdTierApify(env) {
+  const AT = (env.APIFY_TOKEN || "").trim(); if (!AT) throw new Error("APIFY_TOKEN not set");
+  const capMsg = await spendCheck(env, "apify"); if (capMsg) throw new Error(capMsg);
+  const start = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+  const items = await callApifyActor(AT, "apidojo~twitter-scraper-lite", { searchTerms: CROWD_QUERIES, sort: "Latest", maxItems: 1500, start }, 280);
+  const seen = new Set(), lines = [];
+  for (const t of items) {
+    const txt = String(t.text || t.fullText || "").replace(/\s+/g, " ").trim(), user = t.author?.userName || t.author?.username || t.user?.screen_name || "?";
+    if (!txt || !/\$[A-Za-z]{1,6}\b/.test(txt) || seen.has(txt)) continue;
+    seen.add(txt); lines.push(`@${user}: ${txt.slice(0, 300)}`);
+  }
+  const apifyCost = CROWD_QUERIES.length * 0.016 + items.length * 0.0004;
+  await spendAdd(env, "apify", apifyCost, true, { items: items.length }).catch(() => {});
+  if (lines.length < 40) throw new Error(`only ${lines.length} usable X posts (${items.length} fetched)`);
+  const ex = await crowdExtract(env, lines, "X / Twitter, last ~24h");
+  return { calls: crowdNormalize(ex.calls), posts: lines.length, cost: Math.round((apifyCost + ex.claudeCost) * 100) / 100 };
+}
+async function crowdTierStocktwits(env) {
+  const tr = await fetch("https://api.stocktwits.com/api/2/trending/symbols.json", { headers: { "User-Agent": "Mozilla/5.0" } });
+  if (!tr.ok) throw new Error("StockTwits trending HTTP " + tr.status);
+  const syms = ((await tr.json()).symbols || []).map(s => s.symbol).filter(s => /^[A-Z.]{1,6}$/.test(s)).slice(0, 18);
+  const lines = [];
+  for (const s of syms) {
+    try { (await stStream(s)).forEach(m => { const tag = (m.entities?.sentiment?.basic) ? ` [${m.entities.sentiment.basic}]` : ""; lines.push(`@${m.user?.username || "?"}${tag}: ${String(m.body || "").replace(/\s+/g, " ").slice(0, 300)}`); }); } catch (e) {}
+  }
+  if (lines.length < 60) throw new Error(`only ${lines.length} StockTwits posts`);
+  const ex = await crowdExtract(env, lines, "StockTwits trending streams; [Bullish]/[Bearish] = the poster's own tag");
+  return { calls: crowdNormalize(ex.calls), posts: lines.length, cost: Math.round(ex.claudeCost * 100) / 100 };
+}
+// StockTwits bull/bear split for the top tickers of any scan (free cross-check)
+async function crowdStEnrich(calls) {
+  const tick = [...new Set(calls.slice(0, 15).map(c => c.ticker))];
+  const by = {};
+  await Promise.all(tick.map(async s => { try { const ms = await stStream(s); const bull = ms.filter(m => m.entities?.sentiment?.basic === "Bullish").length, bear = ms.filter(m => m.entities?.sentiment?.basic === "Bearish").length;
+    by[s] = { bull, bear, n: ms.length }; } catch (e) {} }));
+  calls.forEach(c => { if (by[c.ticker]) c.stocktwits = by[c.ticker]; });
+}
+async function crowdScanTiers(env) {
+  const errors = [];
+  for (const [name, fn] of [["apify", crowdTierApify], ["stocktwits", crowdTierStocktwits], ["grok", crowdScan]]) {
+    try {
+      const r = await fn(env);
+      if (r.error) throw new Error(r.error);
+      if (!r.calls || !r.calls.length) throw new Error("no calls found");
+      await crowdStEnrich(r.calls).catch(() => {});
+      return { ...r, source: name, tierErrors: errors };
+    } catch (e) { errors.push(`${name}: ${e.message}`); }
+  }
+  return { error: "every source failed — " + errors.join(" · "), tierErrors: errors };
 }

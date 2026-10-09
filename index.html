@@ -9209,7 +9209,7 @@ function spendPaint() {
   const b = 'font-size:10px;padding:1px 6px;border:1px solid var(--border2);border-radius:5px;background:transparent;cursor:pointer;';
   chip.innerHTML = _spend.filter(p => p.calls || p.provider === 'perplexity').map(p => {
     const r = p.cap ? p.spent / p.cap : 0, col = r >= 1 ? '#f87171' : r >= 0.8 ? '#f6ad55' : 'var(--text2)';
-    return `<button style="${b}color:${col};" title="${p.provider} spend this month (${p.month}) — ${p.calls} calls${p.estimated ? `, ${p.estimated} estimated` : ''}. Click to change the monthly cap." onclick="spendEdit('${p.provider}')">🔎 ${({ perplexity: 'Perplexity', gemini: 'Gemini', grok: 'Grok' })[p.provider] || p.provider} $${p.spent.toFixed(2)} / $${p.cap}</button>`;
+    return `<button style="${b}color:${col};" title="${p.provider} spend this month (${p.month}) — ${p.calls} calls${p.estimated ? `, ${p.estimated} estimated` : ''}. Click to change the monthly cap." onclick="spendEdit('${p.provider}')">🔎 ${({ perplexity: 'Perplexity', gemini: 'Gemini', grok: 'Grok', apify: 'Apify' })[p.provider] || p.provider} $${p.spent.toFixed(2)} / $${p.cap}</button>`;
   }).join('');
   const over = _spend.filter(p => p.cap && p.spent >= p.cap * 0.8);
   if (over.length) {
@@ -20373,7 +20373,7 @@ async function crRun(btn) {
 function crPaint(L) {
   const b = document.getElementById('crBody');
   if (!L) { b.innerHTML = '<span style="color:var(--text3);">No scan yet — it runs itself on market days at ~10:00 and ~13:00 ET, or press ▶ Scan now.</span>'; return; }
-  document.getElementById('crStatus').textContent = `last scan ${new Date(L.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · ${(L.calls || []).length} calls · ${(L.traded || []).length} traded · ${L.posts || 0} posts read${L.cost != null ? ' · $' + L.cost : ''}`;
+  document.getElementById('crStatus').textContent = `last scan ${new Date(L.at).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })} · source ${({ apify: 'X (Apify)', stocktwits: 'StockTwits', grok: 'X (Grok)' })[L.source] || L.source || '?'} · ${(L.calls || []).length} calls · ${(L.traded || []).length} traded · ${L.posts || 0} posts read${L.cost != null ? ' · $' + L.cost : ''}${(L.tierErrors || []).length ? ' · fell back: ' + L.tierErrors.join('; ') : ''}`;
   if (L.error) { b.innerHTML = `<span style="color:var(--danger);">${esc(L.error)}</span>`; return; }
   // results so far by category × duration (tracked crowd trades)
   const tr = (tradesCache || []).filter(t => t.strategy === 'CROWD_SENTIMENT_V1' && typeof t.contract_pct === 'number');
@@ -20382,7 +20382,7 @@ function crPaint(L) {
   const D = ['swing', 'day', 'position', 'long-term'];
   const rows = D.map(dur => { const cs = (L.calls || []).filter(c => c.duration === dur); if (!cs.length) return '';
     return `<tr><td colspan="7" style="padding:8px 0 2px;font-weight:700;color:var(--text2);text-transform:uppercase;font-size:10.5px;">${dur} (${cs.length})</td></tr>` + cs.map(c => `<tr style="border-top:1px solid var(--border);vertical-align:top;">
-      <td style="padding:3px 6px 3px 0;"><b>${esc(c.ticker)}</b></td><td style="color:${c.direction === 'short' ? '#ff6b6b' : '#4ade80'};">${c.direction}</td><td>${esc(c.category)}</td><td>${c.posters} posters</td><td>conv ${c.conviction}</td>
+      <td style="padding:3px 6px 3px 0;"><b>${esc(c.ticker)}</b></td><td style="color:${c.direction === 'short' ? '#ff6b6b' : '#4ade80'};">${c.direction}</td><td>${esc(c.category)}</td><td>${c.posters} posters</td><td>conv ${c.conviction}${c.stocktwits && (c.stocktwits.bull + c.stocktwits.bear) ? `<div style="font-size:10.5px;color:var(--text3);" title="StockTwits: self-tagged Bullish vs Bearish in the latest ${c.stocktwits.n} posts">ST ${Math.round(c.stocktwits.bull / (c.stocktwits.bull + c.stocktwits.bear) * 100)}% bull</div>` : ''}</td>
       <td style="color:var(--text3);max-width:380px;">${esc(c.catalyst || '')}${c.examples && c.examples[0] ? `<div style="font-size:11px;">“${esc(c.examples[0])}”</div>` : ''}</td>
       <td>${c.tradeId ? '<span style="color:#4ade80;">✓ traded</span>' : c.skip ? `<span style="color:var(--text3);">${esc(c.skip)}</span>` : ''}</td></tr>`).join(''); }).join('');
   b.innerHTML = (res ? `<div style="margin-bottom:8px;"><b style="color:var(--text2);">Tracked results by type:</b> ${res}</div>` : '') + `<table style="width:100%;border-collapse:collapse;">${rows || '<tr><td style="color:var(--text3);">No calls found.</td></tr>'}</table>`;
