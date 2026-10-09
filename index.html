@@ -14288,6 +14288,7 @@ function renderHubsTab() {
         <span style="font-size:11px;color:var(--text3);margin-left:10px;">${esc(h.campaign || '')}</span>
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
+        ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this hub's campaign in care-gap (keywords, product ideas, products, titles, assets)" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--accent);border-radius:5px;color:var(--accent);text-decoration:none;">care-gap ↗</a>` : ''}
         <button onclick="openHubTdModal('${slug}')" title="Add a weekly to-do for this hub's campaign — lands on the TD tab's This Week board" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ TD</button>
         <span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span>
       </div>
