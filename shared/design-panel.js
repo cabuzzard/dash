@@ -23,6 +23,7 @@
   const C = { ink: 'var(--text, var(--ink, #222))', ink2: 'var(--text2, var(--ink2, #555))', ink3: 'var(--text3, var(--ink3, #888))', line: 'var(--border2, var(--border, #ccc))',
     surf: 'var(--surface, #fff)', surf2: 'var(--surface2, #f4f4f4)', acc: 'var(--accent, var(--sea, #0b6e8a))', ok: 'var(--fresh, #3a9a5b)', bad: '#c0392b', warn: '#b26a00' };
   const BTN = `font-size:11px;padding:4px 10px;border:1px solid ${C.line};border-radius:6px;background:${C.surf2};color:${C.ink};cursor:pointer;`;
+  const ORG = '#e67e22';   // staged-not-saved
   const BTNP = `font-size:11px;padding:4px 10px;border:1px solid ${C.acc};border-radius:6px;background:${C.acc};color:var(--bg, #fff);font-weight:600;cursor:pointer;`;
   const TA = `width:100%;box-sizing:border-box;font-family:inherit;font-size:12px;padding:6px 8px;border:1px solid ${C.line};border-radius:6px;background:${C.surf};color:${C.ink};`;
   const SEL = `font-size:11px;padding:2px 4px;border:1px solid ${C.line};border-radius:5px;background:${C.surf};color:${C.ink};`;
@@ -217,7 +218,7 @@
     }
 
     // ── field edits ──
-    async function editField(k, v) { try { take(await ds('edit', { key: k, v })); S.edit = null; render(); } catch (err) { say('Edit failed: ' + err.message, 'bad'); } }
+    async function editField(k, v) { try { take(await ds('edit', { key: k, v })); S.edit = null; render(); say(`${k} staged — 👁 Preview staged to see it on the right, 💾 to save it.`, 'ok'); } catch (err) { say('Edit failed: ' + err.message, 'bad'); } }
     async function alt(k, accept) { try { take(await ds(accept ? 'accept' : 'dismiss', { key: k })); render(); } catch (err) { say(err.message, 'bad'); } }
     async function revert() { if (!confirm('Throw away every staged change and go back to the saved spec?')) return; try { take(await ds('revert')); say('Back to the saved spec.', 'ok'); } catch (err) { say(err.message, 'bad'); } }
 
@@ -269,10 +270,10 @@
     async function saveVoice() { try { await call('saveVoiceProfile', { global: S.voice.global, campaign: S.voice.campaign }); say('Voice rules saved.', 'ok'); } catch (err) { say('Voice save failed: ' + err.message, 'bad'); } }
 
     // ── render ──
-    const card = (key, title, sub, body) => { const o = !!S.open[key];
-      return `<div style="border:1px solid ${C.line};border-radius:8px;margin-bottom:8px;background:${C.surf};">
+    const card = (key, title, sub, body, x) => { const o = !!S.open[key]; x = x || {};
+      return `<div style="border:1px solid ${x.warn ? ORG : C.line};${x.warn ? `border-left:5px solid ${ORG};` : ''}border-radius:8px;margin-bottom:8px;background:${C.surf};">
         <div data-act="toggle" data-k="${key}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;user-select:none;">
-          <span style="font-size:10px;color:${C.ink3};width:10px;">${o ? '▼' : '▶'}</span><b style="font-size:12.5px;color:${C.ink};">${title}</b><span style="font-size:11px;color:${C.ink3};flex:1;">${sub || ''}</span></div>
+          <span style="font-size:10px;color:${C.ink3};width:10px;">${o ? '▼' : '▶'}</span><b style="font-size:12.5px;color:${x.warn ? ORG : C.ink};">${title}</b><span style="font-size:11px;color:${C.ink3};flex:1;">${sub || ''}</span>${x.extra || ''}</div>
         ${o ? `<div style="padding:4px 12px 12px;">${body()}</div>` : ''}</div>`; };
     const badge = src => { const b = SRC[src] || [src || '?', '#888']; return `<span title="set by ${e(b[0])}" style="font-size:9px;padding:0 5px;border-radius:8px;border:1px solid ${b[1]};color:${b[1]};white-space:nowrap;">${e(b[0])}</span>`; };
     const swatch = v => { const h = hexOf(v); return h ? `<span style="display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid ${C.line};background:${h};vertical-align:-2px;margin-right:5px;"></span>` : ''; };
@@ -365,10 +366,10 @@
     }
     function fieldRow([k, label, hint]) {
       const f = S.staged[k] || {}, sv = (S.saved || {})[k] || {}, changed = (f.v || '') !== (sv.v || ''), ed = S.edit === k;
-      return `<div style="display:grid;grid-template-columns:minmax(120px,30%) 1fr;gap:8px;padding:5px 0;border-top:1px solid ${C.surf2};align-items:start;">
+      return `<div style="display:grid;grid-template-columns:minmax(120px,30%) 1fr;gap:8px;padding:5px 0;border-top:1px solid ${C.surf2};align-items:start;${changed ? `border-left:3px solid ${ORG};padding-left:6px;background:rgba(230,126,34,.06);` : ''}">
         <div style="font-size:11px;color:${C.ink2};">${e(label)}<div style="font-size:9.5px;color:${C.ink3};">${e(k)}</div></div>
-        <div>${ed ? `<input data-in="fedit" data-k="${e(k)}" value="${e(f.v || '')}" placeholder="${e(hint)}" style="${TA}padding:3px 6px;"><div style="margin-top:3px;"><button data-act="fsave" data-k="${e(k)}" style="${BTNP}font-size:10px;padding:2px 8px;">save</button> <button data-act="fcancel" style="${BTN}font-size:10px;padding:2px 8px;">cancel</button></div>`
-          : `<div data-act="fedit" data-k="${e(k)}" title="click to edit" style="cursor:text;font-size:12px;color:${f.v ? C.ink : C.ink3};">${f.v ? swatch(f.v) + e(f.v) : '<i>' + e(hint) + '</i>'} ${f.v ? badge(f.src) : ''}${changed ? ` <span style="font-size:9px;color:${C.warn};">● staged</span> <button data-act="gRevert" data-keys="${e(k)}" title="Revert this field to the saved value" style="${BTN}font-size:9.5px;padding:0 5px;">↺</button> <button data-act="gSave" data-keys="${e(k)}" title="Save just this field" style="${BTN}font-size:9.5px;padding:0 5px;">💾</button>` : ''}</div>
+        <div>${ed ? `<input data-in="fedit" data-k="${e(k)}" value="${e(f.v || '')}" placeholder="${e(hint)}" style="${TA}padding:3px 6px;"><div style="margin-top:3px;"><button data-act="fsave" data-k="${e(k)}" title="Put this value in staged (Enter) — 👁 Preview staged to see it, 💾 to save it" style="${BTNP}font-size:10px;padding:2px 8px;">✓ stage</button> <button data-act="fcancel" style="${BTN}font-size:10px;padding:2px 8px;">cancel</button></div>`
+          : `<div data-act="fedit" data-k="${e(k)}" title="click to edit" style="cursor:text;font-size:12px;color:${f.v ? C.ink : C.ink3};">${f.v ? swatch(f.v) + e(f.v) : '<i>' + e(hint) + '</i>'} ${f.v ? badge(f.src) : ''}${changed ? ` <span style="font-size:9px;color:${ORG};font-weight:600;">● staged</span> <button data-act="gRevert" data-keys="${e(k)}" title="Revert this field to the saved value" style="${BTN}font-size:9.5px;padding:0 5px;">↺</button> <button data-act="gSave" data-keys="${e(k)}" title="Save just this field" style="${BTN}font-size:9.5px;padding:0 5px;">💾</button>` : ''}</div>
             ${f.why ? `<div style="font-size:10.5px;color:${C.ink3};margin-top:1px;">${e(f.why)}</div>` : ''}`}
           ${f.alt ? `<div style="margin-top:3px;font-size:11px;padding:4px 6px;border:1px dashed ${C.line};border-radius:5px;">${badge(f.alt.src)} suggests: ${swatch(f.alt.v)}<b>${e(f.alt.v)}</b>${f.alt.why ? ` <span style="color:${C.ink3};">— ${e(f.alt.why)}</span>` : ''}
             <button data-act="altUse" data-k="${e(k)}" style="${BTN}font-size:10px;padding:1px 6px;">✓ use</button> <button data-act="altNo" data-k="${e(k)}" style="${BTN}font-size:10px;padding:1px 6px;">✕</button></div>` : ''}</div></div>`;
@@ -525,7 +526,9 @@
       root.innerHTML = status
         + card('inputs', 'Inputs', 'keywords → seed photo → ChatGPT → text override → Grok', inputsBody)
         + dpSections().map(sec => { const n = sec.fields.filter(([k]) => fv(k)).length, nd = secDiff(sec);
-            return card(sec.id, e(sec.label), `${n}/${sec.fields.length} filled${nd ? ` · <span style="color:${C.warn};">● ${nd} staged</span>` : ''}`, () => sectionBody(sec)); }).join('')
+            const dk = new Set(diffKeys()), ks = e(secKeys(sec).filter(k => dk.has(k)).join(','));
+            return card(sec.id, e(sec.label), `${n}/${sec.fields.length} filled${nd ? ` · <b style="color:${ORG};">● ${nd} staged, not saved</b>` : ''}`, () => sectionBody(sec),
+              nd ? { warn: true, extra: `<button ${S.busy ? 'disabled' : ''} data-act="gRevert" data-keys="${ks}" title="Revert this section's staged fields to the saved values" style="${BTN}font-size:10px;padding:2px 7px;">↺</button><button ${S.busy ? 'disabled' : ''} data-act="gSave" data-keys="${ks}" title="Save this section's ${nd} staged field${nd === 1 ? '' : 's'}" style="font-size:10px;padding:2px 8px;border:1px solid ${ORG};border-radius:6px;background:${ORG};color:#fff;font-weight:600;cursor:pointer;">💾 Save ${nd}</button>` } : null); }).join('')
         + card('page', '📄 Page preview', (S.inputs || {}).page ? 'built ' + e(String(S.inputs.page.at || '').slice(0, 10)) : 'the whole page, from the spec', pageBody)
         + card('assets', '🖼 Asset images', Object.keys(S.renders).length ? Object.keys(S.renders).length + ' rendered' : 'hero · signup · posts · thumbnails — from the spec', assetsBody)
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
@@ -535,7 +538,7 @@
             <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
             ${stale() ? wb('visuals', BTN, '🔁 Update visuals') : ''}
             ${cfg.preview ? `<button data-act="preview" style="${S.preview ? BTNP : BTN}">👁 Preview${S.preview ? ': on' : ''}</button>` : ''}
-            ${wb('pstaged', BTN, '👁 Preview staged')}
+            ${wb('pstaged', stale() || !(S.inputs || {}).page ? `font-size:11px;padding:4px 10px;border:1px solid ${ORG};border-radius:6px;background:${ORG};color:#fff;font-weight:600;cursor:pointer;` : BTN, stale() ? '👁 Preview staged ● changed' : '👁 Preview staged')}
             <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert all</button>
             ${S.work && S.work.act === 'save' ? `<button disabled style="${BTNP}opacity:.9;cursor:wait;">⏳ <span data-timer>0:00</span> saving…</button>` : `<button ${S.busy ? 'disabled' : ''} data-act="save" style="${BTNP}">💾 Save all</button>`}
             ${S.slug ? `<button ${dis} data-act="publish" title="Put the SAVED spec's palette + fonts on the live hub" style="${BTN}">⇪ Publish to hub</button>` : ''}</div>`;
