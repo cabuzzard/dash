@@ -12704,11 +12704,19 @@ the one aesthetic risk taken + why:`;
                   title: (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Untitled",
                   type: p["Asset Type"]?.select?.name || "", method: mName[(p.Method?.relation || [])[0]?.id] || "",
                   section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
-                  date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim() }; });
+                  date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim(),
+                  titleId: ((p["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "") || null }; });
             return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "no assets in this section yet" };
           });
           const secIds = Object.fromEntries(await P_secIds);
+          { const tids = [...new Set(pageSections.flatMap(ps => ps.items.map(it => it.titleId)).filter(Boolean))];
+            const tinfo = Object.fromEntries(await Promise.all(tids.map(async id => { try {
+              const pg = await fetch(`https://api.notion.com/v1/pages/${dashHb(id)}`, { headers: nhdr }).then(r => r.json()); const pp = pg.properties || {};
+              if (!pg || pg.object === "error" || pg.archived) return [id, null];
+              return [id, { id, title: (pp.Title?.title || []).map(t => t.plain_text).join("").trim(), notes: (pp.Notes?.rich_text || []).map(t => t.plain_text).join(""), status: pp.Status?.select?.name || "" }];
+            } catch (e) { return [id, null]; } })));
+            pageSections.forEach(ps => ps.items.forEach(it => { it.linkedTitle = it.titleId ? (tinfo[it.titleId] || null) : null; })); }
           for (const ps of pageSections) {
             // every page section holds hand-picked TITLES too (KV hub:sectiontitles:<key>:<cid>) — planned work for that slot
             let ids = []; try { ids = JSON.parse(secIds[ps.key] || "[]"); } catch (e) {}

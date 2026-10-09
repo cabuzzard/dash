@@ -14906,6 +14906,13 @@ function hubTitleFind(slug, sid, tid) {
   if (sid) { const st = (_hubContent[slug] || []).find(x => x.id === sid); const t = st && st.titles.find(x => x.id === tid); if (t) return t; }
   return _hubTitleIdx[tid] || null;
 }
+// build checklist › section asset → its attached title, in the same title editor (title / notes / status)
+function hubAssetTitleEdit(slug, stepId, aid) {
+  const st = ((_hubBuild[slug] || {}).steps || []).find(x => x.id === stepId), it = st && (st.items || []).find(x => x.id === aid);
+  const t = it && it.linkedTitle; if (!t) return alert('This asset has no attached title.');
+  _hubTitleIdx[t.id] = t;   // hcTitleSave writes back into this same object
+  hcTitleEdit(slug, '', t.id);
+}
 function hcTitleEdit(slug, sid, tid) {
   const t = hubTitleFind(slug, sid, tid); if (!t) return;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
@@ -15056,7 +15063,7 @@ function renderHubBuildRows(slug) {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
         return hubGridRow({ pad: 0, title: it.title, type: it.type, typeTip: 'Asset Type' + (it.section ? ' · placed here by Hub Section = ' + it.section : ''),
           typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
-          links: `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
+          links: (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
       // sections that also hold hand-picked products (CTA's): product records first, then the assets
       let prodRows = '', pick = '', np = 0;
