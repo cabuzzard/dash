@@ -12567,7 +12567,33 @@ the one aesthetic risk taken + why:`;
           let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());
             mainName = (mp?.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); } catch (e) {} }
+          // ── Hub build (2026-10-09): the operator's order — keywords → keyword research (on the scaffold) → main products
+          // (keyword tool / care-gap) → design build (Claude fills every field) → review rounds (Claude / ChatGPT / Grok → save).
+          const cidN = String(campaignId).replace(/-/g, "");
+          const [topicRows, stagedTopics, dsSaved, dsInputs] = await Promise.all([
+            notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dashHb(campaignId) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
+            env.TRADES.get("seoclusters:staged:" + cidN, "json").catch(() => null),
+            env.TRADES.get("design:spec:" + cidN, "json").catch(() => null),
+            env.TRADES.get("design:inputs:" + cidN, "json").catch(() => null)]);
+          const kwTxt = String(ctxH.campKeywords || (dsInputs && dsInputs.keywords) || "").trim(), nTopics = topicRows.length + (Array.isArray(stagedTopics) ? stagedTopics.length : 0);
+          const scaffolded = !idxF.missing, nSpec = Object.keys((dsSaved && dsSaved.spec) || {}).length, rv = (dsInputs && dsInputs.review) || null;
+          const reviewSaved = !!(rv && dsSaved && dsSaved.at && rv.at && dsSaved.at >= rv.at);
+          const flow = [
+            { id: "flow-idea", go: "kw", label: "1 · Idea — the hub's campaign", done: !!campaignId || man("flow-idea"),
+              hint: campName ? campName : "create the campaign" },
+            { id: "flow-scaffold", go: "none", label: "2 · Scaffold — the hub site skeleton", done: scaffolded || man("flow-scaffold"),
+              hint: scaffolded ? `web/hub/${slug}/ ✓` : "not scaffolded yet — publish the Content Hub asset (scaffolds automatically)" },
+            { id: "flow-keywords", go: "kwtool", label: "3 · Keywords run to the campaign", done: (!!kwTxt && nTopics > 0) || man("flow-keywords"),
+              hint: `${kwTxt ? kwTxt.slice(0, 70) + (kwTxt.length > 70 ? "…" : "") : "no campaign keywords"} · ${nTopics ? nTopics + " topic" + (nTopics === 1 ? "" : "s") : "no topics yet — Keywords tool → send to this campaign"}` },
+            { id: "flow-research", go: "products", label: "4 · Research + products saved", done: (hasStatement && campProducts.length > 0) || man("flow-research"),
+              hint: `research ${hasStatement ? "✓" : "missing"} · ${campProducts.length} product${campProducts.length === 1 ? "" : "s"}` },
+            { id: "flow-design", go: "design", label: "5 · First design build — from the research + scaffold", done: nSpec >= 20 || man("flow-design"),
+              hint: nSpec ? `${nSpec} fields saved${dsSaved.at ? " · " + String(dsSaved.at).slice(0, 10) : ""}` : "Design › ✨ Build everything from these inputs" },
+            { id: "flow-review", go: "review", label: "6 · Review rounds — Claude / ChatGPT / Grok → save", done: reviewSaved || man("flow-review"),
+              hint: rv ? `last: ${rv.who || "review"} ${String(rv.at || "").slice(0, 10)} · ${reviewSaved ? "saved" : "staged, not saved yet"}` : "Design › Send for review, then 💾 Save" },
+          ].map(x => ({ ...x, phase: "Hub build", flow: true }));
           const steps = [
+            ...flow,
             // hidden: kept only as the product list Production › Products reads; Main offerings is an asset section now
             { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: true, products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: "" },
@@ -48641,9 +48667,20 @@ Reply with the HTML only, in one \`\`\`html block.`;
   }
   if (op === "build") {    // round 1: keywords (+ live search of the ranked sites) + seed photo
     const inp = { ...inputs, keywords: inputs.keywords || kwFallback };
+    const bslug = hubSlugForCampaign(cid);
+    const [scaf, bdemand] = await Promise.all([
+      bslug ? fetch(`https://cabuzzard.github.io/dash/web/hub/${bslug}/content.json?v=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null) : null,
+      kwDemandBlock(env, inp.keywords || "").catch(() => "")]);
     const text = `You are the lead web + brand designer for "${campName || "this campaign"}". Build its whole visual system as a FIELD → VALUE spec.
 
 ${dsInputsBlock(inp)}
+${scaf ? `
+THE HUB SCAFFOLD (the site's sections + current copy — design for THIS structure):
+${JSON.stringify(scaf).slice(0, 4000)}
+` : ""}${bdemand ? `
+KEYWORD RESEARCH (real Google demand — volumes, bids, intent):
+${String(bdemand).slice(0, 4000)}
+` : ""}
 
 THE CAMPAIGN RECORD (keywords first, then research and main-product research):
 ${facts.slice(0, 10000)}

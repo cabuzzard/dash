@@ -145,6 +145,7 @@
     async function persistRenders() { try { take(await ds('inputs', { renders: S.renders })); } catch (err) {} }
     async function build() {
       if (!String(S.kw || '').trim()) return say('Add the keywords first.', 'bad');
+      const pre = cfg.beforeBuild ? cfg.beforeBuild() : ''; if (pre && !confirm(pre)) return;
       if (!confirm('Build everything from these inputs?\n\nRewrites every design-spec field (reading — not changing — the campaign research), the saved Image Spec / Palette / Fonts on the Research record, and renders the images + a full page preview. Fields you edited by hand are kept. The live hub page only changes when you press ⇪ Publish or ✓ Set on hub.')) return;
       return runPipe('build', PIPE.map(x => x[0]).filter(k => k !== 'research'), 'Building everything from the inputs (6-9 min, keep this tab open)…', 'First pass done');
     }
@@ -226,7 +227,7 @@
       startWork('save', 'Saving the spec…');
       try {
         // the worker writes Image Spec + Palette / Fonts / direction fields onto the Research record itself
-        const r = await ds('save'); take(r);
+        const r = await ds('save'); take(r); if (cfg.onSaved) { try { cfg.onSaved(); } catch (err) {} }
         endWork();
         if (r.notionError) return say(`Saved the spec, but the Research record write failed: ${r.notionError}`, 'bad');
         say(`Saved — ${Object.keys(S.saved || {}).length} fields. Image Spec, palette, fonts and direction updated on the record. ⇪ Publish puts the palette + fonts on the live hub.`, 'ok');
@@ -456,7 +457,7 @@
     async function gRevert(keys) { try { take(await ds('revert', { keys })); say(`Reverted ${keys.length} field${keys.length === 1 ? '' : 's'} to the saved values.`, 'ok'); } catch (err) { say(err.message, 'bad'); } }
     async function gSave(keys) {
       startWork('gsave', `Saving ${keys.length} field${keys.length === 1 ? '' : 's'}…`);
-      try { const r = await ds('save', { keys }); take(r); endWork(); say(`Saved ${keys.length} field${keys.length === 1 ? '' : 's'}${r.notionError ? ` — but the Research record write failed: ${r.notionError}` : ' — the Research record is updated.'}`, r.notionError ? 'bad' : 'ok'); }
+      try { const r = await ds('save', { keys }); take(r); endWork(); if (cfg.onSaved) { try { cfg.onSaved(); } catch (err) {} } say(`Saved ${keys.length} field${keys.length === 1 ? '' : 's'}${r.notionError ? ` — but the Research record write failed: ${r.notionError}` : ' — the Research record is updated.'}`, r.notionError ? 'bad' : 'ok'); }
       catch (err) { endWork(); say('Save failed: ' + err.message, 'bad'); }
     }
     // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
