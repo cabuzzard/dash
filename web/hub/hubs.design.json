@@ -60,6 +60,14 @@
     "Libre Franklin": {
       "query": "Libre+Franklin:wght@400;500;600;700",
       "fallback": "system-ui, sans-serif"
+    },
+    "Bree Serif": {
+      "query": "Bree+Serif:wght@400;500;600;700",
+      "fallback": "system-ui, sans-serif"
+    },
+    "Nunito Sans": {
+      "query": "Nunito+Sans:wght@400;500;600;700",
+      "fallback": "system-ui, sans-serif"
     }
   },
   "hubs": {
@@ -341,23 +349,23 @@
         "ogDescription": "We publish straight-talk guides on Original Medicare, Medigap, Medicare Advantage, and Part D — then offer one-on-one consulting that checks plans against your "
       },
       "fonts": {
-        "display": "Newsreader",
-        "body": "Hanken Grotesk",
-        "mono": "IBM Plex Mono"
+        "display": "Bree Serif",
+        "body": "Nunito Sans",
+        "mono": "Nunito Sans"
       },
       "logoText": "Medicare Clarity",
       "tokens": {
-        "bg": "#F7F5F0",
-        "surface": "#EDEAE2",
-        "ink": "#1C1C1E",
-        "ink-head": "#0D1F3C",
-        "ink-soft": "#5A5A62",
-        "line": "#D4CFC4",
-        "sea": "#1A3A6B",
-        "deep": "#0D1F3C",
-        "deep-ink": "#F0EDE6",
-        "accent": "#C47B2B",
-        "paper": "#EDEAE2"
+        "bg": "#fbfaf7",
+        "surface": "#fffdf9",
+        "ink": "#263b3c",
+        "ink-head": "#25443b",
+        "ink-soft": "#5e6673",
+        "line": "#ddd8d0",
+        "sea": "#5b45a3",
+        "deep": "#30264f",
+        "deep-ink": "#ffffff",
+        "accent": "#6540a8",
+        "paper": "#fffdf9"
       },
       "tokenNotes": {
         "bg": "page ground",
