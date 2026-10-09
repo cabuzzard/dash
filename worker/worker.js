@@ -20,6 +20,7 @@ const PRODUCT_RESEARCH_DB = "a412ac1f57f349d3bbac8cfa94737c39"; // 🔬 Product 
 const LOGINS_DB          = "72d262278a4c4786b375959432fdd82a";
 const PLATFORMS_DB       = "8248b700ebb7428aa28d8b5246509898";
 const ASSETS_DB          = "e91bdb6e770b4d298e9f62166a0fd5de";
+const REFERENCE_SITES_DB = "4a01ca6bc9cd45cf89eb6f4513566c4b"; // 🔗 Reference Sites (2026-10-09) — page-one sites per hub (campaign), written by the design Build
 const REVIEWS_DB         = "ecd679a7c62e4f9f97bf720c24cfb1e3"; // ⭐ Reviews (2026-10-08) — Quote/Reviewer/Source/Rating/Date/Link/Product/Campaign/Status; only Approved show
 const SOCIAL_PROOF_DB    = "cf1fb8e63d9c42d0ba0f448343e570c2"; // 🏅 Social Proof (2026-10-08) — Type/Text/Source/Link/Image/Product/Campaign/Status; only Approved show
 const RESEARCH_DB        = "557e6b7b8c434a578d45ecb0a8329f63";
@@ -48267,6 +48268,30 @@ function dsClean(fields, defaultSrc, allowSrc) {
   }
   return out;
 }
+// 🔗 Reference Sites: one row per site per hub (campaign) — upserted by domain; Times Seen counts builds that found it.
+async function dsSaveReferenceSites(env, cid, ranked) {
+  const NT = (env.NOTION_TOKEN || "").trim(), h = { Authorization: `Bearer ${NT}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+  const dash = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`;
+  const hub = (HUB_SITES.find(x => x.campaignId.replace(/-/g, "") === cid) || {}).slug || "";
+  const rt = v => ({ rich_text: v ? [{ text: { content: String(v).slice(0, 1990) } }] : [] });
+  const existing = await notionQuery(REFERENCE_SITES_DB, { filter: { property: "Campaign", relation: { contains: dash } } }).catch(e => { console.error("reference sites query:", e.message); return []; });
+  const byName = new Map(existing.map(r => [(r.properties?.Name?.title || []).map(t => t.plain_text).join("").toLowerCase(), r]));
+  const today = new Date().toISOString().slice(0, 10);
+  for (const x of (ranked.sites || []).slice(0, 12)) {
+    const o = typeof x === "string" ? { domain: x.split(" — ")[0], look: x.split(" — ").slice(1).join(" — ") } : x || {};
+    let domain = String(o.domain || "").trim(); if (!domain && o.url) { try { domain = new URL(o.url).hostname; } catch (e) {} }
+    domain = domain.replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/.*$/, "").toLowerCase(); if (!domain) continue;
+    const props = { Name: { title: [{ text: { content: domain } }] }, Campaign: { relation: [{ id: dash }] }, Hub: rt(hub), Keyword: rt(o.keyword), Look: rt(o.look),
+      "Page One Look": rt(ranked.look), Source: { select: { name: "design build" } }, "Last Seen": { date: { start: today } }, Status: { select: { name: "Active" } } };
+    if (/^https?:\/\//.test(o.url || "")) props.URL = { url: String(o.url).slice(0, 500) };
+    if (Number(o.position) > 0) props.Position = { number: Number(o.position) };
+    const ex = byName.get(domain);
+    if (ex) { props["Times Seen"] = { number: (ex.properties?.["Times Seen"]?.number || 1) + 1 };
+      await fetch(`https://api.notion.com/v1/pages/${ex.id}`, { method: "PATCH", headers: h, body: JSON.stringify({ properties: props }) }); }
+    else { props["Times Seen"] = { number: 1 };
+      await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: h, body: JSON.stringify({ parent: { database_id: REFERENCE_SITES_DB }, properties: props }) }); }
+  }
+}
 function dsMerge(spec, incoming) {
   spec = JSON.parse(JSON.stringify(spec || {}));
   const applied = [], suggested = [];
@@ -48571,13 +48596,14 @@ FIELDS (key — what it controls (format)):
 ${dsSchemaText()}
 ${Object.keys(staged).length ? `\nCURRENT VALUES (improve them; manual edits are kept regardless):\n${dsSpecText(staged, true)}\n` : ""}
 Reply with ONE JSON object only:
-{"ranked": {"look": "one line", "sites": ["domain — one line on its look"]}, "photo_read": "${inp.photo && inp.photo.url ? "3-4 lines describing the seed photo as data: medium, palette hexes, line, type, people, mood" : ""}", "fields": {"intent.keywords": {"v": "…", "why": "…", "src": "keywords"}, "...every key...": {"v": "…", "why": "…", "src": "photo"}}}`;
+{"ranked": {"look": "one line", "sites": [{"domain": "example.com", "url": "https://…", "keyword": "the keyword it ranks for", "position": 1, "look": "one line on its look"}]}, "photo_read": "${inp.photo && inp.photo.url ? "3-4 lines describing the seed photo as data: medium, palette hexes, line, type, people, mood" : ""}", "fields": {"intent.keywords": {"v": "…", "why": "…", "src": "keywords"}, "...every key...": {"v": "…", "why": "…", "src": "photo"}}}`;
     const content = inp.photo && inp.photo.url ? [{ type: "image", source: { type: "url", url: inp.photo.url } }, { type: "text", text }] : text;
     let j; try { j = dsParseJson(await claude(content, 16000, true)); } catch (e) { return { error: e.message }; }
     if (!j || !j.fields) return { error: "Couldn't read the design pass — try again" };
     const m = dsMerge(staged, dsClean(j.fields, "keywords", ["photo", "keywords", "text"]));
     staged = m.spec;
-    if (j.ranked && (j.ranked.look || (j.ranked.sites || []).length)) inputs.ranked = { look: String(j.ranked.look || "").slice(0, 600), sites: (j.ranked.sites || []).slice(0, 6).map(x => String(x).slice(0, 200)), at: new Date().toISOString() };
+    if (j.ranked && (j.ranked.sites || []).length) await dsSaveReferenceSites(env, cid, j.ranked).catch(e => console.error("reference sites:", e.message));   // 🔗 Reference Sites records
+    if (j.ranked && (j.ranked.look || (j.ranked.sites || []).length)) inputs.ranked = { look: String(j.ranked.look || "").slice(0, 600), sites: (j.ranked.sites || []).slice(0, 6).map(x => typeof x === "string" ? x.slice(0, 200) : `${x.domain || x.url || "?"} — ${x.look || ""}`.slice(0, 200)), at: new Date().toISOString() };
     if (j.photo_read && inputs.photo) inputs.photo.read = String(j.photo_read).slice(0, 1500);
     if (!inputs.keywords && kwFallback) inputs.keywords = kwFallback;
     await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
