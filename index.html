@@ -6218,8 +6218,30 @@ async function kwStartHubGo() {
     msg.textContent = `⏳ 2/2 Scaffolding the hub site for "${name}" (about a minute)…`;
     const s = await call('scaffoldHub', { campaignId: cid });
     if (s && s.error) throw new Error((mode === 'new' ? 'campaign created, but ' : '') + 'the scaffold failed: ' + s.error);
-    msg.textContent = `✓ Hub for "${name}" started${s && s.slug ? ` (${s.slug})` : ''}. Reload in ~1 min and open Content Hubs — continue with its Hub build checklist.`;
+    msg.textContent = `✓ Hub for "${name}" started${s && s.slug ? ` (${s.slug})` : ''} — a banner at the top says when it's ready to load.`;
+    if (s && s.slug) kwHubReadyWatch(s.slug, name);
   } catch (e) { msg.textContent = '✗ ' + e.message; }
+}
+// the scaffold commits the hub site + its dash registry row; GitHub Pages takes ~1 min. Poll until BOTH are live,
+// then a banner at the top of the page offers the reload.
+async function kwHubReadyWatch(slug, name) {
+  const bar = document.createElement('div'); bar.id = 'hubReadyBar-' + slug;
+  bar.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:10000;padding:9px 14px;font-size:13px;display:flex;gap:10px;align-items:center;justify-content:center;background:var(--surface2);border-bottom:2px solid var(--border2);color:var(--text);';
+  bar.innerHTML = `⏳ Building the "${esc(name)}" hub — waiting for it to go live (about a minute)…`;
+  document.body.appendChild(bar);
+  for (let i = 0; i < 36; i++) {
+    await new Promise(r => setTimeout(r, 10000));
+    try {
+      const [d, h] = await Promise.all([fetch('https://cabuzzard.github.io/dash/?x=' + Date.now(), { cache: 'no-store' }).then(r => r.text()),
+        fetch('https://cabuzzard.github.io/dash/web/hub/' + slug + '/?x=' + Date.now(), { cache: 'no-store' }).then(r => r.ok)]);
+      if (h && d.includes('slug: "' + slug + '"')) {
+        bar.style.borderBottomColor = '#4ade80';
+        bar.innerHTML = `✓ The "${esc(name)}" hub is ready. <button onclick="location.reload()" style="font-size:12px;font-weight:700;padding:4px 14px;border:1px solid #4ade80;border-radius:5px;background:#4ade80;color:#06210f;cursor:pointer;">↻ Reload to open it</button> <button onclick="this.parentElement.remove()" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">later</button>`;
+        return;
+      }
+    } catch (e) {}
+  }
+  bar.innerHTML = `The "${esc(name)}" hub is taking longer than usual — reload in a minute or two. <button onclick="location.reload()" style="font-size:12px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text);cursor:pointer;">↻ Reload</button> <button onclick="this.parentElement.remove()" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✕</button>`;
 }
 function kwSort(col, ev) {
   const i = KW.sorts.findIndex(x => x.col === col);
