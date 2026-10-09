@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Medicare Consulting Hub — Medicare questions answered by a real expert, no dumb questions</title>
-<meta name="description" content="We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a dead">
-<meta property="og:title" content="Medicare Consulting Hub">
-<meta property="og:description" content="We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a dead">
+<title>Medicare Services Consulting — Ask Anything, Choose With Confidence</title>
+<meta name="description" content="One-on-one Medicare consulting at eye level. Ask anything about Parts A–D, Medigap, Medicare Advantage and enrollment deadlines — no rush, no dumb questions.">
+<meta property="og:title" content="Medicare Services Consulting">
+<meta property="og:description" content="One-on-one Medicare consulting at eye level. Ask anything about Parts A–D, Medigap, Medicare Advantage and enrollment deadlines — no rush, no dumb questions.">
 <meta property="og:type" content="website">
 <meta name="robots" content="index,follow">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -37,7 +37,7 @@
   --font-body:    "Hanken Grotesk", system-ui, sans-serif;
   --font-mono:    "IBM Plex Mono", ui-monospace, monospace;
 
-  --logo-text: "Medicare Consulting Hub";
+  --logo-text: "Medicare Services Consulting";
   --logo-img:  none;
 }
 
@@ -345,53 +345,46 @@ const HUB = {
   campaignId: "3f41f7d3a4bb813395dfd4e95b1dfddc",
   contactEmail: null,
 
-  brand: "Medicare Consulting Hub",
+  brand: "Medicare Services Consulting",
   logoImg: null,
 
   nav: [
-    { label: "Medicare Basics", href: "#journal" },
-    { label: "Plan Comparison", href: "#news" },
-    { label: "Work With Us", href: "#trips" },
+    { label: "How we help", href: "#trips" },
+    { label: "Free checklist", href: "#report" },
+    { label: "Guides", href: "#articles" },
   ],
 
-  ribbon: [ "Unbiased Plan Guidance", "Enrollment Support", "Ongoing Coverage Reviews" ],
+  ribbon: [ "2027 Open Enrollment: Oct 15 – Dec 7", "One-on-one — never a call center", "There are no dumb questions here", "Turning 65, retiring, or on Medicare through disability", "We tell you how we're paid, up front" ],
 
   hero: {
-    eyebrow: "Medicare Services Consulting",
-    headline: "Medicare decisions are permanent — make yours with an expert in your corner.",
-    sub: "We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a deadline that costs you.",
-    ctaPrimary:   { label: "Book a Free Consultation", href: "#report" },
-    ctaSecondary: { label: "Download the Medicare Guide", href: "#trips" },
+    eyebrow: "Medicare services consulting · one-on-one",
+    headline: "Ask us anything about Medicare. There are no dumb questions here.",
+    sub: "Most Medicare mistakes don't come from carelessness — they come from people afraid to ask. We sit down with you, or the person you care for, answer every question in plain English, and help you choose coverage you actually understand before a deadline makes the choice for you.",
+    ctaPrimary:   { label: "Get the free question checklist", href: "#report" },
+    ctaSecondary: { label: "See how we help", href: "#trips" },
     image: "./hero.jpg?v=1791500000000",
   },
 
-  journal: {
-    label: "Blog", title: "Medicare Insights", note: "", items: [],
-    empty: { heading: "Expert articles coming soon.", body: "We're publishing in-depth guides on Medicare Advantage vs. Original Medicare, IRMAA surcharges, late-enrollment penalties, and more. Subscribe to be notified when the first articles go live." },
-  },
-
-  news: {
-    label: "News", title: "Medicare News & Policy Updates", note: "", items: [],
-    empty: { heading: "Policy updates on the way.", body: "CMS rule changes, Part D premium announcements, and Annual Enrollment Period news — curated for beneficiaries and their families, not policy wonks. Check back as the 2025 AEP approaches." },
-  },
+  trips: { label: "How we help", title: "Medicare help, sized to your question", note: "From one quick question to a full plan review — whether you're turning 65, leaving an employer plan, or on Medicare through disability before 65.", items: [] },
 
   report: {
-    label: "Free Resource",
-    title: "The 2025 Medicare Decision Guide",
-    blurb: "A plain-English walkthrough of Parts A, B, C, and D — what each covers, what each costs, and the five enrollment mistakes that follow beneficiaries for years. Updated for 2025 plan changes.",
-    note: "No spam. Unsubscribe in one click. We never share your address.",
-    buttonLabel: "Get the Free Guide",
+    label: "Free checklist",
+    title: "The Medicare questions worth asking — before December 7",
+    blurb: "A one-page checklist of the questions we hear most, in the order to ask them: which doctors and prescriptions to check first, Medigap or Medicare Advantage, what changes if you're still working at 65, and the enrollment deadlines that carry lifelong penalties. Then one short email a week through Open Enrollment, answering the questions people were afraid to ask.",
+    note: "One email a week. Unsubscribe in one click. We never share or sell your address.",
+    buttonLabel: "Send me the checklist",
     link: null,
   },
 
-  trips: {
-    label: "Products", title: "Client Success Stories", note: "", items: [],
-    empty: { heading: "Case studies coming soon.", body: "Real stories of clients who avoided late-enrollment penalties, found lower-premium plans without losing their doctors, and finally understood their coverage — told with their permission, in plain language." },
-  },
+  projectExperience: { label: "Questions we've answered", title: "Real questions, plain answers", note: "The things people actually ask us — especially the 'is this a dumb question?' ones.", items: [] },
 
-  social: { label: "Follow", items: [ { label: "LinkedIn", url: "#" } ] },
+  journal: { label: "Medicare news", title: "What changed this year — and does it affect you?", note: "Plan, premium and rule changes, translated into what they mean for your coverage.", items: [] },
 
-  footer: { tagline: "Straightforward Medicare guidance you can trust — because the right plan decision lasts a lifetime.", legal: "\u00A9 2026 Medicare Consulting Hub" },
+  articles: { label: "Guides", title: "Medicare, explained at eye level", note: "Plain-English guides to Parts A through D, Medigap, Medicare Advantage, IRMAA, and enrolling on time.", items: [] },
+
+  social: { label: "Follow along", items: [ { label: "LinkedIn", url: "#" } ] },
+
+  footer: { tagline: "Patient, one-on-one Medicare guidance for people turning 65, people on Medicare through disability, and the families who help them.", legal: "© 2026 Medicare Services Consulting. Not connected with or endorsed by the U.S. government or the federal Medicare program." },
 };
 
 /* ============================================================

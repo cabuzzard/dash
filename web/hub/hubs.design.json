@@ -335,17 +335,17 @@
     },
     "medicare-services-consulting": {
       "meta": {
-        "title": "Medicare Consulting Hub — Medicare questions answered by a real expert, no dumb questions",
-        "description": "We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a dead",
-        "ogTitle": "Medicare Consulting Hub",
-        "ogDescription": "We guide individuals, retirees, and HR teams through every stage of Medicare enrollment and plan selection, so you never pay more than you should or miss a dead"
+        "title": "Medicare Services Consulting — Ask Anything, Choose With Confidence",
+        "description": "One-on-one Medicare consulting at eye level. Ask anything about Parts A–D, Medigap, Medicare Advantage and enrollment deadlines — no rush, no dumb questions.",
+        "ogTitle": "Medicare Services Consulting",
+        "ogDescription": "One-on-one Medicare consulting at eye level. Ask anything about Parts A–D, Medigap, Medicare Advantage and enrollment deadlines — no rush, no dumb questions."
       },
       "fonts": {
         "display": "Bricolage Grotesque",
         "body": "Hanken Grotesk",
         "mono": "IBM Plex Mono"
       },
-      "logoText": "Medicare Consulting Hub",
+      "logoText": "Medicare Services Consulting",
       "tokens": {
         "bg": "#FBFAF7",
         "surface": "#FFFFFF",
@@ -372,9 +372,9 @@
         "accent": "sage deepened for white button text — the green sweater"
       },
       "design": {
-        "subject": "Medicare services consulting — helping individuals, families, and employers navigate Medicare plan selection, enrollment, and ongoing coverage decisions with clarity and confidence.",
-        "audience": "Adults approaching 65, early retirees, caregivers managing a parent's coverage, and HR benefits managers overseeing Medicare-eligible employees who feel overwhelmed by plan complexity and afraid of costly mistakes.",
-        "job": "Establish immediate trust and authority so a visitor books a consultation or downloads the guide before leaving the page.",
+        "subject": "Medicare services consulting — patient, one-on-one help choosing and enrolling in Medicare (Parts A–D, Medigap, Medicare Advantage), including people on Medicare through disability before 65.",
+        "audience": "Adults turning 65 or retiring, people on SSDI-based Medicare, and the adult children and caregivers who help them — searching locally ('medicare advisor near me') and wary of call-center brokers.",
+        "job": "Make asking feel safe: get a nervous visitor to take the free question checklist (email signup) — the first step toward a one-on-one consult.",
         "type": "Bricolage Grotesque at heavy weight for headlines — the seed's chunky, friendly, slightly rounded headline face — over Hanken Grotesk body for large, calm, easy reading for a 60+ audience.",
         "signature": "The seed illustration itself: a warm, flat, two-person scene (a person in a power wheelchair talking with a kneeling helper in a lavender polo) on a soft lavender blob — conversation at eye level. Purple numbered badges and lavender wash carry that through the page.",
         "risk": "Friendly flat illustration and a lavender wash in a category that defaults to navy-and-gold 'authority' — betting that approachability ('ask us anything') converts better than gravitas for people afraid of making a Medicare mistake.",

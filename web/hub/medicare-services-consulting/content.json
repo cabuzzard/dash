@@ -1,5 +1,72 @@
 {
+  "brand": "Medicare Services Consulting",
+  "ribbon": [
+    "2027 Open Enrollment: Oct 15 – Dec 7",
+    "One-on-one — never a call center",
+    "There are no dumb questions here",
+    "Turning 65, retiring, or on Medicare through disability",
+    "We tell you how we're paid, up front"
+  ],
+  "nav": [
+    {
+      "label": "How we help",
+      "href": "#trips"
+    },
+    {
+      "label": "Free checklist",
+      "href": "#report"
+    },
+    {
+      "label": "Guides",
+      "href": "#articles"
+    }
+  ],
   "hero": {
+    "eyebrow": "Medicare services consulting · one-on-one",
+    "headline": "Ask us anything about Medicare. There are no dumb questions here.",
+    "sub": "Most Medicare mistakes don't come from carelessness — they come from people afraid to ask. We sit down with you, or the person you care for, answer every question in plain English, and help you choose coverage you actually understand before a deadline makes the choice for you.",
+    "ctaPrimary": {
+      "label": "Get the free question checklist",
+      "href": "#report"
+    },
+    "ctaSecondary": {
+      "label": "See how we help",
+      "href": "#trips"
+    },
     "image": "./hero.jpg?v=1791500000000"
+  },
+  "trips": {
+    "label": "How we help",
+    "title": "Medicare help, sized to your question",
+    "note": "From one quick question to a full plan review — whether you're turning 65, leaving an employer plan, or on Medicare through disability before 65."
+  },
+  "report": {
+    "label": "Free checklist",
+    "title": "The Medicare questions worth asking — before December 7",
+    "blurb": "A one-page checklist of the questions we hear most, in the order to ask them: which doctors and prescriptions to check first, Medigap or Medicare Advantage, what changes if you're still working at 65, and the enrollment deadlines that carry lifelong penalties. Then one short email a week through Open Enrollment, answering the questions people were afraid to ask.",
+    "note": "One email a week. Unsubscribe in one click. We never share or sell your address.",
+    "buttonLabel": "Send me the checklist"
+  },
+  "projectExperience": {
+    "label": "Questions we've answered",
+    "title": "Real questions, plain answers",
+    "note": "The things people actually ask us — especially the 'is this a dumb question?' ones."
+  },
+  "journal": {
+    "label": "Medicare news",
+    "title": "What changed this year — and does it affect you?",
+    "note": "Plan, premium and rule changes, translated into what they mean for your coverage."
+  },
+  "articles": {
+    "label": "Guides",
+    "title": "Medicare, explained at eye level",
+    "note": "Plain-English guides to Parts A through D, Medigap, Medicare Advantage, IRMAA, and enrolling on time."
+  },
+  "social": {
+    "label": "Follow along"
+  },
+  "footer": {
+    "tagline": "Patient, one-on-one Medicare guidance for people turning 65, people on Medicare through disability, and the families who help them.",
+    "legal": "© 2026 Medicare Services Consulting. Not connected with or endorsed by the U.S. government or the federal Medicare program."
   }
 }
