@@ -2473,6 +2473,7 @@ function renderIdeaLines(text) {
       <span class="idea-btns">
         <button class="iconbtn" title="View sources" onclick="viewSourcesForMainIdea(${i})">🔗</button>
         <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="addProductFromMainIdea(${i})">➕</button>
+        <button class="iconbtn" title="Set as main — create the product AND add it to this hub's main offerings (existing main offerings stay)" onclick="addProductFromMainIdea(${i}, true)">★</button>
         <button class="iconbtn" title="Dismiss this idea" onclick="deleteMainStackIdea(${i}, this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-main-${i}','${esc(name)}','keywords')">📝</button>
       </span></div>${desc ? `<div class="idea-desc">${esc(desc)}</div>` : ''}</div>`;
@@ -2483,6 +2484,7 @@ function renderIdeaCards(products, clusterId, clusterName) {
       <span class="idea-btns">
         <button class="iconbtn" title="View sources" onclick="viewSourcesForClusterIdea('${esc(clusterId)}','${esc(p.id)}')">🔗</button>
         <button class="iconbtn" title="Create a real Product record from this idea (removes it from this list)" onclick="addProductFromClusterIdea('${esc(clusterId)}','${esc(p.id)}')">➕</button>
+        <button class="iconbtn" title="Set as main — create the product AND add it to this hub's main offerings (existing main offerings stay)" onclick="addProductFromClusterIdea('${esc(clusterId)}','${esc(p.id)}', true)">★</button>
         <button class="iconbtn" title="Dismiss this proposal" onclick="dismissClusterIdea('${esc(clusterId)}','${esc(p.id)}', this)">✕</button>
         <button class="notebtn" title="Note" onclick="openNoteModal('keywords-idea-${esc(clusterId)}-${esc(p.id)}','${esc(p.name)}','keywords')">📝</button>
       </span></div><div class="idea-desc"><b>${esc(p.platform)} · ${esc(p.type)}</b> — ${esc(p.angle)}</div></div>`).join('');
@@ -2723,12 +2725,12 @@ async function runProductIdeas(steer, omit) {
 // by the HTML parser, and breaks out of the single-quoted JS string in the
 // inline handler, silently killing it. Same failure mode already fixed for
 // the cluster ↻ regen button above (see the comment on openClusterRegenModal).
-function addProductFromMainIdea(i) {
+function addProductFromMainIdea(i, asMain) {
   const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
   const line = lines[i];
   if (!line) return;
   const m = line.match(/^([^:]+):\s*(.*)$/);
-  runCreateProductFromIdea(m ? m[1] : line, m ? m[2] : '', '', 'main', i);   // '' = the worker picks the matching keyword group (Master if none)
+  runCreateProductFromIdea(m ? m[1] : line, m ? m[2] : '', '', 'main', i, undefined, asMain);   // '' = the worker picks the matching keyword group (Master if none)
 }
 function viewSourcesForMainIdea(i) {
   const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
@@ -2743,10 +2745,10 @@ function findClusterIdea(clusterId, productId) {
   const p = c && (c.products || []).find(x => x.id === productId);
   return c && p ? { cluster: c, product: p } : null;
 }
-function addProductFromClusterIdea(clusterId, productId) {
+function addProductFromClusterIdea(clusterId, productId, asMain) {
   const found = findClusterIdea(clusterId, productId);
   if (!found) return;
-  runCreateProductFromIdea(found.product.name, found.product.angle, found.cluster.name, 'cluster', clusterId, productId);
+  runCreateProductFromIdea(found.product.name, found.product.angle, found.cluster.name, 'cluster', clusterId, productId, asMain);
 }
 function viewSourcesForClusterIdea(clusterId, productId) {
   const found = findClusterIdea(clusterId, productId);
@@ -2756,13 +2758,21 @@ function viewSourcesForClusterIdea(clusterId, productId) {
 // kind/a/b identify the source idea so it can be removed from the ideas
 // list once it's a real product — 'main' (a = line index in the flat
 // Main Stack text) or 'cluster' (a = clusterId, b = the idea's own id).
-async function runCreateProductFromIdea(name, description, stack, kind, a, b) {
-  if (!confirm(`Create a real Product record "${name}" (Product Stack: ${stack || 'the keyword group it matches'}) in the ${CAMPAIGN_NAME} campaign?`)) return;
+async function runCreateProductFromIdea(name, description, stack, kind, a, b, asMain) {
+  if (!confirm(asMain
+    ? `★ Set as main: create the Product "${name}" in ${CAMPAIGN_NAME} AND add it to this hub's main offerings?\n\nThe hub's existing main offerings stay — this one is added alongside them.`
+    : `Create a real Product record "${name}" (Product Stack: ${stack || 'the keyword group it matches'}) in the ${CAMPAIGN_NAME} campaign?`)) return;
   try {
     const r = await w('createProduct', { title: name, description, stack, campaignId: CAMPAIGN_ID, status: 'Development' });
     _stackOrderLoaded = null;   // the worker may have filed its stack under the topic's cluster group — reload groups
-    alert(`Created — ${r.name}\nGroup: ${r.group || 'No Group'} › Stack: ${r.stack || stack || 'No Stack'}\nOpening it in Notion.`);
-    window.open(notionUrl(r.id), '_blank', 'noopener');
+    let mainNote = '';
+    if (asMain) {
+      try { const m = await w('setHubMainOffering', { campaignId: CAMPAIGN_ID, productId: r.id, op: 'add' });
+        mainNote = `\n★ Added to the hub's main offerings (${(m.mainIds || []).length} now).`; }
+      catch (e) { mainNote = `\n✗ Created, but adding it to the main offerings failed: ${e.message}`; }
+    }
+    alert(`Created — ${r.name}\nGroup: ${r.group || 'No Group'} › Stack: ${r.stack || stack || 'No Stack'}${mainNote}${asMain ? '' : '\nOpening it in Notion.'}`);
+    if (!asMain) window.open(notionUrl(r.id), '_blank', 'noopener');
     CAMPAIGN_PRODUCTS = [];
     if (kind === 'main') {
       const lines = (MAIN_PRODUCT_IDEAS_TEXT || '').split('\n').map(l => l.trim()).filter(Boolean);
