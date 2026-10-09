@@ -2767,7 +2767,7 @@ async function runCreateProductFromIdea(name, description, stack, kind, a, b, as
     _stackOrderLoaded = null;   // the worker may have filed its stack under the topic's cluster group — reload groups
     let mainNote = '';
     if (asMain) {
-      try { const m = await w('setHubMainOffering', { campaignId: CAMPAIGN_ID, productId: r.id, op: 'add' });
+      try { const m = await w('setHubMainOffering', { campaignId: CAMPAIGN_ID, productId: r.id, op: 'add' }); HUB_MAIN_IDS = null;   // Products tab re-reads the main offerings (★ shows on it)
         mainNote = `\n★ Added to the hub's main offerings (${(m.mainIds || []).length} now).`; }
       catch (e) { mainNote = `\n✗ Created, but adding it to the main offerings failed: ${e.message}`; }
     }
