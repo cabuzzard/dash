@@ -4202,7 +4202,7 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=2026100911308"></script>
+<script src="shared/design-panel.js?v=2026100912179"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -14336,8 +14336,8 @@ function renderHubsTab() {
     <div class="hub-rail-head">
       <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Full roll</span>
       <span style="display:inline-flex;border:1px solid var(--border2);border-radius:5px;overflow:hidden;" title="Live = the hub as it is now · Preview staged = the page built from the staged design spec">
-        <button onclick="hubRailMode('${slug}','live')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'transparent' : 'var(--accent)'};color:${_hubRailMock[slug] ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;">Live</button>
-        <button id="hpiStaged-${slug}" onclick="hubRailMode('${slug}','mock')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'var(--accent)' : 'transparent'};color:${_hubRailMock[slug] ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;" title="The whole page built from the STAGED design spec (rebuilt first if the spec changed)">Preview staged</button></span>
+        ${(() => { const st = !!(_hubDesignPreview[slug] && _hubDesignPreview[slug].css); return `<button onclick="hubRailMode('${slug}','live')" style="font-size:10px;padding:3px 8px;border:none;background:${st ? 'transparent' : 'var(--accent)'};color:${st ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;">Live</button>`; })()}
+        ${(() => { const st = !!(_hubDesignPreview[slug] && _hubDesignPreview[slug].css); return `<button id="hpiStaged-${slug}" onclick="hubRailMode('${slug}','mock')" style="font-size:10px;padding:3px 8px;border:none;background:${st ? 'var(--accent)' : 'transparent'};color:${st ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;" title="The hub's own page, repainted with the STAGED design fields (css + images) — nothing published">Preview staged</button>`; })()}</span>
       <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid ${HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:transparent;color:${HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">✎ Tap-to-edit: ${HPI_ON[slug] ? 'on' : 'off'}</button>
       <a href="${_hubRailMock[slug] || hubUrl}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">open ↗</a>
     </div>
@@ -14361,15 +14361,16 @@ function hubRerunOpen(slug) {
 const _hubDesignPanels = {}, _hubDesignPreview = {};
 // Full-roll rail: Live hub vs the Design panel's built mockup page (slug → mockup url while in Mockup mode)
 const _hubRailMock = {};
+// Live = the hub as it is · Preview staged = the SAME page with the staged repaint (css + images) painted on
 async function hubRailMode(slug, mode) {
+  delete _hubRailMock[slug];
   if (mode === 'mock') {
     const api = _hubDesignPanels[slug] && _hubDesignPanels[slug].api;
-    if (!api || !api.stagedPageUrl) { alert('Open the Design section once so the panel loads, then try again.'); return; }
-    const b = document.getElementById('hpiStaged-' + slug); if (b) { b.disabled = true; b.textContent = '⏳ building…'; }
-    try { const url = await api.stagedPageUrl(); _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); }
-    catch (e) { alert('Could not build the staged preview: ' + e.message); if (b) { b.disabled = false; b.textContent = 'Preview staged'; } return; }
-  } else delete _hubRailMock[slug];
-  renderHubsTab();
+    if (!api || !api.previewStaged) { alert('Open the Design section once so the panel loads, then try again.'); return; }
+    const b = document.getElementById('hpiStaged-' + slug); if (b) { b.disabled = true; b.textContent = '⏳ repainting…'; }
+    try { await api.previewStaged(); } catch (e) { if (b) { b.disabled = false; b.textContent = 'Preview staged'; } return; }
+  } else { _hubDesignPreview[slug] = null; }
+  renderHubsTab(); hubPreviewPaint(slug);
 }
 // 👁 paint a staged palette + fonts onto the live hub preview (right rail) — CSS variables only, nothing saved.
 // Re-applied whenever the preview frame (re)loads; null removes it.
@@ -14377,7 +14378,7 @@ function hubPreviewPaint(slug) {
   const doc = hpiDoc(slug); if (!doc || !doc.documentElement) return;
   const d = _hubDesignPreview[slug];
   let st = doc.getElementById('dpPreviewStyle'), ln = doc.getElementById('dpPreviewFonts');
-  if (!d || (!d.palette && !(d.fonts && d.fonts.display))) { if (st) st.remove(); if (ln) ln.remove(); return; }
+  if (!d || (!d.palette && !(d.fonts && d.fonts.display) && !d.css)) { if (st) st.remove(); if (ln) ln.remove(); return; }
   const p = d.palette || {}, f = d.fonts || {}, vars = [];
   ['bg', 'surface', 'ink', 'ink-head', 'ink-soft', 'line', 'sea', 'deep', 'deep-ink', 'accent'].forEach(k => { if (p[k]) vars.push(`--${k}:${p[k]} !important;`); });
   if (p.surface) vars.push(`--paper:${p.surface} !important;`);
@@ -14385,7 +14386,9 @@ function hubPreviewPaint(slug) {
   if (f.body) vars.push(`--font-body:"${f.body}", system-ui, sans-serif !important;`);
   if (f.mono) vars.push(`--font-mono:"${f.mono}", ui-monospace, monospace !important;`);
   if (!st) { st = doc.createElement('style'); st.id = 'dpPreviewStyle'; doc.head.appendChild(st); }
-  st.textContent = `:root{${vars.join('')}}`;
+  st.textContent = `:root{${vars.join('')}}` + (d.css ? '\n' + d.css : '');
+  const im = d.images || {};   // staged hero / signup renders swapped into the page's own image slots
+  [['heroAside', im.hero], ['reportAside', im.signup]].forEach(([id, u]) => { if (!u) return; const el = doc.getElementById(id); if (!el) return; el.hidden = false; el.className = 'hub-aside'; el.innerHTML = '<img src="' + u + '" alt="" style="width:100%;height:auto;display:block;">'; });
   const fams = [f.display, f.body, f.mono].filter(Boolean);
   if (fams.length) { if (!ln) { ln = doc.createElement('link'); ln.id = 'dpPreviewFonts'; ln.rel = 'stylesheet'; doc.head.appendChild(ln); }
     ln.href = 'https://fonts.googleapis.com/css2?' + fams.map(x => 'family=' + encodeURIComponent(x).replace(/%20/g, '+') + ':wght@400;600;700').join('&') + '&display=swap'; }
@@ -14396,7 +14399,8 @@ function hubDesignAttach(slug) {
   let p = _hubDesignPanels[slug];
   if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
     onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; hubRailAfterPush(slug, r); },
-    preview: d => { _hubDesignPreview[slug] = d; hubPreviewPaint(slug); },
+    repaint: true,   // hubs: Preview staged repaints the EXISTING page (css + images) instead of building a new one
+    preview: d => { _hubDesignPreview[slug] = d; if (d && d.css && _hubRailMock[slug]) { delete _hubRailMock[slug]; } renderHubsTab(); hubPreviewPaint(slug); },
     onBuilt: url => { if (url) { _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); renderHubsTab(); } },
     beforeBuild: () => hubFlowPreflight(slug), onSaved: () => { _hubBuildFetched[slug] = false; } }) }; }
   host.appendChild(p.el);

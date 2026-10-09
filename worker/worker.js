@@ -12211,6 +12211,11 @@ Return ONLY this minified JSON object, nothing before or after:
               const link = `<link href="https://fonts.googleapis.com/css2?family=${fontQuery(fonts.display)}&family=${fontQuery(fonts.body)}&family=${fontQuery(fonts.mono)}&display=swap" rel="stylesheet">`;
               html = html.replace(/<link href="https:\/\/fonts\.googleapis\.com\/css2\?[^"]*" rel="stylesheet">/, link);
             }
+            if (typeof body.repaintCss === "string") {   // the design pass's override stylesheet — the page itself is untouched
+              const css = dsRepaintSanitize(body.repaintCss).trim(), block = css ? `<style id="ds-repaint">\n${css}\n</style>` : "";
+              if (/<style id="ds-repaint">[\s\S]*?<\/style>/.test(html)) html = html.replace(/<style id="ds-repaint">[\s\S]*?<\/style>/, () => block);
+              else if (block) html = html.replace(/<\/head>/i, () => block + "\n</head>");
+            }
             await putFile(htmlPath, html, `hub design: ${slug} — live (research)`, htmlF.sha);
 
             // ── image spec goes live in the same save ──────────────────────
@@ -48266,6 +48271,16 @@ const DS_ADDITIVE = new Set(["grok", "chatgpt"]);
 function dsSchemaText() {
   return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h})`).join("\n")).join("\n")).join("\n\n");
 }
+// COSMETIC vs STRUCTURE (2026-10-09): the design pass only REPAINTS the existing global hub scaffold — CSS, imagery,
+// design elements. Structure fields describe the fixed scaffold (a future layout pass); they are never applied.
+const DS_STRUCTURE = new Set(["content.section_order", "layout.grid", "layout.hero_split", "layout.density", "layout.mobile", "comp.lists", "comp.callout"]);
+const dsIsPaint = k => !DS_STRUCTURE.has(k) && /^(color|type|layout|comp|motion)\./.test(k);
+// the repaint stylesheet: an OVERRIDE block for the hub's existing page — cosmetics only; layout properties are stripped
+function dsRepaintSanitize(css) {
+  return String(css || "").replace(/<\/?style[^>]*>/gi, "")
+    .replace(/(?<=^|[;{\s])(display|grid(-[a-z-]+)?|flex(-direction|-wrap|-flow)?|order|position|float|visibility|inset|top|left|right|bottom|columns|column-count|content)\s*:[^;}]*;?/gim, "")
+    .slice(0, 40000);
+}
 function dsSpecText(spec, onlyFilled) {
   spec = spec || {};
   return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.filter(([k]) => !onlyFilled || (spec[k] && spec[k].v)).map(([k]) => {
@@ -48433,6 +48448,7 @@ Rules:
 - Never contradict the seed photo or the text override.
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
 - Image fields describe images that look like the seed photo, so every image in the project feels like one set.
+- The site's STRUCTURE is a fixed scaffold shared by every hub — this pass only repaints it (colors, type, shapes, components, imagery). Leave these structure fields as they are: ${[...DS_STRUCTURE].join(", ")}.
 
 ${only ? `FIELDS TO FILL — key — what it controls (format): current value. Return ONLY these keys:
 ${list(k => only.has(k))}
@@ -48498,7 +48514,7 @@ async function handleDesignSpec(body, env, ctx) {
   let staged = staged0 || (saved ? JSON.parse(JSON.stringify(saved.spec || {})) : {});
   const inputs = inputs0 || {};
   const op = body.op || "get";
-  const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, ...extra });
+  const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, structure: [...DS_STRUCTURE], saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, ...extra });
 
   if (op === "get") return out();
   // ── group / field scoping (2026-10-09): body.keys limits revert, save and the source passes to those fields ──
@@ -48825,6 +48841,42 @@ Reply with ONE JSON object only — just the fields you change: {"fields": {"key
     staged = m.spec; await Promise.all([put(K.stage, staged), put(K.inputs, inputs)]);
     return out({ applied: m.applied, suggested: m.suggested });
   }
+  if (op === "repaint") {  // the STAGED (or saved) cosmetic fields → an override stylesheet for the hub's EXISTING page
+    const src = body.from === "saved" ? ((saved && saved.spec) || {}) : staged, slug = hubSlugForCampaign(cid);
+    if (!slug) return { error: "this campaign has no hub page to repaint" };
+    const paint = Object.keys(src).filter(k => dsIsPaint(k) && src[k] && src[k].v).sort();
+    const sigSrc = paint.map(k => k + "=" + src[k].v).join("\n"); let h = 5381; for (let i = 0; i < sigSrc.length; i++) h = ((h * 33) ^ sigSrc.charCodeAt(i)) >>> 0;
+    const sg = h.toString(36), K_RP = "design:repaint:" + cid;
+    const cache = await kvj(K_RP); if (cache && cache.sig === sg && cache.css && !body.force) return out({ css: cache.css, sig: sg, cached: true });
+    let page = ""; try { const r = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/index.html?v=${Date.now()}`); if (r.ok) page = await r.text(); } catch (e) {}
+    if (!page) return { error: "could not read the hub page" };
+    page = page.replace(/<style id="ds-repaint">[\s\S]*?<\/style>/, "");
+    const baseCss = ((page.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || "").slice(0, 14000);
+    const classes = [...new Set([...page.matchAll(/class="([^"]+)"/g)].flatMap(m => m[1].split(/\s+/)))].slice(0, 200).join(" ");
+    const ids = [...new Set([...page.matchAll(/id="([^"]+)"/g)].map(m => m[1]))].slice(0, 120).join(" ");
+    const ptext = `Repaint an EXISTING web page by writing an OVERRIDE stylesheet. The page's structure is fixed and shared by every hub — you only change how it LOOKS.
+
+ALLOWED: colors, backgrounds, fonts (family, size, weight, line-height, letter-spacing, case), border radius, borders, shadows, button / badge / eyebrow / input / card styling, padding and gaps INSIDE components, image framing (border-radius, object-fit, aspect-ratio of images), transitions.
+FORBIDDEN (never write these): display, grid*, flex-direction/wrap, order, position, float, visibility, top/left/right/bottom, column layouts, content:, hiding or adding elements, changing section order.
+
+Use ONLY the selectors that exist on the page (its CSS, classes and ids are below). Start with a :root block that sets the page's existing CSS variables to the new values. Keep it tight — under ~250 lines, no comments.
+
+THE DESIGN FIELDS TO APPLY:
+${paint.map(k => `${k}: ${src[k].v}`).join("\n")}
+
+THE PAGE'S CURRENT CSS:
+${baseCss}
+
+CLASSES ON THE PAGE: ${classes}
+IDS ON THE PAGE: ${ids}
+
+Reply with ONE \`\`\`css block only.`;
+    let raw; try { raw = await claude(ptext, 8000, false); } catch (e) { return { error: e.message }; }
+    const css = dsRepaintSanitize((raw.match(/```css\s*([\s\S]*?)```/i) || [null, raw])[1]).trim();
+    if (css.length < 80) return { error: "the repaint came back empty — try again" };
+    await put(K_RP, { sig: sg, css, at: new Date().toISOString(), from: body.from === "saved" ? "saved" : "staged" });
+    return out({ css, sig: sg });
+  }
   if (op === "review") {   // in-app reviewer (Claude or Grok): the sources + current fields → its values → staged
     const who = body.reviewer === "grok" ? "grok" : "claude";
     const only = Array.isArray(body.only) && body.only.length ? body.only.map(String).filter(k => DS_KEYS.has(k)) : null;
@@ -48886,7 +48938,7 @@ Return ONLY a fenced \`\`\`json block: {"notes": "3-5 lines on what you found", 
   };
   // build / text / grok take 1-3 minutes. They run INSIDE this request (ctx.waitUntil only survives ~30s after
   // the response, too short for them); the job record lets a second tab see a pass is in flight.
-  if (["build", "text", "grok", "research", "page", "review"].includes(op)) {
+  if (["build", "text", "grok", "research", "page", "review", "repaint"].includes(op)) {
     if (job && job.status === "running" && Date.now() - Date.parse(job.at) < 5 * 60000) return { error: "a " + job.op + " pass is already running — wait for it to finish" };
     await put(K.job, { op, status: "running", at: new Date().toISOString() });
     let r; try { r = await engine(); } catch (e) { r = { error: e.message }; }

@@ -43,7 +43,7 @@
     const ds = (op, b) => call('designSpec', Object.assign({ op }, b || {}));
     root.__dp = S;
     const say = (m, kind) => { S.msg = m || ''; S.msgKind = kind || ''; render(); };
-    const take = r => { if (r.schema) S.schema = r.schema; if (r.tiers) S.tiers = r.tiers; if ('saved' in r) S.saved = r.saved; if ('savedAt' in r) S.savedAt = r.savedAt;
+    const take = r => { if (r.structure) S.structure = new Set(r.structure); if (r.schema) S.schema = r.schema; if (r.tiers) S.tiers = r.tiers; if ('saved' in r) S.saved = r.saved; if ('savedAt' in r) S.savedAt = r.savedAt;
       if (r.staged) S.staged = r.staged; if (r.inputs) S.inputs = r.inputs; if ('job' in r) S.job = r.job; };
     const fv = k => (S.staged[k] || {}).v || '';
     const palette = spec => { const p = {}; for (const [t, k] of TOKEN_MAP) { const h = hexOf((spec[k] || {}).v); if (!h) return null; p[t] = h; } return p; };
@@ -138,7 +138,7 @@
     const PIPE = [['research', 'Research fields → Research + Campaign records'], ['spec', 'All spec fields'], ['save', 'Save the spec → Image Spec, Palette, Fonts, direction'],
       ['images', 'Hero + signup images'], ['page', 'The whole page (preview)']];
     const sig = sp => { const s = Object.keys(sp || {}).sort().filter(k => sp[k] && sp[k].v).map(k => k + '=' + sp[k].v).join('\n'); let h = 5381; for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0; return h.toString(36); };
-    const stale = () => { const pg = (S.inputs || {}).page; return !!(pg && pg.sig && pg.sig !== sig(S.staged)); };
+    const stale = () => { if (S.slug && cfg.repaint) return !!(S.repaintSig && S.repaintSig !== sig(S.staged)); const pg = (S.inputs || {}).page; return !!(pg && pg.sig && pg.sig !== sig(S.staged)); };
     const iterBar = () => (S.inputs || {}).page ? `<div style="margin:0 0 12px 13px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
         ${wb('visuals', stale() ? BTNP : BTN, '🔁 Update visuals')}${wb('reread', BTN, '↻ Re-read inputs into the spec')}
         <span style="font-size:10.5px;color:${stale() ? C.warn : C.ink3};">${stale() ? '● the spec changed since the visuals were made' : 'visuals match the spec'} · iterating keeps your edits</span></div>` : '';
@@ -268,9 +268,10 @@
     async function publish() {
       const p = palette(S.saved || {}), f = fonts(S.saved || {});
       if (!p) return say('The saved spec needs all ten color fields as hex before it can publish.', 'bad');
-      if (!confirm('Publish the saved spec\'s palette + fonts to the live hub page? (live in ~1 min)')) return;
-      S.busy = 'Publishing to the live hub…'; render();
-      try { const r = await call('publishHubDesign', { slug: S.slug, keepSpec: true, palette: p, fonts: f || undefined }); S.busy = ''; say('Published — live in about a minute.', 'ok'); if (cfg.onPushed) cfg.onPushed(r); }
+      if (!confirm('Repaint the live hub page from the SAVED design fields? (colors, fonts, the restyle css — the page structure is untouched; live in ~1 min)')) return;
+      S.busy = 'Repainting the live hub from the saved fields…'; render();
+      try { let css; if (cfg.repaint) { const rp = await ds('repaint', { from: 'saved' }); css = rp.css; }
+        const r = await call('publishHubDesign', { slug: S.slug, keepSpec: true, palette: p, fonts: f || undefined, repaintCss: css }); S.busy = ''; say('Published — live in about a minute.', 'ok'); if (cfg.onPushed) cfg.onPushed(r); }
       catch (err) { S.busy = ''; say('Publish failed: ' + err.message, 'bad'); }
     }
 
@@ -398,7 +399,7 @@
     function fieldRow([k, label, hint]) {
       const f = S.staged[k] || {}, sv = (S.saved || {})[k] || {}, changed = (f.v || '') !== (sv.v || ''), ed = S.edit === k;
       return `<div style="display:grid;grid-template-columns:minmax(120px,30%) 1fr;gap:8px;padding:5px 0;border-top:1px solid ${C.surf2};align-items:start;${changed ? `border-left:3px solid ${ORG};padding-left:6px;background:rgba(230,126,34,.06);` : ''}">
-        <div style="font-size:11px;color:${C.ink2};">${e(label)}<div style="font-size:9.5px;color:${C.ink3};">${e(k)}</div></div>
+        <div style="font-size:11px;color:${C.ink2};">${e(label)}<div style="font-size:9.5px;color:${C.ink3};">${e(k)}</div>${S.structure && S.structure.has(k) ? `<div title="The hub structure is a fixed global scaffold — this field is not applied by the design pass (future layout pass)" style="font-size:9px;color:${C.ink3};border:1px dashed ${C.line};border-radius:6px;padding:0 4px;display:inline-block;margin-top:2px;">structure · not applied</div>` : ''}</div>
         <div>${ed ? `<input data-in="fedit" data-k="${e(k)}" value="${e(f.v || '')}" placeholder="${e(hint)}" style="${TA}padding:3px 6px;"><div style="margin-top:3px;"><button data-act="fsave" data-k="${e(k)}" title="Put this value in staged (Enter) — 👁 Preview staged to see it, 💾 to save it" style="${BTNP}font-size:10px;padding:2px 8px;">✓ stage</button> <button data-act="fcancel" style="${BTN}font-size:10px;padding:2px 8px;">cancel</button></div>`
           : `<div data-act="fedit" data-k="${e(k)}" title="click to edit" style="cursor:text;font-size:12px;color:${f.v ? C.ink : C.ink3};">${f.v ? swatch(f.v) + e(f.v) : '<i>' + e(hint) + '</i>'} ${f.v ? badge(f.src) : ''}${changed ? ` <span style="font-size:9px;color:${ORG};font-weight:600;">● staged</span> <button data-act="gRevert" data-keys="${e(k)}" title="Revert this field to the saved value" style="${BTN}font-size:9.5px;padding:0 5px;">↺</button> <button data-act="gSave" data-keys="${e(k)}" title="Save just this field" style="${BTN}font-size:9.5px;padding:0 5px;">💾</button>` : ''}</div>
             ${f.why ? `<div style="font-size:10.5px;color:${C.ink3};margin-top:1px;">${e(f.why)}</div>` : ''}`}
@@ -494,7 +495,20 @@
     }
     // 👁 Preview staged: hero + signup images and the mockup page from the STAGED spec — nothing saved
     // change-aware: re-renders only the images whose fields changed; the worker swaps / patches / rebuilds the page as needed
+    // hub repaint preview: the staged cosmetic fields → override css → painted onto the live hub page in the right rail
+    async function repaintPreview(quiet) {
+      const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
+      startWork('pstaged', `Repainting the hub page from the staged fields${todo.length ? ` + rendering ${todo.join(' + ')} on Grok` : ''}…`);
+      try {
+        const [r] = await Promise.all([ds('repaint'), Promise.all(todo.map(id => renderAsset(id)))]);
+        if (todo.length) await persistRenders();
+        S.repaintSig = sig(S.staged); const s = endWork();
+        cfg.preview({ palette: palette(S.staged), fonts: fonts(S.staged), css: r.css, images: imageUrls() });
+        if (!quiet) say(`Staged repaint on the right in ${s}s${r.cached ? ' (no style changes since the last one)' : ''} — the hub's own page, restyled. 💾 Save, then ⇪ Publish to hub puts this exact repaint live.`, 'ok');
+      } catch (err) { endWork(); say('Preview failed: ' + err.message, 'bad'); throw err; }
+    }
     async function previewStaged(quiet) {
+      if (S.slug && cfg.repaint) { if (!quiet && String(S.gptReply || '').trim()) return mergeChat(); return repaintPreview(quiet); }
       if (!quiet && String(S.gptReply || '').trim()) return mergeChat();   // a reply is waiting in the box → stage it first (mergeChat previews)
       if (!quiet && !diffKeys().length) say('Heads up: staged = saved — nothing new is staged, so this preview shows the saved spec. Paste a reply back (📥) or edit fields first.', 'bad');
       const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
@@ -653,7 +667,7 @@
       const p2 = (S.inputs || {}).page; if (!p2 || !p2.url) throw new Error('the page build failed — see the Design panel');
       return p2.url;
     }
-    return { reload: load, state: S, stagedPageUrl };
+    return { reload: load, state: S, stagedPageUrl, previewStaged: () => previewStaged() };
   }
   window.DesignPanel = { mount };
 })();
