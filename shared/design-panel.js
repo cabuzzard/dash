@@ -551,7 +551,15 @@
     });
     window.addEventListener('beforeunload', ev => { if (root.isConnected && S.schema.length && diffKeys().length) { ev.preventDefault(); ev.returnValue = ''; } });
     render(); load();
-    return { reload: load, state: S };
+    // the host's "Preview staged" switch: page url if it matches the staged spec, else rebuild the page from staged first
+    async function stagedPageUrl() {
+      const pg = (S.inputs || {}).page;
+      if (pg && pg.url && !stale()) return pg.url;
+      await rebuildPage();
+      const p2 = (S.inputs || {}).page; if (!p2 || !p2.url) throw new Error('the page build failed — see the Design panel');
+      return p2.url;
+    }
+    return { reload: load, state: S, stagedPageUrl };
   }
   window.DesignPanel = { mount };
 })();

@@ -4201,7 +4201,7 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=2026100908344"></script>
+<script src="shared/design-panel.js?v=2026100908485"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -14315,9 +14315,9 @@ function renderHubsTab() {
   <div class="hub-rail">
     <div class="hub-rail-head">
       <span style="font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--text3);">Full roll</span>
-      <span style="display:inline-flex;border:1px solid var(--border2);border-radius:5px;overflow:hidden;" title="Live = the hub as it is now · Mockup = the page the Design panel built from the spec">
+      <span style="display:inline-flex;border:1px solid var(--border2);border-radius:5px;overflow:hidden;" title="Live = the hub as it is now · Preview staged = the page built from the staged design spec">
         <button onclick="hubRailMode('${slug}','live')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'transparent' : 'var(--accent)'};color:${_hubRailMock[slug] ? 'var(--text2)' : 'var(--bg)'};cursor:pointer;">Live</button>
-        <button onclick="hubRailMode('${slug}','mock')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'var(--accent)' : 'transparent'};color:${_hubRailMock[slug] ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;">Mockup</button></span>
+        <button id="hpiStaged-${slug}" onclick="hubRailMode('${slug}','mock')" style="font-size:10px;padding:3px 8px;border:none;background:${_hubRailMock[slug] ? 'var(--accent)' : 'transparent'};color:${_hubRailMock[slug] ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;" title="The whole page built from the STAGED design spec (rebuilt first if the spec changed)">Preview staged</button></span>
       <button id="hpiEdit-${slug}" onclick="toggleHubPreviewEdit('${slug}')" style="font-size:10px;padding:3px 9px;border:1px solid ${HPI_ON[slug] ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:transparent;color:${HPI_ON[slug] ? 'var(--accent)' : 'var(--text3)'};cursor:pointer;">✎ Tap-to-edit: ${HPI_ON[slug] ? 'on' : 'off'}</button>
       <a href="${_hubRailMock[slug] || hubUrl}" target="_blank" rel="noopener" style="font-size:10px;color:var(--text3);text-decoration:none;">open ↗</a>
     </div>
@@ -14341,11 +14341,13 @@ function hubRerunOpen(slug) {
 const _hubDesignPanels = {}, _hubDesignPreview = {};
 // Full-roll rail: Live hub vs the Design panel's built mockup page (slug → mockup url while in Mockup mode)
 const _hubRailMock = {};
-function hubRailMode(slug, mode) {
+async function hubRailMode(slug, mode) {
   if (mode === 'mock') {
-    const st = _hubDesignPanels[slug] && _hubDesignPanels[slug].api && _hubDesignPanels[slug].api.state, pg = st && st.inputs && st.inputs.page;
-    if (!pg || !pg.url) { alert('No mockup yet — open Design and press ✨ Build everything from these inputs (or 📄 Build the page).'); return; }
-    _hubRailMock[slug] = pg.url + (pg.url.includes('?') ? '&' : '?') + 'v=' + Date.now();
+    const api = _hubDesignPanels[slug] && _hubDesignPanels[slug].api;
+    if (!api || !api.stagedPageUrl) { alert('Open the Design section once so the panel loads, then try again.'); return; }
+    const b = document.getElementById('hpiStaged-' + slug); if (b) { b.disabled = true; b.textContent = '⏳ building…'; }
+    try { const url = await api.stagedPageUrl(); _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); }
+    catch (e) { alert('Could not build the staged preview: ' + e.message); if (b) { b.disabled = false; b.textContent = 'Preview staged'; } return; }
   } else delete _hubRailMock[slug];
   renderHubsTab();
 }
