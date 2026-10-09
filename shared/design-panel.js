@@ -500,10 +500,15 @@
       const todo = ['hero', 'signup'].filter(id => !imgCurrent(id));
       startWork('pstaged', `Previewing the staged spec: ${todo.length ? `re-rendering ${todo.join(' + ')} (fields changed), then ` : 'images unchanged — '}updating the page…`);
       try {
-        for (const id of todo) { S.busy = `Rendering the ${id} image on Grok (~20s)…`; render(); await renderAsset(id); }
-        if (todo.length) await persistRenders();
-        S.busy = 'Updating the page — only what changed…'; render();
-        const r = await ds('page', { images: imageUrls() }); take(r); const s = endWork(), pg = r.page || {};
+        // in parallel: the changed images render on Grok while the page builds (with the current images);
+        // then the new image urls are swapped into the finished page (no AI — instant)
+        S.busy = `${todo.length ? `Rendering ${todo.join(' + ')} on Grok while ` : ''}updating the page — only what changed…`; render();
+        const oldUrls = imageUrls();
+        const [r0] = await Promise.all([ds('page', { images: oldUrls }), Promise.all(todo.map(id => renderAsset(id)))]);
+        let r = r0; take(r);
+        if (todo.length) { await persistRenders(); S.busy = 'Swapping the new images into the page…'; render();
+          const r2 = await ds('page', { images: imageUrls() }); take(r2); if (!r2.unchanged) r = { ...r2, page: { ...(r2.page || {}), mode: (r0.page || {}).mode || (r2.page || {}).mode, changed: (r0.page || {}).changed } }; }
+        const s = endWork(), pg = r.page || {};
         const how = r.unchanged ? 'nothing changed — same page' : pg.mode === 'images' ? 'new images swapped in' : pg.mode === 'patched' ? `patched ${(pg.changed || []).length} changed field${(pg.changed || []).length === 1 ? '' : 's'}` : 'full page build';
         if (!quiet) say(`Preview ready in ${s}s (${todo.length ? todo.join(' + ') + ' re-rendered, ' : ''}${how}) — on the right. Keep it with 💾 Save, or ↺ Revert.`, 'ok');
         if (cfg.onBuilt && (S.inputs || {}).page) { try { cfg.onBuilt(S.inputs.page.url); } catch (err) {} }
