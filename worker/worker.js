@@ -48373,10 +48373,23 @@ async function handleDesignSpec(body, env, ctx) {
     if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
     const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
       headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json", ...(search ? { "anthropic-beta": "web-search-2025-03-05" } : {}) },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, ...(search ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] } : {}), messages: [{ role: "user", content }] }) });
-    const d = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(d.error?.message || "Claude API error " + r.status);
-    let raw = ""; for (const b of (d.content || [])) if (b.type === "text") raw += b.text;
+      // streamed: a 1-3 min non-streaming call gets cut off with a 524 at the API edge
+      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, stream: true, ...(search ? { tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }] } : {}), messages: [{ role: "user", content }] }) });
+    if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error?.message || "Claude API error " + r.status); }
+    const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "", raw = "", stop = "";
+    for (;;) {
+      const { done, value } = await rd.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let nl; while ((nl = buf.indexOf("\n")) >= 0) {
+        const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
+        if (!line.startsWith("data:")) continue;
+        let ev; try { ev = JSON.parse(line.slice(5)); } catch (e) { continue; }
+        if (ev.type === "content_block_delta" && ev.delta && ev.delta.type === "text_delta") raw += ev.delta.text;
+        else if (ev.type === "message_delta" && ev.delta && ev.delta.stop_reason) stop = ev.delta.stop_reason;
+        else if (ev.type === "error") throw new Error((ev.error && ev.error.message) || "Claude stream error");
+      }
+    }
+    if (stop === "max_tokens") throw new Error("the design pass ran out of room — try again");
     return raw;
   };
   const RULES = `Every "v" is DATA — hex codes, px, Google Font names, ratios, aspect ratios, short lists; max ~15 words, no prose. Every "why" is one plain sentence a non-designer understands (max 14 words). Body text on the background and white text on the accent must pass WCAG AA (4.5:1).`;
