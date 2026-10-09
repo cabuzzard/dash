@@ -48292,7 +48292,8 @@ const DS_KEYS = new Set(DS_FIELDS.map(f => f[0]));
 const DS_PRI = { manual: 5, text: 4, photo: 3, keywords: 2, grok: 1, chatgpt: 1, claude: 1 };
 const DS_ADDITIVE = new Set(["grok", "chatgpt"]);
 
-function dsSchemaText() {
+function dsSchemaText(only) {   // only (a Set of keys) → just those fields — a one-section pass
+  if (only) return DS_SCHEMA.map(s => { const fs = s.fields.filter(([k]) => only.has(k)); return fs.length ? `## ${s.label}\n` + fs.map(([k, l, h]) => `${k} — ${l} (${h})`).join("\n") : ""; }).filter(Boolean).join("\n");
   return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.map(([k, l, h]) => `${k} — ${l} (${h})`).join("\n")).join("\n")).join("\n\n");
 }
 // COSMETIC vs STRUCTURE (2026-10-09): the design pass only REPAINTS the existing global hub scaffold — CSS, imagery,
@@ -48558,7 +48559,7 @@ async function handleDesignSpec(body, env, ctx) {
   }
   if (scoped && ["build", "text", "grok", "chatReply"].includes(op)) {
     const before = JSON.parse(JSON.stringify(staged));
-    const r = await handleDesignSpec({ ...body, keys: null }, env, ctx);
+    const r = await handleDesignSpec({ ...body, keys: null, onlyKeys: [...scoped] }, env, ctx);   // the pass itself asks for just these fields
     if (!r || r.error) return r;
     const after = r.staged || {}, fixed = before;
     for (const k of scoped) { if (after[k]) fixed[k] = after[k]; else delete fixed[k]; }
@@ -48812,6 +48813,7 @@ Reply with the HTML only, in one \`\`\`html block.`;
   }
   if (op === "build") {    // round 1: keywords (+ live search of the ranked sites) + seed photo
     const inp = { ...inputs, keywords: inputs.keywords || kwFallback };
+    const onlyK = Array.isArray(body.onlyKeys) && body.onlyKeys.length ? new Set(body.onlyKeys.map(String).filter(k => DS_KEYS.has(k))) : null;
     const bslug = hubSlugForCampaign(cid);
     const [scaf, bdemand] = await Promise.all([
       bslug ? fetch(`https://cabuzzard.github.io/dash/web/hub/${bslug}/content.json?v=${Date.now()}`).then(r => r.ok ? r.json() : null).catch(() => null) : null,
@@ -48836,13 +48838,13 @@ Steps:
 3. Fill EVERY field. The seed photo decides the visual style (color, type character, imagery, medium); the keywords decide intent, audience, layout conventions and what the images show; the text override wins on anything it mentions. Tag each field's "src": "photo", "keywords" or "text" — whichever input decided it.
 ${RULES}
 
-FIELDS (key — what it controls (format)):
-${dsSchemaText()}
+${onlyK ? "THIS PASS IS ONE SECTION: fill ONLY the fields listed under FIELDS and return only those keys. Use the page-one look and seed photo already described in the inputs above (no new search needed); the CURRENT VALUES are context for the rest of the system.\n\n" : ""}FIELDS (key — what it controls (format)):
+${dsSchemaText(onlyK)}
 ${Object.keys(staged).length ? `\nCURRENT VALUES (improve them; manual edits are kept regardless):\n${dsSpecText(staged, true)}\n` : ""}
 Reply with ONE JSON object only:
 {"ranked": {"look": "one line", "sites": [{"domain": "example.com", "url": "https://…", "keyword": "the keyword it ranks for", "position": 1, "look": "one line on its look"}]}, "photo_read": "${inp.photo && inp.photo.url ? "3-4 lines describing the seed photo as data: medium, palette hexes, line, type, people, mood" : ""}", "fields": {"intent.keywords": {"v": "…", "why": "…", "src": "keywords"}, "...every key...": {"v": "…", "why": "…", "src": "photo"}}}`;
     const content = inp.photo && inp.photo.url ? [{ type: "image", source: { type: "url", url: inp.photo.url } }, { type: "text", text }] : text;
-    let j; try { j = dsParseJson(await claude(content, 16000, true)); } catch (e) { return { error: e.message }; }
+    let j; try { j = dsParseJson(await claude(content, onlyK ? 5000 : 16000, !onlyK)); } catch (e) { return { error: e.message }; }   // one section: no web search, small reply
     if (!j || !j.fields) return { error: "Couldn't read the design pass — try again" };
     const m = dsMerge(staged, dsClean(j.fields, "keywords", ["photo", "keywords", "text"]));
     staged = m.spec;
