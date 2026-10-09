@@ -48496,7 +48496,7 @@ Follow the DESIGN SPEC exactly — it is the authority on every visual decision:
 - tier 2 + 3 decide the images: use the IMAGE URLS below where the spec places them (hero, signup); size and frame them per asset.hero.* / asset.signup.* and layout.hero_image_*
 - content.* rules decide the words: use the HUB COPY where it exists, write the rest to the content rules and the research — real, specific copy, never lorem ipsum
 - include: header with brand + nav, hero (headline, subline, two CTAs, hero image), the sections in content.section_order (services/offers cards, a newsletter signup band with an email field + button, articles/news cards, proof, disclaimer), footer. A responsive layout that works at 375px and 1440px.
-- no JavaScript frameworks, no external CSS; inline <style> only; images by URL with alt text.
+- no JavaScript frameworks, no external CSS; one compact inline <style> (CSS variables, no repeated rules); images by URL with alt text.
 
 DESIGN SPEC:
 ${dsSpecText(sp, true)}
@@ -48511,7 +48511,7 @@ RESEARCH:
 ${facts.slice(0, 5000)}
 
 Reply with the HTML only, in one \`\`\`html block.`;
-    let raw; try { raw = await claude(text, 20000, false); } catch (e) { return { error: e.message }; }
+    let raw; try { raw = await claude(text, 32000, false); } catch (e) { return { error: e.message }; }
     const m = raw.match(/```html\s*([\s\S]*?)```/i), html = (m ? m[1] : raw.slice(raw.indexOf("<!"))).trim();
     if (!/<html[\s>]/i.test(html) || html.length < 1500) return { error: "the page came back incomplete — try again" };
     if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
