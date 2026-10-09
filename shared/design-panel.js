@@ -189,6 +189,38 @@
     }
     async function applyOverride() { if (!(S.override || '').trim()) return say('Type the override first.', 'bad'); await saveInputs(); run('text', { override: S.override }); }
     async function grok() { await saveInputs(); run('grok'); }
+    // ── 🪪 Site spec card: ChatGPT (copy the prompt, upload its image) or Grok (rendered here) ──
+    function specCardBody() {
+      const cs = (S.inputs || {}).cards || [], top = cs[0];
+      return `<div style="font-size:11px;color:${C.ink3};margin-bottom:8px;">One tall image of the whole system — header, hero, sections, a social post + thumbnail, the palette and type — prompted from the <b>staged</b> fields and the hub's copy. The newest card also goes to reviewers in Send for review.</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px;">${wb('cardCopy', BTN, '📋 Copy prompt for ChatGPT')}${wb('cardGrok', BTN, '⚡ Generate on Grok (~30s)')}
+          <label style="${BTN}display:inline-block;">${S.work && S.work.act === 'cardUp' ? '⏳ uploading…' : "⬆ Upload ChatGPT's card"}<input type="file" accept="image/*" data-act="cardUp" style="display:none;"></label></div>
+        ${top ? `<a href="${e(top.url)}" target="_blank" rel="noopener"><img src="${e(top.url)}" style="width:100%;max-width:520px;border-radius:8px;border:1px solid ${C.line};display:block;"></a>
+          <div style="font-size:10.5px;color:${C.ink3};margin:4px 0 8px;">${badge(top.src)} ${e(String(top.at || '').slice(0, 16).replace('T', ' '))} <button data-act="cardDel" data-k="${e(top.url)}" style="${BTN}font-size:9.5px;padding:0 6px;">✕ remove</button></div>` : `<div style="font-size:11px;color:${C.ink3};">No card yet.</div>`}
+        ${cs.length > 1 ? `<div style="display:flex;gap:6px;flex-wrap:wrap;">${cs.slice(1).map(c => `<a href="${e(c.url)}" target="_blank" rel="noopener" title="${e(c.src)} ${e(String(c.at || '').slice(0, 10))}"><img src="${e(c.url)}" style="height:90px;border-radius:5px;border:1px solid ${C.line};"></a>`).join('')}</div>` : ''}`;
+    }
+    async function cardCopy() {
+      startWork('cardCopy', 'Writing the site spec card prompt…');
+      try { const r = await ds('cardPrompt'); endWork(); await navigator.clipboard.writeText(r.prompt);
+        say('Site spec card prompt copied (from the staged fields). Paste it into ChatGPT, let it make the image, download it, then ⬆ Upload it here.', 'ok'); }
+      catch (err) { endWork(); say('Could not copy the prompt: ' + err.message, 'bad'); }
+    }
+    async function cardGrok() {
+      startWork('cardGrok', 'Rendering the site spec card on Grok (~30s)…');
+      try { const p = await ds('cardPrompt'); const r = await call('renderSpecTest', { rawPrompt: p.prompt, aspect: '3:4' });
+        take(await ds('card', { url: r.imageUrl, src: 'grok' })); endWork(); S.open.speccard = true; say('Site spec card rendered on Grok.', 'ok'); }
+      catch (err) { endWork(); say('Grok card failed: ' + err.message, 'bad'); }
+    }
+    async function cardUpload(file) {
+      if (!file) return; startWork('cardUp', 'Uploading the site spec card…');
+      try {
+        const url = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = rej; fr.readAsDataURL(file); });
+        const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+        const sc = Math.min(1, 2000 / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc); cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        take(await ds('card', { data: cv.toDataURL('image/jpeg', 0.9), src: 'chatgpt' })); endWork(); S.open.speccard = true; say('Site spec card uploaded.', 'ok');
+      } catch (err) { endWork(); say('Upload failed: ' + err.message, 'bad'); }
+    }
     async function uploadPhoto(file) {
       if (!file) return; startWork('photo', 'Uploading the seed photo…');
       try {
@@ -529,6 +561,7 @@
             const dk = new Set(diffKeys()), ks = e(secKeys(sec).filter(k => dk.has(k)).join(','));
             return card(sec.id, e(sec.label), `${n}/${sec.fields.length} filled${nd ? ` · <b style="color:${ORG};">● ${nd} staged, not saved</b>` : ''}`, () => sectionBody(sec),
               nd ? { warn: true, extra: `<button ${S.busy ? 'disabled' : ''} data-act="gRevert" data-keys="${ks}" title="Revert this section's staged fields to the saved values" style="${BTN}font-size:10px;padding:2px 7px;">↺</button><button ${S.busy ? 'disabled' : ''} data-act="gSave" data-keys="${ks}" title="Save this section's ${nd} staged field${nd === 1 ? '' : 's'}" style="font-size:10px;padding:2px 8px;border:1px solid ${ORG};border-radius:6px;background:${ORG};color:#fff;font-weight:600;cursor:pointer;">💾 Save ${nd}</button>` } : null); }).join('')
+        + card('speccard', '🪪 Site spec card', ((S.inputs || {}).cards || []).length ? `${S.inputs.cards.length} card${S.inputs.cards.length === 1 ? '' : 's'} · newest ${e(String(S.inputs.cards[0].at || '').slice(0, 10))}` : 'one design-board image of the whole system', specCardBody)
         + card('page', '📄 Page preview', (S.inputs || {}).page ? 'built ' + e(String(S.inputs.page.at || '').slice(0, 10)) : 'the whole page, from the spec', pageBody)
         + card('assets', '🖼 Asset images', Object.keys(S.renders).length ? Object.keys(S.renders).length + ' rendered' : 'hero · signup · posts · thumbnails — from the spec', assetsBody)
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
@@ -556,6 +589,7 @@
       if (t.dataset.in === 'aspect') S.aspect = t.value;
       if (t.dataset.act === 'revKey') { if (t.checked) S.revOnly.add(t.dataset.k); else S.revOnly.delete(t.dataset.k); render(); return; }
       if (t.dataset.act === 'revSec') { const sec = secById(t.dataset.sec); if (sec) secKeys(sec).forEach(k => t.checked ? S.revOnly.add(k) : S.revOnly.delete(k)); render(); return; }
+      if (t.dataset.act === 'cardUp') { const f = t.files && t.files[0]; t.value = ''; cardUpload(f); return; }
       if (t.dataset.act === 'photo') { const f = t.files && t.files[0]; t.value = ''; uploadPhoto(f); }
       if (t.dataset.act === 'gSource' && t.value) { const v = t.value; t.value = ''; gSource(t.dataset.sec, v); }
       if (t.dataset.in === 'kw' || t.dataset.in === 'override') saveInputs();
@@ -579,6 +613,9 @@
       else if (a === 'revClaude') reviewRun('claude');
       else if (a === 'revGrok') reviewRun('grok');
       else if (a === 'revAll') { S.revOnly.clear(); render(); }
+      else if (a === 'cardCopy') cardCopy();
+      else if (a === 'cardGrok') cardGrok();
+      else if (a === 'cardDel') { if (confirm('Remove this card?')) ds('card', { remove: k }).then(r => { take(r); render(); }).catch(err => say(err.message, 'bad')); }
       else if (a === 'fedit') { S.edit = k; S.editVal = fv(k); render(); const inp = root.querySelector('input[data-in="fedit"]'); if (inp) inp.focus(); }
       else if (a === 'fsave') editField(k, S.editVal != null ? S.editVal : fv(k));
       else if (a === 'fcancel') { S.edit = null; render(); }

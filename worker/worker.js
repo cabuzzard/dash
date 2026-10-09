@@ -48270,6 +48270,41 @@ function dsSpecText(spec, onlyFilled) {
   return DS_TIERS.map(([t, tl]) => `# ${tl}\n` + DS_SCHEMA.filter(s => s.tier === t).map(s => `## ${s.label}\n` + s.fields.filter(([k]) => !onlyFilled || (spec[k] && spec[k].v)).map(([k]) => {
     const f = spec[k] || {}; return `${k}: ${f.v || "(empty)"}${f.why ? " — " + f.why : ""}`; }).join("\n")).join("\n")).join("\n\n");
 }
+// 🪪 Site spec card (2026-10-09): ONE tall design-board image of the whole system — header, hero, sections, a social
+// post + thumbnail example, the palette swatches with hexes, the type specimens — prompted from the STAGED fields + hub copy.
+function dsCardPrompt(name, spec, copy) {
+  const v = k => (spec[k] && spec[k].v) || "", pick = re => Object.keys(spec).filter(k => re.test(k) && v(k)).map(k => `${k}: ${v(k)}`).join("\n");
+  const hero = (copy && copy.hero) || {}, brand = (copy && copy.brand) || name;
+  // copy comes from the hub's content.json only — the content.* fields are RULES for copy, not copy
+  const head = hero.headline || "", sub = hero.sub || "";
+  const cta1 = (hero.ctaPrimary && hero.ctaPrimary.label) || "", cta2 = (hero.ctaSecondary && hero.ctaSecondary.label) || "";
+  const roles = [["color.ink_head", "Headlines"], ["color.primary", "Primary"], ["color.accent", "Accent"], ["color.surface", "Panels"], ["color.bg", "Background"], ["color.highlight", "Highlight"], ["color.deep", "Deep"]]
+    .map(([k, l]) => { const h = (String(v(k)).match(/#[0-9a-f]{3,8}/i) || [])[0]; return h ? `${h.toUpperCase()} ${l}` : ""; }).filter(Boolean);
+  return `Create ONE tall portrait image (2:3): a SITE SPEC CARD for "${brand}" — a polished, flat web-design comp of the home page that shows the whole visual system at a glance (a finished design board, not a photo of a screen).
+
+Top to bottom:
+1. Header: logo mark + "${brand}", a short nav (Home, About, Services, Resources, FAQ, Contact), a primary call-to-action button top right.
+2. Hero: the headline "${head || "a short, plain-language promise"}" in the display font, the subline "${sub || "who it is for and what they get"}", the primary button "${cta1 || "Get started"}"${cta2 ? ` and a secondary link "${cta2}"` : ""}, and the hero illustration: ${[v("asset.hero.subject"), v("asset.hero.composition")].filter(Boolean).join("; ") || "the main audience character in the illustration style below"}.
+3. A row of 4-5 benefit tiles, each a simple round icon + a 2-word title + one short line.
+4. An explainer band: an illustration of an audience character beside a heading, a short paragraph and a button.
+5. A "We can help with" row of 5 icon cards naming the main services.
+6. A support block (illustration + short text + button) beside a FAQ accordion with 5 real questions this audience asks.
+7. A bottom strip with small uppercase labels: SOCIAL POST EXAMPLE (a square post in this style with a short headline), THUMBNAIL EXAMPLE (a 16:9 thumbnail with a big headline), COLOR PALETTE (round swatches labeled ${roles.join(", ") || "with their hex codes and roles"}), TYPE STYLE ("Aa" specimens: Headings — ${v("type.display_font") || "display font"} ${v("type.display_weight")}; Body — ${v("type.body_font") || "body font"}).
+
+All text on the card must be legible and spelled exactly as given; keep body copy short. Generous whitespace, clean alignment, consistent icon style.
+
+Follow this visual system exactly:
+COLORS
+${pick(/^color\.(bg|surface|ink|ink_head|primary|deep|accent|highlight|hero_tint|gradients)$/)}
+TYPE
+${pick(/^type\.(display_font|display_weight|display_case|body_font|label_font|label_style)$/)}
+SHAPES
+${pick(/^(layout\.(radius_card|radius_button|card_style|shadows|borders)|comp\.(button_primary|icons))$/)}
+ILLUSTRATION STYLE (every image on the card is one set — same medium, line, palette and recurring characters)
+${pick(/^img\.(medium|line|fill|shading|texture|people|cast|palette_use|mood)$/)}
+AVOID
+${pick(/^avoid\.(visual|colors|stock_ai)$/)}`.slice(0, 4900);
+}
 function dsInputsBlock(inp, fallbackKeywords) {
   inp = inp || {};
   const kw = String(inp.keywords || fallbackKeywords || "").trim(), r = inp.ranked || {}, ph = inp.photo || {};
@@ -48377,7 +48412,8 @@ function dsChatPrompt(name, inp, spec, facts, opts) {
     return g.length ? `# ${tl}\n` + g.join("\n") : ""; }).filter(Boolean).join("\n\n");
   const imgs = [inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
     ...Object.entries(inp.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => `- current ${k.replace(/_/g, " ")} image, rendered from the current fields — judge it: ${r.url}`),
-    inp.page && inp.page.url ? `- the current mockup page built from the current fields (open it): ${inp.page.url}` : ""].filter(Boolean);
+    inp.page && inp.page.url ? `- the current mockup page built from the current fields (open it): ${inp.page.url}` : "",
+    (inp.cards || [])[0] ? `- the current SITE SPEC CARD (a design board of the whole system): ${inp.cards[0].url}` : ""].filter(Boolean);
   return `You are the lead web + brand designer for "${name}". Below are the SOURCES (keywords, keyword research, the campaign and its main products, images) and the CURRENT design spec — a FIELD → VALUE spec for one cohesive visual system: the website, its hero images, social posts and thumbnails.
 Give your expert opinion AS VALUES: fill ${only ? "every field under FIELDS TO FILL" : "EVERY field"} with the value YOU would choose. Rewrite any current value you would do differently, keep it only if you agree, fill anything empty.
 
@@ -48487,6 +48523,26 @@ async function handleDesignSpec(body, env, ctx) {
       inputs.renders = Object.fromEntries(Object.entries(body.renders).filter(([k, r]) => /^[a-z_]{2,30}$/.test(k) && r && /^https:\/\//.test(String(r.url || "")))
         .map(([k, r]) => [k, { url: String(r.url).slice(0, 500), aspect: String(r.aspect || "").slice(0, 10), at: r.at || Date.now(), live: !!r.live, sig: String(r.sig || "").slice(0, 20) }]));
     }
+    await put(K.inputs, inputs); return out();
+  }
+  if (op === "cardPrompt") {   // 🪪 the site spec card prompt, from the STAGED fields + the hub's copy
+    const slug = hubSlugForCampaign(cid); let copy = null;
+    if (slug) { try { const r = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/content.json?v=${Date.now()}`); if (r.ok) copy = await r.json(); } catch (e) {} }
+    return out({ prompt: dsCardPrompt(campName || "this campaign", staged, copy) });
+  }
+  if (op === "card") {         // store a site spec card: an uploaded image (ChatGPT's) or a rendered URL (Grok's) — newest first, 8 kept
+    let url = String(body.url || "");
+    if (body.data) {
+      const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/i.exec(String(body.data)); if (!m) return { error: "send the image as a data: URL" };
+      if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
+      const bytes = Uint8Array.from(atob(m[3]), c => c.charCodeAt(0)); if (bytes.length > 6e6) return { error: "keep the image under 6 MB" };
+      const key = `design/${cid}/card-${Date.now().toString(36)}.${m[2].toLowerCase().replace("jpeg", "jpg")}`;
+      await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: "public, max-age=31536000, immutable" } });
+      url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+    }
+    if (body.remove) inputs.cards = (inputs.cards || []).filter(c => c.url !== body.remove);
+    else { if (!/^https:\/\//.test(url)) return { error: "no image" };
+      inputs.cards = [{ url, src: body.src === "grok" ? "grok" : "chatgpt", at: new Date().toISOString() }, ...(inputs.cards || [])].slice(0, 8); }
     await put(K.inputs, inputs); return out();
   }
   if (op === "photo") {    // seed photo → R2 (public URL Claude can read)
