@@ -1232,7 +1232,7 @@
         <span style="color:var(--text3);">|</span>
         <input id="kwSendName" placeholder="new campaign name (optional)" style="width:170px;">
         <button class="kw-btn" onclick="kwSend('campaign')" title="Create a new campaign (Status: Planning) with a Research record whose Main Keywords are the selection">+ New campaign</button>
-        <button class="kw-btn" onclick="kwStartHub()" style="border-color:var(--accent);color:var(--accent);" title="Start a content hub from the selection. Campaign picked in the dropdown → builds the hub on THAT campaign (keywords added to its Main Keywords). No campaign picked → creates a new campaign. Then scaffolds the hub site (Hub build steps 1-2)">🏗 Start hub from these</button>
+        <button class="kw-btn" onclick="kwStartHub()" style="border-color:var(--accent);color:var(--accent);" title="Start a content hub from the selection — choose an existing campaign or create a new one; the keywords become its main keywords and the hub site is scaffolded">🏗 Start hub from these</button>
         <span style="color:var(--text3);">|</span>
         <button class="kw-btn" onclick="kwCopySel()" title="Copy the selected keywords, one per line">📋 Copy keywords</button>
         <button class="kw-btn" id="kwSelOnlyBtn" onclick="kwToggleSelOnly()" title="Hide everything you haven't selected (other filters are ignored while this is on)">👁 Show selected only</button>
@@ -6179,37 +6179,46 @@ async function kwSend(mode, each) {
 
 // 🏗 Start a hub from a keyword run: the selection becomes the new hub's main keyword group →
 // new campaign (Main Keywords = selection) → scaffoldHub (site skeleton + research record + registry). Hub build steps 1-2.
+// 🏗 Start hub: pick an EXISTING campaign or create a NEW one, then the selection becomes the hub's main keywords
+// and the hub site is scaffolded (with the section placeholders). Hub build steps 1-2.
 async function kwStartHub() {
   const msg = document.getElementById('kwSendMsg');
   if (!KW.selected.size) { msg.textContent = 'Select the keywords for the hub first (e.g. select all in a run).'; return; }
-  // a campaign picked in the dropdown → build the hub ON that campaign (selection added to its Main Keywords) — no new campaign
-  const existingId = document.getElementById('kwSendCampaign').value, existing = (KW.campaigns || []).find(c => c.id === existingId);
-  if (existing) {
-    if (!confirm(`Build a hub for the existing campaign "${existing.name}"?
-
-The ${KW.selected.size} selected keywords are added to its Main Keywords, then its hub site is scaffolded (with the section placeholders).`)) return;
-    try {
-      msg.textContent = `⏳ 1/2 Adding ${KW.selected.size} keywords to ${existing.name}'s Main Keywords…`;
-      await call('kwSendKeywords', { mode: 'main', campaignId: existing.id, campaignName: existing.name, keywords: [...KW.selected] });
-      msg.textContent = `⏳ 2/2 Scaffolding the hub site for "${existing.name}" (about a minute)…`;
-      const s = await call('scaffoldHub', { campaignId: existing.id });
-      if (s && s.error) throw new Error(s.error);
-      msg.textContent = `✓ Hub for "${existing.name}" scaffolded${s && s.slug ? ` (${s.slug})` : ''}. Reload in ~1 min and open Content Hubs — continue with its Hub build checklist.`;
-    } catch (e) { msg.textContent = '✗ ' + e.message; }
-    return;
-  }
+  if (!KW.campaigns) { try { KW.campaigns = ((await call('getCampaigns')).campaigns || []).filter(c => c.name && c.status !== 'Delete').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) { KW.campaigns = []; } }
   const top = kwCoreSort((KW.rows || []).filter(r => KW.selected.has(r.keyword)), [{ col: 'vol', dir: 'desc' }])[0];
-  const name = (prompt(`Start a new hub from ${KW.selected.size} keywords.\n\nHub / campaign name:`, document.getElementById('kwSendName').value.trim() || (top ? top.keyword.replace(/\b\w/g, c => c.toUpperCase()) : '')) || '').trim();
-  if (!name) return;
+  const sug = top ? top.keyword.replace(/\w/g, c => c.toUpperCase()) : '';
+  document.getElementById('kwHubModal')?.remove();
+  const m = document.createElement('div'); m.id = 'kwHubModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;z-index:9999;';
+  m.innerHTML = `<div style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:16px;width:min(440px,92vw);font-size:12.5px;color:var(--text);">
+    <div style="font-weight:700;font-size:14px;margin-bottom:4px;">🏗 Start a hub</div>
+    <div style="color:var(--text3);margin-bottom:10px;">${KW.selected.size} selected keywords become the hub's main keywords, then its site is scaffolded.</div>
+    <label style="display:block;margin-bottom:6px;"><input type="radio" name="kwHubMode" value="existing" checked> Existing campaign</label>
+    <select id="kwHubCamp" class="kw-sel" style="width:100%;margin:0 0 10px;"><option value="">choose campaign…</option>${(KW.campaigns || []).map(c => `<option value="${c.id}" ${c.id === document.getElementById('kwSendCampaign').value ? 'selected' : ''}>${esc(c.name)}${c.status ? ' · ' + esc(c.status) : ''}</option>`).join('')}</select>
+    <label style="display:block;margin-bottom:6px;"><input type="radio" name="kwHubMode" value="new"> New campaign</label>
+    <input id="kwHubName" placeholder="campaign / hub name" value="${esc(sug)}" style="width:100%;box-sizing:border-box;margin-bottom:12px;">
+    <div style="display:flex;gap:8px;justify-content:flex-end;"><button class="kw-btn" onclick="document.getElementById('kwHubModal').remove()">Cancel</button>
+      <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwStartHubGo()">Start hub</button></div></div>`;
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+  m.querySelector('#kwHubCamp').addEventListener('change', () => { m.querySelector('input[value="existing"]').checked = true; });
+  m.querySelector('#kwHubName').addEventListener('input', () => { m.querySelector('input[value="new"]').checked = true; });
+  document.body.appendChild(m);
+}
+async function kwStartHubGo() {
+  const m = document.getElementById('kwHubModal'), msg = document.getElementById('kwSendMsg');
+  const mode = m.querySelector('input[name="kwHubMode"]:checked').value, kws = [...KW.selected];
+  let cid = '', name = '';
+  if (mode === 'existing') { cid = m.querySelector('#kwHubCamp').value; const c = (KW.campaigns || []).find(x => x.id === cid); if (!c) { alert('Choose a campaign (or switch to New campaign).'); return; } name = c.name; }
+  else { name = m.querySelector('#kwHubName').value.trim(); if (!name) { alert('Type the new campaign name.'); return; } }
+  m.remove();
   try {
-    msg.textContent = `⏳ 1/2 Creating the campaign "${name}" with ${KW.selected.size} main keywords…`;
-    const r = await call('kwSendKeywords', { mode: 'campaign', hub: true, name, keywords: [...KW.selected] });
-    if (!r.campaignId) throw new Error(r.error || 'campaign was not created');
-    KW.campaigns = null;
+    if (mode === 'existing') { msg.textContent = `⏳ 1/2 Adding ${kws.length} keywords to ${name}'s Main Keywords…`; await call('kwSendKeywords', { mode: 'main', campaignId: cid, campaignName: name, keywords: kws }); }
+    else { msg.textContent = `⏳ 1/2 Creating the campaign "${name}" with ${kws.length} main keywords…`;
+      const r = await call('kwSendKeywords', { mode: 'campaign', hub: true, name, keywords: kws }); if (!r.campaignId) throw new Error(r.error || 'campaign was not created'); cid = r.campaignId; KW.campaigns = null; }
     msg.textContent = `⏳ 2/2 Scaffolding the hub site for "${name}" (about a minute)…`;
-    const s = await call('scaffoldHub', { campaignId: r.campaignId });
-    if (s && s.error) throw new Error('campaign created, but the scaffold failed: ' + s.error);
-    msg.textContent = `✓ Hub "${name}" started${s && s.slug ? ` (${s.slug})` : ''} — campaign + research + site scaffold. Reload in ~1 min and open Content Hubs: next steps are in its Hub build checklist (keywords → research + products → design).`;
+    const s = await call('scaffoldHub', { campaignId: cid });
+    if (s && s.error) throw new Error((mode === 'new' ? 'campaign created, but ' : '') + 'the scaffold failed: ' + s.error);
+    msg.textContent = `✓ Hub for "${name}" started${s && s.slug ? ` (${s.slug})` : ''}. Reload in ~1 min and open Content Hubs — continue with its Hub build checklist.`;
   } catch (e) { msg.textContent = '✗ ' + e.message; }
 }
 function kwSort(col, ev) {
