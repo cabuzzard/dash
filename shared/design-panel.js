@@ -150,9 +150,9 @@
     // iterate: new photo / keywords → refresh the spec from the inputs (manual edits kept), nothing else
     const reread = async () => { await saveInputs(); return runPipe('reread', ['spec'], 'Re-reading the inputs into the spec (3-5 min)…', 'Spec refreshed from the inputs'); };
     async function runPipe(act, keys, busyMsg, doneMsg) {
-      await saveInputs();
       S.pipe = {}; PIPE.filter(([k]) => keys.includes(k)).forEach(([k]) => { S.pipe[k] = { s: '' }; });
       startWork(act, busyMsg);
+      await saveInputs();
       const step = (k, s, d) => { S.pipe[k] = { s, d: d || '' }; S.busy = s === 'run' ? `${PIPE.find(x => x[0] === k)[1]}…` : S.busy; render(); };
       for (const [k] of PIPE.filter(([x]) => keys.includes(x))) {
         step(k, 'run');
@@ -216,14 +216,15 @@
 
     // ── save: KV + Image Spec text + the legacy design fields ──
     async function save() {
-      S.busy = 'Saving the spec…'; render();
+      if (!diffKeys().length) return say('Nothing to save — every field already matches the saved spec. Edit a field (or run a pass) first.', 'ok');
+      startWork('save', 'Saving the spec…');
       try {
         // the worker writes Image Spec + Palette / Fonts / direction fields onto the Research record itself
         const r = await ds('save'); take(r);
-        S.busy = '';
+        endWork();
         if (r.notionError) return say(`Saved the spec, but the Research record write failed: ${r.notionError}`, 'bad');
         say(`Saved — ${Object.keys(S.saved || {}).length} fields. Image Spec, palette, fonts and direction updated on the record. ⇪ Publish puts the palette + fonts on the live hub.`, 'ok');
-      } catch (err) { S.busy = ''; say('Save failed: ' + err.message, 'bad'); }
+      } catch (err) { endWork(); say('Save failed: ' + err.message, 'bad'); }
     }
     async function publish() {
       const p = palette(S.saved || {}), f = fonts(S.saved || {});
@@ -378,11 +379,12 @@
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
         + card('voice', '🗣 Your voice', 'learned from your edits', voiceBody)
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${diff.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
+            ${S.busy || S.msg ? `<div style="flex-basis:100%;font-size:11.5px;color:${S.busy ? C.ink2 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${S.busy ? '⏳ <span data-timer>' + (S.work ? '' : '') + '</span> ' : ''}${e(S.busy || S.msg)}${S.pipe && S.work ? pipeList() : ''}</div>` : ''}
             <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
             ${stale() ? wb('visuals', BTN, '🔁 Update visuals') : ''}
             ${cfg.preview ? `<button data-act="preview" style="${S.preview ? BTNP : BTN}">👁 Preview${S.preview ? ': on' : ''}</button>` : ''}
             <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert</button>
-            <button ${diff.length && !S.busy ? '' : 'disabled'} data-act="save" style="${BTNP}">💾 Save spec</button>
+            ${S.work && S.work.act === 'save' ? `<button disabled style="${BTNP}opacity:.9;cursor:wait;">⏳ <span data-timer>0:00</span> saving…</button>` : `<button ${S.busy ? 'disabled' : ''} data-act="save" style="${BTNP}">💾 Save spec</button>`}
             ${S.slug ? `<button ${dis} data-act="publish" title="Put the SAVED spec's palette + fonts on the live hub" style="${BTN}">⇪ Publish to hub</button>` : ''}</div>`;
     }
 
