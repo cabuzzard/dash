@@ -4202,7 +4202,7 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=2026100913331"></script>
+<script src="shared/design-panel.js?v=2026100913572"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -14458,7 +14458,8 @@ function hubDesignAttach(slug) {
   let p = _hubDesignPanels[slug];
   if (!p) { const el = document.createElement('div'); p = _hubDesignPanels[slug] = { el, api: window.DesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
     onPushed: r => { if (r.palette && HUB_SPEC[slug]) HUB_SPEC[slug].tokens = r.palette; if (r.fonts && HUB_SPEC[slug]) HUB_SPEC[slug].fonts = r.fonts; hubRailAfterPush(slug, r); },
-    repaint: true,   // hubs: Preview staged repaints the EXISTING page (css + images) instead of building a new one
+    repaint: true,
+    onBusy: d => hubRailBusy(slug, d),   // the panel's progress (step + timer) shown above the right rail while it works   // hubs: Preview staged repaints the EXISTING page (css + images) instead of building a new one
     preview: d => {   // the panel reports on EVERY draw — re-render the card only when the staged repaint turns on/off (else it loops)
       const had = !!(_hubDesignPreview[slug] && _hubDesignPreview[slug].css), has = !!(d && d.css);
       _hubDesignPreview[slug] = d; if (has && _hubRailMock[slug]) delete _hubRailMock[slug];
@@ -14948,6 +14949,14 @@ async function hubRailAfterPush(slug, r) {
   }
   const f = document.getElementById('hpiFrame-' + slug); if (f) f.src = url + '?v=' + Date.now();
   show('✓ Live hub reloaded with the published design.'); setTimeout(() => { const el = lbl(); if (el) el.remove(); }, 8000);
+}
+// right-rail progress line: whatever the Design panel is doing (repaint preview, renders, builds) + elapsed time
+function hubRailBusy(slug, d) {
+  let el = document.getElementById('hpiBusy-' + slug);
+  if (!d) { if (el) el.remove(); return; }
+  const f = document.getElementById('hpiFrame-' + slug); if (!f || !f.parentElement) return;
+  if (!el) { el = document.createElement('div'); el.id = 'hpiBusy-' + slug; el.style.cssText = 'font-size:11.5px;color:var(--text);padding:5px 8px;margin-bottom:4px;border:1px solid var(--border2);border-left:3px solid #e67e22;border-radius:5px;background:var(--surface2);'; f.parentElement.parentElement.insertBefore(el, f.parentElement); }
+  el.textContent = `⏳ ${d.text || 'Working…'}  ${Math.floor(d.secs / 60)}:${String(d.secs % 60).padStart(2, '0')}`;
 }
 function hubSecToggle(k, open) {
   let m = {}; try { m = JSON.parse(localStorage.getItem('hubSecOpen:v1') || '{}'); } catch (e) {}

@@ -87,11 +87,12 @@
     const ACT = { build: 'build', text: 'override', grok: 'grok' };
     function startWork(act, busy) {
       S.work = { act, start: Date.now() }; S.busy = busy; render();
-      clearInterval(S.workTick);
-      S.workTick = setInterval(() => { if (!S.work) return clearInterval(S.workTick); const s = Math.round((Date.now() - S.work.start) / 1000);
+      const tell = () => { if (cfg.onBusy) try { cfg.onBusy(S.work ? { act: S.work.act, text: S.busy, secs: Math.round((Date.now() - S.work.start) / 1000) } : null); } catch (err) {} };
+      tell(); clearInterval(S.workTick);
+      S.workTick = setInterval(() => { if (!S.work) { tell(); return clearInterval(S.workTick); } tell(); const s = Math.round((Date.now() - S.work.start) / 1000);
         root.querySelectorAll('[data-timer]').forEach(n => { n.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }); }, 1000);
     }
-    function endWork() { const s = S.work ? Math.round((Date.now() - S.work.start) / 1000) : 0; S.work = null; clearInterval(S.workTick); S.busy = ''; return s; }
+    function endWork() { const s = S.work ? Math.round((Date.now() - S.work.start) / 1000) : 0; S.work = null; clearInterval(S.workTick); S.busy = ''; if (cfg.onBusy) try { cfg.onBusy(null); } catch (err) {} return s; }
     async function run(op, extra) {
       startWork(ACT[op] || op, (LABEL[op] || op) + ' — filling the fields (1-5 min, keep this tab open)…');
       try { const r = await ds(op, extra); take(r); const s = endWork(); report(Object.assign({ op, status: 'done', applied: r.applied, suggested: r.suggested }, r.job || {}), s); }
