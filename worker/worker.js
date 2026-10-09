@@ -14802,6 +14802,10 @@ Return ONLY this JSON, no other text, no fences:
       // ── setHubMainOffering ── the hub's main offering = one real Products record. Stores the choice (KV
       // hub:mainproduct:<campaignId>, read first by resolveHub + getHubMainProduct), links the product to the
       // campaign if it isn't yet, and mirrors it onto the Content Hub asset's Product + the hub-method title's product.
+      if (body.action === "getHubMainOfferings") {   // the hub's main offerings (KV hub:mainproduct:<cid>) — for the ★ toggles
+        const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return json({ error: "campaignId required" }, 400);
+        return json({ mainIds: await hubMainList(env, cid) });
+      }
       if (body.action === "setHubMainOffering") {
         const campaignId = String(body.campaignId || "").replace(/-/g, ""), productId = String(body.productId || "").replace(/-/g, "");
         if (!campaignId) return json({ error: "campaignId required" }, 400);

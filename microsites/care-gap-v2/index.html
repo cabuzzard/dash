@@ -3495,12 +3495,29 @@ async function setAffiliateStatus(affId, sel) {
   try { await w('updateAffiliateProgram', { id: affId, status: sel.value }); if (a) a.status = sel.value; loadProductTab(); }
   catch (e) { alert('Could not update: ' + e.message); sel.value = prev; }
 }
+// ── ★ main offerings: the hub's main offerings list (additive; existing ones stay) ──
+let HUB_MAIN_IDS = null;
+async function ensureHubMainIds() {
+  if (HUB_MAIN_IDS) return HUB_MAIN_IDS;
+  try { const r = await w('getHubMainOfferings', { campaignId: CAMPAIGN_ID }); HUB_MAIN_IDS = new Set((r.mainIds || []).map(x => String(x).replace(/-/g, ''))); }
+  catch (e) { HUB_MAIN_IDS = new Set(); }
+  return HUB_MAIN_IDS;
+}
+async function toggleHubMain(productId, btn) {
+  const id = String(productId).replace(/-/g, ''), on = HUB_MAIN_IDS && HUB_MAIN_IDS.has(id);
+  if (on && !confirm('Remove this product from the hub\'s main offerings? (the product itself stays)')) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try { const r = await w('setHubMainOffering', { campaignId: CAMPAIGN_ID, productId: id, op: on ? 'remove' : 'add' });
+    HUB_MAIN_IDS = new Set((r.mainIds || []).map(x => String(x).replace(/-/g, ''))); }
+  catch (e) { alert('Main offering update failed: ' + e.message); }
+  loadProductTab();
+}
 async function loadProductTab() {
   const body = document.getElementById('productListBody');
   try {
     await ensureCampaignProducts();
     if (!CAMPAIGN_PRODUCTS.length) { body.innerHTML = '<div class="loadnote">No products attached to this campaign yet.</div>'; return; }
-    await Promise.all([ensureStackOrder(), ensureAffiliateLinks()]);
+    await Promise.all([ensureStackOrder(), ensureAffiliateLinks(), ensureHubMainIds()]);
     // research badges are slow (whole-DB scans) — draw the list now, redraw with badges when they arrive
     if (!PRODUCT_RESEARCH_STATE) ensureProductResearchState().then(() => loadProductTab());
     const { groups, order: rawOrder } = groupByStack(CAMPAIGN_PRODUCTS, p => p.stack);
@@ -3517,6 +3534,7 @@ async function loadProductTab() {
             ${researchStateBadge(p.id)}
             ${affiliateStatusSel(p.id)}
           <span class="idea-btns">
+            ${(() => { const on = HUB_MAIN_IDS && HUB_MAIN_IDS.has(String(p.id).replace(/-/g, '')); return `<button class="iconbtn" title="${on ? 'Main offering of this hub — click to remove it from the main offerings' : 'Set as main — ADD to this hub\'s main offerings (existing ones stay)'}" onclick="toggleHubMain('${esc(p.id)}', this)" style="${on ? 'color:#e6a700;font-weight:700;' : ''}">${on ? '★' : '☆'}</button>`; })()}
             <button class="iconbtn" title="Open Product Research" onclick="openProductModal('${esc(p.id)}')">🔬</button>
             <button class="iconbtn" title="Create a Development-stage title with a written Pillar, off this product" onclick="openCreatePillarModal('${esc(p.id)}', '${esc(p.name.replace(/'/g,"\\'"))}')">✍ Pillar</button>
             <button class="iconbtn" title="Create Product — write the real deliverable (ebook, coaching package, spreadsheet, etc.), not just the record" onclick="openCreateProductModal('${esc(p.id)}', '${esc(p.name.replace(/'/g,"\\'"))}')">🏗️ Create</button>
