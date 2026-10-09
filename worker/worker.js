@@ -46379,6 +46379,14 @@ Produce all of this by calling the submit_listing tool — do not include any of
         let b = null; try { b = await env.TRADES.get("tradebaseline", "json"); } catch (e) {}
         return json({ success: true, baseline: b });
       }
+      // Paper account: {op:"get"|"update"|"reset", rules?} — the $1,000 / +20% / −18% small-account test
+      if (body.action === "paperAccount") {
+        try {
+          let A = body.op === "reset" ? await paperUpdate(env, { reset: true, rules: body.rules || null }) : body.op === "update" ? await paperUpdate(env) : await paperLoad(env);
+          if (!A) A = await paperUpdate(env);
+          return json({ success: true, account: A, summary: paperSummary(A) });
+        } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "crowdSentiment") {
         try {
           if (body.op === "run") return json(await runCrowdSentiment(env, { force: true }));
@@ -46439,7 +46447,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     if (event.cron === "*/4 * * * *") {
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
-      ctx.waitUntil(runTradePoll(env).then(r => { if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
+      ctx.waitUntil(runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
       // Bulk hub research+strategy: auto-seed the queue the first time (no KV
       // state), then drain ~2 products/tick until done. Once complete the KV
       // state persists with a full done-list, so this stays a cheap no-op
@@ -48910,4 +48918,61 @@ async function crowdScanTiers(env) {
     } catch (e) { errors.push(`${name}: ${e.message}`); }
   }
   return { error: "every source failed — " + errors.join(" · "), tierErrors: errors };
+}
+
+// ════════ Paper account (2026-10-08) — "$1,000, $125 per trade, +20% / −18%" on ORB signals ════════
+// Operator's small-account plan, run for real on live signals before any money goes in. Rules (KV paper:acct, editable):
+// bank $1,000 · only signals from `sources` (default ORB_MOMENTUM_001_V1) opened AFTER the account start · one contract
+// per signal, only if it costs ≤ maxContract ($125) AND the cash is free · exit at +tp% (20) or −sl% (18) on the
+// contract price (from the tracker's running high / low since entry) · an expired contract closes at its last value.
+// Runs after every trade-price poll (*/4 cron) and on demand from the Trades tab.
+const PAPER_DEFAULT = { bank: 1000, maxContract: 125, tp: 20, sl: 18, sources: ["ORB_MOMENTUM_001_V1"] };
+async function paperLoad(env) { try { return await env.TRADES.get("paper:acct", "json"); } catch (e) { return null; } }
+async function paperUpdate(env, { reset = false, rules = null } = {}) {
+  let A = reset ? null : await paperLoad(env);
+  if (!A) { const r = { ...PAPER_DEFAULT, ...(rules || {}) }; A = { rules: r, start: new Date().toISOString(), cash: r.bank, open: [], closed: [], skipped: [], seen: [] }; }
+  const R = A.rules, keys = await env.TRADES.list({ prefix: "trades:" });
+  const trades = (await Promise.all(keys.keys.map(k => env.TRADES.get(k.name, "json")))).filter(Boolean);
+  const byId = Object.fromEntries(trades.map(t => [t.id, t]));
+  const now = new Date().toISOString();
+  // 1) exits
+  for (const p of A.open.slice()) {
+    const t = byId[p.tradeId]; if (!t || !t.entry_contract) continue;
+    const e = p.entryPrice, hi = t.contract_max_high != null ? (t.contract_max_high / e - 1) * 100 : null, lo = t.contract_max_low != null ? (t.contract_max_low / e - 1) * 100 : null;
+    let pct = null, why = "";
+    const hitT = hi != null && hi >= R.tp, hitS = lo != null && lo <= -R.sl;
+    if (hitT && hitS) { const tFirst = (t.contract_max_high_time || "") < (t.contract_max_low_time || ""); pct = tFirst ? R.tp : -R.sl; why = tFirst ? "take-profit" : "stop"; }
+    else if (hitT) { pct = R.tp; why = "take-profit"; }
+    else if (hitS) { pct = -R.sl; why = "stop"; }
+    else if (t.expired) { pct = typeof t.contract_pct === "number" ? t.contract_pct : -100; why = "expired"; }
+    if (pct == null) { p.nowPct = typeof t.contract_pct === "number" ? t.contract_pct : 0; continue; }
+    const back = p.cost * (1 + pct / 100);
+    A.cash += back; A.open = A.open.filter(x => x !== p);
+    A.closed.unshift({ ...p, exitPct: pct, pnl: Math.round((back - p.cost) * 100) / 100, why, closedAt: now });
+  }
+  // 2) entries — new signals since the account started, oldest first
+  const seen = new Set(A.seen);
+  const fresh = trades.filter(t => R.sources.includes(t.strategy) && t.entry_time > A.start && !seen.has(t.id)).sort((a, b) => a.entry_time.localeCompare(b.entry_time));
+  for (const t of fresh) {
+    seen.add(t.id);
+    const cost = t.entry_contract ? Math.round(t.entry_contract * 100 * 100) / 100 : null;
+    const skip = why => A.skipped.unshift({ tradeId: t.id, ticker: t.ticker, dir: t.direction, cost, why, at: now });
+    if (!cost) { skip("no contract price"); continue; }
+    if (cost > R.maxContract) { skip(`contract $${cost} > $${R.maxContract} cap`); continue; }
+    if (cost > A.cash) { skip(`cash $${A.cash.toFixed(0)} < $${cost}`); continue; }
+    A.cash -= cost;
+    A.open.push({ tradeId: t.id, ticker: t.ticker, dir: t.direction, strike: t.strike, expiry: t.expiry, entryPrice: t.entry_contract, cost, openedAt: t.entry_time, nowPct: 0 });
+  }
+  A.seen = [...seen].slice(-3000); A.closed = A.closed.slice(0, 500); A.skipped = A.skipped.slice(0, 200);
+  A.cash = Math.round(A.cash * 100) / 100; A.updated = now;
+  await env.TRADES.put("paper:acct", JSON.stringify(A));
+  return A;
+}
+function paperSummary(A) {
+  if (!A) return null;
+  const openVal = A.open.reduce((s, p) => s + p.cost * (1 + (p.nowPct || 0) / 100), 0);
+  const w = A.closed.filter(c => c.pnl > 0).length;
+  return { value: Math.round((A.cash + openVal) * 100) / 100, cash: A.cash, openValue: Math.round(openVal * 100) / 100, closed: A.closed.length, wins: w,
+    winRate: A.closed.length ? Math.round(w / A.closed.length * 100) : null, avgPct: A.closed.length ? Math.round(A.closed.reduce((s, c) => s + c.exitPct, 0) / A.closed.length * 10) / 10 : null,
+    realized: Math.round(A.closed.reduce((s, c) => s + c.pnl, 0) * 100) / 100 };
 }

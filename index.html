@@ -1788,6 +1788,16 @@
       </div>
       <div id="tbBody" style="padding:10px 12px;"></div>
     </div>
+    <!-- Paper account: $1,000, ORB signals, contracts ≤ $125, +20% / −18% (worker paperAccount; updates with every price poll) -->
+    <div id="paSection" style="margin-bottom:16px;border:1px solid #2a5a2a;border-radius:var(--radius-sm);">
+      <div onclick="const b=document.getElementById('paBody');const o=b.style.display==='none';b.style.display=o?'':'none';if(o)paLoad()" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);cursor:pointer;">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#4ade80;">Paper account</span>
+        <span id="paStatus" style="font-size:10.5px;color:var(--text3);">$1,000 · ORB signals · contracts ≤ $125 · +20% / −18%</span>
+        <button onclick="event.stopPropagation();paLoad('update',this)" style="margin-left:auto;font-size:10px;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">↻ Update</button>
+        <button onclick="event.stopPropagation();paReset(this)" style="font-size:10px;padding:3px 9px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;" title="Start the account over from now">Reset</button>
+      </div>
+      <div id="paBody" style="display:none;padding:10px 12px;font-size:12px;"></div>
+    </div>
     <!-- CROWD_SENTIMENT_V1: X crowd calls by strategy + duration (worker crowdSentiment; runs ~10:00 + ~13:00 ET) -->
     <div id="crSection" style="margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-sm);">
       <div onclick="const b=document.getElementById('crBody');const o=b.style.display==='none';b.style.display=o?'':'none';if(o)crLoad()" style="display:flex;align-items:center;gap:10px;padding:9px 12px;background:var(--surface);cursor:pointer;">
@@ -20366,6 +20376,31 @@ async function tbSet(btn) {
   const marks = {}; (tradesCache || []).forEach(t => { if (typeof t.contract_pct === 'number') marks[t.id] = t.contract_pct; });
   try { TB = (await call('tradeBaseline', { op: 'set', marks })).baseline; } catch (e) { alert('Could not save: ' + e.message); }
   btn.disabled = false; tbRender();
+}
+
+// ── PAPER ACCOUNT ──
+async function paLoad(op, btn) {
+  const b = document.getElementById('paBody'); b.style.display = ''; if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
+  try { const r = await call('paperAccount', { op: op || 'get' }); paPaint(r.account, r.summary); } catch (e) { b.textContent = 'Load failed: ' + e.message; }
+  if (btn) { btn.disabled = false; btn.textContent = '↻ Update'; }
+}
+async function paReset(btn) {
+  if (!confirm('Start the paper account over from now ($1,000, ORB signals, contracts ≤ $125, +20% / −18%)? Its history is cleared.')) return;
+  btn.disabled = true; try { const r = await call('paperAccount', { op: 'reset' }); paPaint(r.account, r.summary); } catch (e) { alert(e.message); } btn.disabled = false;
+}
+function paPaint(A, S) {
+  const b = document.getElementById('paBody'); if (!A || !S) { b.textContent = 'No account yet.'; return; }
+  const R = A.rules, f = x => (x >= 0 ? '+' : '') + x.toFixed(1) + '%', m = x => '$' + Number(x).toFixed(2);
+  const gain = S.value - R.bank, col = gain >= 0 ? '#4ade80' : '#ff6b6b';
+  document.getElementById('paStatus').innerHTML = `<b style="color:${col};">${m(S.value)}</b> (${gain >= 0 ? '+' : ''}${(gain / R.bank * 100).toFixed(1)}%) · ${S.closed} closed${S.winRate != null ? ' · win ' + S.winRate + '%' : ''} · ${A.open.length} open · since ${new Date(A.start).toLocaleDateString()}`;
+  const tr = (cells) => `<tr style="border-top:1px solid var(--border);">${cells.map(c => `<td style="padding:3px 8px 3px 0;">${c}</td>`).join('')}</tr>`;
+  b.innerHTML = `<div style="display:flex;gap:18px;flex-wrap:wrap;margin-bottom:8px;">
+      <div>Account value <b style="color:${col};font-size:15px;">${m(S.value)}</b></div><div>Cash ${m(S.cash)}</div><div>In positions ${m(S.openValue)}</div>
+      <div>Closed ${S.closed} · wins ${S.wins}${S.winRate != null ? ` (${S.winRate}%)` : ''}</div><div>Avg per trade ${S.avgPct != null ? f(S.avgPct) : '—'}</div><div>Realized ${m(S.realized)}</div></div>
+    <div style="color:var(--text3);font-size:11px;margin-bottom:6px;">Rules: $${R.bank} start · ${R.sources.join(', ')} signals after ${new Date(A.start).toLocaleString()} · 1 contract each, only if it costs ≤ $${R.maxContract} and the cash is free · exit +${R.tp}% / −${R.sl}% · break-even win rate ${(R.sl / (R.tp + R.sl) * 100).toFixed(1)}%</div>
+    <b style="color:var(--text2);">Open (${A.open.length})</b><table style="border-collapse:collapse;margin:2px 0 8px;">${A.open.map(p => tr([`<b>${esc(p.ticker)}</b> ${p.dir === 'P' ? 'put' : 'call'} ${p.strike}`, m(p.cost), `<span style="color:${(p.nowPct || 0) >= 0 ? '#4ade80' : '#ff6b6b'};">${f(p.nowPct || 0)}</span>`, new Date(p.openedAt).toLocaleDateString()])).join('') || '<tr><td style="color:var(--text3);">none</td></tr>'}</table>
+    <b style="color:var(--text2);">Closed (${A.closed.length})</b><table style="border-collapse:collapse;margin:2px 0 8px;">${A.closed.slice(0, 40).map(c => tr([`<b>${esc(c.ticker)}</b> ${c.dir === 'P' ? 'put' : 'call'}`, m(c.cost), `<span style="color:${c.pnl >= 0 ? '#4ade80' : '#ff6b6b'};">${f(c.exitPct)} (${c.pnl >= 0 ? '+' : ''}${m(c.pnl)})</span>`, esc(c.why), new Date(c.closedAt).toLocaleDateString()])).join('') || '<tr><td style="color:var(--text3);">none yet</td></tr>'}</table>
+    <details><summary style="cursor:pointer;color:var(--text3);">Skipped signals (${A.skipped.length}) — too expensive or no cash free</summary>${A.skipped.slice(0, 40).map(k => `<div style="color:var(--text3);font-size:11px;">${esc(k.ticker)} ${k.dir === 'P' ? 'put' : 'call'} — ${esc(k.why)}</div>`).join('')}</details>`;
 }
 
 // ── X CROWD CALLS (CROWD_SENTIMENT_V1) ── latest scan's calls grouped by duration → category, plus each
