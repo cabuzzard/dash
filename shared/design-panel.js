@@ -43,7 +43,7 @@
     const ds = (op, b) => call('designSpec', Object.assign({ op }, b || {}));
     root.__dp = S;
     const say = (m, kind) => { S.msg = m || ''; S.msgKind = kind || ''; render(); };
-    const take = r => { if (r.structure) S.structure = new Set(r.structure); if (r.schema) S.schema = r.schema; if (r.tiers) S.tiers = r.tiers; if ('saved' in r) S.saved = r.saved; if ('savedAt' in r) S.savedAt = r.savedAt;
+    const take = r => { if ('mainKeywords' in r) S.mainKeywords = r.mainKeywords || ''; if (r.structure) S.structure = new Set(r.structure); if (r.schema) S.schema = r.schema; if (r.tiers) S.tiers = r.tiers; if ('saved' in r) S.saved = r.saved; if ('savedAt' in r) S.savedAt = r.savedAt;
       if (r.staged) S.staged = r.staged; if (r.inputs) S.inputs = r.inputs; if ('job' in r) S.job = r.job; };
     const fv = k => (S.staged[k] || {}).v || '';
     const palette = spec => { const p = {}; for (const [t, k] of TOKEN_MAP) { const h = hexOf((spec[k] || {}).v); if (!h) return null; p[t] = h; } return p; };
@@ -57,8 +57,7 @@
     async function load() {
       S.busy = 'Loading the design spec…'; render();
       try { take(await ds('get')); } catch (err) { S.busy = ''; return say('Could not load the design spec: ' + err.message, 'bad'); }
-      S.kw = S.inputs.keywords || ''; S.override = S.inputs.override || ''; S.renders = Object.assign({}, S.inputs.renders || {});
-      if (!S.kw && S.slug) call('getHubKeywords', { slug: S.slug }).then(r => { if (!S.kw && r.keywords) { S.kw = r.keywords; render(); } }).catch(() => {});
+      S.kw = S.inputs.keywords || S.mainKeywords || ''; S.override = S.inputs.override || ''; S.renders = Object.assign({}, S.inputs.renders || {});
       S.busy = ''; render();
       if (S.job && S.job.status === 'running') poll();
       call('getApprovedPlate').then(r => { S.plate = r.plate || null; render(); }).catch(() => {});
@@ -373,6 +372,7 @@
       return `<div style="font-size:11px;color:${C.ink3};margin-bottom:10px;">Fill the inputs in order (only ① is required), then press the build button at the bottom. A green border = loaded. Later inputs win where they conflict. Then send the fields for review (below the build button) — Claude, ChatGPT or Grok rewrite them to their opinion.</div>`
         + row('①', 'Keywords — what the audience searches (Claude also reads the sites ranking for them)', ok.kw, `${nKw} keyword${nKw === 1 ? '' : 's'}`, 'required',
           `<textarea data-in="kw" rows="2" placeholder="medicare services consulting, medicare advisor near me…" style="${TA}">${e(S.kw || '')}</textarea>`
+          + (S.mainKeywords ? `<div style="font-size:10.5px;color:${C.ink3};margin-top:3px;">${String(S.kw || '').trim() === S.mainKeywords.trim() ? '✓ the campaign’s main keywords' : `<button data-act="kwMain" style="${BTN}font-size:10px;padding:1px 7px;">↺ Use the campaign's main keywords</button> <span>${e(S.mainKeywords.slice(0, 120))}${S.mainKeywords.length > 120 ? '…' : ''}</span>`}</div>` : '')
           + (rk.look ? `<div style="font-size:11px;color:${C.ink2};margin-top:4px;"><b>Page one looks like:</b> ${e(rk.look)}${(rk.sites || []).map(x => `<div>· ${e(x)}</div>`).join('')}</div>` : ''))
         + row('②', 'Seed photo — the style seed', ok.photo, 'photo loaded', 'optional',
           `<div style="display:flex;gap:10px;align-items:flex-start;">${ph.url ? `<a href="${e(ph.url)}" target="_blank" rel="noopener"><img src="${e(ph.url)}" style="height:70px;border-radius:6px;border:1px solid ${C.line};display:block;"></a>` : ''}
@@ -632,6 +632,7 @@
       else if (a === 'revGrok') reviewRun('grok');
       else if (a === 'revAll') { S.revOnly.clear(); render(); }
       else if (a === 'msgClear') { S.msg = ''; render(); }
+      else if (a === 'kwMain') { S.kw = S.mainKeywords || ''; saveInputs(); render(); }
       else if (a === 'cardCopy') cardCopy();
       else if (a === 'cardGrok') cardGrok();
       else if (a === 'cardDel') { if (confirm('Remove this card?')) ds('card', { remove: k }).then(r => { take(r); render(); }).catch(err => say(err.message, 'bad')); }

@@ -48540,7 +48540,16 @@ async function handleDesignSpec(body, env, ctx) {
   const op = body.op || "get";
   const out = extra => ({ success: true, schema: DS_SCHEMA, tiers: DS_TIERS, structure: [...DS_STRUCTURE], saved: saved ? saved.spec : null, savedAt: saved ? saved.at : null, staged, inputs, job, ...extra });
 
-  if (op === "get") return out();
+  if (op === "get") {   // + the campaign's MAIN keywords (Research record Keywords — what the Keywords tool's "+ Main Keywords" writes; else the campaign's own Keywords)
+    let mainKeywords = "";
+    try { const H = { Authorization: `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+      const dashC = `${cid.slice(0,8)}-${cid.slice(8,12)}-${cid.slice(12,16)}-${cid.slice(16,20)}-${cid.slice(20)}`, txt = a => (a || []).map(t => t.plain_text).join("").trim();
+      const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashC } } }).catch(() => []);
+      mainKeywords = rows.map(r => txt(r.properties?.Keywords?.rich_text)).find(Boolean) || "";
+      if (!mainKeywords) { const cp = await fetch(`https://api.notion.com/v1/pages/${dashC}`, { headers: H }).then(r => r.json()).catch(() => null); mainKeywords = txt(cp?.properties?.Keywords?.rich_text); }
+    } catch (e) {}
+    return out({ mainKeywords: mainKeywords.slice(0, 2000) });
+  }
   // ── group / field scoping (2026-10-09): body.keys limits revert, save and the source passes to those fields ──
   const scoped = Array.isArray(body.keys) && body.keys.length ? new Set(body.keys.map(String).filter(k => DS_KEYS.has(k))) : null;
   if (scoped && op === "revert") {
