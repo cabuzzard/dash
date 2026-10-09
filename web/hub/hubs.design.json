@@ -333,62 +333,6 @@
         "superseded": "Was manila #eae6dc + hunter-green #3f5e4c + barn-red #c14b2a."
       }
     },
-    "medicare-services-consulting": {
-      "meta": {
-        "title": "Medicare Services Consulting — Ask Anything, Choose With Confidence",
-        "description": "One-on-one Medicare consulting at eye level. Ask anything about Parts A–D, Medigap, Medicare Advantage and enrollment deadlines — no rush, no dumb questions.",
-        "ogTitle": "Medicare Services Consulting",
-        "ogDescription": "One-on-one Medicare consulting at eye level. Ask anything about Parts A–D, Medigap, Medicare Advantage and enrollment deadlines — no rush, no dumb questions."
-      },
-      "fonts": {
-        "display": "Bricolage Grotesque",
-        "body": "Hanken Grotesk",
-        "mono": "IBM Plex Mono"
-      },
-      "logoText": "Medicare Services Consulting",
-      "tokens": {
-        "bg": "#fbfaf7",
-        "surface": "#ffffff",
-        "ink": "#22343c",
-        "ink-head": "#12303a",
-        "ink-soft": "#5b6771",
-        "line": "#e4e0f5",
-        "sea": "#5b45a3",
-        "deep": "#12303a",
-        "deep-ink": "#f3f0ff",
-        "accent": "#3d7a4f",
-        "paper": "#ffffff"
-      },
-      "tokenNotes": {
-        "bg": "warm off-white card ground (seed photo)",
-        "surface": "raised card",
-        "ink": "body ink",
-        "ink-head": "headings",
-        "ink-soft": "secondary text",
-        "line": "lavender hairline — the seed's backdrop blob",
-        "sea": "brand purple — the numbered badge in the seed",
-        "deep": "teal-navy — the seed's headline ink",
-        "deep-ink": "text on --deep",
-        "accent": "sage deepened for white button text — the green sweater"
-      },
-      "design": {
-        "subject": "Medicare services consulting — patient, one-on-one help choosing and enrolling in Medicare (Parts A–D, Medigap, Medicare Advantage), including people on Medicare through disability before 65.",
-        "audience": "Adults turning 65 or retiring, people on SSDI-based Medicare, and the adult children and caregivers who help them — searching locally ('medicare advisor near me') and wary of call-center brokers.",
-        "job": "Make asking feel safe: get a nervous visitor to take the free question checklist (email signup) — the first step toward a one-on-one consult.",
-        "type": "Bricolage Grotesque at heavy weight for headlines — the seed's chunky, friendly, slightly rounded headline face — over Hanken Grotesk body for large, calm, easy reading for a 60+ audience.",
-        "signature": "The seed illustration itself: a warm, flat, two-person scene (a person in a power wheelchair talking with a kneeling helper in a lavender polo) on a soft lavender blob — conversation at eye level. Purple numbered badges and lavender wash carry that through the page.",
-        "risk": "Friendly flat illustration and a lavender wash in a category that defaults to navy-and-gold 'authority' — betting that approachability ('ask us anything') converts better than gravitas for people afraid of making a Medicare mistake.",
-        "avoided": [
-          "Navy-and-gold insurance-company authority styling",
-          "Stock photos of smiling seniors on beaches",
-          "Clinical white-coat / heartbeat-line healthcare clichés"
-        ],
-        "register": "Warm, plain-spoken, and patient — a flat, friendly illustration style on a warm off-white ground with lavender washes, purple accents and dark teal-navy type. It should feel like a kind expert sitting down at eye level, not an insurance office.",
-        "photography": "Lead with flat vector illustration in the seed's style: simple rounded figures, clean dark outlines, soft flat fills in lavender, purple, sage green, denim blue and khaki, a lavender organic blob behind the subjects, small yellow 'spark' strokes for emphasis. Scenes are one-to-one conversations at eye level — a helper or advisor kneeling or seated beside an older adult or a disabled person, reviewing papers, explaining, listening. People belong, always shown as capable and in charge of the conversation. If real photos are used, match the palette: soft daylight, lavender and sage tones, eye-level framing.",
-        "avoid": "Navy-and-gold corporate insurance looks; glossy stock seniors on beaches or golf courses; white-coat clinical imagery; heartbeat/cross icons; photoreal AI faces; pity framing of disability; cluttered infographics",
-        "superseded": "Scaffold palette (navy #102347 / gold #C4922A, Newsreader + IBM Plex Sans, 'authority, no illustration') — replaced 2026-10-08 by the operator's design-seed photo: a warm flat-illustration slide (lavender/purple, sage, teal-navy ink)."
-      }
-    },
     "mountainwize": {
       "email": "info@mountainwize.com",
       "meta": {

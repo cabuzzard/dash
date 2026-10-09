@@ -12821,9 +12821,6 @@ const HUB_SITES = [
   { name: "Multifamily Acquisitions", slug: "multifamily-acquisitions", campaignId: "3d71f7d3a4bb81e0971befc5be8ee9ee", campaign: "Multifamily Acquisitions", microsite: "development-and-acquisitions", domain: null, contact: null, products: 0, blogPosts: 0,
     routing: "pending", routingNote: "2026-09-10: launched from the Content Hub asset 'Multifamily Acquisitions' (published). Scaffolded web/hub/multifamily-acquisitions/ from the template + hubs.design.json; seed HUB copy is placeholder-real — refine via the Content Hubs tab (palette / section text / images / offers). No domain yet — serves at cabuzzard.github.io/dash/web/hub/multifamily-acquisitions/ and dash-hubs.pages.dev/multifamily-acquisitions/.",
     domainOptions: ["multifamilyacquisitions.com", "multifamilydealroom.com"] },
-  { name: "Medicare Services Consulting", slug: "medicare-services-consulting", campaignId: "3f41f7d3a4bb813395dfd4e95b1dfddc", campaign: "Medicare Services Consulting", microsite: null, domain: null, contact: null, products: 0, blogPosts: 0,
-    routing: "pending", routingNote: "2026-10-08: new campaign + hub, main keyword 'medicare services consulting'. Scaffolded via scaffoldHub; design re-seeded from the operator's photo (warm flat illustration — lavender/purple, sage, teal-navy ink), which is also the hero image. Pre-domain — GitHub Pages / dash-hubs.pages.dev only.",
-    domainOptions: [] },
 ];
 
 // Landing pages — a niche product sliced off a hub, published standalone at
@@ -18491,7 +18488,7 @@ function hamAllTypes() {
   ((HAM_DATA && HAM_DATA.columns) || []).forEach(c => { if (c.type) set.add(c.type); });
   return [...set].sort((a, b) => a.localeCompare(b));
 }
-const HM_LABELS = { 'creative-flow-guitar':'guitar', 'owners-rep':'o-rep', 'ai-implementation':'ai', 'sunflower-acres':'sun', 'surf-vacations':'surf', 'sustainable-aquarium':'aqua', 'home-services':'home', 'mountainwize':'mtn', 'care-gap':'care', 'medicare-services-consulting':'mcare' };  // hub slug -> short column/row label (shared with the method matrix)
+const HM_LABELS = { 'creative-flow-guitar':'guitar', 'owners-rep':'o-rep', 'ai-implementation':'ai', 'sunflower-acres':'sun', 'surf-vacations':'surf', 'sustainable-aquarium':'aqua', 'home-services':'home', 'mountainwize':'mtn', 'care-gap':'care' };  // hub slug -> short column/row label (shared with the method matrix)
 let hubAssetMatrixCollapsed = true;
 try { hubAssetMatrixCollapsed = localStorage.getItem('hubAssetMatrixCollapsed') !== 'false'; } catch(e) {}
 // Manual drag-to-reorder for the column list, persisted in localStorage
