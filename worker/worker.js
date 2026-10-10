@@ -959,7 +959,7 @@ async function ivTierFn(env) {
   if (Date.now() - _ivTierCache.at > 60000) {
     let t = null; try { t = await env.TRADES.get("infoflow:table:currentmethods", "json"); } catch (e) {}
     _ivTierCache = { at: Date.now(), rows: ((t && t.rows) || []).map(r => { const c = r.cells || {};
-      const tier = /^own/i.test(c.civtier01 || "") ? "depends" : /^from/i.test(c.civtier01 || "") ? "borrow" : /^none/i.test(c.civtier01 || "") ? "none" : "";
+      const tier = /^own/i.test(c.civtier01 || "") ? "depends" : /^short/i.test(c.civtier01 || "") ? "short" : /^from/i.test(c.civtier01 || "") ? "borrow" : /^none/i.test(c.civtier01 || "") ? "none" : "";
       return { tier, names: [c.cmuzq36hb77sq, c.cname01, (c.cname01 || "").split(" - ").pop(), c.c1].map(ivNorm).filter(n => n.length >= 4) }; }).filter(r => r.tier && r.names.length) };
   }
   const rows = _ivTierCache.rows;
@@ -967,7 +967,8 @@ async function ivTierFn(env) {
     const hit = rows.find(r => r.names.includes(n)) || rows.find(r => r.names.some(x => n.includes(x) || x.includes(n)));
     return hit ? hit.tier : ivImportance(t); };
 }
-const IV_TIER_LABEL = { depends: "Own interview", borrow: "From product", none: "None" };
+const IV_TIER_LABEL = { depends: "Own interview", short: "Short interview (SEO)", borrow: "From product", none: "None" };   // short: 5-question asset interview, answers REWRITTEN for SEO (topical posts)
+const ivOwnTier = t => t === "depends" || t === "short";
 const ivTypeMatch = (a, b) => { const x = ivNorm(a), y = ivNorm(b); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
 const ivRt = t => { const x = String(t || ""), out = []; for (let i = 0; i < x.length && out.length < 100; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; };
 const ivDash = x => { const v = String(x || "").replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
@@ -1010,16 +1011,17 @@ async function ivBlock(env, titleId, assetType, assetId) {
     .filter(x => x.status === "Finished" && x.answers.some(a => a.trim())
       && (x.scope !== "Asset" || (assetId && x.assetIds.includes(String(assetId).replace(/-/g, ""))) || (assetType && ivTypeMatch(x.forType, assetType))));
   if (!done.length) return { text: "", cid: "" };
-  const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? "this asset's own interview" : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
+  const tierOf = await ivTierFn(env);
+  const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? (tierOf(x.forType) === "short" ? "this article's SHORT SEO interview — REWRITE these answers for SEO: keep every fact, opinion and example, restructure them under keyword-targeted headings in search-friendly prose; never quote them verbatim" : "this asset's own interview") : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
     + x.qs.map((q, i) => x.answers[i] ? `Q: ${q}\nTHEIR ANSWER: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
   return { cid: done[0].cid, text: `\nTHE OPERATOR'S OWN INTERVIEW ANSWERS — first-hand material about this product (and, if marked, this specific asset): their experience, stories, opinions, numbers. Use it wherever it fits this format; their specifics, examples and phrasing beat generic claims. Never invent experiences beyond what they said, and never contradict it:\n${body}\n\n` };
 }
-async function ivClaudeInterviews(env, prompt, max) {
+async function ivClaudeInterviews(env, prompt, max, qmin = 5, qmax = 10) {
   const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: prompt }],
       tools: [{ name: "submit_interviews", description: "The interviews.", input_schema: { type: "object", required: ["interviews"], properties: { interviews: { type: "array", minItems: 1, maxItems: max, items: { type: "object", required: ["angle", "why", "questions"], properties: {
         angle: { type: "string", description: "2-5 word angle name" }, why: { type: "string", description: "one line: what these answers will add to the content" },
-        questions: { type: "array", minItems: 5, maxItems: 10, items: { type: "string" } } } } } } } }],
+        questions: { type: "array", minItems: qmin, maxItems: qmax, items: { type: "string" } } } } } } } }],
       tool_choice: { type: "tool", name: "submit_interviews" } }) });
   const d = await r.json();
   if (!r.ok) throw new Error(d.error?.message || "Claude error");
@@ -1066,15 +1068,16 @@ async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
   const tp = await ivPage(titleId), T = tp.properties, tname = (T.Title?.title || []).map(t => t.plain_text).join("").trim();
   const cid = ivRid(T, "Campaign"), pid = ivRid(T, "product");
   const [audience, prodRes, pillar] = await Promise.all([cid ? hubAudienceBlock(env, cid).catch(() => "") : "", pid ? ivProdResearch(pid) : "", extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "")]);
-  const dep = (await ivTierFn(env))(atype) === "depends";
+  const tierA = (await ivTierFn(env))(atype), dep = tierA === "depends", short = tierA === "short";
   const prompt = `You prepare ONE INTERVIEW of a business owner for a single piece of content.
 
 PIECE: ${aname || tname} (${atype})
 TITLE IT BELONGS TO: ${tname}
 ${audience}${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}${pillar ? `\nTHE TITLE'S PILLAR (excerpt):\n${String(pillar).slice(0, 2500)}\n` : ""}${direction ? `\nOPERATOR'S DIRECTION: ${direction}\n` : ""}
-${dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
+${short ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video): ask EXACTLY 5 short questions whose answers give the article real substance — the direct answer they'd give to the searcher's question, an example from their own work, the mistake people make, a specific number or detail they know, and what they'd tell a friend. The writer will REWRITE the answers for SEO, so ask for substance, not polished prose.`
+      : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
       : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
-  const made = await ivSavePages(await ivClaudeInterviews(env, prompt, 1), {
+  const made = await ivSavePages(await ivClaudeInterviews(env, prompt, 1, 5, short ? 5 : 10), {
     "Name": { title: ivRt((aname || tname).slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
     ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}), "Scope": { select: { name: "Asset" } },
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) });
@@ -13608,10 +13611,10 @@ the one aesthetic risk taken + why:`;
             pageSections.forEach(sec => sec.items.forEach(it => {
               const tier = tierOf(it.method || it.type); it.ivTier = IV_TIER_LABEL[tier];
               if (tier === "none" || !it.titleId) return;
-              const l = tier === "depends" ? (byT[it.titleId] || []).filter(x => x.scope === "Asset" && (x.assetIds.includes(it.id) || ivTypeMatch(x.forType, it.method || it.type)))
+              const l = ivOwnTier(tier) ? (byT[it.titleId] || []).filter(x => x.scope === "Asset" && (x.assetIds.includes(it.id) || ivTypeMatch(x.forType, it.method || it.type)))
                 : [...(byT["p:" + t2p[it.titleId]] || []), ...(byT[it.titleId] || []).filter(x => x.scope === "Asset" && x.assetIds.includes(it.id))];
               if (l.length) it.ivFlag = { id: l[0].id, n: l.length, angle: l[0].angle, own: tier === "depends" };
-              else if (tier === "depends" && !ivAll.some(x => x.scope === "Asset" && x.titleId === it.titleId && (x.assetIds.includes(it.id) || ivTypeMatch(x.forType, it.method || it.type))))
+              else if (ivOwnTier(tier) && !ivAll.some(x => x.scope === "Asset" && x.titleId === it.titleId && (x.assetIds.includes(it.id) || ivTypeMatch(x.forType, it.method || it.type))))
                 it.ivFlag = { id: null, n: 0, own: true, missing: true, ownType: it.method || it.type };   // needs its own interview — none yet
             }));
           }
@@ -27624,12 +27627,13 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
         // 🎤 an asset type that is written FROM the operator's interview waits until one is Finished
-        if ((await ivTierFn(env))(assetType) === "depends" && !body.__client && !body.skipInterview) {
+        const holdTier = (await ivTierFn(env))(assetType);
+        if (ivOwnTier(holdTier) && !body.__client && !body.skipInterview) {
           let ivs = await ivForTitle(titleId).catch(() => null);
           if (ivs) ivs = ivs.filter(x => x.scope === "Asset" && ivTypeMatch(x.forType, assetType));
           if (ivs && !ivs.length) ivs = ((await ivCreateForTitle(env, titleId, { force: true, own: assetType }).catch(() => null)) || {}).interviews || [];
           if (ivs && ivs.length && !ivs.some(x => x.status === "Finished" && x.answers.some(a => a.trim())))
-            return json({ error: `A ${assetType} is built from its OWN interview — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.`,
+            return json({ error: holdTier === "short" ? `This ${assetType} is written from a short 5-question interview (rewritten for SEO) — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.` : `A ${assetType} is built from its OWN interview — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.`,
               needsInterview: true, interviews: ivs.map(x => ({ id: x.id, angle: x.angle })) }, 409);
         }
         // The Generate Assets modal doesn't surface a Product picker (it's
