@@ -15434,9 +15434,9 @@ async function reviewFlagsLoad() {
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
-  const ivBox = (b.interviews || []).length ? `<div style="border:1px solid #ff7a00;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#ff7a00;border-bottom:1px solid var(--border);">🎤 ${b.interviews.length} interview${b.interviews.length === 1 ? '' : 's'} waiting for your answers</div>${ivFlagRows(b.interviews, false)}</div>` : '';
+  // 🎤 interviews are listed on All Output + the Worksheet, not here (operator, 2026-10-10)
   const syncBox = (b.syncFlags || []).length ? `<div style="border:1px solid #e5534b;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#e5534b;border-bottom:1px solid var(--border);">⟳ ${b.syncFlags.length} out of sync with interviews</div>${ivSyncRows(b.syncFlags, false)}</div>` : '';
-  const flagBox = ivBox + syncBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
+  const flagBox = syncBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
   const h = HUB_SITES.find(x => x.slug === slug) || {};
   const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
   let lastPhase = '';

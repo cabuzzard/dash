@@ -13574,9 +13574,8 @@ the one aesthetic risk taken + why:`;
           ];
           const shown = steps.filter(s => !s.hidden);
           const flags = ((await env.TRADES.get("review:flags", "json").catch(() => null)) || []).filter(f => f.slug === slug && f.status === "open").reverse();
-          const interviews = campaignId ? (await ivList({ and: [{ property: "Campaign", relation: { contains: ivDash(campaignId) } }, { property: "Status", select: { equals: "Flagged" } }] }).catch(() => [])).map(x => ({ id: x.id, title: x.title, angle: x.angle, n: x.qs.length })) : [];
           const syncFlags = campaignId ? await ivSyncFlags(campaignId).catch(() => []) : [];
-          return json({ slug, campaignId, steps, flags, interviews, syncFlags, doneCount: shown.filter(s => s.done).length, total: shown.length });
+          return json({ slug, campaignId, steps, flags, syncFlags, doneCount: shown.filter(s => s.done).length, total: shown.length });
         }
 
         if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);

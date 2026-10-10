@@ -81,7 +81,12 @@ async function load() {
   try { const r = await call('getInterviews', { status: 'Flagged' }); S.hubs = r.hubs || {};
     S.items = (r.interviews || []).sort((a, b) => hubName(a.cid).localeCompare(hubName(b.cid)) || a.title.localeCompare(b.title) || a.created.localeCompare(b.created));
     S.err = ''; } catch (e) { S.err = e.message; S.items = S.items || []; }
-  S.busy = ''; S.idx = 0; pick(); draw();
+  S.busy = ''; S.idx = 0;
+  // deep link from the Worksheet: ?title=<titleId> jumps to that title's first flagged interview (any hub)
+  const want = (new URLSearchParams(location.search).get('title') || '').replace(/-/g, '');
+  if (want && !S.deepDone) { S.deepDone = true; const all = (S.items || []).filter(x => x.status !== 'Finished');
+    if (all.some(x => x.titleId === want)) { S.hub = ''; const i = flagged().findIndex(x => x.titleId === want); if (i >= 0) S.idx = i; } }
+  pick(); draw();
 }
 function pick() { const cur = flagged()[S.idx]; S.answers = cur ? cur.answers.slice() : []; S.dirty = false; }
 function header() {
