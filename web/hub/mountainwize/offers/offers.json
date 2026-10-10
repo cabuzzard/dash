@@ -1,5 +1,15 @@
 [
   {
+    "slug": "executive-mindset-blueprint",
+    "name": "Executive Mindset Blueprint",
+    "kicker": "Self-paced digital course · price TBC at launch",
+    "promise": "Build the inner process that makes decisions feel right, anger stoppable, and accountability a skill you carry — not a discipline you keep losing.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb8108b9a0f7d342989618",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/executive-mindset-blueprint-blog-thumbnail-mv22jb8r.png"
+  },
+  {
     "slug": "inner-edge-coaching",
     "name": "Inner Edge Coaching",
     "kicker": "1:1 Private Engagement · $1,500–$3,000 / 3 months",
@@ -16,14 +26,5 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb816ba501e726383920e0"
-  },
-  {
-    "slug": "executive-mindset-blueprint",
-    "name": "Executive Mindset Blueprint",
-    "kicker": "Self-paced digital course · price TBC at launch",
-    "promise": "Build the inner process that makes decisions feel right, anger stoppable, and accountability a skill you carry — not a discipline you keep losing.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8108b9a0f7d342989618"
   }
 ]
