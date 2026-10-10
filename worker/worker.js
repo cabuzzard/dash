@@ -11099,6 +11099,10 @@ export default {
         }
       }
 
+      if (/^hub-/.test(String(campaign || ""))) {   // hub newsletter signups also land in GoHighLevel, tagged with their hub
+        const hb = HUB_SITES.find(h => "hub-" + h.slug === campaign);
+        if (hb) ctx.waitUntil(ghlHubContact(env, { slug: hb.slug, hubName: hb.name, email, phone, tags: ["newsletter"], source: "Newsletter signup" }).catch(() => {}));
+      }
       return json({ success: true });
     }
 
@@ -11490,6 +11494,32 @@ export default {
     // gate below, since this request carries no session token at all.
     // Client Studio (web/studio/): the private link key is the only credential. start / generate run long (Claude), so
     // they stream a space every 15 s then the JSON (same keep-alive as the operator writers).
+    // hubIntake {op: "callback" | "book", slug, name, phone, email?, tsToken} — the hub pages' Talk-to-us dialog. Turnstile-gated +
+    // 6 requests / hour / IP. callback → GHL contact tagged callback-requested (a GHL workflow rings the operator's cell with a
+    // whisper, then the visitor); book → contact tagged booking-started + the consultation calendar URL to open.
+    if (body.action === "hubIntake") {
+      const hub = HUB_SITES.find(h => h.slug === String(body.slug || ""));
+      if (!hub) return json({ error: "Unknown hub" }, 400);
+      const phone = String(body.phone || "").replace(/[^\d+]/g, ""), email = String(body.email || "").trim().slice(0, 200), name = String(body.name || "").trim().slice(0, 120);
+      if (phone.replace(/\D/g, "").length < 10) return json({ error: "Enter a phone number with area code." }, 400);
+      if (body.op === "book" && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "That email doesn't look right." }, 400);
+      const ts = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `secret=${encodeURIComponent((env.TURNSTILE_SECRET || "").trim())}&response=${encodeURIComponent(body.tsToken || "")}` }).then(r => r.json()).catch(() => ({ success: false }));
+      if (!ts.success) return json({ error: "Please complete the check box and try again." }, 400);
+      const ip = request.headers.get("CF-Connecting-IP") || "x", rk = `hubintake:ip:${ip}:${new Date().toISOString().slice(0, 13)}`;
+      const n = +(await env.TRADES.get(rk).catch(() => 0) || 0);
+      if (n >= 6) return json({ error: "Too many requests — try again in an hour, or book a time instead." }, 429);
+      await env.TRADES.put(rk, String(n + 1), { expirationTtl: 7200 }).catch(() => {});
+      const isCall = body.op === "callback";
+      const r = await ghlHubContact(env, { slug: hub.slug, hubName: hub.name, phone: phone.startsWith("+") ? phone : "+1" + phone.replace(/\D/g, "").slice(-10), email, name,
+        tags: [isCall ? "callback-requested" : "booking-started"], source: isCall ? "Call me now" : "Book a call",
+        note: isCall ? `Requested a call back now from the ${hub.name} hub.` : `Started booking a consultation from the ${hub.name} hub.` });
+      if (r.error) return json({ error: "We couldn't reach our phone system — please try again in a minute." }, 502);
+      const cfg = (await env.TRADES.get("ghl:config", "json").catch(() => null)) || {};
+      const [first, ...rest] = name.split(/\s+/);
+      const q = new URLSearchParams({ ...(first ? { first_name: first } : {}), ...(rest.length ? { last_name: rest.join(" ") } : {}), ...(email ? { email } : {}), phone }).toString();
+      return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
+    }
     if (body.action === "studio") {
       if (!["start", "generate"].includes(body.op)) { try { return json(await handleStudio(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       const { readable, writable } = new TransformStream();
