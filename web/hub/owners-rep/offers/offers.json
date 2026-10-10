@@ -1,5 +1,15 @@
 [
   {
+    "slug": "before-you-sign-owner-s-preconstruction-review",
+    "name": "Before You Sign-Owner's Preconstruction Review",
+    "kicker": "Fixed-fee review · $2,500–$6,000",
+    "promise": "Know exactly what you are signing, what is missing, and what it will actually cost — before the contract is executed.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81caae89d11e2118a3e2",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/preconstruction-owner-s-review-blog-thumbnail-mv227quf.png"
+  },
+  {
     "slug": "project-scan",
     "name": "Project Scan",
     "kicker": "Fixed-fee document review · $495–$750",
@@ -17,15 +27,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb813e94c8dae194d3fcf4"
-  },
-  {
-    "slug": "before-you-sign-owner-s-preconstruction-review",
-    "name": "Before You Sign-Owner's Preconstruction Review",
-    "kicker": "Fixed-fee review · $2,500–$6,000",
-    "promise": "Know exactly what you are signing, what is missing, and what it will actually cost — before the contract is executed.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81caae89d11e2118a3e2"
   },
   {
     "slug": "project-monitoring-intro-call",
