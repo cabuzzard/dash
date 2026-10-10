@@ -1582,6 +1582,7 @@ async function submitBlankGrouping() {
       <button class="modal-btn cancel" onclick="closePublishAssetModal()">Cancel</button>
       <select id="pubBufferType" style="display:none;height:32px;background:#1e1e1e;color:#fff;border:1px solid #333;border-radius:4px;font-size:12px;" title="Instagram/Facebook post type — Auto = Reel for videos, Post for images/carousels"><option value="">Auto</option><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option></select>
         <select id="pubBufferChannel" onchange="pubBufferTypeVis()" style="display:none;height:32px;max-width:190px;background:#1e1e1e;color:#fff;border:1px solid #333;border-radius:4px;font-size:12px;" title="Buffer channel — picked from this asset's platform; change it to override"></select>
+      <button class="modal-btn cancel" type="button" onclick="requestAssetInterview(this)" title="Request this asset's OWN interview — for a piece that needs your first-hand answers beyond its main offering's interview">🎤 Request interview</button>
       <button class="modal-btn cancel" id="pubBufferBtn" style="display:none;" onclick="sendPublishAssetToBuffer()" title="Save these fields, then create a DRAFT in this campaign's Buffer queue (review + schedule it in Buffer)">📤 Send to Buffer</button>
       <button class="modal-btn save" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
     </div>
@@ -8660,6 +8661,15 @@ async function copyAssetScript(assetId, btn) {
 // main dashboard's status badge cycles); the rest are text fields each with
 // their own copy-to-clipboard button. All saved together.
 let pubAssetId = null;
+// 🎤 Request interview (inside the asset): its OWN interview, answered in the shared modal (../../shared/interview-panel.js)
+async function requestAssetInterview(btn) {
+  if (!pubAssetId) return;
+  if (!window.InterviewPanel) { await new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = '../../shared/interview-panel.js?v=2026101002'; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }).catch(() => {}); }
+  if (!window.InterviewPanel) return alert('Could not load the interview panel.');
+  btn.disabled = true; const t = btn.textContent; btn.textContent = '⏳ writing questions…';
+  await window.InterviewPanel.request({ call: (a, b) => w(a, b).catch(e => ({ error: e.message })), assetId: pubAssetId });
+  btn.disabled = false; btn.textContent = t;
+}
 // Bumped on every open — the full-article fetch below is async and can
 // resolve after the operator has already closed this modal or opened a
 // DIFFERENT asset's; without this guard a slow/late response would land

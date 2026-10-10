@@ -204,7 +204,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
 }
 </style>
 <script src="../../shared/design-panel.js?v=2026101001"></script>
-<script src="../../shared/interview-panel.js?v=2026101001"></script>
+<script src="../../shared/interview-panel.js?v=2026101002"></script>
 </head>
 <body>
 
@@ -1218,6 +1218,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <button class="btn" onclick="closePublishAssetModal()">Cancel</button>
         <select id="pubBufferType" class="finput" style="display:none;width:auto;" title="Instagram/Facebook post type — Auto = Reel for videos, Post for images/carousels"><option value="">Auto</option><option value="post">Post</option><option value="reel">Reel</option><option value="story">Story</option></select>
         <select id="pubBufferChannel" onchange="pubBufferTypeVis()" class="finput" style="display:none;width:auto;max-width:200px;" title="Buffer channel — picked from this asset's platform; change it to override"></select>
+        <button class="btn" type="button" onclick="requestAssetInterview(this)" title="Request this asset's OWN interview — for a piece that needs your first-hand answers beyond its main offering's interview">🎤 Request interview</button>
         <button class="btn" id="pubBufferBtn" style="display:none;" onclick="sendPublishAssetToBuffer()" title="Save, then create a DRAFT in this campaign's Buffer queue — review and schedule it in Buffer">📤 Send to Buffer</button>
         <button class="btn primary" id="pubAssetSaveBtn" onclick="savePublishAssetFields()">Save</button>
       </div>
@@ -6404,6 +6405,13 @@ function renderAssetTitleNode(t, data) {
 // hard-grind template's Publish modal, trimmed to the sections Care Gap's
 // own methods produce (no Etsy/Printify/t-shirt/listing — not used here).
 let pubAssetId = null;
+// 🎤 Request interview (inside the asset): its OWN interview, answered in the shared modal (shared/interview-panel.js)
+async function requestAssetInterview(btn) {
+  if (!pubAssetId || !window.InterviewPanel) return;
+  btn.disabled = true; const t = btn.textContent; btn.textContent = '⏳ writing questions…';
+  await window.InterviewPanel.request({ call: (a, b) => w(a, b).catch(e => ({ error: e.message })), assetId: pubAssetId });
+  btn.disabled = false; btn.textContent = t;
+}
 let PUB_OPEN_TOKEN = 0;
 function openPublishAssetModal(assetId) {
   pubAssetId = assetId;

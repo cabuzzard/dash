@@ -83,9 +83,11 @@ async function load() {
     S.err = ''; } catch (e) { S.err = e.message; S.items = S.items || []; }
   S.busy = ''; S.idx = 0;
   // deep link from the Worksheet: ?title=<titleId> jumps to that title's first flagged interview (any hub)
-  const want = (new URLSearchParams(location.search).get('title') || '').replace(/-/g, '');
-  if (want && !S.deepDone) { S.deepDone = true; const all = (S.items || []).filter(x => x.status !== 'Finished');
-    if (all.some(x => x.titleId === want)) { S.hub = ''; const i = flagged().findIndex(x => x.titleId === want); if (i >= 0) S.idx = i; } }
+  const qp = new URLSearchParams(location.search), clean = v => (v || '').replace(/-/g, '');
+  const want = clean(qp.get('id')) || clean(qp.get('product')) || clean(qp.get('title'));
+  const hit = x => x.id === want || x.productId === want || x.titleId === want;
+  if (want && !S.deepDone) { S.deepDone = true;
+    if ((S.items || []).some(x => x.status !== 'Finished' && hit(x))) { S.hub = ''; const i = flagged().findIndex(hit); if (i >= 0) S.idx = i; } }
   pick(); draw();
 }
 function pick() { const cur = flagged()[S.idx]; S.answers = cur ? cur.answers.slice() : []; S.dirty = false; }

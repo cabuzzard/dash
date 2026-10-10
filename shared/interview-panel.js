@@ -1,5 +1,6 @@
 // ══════════════════════ 🎤 INTERVIEWS (shared) — 2026-10-10 ══════════════════════
-// Your own answers about a TITLE, one-to-many (Notion 🎤 Interviews DB; worker getInterviews / getInterview /
+// Your own answers — ONE per product (main offering), flowing to every title + asset under it, plus an asset's OWN
+// interview when it needs one (🎤 Request interview inside the asset). Notion 🎤 Interviews DB; worker getInterviews / getInterview /
 // createInterviews / saveInterview / removeInterview). Status: Flagged (waiting for your answers) · Finished.
 // A Finished interview feeds every writer for that title AND the voice engine (🗣 Your voice), so it sits next to
 // the voice card in the shared Design panel. All Output rows and the ⚑ flag panels open the same modal.
@@ -28,19 +29,20 @@
     function draw() {
       if (S.items === null) { el.innerHTML = `<div style="font-size:11px;color:${C.ink3};">Loading…</div>`; return; }
       const byTitle = {};
-      S.items.forEach(x => { (byTitle[x.titleId] = byTitle[x.titleId] || { title: x.title, list: [] }).list.push(x); });
+      S.items.forEach(x => { const k = x.scope === 'Product' ? 'p:' + x.productId : 't:' + x.titleId;
+        (byTitle[k] = byTitle[k] || { title: x.title, kind: x.scope === 'Product' ? 'product' : 'title', list: [] }).list.push(x); });
       const groups = Object.entries(byTitle).map(([tid, g]) => ({ tid, ...g, flagged: g.list.filter(x => x.status !== 'Finished').length }))
         .filter(g => S.showDone || g.flagged).sort((a, b) => b.flagged - a.flagged || a.title.localeCompare(b.title));
       const nFlag = S.items.filter(x => x.status !== 'Finished').length, nDone = S.items.length - nFlag;
-      el.innerHTML = `<div style="font-size:11px;color:${C.ink3};margin-bottom:8px;">Questions about each title, answered in your own words. Finished answers go to that title's writers and teach 🗣 Your voice. New titles get their interviews automatically.</div>
+      el.innerHTML = `<div style="font-size:11px;color:${C.ink3};margin-bottom:8px;">One interview per main offering, in your own words — it flows to every title and asset under that offering and teaches 🗣 Your voice. An asset that needs its own gets one from 🎤 Request interview inside the asset.</div>
         ${S.err ? `<div style="font-size:11px;color:#c0392b;margin-bottom:6px;">${e(S.err)}</div>` : ''}${S.busy ? `<div style="font-size:11px;color:${C.ink3};margin-bottom:6px;">⏳ ${e(S.busy)}</div>` : ''}
         <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:11.5px;"><b style="color:${nFlag ? FLAG : C.ink3};">${nFlag} flagged</b><span style="color:${C.ink3};">· ${nDone} finished</span>
           <button data-iv="toggleDone" style="${BTN}margin-left:auto;font-size:10px;padding:2px 8px;">${S.showDone ? 'Hide finished' : 'Show finished'}</button><button data-iv="reload" style="${BTN}font-size:10px;padding:2px 8px;">↻</button></div>
         ${groups.length ? groups.map(g => `<div style="border:1px solid ${g.flagged ? FLAG : C.line};border-radius:8px;margin-bottom:6px;">
-            <div style="display:flex;align-items:center;gap:6px;padding:6px 9px;border-bottom:1px solid ${C.line};font-size:12px;font-weight:600;color:${C.ink};"><span style="flex:1;">${e(g.title || '(untitled)')}</span>
-              <button data-iv="add" data-t="${e(g.tid)}" title="Write another interview for this title" style="${BTN}font-size:10px;padding:2px 7px;">+ Interview</button></div>
+            <div style="display:flex;align-items:center;gap:6px;padding:6px 9px;border-bottom:1px solid ${C.line};font-size:12px;font-weight:600;color:${C.ink};"><span style="flex:1;">${g.kind === 'product' ? '★ ' : ''}${e(g.title || '(untitled)')}</span>
+              <button data-iv="add" data-t="${e(g.tid)}" title="Write another interview for this ${g.kind}" style="${BTN}font-size:10px;padding:2px 7px;">+ Interview</button></div>
             ${g.list.filter(x => S.showDone || x.status !== 'Finished').map(x => `<div data-iv="open" data-id="${e(x.id)}" style="display:flex;align-items:center;gap:8px;padding:6px 9px;cursor:pointer;font-size:12px;border-top:1px solid ${C.line};">
-              ${pill(x.status)}<span style="flex:1;color:${C.ink};">🎤 ${e(x.angle || 'Interview')} <span style="color:${C.ink3};font-size:11px;">· ${x.answers.filter(a => a.trim()).length}/${x.qs.length} answered</span></span>
+              ${pill(x.status)}<span style="flex:1;color:${C.ink};">🎤 ${x.scope === 'Asset' ? `<b style="color:#8e5bd0;">own · ${e(x.forType)}</b> ` : ''}${e(x.angle || 'Interview')} <span style="color:${C.ink3};font-size:11px;">· ${x.answers.filter(a => a.trim()).length}/${x.qs.length} answered</span></span>
               <span style="font-size:11px;color:${C.acc};">${x.status === 'Finished' ? 'View' : 'Answer'} →</span></div>`).join('')}</div>`).join('')
           : `<div style="font-size:11.5px;color:${C.ink3};padding:6px 0;">${S.items.length ? 'Nothing flagged — every interview is finished.' : 'No interviews on this hub yet. New titles get them automatically (within ~30 min).'}</div>`}`;
     }
@@ -54,7 +56,8 @@
         const direction = prompt('Optional: steer this interview (e.g. "a client story about…"). Leave blank to let it choose.', '');
         if (direction === null) return;
         S.busy = 'Writing the questions…'; draw();
-        try { await req(cfg.call, 'createInterviews', { titleId: b.dataset.t, count: 1, direction }); } catch (err) { S.err = err.message; }
+        const t = b.dataset.t, arg = t.startsWith('p:') ? { productId: t.slice(2) } : { titleId: t.slice(2) };
+        try { await req(cfg.call, 'createInterviews', { ...arg, direction }); } catch (err) { S.err = err.message; }
         S.busy = ''; refresh();
       }
     });
@@ -119,5 +122,13 @@
       .catch(err => { S.err = err.message; S.busy = ''; draw(); });
   }
 
-  window.InterviewPanel = { list, open, onChange: f => listeners.add(f) };
+  // 🎤 Request interview — from inside an asset: writes the asset's OWN interview (Scope Asset), then opens it
+  async function request(cfg) {
+    const direction = prompt('Request an interview for this asset.\nOptional: what should it draw out? (leave blank to let it choose)', '');
+    if (direction === null) return null;
+    try { const r = await req(cfg.call, 'createInterviews', { assetId: cfg.assetId, direction }); const iv = (r.interviews || [])[0];
+      changed(); if (iv) open({ call: cfg.call, interviewId: iv.id, onDone: cfg.onDone }); return iv || null; }
+    catch (err) { alert('Could not request the interview: ' + err.message); return null; }
+  }
+  window.InterviewPanel = { list, open, request, onChange: f => listeners.add(f) };
 })();

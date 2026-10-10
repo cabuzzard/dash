@@ -4206,7 +4206,7 @@
 </div>
 
 <script src="shared/design-panel.js?v=2026101001"></script>
-<script src="shared/interview-panel.js?v=2026101001"></script>
+<script src="shared/interview-panel.js?v=2026101002"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -11258,6 +11258,12 @@ function dev2LoadSaved() {
 }
 function dev2SaveClick(btn) { dev2SaveState(); const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); }
 // 🎤 interview rows (kind "interview", Flagged / Finished) open the shared answer modal (shared/interview-panel.js)
+async function dev2RequestInterview(assetId, btn) {
+  if (!window.InterviewPanel) return alert('interview-panel.js did not load — reload the page.');
+  btn.disabled = true; const iv = await window.InterviewPanel.request({ call, assetId }); btn.disabled = false;
+  if (iv) { const a = DEV2_ROWS.find(r => r.assetId === assetId) || {};
+    DEV2_ROWS.push({ ...a, kind: 'interview', interviewId: iv.id, ivStatus: 'Flagged', status: 'Flagged', assetId: null, assetName: '🎤 own · ' + (iv.angle || 'Interview'), assetType: 'Interview (own)' }); renderDev2(); }
+}
 function dev2OpenInterview(id) {
   if (!window.InterviewPanel) return alert('interview-panel.js did not load — reload the page.');
   window.InterviewPanel.open({ call, interviewId: id, onDone: iv => {
@@ -11319,7 +11325,7 @@ function renderDev2() {
       : '';
     const isSel = DEV2_SELECTED.has(key);
     return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
-      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"><button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
+      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)">${r.assetId ? `<button title="Request this asset's OWN interview" onclick="dev2RequestInterview('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">🎤</button>` : ''}<button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.hubSection || '')}</td>
