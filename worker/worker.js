@@ -17341,6 +17341,24 @@ Give a YouTube title in that format. Call submit_questions.`;
         for (const x of all.slice(0, lim)) { const r = await fetch(`https://api.notion.com/v1/pages/${ivDash(x.id)}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }).then(r => r.json()).catch(() => ({})); if (r.id) n++; }
         return json({ ok: true, archived: n, remaining: Math.max(0, all.length - n) });
       }
+      // ivDedupeProducts → ONE product interview per hub main offering: keeps the earliest (or any with answers) per
+      // main offering, archives every other EMPTY product interview (extra copies, and products that aren't main offerings).
+      if (body.action === "ivDedupeProducts") {
+        await hubSitesMerge(env);
+        const main = new Set();
+        for (const h of HUB_SITES.filter(x => x.campaignId)) for (const pid of await hubMainList(env, h.campaignId)) main.add(String(pid).replace(/-/g, ""));
+        const by = {}; (await ivList({ property: "Scope", select: { equals: "Product" } })).forEach(x => { (by[x.productId] = by[x.productId] || []).push(x); });
+        const drop = [];
+        Object.entries(by).forEach(([pid, list]) => {
+          const empty = x => !x.answers.some(a => a.trim());
+          if (!main.has(pid)) { drop.push(...list.filter(empty)); return; }
+          const keep = list.find(x => !empty(x)) || list[0];
+          drop.push(...list.filter(x => x.id !== keep.id && empty(x)));
+        });
+        const lim = Math.min(100, Math.max(1, parseInt(body.limit) || 60)); let n = 0;
+        for (const x of drop.slice(0, lim)) { const r = await fetch(`https://api.notion.com/v1/pages/${ivDash(x.id)}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }).then(r => r.json()).catch(() => ({})); if (r.id) n++; }
+        return json({ ok: true, archived: n, remaining: Math.max(0, drop.length - n), mainOfferings: main.size });
+      }
       // ivProductsNeeding → hub main offerings with no interview yet (the per-offering backfill list)
       if (body.action === "ivProductsNeeding") return json({ ok: true, products: await ivProductsNeeding(env) });
       if (body.action === "getInterview") {
