@@ -1,5 +1,15 @@
 [
   {
+    "slug": "boat-week",
+    "name": "Boat Week",
+    "kicker": "Hosted live-aboard · $2,500–$5,500 per person",
+    "promise": "One week on the right boat, at the right break, with everything already solved — so the only decision you make is which board to grab.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81f28628de7422d4a422",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/hosted-surf-charter-week-blog-thumbnail-mv21ihzz.png"
+  },
+  {
     "slug": "charter-intelligence",
     "name": "Charter Intelligence",
     "kicker": "Free newsletter — no credit card",
@@ -18,15 +28,6 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81c4bdaaf08ad94caf44",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/surf-trip-matchmaker-blog-thumbnail-mv21hifg.png"
-  },
-  {
-    "slug": "boat-week",
-    "name": "Boat Week",
-    "kicker": "Hosted live-aboard · $2,500–$5,500 per person",
-    "promise": "One week on the right boat, at the right break, with everything already solved — so the only decision you make is which board to grab.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81f28628de7422d4a422"
   },
   {
     "slug": "surf-charter-insider-alerts",
