@@ -1019,14 +1019,14 @@ Write ${want ? `exactly ${want}` : "1 to 3"} interview${want === 1 ? "" : "s"} �
 }
 // ── Interview SYNC (2026-10-10): like research → products. When a title's interviews change state (first Finish,
 // answers edited after finishing, reopened, removed while Finished) everything built from them is OUT OF SYNC:
-// the title's pillar ("Pillar Interview Sync" select on Content Strategy) and each asset by type (Assets
+// the title's pillar ("Pillar Status" select on Content Strategy: Not Written / Written / Out of Sync) and each asset by type (Assets
 // "Interview Sync": depends types → "Out of Sync · Regenerate", borrow types → "Out of Sync · Review", none
 // types untouched). A separate status on purpose — Asset Status (and so every display's visibility) never changes.
 // Rewriting the pillar sets it In Sync; ✓ Mark in sync clears an asset; new assets start empty (= in sync).
 async function ivMarkDownstream(env, titleId) {
   const hdr = ivHdr(), now = new Date().toISOString();
   const tprops = { "Interviews Updated": { date: { start: now } } };
-  if (await extractPillarContent(hdr, ivDash(titleId)).catch(() => "")) tprops["Pillar Interview Sync"] = { select: { name: "Out of Sync" } };
+  tprops["Pillar Status"] = { select: { name: (await extractPillarContent(hdr, ivDash(titleId)).catch(() => "")) ? "Out of Sync" : "Not Written" } };
   await fetch(`https://api.notion.com/v1/pages/${ivDash(titleId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: tprops }) }).catch(() => {});
   const assets = await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: ivDash(titleId) } } }).catch(() => []);
   let n = 0;
@@ -1042,7 +1042,7 @@ async function ivSyncFlags(cid) {
   const camp = cid ? [{ property: "Campaign", relation: { contains: ivDash(cid) } }] : [];
   const [assets, titles] = await Promise.all([
     notionQuery(ASSETS_DB, { filter: { and: [...camp, { or: [{ property: "Interview Sync", select: { equals: "Out of Sync · Regenerate" } }, { property: "Interview Sync", select: { equals: "Out of Sync · Review" } }] }] } }).catch(() => []),
-    notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [...camp, { property: "Pillar Interview Sync", select: { equals: "Out of Sync" } }] } }).catch(() => []),
+    notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [...camp, { property: "Pillar Status", select: { equals: "Out of Sync" } }] } }).catch(() => []),
   ]);
   const t = (pg, k) => (pg.properties?.[k]?.title || []).map(x => x.plain_text).join("");
   const rid = (pg, k) => ((pg.properties?.[k]?.relation || [])[0]?.id || "").replace(/-/g, "");
@@ -3981,10 +3981,8 @@ The passage after a marker must make sense without the rest of the piece. Do not
     });
     if (!resp.ok) { const r = await resp.json().catch(() => ({})); throw new Error(r.message || "Failed to write pillar content to title"); }
   }
-  try {   // 🎤 a fresh pillar is in sync with the interviews it just read
-    const tp = await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json());
-    if (tp?.properties?.["Pillar Interview Sync"]?.select?.name === "Out of Sync")
-      await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Pillar Interview Sync": { select: { name: "In Sync" } } } }) });
+  try {   // Pillar Status: a fresh pillar is Written (and in sync with the interviews it just read)
+    await fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Pillar Status": { select: { name: "Written" } } } }) });
   } catch (e) {}
   return { success: true, wordCount: pillarText.split(/\s+/).length };
 }
@@ -14574,12 +14572,14 @@ Return: {
       // a status flip to Published is itself an edit, so this is a close,
       // zero-schema-change proxy rather than an exact timestamp.
       if (body.action === "getDevAssetsTable") {
-        const [campRows, productRows, titleRows, assetRows, ivRows] = await Promise.all([
+        const [campRows, productRows, titleRows, assetRows, ivRows, prRows, resRows] = await Promise.all([
           notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } }),
           notionQuery(PRODUCTS_DB, {}),
           notionQuery(CONTENT_STRATEGY_DB, {}),
           notionQuery(ASSETS_DB, {}),
           ivList(null).catch(() => []),   // 🎤 interviews — their own rows under the title (Flagged / Finished)
+          notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
+          notionQuery(RESEARCH_DB, {}).catch(() => []),
         ]);
         const ivByTitle = {};
         ivRows.forEach(iv => { if (iv.titleId) (ivByTitle[iv.titleId] ||= []).push(iv); });
@@ -14612,7 +14612,7 @@ Return: {
             status: p.Status?.select?.name || "",
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
             productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
-            pillarSync: p["Pillar Interview Sync"]?.select?.name || "",
+            pillarStatus: p["Pillar Status"]?.select?.name || "",
           };
         });
 
@@ -14672,7 +14672,7 @@ Return: {
             product: prod ? prod.name : "No Product",
             title: t.title,
             titleId,
-            pillarSync: t.pillarSync || "",
+            pillarStatus: t.pillarStatus || "", productId: t.productId || null,
           };
           (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
             assetName: "🎤 " + (iv.angle || "Interview"), assetType: "Interview", rawAssetType: "Interview", assetStatus: "", hubSection: "", datePublished: iv.finishedAt }));
@@ -14724,6 +14724,33 @@ Return: {
         rows.forEach(r => {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
           r.status = r.kind === "interview" ? r.ivStatus : r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
+        });
+        // ── STATUS TABLE (2026-10-10): every update vector as its own column, + one derived Next step (upstream first).
+        // Research ↔ keywords = product research Keywords Version vs its campaign's (same rule as care-gap's ✓/✗).
+        // Interviews (🎤) · Pillar Status (Not Written / Written / Out of Sync) · Asset sync (Interview Sync).
+        // None of these is Asset Status — visibility everywhere still keys off Status alone.
+        const fill = (r, ks) => ks.reduce((n, k) => n + ((r.properties?.[k]?.rich_text || []).length ? 1 : 0), 0);
+        const campKw = {};
+        resRows.forEach(r => { const c = dropDash((r.properties?.Campaign?.relation || [])[0]?.id || ""); if (!c) return;
+          const sc = fill(r, ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"]);
+          if (!campKw[c] || sc > campKw[c].sc) campKw[c] = { sc, v: r.properties?.["Keywords Version"]?.number || 0 }; });
+        const prBest = {};
+        prRows.forEach(r => { const pid = dropDash((r.properties?.Product?.relation || [])[0]?.id || ""); if (!pid) return;
+          const sc = fill(r, STRATEGY_FIELDS); if (!prBest[pid] || sc > prBest[pid].sc) prBest[pid] = { sc, v: r.properties?.["Keywords Version"]?.number || 0 }; });
+        const researchOf = pid => { if (!pid) return ""; const pr = prBest[pid], prod = productById[pid]; if (!pr) return "— none";
+          return pr.v < (((prod && prod.campId && campKw[prod.campId]) || {}).v || 0) ? "✗ out of sync" : "✓ up to date"; };
+        const ivSum = {};
+        ivRows.forEach(iv => { const x = ivSum[iv.titleId] = ivSum[iv.titleId] || { f: 0, d: 0 }; if (iv.status === "Finished") x.d++; else x.f++; });
+        rows.forEach(r => {
+          r.research = researchOf(r.productId);
+          const iv = r.titleId ? ivSum[r.titleId] : null;
+          r.interviews = !r.titleId ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : ""].filter(Boolean).join(" · ");
+          r.pillarStatus = r.titleId ? ((titleById[r.titleId] || {}).pillarStatus || "") : "";
+          r.assetSync = r.kind === "asset" ? (r.ivSync || (ivImportance(r.rawAssetType || r.assetType) === "none" ? "n/a" : "")) : "";
+          r.nextStep = r.research === "✗ out of sync" ? "Refresh research" : r.research === "— none" ? "Run research"
+            : (iv && iv.f && r.kind !== "product") ? "Do interview"
+            : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
+            : r.assetSync === "Out of Sync · Regenerate" ? "Regenerate asset" : r.assetSync === "Out of Sync · Review" ? "Review asset" : "✓ Ready";
         });
         return json({ rows });
       }
@@ -17222,9 +17249,24 @@ Give a YouTube title in that format. Call submit_questions.`;
       }
       if (body.action === "markInterviewSync") {
         const id = body.assetId || body.titleId; if (!id) return json({ error: "assetId or titleId required" }, 400);
-        const props = body.assetId ? { "Interview Sync": { select: { name: "In Sync" } } } : { "Pillar Interview Sync": { select: { name: "In Sync" } } };
+        const props = body.assetId ? { "Interview Sync": { select: { name: "In Sync" } } } : { "Pillar Status": { select: { name: "Written" } } };
         const ur = await fetch(`https://api.notion.com/v1/pages/${ivDash(id)}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) }).then(r => r.json());
         return json(ur.id ? { ok: true } : { error: ur.message || "update failed" });
+      }
+
+      // backfillPillarStatus {limit?} → titles with an EMPTY Pillar Status get Written / Not Written from their page
+      // body (same detection as care-gap's hasPillar / extractPillarContent). Re-runnable; returns how many remain.
+      if (body.action === "backfillPillarStatus") {
+        const lim = Math.min(60, Math.max(1, parseInt(body.limit) || 40));
+        const todo = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Pillar Status", select: { is_empty: true } } }).catch(() => []);
+        let w = 0, nw = 0;
+        const batch = todo.slice(0, lim);
+        for (let i = 0; i < batch.length; i += 6) await Promise.all(batch.slice(i, i + 6).map(async t => {
+          const has = !!(await extractPillarContent(ivHdr(), t.id).catch(() => ""));
+          await fetch(`https://api.notion.com/v1/pages/${t.id}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Pillar Status": { select: { name: has ? "Written" : "Not Written" } } } }) }).catch(() => {});
+          if (has) w++; else nw++;
+        }));
+        return json({ ok: true, written: w, notWritten: nw, remaining: Math.max(0, todo.length - lim) });
       }
 
       if (body.action === "getLastInterviewAnswers") {
