@@ -818,6 +818,7 @@ async function hubNewsCount(env, cid) {
     return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^publish/i.test(st); }).length;
 }
 async function writeHubNewsPost(env, cid, opts = {}) {
+  await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
   if (!hub) return { error: "not a hub campaign" };
@@ -967,6 +968,7 @@ async function longTailSuggest(seeds) {
   return [...new Set(all)].filter(x => x.split(/\s+/).length >= 3).slice(0, 120);
 }
 async function buildHubTopicIdeas(env, cid) {
+  await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
   if (!hub) return { error: "not a hub campaign" };
@@ -1027,6 +1029,7 @@ Give exactly 10 post ideas for this audience, spread across the topics (no topic
 // news posts + staged digest ideas). Capture form "<slug>/main" (tag lead-hub-<slug>, ActiveCampaign list per hub).
 const NURTURE_METHOD_ID = "3d61f7d3a4bb8105ae8cc7b82beb23fe";
 async function runHubNewsletterSequence(env, cid, opts = {}) {
+  await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
   if (!hub) return { error: "not a hub campaign" };
@@ -1077,6 +1080,7 @@ ${ideas.map(x => "- " + x).join("\n") || "(none yet)"}`;
 // article's key points rewritten for email, link to the full post). Saved as a "Newsletter Issue" asset on the news title,
 // capture form "<slug>/main" (the hub's ActiveCampaign list). Called by writeHubNewsPost after each post publishes.
 async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl }) {
+  await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
   if (!hub || !titleId) return { error: "hub or title missing" };
