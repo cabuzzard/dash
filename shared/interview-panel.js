@@ -103,8 +103,8 @@
       const R = S.report, items = (R && R.items) || [], nPick = Object.values(S.pick).filter(Boolean).length;
       el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
           <b style="font-size:13px;color:${C.ink};">🔎 Expert check</b>
-          ${R ? `<span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:9px;${R.status === 'Passed' ? `background:rgba(58,154,91,.15);color:${DONE};` : `background:${FLAG};color:#111;`}">${e(R.status)}</span><span style="font-size:11px;color:${C.ink3};">${e(new Date(R.at).toLocaleString())}</span>` : `<span style="font-size:11px;color:${C.ink3};">your answers vs the current standard of practice in this field — and what a sophisticated buyer would trust</span>`}
-          <button type="button" data-x="run" ${S.busy ? 'disabled' : ''} style="${BTN}margin-left:auto;">${R ? '↻ Re-check' : '🔎 Run expert check'}</button></div>
+          ${R ? `<span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:9px;${R.status === 'Passed' ? `background:rgba(58,154,91,.15);color:${DONE};` : `background:${FLAG};color:#111;`}">Pass ${R.pass || 1} · ${e(R.status)}</span><span style="font-size:11px;color:${C.ink3};">${e(new Date(R.at).toLocaleString())}</span>` : `<span style="font-size:11px;color:${C.ink3};">your answers vs the current standard of practice in this field — and what a sophisticated buyer would trust</span>
+          <button type="button" data-x="run" ${S.busy ? 'disabled' : ''} style="${BTN}margin-left:auto;">🔎 Run expert check</button>`}</div>
         ${S.busy ? `<div style="font-size:12px;color:${C.ink3};margin-top:8px;">⏳ ${e(S.busy)}</div>` : ''}
         ${S.err ? `<div style="font-size:12px;color:#c0392b;margin-top:8px;">${e(S.err)}</div>` : ''}
         ${R ? `<div style="font-size:12px;color:${C.ink2};margin:8px 0 2px;"><b>Field:</b> ${e(R.field)}</div>
@@ -124,9 +124,29 @@
             </div>`; }).join('')}
           ${items.some(x => x.fix && !x.applied) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;">Applying swaps only the quoted words in your answers; your own rewrites teach 🗣 Your voice.</span>
-            <button type="button" data-x="apply" ${S.busy || !nPick ? 'disabled' : ''} style="${BTNP}">Apply ${nPick} fix${nPick === 1 ? '' : 'es'}</button></div>` : ''}` : ''}`;
+            <button type="button" data-x="apply" ${S.busy || !nPick ? 'disabled' : ''} style="${BTN}">Apply ${nPick} fix${nPick === 1 ? '' : 'es'}</button></div>` : ''}
+          ${S.done ? `<div style="font-size:12.5px;color:${DONE};margin-top:9px;">${e(S.done)}</div>` : ''}
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid ${C.line};padding-top:9px;margin-top:6px;">
+            <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">Revised your answers? Run the next expert pass before anything is written.</span>
+            <button type="button" data-x="run" ${S.busy ? 'disabled' : ''} style="${BTN}">↻ Re-run expert check (pass ${(R.pass || 1) + 1})</button>
+            ${cfg.finish ? `<button type="button" data-x="finish" ${S.busy ? 'disabled' : ''} style="${BTNP}">${writeLabel()}</button>` : ''}</div>` : ''}`;
     }
-    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); });
+    // ✓ Finish & write asset: finish the interview (host's own finish), then — for a Topical Post's interview — write the article now
+    const writable = () => { const v = cfg.iv || {}; return v.scope === 'Asset' && (v.assetIds || []).length && /topical post/i.test(v.forType || ''); };
+    function writeLabel() { const v = cfg.iv || {}; return writable() ? '✓ Finish & write asset' : v.scope === 'Product' ? '✓ Finish (feeds this offering)' : '✓ Finish'; }
+    async function finishWrite() {
+      S.busy = 'Finishing the interview…'; S.err = ''; S.done = ''; draw();
+      try { await cfg.finish(); } catch (err) { S.err = err.message; S.busy = ''; return draw(); }
+      const v = cfg.iv || {};
+      if (writable()) {
+        S.busy = 'Writing the article from your checked answers — about a minute…'; draw();
+        try { const r = await req(cfg.call, 'writeTopicalPost', { assetId: v.assetIds[0] });
+          S.done = r.ok ? `✓ Written — ${r.words || ''} words, the asset is at Review.` : r.needsInterview ? 'The interview isn’t finished yet — answer at least one question.' : (r.error || 'Not written'); }
+        catch (err) { S.err = 'The article may still be writing on the server — check the asset in a minute. (' + err.message + ')'; }
+      } else S.done = v.scope === 'Product' ? '✓ Finished — it now feeds every title and asset under this offering.' : '✓ Finished — generate the asset from its title when you’re ready.';
+      S.busy = ''; changed(); draw();
+    }
+    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
     el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) S.edits[t.dataset.xe] = t.value; ev.stopPropagation(); });
     draw(); load();
@@ -168,7 +188,8 @@
             <button data-m="save" style="${BTN}">💾 Save draft</button>
             <button data-m="finish" style="${BTNP}">✓ ${iv.status === 'Finished' ? 'Save' : 'Finish'}</button></div>` : ''}`;
       const xh = box.querySelector('[data-xhost]');
-      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, beforeRun: () => S.dirty ? save(false) : null,
+      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, iv, beforeRun: () => S.dirty ? save(false) : null,
+        finish: async () => { if (!S.answers.some(a => (a || '').trim())) throw new Error('Answer at least one question first.'); await save(true); if (S.err) throw new Error(S.err); },
         onApplied: answers => { if (answers) { S.answers = answers.slice(); S.iv.answers = answers.slice(); S.dirty = false; draw(); } } }); xh.appendChild(S.xEl); }
     }
     async function save(finish, extra) {

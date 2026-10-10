@@ -17469,8 +17469,13 @@ Give a YouTube title in that format. Call submit_questions.`;
         let pid = iv.productId; if (!pid && iv.titleId) { const tp = await ivPage(iv.titleId).catch(() => null); pid = tp ? ivRid(tp.properties, "product") : ""; }
         const [prodRes, audience] = await Promise.all([pid ? ivProdResearch(pid) : "", iv.cid ? hubAudienceBlock(env, iv.cid).catch(() => "") : ""]);
         const today = new Date().toISOString().slice(0, 10), OPUS = "claude-opus-5-5";
-        if (!body.sample) await env.TRADES.put("ivfact:run:" + id, String(Date.now()), { expirationTtl: 600 });   // a phone that drops the long request can see it's still running
-        const ctxBlock = `INTERVIEW: ${iv.title}${iv.angle ? " — " + iv.angle : ""}\n${audience}${prodRes ? `\nTHE OFFERING (product research):\n${prodRes}\n` : ""}`;
+        if (!body.sample) await env.TRADES.put("ivfact:run:" + id, String(Date.now()), { expirationTtl: 600 });
+        // PASS 2+ (operator: "my responses to the first expert check also need a second pass by the experts before writing"):
+        // the reviewer sees what the previous pass raised and verifies the REVISED answers against it.
+        let prev = null; if (!body.sample) { try { prev = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {} }
+        const pass = prev ? (prev.pass || 1) + 1 : 1;
+        const prevBlock = prev ? `\nPASS ${pass} — the owner REVISED these answers after the previous expert review. Previous summary: ${prev.summary}\nIssues it raised (quote → verdict → suggested fix / what they applied):\n${prev.items.filter(x => x.verdict !== "opinion" && (/outdated|contested|wrong|mostly/.test(x.verdict) || x.market)).map(x => `- "${x.quote}" → ${x.verdict}${x.market ? " (marketability: " + x.market + ")" : ""}${x.applied ? " → applied: " + (x.appliedText || x.fix) : x.fix ? " → suggested: " + x.fix : ""}`).join("\n").slice(0, 6000)}\nVerify the REVISED answers to the same standard: confirm what is now right (verdict current), and flag only what still falls short or any NEW problem the revisions introduced. Don't re-flag points that are now fixed.\n` : "";   // a phone that drops the long request can see it's still running
+        const ctxBlock = `INTERVIEW: ${iv.title}${iv.angle ? " — " + iv.angle : ""}\n${audience}${prodRes ? `\nTHE OFFERING (product research):\n${prodRes}\n` : ""}${prevBlock}`;
         const c1 = await claudeStream(env, { model: OPUS, max_tokens: 6000, messages: [{ role: "user", content:
 `TODAY: ${today}. You are a senior practitioner reviewing a business owner's own interview answers before they are used in published content.
 ${ctxBlock}
@@ -17508,7 +17513,7 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           : { ...c, verdict: String(byId[c.id]?.verdict || "unchecked"), expert_view: String(byId[c.id]?.expert_view || ""),
               sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || "") });
         const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
-        const report = { at: Date.now(), field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
+        const report = { at: Date.now(), pass, field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
         if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); }
         return json({ ok: true, report });
       }
