@@ -17490,13 +17490,13 @@ Return ONLY a JSON object: {"field":"...","standards":["..."],"claims":[...]}` }
         if (checkable.length) {
           const c2 = await claudeStream(env, { model: OPUS, max_tokens: 14000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 16 }], messages: [{ role: "user", content:
 `TODAY: ${today}. FIELD: ${p1.field || "(infer it)"}. CURRENT STANDARD-SETTERS: ${(p1.standards || []).join("; ")}.
-Check each claim from a practitioner's interview against the CURRENT standard of practice in this field and the dominant expert view — as a top practitioner in the field would, today. Search as needed; prefer primary sources (standards bodies, regulators, codes, contract documents, peer-reviewed research, recognized institutions). Flag outdated practice or terminology, wrong regulations or numbers, overclaims, and advice a senior peer would push back on. Be fair: sound practical wisdom that the field broadly accepts is "current" even when phrased casually.
-For each claim return: "id"; "verdict" (current | mostly current | outdated | contested | wrong); "expert_view" (1-2 plain sentences: what the current standard actually is); "sources" (1-3 {"title","url"} you actually found); "fix": the SMALLEST change to the quoted words that makes it accurate and current, keeping the speaker's voice, empty if none needed; "level_up": optional ONE line a top practitioner would add (only where it materially sharpens the advice), else empty.
+Check each claim from a practitioner's interview against the CURRENT standard of practice in this field and the dominant expert view — as a top practitioner in the field would, today. These answers become MARKETING for a professional offering sold to sophisticated buyers (see the audience below), so the output must be marketable: anything that would cost credibility with a knowledgeable buyer — vague or generic claims, amateur or dated terminology, overpromising, advice a senior peer would wince at — counts as an issue even when it isn't strictly false. Search as needed; prefer primary sources (standards bodies, regulators, codes, contract documents, peer-reviewed research, recognized institutions). Flag outdated practice or terminology, wrong regulations or numbers, overclaims, and advice a senior peer would push back on. Be fair: sound practical wisdom that the field broadly accepts is "current" even when phrased casually.
+For each claim return: "id"; "verdict" (current | mostly current | outdated | contested | wrong); "expert_view" (1-2 plain sentences: what the current standard actually is); "sources" (1-3 {"title","url"} you actually found); "fix": the SMALLEST change to the quoted words that makes it accurate and current, keeping the speaker's voice, empty if none needed; "level_up": optional ONE line a top practitioner would add that makes a sophisticated buyer trust them — a concrete method, standard, outcome or proof point in plain words (only where it materially sharpens it), else empty; "market": optional ONE short note when the wording itself undercuts marketability (generic, hedged, jargon a buyer won't follow, or overpromise), else empty.
 ${ctxBlock}
 CLAIMS:
 ${checkable.map(c => `${c.id} | ${c.type} | "${c.quote}" → ${c.claim}`).join("\n")}
 
-Then "summary": 2-3 sentences on how well these answers hold up against the current level of expertise.
+Then "summary": 2-3 sentences on how well these answers hold up against the current level of expertise, and how marketable they are to this buyer.
 Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic-beta": "web-search-2025-03-05" });
           const d2 = await c2.json(); if (!c2.ok) return json({ error: d2.error?.message || "Claude error (expert check)" }, 502);
           const r2 = (d2.content || []).filter(b => b.type === "text").map(b => b.text).join("");
@@ -17505,8 +17505,8 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
         const byId = Object.fromEntries((p2.results || []).map(r => [r.id, r]));
         const items = claims.map(c => c.type === "opinion" ? { ...c, verdict: "opinion", expert_view: "Your opinion — kept as yours, not judged.", sources: [], fix: "", level_up: "" }
           : { ...c, verdict: String(byId[c.id]?.verdict || "unchecked"), expert_view: String(byId[c.id]?.expert_view || ""),
-              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || "") });
-        const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict)).length;
+              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || "") });
+        const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
         const report = { at: Date.now(), field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
         if (!body.sample) await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
         return json({ ok: true, report });
