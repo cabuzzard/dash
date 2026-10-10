@@ -1,5 +1,15 @@
 [
   {
+    "slug": "plan-match-enrollment-review",
+    "name": "Plan Match & Enrollment Review",
+    "kicker": "Fixed-fee review · $349–$599",
+    "promise": "Your doctors, prescriptions, and budget checked against real plans — with a written recommendation, a penalty audit, and no carrier on the other end of the call.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb816e8458e21c6bea1ffe",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/plan-match-enrollment-review-blog-thumbnail-mv214n2u.png"
+  },
+  {
     "slug": "medicare-clarity-consult",
     "name": "Medicare Clarity Consult",
     "kicker": "Fixed-fee consult · $149–$249 (credited toward Plan Match & Enrollment Review)",
@@ -17,15 +27,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb812ea0dfcc451f34bb5b"
-  },
-  {
-    "slug": "plan-match-enrollment-review",
-    "name": "Plan Match & Enrollment Review",
-    "kicker": "Fixed-fee review · $349–$599",
-    "promise": "Your doctors, prescriptions, and budget checked against real plans — with a written recommendation, a penalty audit, and no carrier on the other end of the call.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb816e8458e21c6bea1ffe"
   },
   {
     "slug": "medicare-consulting",
