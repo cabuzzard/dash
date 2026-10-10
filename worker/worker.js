@@ -11057,6 +11057,12 @@ export default {
                 body: JSON.stringify({ contactTag: { contact: contactId, tag: tagId } }),
               });
             }
+            // Hub signups also join that hub's newsletter list (2026-10-10: every hub's main CTA is its newsletter)
+            if (/^hub-/.test(campaign)) {
+              const listId = await env.TRADES.get("hub:aclist:" + campaign.slice(4)).catch(() => null);
+              if (listId) await fetch(`${AC_API_URL}/api/3/contactLists`, { method: "POST", headers: acHeaders,
+                body: JSON.stringify({ contactList: { list: +listId, contact: +contactId, status: 1 } }) });
+            }
           }
         } catch (acErr) {
           // Swallow — ActiveCampaign hiccups shouldn't fail the lead submission.
@@ -15550,6 +15556,35 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
       // Live ActiveCampaign sender addresses (the CAN-SPAM-required physical
       // mailing address every campaign must carry) — read-only, feeds the
       // Publish Digest Email modal's address picker.
+      // ensureHubNewsletterLists — one ActiveCampaign newsletter list per hub: an existing list whose name contains the hub's
+      // name is reused, otherwise "<Hub> Hub" is created (same sender address as the existing hub lists). Wired via KV
+      // hub:aclist:<slug>, which submitLead reads to subscribe every hub signup. Safe to re-run.
+      if (body.action === "ensureHubNewsletterLists") {
+        const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, ""), acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
+        if (!acUrl || !acKey) return json({ error: "ActiveCampaign not configured on the Worker" }, 400);
+        const H = { "Api-Token": acKey, "Content-Type": "application/json" };
+        const lists = ((await fetch(`${acUrl}/api/3/lists?limit=100`, { headers: H }).then(r => r.json()).catch(() => ({}))).lists || []);
+        const al = ((await fetch(`${acUrl}/api/3/addressLists?limit=100`, { headers: H }).then(r => r.json()).catch(() => ({}))).addressLists || []);
+        const hubListIds = new Set(lists.filter(l => / hub$/i.test(l.name)).map(l => String(l.id)));
+        const addr = (al.find(x => hubListIds.has(String(x.list))) || al[0] || {}).address || null;
+        const norm = x => String(x || "").toLowerCase().replace(/^the /, "").trim();
+        const out = [];
+        for (const h of HUB_SITES) {
+          let list = lists.find(l => norm(l.name).includes(norm(h.name)));
+          let created = false;
+          if (!list && !body.dryRun) {
+            const url = h.domain ? "https://" + h.domain : `https://cabuzzard.github.io/dash/web/hub/${h.slug}/`;
+            const cr = await fetch(`${acUrl}/api/3/lists`, { method: "POST", headers: H, body: JSON.stringify({ list: { name: `${h.name} Hub`, stringid: `hub-${h.slug}`.slice(0, 50),
+              sender_url: url, sender_reminder: `You're getting this because you signed up for the ${h.name} newsletter at ${url}.`, send_last_broadcast: 0, carboncopy: "", subscription_notify: "", unsubscription_notify: "" } }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+            list = cr.list || null; created = !!list;
+            if (list && addr) await fetch(`${acUrl}/api/3/addressLists`, { method: "POST", headers: H, body: JSON.stringify({ addressList: { address: +addr, list: +list.id } }) }).catch(() => {});
+            if (!list) { out.push({ hub: h.name, error: (cr.errors && cr.errors[0] && cr.errors[0].title) || cr.message || cr.error || "create failed" }); continue; }
+          }
+          if (list) await env.TRADES.put("hub:aclist:" + h.slug, String(list.id));
+          out.push({ hub: h.name, slug: h.slug, listId: list ? list.id : null, listName: list ? list.name : null, created });
+        }
+        return json({ ok: true, address: addr, hubs: out });
+      }
       if (body.action === "getActiveCampaignAddresses") {
         const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, "");
         const acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
