@@ -896,6 +896,34 @@ async function rewriteHubNewsPost(env, assetId) {
 // Built from the hub's keyword TOPICS (committed 🔑 Keyword Clusters rows + staged KV seoclusters:staged:<cid>). A hub
 // with fewer than 3 topics first gets new topics: real long-tail searches (Google autocomplete off its Main Keywords) →
 // generateKeywordClusters (staged topics in the hub, named after real long-tail phrases). KV hubideas:<cid> = {at, ideas}.
+// Everything running right now, for the ⏱ Cron flyout: worker background jobs (KV status records), keyword runs (D1),
+// and GitHub Actions workflows (renders, deploys). Each {kind, label, detail, since}.
+async function cronRunningNow(env) {
+  const out = [], now = Date.now(), ago = t => { const ms = typeof t === "number" ? t : Date.parse(t || 0); return ms ? now - ms : Infinity; };
+  const hubName = cid => (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === String(cid).replace(/-/g, "")) || {}).name || String(cid).slice(0, 8);
+  const scan = async (prefix, max = 80) => { const l = await env.TRADES.list({ prefix }).catch(() => ({ keys: [] }));
+    return Promise.all((l.keys || []).slice(0, max).map(async k => ({ key: k.name, v: await env.TRADES.get(k.name, "json").catch(() => null) }))); };
+  try {
+    for (const { key, v } of await scan("design:job:")) if (v && v.status === "running" && ago(v.at) < 30 * 60000) out.push({ kind: "Design build", label: hubName(key.slice(11)), detail: v.op || "", since: v.at });
+    for (const [k, label] of [["bulk:prodideas", "Product ideas for every hub"], ["bulk:research", "Main-product research"]]) {
+      const v = await env.TRADES.get(k, "json").catch(() => null);
+      if (v && v.running && ago(v.at) < 90 * 60000) out.push({ kind: "Bulk job", label, detail: `${v.done || 0}/${v.total || "?"} — ${v.current || v.phase || ""}`, since: v.at });
+    }
+    const bh = await env.TRADES.get(BULK_HUB_KV, "json").catch(() => null);
+    if (bh && Array.isArray(bh.targets)) { const left = bh.targets.filter(t => !(bh.done || []).includes(t.productId)).length; if (left) out.push({ kind: "Queue", label: "Bulk hub strategy", detail: `${left} product(s) left — drains on the 4-min cron`, since: bh.at || "" }); }
+    const nb = await env.TRADES.get("hubnews:busy").catch(() => null);
+    if (nb) out.push({ kind: "Hub news", label: hubName(nb), detail: "writing a news post", since: "" });
+    for (const { key, v } of await scan("lfrender:")) if (v && /queued|running|render/i.test(v.status || "") && ago(v.at || v.started) < 3 * 3600000) out.push({ kind: "Long-form render", label: key.slice(9), detail: `${v.status}${v.msg ? " — " + String(v.msg).slice(0, 120) : ""}`, since: v.started || v.at });
+    for (const { key, v } of await scan("hf:asset:")) if (v && /render/i.test(v.status || "") && ago(v.ts) < 3 * 3600000) out.push({ kind: "Reel render (HeyGen)", label: key.slice(9), detail: v.status, since: v.ts });
+  } catch (e) { out.push({ kind: "error", label: "KV scan", detail: e.message }); }
+  try { if (env.KWDB) { const r = await env.KWDB.prepare("SELECT id, name, keywords, level, started_at FROM kw_runs WHERE status = 'running' LIMIT 20").all();
+    for (const x of (r.results || [])) out.push({ kind: "Keyword run", label: x.name || ("run " + x.id), detail: `${x.keywords || 0} keywords · depth ${x.level || 0}`, since: x.started_at }); } } catch (e) {}
+  try { const GT = (env.GITHUB_TOKEN || "").trim(); if (GT) for (const st of ["in_progress", "queued"]) {
+    const r = await fetch(`https://api.github.com/repos/cabuzzard/dash/actions/runs?status=${st}&per_page=20`, { headers: { Authorization: "Bearer " + GT, "User-Agent": "dash-worker", Accept: "application/vnd.github+json" } }).then(x => x.json()).catch(() => ({}));
+    for (const w of (r.workflow_runs || [])) out.push({ kind: "GitHub Actions", label: w.name, detail: `${st.replace("_", " ")} · ${w.display_title || ""}`.slice(0, 140), since: w.run_started_at || w.created_at, url: w.html_url });
+  } } catch (e) {}
+  return out;
+}
 async function hubTopicsOf(env, cid) {
   const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: nd(cid) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
@@ -26732,7 +26760,10 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       if (body.action === "getCronLog") {
         const list = await env.TRADES.list({ prefix: "cron:log:" }).catch(() => ({ keys: [] }));
         const logs = await Promise.all((list.keys || []).map(k => env.TRADES.get(k.name, "json").catch(() => [])));
-        return json({ ok: true, runs: logs.flat().filter(Boolean).sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 400) });
+        const newsSched = (await env.TRADES.get("hubnews:sched", "json").catch(() => null)) || {};
+        const news = Object.entries(newsSched).map(([cid, at]) => ({ cid, at, hub: (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid) || {}).name || cid.slice(0, 8) }));
+        const running = await cronRunningNow(env).catch(e => [{ kind: "error", label: "running scan", detail: e.message }]);
+        return json({ ok: true, running, runs: logs.flat().filter(Boolean).sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 400), news, crons: ["*/4 * * * *", "*/30 * * * *", "*/5 12-16 * * MON-FRI", "0 0 * * *", "15 0 * * *"] });
       }
       if (body.action === "buildHubTopicIdeas") { try { return json(await buildHubTopicIdeas(env, body.campaignId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }

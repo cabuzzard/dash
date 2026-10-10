@@ -5690,7 +5690,22 @@ function loadTabContent(name) {
 // ── ⏱ Cron log flyout (every tab): the worker's scheduled() records each run (getCronLog). A fixed button opens a
 // right-hand drawer; while it is open it refreshes every 30 s. The button turns red when the latest run of any schedule failed.
 const CL_NAMES = { '*/30 * * * *': 'Every 30 min', '*/4 * * * *': 'Every 4 min (trades)', '*/5 12-16 * * MON-FRI': 'Market hours (5 min)', '0 0 * * *': 'Nightly 00:00 UTC', '15 0 * * *': 'Nightly 00:15 UTC' };
-let _clRuns = [], _clTimer = null, _clOpen = {};
+let _clRuns = [], _clTimer = null, _clOpen = {}, _clNews = [], _clCrons = [], _clTick = null, _clRunning = [];
+// next fire time (UTC) of a 5-field cron — minute hour dom month dow; supports *, */n, a-b, lists, MON-FRI names
+function clNext(expr, from) {
+  const DOW = { SUN: 0, MON: 1, TUE: 2, WED: 3, THU: 4, FRI: 5, SAT: 6 };
+  const f = expr.trim().split(/\s+/), lim = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
+  const set = (txt, [lo, hi]) => { const out = new Set();
+    for (const part of txt.toUpperCase().split(',')) { let [rng, step] = part.split('/'); step = +step || 1;
+      let a = lo, b = hi; if (rng !== '*') { const [x, y] = rng.split('-').map(v => v in DOW ? DOW[v] : +v); a = x; b = y === undefined ? (part.includes('/') ? hi : x) : y; }
+      for (let v = a; v <= b; v += step) out.add(v); } return out; };
+  const S = f.map((x, i) => set(x, lim[i]));
+  const t = new Date(Math.floor((from || Date.now()) / 60000) * 60000 + 60000);
+  for (let i = 0; i < 60 * 24 * 8; i++, t.setTime(t.getTime() + 60000))
+    if (S[0].has(t.getUTCMinutes()) && S[1].has(t.getUTCHours()) && S[2].has(t.getUTCDate()) && S[3].has(t.getUTCMonth() + 1) && S[4].has(t.getUTCDay())) return t.getTime();
+  return null;
+}
+function clIn(ms) { const d = ms - Date.now(); if (d < 0) return 'due now'; const m = Math.round(d / 60000); return m < 60 ? `in ${m} min` : m < 1440 ? `in ${Math.floor(m / 60)} h ${m % 60} min` : `in ${Math.floor(m / 1440)} d ${Math.floor(m % 1440 / 60)} h`; }
 function cronLogInit() {
   if (document.getElementById('clBtn')) return;
   const btn = document.createElement('button');
@@ -5701,12 +5716,12 @@ function cronLogInit() {
   dr.id = 'clDrawer';
   dr.style.cssText = 'position:fixed;top:0;right:0;bottom:0;width:min(620px,100vw);z-index:901;background:var(--bg);border-left:1px solid var(--border2);box-shadow:-8px 0 30px rgba(0,0,0,.3);display:none;flex-direction:column;';
   dr.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--border);">
-      <div style="font-size:15px;font-weight:700;color:var(--text);">⏱ Cron log</div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);">⏱ Jobs &amp; cron</div>
       <select id="clTrig" onchange="cronLogDraw()" style="margin-left:auto;font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);"><option value="">All schedules</option></select>
       <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="clFail" onchange="cronLogDraw()">failures only</label>
       <button onclick="cronLogLoad()" title="Refresh" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">⟳</button>
       <button onclick="cronLogToggle(false)" title="Close" style="font-size:13px;padding:2px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>
-      <div style="flex-basis:100%;font-size:11px;color:var(--text3);">Every scheduled run: which jobs ran, how long, OK or failed, and what they logged. Click a run for its log lines.</div>
+      <div style="flex-basis:100%;font-size:11px;color:var(--text3);">What is running now, what is scheduled next, and every recent run (OK or failed, with its log lines — click a run).</div>
     </div>
     <div id="clBody" style="flex:1;overflow:auto;padding:10px 14px;font-size:12px;color:var(--text3);">Loading…</div>`;
   document.body.appendChild(btn); document.body.appendChild(dr);
@@ -5724,7 +5739,7 @@ async function cronLogLoad() {
   const r = await call('getCronLog').catch(e => ({ error: e.message }));
   const body = document.getElementById('clBody');
   if (!r || r.error) { if (body) body.textContent = '✗ ' + ((r && r.error) || 'Could not load'); return; }
-  _clRuns = r.runs || [];
+  _clRuns = r.runs || []; _clNews = r.news || []; _clCrons = r.crons || Object.keys(CL_NAMES); _clRunning = r.running || [];
   const latest = {}; _clRuns.forEach(x => { if (!latest[x.cron]) latest[x.cron] = x; });
   const failing = Object.values(latest).some(x => (x.jobs || []).some(j => !j.ok));
   const btn = document.getElementById('clBtn');
@@ -5739,7 +5754,32 @@ function cronLogDraw() {
   const runs = _clRuns.filter(x => (!cur || x.cron === cur) && (!fails || (x.jobs || []).some(j => !j.ok)));
   const when = t => { const d = new Date(t); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }); };
   const sec = ms => ms >= 60000 ? (ms / 60000).toFixed(1) + ' min' : (ms / 1000).toFixed(1) + ' s';
-  document.getElementById('clBody').innerHTML = runs.length ? runs.slice(0, 200).map(x => {
+  const jobsOf = c => { const r0 = _clRuns.find(x => x.cron === c); return r0 ? (r0.jobs || []).map(j => j.name) : []; };
+  const tClock = t => new Date(t).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  const upcoming = _clCrons.map(c => ({ c, at: clNext(c) })).filter(x => x.at).sort((a, b) => a.at - b.at);
+  const since = t => { const ms = typeof t === 'number' ? t : Date.parse(t || 0); if (!ms) return ''; const m = Math.round((Date.now() - ms) / 60000); return m < 1 ? 'just now' : m < 60 ? m + ' min' : Math.floor(m / 60) + ' h ' + (m % 60) + ' min'; };
+  const local = [];   // this browser's own long runs (dash pages keep them in window._* while they work)
+  if (window._mbRunning) local.push({ kind: 'This browser', label: 'Main-offering batch', detail: 'pillar → offer → publish → thumbnail' });
+  if (window._hnRunning) local.push({ kind: 'This browser', label: 'Hub news round', detail: '' });
+  if (window._tiDone === false) local.push({ kind: 'This browser', label: 'Topical post ideas', detail: Object.keys(window._ti || {}).length + ' hub(s) done' });
+  const live = _clRunning.concat(local);
+  const runningHtml = `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin:2px 0 6px;">Running now</div>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:4px 10px;margin:0 0 10px;">${live.length ? live.map(x => `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span style="width:7px;height:7px;border-radius:50%;background:#60a5fa;flex-shrink:0;align-self:center;"></span>
+        <span style="font-size:10.5px;color:var(--text3);min-width:110px;">${esc(x.kind)}</span>
+        <span style="color:var(--text);">${x.url ? `<a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:inherit;">${esc(x.label)} ↗</a>` : esc(x.label)}</span>
+        <span style="color:var(--text3);font-size:11px;">${x.since ? since(x.since) : ''}</span>
+        ${x.detail ? `<span style="flex-basis:100%;font-size:10.5px;color:var(--text2);padding-left:15px;">${esc(x.detail)}</span>` : ''}</div>`).join('')
+      : '<div style="padding:6px 0;font-size:11.5px;color:var(--text3);">Nothing running right now.</div>'}</div>`;
+  const sched = runningHtml + `<div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin:2px 0 6px;">Scheduled</div>
+    <div style="border:1px solid var(--border);border-radius:8px;padding:4px 10px;margin:0 0 10px;">${upcoming.map(x => `<div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;padding:5px 0;border-bottom:1px solid var(--border);">
+        <span style="min-width:150px;color:var(--text);">${esc(CL_NAMES[x.c] || x.c)}</span>
+        <span style="font-variant-numeric:tabular-nums;color:var(--text2);">${tClock(x.at)}</span><span style="color:var(--accent);font-size:11px;">${clIn(x.at)}</span>
+        <span style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${jobsOf(x.c).map(esc).join(' · ') || 'jobs listed after its first logged run'}</span></div>`).join('')}
+      ${_clNews.length ? `<div style="padding:6px 0 4px;"><div style="font-size:11px;color:var(--text2);margin:0 0 4px;">📰 Hub news posts (hubNewsCronTick picks these up on the 30-min tick at or after the time)</div>
+        ${_clNews.slice().sort((a, b) => a.at - b.at).map(n => `<div style="display:flex;gap:8px;font-size:11.5px;padding:2px 0;"><span style="min-width:170px;color:var(--text);">${esc(n.hub)}</span><span style="font-variant-numeric:tabular-nums;color:var(--text2);">${tClock(n.at)}</span><span style="color:var(--accent);font-size:11px;">${clIn(n.at)}</span></div>`).join('')}</div>` : ''}
+    </div><div style="font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3);margin:0 0 6px;">Recent runs</div>`;
+  document.getElementById('clBody').innerHTML = sched + (runs.length ? runs.slice(0, 200).map(x => {
     const bad = (x.jobs || []).filter(j => !j.ok).length, k = x.cron + '|' + x.at;
     return `<div style="border:1px solid ${bad ? 'rgba(248,113,113,.5)' : 'var(--border)'};border-radius:8px;padding:7px 10px;margin:0 0 6px;">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;" onclick="_clOpen['${esc(k)}']=!_clOpen['${esc(k)}'];cronLogDraw()">
@@ -5751,7 +5791,7 @@ function cronLogDraw() {
       </div>
       ${_clOpen[k] ? `<div style="margin:6px 0 2px 16px;font-family:var(--mono,monospace);font-size:11px;line-height:1.5;">${(x.jobs || []).filter(j => !j.ok).map(j => `<div style="color:#f87171;">✗ ${esc(j.name)}: ${esc(j.error || '')}</div>`).join('')}${(x.lines || []).map(l => `<div style="color:${l.lvl === 'error' ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;overflow-wrap:anywhere;">${esc(l.msg)}</div>`).join('') || '<div style="color:var(--text3);">No log lines.</div>'}</div>` : ''}
     </div>`; }).join('')
-    : '<div style="padding:20px;text-align:center;">No runs recorded yet. The log starts with the next scheduled run, within 4 minutes.</div>';
+    : '<div style="padding:20px;text-align:center;">No runs recorded yet. The log starts with the next scheduled run, within 4 minutes.</div>');
 }
 document.addEventListener('DOMContentLoaded', cronLogInit); if (document.readyState !== 'loading') setTimeout(cronLogInit, 0);
 function switchTab(name) {
