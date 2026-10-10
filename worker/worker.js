@@ -1158,6 +1158,114 @@ async function ivCronTick(env) {
   }
   return out.length ? { products: out } : { idle: true };
 }
+// ══ TOPICAL POSTS (2026-10-10) ══ an approved Worksheet topic idea → a Title (hub campaign + best-fit MAIN OFFERING) +
+// a "Topical Post" asset at Planning in the hub's Articles section — so it shows in care-gap and the build checklist.
+// ✍ Write / ⏱ Queue (cron) → writeTopicalPost: the first run writes the asset's 5-question SHORT interview and waits;
+// once it's Finished, the article is written from the idea + the offering's interview + the short interview (rewritten
+// for SEO) + hub audience + voice, saved to the asset body, Asset Status → Review. Publishing stays the operator's call.
+const TOPICAL_TYPE = "Topical Post";
+async function createTopicalAssets(env, ideas) {
+  await hubSitesMerge(env);
+  const out = [], hdr = ivHdr();
+  const bySlug = {}; (ideas || []).forEach(x => { if (x && x.slug && x.headline) (bySlug[x.slug] = bySlug[x.slug] || []).push(x); });
+  for (const [slug, list] of Object.entries(bySlug)) {
+    const hub = HUB_SITES.find(h => h.slug === slug); if (!hub || !hub.campaignId) { list.forEach(x => out.push({ id: x.id, error: "unknown hub " + slug })); continue; }
+    const cid = String(hub.campaignId).replace(/-/g, "");
+    // main offerings of the hub, with a line of research each, so every idea lands on the best-fit offering
+    const mains = [];
+    for (const pid of await hubMainList(env, cid)) { const pg = await ivPage(pid).catch(() => null); const name = pg ? (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() : "";
+      if (name && !/ - Main Offering$/.test(name)) mains.push({ id: String(pid).replace(/-/g, ""), name, res: (await ivProdResearch(pid).catch(() => "")).slice(0, 400) }); }
+    let pick = {};
+    if (mains.length > 1 && env.ANTHROPIC_API_KEY) {
+      const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1200, tools: [{ name: "assign", description: "Main offering per idea.", input_schema: { type: "object", required: ["pairs"], properties: { pairs: { type: "array", items: { type: "object", required: ["idea", "offering"], properties: { idea: { type: "integer" }, offering: { type: "integer" } } } } } } }],
+          tool_choice: { type: "tool", name: "assign" }, messages: [{ role: "user", content: `Assign each SEO post idea to the ONE main offering it best leads a reader toward.\n\nOFFERINGS:\n${mains.map((m, i) => `${i}. ${m.name}\n${m.res}`).join("\n\n")}\n\nIDEAS:\n${list.map((x, i) => `${i}. ${x.headline} (keyword: ${x.keyword || ""})`).join("\n")}\n\nCall assign.` }] }) }).then(r => r.json()).catch(() => ({}));
+      ((((r.content || []).find(b => b.type === "tool_use") || {}).input || {}).pairs || []).forEach(p => { if (mains[p.offering]) pick[p.idea] = mains[p.offering]; });
+    }
+    for (let i = 0; i < list.length; i++) {
+      const x = list[i];
+      const done = x.id ? await env.TRADES.get("topical:idea:" + x.id) : null;
+      if (done) { out.push({ id: x.id, assetId: done, existing: true }); continue; }
+      const prod = pick[i] || mains[0] || null;
+      const notes = [`Keyword: ${x.keyword || ""}`, `Topic: ${x.topic || ""}`, `Intent: ${x.intent || ""}`, `Angle: ${x.angle || ""}`, `Idea: ${x.id || ""}`].join("\n");
+      const tr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: {
+        "Title": { title: ivRt(String(x.headline).slice(0, 200)) }, "Status": { select: { name: "Planning" } }, "Campaign": { relation: [{ id: ivDash(cid) }] },
+        ...(prod ? { "product": { relation: [{ id: ivDash(prod.id) }] } } : {}), "Notes": { rich_text: ivRt(notes) }, "Pillar Status": { select: { name: "Not Written" } } } }) }).then(r => r.json());
+      if (!tr.id) { out.push({ id: x.id, error: "title: " + (tr.message || "create failed") }); continue; }
+      const ar = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
+        "Asset Title": { title: ivRt(String(x.headline).slice(0, 200)) }, "Asset Type": { select: { name: TOPICAL_TYPE } }, "Asset Status": { select: { name: "Planning" } },
+        "Hub Section": { select: { name: "Articles" } }, "Content Hub": { select: { name: slug } }, "Content Strategy": { relation: [{ id: tr.id }] }, "Campaign": { relation: [{ id: ivDash(cid) }] },
+        ...(prod ? { "Product": { relation: [{ id: ivDash(prod.id) }] } } : {}), "Notes": { rich_text: ivRt(notes) }, "Platform Name": { select: { name: "Blog" } } } }) }).then(r => r.json());
+      if (!ar.id) { out.push({ id: x.id, titleId: tr.id, error: "asset: " + (ar.message || "create failed") }); continue; }
+      const aid = ar.id.replace(/-/g, "");
+      if (x.id) await env.TRADES.put("topical:idea:" + x.id, aid);
+      out.push({ id: x.id, assetId: aid, titleId: tr.id.replace(/-/g, ""), hub: hub.name, offering: prod ? prod.name : "" });
+    }
+  }
+  return out;
+}
+function topicalMdBlocks(md) {
+  const rt = t => [{ type: "text", text: { content: String(t).slice(0, 1990) } }];
+  return String(md || "").split("\n").map(l => l.trimEnd()).filter(l => l.trim()).slice(0, 95).map(l => {
+    let m;
+    if ((m = /^###\s+(.*)/.exec(l))) return { object: "block", type: "heading_3", heading_3: { rich_text: rt(m[1]) } };
+    if ((m = /^##\s+(.*)/.exec(l))) return { object: "block", type: "heading_2", heading_2: { rich_text: rt(m[1]) } };
+    if ((m = /^#\s+(.*)/.exec(l))) return { object: "block", type: "heading_1", heading_1: { rich_text: rt(m[1]) } };
+    if ((m = /^[-*]\s+(.*)/.exec(l))) return { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rt(m[1]) } };
+    return { object: "block", type: "paragraph", paragraph: { rich_text: rt(l) } };
+  });
+}
+async function writeTopicalPost(env, assetId) {
+  const hdr = ivHdr(), aid = String(assetId).replace(/-/g, "");
+  const ap = await ivPage(aid), A = ap.properties;
+  const titleId = ivRid(A, "Content Strategy"), cid = ivRid(A, "Campaign"), pid = ivRid(A, "Product");
+  const headline = (A["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+  const notes = (A.Notes?.rich_text || []).map(t => t.plain_text).join("");
+  const field = k => ((new RegExp("^" + k + ":\\s*(.*)$", "mi")).exec(notes) || [])[1] || "";
+  if (!titleId) return { error: "this asset has no title" };
+  // the asset's SHORT interview: write it on the first run, then wait for the answers
+  const own = (await ivForTitle(titleId).catch(() => [])).filter(x => x.scope === "Asset" && (x.assetIds.includes(aid) || ivTypeMatch(x.forType, TOPICAL_TYPE)));
+  if (!own.length) { const r = await ivCreateForAsset(env, { assetId: aid, titleId, own: TOPICAL_TYPE }); return { needsInterview: true, created: true, interviews: (r.interviews || []).map(x => ({ id: x.id })) }; }
+  if (!own.some(x => x.status === "Finished" && x.answers.some(a => a.trim()))) return { needsInterview: true, interviews: own.map(x => ({ id: x.id })) };
+  const [voice, ib, audience, prodRes] = await Promise.all([cid ? voiceBlock(env, cid).catch(() => "") : "", ivBlock(env, titleId, TOPICAL_TYPE, aid).catch(() => ({ text: "" })),
+    cid ? hubAudienceBlock(env, cid).catch(() => "") : "", pid ? ivProdResearch(pid) : ""]);
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `${voice}${ib.text || ""}TODAY: ${today}. Write ONE complete, publish-ready SEO article in Markdown.
+
+HEADLINE (use as the H1): ${headline}
+TARGET KEYWORD: ${field("Keyword")}
+TOPIC CLUSTER: ${field("Topic")}
+SEARCH INTENT: ${field("Intent")}
+ANGLE: ${field("Angle")}
+${audience}${prodRes ? `\nTHE MAIN OFFERING THIS ARTICLE LEADS TOWARD (product research):\n${prodRes}\n` : ""}
+Rules: answer the searcher's question in the first 2-3 sentences; 900-1500 words; ## sections that each target a natural variation of the keyword or a related question; short paragraphs and lists where they help; the operator's interview answers above are the substance — REWRITE them for SEO (keep their facts, examples and opinions; never quote verbatim; never invent experiences, statistics or claims they didn't make); end with a short section that points the reader to the offering in plain words, no hard sell. Plain words, no clichés. Output ONLY the Markdown article.`;
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content: prompt }] }) }).then(r => r.json());
+  const md = ((r.content || []).find(b => b.type === "text") || {}).text || "";
+  if (!md.trim()) return { error: (r.error && r.error.message) || "no article came back" };
+  const up = await fetch(`https://api.notion.com/v1/pages/${ivDash(aid)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
+    "Body": { rich_text: ivRt(md) }, "Asset Status": { select: { name: "Review" } }, "Interview Sync": { select: { name: "In Sync" } } } }) }).then(r => r.json());
+  if (!up.id) return { error: "save: " + (up.message || "failed") };
+  const blocks = topicalMdBlocks(md);
+  for (let i = 0; i < blocks.length; i += 90) await fetch(`https://api.notion.com/v1/blocks/${ivDash(aid)}/children`, { method: "PATCH", headers: hdr, body: JSON.stringify({ children: blocks.slice(i, i + 90) }) }).catch(() => {});
+  return { ok: true, words: md.split(/\s+/).length, status: "Review" };
+}
+// ⏱ queue (KV topical:queue): the */30 cron writes up to 2 per tick; an asset waiting on its interview stays queued.
+async function topicalCronTick(env) {
+  let q = []; try { q = (await env.TRADES.get("topical:queue", "json")) || []; } catch (e) {}
+  if (!q.length || !env.ANTHROPIC_API_KEY) return { idle: true };
+  const keep = [], out = []; let wrote = 0;
+  for (const aid of q) {
+    if (wrote >= 2) { keep.push(aid); continue; }
+    try { const r = await writeTopicalPost(env, aid);
+      if (r.needsInterview) { keep.push(aid); out.push({ aid, waiting: true }); }
+      else if (r.ok) { wrote++; out.push({ aid, words: r.words }); }
+      else { keep.push(aid); out.push({ aid, error: r.error }); } }
+    catch (e) { keep.push(aid); out.push({ aid, error: e.message }); }
+  }
+  await env.TRADES.put("topical:queue", JSON.stringify(keep));
+  return { wrote, queued: keep.length, out };
+}
 async function hubAudienceBlock(env, cid) {
   cid = String(cid || "").replace(/-/g, "");
   const K = "hubaudience:" + cid;
@@ -17309,6 +17417,16 @@ Give a YouTube title in that format. Call submit_questions.`;
       // boxes. 1) the title's own saved interview (lfiv:<titleId>, from 💾 Save answers) — the whole
       // interview + its episode question; 2) else the latest interview SESSION logged for the
       // campaign (voice:samples:<cid>: answers less than 90 min apart, latest answer per question).
+      // ── Topical posts ── createTopicalAssets {ideas:[{id, slug, headline, keyword, topic, intent, angle}]} (from the
+      // Worksheet's "Create assets in dash →") · writeTopicalPost {assetId} · queueTopicalPost {assetId, remove?} · getTopicalQueue
+      if (body.action === "createTopicalAssets") return json({ ok: true, results: await createTopicalAssets(env, (body.ideas || []).slice(0, 60)) });
+      if (body.action === "writeTopicalPost") return json(await writeTopicalPost(env, body.assetId));
+      if (body.action === "queueTopicalPost" || body.action === "getTopicalQueue") {
+        let q = []; try { q = (await env.TRADES.get("topical:queue", "json")) || []; } catch (e) {}
+        if (body.action === "queueTopicalPost") { const id = String(body.assetId || "").replace(/-/g, ""); if (!id) return json({ error: "assetId required" }, 400);
+          q = body.remove ? q.filter(x => x !== id) : [...new Set([...q, id])]; await env.TRADES.put("topical:queue", JSON.stringify(q)); }
+        return json({ ok: true, queue: q });
+      }
       // ── 🎤 Interviews ── getInterviews {campaignId?|titleId?|status?} · getInterview {interviewId} ·
       // createInterviews {titleId, count?, direction?} · saveInterview {interviewId, answers[], finish?|reflag?} ·
       // removeInterview {interviewId}. Finishing one logs the answers as the operator's own words (voice engine).
@@ -47951,6 +48069,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     if (event.cron === "*/30 * * * *") {
       cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
+      cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
       cw("ivCronTick", ivCronTick(env).then(r => { if (r && !r.idle) console.log("ivCronTick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('ivCronTick failed:', e.message)));   // 🎤 new titles → interviews
       cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
