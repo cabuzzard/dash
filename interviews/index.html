@@ -91,7 +91,7 @@ async function load() {
   const want = clean(qp.get('id')) || clean(qp.get('product')) || clean(qp.get('title'));
   const hit = x => x.id === want || x.productId === want || x.titleId === want;
   if (want && !S.deepDone) { S.deepDone = true;
-    if ((S.items || []).some(x => x.status !== 'Finished' && hit(x))) { S.hub = ''; const i = flagged().findIndex(hit); if (i >= 0) S.idx = i; } }
+    if ((S.items || []).some(x => (x.status !== 'Finished' || x.id === PIN) && hit(x))) { S.hub = ''; const i = flagged().findIndex(hit); if (i >= 0) S.idx = i; } }
   pick(); draw();
 }
 function pick() { const cur = flagged()[S.idx]; S.answers = cur ? cur.answers.slice() : []; S.dirty = false; }
