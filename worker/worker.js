@@ -1043,11 +1043,15 @@ async function runHubNewsletterSequence(env, cid, opts = {}) {
   const tProd = r => ((r.properties?.product?.relation || [])[0]?.id || "").replace(/-/g, "");
   const tNotes = r => (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
   let title = null, productId = "";
-  for (const pid of await hubMainList(env, cid)) {
-    const p = String(pid).replace(/-/g, "");
-    const own = titles.filter(r => tProd(r) === p);
-    const pick = own.find(r => /^Main-offering title/.test(tNotes(r))) || own[0];
-    if (pick) { title = pick; productId = p; break; }
+  const mainIds = (await hubMainList(env, cid)).map(x => String(x).replace(/-/g, ""));
+  const isDummy = r => / - (Articles|News|Products|Offers|CTA'?s|Main Offering)( - |$)/i.test(tName(r));
+  for (const pass of [1, 2]) {
+    for (const p of mainIds) {
+      const own = titles.filter(r => tProd(r) === p && !isDummy(r));
+      const pick = pass === 1 ? own.find(r => /^Main-offering title/.test(tNotes(r))) : own[0];
+      if (pick) { title = pick; productId = p; break; }
+    }
+    if (title) break;
   }
   if (!title) return { error: "no main-offering title found", hub: hub.name };
   // news nucleus: published news posts + staged digest ideas
@@ -1113,10 +1117,58 @@ Sign off as "${hub.name}". Call submit_issue.` }] }) }).then(r => r.json()).catc
     "Body": { rich_text: rt(md) }, "Platform Title": { rich_text: rt(it.subject) }, "Content Strategy": { relation: [{ id: nd(titleId) }] }, "Campaign": { relation: [{ id: nd(cid) }] },
     "Capture Form": { rich_text: rt(`${hub.slug}/main · ActiveCampaign · tag: lead-hub-${hub.slug}`) }, "Platform Name": { select: { name: "Email" } } }, children }) }).then(r => r.json()).catch(e => ({ message: e.message }));
   if (!cr.id) return { error: "asset: " + (cr.message || "create failed") };
+  const ac = await acIssueDraft(env, { slug: hub.slug, hubName: hub.name, subject: it.subject, preview: it.preview, md: it.body }).catch(e => ({ error: e.message }));
+  const { url: acUrl } = acCreds(env), acWeb = acUrl.replace(".api-us1.com", ".activehosted.com");
   const K = "hubnl:issues:" + cid, list = (await env.TRADES.get(K, "json").catch(() => null)) || [];
-  list.push({ assetId: cr.id.replace(/-/g, ""), titleId, subject: it.subject, url, at: new Date().toISOString() });
+  list.push({ assetId: cr.id.replace(/-/g, ""), titleId, subject: it.subject, url, acCampaignId: ac.campaignId || "", acError: ac.error || "", at: new Date().toISOString() });
   await env.TRADES.put(K, JSON.stringify(list.slice(-50)));
-  return { ok: true, hub: hub.name, assetId: cr.id.replace(/-/g, ""), subject: it.subject };
+  await addReviewFlag(env, { kind: "newsletter-issue", slug: hub.slug, hub: hub.name, cid, title: it.subject, assetId: cr.id.replace(/-/g, ""), acCampaignId: ac.campaignId || "",
+    link: ac.campaignId ? `${acWeb}/app/campaigns/${ac.campaignId}` : "", note: ac.error ? "ActiveCampaign draft failed: " + ac.error : "Draft in ActiveCampaign — review, then send to the " + hub.name + " list" });
+  return { ok: true, hub: hub.name, assetId: cr.id.replace(/-/g, ""), subject: it.subject, acCampaignId: ac.campaignId || "", acError: ac.error || "" };
+}
+// ── ActiveCampaign newsletter drafts + review flags (2026-10-10) ──
+// Each hub's newsletter list carries the operator's mailing address (KV ac:address = address id); each hub sends from its
+// own info@ address (KV ac:sender:<slug> = {fromemail, fromname}). Every newsletter issue becomes an ActiveCampaign DRAFT
+// campaign to the hub's list (v1 API message_add + campaign_create status 0) and raises a review flag (KV review:flags)
+// shown on the hub's Build checklist and in All Output's "Flagged for review — all hubs" panel.
+const AC_HUB_SENDERS = { "ai-implementation": "info@webguyleadgeneration.com", "care-gap": "info@stablehomefoundation.com", "creative-flow-guitar": "info@creativeflowguitar.com",
+  "home-services": "info@generalservices2020.com", "mountainwize": "info@mountainwize.com", "owners-rep": "info@modernactivehome.com", "sunflower-acres": "info@accessiblefarms.com",
+  "surf-vacations": "info@outsidesessions.com", "sustainable-aquarium": "info@sustainableaquarium.com" };
+const AC_DEFAULT_SENDER = "info@webguyleadgeneration.com";
+function acCreds(env) { return { url: String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, ""), key: String(env.ACTIVECAMPAIGN_API_KEY || "").trim() }; }
+async function acV1(env, action, fields) {
+  const { url, key } = acCreds(env);
+  const body = new URLSearchParams({ api_key: key, ...fields });
+  const r = await fetch(`${url}/admin/api.php?api_action=${action}&api_output=json`, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: body.toString() });
+  const t = await r.text(); try { return JSON.parse(t); } catch (e) { return { result_code: 0, result_message: t.slice(0, 200) }; }
+}
+function mdToEmailHtml(md) {
+  const esc = x => String(x).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const inline = x => esc(x).replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2">$1</a>');
+  const out = []; let list = [];
+  const flush = () => { if (list.length) { out.push("<ul>" + list.map(li => "<li>" + inline(li) + "</li>").join("") + "</ul>"); list = []; } };
+  for (const raw of String(md).split("\n")) { const l = raw.trim(); if (!l) { flush(); continue; }
+    if (/^[-*]\s+/.test(l)) list.push(l.replace(/^[-*]\s+/, "")); else { flush(); out.push("<p>" + inline(l) + "</p>"); } }
+  flush();
+  return `<div style="font-family:Georgia,serif;font-size:17px;line-height:1.6;color:#222;max-width:600px;margin:0 auto;padding:16px">${out.join("")}</div>`;
+}
+async function acIssueDraft(env, { slug, hubName, subject, preview, md }) {
+  const { url, key } = acCreds(env); if (!url || !key) return { error: "ActiveCampaign not configured" };
+  const listId = await env.TRADES.get("hub:aclist:" + slug).catch(() => null);
+  if (!listId) return { error: "no ActiveCampaign list for " + slug };
+  const from = AC_HUB_SENDERS[slug] || AC_DEFAULT_SENDER;
+  const m = await acV1(env, "message_add", { format: "html", subject, fromemail: from, fromname: hubName, reply2: from, priority: "3", charset: "utf-8", encoding: "quoted-printable",
+    htmlconstructor: "editor", html: (preview ? `<div style="display:none;max-height:0;overflow:hidden">${String(preview).replace(/</g, "&lt;")}</div>` : "") + mdToEmailHtml(md), textconstructor: "editor", text: md, [`p[${listId}]`]: listId });
+  if (!m.id) return { error: "message: " + (m.result_message || "failed") };
+  const c = await acV1(env, "campaign_create", { type: "single", name: `${hubName} — ${subject}`.slice(0, 250), sdate: new Date().toISOString().slice(0, 19).replace("T", " "), status: "0", public: "1", tracklinks: "all", trackreads: "1",
+    [`p[${listId}]`]: listId, [`m[${m.id}]`]: "100" });
+  if (!c.id) return { error: "campaign: " + (c.result_message || "failed"), messageId: m.id };
+  return { ok: true, campaignId: String(c.id), messageId: String(m.id), listId, from };
+}
+async function addReviewFlag(env, flag) {
+  const list = (await env.TRADES.get("review:flags", "json").catch(() => null)) || [];
+  list.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), status: "open", at: new Date().toISOString(), ...flag });
+  await env.TRADES.put("review:flags", JSON.stringify(list.slice(-300)));
 }
 async function hubNewsCronTick(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
@@ -1746,6 +1798,7 @@ function hubSectionOf(props) {
   const qa = /^QA\s*[–-]\s*(.+)$/i.exec(at);
   if (qa) return /^sales\b/i.test(qa[1].trim()) ? "offers" : "articles";
   if (/\boffer\b/i.test(at)) return "offers";
+  if (/^newsletter issue$/i.test(at) || /^email hub main\b/i.test(at)) return "email";   // 2026-10-10: newsletter welcome sequence + issues (build checklist only; not a page section)
   return null;
 }
 // "Publishing Date" = the day an asset first went Published. Every path that flips
@@ -13271,7 +13324,7 @@ the one aesthetic risk taken + why:`;
           // Page content: every blog section of the hub, with the assets currently listed in it — same rule the hub
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
           const HUB_BLOG_SECTIONS = [{ key: "main", label: "Main offerings", phase: "Main offerings" }, { key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
-            { key: "interactive", label: "Interactive", phase: "Interactive" }, { key: "cta", label: "CTA's", phase: "CTA's" }];   // CTA's: assets with Hub Section = CTA   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
+            { key: "interactive", label: "Interactive", phase: "Interactive" }, { key: "cta", label: "CTA's", phase: "CTA's" }, { key: "email", label: "Email — newsletter (welcome sequence + issues)", phase: "Email" }];   // CTA's: assets with Hub Section = CTA   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
           const listed = (await P_listed)   // 2026-10-08: the card shows every asset in a section (Planning dummies too); the live hub still shows only Publish/Published
             .filter(r => { const h = r.properties?.["Content Hub"]?.select?.name || ""; return !h || h === slug; });
           // method names, so each row shows which method produced it (the Asset Type select alone can be a legacy label)
@@ -13355,7 +13408,8 @@ the one aesthetic risk taken + why:`;
             ...pageSections.filter(x => x.phase !== "CTA's" && x.phase !== "Main offerings"),
           ];
           const shown = steps.filter(s => !s.hidden);
-          return json({ slug, campaignId, steps, doneCount: shown.filter(s => s.done).length, total: shown.length });
+          const flags = ((await env.TRADES.get("review:flags", "json").catch(() => null)) || []).filter(f => f.slug === slug && f.status === "open").reverse();
+          return json({ slug, campaignId, steps, flags, doneCount: shown.filter(s => s.done).length, total: shown.length });
         }
 
         if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);
@@ -27016,6 +27070,61 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       }
       // writeHubNewsletterIssue {campaignId, titleId, headline, liveUrl?} — one newsletter issue from a news post (backfill / manual)
       if (body.action === "writeHubNewsletterIssue") { try { return json(await writeHubNewsletterIssue(env, { cid: body.campaignId, titleId: body.titleId, headline: body.headline, liveUrl: body.liveUrl })); } catch (e) { return json({ error: e.message }, 500); } }
+      // acHubSenderSetup {address1, city, state, zip, company} — creates (once) the mailing address in ActiveCampaign and attaches it
+      // to every hub newsletter list (KV hub:aclist:<slug>). KV ac:address = the address id.
+      if (body.action === "acHubSenderSetup") {
+        const { url, key } = acCreds(env); if (!url || !key) return json({ error: "ActiveCampaign not configured" }, 400);
+        const H = { "Api-Token": key, "Content-Type": "application/json" };
+        let addrId = await env.TRADES.get("ac:address").catch(() => null);
+        if (!addrId) {
+          const cr = await fetch(`${url}/api/3/addresses`, { method: "POST", headers: H, body: JSON.stringify({ address: { companyName: String(body.company || "Web Business Tools"), address1: String(body.address1 || ""),
+            city: String(body.city || ""), state: String(body.state || ""), zip: String(body.zip || ""), countryCode: "US" } }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+          addrId = cr.address && cr.address.id; if (!addrId) return json({ error: "address: " + JSON.stringify(cr).slice(0, 300) }, 502);
+          await env.TRADES.put("ac:address", String(addrId));
+        }
+        const out = [];
+        for (const h of HUB_SITES) {
+          const lid = await env.TRADES.get("hub:aclist:" + h.slug).catch(() => null); if (!lid) { out.push(h.slug + ": no list"); continue; }
+          const r = await fetch(`${url}/api/3/addressLists`, { method: "POST", headers: H, body: JSON.stringify({ addressList: { address: +addrId, list: +lid } }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+          out.push(h.slug + ": " + (r.addressList ? "attached" : (JSON.stringify(r.errors || r.error || r).slice(0, 120))));
+        }
+        return json({ ok: true, addressId: addrId, lists: out });
+      }
+      // getReviewFlags {slug?, status?} / resolveReviewFlag {id, status: "done" | "open"} — the review queue (KV review:flags)
+      if (body.action === "getReviewFlags") {
+        const list = (await env.TRADES.get("review:flags", "json").catch(() => null)) || [];
+        return json({ ok: true, flags: list.filter(f => (!body.slug || f.slug === body.slug) && (!body.status || f.status === body.status)).reverse() });
+      }
+      if (body.action === "resolveReviewFlag") {
+        const list = (await env.TRADES.get("review:flags", "json").catch(() => null)) || [];
+        const f = list.find(x => x.id === body.id); if (!f) return json({ error: "flag not found" }, 404);
+        f.status = body.status === "open" ? "open" : "done"; f.resolvedAt = new Date().toISOString();
+        await env.TRADES.put("review:flags", JSON.stringify(list)); return json({ ok: true, flag: f });
+      }
+      // acDraftExistingIssues — newsletter issues written before the ActiveCampaign step: build their drafts + review flags now
+      if (body.action === "acDraftExistingIssues") {
+        const hdrB = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const out = [];
+        for (const h of HUB_SITES) {
+          const cid = String(h.campaignId || "").replace(/-/g, ""), K = "hubnl:issues:" + cid;
+          const list = (await env.TRADES.get(K, "json").catch(() => null)) || [];
+          for (const it of list) {
+            if (it.acCampaignId) continue;
+            const bl = await fetch(`https://api.notion.com/v1/blocks/${it.assetId}/children?page_size=100`, { headers: hdrB }).then(r => r.json()).catch(() => ({}));
+            const lines = (bl.results || []).map(b => { const t = (b[b.type]?.rich_text || []).map(x => x.plain_text).join(""); return b.type === "bulleted_list_item" ? "- " + t : t; });
+            const preview = ((lines.find(l => /^\*\*Preview:\*\*/.test(l)) || "").replace(/^\*\*Preview:\*\*\s*/, ""));
+            const md = lines.filter(l => !/^\*\*(Subject|Preview|Send):\*\*/.test(l)).join("\n\n");
+            const ac = await acIssueDraft(env, { slug: h.slug, hubName: h.name, subject: it.subject, preview, md }).catch(e => ({ error: e.message }));
+            it.acCampaignId = ac.campaignId || ""; it.acError = ac.error || "";
+            const acWeb = acCreds(env).url.replace(".api-us1.com", ".activehosted.com");
+            await addReviewFlag(env, { kind: "newsletter-issue", slug: h.slug, hub: h.name, cid, title: it.subject, assetId: it.assetId, acCampaignId: it.acCampaignId,
+              link: it.acCampaignId ? `${acWeb}/app/campaigns/${it.acCampaignId}` : "", note: ac.error ? "ActiveCampaign draft failed: " + ac.error : "Draft in ActiveCampaign — review, then send to the " + h.name + " list" });
+            out.push(h.slug + ": " + (ac.campaignId ? "draft " + ac.campaignId : "ERR " + ac.error));
+          }
+          await env.TRADES.put(K, JSON.stringify(list));
+        }
+        return json({ ok: true, done: out });
+      }
       if (body.action === "runHubNewsletterSequence") { try { return json(await runHubNewsletterSequence(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "buildHubTopicIdeas") { try { return json(await buildHubTopicIdeas(env, body.campaignId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
