@@ -1,5 +1,15 @@
 [
   {
+    "slug": "own-the-recording",
+    "name": "Own the Recording",
+    "kicker": "Digital download · $1–$2 per track, bundles available",
+    "promise": "You stop renting music and start owning it — originals and covers, permanently on your device, purchased directly from the artist.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb8118b579ead52aa4ffee",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/creative-flow-guitar/digital-downloads-and-licensing-blog-thumbnail-mv222j9r.png"
+  },
+  {
     "slug": "weekly-sessions",
     "name": "Weekly Sessions",
     "kicker": "Membership · $29–$49/mo",
@@ -7,15 +17,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb8125a0a1e7f143d56f19"
-  },
-  {
-    "slug": "own-the-recording",
-    "name": "Own the Recording",
-    "kicker": "Digital download · $1–$2 per track, bundles available",
-    "promise": "You stop renting music and start owning it — originals and covers, permanently on your device, purchased directly from the artist.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8118b579ead52aa4ffee"
   },
   {
     "slug": "original-covers-music-downloads",
