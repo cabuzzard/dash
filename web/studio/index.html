@@ -130,7 +130,7 @@ async function viewList() {
   const items = INFO.items || [];
   const STATUS = { script: "Script ready", answering: "In progress", new: "Not started" };
   app.innerHTML = header() + `
-    <p class="lede">Each interview becomes a video script in your own words. Press <b>New script</b>, answer the questions, and we'll write it for you. You can come back and edit it any time.</p>
+    <p class="lede">Each interview becomes a video script in your own words, shaped around the topic of ${esc(INFO.title || INFO.product || "this offer")}. Press <b>New script</b>, answer the questions, and we'll write it for you. You can come back and edit it any time.</p>
     <div id="err" class="msg err hidden"></div>
     <button class="primary" style="width:100%;margin:0 0 18px;font-size:17px;padding:16px;" onclick="go('#/new')">+ New script</button>
     ${items.length ? `<div class="eyebrow" style="margin:0 0 8px;">Your scripts</div>` + items.map(x => `<button class="card item" onclick="go('${x.assetId ? "#/s/" : "#/i/"}${x.d}')">
