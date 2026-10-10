@@ -614,6 +614,10 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mtitle">Rewrite Pillar</div>
       <div class="mfield" id="rpTitleLabel"></div>
       <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Pillar type <span style="color:var(--ink3);">— fills the guidance below (edit it freely)</span>
+          <select id="rpPillarType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="document.getElementById('rpGuidance').value = PILLAR_TYPES[this.value] || ''">
+            <option value="">— none (write from the guidance below) —</option><option>Long Form Topical</option><option>Long Form Sales</option><option>Digest</option></select>
+        </label>
         <label style="font-size:11px;color:var(--ink2);">Guidance <span style="color:var(--ink3);">— the style, angle, or take you want this rewrite to follow</span>
           <textarea id="rpGuidance" rows="4" style="width:100%;margin-top:4px;" placeholder="e.g. Rewrite this as a skeptical, data-first take instead of an emotional appeal. Lead with the counterintuitive claim."></textarea>
         </label>
@@ -4552,7 +4556,7 @@ function renderTitleRow(t) {
   return `<div class="idea-card"><div class="idea-row"><input type="checkbox" class="title-select-cb" data-id="${esc(t.id)}" onclick="event.stopPropagation();toggleTitleSelect('${esc(t.id)}',this.checked)" style="margin-right:2px;flex-shrink:0;"><span class="idea-title" title="${esc(t.title)}">${esc(t.title)}</span>
     <span class="idea-btns">
       <span class="rstatus ${statusClass}">${esc(t.stage)}</span>
-      ${t.stage !== 'Planning' ? `<button class="iconbtn" title="${t.hasPillar ? 'Rewrite' : 'Write'} this title's Pillar Content — optional style/angle, new title, or keywords to add/avoid; leave everything blank to just ${t.hasPillar ? 're' : ''}write it with default research grounding. Works on Published titles too — pair with a blog asset's own 🔄 Push from Pillar to update the live page." onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title.replace(/'/g,"\\'"))}',${t.hasPillar ? 'true' : 'false'})">${t.hasPillar ? '🔄' : '✍️'}</button>` : ''}
+      ${true ? `<button class="iconbtn" title="${t.hasPillar ? 'Rewrite' : 'Write'} this title's Pillar Content${t.stage === 'Planning' ? ' (Planning → Development once written)' : ''} — optional style/angle, new title, or keywords to add/avoid; leave everything blank to just ${t.hasPillar ? 're' : ''}write it with default research grounding. Works on Published titles too — pair with a blog asset's own 🔄 Push from Pillar to update the live page." onclick="openRewritePillarModal('${esc(t.id)}','${esc(t.title.replace(/'/g,"\\'"))}',${t.hasPillar ? 'true' : 'false'})">${t.hasPillar ? '🔄' : '✍️'}</button>` : ''}
       <button class="iconbtn" title="Change which product this title is attached to" onclick="openChangeProductModal('${esc(t.id)}','${esc(t.title.replace(/'/g,"\\'"))}','${esc(t.productId || '')}')">🔀</button>
       <button class="iconbtn" title="Create asset" onclick="openCreateAssetModal('${esc(t.id)}')">➕</button>
       <a class="kwlink" href="${notionUrl(t.id)}" target="_blank" rel="noopener" title="Open in Notion">↗</a>
@@ -4590,12 +4594,18 @@ async function deleteTitleRow(id, title) {
 // optional either way, blank submits just (re)write it with plain default
 // research grounding, no forced steer.
 let RP_TITLE_ID = null, RP_HAS_PILLAR = false;
+const PILLAR_TYPES = {   // same as dash's DEV2_PILLAR_TYPES
+  'Long Form Topical': 'PILLAR TYPE: Long Form Topical — an informational long-form piece on this sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people search; product only as a soft, late mention.',
+  'Long Form Sales': 'PILLAR TYPE: Long Form Sales — the sales pillar for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader’s awareness level; never hype.',
+  'Digest': 'PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).',
+};
 function openRewritePillarModal(titleId, title, hasPillar) {
   RP_TITLE_ID = titleId;
   RP_HAS_PILLAR = !!hasPillar;
   document.getElementById('rewritePillarModal').querySelector('.mtitle').textContent = RP_HAS_PILLAR ? 'Rewrite Pillar' : 'Write Pillar';
   document.getElementById('rpTitleLabel').textContent = title;
   document.getElementById('rpGuidance').value = '';
+  { const pt = document.getElementById('rpPillarType'); if (pt) pt.value = ''; }
   document.getElementById('rpNewTitle').value = '';
   // Show the existing title as a placeholder (not a value) — visible for
   // context without counting as an edit; runRewritePillar already treats a
@@ -4621,9 +4631,11 @@ async function runRewritePillar() {
   btn.disabled = true;
   resEl.style.color = 'var(--ink3)'; resEl.textContent = RP_HAS_PILLAR ? 'Rewriting…' : 'Writing…';
   try {
+    const ptKey = (document.getElementById('rpPillarType') || {}).value || '', ptText = PILLAR_TYPES[ptKey] || '';
     await w('writeTitlePillar', {
       titleId,
-      researchOverride: guidance || undefined,
+      styleGuidance: ptText || undefined,   // pillar type → style guidance (same as dash)
+      researchOverride: (guidance && guidance !== ptText) ? guidance : undefined,
       newTitle: newTitle || undefined,
       addKeywords: addKeywords || undefined,
       omitKeywords: omitKeywords || undefined,
@@ -5266,6 +5278,13 @@ async function bulkDeleteTitles() {
 // the bulk action bar — same modal + same updateTitleStrategy call,
 // applied to just that one title instead of looping SELECTED_TITLE_IDS.
 let CP_SINGLE_TITLE = null;
+// product <option>s for the title pickers — the hub's ★ main products first
+function productPickerOptions() {
+  const main = HUB_MAIN_IDS || new Set(), isMain = p => main.has(String(p.id).replace(/-/g, ''));
+  const opt = p => `<option value="${esc(p.id)}">${isMain(p) ? '★ ' : ''}${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`;
+  const mains = CAMPAIGN_PRODUCTS.filter(isMain), rest = CAMPAIGN_PRODUCTS.filter(p => !isMain(p));
+  return '<option value="__none__">(no product)</option>' + (mains.length ? `<optgroup label="★ Hub main products">${mains.map(opt).join('')}</optgroup><optgroup label="All products">${rest.map(opt).join('')}</optgroup>` : rest.map(opt).join(''));
+}
 function openBulkProductModal() {
   if (!SELECTED_TITLE_IDS.size) return;
   CP_SINGLE_TITLE = null;
@@ -5273,8 +5292,8 @@ function openBulkProductModal() {
   document.getElementById('bpCount').textContent = `${SELECTED_TITLE_IDS.size} title(s)`;
   document.getElementById('bpResult').textContent = '';
   const sel = document.getElementById('bpProduct');
-  sel.innerHTML = '<option value="__none__">(no product)</option>' +
-    CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`).join('');
+  sel.innerHTML = productPickerOptions();
+  if (!HUB_MAIN_IDS) ensureHubMainIds().then(() => { const v = sel.value; sel.innerHTML = productPickerOptions(); sel.value = v; });
   document.getElementById('bulkProductModal').classList.add('open');
 }
 // Per-row counterpart — the "change product" button on a single title.
@@ -5284,8 +5303,8 @@ function openChangeProductModal(titleId, titleName, currentProductId) {
   document.getElementById('bpCount').textContent = titleName;
   document.getElementById('bpResult').textContent = '';
   const sel = document.getElementById('bpProduct');
-  sel.innerHTML = '<option value="__none__">(no product)</option>' +
-    CAMPAIGN_PRODUCTS.map(p => `<option value="${esc(p.id)}">${esc(p.stack || 'No Stack')} — ${esc(p.name)}</option>`).join('');
+  sel.innerHTML = productPickerOptions();
+  if (!HUB_MAIN_IDS) ensureHubMainIds().then(() => { const v = sel.value; sel.innerHTML = productPickerOptions(); sel.value = v; });
   sel.value = currentProductId || '__none__';
   document.getElementById('bulkProductModal').classList.add('open');
 }
