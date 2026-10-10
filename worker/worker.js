@@ -27078,7 +27078,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         let addrId = await env.TRADES.get("ac:address").catch(() => null);
         if (!addrId) {
           const cr = await fetch(`${url}/api/3/addresses`, { method: "POST", headers: H, body: JSON.stringify({ address: { companyName: String(body.company || "Web Business Tools"), address1: String(body.address1 || ""),
-            city: String(body.city || ""), state: String(body.state || ""), zip: String(body.zip || ""), countryCode: "US" } }) }).then(r => r.json()).catch(e => ({ error: e.message }));
+            city: String(body.city || ""), state: String(body.state || ""), zip: String(body.zip || ""), country: "US", countryCode: "US" } }) }).then(r => r.json()).catch(e => ({ error: e.message }));
           addrId = cr.address && cr.address.id; if (!addrId) return json({ error: "address: " + JSON.stringify(cr).slice(0, 300) }, 502);
           await env.TRADES.put("ac:address", String(addrId));
         }
