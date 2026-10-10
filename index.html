@@ -14923,7 +14923,27 @@ function hcTitleEdit(slug, sid, tid) {
     <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
     <select id="hcEdStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
-    <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>`);
+    <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>
+    <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border2);">
+      <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">✍ Write pillar</label>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
+        <select id="hcPillarType" style="font-size:12px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
+        <button class="modal-btn" id="hcPillarGo" onclick="hcWritePillar('${slug}','${sid}','${tid}', this)" style="background:transparent;border:1px solid var(--accent);color:var(--accent);">✍ Write pillar</button>
+      </div>
+      <div id="hcPillarMsg" style="font-size:11px;color:var(--text3);margin-top:6px;">Writes the pillar onto this title (1-2 min) and promotes it Planning → Development. Same writer as All Output's "generate pillar".</div>
+    </div>`);
+}
+// ✍ Write pillar from the title modal: writeTitlePillar with the chosen pillar type (writes the pillar + Planning → Development)
+async function hcWritePillar(slug, sid, tid, btn) {
+  const t = hubTitleFind(slug, sid, tid), type = document.getElementById('hcPillarType').value, msg = document.getElementById('hcPillarMsg');
+  btn.disabled = true; btn.textContent = '⏳ writing…'; msg.style.color = 'var(--text3)'; msg.textContent = `Writing a ${type} pillar — 1-2 min, keep this open…`;
+  try {
+    const r = await call('writeTitlePillar', { titleId: tid, styleGuidance: DEV2_PILLAR_TYPES[type] });
+    if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    if (t && (!t.status || t.status === 'Planning')) { t.status = 'Development'; const sel = document.getElementById('hcEdStatus'); if (sel) sel.value = 'Development'; }
+    msg.style.color = '#4ade80'; msg.textContent = `✓ ${type} pillar written onto the title${r.url ? '' : ''}.`;
+    btn.textContent = '✓ Written'; hubContentRefresh(slug); hubBuildRefreshRows(slug);
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ Pillar failed: ' + e.message; btn.disabled = false; btn.textContent = '✍ Write pillar'; }
 }
 async function hcTitleSave(slug, sid, tid) {
   const t = hubTitleFind(slug, sid, tid); if (!t) return 'Title not found';
