@@ -13177,8 +13177,16 @@ function fetchHubSpec() {
 }
 const HP_ROLES = [['bg','Background'],['surface','Card'],['ink','Body text'],['ink-head','Headings'],['ink-soft','Muted text'],['line','Outlines'],['sea','Primary / links'],['deep','Dark band'],['deep-ink','Text on dark'],['accent','Accent / button']];
 
-function hubGo(d) { _hubIdx = (_hubIdx + d + HUB_SITES.length) % HUB_SITES.length; try { localStorage.setItem('hubDeckIdx', String(_hubIdx)); } catch (e) {} renderHubsTab(); }
-function hubJump(i) { _hubIdx = i; try { localStorage.setItem('hubDeckIdx', String(i)); } catch (e) {} renderHubsTab(); }
+function hubGo(d) { _hubIdx = (_hubIdx + d + HUB_SITES.length) % HUB_SITES.length; hubRememberSlug(); try { localStorage.setItem('hubDeckIdx', String(_hubIdx)); } catch (e) {} renderHubsTab(); }
+function hubJump(i) { _hubIdx = i; hubRememberSlug(); try { localStorage.setItem('hubDeckIdx', String(i)); } catch (e) {} renderHubsTab(); }
+// the open hub is remembered by SLUG (an index breaks when registry hubs like Medicare load after the page starts)
+function hubRememberSlug() { try { const h = HUB_SITES[_hubIdx]; if (h) localStorage.setItem('hubDeckSlug', h.slug); } catch (e) {} }
+let _hubSlugRestored = false;
+function hubRestoreSlug() {
+  if (_hubSlugRestored) return; let want = ''; try { want = localStorage.getItem('hubDeckSlug') || ''; } catch (e) {}
+  if (!want) { _hubSlugRestored = true; return; }
+  const i = HUB_SITES.findIndex(h => h.slug === want); if (i >= 0) { _hubIdx = i; _hubSlugRestored = true; }
+}
 function hpPalette(slug) { return _hpStageOf(slug).palette || (HUB_SPEC[slug] && HUB_SPEC[slug].tokens) || null; }
 function hpSelFonts(slug) { return _hpStageOf(slug).fonts || (HUB_SPEC[slug] && HUB_SPEC[slug].fonts) || null; }
 function _hpAgo(ts){ const s = Math.max(0, Math.round((Date.now() - ts) / 1000)); if (s < 90) return 'just now'; if (s < 5400) return Math.round(s/60) + 'm ago'; if (s < 172800) return Math.round(s/3600) + 'h ago'; return Math.round(s/86400) + 'd ago'; }
@@ -14208,6 +14216,7 @@ function renderHubsTab() {
   const el = document.getElementById('hubsTabContent');
   if (!el) return;
   fetchHubSpec();
+  hubRestoreSlug();   // until the remembered hub is in the list (registry hubs arrive a moment later)
   if (_hubIdx >= HUB_SITES.length) _hubIdx = 0;
   const h = HUB_SITES[_hubIdx], slug = h.slug;
   if (HPI_ON[slug] === undefined) HPI_ON[slug] = true;   // tap-to-edit on by default for the roll rail
