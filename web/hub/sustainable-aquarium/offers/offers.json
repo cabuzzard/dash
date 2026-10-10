@@ -1,5 +1,15 @@
 [
   {
+    "slug": "walstad-starter-blueprint",
+    "name": "Walstad Starter Blueprint",
+    "kicker": "Digital guide · $29–$49 one-time",
+    "promise": "Build a dirted, self-balancing tank once — and stop managing it like a maintenance schedule.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb8110bd28ddf4da2dfaf3",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sustainable-aquarium/walstad-starter-blueprint-blog-thumbnail-mv218jtu.png"
+  },
+  {
     "slug": "tank-diagnosis",
     "name": "Tank Diagnosis",
     "kicker": "One-off consultation · flat session fee",
@@ -17,14 +27,5 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81318ca0ee5cf8c1b96b"
-  },
-  {
-    "slug": "walstad-starter-blueprint",
-    "name": "Walstad Starter Blueprint",
-    "kicker": "Digital guide · $29–$49 one-time",
-    "promise": "Build a dirted, self-balancing tank once — and stop managing it like a maintenance schedule.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8110bd28ddf4da2dfaf3"
   }
 ]
