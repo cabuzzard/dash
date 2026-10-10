@@ -10857,6 +10857,7 @@ export default {
             kicker:  String(card?.kicker || "").trim(),
             title:   oname,
             excerpt: String(card?.promise || bodyProp || "").trim().slice(0, 240),
+            image:   String(p["Thumbnail"]?.url || "").trim(),   // the offer's blog thumbnail on its hub card
             url,
           });
         }
@@ -10970,6 +10971,7 @@ export default {
             kicker:  hubSectionOf(p) === "news" ? "News analysis" : "Article",
             title:   platformTitle || assetTitle || "Untitled",
             excerpt: String(pjson[pageSlug]?.intro || bodyProp).slice(0, 240),
+            image:   String(p["Thumbnail"]?.url || "").trim(),   // the post's blog thumbnail on its hub card
             url,
           };
         });

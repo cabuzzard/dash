@@ -206,6 +206,7 @@ a.card:hover{border-color:var(--sea);transform:translateY(-3px)}
   .hub-aside { order:2; }
   .hub-aside img, .hub-aside.ph { width:100%; max-width:340px; height:auto; aspect-ratio:3/4; object-fit:cover; object-position:center; margin-inline:auto; }
 }
+.card-img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;margin:0 0 12px;}
 </style>
 </head>
 <body>
@@ -488,7 +489,7 @@ async function renderHubJournal() {
     if (!items || !items.length) { if (sec) sec.style.display = 'none'; return; }
     if (sec) sec.style.display = '';
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
-      <a class="card" href="${esc(it.url)}">
+      <a class="card" href="${esc(it.url)}">${it.image ? `<img class="card-img" src="${esc(it.image)}" alt="" loading="lazy">` : ""}
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
         <h3>${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
@@ -523,7 +524,7 @@ async function renderHubArticles() {
     if (!items || !items.length) { if (sec) sec.style.display = 'none'; return; }
     if (sec) sec.style.display = '';
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
-      <a class="card" href="${esc(it.url)}">
+      <a class="card" href="${esc(it.url)}">${it.image ? `<img class="card-img" src="${esc(it.image)}" alt="" loading="lazy">` : ""}
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
         <h3>${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
@@ -701,7 +702,7 @@ async function renderHubProducts() {
     if (!items || !items.length) { if (sec) sec.style.display = 'none'; return; }
     if (sec) sec.style.display = '';
     body.innerHTML = `<div class="grid cols-3">` + items.map((it) => `
-      <a class="card" href="${esc(it.url)}">
+      <a class="card" href="${esc(it.url)}">${it.image ? `<img class="card-img" src="${esc(it.image)}" alt="" loading="lazy">` : ""}
         ${it.kicker ? `<span class="kicker">${esc(it.kicker)}</span>` : ""}
         <h3>${esc(it.title)}</h3>
         ${it.excerpt ? `<p>${esc(it.excerpt)}</p>` : ""}
