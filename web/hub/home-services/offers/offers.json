@@ -1,5 +1,14 @@
 [
   {
+    "slug": "house-check-visit",
+    "name": "House Check Visit",
+    "kicker": "Per-visit · $45–$75",
+    "promise": "A same-day photo report tells you exactly what your house looks like right now — no guessing, no favors.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81a29341e619892a503c"
+  },
+  {
     "slug": "str-property-management",
     "name": "STR Property Management",
     "kicker": "Retainer · flat monthly fee or hybrid",
