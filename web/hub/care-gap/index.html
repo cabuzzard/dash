@@ -368,7 +368,7 @@ const HUB = {
     eyebrow: "A philanthropic briefing from the Mobility Mentor Foundation",
     headline: "A care crisis with a number on it.",
     sub: "9.7 million direct-care jobs will open by 2034. The median wage is under $26,000, and 59% of the workforce is on public assistance. The Mobility Mentor Foundation funds four things that move those figures — training, a talent pipeline, compensation advocacy, and housing stability — and reports the impact in terms a grant committee and an ESG team can both use.",
-    ctaPrimary:   { label: "Book a 15-minute call", href: "https://calendly.com/flipoclock/15min" },
+    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
     ctaSecondary: { label: "Read the briefing",     href: "#report" },
   },
 
@@ -398,13 +398,23 @@ const HUB = {
   },
 
   report: {
+    label: "Newsletter",
+    title: "The Care Gap newsletter",
+    blurb: "Stories and updates from families caring for adults with disabilities, and where support is making a real difference.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Get the newsletter",
+    link: null,
+  },
+  // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
+  // button come back once the offering is developed. Not rendered.
+  parkedLeadMagnet: { status: "Planning", report: {
     label: "Start here — the briefing",
     title: "The Care Gap: a philanthropist's briefing.",
     blurb: "A short, sourced PDF for foundation officers, ESG-aligned investors, and major-gift donors: the direct-care workforce crisis in named statistics, the bipartisan policy context, and the Foundation's impact-measurement framework. It's what most partners read right before the call.",
     note: "We'll send the occasional field note on long-term-care workforce policy. Unsubscribe in one click.",
     buttonLabel: "Send me the briefing",
     link: { label: "Book the 15-minute call instead", url: "https://calendly.com/flipoclock/15min" },
-  },
+  }, heroPrimary: { label: "Book a 15-minute call", href: "https://calendly.com/flipoclock/15min" } },
 
   journal: {
     label: "Field notes",

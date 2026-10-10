@@ -368,7 +368,7 @@ const HUB = {
     eyebrow: "For small business owners running too many apps and paying for every one of them",
     headline: "Twelve tools. Half of them overlap. None of them talk.",
     sub: "Between the free trial that looked great and the stack you're actually billed for every month, a small business collects software the way a garage collects boxes. This is a map of the tools a small business actually needs — the six categories that matter, what each one is for, where an all-in-one beats buying à la carte, and how to get the whole thing running with no coding and no IT department.",
-    ctaPrimary:   { label: "Get the free stack audit", href: "#report" },
+    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
     ctaSecondary: { label: "See the six categories",   href: "#trips" },
   },
 
@@ -398,13 +398,23 @@ const HUB = {
   },
 
   report: {
+    label: "Newsletter",
+    title: "The AI Implementation newsletter",
+    blurb: "One email a week: the AI and software tools worth adding to a small business, what they really cost, and what to skip.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Get the newsletter",
+    link: null,
+  },
+  // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
+  // button come back once the offering is developed. Not rendered.
+  parkedLeadMagnet: { status: "Planning", report: {
     label: "Start here — the free stack audit",
     title: "What's in your stack, what it costs, and what to cut.",
     blurb: "A short worksheet you run on your own setup. List what you're paying for and it sorts each tool into the six categories, flags the overlaps, and shows where one all-in-one tool would replace three subscriptions. Free. It's also where the deeper reviews start — the ones that actually set the replacement up for you, no coding, in an afternoon.",
     note: "You'll get the occasional field note on tools worth switching to. Unsubscribe in one click.",
     buttonLabel: "Send me the audit",
     link: { label: "See a sample audit", url: "#" },
-  },
+  }, heroPrimary: { label: "Get the free stack audit", href: "#report" } },
 
   journal: {
     label: "Field notes",

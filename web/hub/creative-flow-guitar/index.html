@@ -367,7 +367,7 @@ const HUB = {
     eyebrow: "A new guitar session every week",
     headline: "Real playing. Real feel.",
     sub: "One session a week, recorded raw — the tone, the room, the take left as it happened. No tutorials, no over-production. Download the MP3 and the live recording, study it, or just put it on.",
-    ctaPrimary:   { label: "Get this week's session", href: "#trips" },
+    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
     ctaSecondary: { label: "Join the weekly",         href: "#report" },
   },
 
@@ -397,13 +397,23 @@ const HUB = {
   },
 
   report: {
+    label: "Newsletter",
+    title: "The Creative Flow weekly",
+    blurb: "One email a week: the new session, the songs we're working on, and where to hear it live.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Get the newsletter",
+    link: null,
+  },
+  // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
+  // button come back once the offering is developed. Not rendered.
+  parkedLeadMagnet: { status: "Planning", report: {
     label: "The weekly",
     title: "One email a week: the new session, and where to hear it live.",
     blurb: "Join the list and you get each week's session first — a clip, the download links, the tuning and gear notes — plus the open-mic dates around the East Bay so you can catch one in person. Free. That's the whole list.",
     note: "One email a week. Unsubscribe in one click.",
     buttonLabel: "Send me the weekly",
     link: { label: "See where I'm playing next", url: "#" },
-  },
+  }, heroPrimary: { label: "Get this week's session", href: "#trips" } },
 
   journal: {
     label: "From the room",

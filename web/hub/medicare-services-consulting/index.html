@@ -362,7 +362,7 @@ const HUB = {
     eyebrow: "Independent Medicare help",
     headline: "Ask us anything about Medicare. There are no dumb questions here.",
     sub: "Friendly, plain-English help from an advisor who isn't tied to one insurance company — so you can compare Medicare Advantage, Medigap and Part D and choose with confidence.",
-    ctaPrimary:   { label: "Get the free starter checklist", href: "#report" },
+    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
     ctaSecondary: { label: "Read the guides", href: "#journal" },
   },
 
@@ -377,13 +377,23 @@ const HUB = {
   },
 
   report: {
+    label: "Newsletter",
+    title: "The Medicare newsletter",
+    blurb: "Plain-English Medicare news and reminders: enrollment windows, cost changes and the questions worth asking.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Get the newsletter",
+    link: null,
+  },
+  // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
+  // button come back once the offering is developed. Not rendered.
+  parkedLeadMagnet: { status: "Planning", report: {
     label: "Free checklist",
     title: "The Medicare Starter Checklist",
     blurb: "Every enrollment window, every plan type, and the five questions to ask before you sign anything — on one friendly page.",
     note: "No spam. Unsubscribe anytime. We never share your address.",
     buttonLabel: "Send me the checklist",
     link: null,
-  },
+  }, heroPrimary: { label: "Get the free starter checklist", href: "#report" } },
 
   trips: {
     label: "Work with us", title: "One-on-one Medicare help", note: "Sit down (or call) with an independent advisor and go through your doctors, prescriptions and budget together.", items: [],

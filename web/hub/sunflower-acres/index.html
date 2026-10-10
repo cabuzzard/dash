@@ -367,7 +367,7 @@ const HUB = {
     eyebrow: "A wheelchair-accessible flower farm · Concord, California",
     headline: "The same day at the farm, for everyone.",
     sub: "Step-free into and through the fields. Accessible parking and restrooms, loaner wheelchairs on site, and whoever comes with you gets in free. Come cut your own flowers.",
-    ctaPrimary:   { label: "Book a visit",       href: "#trips" },
+    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
     ctaSecondary: { label: "Get the free guide", href: "#report" },
   },
 
@@ -398,13 +398,23 @@ const HUB = {
 
   // The nonprofit's front door: a free guide in exchange for an email, plus a soft support ask.
   report: {
+    label: "Newsletter",
+    title: "The Sunflower Acres newsletter",
+    blurb: "Bloom updates, open days and accessible visit dates from the farm.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Get the newsletter",
+    link: null,
+  },
+  // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
+  // button come back once the offering is developed. Not rendered.
+  parkedLeadMagnet: { status: "Planning", report: {
     label: "The Accessible Land Guide",
     title: "How we built a step-free farm — free guide.",
     blurb: "We're turning what it took to make Sunflower Acres wheelchair-accessible into a program that helps others do it — parks, schools, community gardens, other farms. The guide has the real numbers: surface types, path grades, parking, restrooms, budget, and the mistakes. Enter your email and it's yours.",
     note: "You'll also get occasional updates on the farm and the program. Unsubscribe in one click.",
     buttonLabel: "Get the guide",
     link: { label: "Support the work", url: "#" },
-  },
+  }, heroPrimary: { label: "Book a visit",       href: "#trips" } },
 
   journal: {
     label: "Journal",

@@ -361,7 +361,7 @@ const HUB = {
     eyebrow: "Construction Project Management",
     headline: "Run tighter projects, lead stronger teams, and finish on budget — every time.",
     sub: "Practitioner-level guides, schedule frameworks, and cost-control playbooks for construction professionals who are accountable for the outcome.",
-    ctaPrimary:   { label: "Browse the guides", href: "#report" },
+    ctaPrimary:   { label: "Get the newsletter", href: "#report" },
     ctaSecondary: { label: "Get the newsletter", href: "#trips" },
   },
 
@@ -376,13 +376,23 @@ const HUB = {
   },
 
   report: {
+    label: "Newsletter",
+    title: "The Construction PM newsletter",
+    blurb: "Practical project management for contractors, one email a week: bids, schedules, change orders and closeout.",
+    note: "No spam. Unsubscribe anytime. We never share your address.",
+    buttonLabel: "Get the newsletter",
+    link: null,
+  },
+  // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
+  // button come back once the offering is developed. Not rendered.
+  parkedLeadMagnet: { status: "Planning", report: {
     label: "Free Field Guide",
     title: "The Construction PM Playbook: 12 Frameworks That Keep Projects on Track",
     blurb: "From preconstruction risk scoring to earned-value dashboards and subcontractor accountability loops — the structured approaches used by top-performing project managers on complex builds.",
     note: "No spam. Unsubscribe in one click. We never share your address.",
     buttonLabel: "Download the playbook",
     link: null,
-  },
+  }, heroPrimary: { label: "Browse the guides", href: "#report" } },
 
   trips: {
     label: "Products", title: "Tool Reviews & Site Visits", note: "", items: [],
