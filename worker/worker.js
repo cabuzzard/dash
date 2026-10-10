@@ -892,6 +892,77 @@ async function rewriteHubNewsPost(env, assetId) {
   if (im && im.imageUrl) { const sv = await selfAction(env, "saveOfferImage", { assetId: aid, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true }); thumb = !(sv && sv.error); }
   return { ok: true, old: oldHead, headline: h.headline, words: wp.wordCount, liveUrl: rf.liveUrl || "", thumb };
 }
+// ── Hub topical post ideas (2026-10-10) ── 10 topical SEO blog-post ideas per hub for the operator to approve.
+// Built from the hub's keyword TOPICS (committed 🔑 Keyword Clusters rows + staged KV seoclusters:staged:<cid>). A hub
+// with fewer than 3 topics first gets new topics: real long-tail searches (Google autocomplete off its Main Keywords) →
+// generateKeywordClusters (staged topics in the hub, named after real long-tail phrases). KV hubideas:<cid> = {at, ideas}.
+async function hubTopicsOf(env, cid) {
+  const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: nd(cid) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
+  const staged = (await env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => null)) || [];
+  const rtx = (r, k) => (r.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+  return rows.map(r => ({ name: (r.properties?.Name?.title || []).map(t => t.plain_text).join(""), keywords: rtx(r, "Cluster Keywords"), committed: true }))
+    .concat(staged.map(c => ({ name: c.name || "", keywords: c.keywords || "", committed: false }))).filter(t => t.name);
+}
+async function longTailSuggest(seeds) {
+  const suggest = async q => { try { const r = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox&q=${encodeURIComponent(q)}`, { headers: { "User-Agent": "Mozilla/5.0" } }); const j = await r.json(); return (j[1] || []).slice(0, 10); } catch (e) { return []; } };
+  const jobs = [];
+  for (const sd of seeds.slice(0, 6)) for (const pre of ["", "how to ", "what is ", "best ", "why ", "cost of "]) jobs.push(suggest(pre + sd));
+  const all = (await Promise.all(jobs)).flat().map(x => String(x).trim().toLowerCase());
+  return [...new Set(all)].filter(x => x.split(/\s+/).length >= 3).slice(0, 120);
+}
+async function buildHubTopicIdeas(env, cid) {
+  cid = String(cid || "").replace(/-/g, "");
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
+  if (!hub) return { error: "not a hub campaign" };
+  const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const resRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
+  const research = resRows.slice().sort((a, b) => rtx(b, "Keywords").length - rtx(a, "Keywords").length)[0];
+  const mainKw = rtx(research, "Keywords").split(/[,\n]+/).map(x => x.trim()).filter(Boolean);
+  let topics = await hubTopicsOf(env, cid);
+  const topicsBefore = topics.length;
+  let longtails = [], created = 0, topicError = "";
+  if (topics.length < 3) {
+    longtails = await longTailSuggest(mainKw.length ? mainKw : [hub.name]);
+    const g = await selfAction(env, "generateKeywordClusters", { campaignId: cid, guidance: `Build these topics from REAL long-tail searches people type (Google autocomplete off the Main Keywords). Name each topic with one of these exact long-tail phrases where one fits, and put the related long-tails in its keywords:\n${longtails.slice(0, 100).join("\n")}` });
+    if (g && g.error) topicError = g.error;
+    topics = await hubTopicsOf(env, cid); created = topics.length - topicsBefore;
+  }
+  if (!topics.length) return { error: "no topics" + (topicError ? ": " + topicError : ""), hub: hub.name };
+  const mains = [];
+  for (const pid of await hubMainList(env, cid)) {
+    const pg = await fetch(`https://api.notion.com/v1/pages/${nd(pid)}`, { headers: { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => ({}));
+    const n = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); if (n && !/ - Main Offering$/.test(n)) mains.push(n);
+  }
+  const titles = (await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []))
+    .map(r => (r.properties?.Title?.title || []).map(t => t.plain_text).join("").trim()).filter(Boolean).slice(0, 80);
+  if (!longtails.length) longtails = await longTailSuggest(topics.map(t => t.name).concat(mainKw).slice(0, 6));
+  const today = new Date().toISOString().slice(0, 10);
+  const prompt = `TODAY: ${today}. You plan TOPICAL SEO blog posts for a content hub — evergreen articles that each rank for one real long-tail search and build topical authority around the hub's keyword topics.
+
+HUB: ${hub.name}
+WHAT IT IS ABOUT: ${rtx(research, "Statement").slice(0, 800)}
+MAIN OFFERINGS (context, not the subject): ${mains.join(" · ") || "(none)"}
+KEYWORD TOPICS (topic → its keywords):
+${topics.map(t => `- ${t.name}: ${String(t.keywords).slice(0, 300)}`).join("\n")}
+REAL LONG-TAIL SEARCHES (Google autocomplete):
+${longtails.slice(0, 80).join("\n")}
+TITLES THE HUB ALREADY HAS (don't duplicate):
+${titles.map(x => "- " + x).join("\n").slice(0, 3000)}
+
+Give exactly 10 post ideas, spread across the topics (no topic more than 3). Each: "topic" (one of the topic names above, exactly), "keyword" (the ONE real long-tail search it targets — take it from the long-tail list or the topic's keywords, word for word), "headline" (search-friendly, answers that search, no clickbait, no year unless the post needs one, never an invented event or statistic), "angle" (one sentence: what makes this post genuinely useful), "intent" (informational / commercial / transactional / navigational). Call submit_ideas.`;
+  const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }],
+      tools: [{ name: "submit_ideas", description: "The 10 post ideas.", input_schema: { type: "object", required: ["ideas"], properties: { ideas: { type: "array", items: { type: "object", required: ["topic", "keyword", "headline", "angle", "intent"], properties: {
+        topic: { type: "string" }, keyword: { type: "string" }, headline: { type: "string" }, angle: { type: "string" }, intent: { type: "string" } } } } } } }],
+      tool_choice: { type: "tool", name: "submit_ideas" } }) }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
+  const ideas = ((((ar.content || []).find(b => b.type === "tool_use") || {}).input || {}).ideas || []).slice(0, 10)
+    .map((x, i) => ({ id: cid.slice(-6) + "-" + Date.now().toString(36) + i, topic: String(x.topic || ""), keyword: String(x.keyword || ""), headline: String(x.headline || ""), angle: String(x.angle || ""), intent: String(x.intent || "") }));
+  if (!ideas.length) return { error: "ideas: " + ((ar.error && ar.error.message) || "none came back"), hub: hub.name };
+  await env.TRADES.put("hubideas:" + cid, JSON.stringify({ at: new Date().toISOString(), ideas }));
+  return { ok: true, hub: hub.name, slug: hub.slug, campaignId: cid, topicsBefore, topicsCreated: created, topics: topics.map(t => t.name), topicError, ideas };
+}
 async function hubNewsCronTick(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
   const sched = (await env.TRADES.get("hubnews:sched", "json").catch(() => null)) || {};
@@ -11363,7 +11434,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^buildHubTopicIdeas$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -26657,6 +26728,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       if (body.action === "writeHubNewsPost") {
         try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "buildHubTopicIdeas") { try { return json(await buildHubTopicIdeas(env, body.campaignId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "getHubNewsRound") return json({ ok: true, sched: await env.TRADES.get("hubnews:sched", "json").catch(() => null), log: await env.TRADES.get("hubnews:log", "json").catch(() => null) });
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
