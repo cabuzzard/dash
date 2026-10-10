@@ -75,11 +75,14 @@ function pinScreen(msg) {
   document.getElementById('pinIn').focus();
 }
 
-const flagged = () => (S.items || []).filter(x => x.status !== 'Finished' && (!S.hub || x.cid === S.hub));
+// ?id=<interviewId> also opens a FINISHED interview (e.g. to run the 🔎 Expert check after finishing)
+const PIN = (new URLSearchParams(location.search).get('id') || '').replace(/-/g, '');
+const flagged = () => (S.items || []).filter(x => (x.status !== 'Finished' || x.id === PIN) && (!S.hub || x.cid === S.hub));
 const hubName = cid => S.hubs[cid] || 'Other';
 async function load() {
   S.busy = 'Loading interviews…'; draw();
   try { const r = await call('getInterviews', { status: 'Flagged' }); S.hubs = r.hubs || {};
+    if (PIN && !(r.interviews || []).some(x => x.id === PIN)) { try { const one = await call('getInterview', { interviewId: PIN }); if (one && one.interview) (r.interviews = r.interviews || []).unshift(one.interview); } catch (e) {} }
     S.items = (r.interviews || []).sort((a, b) => hubName(a.cid).localeCompare(hubName(b.cid)) || a.title.localeCompare(b.title) || a.created.localeCompare(b.created));
     S.err = ''; } catch (e) { S.err = e.message; S.items = S.items || []; }
   S.busy = ''; S.idx = 0;
