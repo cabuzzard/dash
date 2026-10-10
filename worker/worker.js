@@ -48221,8 +48221,7 @@ Return ONLY a fenced \`\`\`json array.`;
 // Template = KV hub:dummytemplate (falls back to HUB_DUMMY_TEMPLATE); record of what was made = KV hub:dummies:<slug>.
 const HUB_DUMMY_TEMPLATE = [
   { section: "CTA's",          hubSection: "CTA",           label: "Newsletter Free", assetType: "Newsletter Free", count: 1 },
-  { section: "Products",       hubSection: "Offers",        label: "Sales Article",   assetType: "QA – Sales",      count: 3 },
-  { section: "Products",       hubSection: "Offers",        label: "Products",        assetType: "Product",         count: 3 },
+  { section: "Products",       hubSection: "Offers",        label: "Offer",           assetType: "Offer – Content Hub", count: 6 },   // the section's main asset type (operator, 2026-10-09)
   { section: "News",           hubSection: "News",          label: "Blog News SEO",   assetType: "Blog - SEO - News", count: 3 },
   { section: "Articles",       hubSection: "Articles",      label: "Blog Article",    assetType: "blog post",       count: 3 },
 ];
