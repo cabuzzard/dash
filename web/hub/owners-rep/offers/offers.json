@@ -1,5 +1,15 @@
 [
   {
+    "slug": "project-scan",
+    "name": "Project Scan",
+    "kicker": "Fixed-fee document review · $495–$750",
+    "promise": "A ranked list of the gaps, contradictions, and cost exposures already sitting in your document set — named before the first dollar moves.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/project-intelligence-project-scan-blog-thumbnail-mv2270el.png"
+  },
+  {
     "slug": "on-your-side-construction-retainer",
     "name": "On Your Side-Construction Retainer",
     "kicker": "Monthly retainer · $1,500–$4,000/mo",
@@ -16,15 +26,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81caae89d11e2118a3e2"
-  },
-  {
-    "slug": "project-scan",
-    "name": "Project Scan",
-    "kicker": "Fixed-fee document review · $495–$750",
-    "promise": "A ranked list of the gaps, contradictions, and cost exposures already sitting in your document set — named before the first dollar moves.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf"
   },
   {
     "slug": "project-monitoring-intro-call",
