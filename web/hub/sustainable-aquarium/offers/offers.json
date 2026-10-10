@@ -1,5 +1,15 @@
 [
   {
+    "slug": "care-club",
+    "name": "Care Club",
+    "kicker": "Membership · $15–$29/mo, cancel anytime",
+    "promise": "Stop bracing for the next crash — get a practitioner reading your tank all year, season by season.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81318ca0ee5cf8c1b96b",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sustainable-aquarium/ecosystem-tank-care-club-blog-thumbnail-mv218wpr.png"
+  },
+  {
     "slug": "walstad-starter-blueprint",
     "name": "Walstad Starter Blueprint",
     "kicker": "Digital guide · $29–$49 one-time",
@@ -18,14 +28,5 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81df8a84cf0b40da8b52",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sustainable-aquarium/natural-aquarium-consultation-blog-thumbnail-mv217z8o.png"
-  },
-  {
-    "slug": "care-club",
-    "name": "Care Club",
-    "kicker": "Membership · $15–$29/mo, cancel anytime",
-    "promise": "Stop bracing for the next crash — get a practitioner reading your tank all year, season by season.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81318ca0ee5cf8c1b96b"
   }
 ]
