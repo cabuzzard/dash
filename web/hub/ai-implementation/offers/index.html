@@ -3,23 +3,25 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Offers — AI Implementation</title>
+<title>Offers — Small Business Tools</title>
+
 
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
-:root { --bg:#f7f9f8; --ink:#182a24; --accent:#0f7d64; }
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Hanken+Grotesk:wght@400;500;600&display=swap');
+:root { --bg:#ffffff; --ink:#1a2a1a; --accent:#2b832b; }
 * { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font-family:"Inter", system-ui, sans-serif; line-height:1.7; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Hanken Grotesk", system-ui, sans-serif; line-height:1.7; }
 .wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
 header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
 header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
 header.site .back { font-size:.85rem; color:var(--accent); }
 .kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
-h1,h2 { font-family:"Space Grotesk", system-ui, sans-serif; color:var(--ink); line-height:1.2; }
+h1,h2 { font-family:"Bricolage Grotesque", system-ui, sans-serif; color:var(--ink); line-height:1.2; }
 h1 { font-size:2.2rem; margin:.3rem 0 14px; }
 h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
 p { margin:0 0 18px; font-size:1.08rem; }
 .lede { font-size:1.2rem; }
+img.hero { display:block; width:100%; height:auto; border-radius:10px; margin:6px 0 22px; }
 ul.inc { list-style:none; padding:0; margin:0 0 18px; }
 ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
 ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
@@ -33,7 +35,7 @@ ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--acce
 footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
 .offerlist { list-style:none; margin:0; padding:0; }
 .offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
-.offerlist a { color:var(--ink); text-decoration:none; font-family:"Space Grotesk", system-ui, sans-serif; font-size:1.3rem; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:"Bricolage Grotesque", system-ui, sans-serif; font-size:1.3rem; }
 .offerlist a:hover { color:var(--accent); }
 .offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
 </style>
@@ -41,14 +43,15 @@ footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(
 <body>
 <div class="wrap">
 <header class="site">
-  <a href="../index.html">AI Implementation</a>
+  <a href="../index.html">Small Business Tools</a>
   
 </header>
 <h1>Offers</h1>
 <ul class="offerlist">
+<li><a href="./strategy-discovery-call/index.html">Strategy Discovery Call</a><div class="excerpt">You leave with a concrete AI marketing plan mapped to your actual business — not a pitch deck, not a proposal, not homework.</div></li>
 <li><a href="./ai-business-audit/index.html">AI Business Audit</a><div class="excerpt">In one 30-minute session, see exactly where your business is leaking time and money — with a ranked, plain-language action plan built from your specific operations.</div></li>
 </ul>
-<footer class="site">AI Implementation</footer>
+<footer class="site">Small Business Tools</footer>
 </div>
 
 </body>
