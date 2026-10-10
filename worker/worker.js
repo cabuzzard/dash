@@ -824,7 +824,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   let t = null, product = null;
   for (let k = 0; k < mains.length && !t; k++) {
     product = mains[(have + k) % mains.length];
-    const lead = `Main offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nFind a CURRENT, real development this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
+    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nFind a CURRENT, real development this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: product.name, newsBody: lead, allowDuplicate: k === mains.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
@@ -834,13 +834,18 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   const assetId = g && ((g.assets || [])[0] || {}).id;
   if (!assetId) return { error: "article: " + ((g && g.error) || "no asset"), hub: hub.name, headline: t.headline };
   await selfAction(env, "updatePublishFields", { assetId, status: "Published", hubSection: "news" });
+  let liveUrl = g.liveUrl || "";
+  if (!g.sitePublished) {   // the blog push failed (e.g. a GitHub write race) — republish this hub's unpublished posts
+    const bf = await selfAction(env, "backfillHubBlog", { campaignId: cid }).catch(() => null);
+    liveUrl = liveUrl || (bf && !bf.error ? "(republished via backfill)" : "");
+  }
   let thumb = false, thumbError = "";
   const im = await selfAction(env, "generateBlogPostThumbnail", { assetId });
   if (im && im.imageUrl) {
     const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
-  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl: g.liveUrl || "", thumb, thumbError, had: have };
+  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, siteError: g.siteError || "", thumb, thumbError, had: have };
 }
 async function hubNewsCronTick(env) {
   const K = "hubnews:round";
@@ -14448,7 +14453,10 @@ Return: {
         } catch (e) {}
 
         // ── Headline + angle + primary search intent (one Claude call) ──
+        const todayIso = new Date().toISOString().slice(0, 10), thisYear = todayIso.slice(0, 4);
         const planPrompt = `You are an editor and research writer for a niche content site.
+
+TODAY'S DATE: ${todayIso}. Write for now: any year you name must be right for today (the current year is ${thisYear}; "next year" / an upcoming plan or enrollment year is ${+thisYear + 1}). Never present an earlier year as current or upcoming.
 
 Below is a NEWS ITEM about a development relevant to our audience. Treat it ONLY as a research lead — you are NOT rewriting, paraphrasing, spinning, or reproducing it. We are going to publish an ORIGINAL analysis article that stands on its own.
 
@@ -14526,7 +14534,7 @@ Return ONLY this JSON, no other text, no markdown fences:
         const newNewsTitleId = titleResult.id.replace(/-/g, "");
 
         // ── Write the original-article pillar draft ──
-        const pillarStyle = "Write this as an ORIGINAL news-analysis article that stands on its own — do NOT mirror the source item's structure, order, wording, headline, or framing, and do NOT reproduce or paraphrase it. Follow this logical flow as continuous prose: what happened and why it matters to our audience; necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what still remains unknown; a short close. Never fabricate facts, quotes, statistics, or sources — if a claim from the source item can't be stated with confidence, frame it as reported/unverified.";
+        const pillarStyle = `Today's date is ${todayIso} — every year, deadline and "this year / next year" reference must be correct for today (current year ${thisYear}). ` + "Write this as an ORIGINAL news-analysis article that stands on its own — do NOT mirror the source item's structure, order, wording, headline, or framing, and do NOT reproduce or paraphrase it. Follow this logical flow as continuous prose: what happened and why it matters to our audience; necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what still remains unknown; a short close. Never fabricate facts, quotes, statistics, or sources — if a claim from the source item can't be stated with confidence, frame it as reported/unverified.";
         const newsPillarResult = await writePillarContent(hdr, env, {
           titleId: newNewsTitleId, titleText: headline, campaignId,
           productId: productId || undefined, methodId: newsMethodId,
