@@ -14194,6 +14194,13 @@ async function bulkJobsPoll() {   // every long server-side run (KV bulk:*) → 
   setTimeout(bulkJobsPoll, any ? 8000 : 60000);
 }
 setTimeout(bulkJobsPoll, 2500);
+// coming back to the dash tab (e.g. after publishing in care-gap) re-checks the open hub's build checklist in the background
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible' || typeof HUB_SITES === 'undefined' || typeof _hubIdx === 'undefined') return;
+  const h = HUB_SITES[_hubIdx]; if (!h || !document.getElementById('hubBuildBody-' + h.slug)) return;
+  if (!(hubSecOpen('build') || hubSecOpen('production'))) return;
+  _hubBuildFetched[h.slug] = false; renderHubsTab();
+});
 // registry hubs merge as soon as the page is signed in — before Content Hubs is opened, so no extra re-render
 setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 function renderHubsTab() {
