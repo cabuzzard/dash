@@ -1,5 +1,15 @@
 [
   {
+    "slug": "house-check-visit",
+    "name": "House Check Visit",
+    "kicker": "Per-visit · $45–$75",
+    "promise": "A same-day photo report tells you exactly what your house looks like right now — no guessing, no favors.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81a29341e619892a503c",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/home-services/home-check-visit-blog-thumbnail-mv22fgub.png"
+  },
+  {
     "slug": "caretaker-plan",
     "name": "Caretaker Plan",
     "kicker": "Monthly retainer · $250–$600/mo",
@@ -16,15 +26,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81cb8e19ffa0ed154ac9"
-  },
-  {
-    "slug": "house-check-visit",
-    "name": "House Check Visit",
-    "kicker": "Per-visit · $45–$75",
-    "promise": "A same-day photo report tells you exactly what your house looks like right now — no guessing, no favors.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81a29341e619892a503c"
   },
   {
     "slug": "str-property-management",
