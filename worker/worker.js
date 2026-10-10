@@ -12801,7 +12801,7 @@ the one aesthetic risk taken + why:`;
           const steps = [
             ...flow,
             // hidden: kept only as the product list Production › Products reads; Main offerings is an asset section now
-            { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: false,   // shown again 2026-10-09 (operator): the ★ main products, listed under Main offerings beside its assets products: campProducts, groupOrder: stackGroups.order || [], mainIds,
+            { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: false, /* shown again 2026-10-09 (operator): the ★ main products, listed under Main offerings */ products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: "" },
             // (2026-10-09, operator) Main offerings = products only — they publish nowhere; assets get built off them in other sections
             ...pageSections.filter(x => x.phase === "CTA's"),   // right under Main offerings
