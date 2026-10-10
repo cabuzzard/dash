@@ -1,5 +1,14 @@
 [
   {
+    "slug": "preconstruction-package",
+    "name": "Preconstruction Package",
+    "kicker": "Fixed-fee · priced per project",
+    "promise": "Every deliverable between signed plans and first day on site — scopes, bid packages, takeoffs, schedule, sub sourcing, and permit research — handed back to you as a complete, ready-to-run package.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb8151829bd6cd8d327daf"
+  },
+  {
     "slug": "bid-check",
     "name": "Bid Check",
     "kicker": "Fixed-fee · per bid package",
