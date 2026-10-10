@@ -1,5 +1,15 @@
 [
   {
+    "slug": "strategy-discovery-call",
+    "name": "Strategy Discovery Call",
+    "kicker": "Flat-fee session · credited toward any retainer",
+    "promise": "You leave with a concrete AI marketing plan mapped to your actual business — not a pitch deck, not a proposal, not homework.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb815cbf30d9af2ee913d5",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-marketing-strategy-discovery-call-blog-thumbnail-mv22ajhp.png"
+  },
+  {
     "slug": "full-funnel-retainer",
     "name": "Full-Funnel Retainer",
     "kicker": "Monthly retainer · no long-term contract",
@@ -16,15 +26,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb8159b041ffdc089d5784"
-  },
-  {
-    "slug": "strategy-discovery-call",
-    "name": "Strategy Discovery Call",
-    "kicker": "Flat-fee session · credited toward any retainer",
-    "promise": "You leave with a concrete AI marketing plan mapped to your actual business — not a pitch deck, not a proposal, not homework.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb815cbf30d9af2ee913d5"
   },
   {
     "slug": "ai-business-audit",
