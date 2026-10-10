@@ -29980,6 +29980,7 @@ Rules:
           ? "a VERTICAL 3:4 background image for an Instagram post (a headline + 1-2 lines of body text get laid OVER it afterward — keep the top 40% and the vertical centre calm and near-empty)"
           : "a SQUARE 1:1 blog thumbnail plate (a headline gets laid over it afterward — keep the top ~45% calm and near-empty)";
         spec += approvedPlateBlock(brief);
+        const aspect = kind === "ig-background" ? "3:4" : "1:1";   // defined before the prompt that names it (was declared after → TDZ error)
         // SHORT prompt on purpose (2026-10-07): Grok Imagine makes its best images from two or three vivid sentences.
         // Long checklists, hex codes and "never/avoid" lists made worse plates (naming an avoided thing invites it).
         const claudePrompt = `Write ONE prompt for xAI Grok Imagine. Output ONLY the prompt — no preamble, no quotes.
@@ -30005,7 +30006,6 @@ ${spec.slice(0, 6000)}`;
         const prompt = (aiData.content?.[0]?.text || "").trim();
         if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
 
-        const aspect = kind === "ig-background" ? "3:4" : "1:1";
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
