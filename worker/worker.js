@@ -13508,10 +13508,19 @@ the one aesthetic risk taken + why:`;
                   type: p["Asset Type"]?.select?.name || "", method: mName[(p.Method?.relation || [])[0]?.id] || "",
                   section: String(p["Hub Section"]?.select?.name || ""), status: p["Asset Status"]?.select?.name || "",
                   date: p["Publishing Date"]?.date?.start || null, url: hubPagePath(p) || (p["Content URL"]?.url || "").trim(),
-                  titleId: ((p["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "") || null }; });
+                  titleId: ((p["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "") || null,
+                  ivSync: p["Interview Sync"]?.select?.name || "" }; });
             return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "no assets in this section yet" };
           });
+          // 🎤 an asset whose title still has a FLAGGED interview is out of sync with it (no interview done yet):
+          // each such row carries the first flagged interview, so the checklist row links straight to it.
+          if (campaignId) {
+            const ivF = await ivList({ and: [{ property: "Campaign", relation: { contains: ivDash(campaignId) } }, { property: "Status", select: { equals: "Flagged" } }] }).catch(() => []);
+            const byT = {}; ivF.forEach(x => { (byT[x.titleId] = byT[x.titleId] || []).push(x); });
+            pageSections.forEach(sec => sec.items.forEach(it => { const l = it.titleId && byT[it.titleId];
+              if (l && ivImportance(it.method || it.type) !== "none" && ivImportance(it.type) !== "none") it.ivFlag = { id: l[0].id, n: l.length, angle: l[0].angle }; }));
+          }
           const secIds = Object.fromEntries(await P_secIds);
           { const tids = [...new Set(pageSections.flatMap(ps => ps.items.map(it => it.titleId)).filter(Boolean))];
             const tinfo = Object.fromEntries(await Promise.all(tids.map(async id => { try {
