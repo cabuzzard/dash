@@ -66,6 +66,67 @@
     return el;
   }
 
+  // 🔎 Expert check — the answers vs the CURRENT standard of practice in their field (Opus + live web search, worker
+  // ivExpertCheck / ivExpertGet / ivExpertApply). Marketable output: also flags what would cost credibility with a
+  // sophisticated buyer. Each claim: verdict, what the standard actually is (sources), the smallest fix (editable) and
+  // the line a top practitioner would add. Opinions stay yours. InterviewPanel.expert({call, interviewId, beforeRun?, onApplied?}) → element
+  const VC = { 'current': ['#3a9a5b', 'rgba(58,154,91,.15)'], 'mostly current': ['#3a9a5b', 'rgba(58,154,91,.10)'], 'outdated': ['#c25e00', 'rgba(255,122,0,.15)'],
+    'contested': ['#c25e00', 'rgba(255,122,0,.15)'], 'wrong': ['#c0392b', 'rgba(192,57,43,.15)'], 'opinion': ['#888', 'rgba(127,127,127,.12)'] };
+  function expert(cfg) {
+    const el = document.createElement('div'), S = { report: null, busy: '', err: '', edits: {}, pick: {} };
+    el.style.cssText = `margin:14px 0 4px;border:1px solid ${C.line};border-radius:10px;padding:10px 12px;`;
+    const init = () => { S.pick = {}; ((S.report || {}).items || []).forEach(x => { if (x.fix && !x.applied && /outdated|contested|wrong|mostly/.test(x.verdict)) S.pick[x.id] = true; }); };
+    async function load() { try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init(); } catch (err) {} draw(); }
+    async function run() {
+      if (cfg.beforeRun) { try { await cfg.beforeRun(); } catch (err) {} }
+      S.busy = 'Checking every claim against the current expert standard (live search) — about 1-2 minutes…'; S.err = ''; draw();
+      try { const r = await req(cfg.call, 'ivExpertCheck', { interviewId: cfg.interviewId }); S.report = r.report; S.edits = {}; init(); } catch (err) { S.err = err.message; }
+      S.busy = ''; draw();
+    }
+    async function apply() {
+      const ids = Object.keys(S.pick).filter(k => S.pick[k]); if (!ids.length) return;
+      const ov = {}; ids.forEach(k => { if (S.edits[k] != null) ov[k] = S.edits[k]; });
+      S.busy = 'Applying the fixes to your answers…'; draw();
+      try { const r = await req(cfg.call, 'ivExpertApply', { interviewId: cfg.interviewId, ids, overrides: ov }); S.report = r.report; S.edits = {}; init();
+        S.err = (r.missed || []).length ? `${r.missed.length} couldn't be matched (that answer changed since the check) — edit it by hand.` : '';
+        changed(); if (cfg.onApplied) cfg.onApplied(r.answers || null, r); }
+      catch (err) { S.err = err.message; }
+      S.busy = ''; draw();
+    }
+    function draw() {
+      const R = S.report, items = (R && R.items) || [], nPick = Object.values(S.pick).filter(Boolean).length;
+      el.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <b style="font-size:13px;color:${C.ink};">🔎 Expert check</b>
+          ${R ? `<span style="font-size:11px;font-weight:700;padding:1px 8px;border-radius:9px;${R.status === 'Passed' ? `background:rgba(58,154,91,.15);color:${DONE};` : `background:${FLAG};color:#111;`}">${e(R.status)}</span><span style="font-size:11px;color:${C.ink3};">${e(new Date(R.at).toLocaleString())}</span>` : `<span style="font-size:11px;color:${C.ink3};">your answers vs the current standard of practice in this field — and what a sophisticated buyer would trust</span>`}
+          <button type="button" data-x="run" ${S.busy ? 'disabled' : ''} style="${BTN}margin-left:auto;">${R ? '↻ Re-check' : '🔎 Run expert check'}</button></div>
+        ${S.busy ? `<div style="font-size:12px;color:${C.ink3};margin-top:8px;">⏳ ${e(S.busy)}</div>` : ''}
+        ${S.err ? `<div style="font-size:12px;color:#c0392b;margin-top:8px;">${e(S.err)}</div>` : ''}
+        ${R ? `<div style="font-size:12px;color:${C.ink2};margin:8px 0 2px;"><b>Field:</b> ${e(R.field)}</div>
+          ${R.summary ? `<div style="font-size:12.5px;color:${C.ink};margin:4px 0 8px;">${e(R.summary)}</div>` : ''}
+          ${items.map(x => { const v = VC[x.verdict] || ['#888', 'rgba(127,127,127,.12)'];
+            return `<div style="border-top:1px solid ${C.line};padding:9px 0;">
+              <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;background:${v[1]};color:${v[0]};text-transform:uppercase;letter-spacing:.03em;">${e(x.verdict)}</span>
+                <span style="font-size:12.5px;font-style:italic;color:${C.ink};flex:1;min-width:200px;">“${e(x.quote)}”</span></div>
+              ${x.expert_view && x.verdict !== 'opinion' ? `<div style="font-size:12px;color:${C.ink2};margin-top:4px;">${e(x.expert_view)}</div>` : ''}
+              ${x.market ? `<div style="font-size:12px;color:#c25e00;margin-top:4px;">⚠ Marketability: ${e(x.market)}</div>` : ''}
+              ${x.level_up ? `<div style="font-size:12px;color:${C.acc};margin-top:4px;">★ A top practitioner would add: ${e(x.level_up)}</div>` : ''}
+              ${(x.sources || []).length ? `<div style="font-size:11px;margin-top:4px;">${x.sources.map(sr => `<a href="${e(sr.url)}" target="_blank" rel="noopener" style="color:${C.ink3};margin-right:10px;">${e(String(sr.title || sr.url).slice(0, 70))} ↗</a>`).join('')}</div>` : ''}
+              ${x.applied ? `<div style="font-size:12px;color:${DONE};margin-top:5px;">✓ applied: “${e(x.appliedText || x.fix)}”</div>`
+                : x.fix ? `<label style="display:flex;gap:6px;align-items:flex-start;margin-top:6px;font-size:12px;color:${C.ink};"><input type="checkbox" data-xp="${e(x.id)}" ${S.pick[x.id] ? 'checked' : ''} style="margin-top:3px;">
+                  <span style="flex:1;"><span style="color:${C.ink3};">Smallest fix — edit it into your own words if you like:</span>
+                  <textarea data-xe="${e(x.id)}" rows="2" style="${TA}margin-top:3px;font-size:12.5px;">${e(S.edits[x.id] != null ? S.edits[x.id] : x.fix)}</textarea></span></label>` : ''}
+            </div>`; }).join('')}
+          ${items.some(x => x.fix && !x.applied) ? `<div style="display:flex;gap:8px;align-items:center;border-top:1px solid ${C.line};padding-top:9px;">
+            <span style="font-size:11.5px;color:${C.ink3};flex:1;">Applying swaps only the quoted words in your answers; your own rewrites teach 🗣 Your voice.</span>
+            <button type="button" data-x="apply" ${S.busy || !nPick ? 'disabled' : ''} style="${BTNP}">Apply ${nPick} fix${nPick === 1 ? '' : 'es'}</button></div>` : ''}` : ''}`;
+    }
+    el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); });
+    el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
+    el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) S.edits[t.dataset.xe] = t.value; ev.stopPropagation(); });
+    draw(); load();
+    return el;
+  }
+
   // ── the answer modal ──
   let modal = null;
   function open(cfg) {
@@ -92,6 +153,7 @@
         ${!iv ? `<div style="font-size:12px;color:${C.ink3};">${e(S.busy || '')}</div>` : iv.qs.map((q, i) => `<div style="margin-bottom:12px;">
             <div style="font-size:13px;font-weight:600;margin-bottom:4px;">${i + 1}. ${e(q)}</div>
             <textarea data-a="${i}" rows="3" placeholder="Type it the way you'd say it…" style="${TA}">${e(S.answers[i] || '')}</textarea></div>`).join('')}
+        ${iv ? '<div data-xhost></div>' : ''}
         ${iv ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;border-top:1px solid ${C.line};padding-top:10px;">
             <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:180px;">${S.busy ? '⏳ ' + e(S.busy) : `${S.answers.filter(a => (a || '').trim()).length}/${iv.qs.length} answered · skip any question that doesn't apply`}</span>
             ${iv.url ? `<a href="${e(iv.url)}" target="_blank" rel="noopener" style="${BTN}text-decoration:none;">Notion ↗</a>` : ''}
@@ -99,6 +161,9 @@
             ${iv.status === 'Finished' ? `<button data-m="reflag" style="${BTN}">↩ Flag again</button>` : ''}
             <button data-m="save" style="${BTN}">💾 Save draft</button>
             <button data-m="finish" style="${BTNP}">✓ ${iv.status === 'Finished' ? 'Save' : 'Finish'}</button></div>` : ''}`;
+      const xh = box.querySelector('[data-xhost]');
+      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, beforeRun: () => S.dirty ? save(false) : null,
+        onApplied: answers => { if (answers) { S.answers = answers.slice(); S.iv.answers = answers.slice(); S.dirty = false; draw(); } } }); xh.appendChild(S.xEl); }
     }
     async function save(finish, extra) {
       S.busy = finish ? 'Saving + teaching your voice…' : 'Saving…'; draw();
@@ -130,5 +195,5 @@
       changed(); if (iv) open({ call: cfg.call, interviewId: iv.id, onDone: cfg.onDone }); return iv || null; }
     catch (err) { alert('Could not request the interview: ' + err.message); return null; }
   }
-  window.InterviewPanel = { list, open, request, onChange: f => listeners.add(f) };
+  window.InterviewPanel = { list, open, request, expert, onChange: f => listeners.add(f) };
 })();

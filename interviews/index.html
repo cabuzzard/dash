@@ -46,6 +46,7 @@
 </head>
 <body>
 <div id="app"></div>
+<script src="../shared/interview-panel.js?v=2026101003"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 let TOKEN = localStorage.getItem('hermes_token_remember') || sessionStorage.getItem('hermes_token') || null;
@@ -117,6 +118,7 @@ function draw() {
     <div class="title">${esc(x.title)}</div><span class="angle">${esc(x.angle || 'Interview')}</span>
     ${x.why ? `<div class="why">${esc(x.why)}</div>` : ''}
     ${x.qs.map((q, i) => `<div class="q"><label for="a${i}">${i + 1}. ${esc(q)}</label><textarea id="a${i}" data-a="${i}" placeholder="Say it the way you'd say it — skip any that don't apply">${esc(S.answers[i] || '')}</textarea></div>`).join('')}
+    <div id="xhost"></div>
     <div style="display:flex;gap:8px;margin-top:22px;flex-wrap:wrap;">
       <button class="btn small" id="saveDraft">💾 Save draft</button>
       <a class="btn small" style="text-decoration:none;" href="${esc(x.url)}" target="_blank" rel="noopener">Notion ↗</a>
@@ -127,6 +129,14 @@ function draw() {
       <button class="btn" id="skip">Skip ›</button>
       <button class="btn primary" id="finish" ${S.busy ? 'disabled' : ''}>${S.busy ? esc(S.busy) : `✓ Finish & next${n ? ` (${n}/${x.qs.length})` : ''}`}</button></div></div>`;
   wire();
+  // 🔎 Expert check (shared/interview-panel.js) — one live panel per interview, re-attached after every draw
+  const xh = document.getElementById('xhost');
+  if (xh && window.InterviewPanel && window.InterviewPanel.expert) {
+    S.xEls = S.xEls || {};
+    S.xEls[x.id] = S.xEls[x.id] || window.InterviewPanel.expert({ call, interviewId: x.id, beforeRun: () => S.dirty ? saveCur(false) : null,
+      onApplied: answers => { if (answers) { x.answers = answers.slice(); S.answers = answers.slice(); S.dirty = false; draw(); } } });
+    xh.appendChild(S.xEls[x.id]);
+  }
 }
 async function saveCur(finish) {
   const x = flagged()[S.idx]; if (!x) return;
