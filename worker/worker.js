@@ -824,7 +824,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   let t = null, product = null;
   for (let k = 0; k < mains.length && !t; k++) {
     product = mains[(have + k) % mains.length];
-    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nFind a CURRENT, real development this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
+    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: product.name, newsBody: lead, allowDuplicate: k === mains.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
@@ -846,6 +846,40 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
   return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, siteError: g.siteError || "", thumb, thumbError, had: have };
+}
+// rewriteHubNewsPost {assetId} — fix a published hub news post IN PLACE (same blog URL): a new dated, no-invention headline
+// → the title renamed + its pillar rewritten (grounded) → refreshBlogAssetFromPillar republishes under the existing slug →
+// a new Grok thumbnail. For posts written before the date / no-invention rules (2026-10-10: "2025" headlines, an
+// invented "2027 Helpful Content Update").
+async function rewriteHubNewsPost(env, assetId) {
+  const aid = String(assetId || "").replace(/-/g, ""), nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const hdr = { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+  const ap = await fetch(`https://api.notion.com/v1/pages/${nd(aid)}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+  const titleId = ((ap.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "");
+  if (!titleId) return { error: "asset has no title" };
+  const tp = await fetch(`https://api.notion.com/v1/pages/${nd(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+  const rt = k => (tp.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+  const oldHead = (tp.properties?.Title?.title || []).map(t => t.plain_text).join("").trim();
+  const pid = ((tp.properties?.product?.relation || [])[0]?.id || "").replace(/-/g, "");
+  let prod = "";
+  if (pid) { const pp = await fetch(`https://api.notion.com/v1/pages/${nd(pid)}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+    prod = `${(pp.properties?.Name?.title || []).map(t => t.plain_text).join("")}: ${(pp.properties?.Description?.rich_text || []).map(t => t.plain_text).join("")}`; }
+  const today = new Date().toISOString().slice(0, 10), yr = today.slice(0, 4);
+  const hr = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, tools: [{ name: "submit", description: "The corrected headline.", input_schema: { type: "object", required: ["headline", "angle"], properties: { headline: { type: "string" }, angle: { type: "string" }, searchIntent: { type: "string" } } } }], tool_choice: { type: "tool", name: "submit" },
+      messages: [{ role: "user", content: `TODAY'S DATE: ${today} (current year ${yr}; the next plan / enrollment year is ${+yr + 1}).\nThis blog headline was written with the wrong date and/or presents a news event as fact that may not exist:\n"${oldHead}"\n${rt("Core Idea") ? "Its angle: " + rt("Core Idea") + "\n" : ""}${prod ? "The product it supports: " + prod + "\n" : ""}\nWrite a corrected, search-friendly headline on the same subject for the same audience. Every year must be right for today. Never name an update, law, study, report or statistic unless it is real and public; never present an unannounced future event as news. If the original hook can't be verified, turn it into a practical explainer headline. Also give the article's angle (one sentence) and the primary search intent. Call submit.` }] }) }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
+  const h = ((hr.content || []).find(b => b.type === "tool_use") || {}).input;
+  if (!h || !h.headline) return { error: "headline: " + ((hr.error && hr.error.message) || "none") };
+  const style = `Today's date is ${today} — every year, deadline and "this year / next year" reference must be correct for today (current year ${yr}). Never invent a named update, law, study, report or statistic; never present an unannounced future event as news — if no real, public development fits, write a practical explainer. Write an original news-analysis / explainer article: why it matters to our audience, background, analysis, practical implications and what to do, what remains unknown, a short close.`;
+  const wp = await selfAction(env, "writeTitlePillar", { titleId, newTitle: h.headline, styleGuidance: style, researchOverride: [`Angle: ${h.angle}`, h.searchIntent && `Primary search intent: ${h.searchIntent}`].filter(Boolean).join("\n") });
+  if (!wp || wp.error) return { error: "pillar: " + ((wp && wp.error) || "no response"), headline: h.headline };
+  await fetch(`https://api.notion.com/v1/pages/${nd(aid)}`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ properties: { "Asset Title": { title: [{ text: { content: h.headline.slice(0, 200) } }] } } }) }).catch(() => {});
+  const rf = await selfAction(env, "refreshBlogAssetFromPillar", { assetId: aid });
+  if (!rf || rf.error) return { error: "refresh: " + ((rf && rf.error) || "no response"), headline: h.headline };
+  let thumb = false;
+  const im = await selfAction(env, "generateBlogPostThumbnail", { assetId: aid });
+  if (im && im.imageUrl) { const sv = await selfAction(env, "saveOfferImage", { assetId: aid, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true }); thumb = !(sv && sv.error); }
+  return { ok: true, old: oldHead, headline: h.headline, words: wp.wordCount, liveUrl: rf.liveUrl || "", thumb };
 }
 async function hubNewsCronTick(env) {
   const K = "hubnews:round";
@@ -11318,7 +11352,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -14457,6 +14491,7 @@ Return: {
         const planPrompt = `You are an editor and research writer for a niche content site.
 
 TODAY'S DATE: ${todayIso}. Write for now: any year you name must be right for today (the current year is ${thisYear}; "next year" / an upcoming plan or enrollment year is ${+thisYear + 1}). Never present an earlier year as current or upcoming.
+NO INVENTED NEWS: never name an update, law, rule, study, report, price change or statistic unless it is real and already public. Do not announce future events nobody has announced (no "2027 update preview"). If the item below gives no verifiable development, write the headline as a useful, evergreen explainer for this audience instead of a news claim.
 
 Below is a NEWS ITEM about a development relevant to our audience. Treat it ONLY as a research lead — you are NOT rewriting, paraphrasing, spinning, or reproducing it. We are going to publish an ORIGINAL analysis article that stands on its own.
 
@@ -14534,7 +14569,7 @@ Return ONLY this JSON, no other text, no markdown fences:
         const newNewsTitleId = titleResult.id.replace(/-/g, "");
 
         // ── Write the original-article pillar draft ──
-        const pillarStyle = `Today's date is ${todayIso} — every year, deadline and "this year / next year" reference must be correct for today (current year ${thisYear}). ` + "Write this as an ORIGINAL news-analysis article that stands on its own — do NOT mirror the source item's structure, order, wording, headline, or framing, and do NOT reproduce or paraphrase it. Follow this logical flow as continuous prose: what happened and why it matters to our audience; necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what still remains unknown; a short close. Never fabricate facts, quotes, statistics, or sources — if a claim from the source item can't be stated with confidence, frame it as reported/unverified.";
+        const pillarStyle = `Today's date is ${todayIso} — every year, deadline and "this year / next year" reference must be correct for today (current year ${thisYear}). Never invent a named update, law, study, report or statistic, and never present an unannounced future event as news; if no real development is found, write a practical explainer. ` + "Write this as an ORIGINAL news-analysis article that stands on its own — do NOT mirror the source item's structure, order, wording, headline, or framing, and do NOT reproduce or paraphrase it. Follow this logical flow as continuous prose: what happened and why it matters to our audience; necessary background; original analysis and explanation; practical implications for our audience; relevant comparisons, calculations, examples, or context; what still remains unknown; a short close. Never fabricate facts, quotes, statistics, or sources — if a claim from the source item can't be stated with confidence, frame it as reported/unverified.";
         const newsPillarResult = await writePillarContent(hdr, env, {
           titleId: newNewsTitleId, titleText: headline, campaignId,
           productId: productId || undefined, methodId: newsMethodId,
@@ -26612,6 +26647,7 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (body.startsRound) { const rd = (await env.TRADES.get("hubnews:round", "json").catch(() => null)) || {}; await env.TRADES.put("hubnews:round", JSON.stringify({ ...rd, startedAt: new Date().toISOString(), queue: [], done: rd.done || [] })); }
         try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); }
       }
+      if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "getHubNewsRound") return json({ ok: true, round: await env.TRADES.get("hubnews:round", "json").catch(() => null) });
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
       if (body.action === "runMainProductResearch") return json(await runMainProductResearch(env, body.productIds ? { campaignId: body.campaignId, productIds: body.productIds } : null));
