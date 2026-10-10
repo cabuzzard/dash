@@ -788,10 +788,11 @@ async function handleStudio(env, body) {
 // (rotating through them): createNewsBlogTitle (headline + grounded news-analysis pillar, the product as the lead) →
 // generateTitleAssets (SEO post branch: writes the article and publishes it to web/hub/<slug>/blog/) → Published +
 // Hub Section News → Grok blog thumbnail (generateBlogPostThumbnail → saveOfferImage, which republishes the post).
-// writeHubNewsPost {campaignId, force?} does one hub; the */30 cron runs hubNewsCronTick: every 48 h a new round queues
-// every hub still under HUB_NEWS_TARGET published news posts, then each tick writes ONE (fits the cron's time budget).
+// writeHubNewsPost {campaignId, force?} does one hub; the */30 cron runs hubNewsCronTick. A round = one post for every hub
+// (one hub per tick — fits the cron's time budget). Build-up: a round every 48 h for the hubs still under HUB_NEWS_TARGET
+// published news posts. Once EVERY hub has HUB_NEWS_TARGET: a round every 7 days for all hubs, indefinitely.
 // KV hubnews:round = {startedAt, queue:[cid], done:[{cid, ok, headline, error}]}.
-const HUB_NEWS_TARGET = 3, HUB_NEWS_EVERY_MS = 48 * 3600 * 1000;
+const HUB_NEWS_TARGET = 3, HUB_NEWS_EVERY_MS = 48 * 3600 * 1000, HUB_NEWS_WEEKLY_MS = 7 * 24 * 3600 * 1000;
 async function selfAction(env, action, extra) {
   const token = await signToken((env.HMAC_SECRET || "").trim());
   const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
@@ -845,10 +846,15 @@ async function hubNewsCronTick(env) {
   const K = "hubnews:round";
   let rd = await env.TRADES.get(K, "json").catch(() => null);
   if (!rd) { await env.TRADES.put(K, JSON.stringify({ startedAt: new Date().toISOString(), queue: [], done: [] })); return { seeded: true }; }   // first sight: the clock starts now
-  if (((!rd.queue || !rd.queue.length) && Date.now() - Date.parse(rd.startedAt || 0) >= HUB_NEWS_EVERY_MS)) {
-    const queue = [];
-    for (const h of HUB_SITES) { const cid = String(h.campaignId || "").replace(/-/g, ""); if (cid && (await hubNewsCount(env, cid)) < HUB_NEWS_TARGET) queue.push(cid); }
-    rd = { startedAt: new Date().toISOString(), queue, done: [] };
+  if ((!rd.queue || !rd.queue.length) && Date.now() - Date.parse(rd.startedAt || 0) >= (rd.weekly ? HUB_NEWS_WEEKLY_MS : HUB_NEWS_EVERY_MS)) {
+    const all = [], under = [];
+    for (const h of HUB_SITES) { const cid = String(h.campaignId || "").replace(/-/g, ""); if (!cid) continue; all.push(cid); if ((await hubNewsCount(env, cid)) < HUB_NEWS_TARGET) under.push(cid); }
+    const weekly = !under.length;   // every hub has its 3 → weekly rounds for all hubs from here on
+    if (weekly && !rd.weekly && Date.now() - Date.parse(rd.startedAt || 0) < HUB_NEWS_WEEKLY_MS) {   // just finished build-up: first weekly round a week after the last one
+      rd.weekly = true; await env.TRADES.put(K, JSON.stringify(rd)); return { switchedToWeekly: true };
+    }
+    const queue = weekly ? all : under;
+    rd = { startedAt: new Date().toISOString(), queue, done: [], weekly };
     await env.TRADES.put(K, JSON.stringify(rd));
     return { started: queue.length };
   }
@@ -856,7 +862,7 @@ async function hubNewsCronTick(env) {
   if (rd.busyUntil && Date.now() < rd.busyUntil) return { busy: true };
   const cid = rd.queue[0];
   rd.busyUntil = Date.now() + 25 * 60000; await env.TRADES.put(K, JSON.stringify(rd));
-  let r; try { r = await writeHubNewsPost(env, cid); } catch (e) { r = { error: e.message }; }
+  let r; try { r = await writeHubNewsPost(env, cid, { force: !!rd.weekly }); } catch (e) { r = { error: e.message }; }
   rd = (await env.TRADES.get(K, "json").catch(() => null)) || rd;
   rd.queue = (rd.queue || []).filter(x => x !== cid); delete rd.busyUntil;
   rd.done = (rd.done || []).concat([{ cid, ok: !!r.ok, skipped: !!r.skipped, headline: r.headline || "", error: r.error || "", at: new Date().toISOString() }]).slice(-40);
