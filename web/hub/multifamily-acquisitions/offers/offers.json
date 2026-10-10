@@ -1,5 +1,15 @@
 [
   {
+    "slug": "off-market-pipeline",
+    "name": "Off-Market Pipeline",
+    "kicker": "Retainer · $1,500–$3,000/mo",
+    "promise": "A weekly pipeline of vetted, underwritten off-market multifamily deals aimed at your buy box — so you evaluate opportunities instead of hunting for them.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81b88163e718406d37bb",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/off-market-acquisition-partner-blog-thumbnail-mv21blil.png"
+  },
+  {
     "slug": "deal-underwriting-review",
     "name": "Deal Underwriting Review",
     "kicker": "Fixed-fee review · $750–$1,500 per property",
@@ -18,14 +28,5 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81a39177c4519031ff5f",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/multifamily-deal-finder-blog-thumbnail-mv21awn8.png"
-  },
-  {
-    "slug": "off-market-pipeline",
-    "name": "Off-Market Pipeline",
-    "kicker": "Retainer · $1,500–$3,000/mo",
-    "promise": "A weekly pipeline of vetted, underwritten off-market multifamily deals aimed at your buy box — so you evaluate opportunities instead of hunting for them.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81b88163e718406d37bb"
   }
 ]
