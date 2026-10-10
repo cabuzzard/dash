@@ -1,5 +1,14 @@
 [
   {
+    "slug": "trip-matchmaker",
+    "name": "Trip Matchmaker",
+    "kicker": "Personalized match · $49 (credited back on booking)",
+    "promise": "From a hundred open tabs and a stalled group chat — to a shortlist of vetted trips matched to your level, your crew, and the right swell window.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81c4bdaaf08ad94caf44"
+  },
+  {
     "slug": "surf-charter-insider-alerts",
     "name": "Surf Charter Insider Alerts",
     "kicker": "Free newsletter · No commitment",
