@@ -594,6 +594,7 @@
         + card('assets', '🖼 Asset images', Object.keys(S.renders).length ? Object.keys(S.renders).length + ' rendered' : 'hero · signup · posts · thumbnails — from the spec', assetsBody)
         + card('grok', '✨ Test on Grok', S.plate ? 'approved plate set' : 'saved spec → plate', grokBody)
         + card('voice', '🗣 Your voice', 'learned from your edits', voiceBody)
+        + card('interviews', '🎤 Interviews', 'your answers per title → its writers + your voice', () => window.InterviewPanel ? '<div data-ivhost></div>' : '<div style="font-size:11px;">interview-panel.js not loaded</div>')
         + `<div style="position:sticky;bottom:0;z-index:2;display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border:1px solid ${diff.length ? C.warn : C.line};border-radius:8px;background:${C.surf2};font-size:11.5px;">
             ${S.busy || S.msg ? `<div style="flex-basis:100%;font-size:11.5px;color:${S.busy ? C.ink2 : S.msgKind === 'bad' ? C.bad : S.msgKind === 'ok' ? C.ok : C.ink3};">${S.busy ? '⏳ <span data-timer>' + (S.work ? '' : '') + '</span> ' : ''}${e(S.busy || S.msg)}${!S.busy && S.msg ? ` <button data-act="msgClear" title="Dismiss" style="${BTN}font-size:9.5px;padding:0 6px;margin-left:4px;">✕</button>` : ''}${S.pipe && S.work ? pipeList() : ''}</div>` : ''}
             <div style="flex:1;min-width:180px;"><b>${filled}/${total} fields</b> · ${diff.length ? `<b style="color:${C.warn};">${diff.length} staged, not saved</b>` : `<span style="color:${C.ok};">saved${S.savedAt ? ' ' + e(String(S.savedAt).slice(0, 10)) : ''}</span>`}${sugg ? ` · <span style="color:${C.warn};">${sugg} suggestions</span>` : ''}${stale() ? ` · <span style="color:${C.warn};">visuals out of date</span>` : ''}</div>
@@ -603,6 +604,9 @@
             <button ${diff.length ? '' : 'disabled'} data-act="revert" style="${BTN}">↺ Revert all</button>
             ${S.work && S.work.act === 'save' ? `<button disabled style="${BTNP}opacity:.9;cursor:wait;">⏳ <span data-timer>0:00</span> saving…</button>` : `<button ${S.busy ? 'disabled' : ''} data-act="save" style="${BTNP}">💾 Save all</button>`}
             ${S.slug ? `<button ${dis} data-act="publish" title="Put the SAVED spec's palette + fonts on the live hub" style="${BTN}">⇪ Publish to hub</button>` : ''}</div>`;
+      // 🎤 Interviews card: one live list element per panel, re-attached after every render (shared/interview-panel.js)
+      const ivHost = root.querySelector('[data-ivhost]');
+      if (ivHost && window.InterviewPanel) { S.ivEl = S.ivEl || window.InterviewPanel.list({ call: cfg.call, campaignId: S.cid }); ivHost.appendChild(S.ivEl); }
     }
 
     // ── events ──

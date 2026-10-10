@@ -884,6 +884,7 @@
        replace both Development and Publishing; for now it's additive. -->
   <div class="tab-panel" id="tabDev2">
     <div id="reviewFlagsAll" style="margin:0 0 14px;"></div>
+    <div id="ivFlagsAll" style="margin:0 0 14px;"></div>
     <div class="oc-sec" data-ock="alloutput"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every product, title and asset from Notion.</span></div>
@@ -4203,7 +4204,8 @@
   </div>
 </div>
 
-<script src="shared/design-panel.js?v=2026100915079"></script>
+<script src="shared/design-panel.js?v=2026101001"></script>
+<script src="shared/interview-panel.js?v=2026101001"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -5679,7 +5681,7 @@ function loadTabContent(name) {
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); plLoad(); }
-  if (name === 'dev2') reviewFlagsLoad();
+  if (name === 'dev2') { reviewFlagsLoad(); ivFlagsLoad(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('new'); loadFlowTable('methods').then(() => loadFlowTable('subassets')); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
@@ -10732,7 +10734,7 @@ let DEV2_SORT = (() => { try { const v = JSON.parse(localStorage.getItem('dev2So
 // can never fire against rows the operator can no longer see.
 let DEV2_SELECTED = new Set();
 let DEV2_VISIBLE_ROWS = [];
-function dev2RowKey(r) { return r.assetId ? ('a:' + r.assetId) : r.titleId ? ('t:' + r.titleId) : ('p:' + (r.productId || r.product)); }
+function dev2RowKey(r) { return r.interviewId ? ('i:' + r.interviewId) : r.assetId ? ('a:' + r.assetId) : r.titleId ? ('t:' + r.titleId) : ('p:' + (r.productId || r.product)); }
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
   { key: 'hub',          label: 'Hub' },
@@ -11241,6 +11243,15 @@ function dev2LoadSaved() {
   DEV2_SELECTED.clear(); dev2DrawPanel(); renderDev2();
 }
 function dev2SaveClick(btn) { dev2SaveState(); const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); }
+// 🎤 interview rows (kind "interview", Flagged / Finished) open the shared answer modal (shared/interview-panel.js)
+function dev2OpenInterview(id) {
+  if (!window.InterviewPanel) return alert('interview-panel.js did not load — reload the page.');
+  window.InterviewPanel.open({ call, interviewId: id, onDone: iv => {
+    const i = DEV2_ROWS.findIndex(r => r.interviewId === id); if (i === -1) return;
+    if (!iv) DEV2_ROWS.splice(i, 1); else Object.assign(DEV2_ROWS[i], { status: iv.status, ivStatus: iv.status, assetName: '🎤 ' + (iv.angle || 'Interview') });
+    renderDev2();
+  } });
+}
 function renderDev2() {
   const el = document.getElementById('dev2Content');
   const countEl = document.getElementById('dev2Count');
@@ -11283,7 +11294,7 @@ function renderDev2() {
     const key = dev2RowKey(r);
     const dash = '<span style="color:var(--text3);">—</span>';
     const titleCell = r.titleId ? `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>` : dash;
-    const assetNameCell = r.assetId ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.assetName || '(untitled asset)')}</a>` : dash;
+    const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.assetName || '(untitled asset)')}</a>` : dash;
     const assetTypeCell = r.assetId ? esc(r.assetType || '?') : dash;
     const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
     // Hub → the care-gap-v2 microsite template, the campaign-agnostic
@@ -11294,7 +11305,7 @@ function renderDev2() {
       : '';
     const isSel = DEV2_SELECTED.has(key);
     return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
-      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"><button title="Edit this row's fields" onclick="dev2EditOpen('${esc(key)}')" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
+      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)"><button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.hubSection || '')}</td>
@@ -11304,7 +11315,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${r.titleId ? `<input type="checkbox" title="Select this title for bulk actions" ${DEV2_SEL_T.has(r.titleId) ? 'checked' : ''} onclick="dev2ToggleRec('t','${esc(r.titleId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${titleCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
-      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : r.status === 'Review' ? '#ff7a00;color:#111;font-weight:700' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
+      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : (r.status === 'Review' || r.status === 'Flagged') ? '#ff7a00;color:#111;font-weight:700' : r.status === 'Finished' ? 'rgba(58,154,91,.22)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
     </tr>`;
   };
   let tbody = '';
@@ -15330,6 +15341,30 @@ async function reviewFlagDone(id, btn) {
   const row = btn.closest('div'); if (row) row.remove();
   Object.values(_hubBuild || {}).forEach(b => { if (b && b.flags) b.flags = b.flags.filter(f => f.id !== id); });
 }
+// 🎤 Flagged interviews — all hubs (All Output) and per hub (build checklist). Same modal as the Design panel card.
+function ivHubName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === String(cid || '').replace(/-/g, '')); return h ? h.name : ''; }
+function ivFlagRows(list, showHub) {
+  const B = 'font-size:10px;padding:1px 8px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;';
+  return list.map(x => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;">
+    <span>🎤</span>${showHub ? `<span style="color:var(--text3);min-width:150px;">${esc(ivHubName(x.cid) || '—')}</span>` : ''}
+    <span style="flex:1;min-width:160px;color:var(--text);">${esc(x.title)} <span style="color:var(--text3);font-size:11px;">· ${esc(x.angle || 'interview')} · ${x.n != null ? x.n : (x.qs || []).length} questions</span></span>
+    <button style="${B}" onclick="ivFlagOpen('${esc(x.id)}')">Answer →</button></div>`).join('');
+}
+function ivFlagOpen(id) {
+  if (!window.InterviewPanel) return alert('interview-panel.js did not load — reload the page.');
+  window.InterviewPanel.open({ call, interviewId: id, onDone: () => { ivFlagsLoad(); Object.values(_hubBuild || {}).forEach(b => { if (b && b.interviews) b.interviews = b.interviews.filter(x => x.id !== id); }); } });
+}
+async function ivFlagsLoad() {
+  const el = document.getElementById('ivFlagsAll'); if (!el) return;
+  const r = await call('getInterviews', { status: 'Flagged' }).catch(e => ({ error: e.message }));
+  const list = (r && r.interviews) || [];
+  el.innerHTML = `<div style="border:1px solid ${list.length ? '#ff7a00' : 'var(--border)'};border-radius:10px;background:var(--surface);">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);">
+      <span style="font-size:14px;font-weight:700;color:var(--text);">🎤 Interviews waiting — all hubs</span>
+      <span style="font-size:11px;color:var(--text3);">${r && r.error ? '✗ ' + esc(r.error) : list.length + ' flagged · your answers feed the title\'s writers + 🗣 your voice'}</span>
+      <button onclick="ivFlagsLoad()" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></div>
+    ${list.length ? ivFlagRows(list, true) : '<div style="padding:10px;font-size:12px;color:var(--text3);">No interviews waiting.</div>'}</div>`;
+}
 async function reviewFlagsLoad() {
   const el = document.getElementById('reviewFlagsAll'); if (!el) return;
   const r = await call('getReviewFlags', { status: 'open' }).catch(e => ({ error: e.message }));
@@ -15344,7 +15379,8 @@ async function reviewFlagsLoad() {
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
-  const flagBox = (b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '';
+  const ivBox = (b.interviews || []).length ? `<div style="border:1px solid #ff7a00;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#ff7a00;border-bottom:1px solid var(--border);">🎤 ${b.interviews.length} interview${b.interviews.length === 1 ? '' : 's'} waiting for your answers</div>${ivFlagRows(b.interviews, false)}</div>` : '';
+  const flagBox = ivBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
   const h = HUB_SITES.find(x => x.slug === slug) || {};
   const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
   let lastPhase = '';
@@ -16777,6 +16813,9 @@ const CRON_REGISTRY = [
   { fn: 'hubNewsCronTick', cron: '*/30 * * * *', when: 'Randomised per hub: every 3-10 h until a hub has 3, then twice a week · 7am-9pm Pacific', group: 'Links / content',
     what: 'Hub news: every 2 days, one Blog - SEO - News post for each hub still under 3 published news posts — headline + grounded pillar off a rotating main product, article published to the hub blog (News section), Grok blog thumbnail. Each hub has its own random next-post time (never all at once, random minute), so posting does not look machine-timed. Once a hub has 3, it posts twice a week, 2.5-4.5 days apart.',
     io: 'Notion: Content Strategy + Assets · GitHub: web/hub/<slug>/blog/ · KV hubnews:sched / hubnews:log' },
+  { fn: 'ivCronTick', cron: '*/30 * * * *', when: 'Every 30 min · up to 3 new titles per tick', group: 'Links / content',
+    what: '🎤 Interviews: titles created since 2026-10-10 with no interview get 1-3 questionnaires (title + pillar + product research + hub audience). Titles whose method never uses interviews (news, offers, listings) are skipped. They land Flagged on All Output, the build checklist and the Design panel 🎤 card.',
+    io: 'Notion: Content Strategy → 🎤 Interviews · KV iv:skip:<titleId>' },
   { fn: 'runTradePoll', cron: '*/4 * * * *', when: 'Every 4 min in US market hours · hourly otherwise', group: 'Trading',
     what: 'Paper-trade price tracker (replaced the local Windows poller 2026-09-28). Refreshes the 15 least-recently-updated active trades per tick; highs/lows come from Yahoo 5m bars since entry for both the underlying and the option contract, so missed ticks lose nothing. Archives expired trades to Notion.',
     io: 'KV: trades:*, tradepoll:last · Notion: Trades (on expiry)' },

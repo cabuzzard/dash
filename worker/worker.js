@@ -931,6 +931,110 @@ async function cronRunningNow(env) {
 // Pain Points, Emotions, Transformation, Objections). Operator rule (2026-10-10): everything published on a hub's main
 // site must fit this audience — the keywords only say what is searched, the audience decides which searches belong.
 // KV-cached 6 h (hubaudience:<cid>).
+// ══ 🎤 INTERVIEWS (2026-10-10) ══ the operator's own answers about a TITLE, one-to-many (Notion 🎤 Interviews DB).
+// Status: Flagged (waiting for answers) · Finished (answered). A Finished interview feeds (1) every writer run for
+// that title (ivBlock, appended to body.__voice in the writer pre-step) and (2) the voice engine (voiceLogSamples →
+// voiceRelearn → voiceBlock, which every writer already reads). How much an asset leans on it = ivImportance(type):
+// "depends" types are HELD in generateTitleAssets until one interview is Finished; "borrow" types use it where it
+// fits; "none" types (news, offers, listings…) ignore it and their titles get no auto-interviews. New titles
+// (created ≥ IV_SINCE) get 1-3 questionnaires from ivCronTick (*/30). UI: shared/interview-panel.js — the
+// 🎤 Interviews card next to 🗣 Your voice (shared Design panel), plus All Output rows and the ⚑ flag panels.
+const INTERVIEWS_DB = "aa36e9fb482c46559b3779157204a764";
+const IV_SINCE = "2026-10-10T00:00:00.000Z";
+function ivImportance(t) {
+  t = String(t || "");
+  if (/interview|presenter|case study|testimonial|founder|personal story|question-led|avatar|talking head/i.test(t)) return "depends";
+  if (/\bnews\b|offer|listing|etsy|craigslist|marketplace|thumbnail|product page|newsletter issue|email hub main|printify|t-?shirt/i.test(t)) return "none";
+  return "borrow";
+}
+const ivRt = t => { const x = String(t || ""), out = []; for (let i = 0; i < x.length && out.length < 100; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; };
+const ivDash = x => { const v = String(x || "").replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+const ivHdr = () => ({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" });
+function ivFormatAnswers(qs, answers) { return qs.map((q, i) => `Q: ${q}\nA: ${String(answers[i] || "").trim()}`).join("\n\n"); }
+function ivParse(pg) {
+  const p = pg.properties || {}, txt = k => (p[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const qs = txt("Questions").split("\n").map(x => x.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean);
+  const byQ = {};
+  txt("Answers").split(/\n\n(?=Q: )/).forEach(b => { const m = /^Q: ([\s\S]*?)\nA: ?([\s\S]*)$/.exec(b.trim()); if (m) byQ[m[1].trim()] = m[2].trim(); });
+  return { id: pg.id.replace(/-/g, ""), title: (p.Name?.title || []).map(t => t.plain_text).join(""), status: p.Status?.select?.name || "Flagged",
+    angle: txt("Angle"), why: txt("Why"), qs, answers: qs.map(q => byQ[q] || ""),
+    titleId: ((p.Title?.relation || [])[0]?.id || "").replace(/-/g, ""), cid: ((p.Campaign?.relation || [])[0]?.id || "").replace(/-/g, ""),
+    created: pg.created_time, finishedAt: p["Finished At"]?.date?.start || null, url: pg.url };
+}
+async function ivList(filter) {
+  const rows = await notionQuery(INTERVIEWS_DB, filter ? { filter, sorts: [{ timestamp: "created_time", direction: "ascending" }] } : { sorts: [{ timestamp: "created_time", direction: "ascending" }] });
+  return rows.filter(r => !r.archived && !r.in_trash).map(ivParse);
+}
+const ivForTitle = titleId => ivList({ property: "Title", relation: { contains: ivDash(titleId) } });
+// The writer-side block: every FINISHED interview for this title, as first-hand source material.
+async function ivBlock(env, titleId) {
+  if (!titleId) return { text: "", cid: "" };
+  const done = (await ivForTitle(titleId).catch(() => [])).filter(x => x.status === "Finished" && x.answers.some(a => a.trim()));
+  if (!done.length) return { text: "", cid: "" };
+  const body = done.map(x => `[${x.angle || "interview"}]\n` + x.qs.map((q, i) => x.answers[i] ? `Q: ${q}\nTHEIR ANSWER: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
+  return { cid: done[0].cid, text: `\nTHE OPERATOR'S OWN INTERVIEW ANSWERS FOR THIS TITLE — first-hand material: their experience, stories, opinions, numbers. Use it wherever it fits this format; their specifics, examples and phrasing beat generic claims. Never invent experiences beyond what they said, and never contradict it:\n${body}\n\n` };
+}
+// Write 1-3 questionnaires for a title (or `count`), grounded in the title, its pillar, its product's research and the hub audience.
+async function ivCreateForTitle(env, titleId, opts = {}) {
+  const hdr = ivHdr();
+  const tp = await fetch(`https://api.notion.com/v1/pages/${ivDash(titleId)}`, { headers: hdr }).then(r => r.json());
+  if (!tp || !tp.properties) throw new Error("title not found");
+  const P = tp.properties, name = (P.Title?.title || []).map(t => t.plain_text).join("").trim();
+  const cid = ((P.Campaign?.relation || [])[0]?.id || "").replace(/-/g, ""), pid = ((P.product?.relation || [])[0]?.id || "").replace(/-/g, "");
+  const mid = ((P.method?.relation || [])[0]?.id || "").replace(/-/g, "");
+  let method = "";
+  if (mid) { const mp = await fetch(`https://api.notion.com/v1/pages/${ivDash(mid)}`, { headers: hdr }).then(r => r.json()).catch(() => ({})); method = (mp.properties?.Name?.title || []).map(t => t.plain_text).join(""); }
+  if (!opts.force && ivImportance(method) === "none") return { skipped: "method " + method + " doesn't use interviews", interviews: [] };
+  const existing = await ivForTitle(titleId).catch(() => []);
+  let prodRes = "";
+  if (pid) { const pr = await findBestProductResearchRecord(hdr, ivDash(pid)).catch(() => null); if (pr) prodRes = STRATEGY_FIELDS.map(f => { const v = lfReadRich(pr.properties?.[f]); return v && `${f}: ${v.slice(0, 500)}`; }).filter(Boolean).join("\n").slice(0, 3500); }
+  const audience = cid ? await hubAudienceBlock(env, cid).catch(() => "") : "";
+  const pillar = await extractPillarContent(hdr, ivDash(titleId)).catch(() => "");
+  const want = opts.count ? Math.min(3, Math.max(1, parseInt(opts.count))) : 0;
+  const prompt = `You prepare INTERVIEWS of a business owner, so the content written for one title carries their real experience instead of generic claims.
+
+TITLE: ${name}${method ? `\nMETHOD (how it will be published): ${method}` : ""}
+${audience}${prodRes ? `\nTHE PRODUCT THIS TITLE SERVES (product research):\n${prodRes}\n` : ""}${pillar ? `\nTHE TITLE'S PILLAR SO FAR (excerpt):\n${String(pillar).slice(0, 2500)}\n` : ""}${existing.length ? `\nINTERVIEWS ALREADY ON THIS TITLE (don't repeat these angles or questions):\n${existing.map(x => `- ${x.angle}: ${x.qs.join(" | ")}`).join("\n").slice(0, 2500)}\n` : ""}${opts.direction ? `\nOPERATOR'S DIRECTION FOR THIS INTERVIEW: ${opts.direction}\n` : ""}
+Write ${want ? `exactly ${want}` : "1 to 3"} interview${want === 1 ? "" : "s"} — ${want ? "" : "as many as this title genuinely needs (1 is fine for a narrow title); "}each a distinct ANGLE (e.g. a story from a client, how they actually do the work, their strong opinion / what most advice gets wrong, a mistake and what it taught them, the numbers they know, the questions people ask them). Each interview: 5-8 short, specific questions a busy owner can answer by typing from memory — about THEIR experience with THIS title's subject for THIS audience. No generic questions, no questions the research already answers, no yes/no questions. Call submit_interviews.`;
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2500, messages: [{ role: "user", content: prompt }],
+      tools: [{ name: "submit_interviews", description: "The interviews.", input_schema: { type: "object", required: ["interviews"], properties: { interviews: { type: "array", minItems: 1, maxItems: 3, items: { type: "object", required: ["angle", "why", "questions"], properties: {
+        angle: { type: "string", description: "2-5 word angle name" }, why: { type: "string", description: "one line: what these answers will add to this title's content" },
+        questions: { type: "array", minItems: 4, maxItems: 9, items: { type: "string" } } } } } } } }],
+      tool_choice: { type: "tool", name: "submit_interviews" } }) });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.error?.message || "Claude error");
+  let ivs = ((((d.content || []).find(b => b.type === "tool_use") || {}).input || {}).interviews || []).filter(x => x && (x.questions || []).length);
+  if (want) ivs = ivs.slice(0, want);
+  const made = [];
+  for (const iv of ivs) {
+    const qs = iv.questions.map(q => String(q).trim()).filter(Boolean);
+    const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: INTERVIEWS_DB }, properties: {
+      "Name": { title: ivRt(name.slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] }, ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}),
+      "Status": { select: { name: "Flagged" } }, "Angle": { rich_text: ivRt(String(iv.angle || "").slice(0, 200)) }, "Why": { rich_text: ivRt(String(iv.why || "").slice(0, 500)) },
+      "Questions": { rich_text: ivRt(qs.map((q, i) => `${i + 1}. ${q}`).join("\n")) } } }) }).then(x => x.json());
+    if (cr.id) made.push(ivParse(cr)); else throw new Error("Notion: " + (cr.message || "create failed"));
+  }
+  return { interviews: made, method };
+}
+// */30: new titles (created since IV_SINCE, no interviews yet) get their questionnaires — a few per tick.
+async function ivCronTick(env) {
+  if (!env.ANTHROPIC_API_KEY) return { idle: true };
+  const rows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { and: [{ timestamp: "created_time", created_time: { on_or_after: IV_SINCE } }, { property: "Interviews", relation: { is_empty: true } }] } }).catch(() => []);
+  const out = [];
+  for (const t of rows) {
+    if (out.length >= 3) break;
+    const id = t.id.replace(/-/g, "");
+    if (await env.TRADES.get("iv:skip:" + id)) continue;
+    if (!(t.properties?.Campaign?.relation || []).length) { await env.TRADES.put("iv:skip:" + id, "no campaign", { expirationTtl: 86400 }); continue; }
+    try {
+      const r = await ivCreateForTitle(env, id);
+      if (r.skipped || !r.interviews.length) await env.TRADES.put("iv:skip:" + id, r.skipped || "none");
+      out.push({ id, made: r.interviews.length, skipped: r.skipped || "" });
+    } catch (e) { out.push({ id, error: e.message }); await env.TRADES.put("iv:skip:" + id, "error: " + e.message, { expirationTtl: 6 * 3600 }); }
+  }
+  return out.length ? { titles: out } : { idle: true };
+}
 async function hubAudienceBlock(env, cid) {
   cid = String(cid || "").replace(/-/g, "");
   const K = "hubaudience:" + cid;
@@ -11748,6 +11852,14 @@ export default {
     if (body.campaignId && !body.__client && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
       body.__voice = await voiceBlock(env, body.campaignId).catch(() => "");
     }
+    // 🎤 the title's FINISHED interviews (ivBlock) → every writer for that title, after the voice block
+    if (body.titleId && !body.__client && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
+      const ib = await ivBlock(env, body.titleId).catch(() => ({ text: "" }));
+      if (ib.text) {
+        if (!body.__voice && !body.campaignId && ib.cid) body.__voice = await voiceBlock(env, ib.cid).catch(() => "");
+        body.__voice = (body.__voice || "") + ib.text;
+      }
+    }
 
     try {
       // ── backfillHubBlog ── Content Hubs tab "⟳ Rebuild blog + offers" button.
@@ -13423,7 +13535,8 @@ the one aesthetic risk taken + why:`;
           ];
           const shown = steps.filter(s => !s.hidden);
           const flags = ((await env.TRADES.get("review:flags", "json").catch(() => null)) || []).filter(f => f.slug === slug && f.status === "open").reverse();
-          return json({ slug, campaignId, steps, flags, doneCount: shown.filter(s => s.done).length, total: shown.length });
+          const interviews = campaignId ? (await ivList({ and: [{ property: "Campaign", relation: { contains: ivDash(campaignId) } }, { property: "Status", select: { equals: "Flagged" } }] }).catch(() => [])).map(x => ({ id: x.id, title: x.title, angle: x.angle, n: x.qs.length })) : [];
+          return json({ slug, campaignId, steps, flags, interviews, doneCount: shown.filter(s => s.done).length, total: shown.length });
         }
 
         if (!GT) return json({ error: "GITHUB_TOKEN not configured on the Worker" }, 400);
@@ -14419,12 +14532,15 @@ Return: {
       // a status flip to Published is itself an edit, so this is a close,
       // zero-schema-change proxy rather than an exact timestamp.
       if (body.action === "getDevAssetsTable") {
-        const [campRows, productRows, titleRows, assetRows] = await Promise.all([
+        const [campRows, productRows, titleRows, assetRows, ivRows] = await Promise.all([
           notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } }),
           notionQuery(PRODUCTS_DB, {}),
           notionQuery(CONTENT_STRATEGY_DB, {}),
           notionQuery(ASSETS_DB, {}),
+          ivList(null).catch(() => []),   // 🎤 interviews — their own rows under the title (Flagged / Finished)
         ]);
+        const ivByTitle = {};
+        ivRows.forEach(iv => { if (iv.titleId) (ivByTitle[iv.titleId] ||= []).push(iv); });
         const dropDash = raw => String(raw || "").replace(/-/g, "");
 
         const campById = {};
@@ -14513,6 +14629,8 @@ Return: {
             title: t.title,
             titleId,
           };
+          (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
+            assetName: "🎤 " + (iv.angle || "Interview"), assetType: "Interview", rawAssetType: "Interview", assetStatus: "", hubSection: "", datePublished: iv.finishedAt }));
           const assets = assetsByTitle[titleId] || [];
           if (!assets.length) {
             rows.push({ ...base, kind: "title", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
@@ -14560,7 +14678,7 @@ Return: {
         await Promise.all(campIds.map(async cid => { try { const g = await env.TRADES.get("stackgroups:" + cid, "json"); groupMaps[cid] = (g && g.map) || {}; } catch (e) { groupMaps[cid] = {}; } }));
         rows.forEach(r => {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
-          r.status = r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
+          r.status = r.kind === "interview" ? r.ivStatus : r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
         });
         return json({ rows });
       }
@@ -17003,6 +17121,46 @@ Give a YouTube title in that format. Call submit_questions.`;
       // boxes. 1) the title's own saved interview (lfiv:<titleId>, from 💾 Save answers) — the whole
       // interview + its episode question; 2) else the latest interview SESSION logged for the
       // campaign (voice:samples:<cid>: answers less than 90 min apart, latest answer per question).
+      // ── 🎤 Interviews ── getInterviews {campaignId?|titleId?|status?} · getInterview {interviewId} ·
+      // createInterviews {titleId, count?, direction?} · saveInterview {interviewId, answers[], finish?|reflag?} ·
+      // removeInterview {interviewId}. Finishing one logs the answers as the operator's own words (voice engine).
+      if (body.action === "getInterviews") {
+        const f = [];
+        if (body.titleId) f.push({ property: "Title", relation: { contains: ivDash(body.titleId) } });
+        else if (body.campaignId) f.push({ property: "Campaign", relation: { contains: ivDash(body.campaignId) } });
+        if (body.status) f.push({ property: "Status", select: { equals: String(body.status) } });
+        const list = await ivList(f.length > 1 ? { and: f } : f[0]);
+        return json({ ok: true, interviews: list });
+      }
+      if (body.action === "getInterview") {
+        const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
+        if (!pg || !pg.properties) return json({ error: "interview not found" }, 404);
+        return json({ ok: true, interview: ivParse(pg) });
+      }
+      if (body.action === "createInterviews") {
+        if (!body.titleId) return json({ error: "titleId required" }, 400);
+        const r = await ivCreateForTitle(env, String(body.titleId).replace(/-/g, ""), { force: true, count: body.count, direction: body.direction });
+        return json({ ok: true, ...r });
+      }
+      if (body.action === "saveInterview") {
+        const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
+        if (!pg || !pg.properties) return json({ error: "interview not found" }, 404);
+        const iv = ivParse(pg), answers = (Array.isArray(body.answers) ? body.answers : iv.answers).map(a => String(a || "").slice(0, 4000));
+        const finish = !!body.finish && answers.some(a => a.trim());
+        const props = { "Answers": { rich_text: ivRt(ivFormatAnswers(iv.qs, answers)) } };
+        if (finish) { props.Status = { select: { name: "Finished" } }; props["Finished At"] = { date: { start: new Date().toISOString() } }; }
+        if (body.reflag) { props.Status = { select: { name: "Flagged" } }; props["Finished At"] = { date: null }; }
+        const ur = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: props }) }).then(r => r.json());
+        if (!ur.id) return json({ error: "Notion: " + (ur.message || "save failed") }, 502);
+        let learned = 0;
+        if (finish) learned = await voiceLogSamples(env, ctx, iv.cid, "title interview · " + (iv.angle || ""), iv.qs.map((q, i) => ({ q, a: answers[i] }))).catch(e => { console.error("voiceLogSamples", e.message); return 0; });
+        return json({ ok: true, interview: ivParse(ur), learned });
+      }
+      if (body.action === "removeInterview") {
+        const ur = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ archived: true }) }).then(r => r.json());
+        return json(ur.id ? { ok: true } : { error: ur.message || "remove failed" });
+      }
+
       if (body.action === "getLastInterviewAnswers") {
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (body.titleId) {
@@ -27200,6 +27358,14 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!titleId || !title) return json({ error: "titleId and title required" }, 400);
         if (!assetType) return json({ error: "assetType required — every asset must have a type" }, 400);
         if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        // 🎤 an asset type that is written FROM the operator's interview waits until one is Finished
+        if (ivImportance(assetType) === "depends" && !body.__client && !body.skipInterview) {
+          let ivs = await ivForTitle(titleId).catch(() => null);
+          if (ivs && !ivs.length) ivs = ((await ivCreateForTitle(env, titleId, { force: true }).catch(() => null)) || {}).interviews || [];
+          if (ivs && ivs.length && !ivs.some(x => x.status === "Finished" && x.answers.some(a => a.trim())))
+            return json({ error: `A ${assetType} is written from your own interview — this title has ${ivs.length} flagged interview${ivs.length === 1 ? "" : "s"}. Answer one (🎤 Interviews, next to 🗣 Your voice in the hub's Design panel, or the ⚑ flags on All Output) and generate again.`,
+              needsInterview: true, interviews: ivs.map(x => ({ id: x.id, angle: x.angle })) }, 409);
+        }
         // The Generate Assets modal doesn't surface a Product picker (it's
         // parked), so when the caller doesn't pass one, fall back to the
         // title's own `product` relation — the Offer types in particular
@@ -47515,6 +47681,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     if (event.cron === "*/30 * * * *") {
       cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
+      cw("ivCronTick", ivCronTick(env).then(r => { if (r && !r.idle) console.log("ivCronTick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('ivCronTick failed:', e.message)));   // 🎤 new titles → interviews
       cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
     }
