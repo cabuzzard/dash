@@ -1,5 +1,15 @@
 [
   {
+    "slug": "trip-matchmaker",
+    "name": "Trip Matchmaker",
+    "kicker": "Personalized match · $49 (credited back on booking)",
+    "promise": "From a hundred open tabs and a stalled group chat — to a shortlist of vetted trips matched to your level, your crew, and the right swell window.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81c4bdaaf08ad94caf44",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/surf-vacations/surf-trip-matchmaker-blog-thumbnail-mv21hifg.png"
+  },
+  {
     "slug": "boat-week",
     "name": "Boat Week",
     "kicker": "Hosted live-aboard · $2,500–$5,500 per person",
@@ -7,15 +17,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81f28628de7422d4a422"
-  },
-  {
-    "slug": "trip-matchmaker",
-    "name": "Trip Matchmaker",
-    "kicker": "Personalized match · $49 (credited back on booking)",
-    "promise": "From a hundred open tabs and a stalled group chat — to a shortlist of vetted trips matched to your level, your crew, and the right swell window.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81c4bdaaf08ad94caf44"
   },
   {
     "slug": "surf-charter-insider-alerts",
