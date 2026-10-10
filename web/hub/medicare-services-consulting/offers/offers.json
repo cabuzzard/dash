@@ -1,5 +1,15 @@
 [
   {
+    "slug": "medicare-clarity-consult",
+    "name": "Medicare Clarity Consult",
+    "kicker": "Fixed-fee consult · $149–$249 (credited toward Plan Match & Enrollment Review)",
+    "promise": "One 60-minute call leaves you with a written one-page roadmap — your actual dates, your actual options, and a plain-English explanation of every decision that carries a permanent financial consequence.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81dea2f0dd83e2d3a98a",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/medicare-clarity-consult-blog-thumbnail-mv214dyv.png"
+  },
+  {
     "slug": "peace-of-mind-plan",
     "name": "Peace-of-Mind Plan",
     "kicker": "Annual membership · $199–$399/yr",
