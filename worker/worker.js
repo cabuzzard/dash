@@ -1047,6 +1047,36 @@ async function hubNewsCronTick(env) {
   return r;
 }
 
+// ── GoHighLevel hub intake (2026-10-10) ── one GHL sub-account serves every hub. Contacts carry a "Hub" dropdown field +
+// a hub:<slug> tag; each inquiry is an opportunity in the intake pipeline. "Call me now" adds the callback-requested tag,
+// which a GHL workflow turns into a call (your cell first, whisper with the hub, then the visitor, caller ID = the hub line).
+// Config (field id, pipeline/stage, calendar + booking URL) lives in KV ghl:config, written by ghlSetup. Secret GHL_TOKEN =
+// a Private Integration token for the sub-account below.
+const GHL_LOCATION_ID = "2ML8diZt8tizlzWHSntE";
+async function ghl(env, path, opts = {}) {
+  const r = await fetch("https://services.leadconnectorhq.com" + path, { method: opts.method || "GET",
+    headers: { "Authorization": "Bearer " + String(env.GHL_TOKEN || "").trim(), "Version": "2021-07-28", "Accept": "application/json", ...(opts.body ? { "Content-Type": "application/json" } : {}) },
+    ...(opts.body ? { body: JSON.stringify(opts.body) } : {}) });
+  const t = await r.text(); let d; try { d = JSON.parse(t); } catch (e) { d = { raw: t.slice(0, 300) }; }
+  if (!r.ok) d = { ...d, error: d.message || d.error || ("GHL " + r.status), status: r.status };
+  return d;
+}
+// Upsert one hub contact in GHL: Hub field + hub tag (+ extra tags), and an opportunity for this inquiry. Best effort.
+async function ghlHubContact(env, { slug, hubName, email, phone, name, tags = [], source, note }) {
+  if (!String(env.GHL_TOKEN || "").trim()) return { skipped: "no GHL_TOKEN" };
+  const cfg = (await env.TRADES.get("ghl:config", "json").catch(() => null)) || {};
+  const [first, ...rest] = String(name || "").trim().split(/\s+/);
+  const up = await ghl(env, "/contacts/upsert", { method: "POST", body: { locationId: GHL_LOCATION_ID, ...(email ? { email } : {}), ...(phone ? { phone } : {}),
+    ...(first ? { firstName: first, lastName: rest.join(" ") } : {}), source: source || ("hub: " + slug), tags: ["hub:" + slug, ...tags],
+    ...(cfg.hubFieldId ? { customFields: [{ id: cfg.hubFieldId, field_value: hubName }] } : {}) } });
+  const cid = up.contact && up.contact.id;
+  if (!cid) return { error: up.error || "upsert failed" };
+  let opp = null;
+  if (cfg.pipelineId && cfg.stageId) opp = await ghl(env, "/opportunities/", { method: "POST", body: { locationId: GHL_LOCATION_ID, pipelineId: cfg.pipelineId, pipelineStageId: cfg.stageId,
+    contactId: cid, name: `${hubName} — ${source || "inquiry"}${name ? " — " + name : ""}`.slice(0, 120), status: "open" } }).catch(e => ({ error: e.message }));
+  if (note) await ghl(env, `/contacts/${cid}/notes`, { method: "POST", body: { body: `[${hubName}] ${note}`.slice(0, 2000) } }).catch(() => {});
+  return { ok: true, contactId: cid, opportunityId: opp && opp.opportunity && opp.opportunity.id, oppError: opp && opp.error };
+}
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -15559,6 +15589,33 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
       // ensureHubNewsletterLists — one ActiveCampaign newsletter list per hub: an existing list whose name contains the hub's
       // name is reused, otherwise "<Hub> Hub" is created (same sender address as the existing hub lists). Wired via KV
       // hub:aclist:<slug>, which submitLead reads to subscribe every hub signup. Safe to re-run.
+      // ghlSetup {op: "probe" | "apply", pipelineId?, stageId?, calendarId?} — probe reads the sub-account (location, pipelines,
+      // calendars, custom fields); apply creates the "Hub" dropdown field if missing and saves KV ghl:config.
+      if (body.action === "ghlSetup") {
+        if (!String(env.GHL_TOKEN || "").trim()) return json({ error: "GHL_TOKEN secret not set" }, 400);
+        const [loc, pipes, cals, fields] = await Promise.all([
+          ghl(env, `/locations/${GHL_LOCATION_ID}`), ghl(env, `/opportunities/pipelines?locationId=${GHL_LOCATION_ID}`),
+          ghl(env, `/calendars/?locationId=${GHL_LOCATION_ID}`), ghl(env, `/locations/${GHL_LOCATION_ID}/customFields?model=contact`)]);
+        const hubNames = HUB_SITES.map(h => h.name);
+        const probe = { location: loc.error ? loc.error : (loc.location && loc.location.name), errors: [pipes.error, cals.error, fields.error].filter(Boolean),
+          pipelines: (pipes.pipelines || []).map(p => ({ id: p.id, name: p.name, stages: (p.stages || []).map(st => ({ id: st.id, name: st.name })) })),
+          calendars: (cals.calendars || []).map(c => ({ id: c.id, name: c.name, slug: c.widgetSlug || c.slug || "", link: c.widgetSlug ? `https://api.leadconnectorhq.com/widget/booking/${c.id}` : "" })),
+          hubField: ((fields.customFields || []).find(f => f.name === "Hub") || null) };
+        if (body.op !== "apply") return json({ ok: true, ...probe, cfg: await env.TRADES.get("ghl:config", "json").catch(() => null) });
+        let field = probe.hubField;
+        if (!field) {
+          const cr = await ghl(env, `/locations/${GHL_LOCATION_ID}/customFields`, { method: "POST", body: { name: "Hub", dataType: "SINGLE_OPTIONS", model: "contact", options: hubNames } });
+          if (cr.error) return json({ error: "Hub field: " + cr.error, detail: cr }, 502);
+          field = cr.customField || cr;
+        } else {
+          const missing = hubNames.filter(n => !(field.picklistOptions || field.options || []).includes(n));
+          if (missing.length) await ghl(env, `/locations/${GHL_LOCATION_ID}/customFields/${field.id}`, { method: "PUT", body: { name: "Hub", options: [...new Set([...(field.picklistOptions || field.options || []), ...hubNames])] } });
+        }
+        const cal = probe.calendars.find(c => c.id === body.calendarId) || probe.calendars[0] || {};
+        const cfg = { hubFieldId: field.id, pipelineId: body.pipelineId || "", stageId: body.stageId || "", calendarId: cal.id || "", bookingUrl: cal.id ? `https://api.leadconnectorhq.com/widget/booking/${cal.id}` : "", at: new Date().toISOString() };
+        await env.TRADES.put("ghl:config", JSON.stringify(cfg));
+        return json({ ok: true, cfg });
+      }
       if (body.action === "ensureHubNewsletterLists") {
         const acUrl = String(env.ACTIVECAMPAIGN_API_URL || "").trim().replace(/\/$/, ""), acKey = String(env.ACTIVECAMPAIGN_API_KEY || "").trim();
         if (!acUrl || !acKey) return json({ error: "ActiveCampaign not configured on the Worker" }, 400);
