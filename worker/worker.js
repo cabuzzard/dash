@@ -26506,8 +26506,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
           await env.TRADES.put("client:link:" + id, JSON.stringify(link)); return json({ ok: true });
         }
         const links = (await Promise.all(idx.map(id => env.TRADES.get("client:link:" + id, "json").catch(() => null)))).filter(l => l && (!pid || l.productId === pid));
-        return json({ ok: true, links: await Promise.all(links.reverse().map(async l => ({ ...l, url: l.revoked ? "" : await urlFor(l.id),
-          count: ((await env.TRADES.get("client:items:" + l.id, "json").catch(() => null)) || []).length }))) });
+        return json({ ok: true, links: await Promise.all(links.reverse().map(async l => {
+          const its = (await env.TRADES.get("client:items:" + l.id, "json").catch(() => null)) || [];
+          return { ...l, url: l.revoked ? "" : await urlFor(l.id), count: its.length,
+            ...(body.withItems ? { items: its.slice().reverse().map(x => { const p = studioPublicItem(x); return { d: p.d, title: p.title, topic: p.topic, direction: p.direction, status: p.status,
+              generating: p.generating, answered: p.answered, questions: p.qs.length, assetId: p.assetId, minutes: p.minutes, updatedAt: p.updatedAt }; }) } : {}) };
+        })) });
       }
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
       if (body.action === "runMainProductResearch") return json(await runMainProductResearch(env, body.productIds ? { campaignId: body.campaignId, productIds: body.productIds } : null));

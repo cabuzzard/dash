@@ -14311,6 +14311,7 @@ function renderHubsTab() {
       </div>
       <div style="display:flex;align-items:center;gap:8px;">
         ${msUrl ? `<a href="${msUrl}" target="_blank" rel="noopener" title="Open this hub's campaign in care-gap (keywords, product ideas, products, titles, assets)" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--accent);border-radius:5px;color:var(--accent);text-decoration:none;">care-gap ↗</a>` : ''}
+        <button onclick="hubClientOpen('${slug}')" title="Client Studio: private links where clients record Interview scripts for this hub — opens the Client artifacts section below" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">🎤 Client Studio</button>
         <button onclick="openHubTdModal('${slug}')" title="Add a weekly to-do for this hub's campaign — lands on the TD tab's This Week board" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">+ TD</button>
         <span style="font-size:10px;font-weight:700;letter-spacing:.05em;padding:3px 8px;border-radius:4px;color:${badge.color};background:${badge.bg};">${badge.text}</span>
       </div>
@@ -14394,6 +14395,11 @@ function renderHubsTab() {
       </div>
         </details>
       </div>
+    </details>
+    <details class="hub-sec" id="hubClientSec-${slug}" ${hubSecOpen('clients') ? 'open' : ''} ontoggle="hubSecToggle('clients', this.open);if(this.open)hubClientLoad('${slug}')">
+      <summary><span>Client artifacts</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${_hubClients[slug] ? _hubClients[slug].links.filter(l => !l.revoked).length + ' client link' + (_hubClients[slug].links.filter(l => !l.revoked).length === 1 ? '' : 's') + ' · ' + _hubClients[slug].links.reduce((n, l) => n + (l.items || []).filter(x => x.assetId).length, 0) + ' scripts' : 'Client Studio links + the scripts clients made'}</span>
+        <button onclick="event.preventDefault();event.stopPropagation();hubClientLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+      <div id="hubClientBody-${slug}" style="padding:10px 14px;">${hubClientBody(slug)}</div>
     </details>
     <details class="hub-sec" ${hubSecOpen('seo') ? 'open' : ''} ontoggle="hubSecToggle('seo', this.open)">
       <summary><span>On-page SEO</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">audit against the campaign's committed keywords</span></summary>
@@ -14737,6 +14743,67 @@ function hubProdEdit(slug, pid) {
   m.classList.add('open');
 }
 // ✎ product modal (Main offerings): name, notes, status — each changed field saved to the product record
+// Client artifacts section (every hub card): all Client Studio links on the hub + the scripts each client made.
+const _hubClients = {};
+function hubClientOpen(slug) {
+  const d = document.getElementById('hubClientSec-' + slug); if (!d) return;
+  if (!d.open) d.open = true; else hubClientLoad(slug, true);
+  d.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+async function hubClientLoad(slug, force) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || (_hubClients[slug] && !force)) return;
+  const el = document.getElementById('hubClientBody-' + slug); if (el && !_hubClients[slug]) el.innerHTML = '<span style="font-size:12px;color:var(--text3);">Loading…</span>';
+  const r = await call('clientStudioLink', { op: 'list', campaignId: h.campaignId, withItems: true }).catch(e => ({ error: e.message }));
+  _hubClients[slug] = r && !r.error ? { links: r.links || [] } : { links: [], error: (r && r.error) || 'Could not load' };
+  const b = document.getElementById('hubClientBody-' + slug); if (b) b.innerHTML = hubClientBody(slug);
+}
+function hubClientBody(slug) {
+  const C = _hubClients[slug]; if (!C) { if (hubSecOpen('clients')) setTimeout(() => hubClientLoad(slug), 0); return '<span style="font-size:12px;color:var(--text3);">Loading…</span>'; }
+  const B = 'font-size:10px;padding:1px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;text-decoration:none;';
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering) || {}, byId = {}; (mo.products || []).forEach(p => { byId[p.id] = p; });
+  const ids = mo.mainIds || [];
+  const ST = { script: ['Script ready', '#4ade80'], answering: ['Answering', '#f6ad55'], new: ['Not started', 'var(--text3)'] };
+  const when = t => t ? new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : '';
+  const rows = C.links.map(l => `<div style="border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:0 0 8px;${l.revoked ? 'opacity:.55;' : ''}">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+        <span style="font-size:12.5px;font-weight:600;color:var(--text);">${esc(l.label)}</span>
+        <span style="font-size:11px;color:var(--text3);flex:1;min-width:120px;">${esc(l.productName || '')}${l.titleName && l.titleName !== l.productName ? ' · ' + esc(l.titleName) : ''}${l.revoked ? ' · revoked' : ''}</span>
+        ${l.revoked ? '' : `<button style="${B}" onclick="navigator.clipboard.writeText('${l.url}').then(()=>{this.textContent='✓ Copied'})">Copy link</button><a href="${l.url}" target="_blank" rel="noopener" style="${B}">Open ↗</a><button style="${B}" onclick="hubClientRevoke('${slug}','${l.id}')">Revoke</button>`}
+      </div>
+      ${(l.items || []).length ? (l.items || []).map(x => `<div style="display:flex;align-items:center;gap:8px;padding:4px 0 0 10px;font-size:11.5px;">
+          <span style="width:7px;height:7px;border-radius:50%;background:${x.generating ? '#60a5fa' : ST[x.status][1]};flex-shrink:0;"></span>
+          <span style="flex:1;min-width:0;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc((x.title || x.topic) + (x.direction ? ' — focus: ' + x.direction : ''))}">${esc(x.title || x.topic)}${x.direction ? ` <span style="color:var(--text3);">· ${esc(x.direction)}</span>` : ''}</span>
+          <span style="color:var(--text3);flex-shrink:0;">${x.generating ? 'writing…' : x.status === 'script' ? (x.minutes ? '~' + x.minutes + ' min' : 'script') : x.answered + '/' + x.questions + ' answered'} · ${when(x.updatedAt)}</span>
+          ${x.assetId ? `<a href="https://www.notion.so/${esc(x.assetId)}" target="_blank" rel="noopener" style="${B}">Notion ↗</a>` : ''}</div>`).join('')
+        : '<div style="font-size:11px;color:var(--text3);padding:4px 0 0 10px;">No scripts yet.</div>'}
+    </div>`).join('');
+  return `${C.error ? `<div style="font-size:11.5px;color:#f87171;margin:0 0 8px;">✗ ${esc(C.error)}</div>` : ''}
+    <div style="font-size:11.5px;color:var(--text3);margin:0 0 10px;">Each client gets a private link to the <b>Client Studio</b>: they press New script, add an optional focus, answer interview questions built from this hub's research and the product's research, and get an Interview long-form script they can edit. Scripts land as YouTube Longform assets under the product's title.</div>
+    ${rows || '<div style="font-size:12px;color:var(--text3);margin:0 0 10px;">No client links on this hub yet.</div>'}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;">
+      <select id="hubClientProd-${slug}" style="${HC_IN}width:auto;flex:1;min-width:160px;">${ids.length ? ids.map(id => `<option value="${id}">${esc((byId[id] || {}).name || id)}</option>`).join('') : '<option value="">— open the Build checklist first to load main products —</option>'}</select>
+      <input id="hubClientName-${slug}" placeholder="Client name" style="${HC_IN}width:auto;flex:1;min-width:120px;">
+      <button onclick="hubClientNew('${slug}',this)" style="font-size:11px;padding:5px 12px;border:1px solid var(--accent);border-radius:5px;background:var(--accent);color:var(--bg);cursor:pointer;">+ New link</button>
+    </div><div id="hubClientMsg-${slug}" style="font-size:11.5px;min-height:14px;margin-top:6px;"></div>`;
+}
+async function hubClientNew(slug, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const pid = document.getElementById('hubClientProd-' + slug).value, label = document.getElementById('hubClientName-' + slug).value.trim(), msg = document.getElementById('hubClientMsg-' + slug);
+  if (!pid) { msg.style.color = '#f87171'; msg.textContent = 'Pick a main product (open the Build checklist once so they load).'; return; }
+  if (!label) { msg.style.color = '#f87171'; msg.textContent = 'Give the client a name.'; return; }
+  btn.disabled = true; btn.textContent = 'Creating…';
+  const r = await call('clientStudioLink', { op: 'create', campaignId: h.campaignId, productId: pid, label }).catch(e => ({ error: e.message }));
+  btn.disabled = false; btn.textContent = '+ New link';
+  if (!r || r.error) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + ((r && r.error) || 'Not created'); return; }
+  let copied = false; try { await navigator.clipboard.writeText(r.link.url); copied = true; } catch (e) {}
+  await hubClientLoad(slug, true);
+  const m2 = document.getElementById('hubClientMsg-' + slug); if (m2) { m2.style.color = '#4ade80'; m2.textContent = '✓ Link created' + (copied ? ' and copied' : '') + ' — send it to ' + label + '.'; }
+}
+async function hubClientRevoke(slug, id) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !confirm('Revoke this link? The client can no longer open it (their scripts stay).')) return;
+  await call('clientStudioLink', { op: 'revoke', campaignId: h.campaignId, id }).catch(() => {});
+  hubClientLoad(slug, true);
+}
 // 🎤 Client Studio links (web/studio/): a private link per client, pinned to this product + its main title. The client
 // presses New script, adds an optional focus, answers interview questions (hub + product research), and gets an Interview
 // long-form script (asset under the title) they can reopen and edit. Worker: clientStudioLink + the public `studio` action.
