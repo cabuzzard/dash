@@ -17130,7 +17130,9 @@ Give a YouTube title in that format. Call submit_questions.`;
         else if (body.campaignId) f.push({ property: "Campaign", relation: { contains: ivDash(body.campaignId) } });
         if (body.status) f.push({ property: "Status", select: { equals: String(body.status) } });
         const list = await ivList(f.length > 1 ? { and: f } : f[0]);
-        return json({ ok: true, interviews: list });
+        await hubSitesMerge(env);
+        const hubs = Object.fromEntries(HUB_SITES.map(h => [String(h.campaignId || "").replace(/-/g, ""), h.name]));
+        return json({ ok: true, interviews: list, hubs });
       }
       if (body.action === "getInterview") {
         const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
