@@ -832,10 +832,11 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     if (name && !/ - Main Offering$/.test(name)) mains.push({ id: String(pid).replace(/-/g, ""), name, desc });
   }
   if (!mains.length) return { error: "no main products", hub: hub.name };
+  const audienceN = await hubAudienceBlock(env, cid);
   let t = null, product = null;
   for (let k = 0; k < mains.length && !t; k++) {
     product = mains[(have + k) % mains.length];
-    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
+    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: product.name, newsBody: lead, allowDuplicate: k === mains.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
@@ -924,6 +925,31 @@ async function cronRunningNow(env) {
   } } catch (e) {}
   return out;
 }
+// The hub's AUDIENCE = who its main offerings serve, from each main product's 🔬 Product Research (Customer, Niche,
+// Pain Points, Emotions, Transformation, Objections). Operator rule (2026-10-10): everything published on a hub's main
+// site must fit this audience — the keywords only say what is searched, the audience decides which searches belong.
+// KV-cached 6 h (hubaudience:<cid>).
+async function hubAudienceBlock(env, cid) {
+  cid = String(cid || "").replace(/-/g, "");
+  const K = "hubaudience:" + cid;
+  const c = await env.TRADES.get(K, "json").catch(() => null);
+  if (c && Date.now() - c.at < 6 * 3600 * 1000) return c.text;
+  const hdr = { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+  const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const parts = [];
+  for (const pid of await hubMainList(env, cid)) {
+    const pg = await fetch(`https://api.notion.com/v1/pages/${nd(pid)}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+    const name = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+    if (!name || / - Main Offering$/.test(name)) continue;
+    const pr = await findBestProductResearchRecord(hdr, nd(pid)).catch(() => null);
+    const f = k => (pr?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
+    const lines = ["Customer", "Niche", "Pain Points", "Emotions", "Transformation", "Objections"].map(k => f(k) && `  ${k}: ${f(k).slice(0, 500)}`).filter(Boolean);
+    if (lines.length) parts.push(`- ${name}\n${lines.join("\n")}`);
+  }
+  const text = parts.length ? `THE HUB'S AUDIENCE — the people its main offerings serve (from each offering's product research). Everything on this hub is written FOR them:\n${parts.join("\n")}\n` : "";
+  await env.TRADES.put(K, JSON.stringify({ at: Date.now(), text })).catch(() => {});
+  return text;
+}
 async function hubTopicsOf(env, cid) {
   const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const rows = await notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: nd(cid) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []);
@@ -948,12 +974,13 @@ async function buildHubTopicIdeas(env, cid) {
   const resRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
   const research = resRows.slice().sort((a, b) => rtx(b, "Keywords").length - rtx(a, "Keywords").length)[0];
   const mainKw = rtx(research, "Keywords").split(/[,\n]+/).map(x => x.trim()).filter(Boolean);
+  const audience = await hubAudienceBlock(env, cid);
   let topics = await hubTopicsOf(env, cid);
   const topicsBefore = topics.length;
   let longtails = [], created = 0, topicError = "";
   if (topics.length < 3) {
     longtails = await longTailSuggest(mainKw.length ? mainKw : [hub.name]);
-    const g = await selfAction(env, "generateKeywordClusters", { campaignId: cid, guidance: `Build these topics from REAL long-tail searches people type (Google autocomplete off the Main Keywords). Name each topic with one of these exact long-tail phrases where one fits, and put the related long-tails in its keywords:\n${longtails.slice(0, 100).join("\n")}` });
+    const g = await selfAction(env, "generateKeywordClusters", { campaignId: cid, guidance: `Build these topics from REAL long-tail searches people type (Google autocomplete off the Main Keywords) — but ONLY searches the hub's audience below would make; drop searches from other audiences (job seekers, students, practitioners in the trade, competitors) even when they contain the keyword. Name each topic with one of the kept long-tail phrases where one fits, and put the related long-tails in its keywords.\n${audience}\nLONG-TAIL SEARCHES:\n${longtails.slice(0, 100).join("\n")}` });
     if (g && g.error) topicError = g.error;
     topics = await hubTopicsOf(env, cid); created = topics.length - topicsBefore;
   }
@@ -972,6 +999,8 @@ async function buildHubTopicIdeas(env, cid) {
 HUB: ${hub.name}
 WHAT IT IS ABOUT: ${rtx(research, "Statement").slice(0, 800)}
 MAIN OFFERINGS (context, not the subject): ${mains.join(" · ") || "(none)"}
+${audience || "(no product research yet — infer the audience from the offerings)"}
+AUDIENCE RULE: every idea must be something THIS audience searches and would want to read — their questions, worries, decisions and next steps. The keyword topics say what is searched; the audience decides which searches belong here. Reject any long-tail that comes from a different audience (people trying to do this job or enter this trade, students, competitors, vendors) even if it matches a topic.
 KEYWORD TOPICS (topic → its keywords):
 ${topics.map(t => `- ${t.name}: ${String(t.keywords).slice(0, 300)}`).join("\n")}
 REAL LONG-TAIL SEARCHES (Google autocomplete):
@@ -979,7 +1008,7 @@ ${longtails.slice(0, 80).join("\n")}
 TITLES THE HUB ALREADY HAS (don't duplicate):
 ${titles.map(x => "- " + x).join("\n").slice(0, 3000)}
 
-Give exactly 10 post ideas, spread across the topics (no topic more than 3). Each: "topic" (one of the topic names above, exactly), "keyword" (the ONE real long-tail search it targets — take it from the long-tail list or the topic's keywords, word for word), "headline" (search-friendly, answers that search, no clickbait, no year unless the post needs one, never an invented event or statistic), "angle" (one sentence: what makes this post genuinely useful), "intent" (informational / commercial / transactional / navigational). Call submit_ideas.`;
+Give exactly 10 post ideas for this audience, spread across the topics (no topic more than 3). Each: "topic" (one of the topic names above, exactly), "keyword" (the ONE real long-tail search it targets — take it from the long-tail list or the topic's keywords, word for word), "headline" (search-friendly, answers that search, no clickbait, no year unless the post needs one, never an invented event or statistic), "angle" (one sentence: what makes this post genuinely useful), "intent" (informational / commercial / transactional / navigational). Call submit_ideas.`;
   const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }],
       tools: [{ name: "submit_ideas", description: "The 10 post ideas.", input_schema: { type: "object", required: ["ideas"], properties: { ideas: { type: "array", items: { type: "object", required: ["topic", "keyword", "headline", "angle", "intent"], properties: {
