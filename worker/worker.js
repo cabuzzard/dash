@@ -17469,6 +17469,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         let pid = iv.productId; if (!pid && iv.titleId) { const tp = await ivPage(iv.titleId).catch(() => null); pid = tp ? ivRid(tp.properties, "product") : ""; }
         const [prodRes, audience] = await Promise.all([pid ? ivProdResearch(pid) : "", iv.cid ? hubAudienceBlock(env, iv.cid).catch(() => "") : ""]);
         const today = new Date().toISOString().slice(0, 10), OPUS = "claude-opus-5-5";
+        if (!body.sample) await env.TRADES.put("ivfact:run:" + id, String(Date.now()), { expirationTtl: 600 });   // a phone that drops the long request can see it's still running
         const ctxBlock = `INTERVIEW: ${iv.title}${iv.angle ? " — " + iv.angle : ""}\n${audience}${prodRes ? `\nTHE OFFERING (product research):\n${prodRes}\n` : ""}`;
         const c1 = await claudeStream(env, { model: OPUS, max_tokens: 6000, messages: [{ role: "user", content:
 `TODAY: ${today}. You are a senior practitioner reviewing a business owner's own interview answers before they are used in published content.
@@ -17508,13 +17509,14 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
               sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || "") });
         const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
         const report = { at: Date.now(), field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
-        if (!body.sample) await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
+        if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); }
         return json({ ok: true, report });
       }
       if (body.action === "ivExpertGet" || body.action === "ivExpertApply") {
         const id = String(body.interviewId || "").replace(/-/g, "");
         let report = null; try { report = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {}
-        if (body.action === "ivExpertGet") return json({ ok: true, report });
+        if (body.action === "ivExpertGet") { const run = await env.TRADES.get("ivfact:run:" + id).catch(() => null);
+          return json({ ok: true, report, running: !!(run && Date.now() - +run < 6 * 60 * 1000 && (!report || report.at < +run)) }); }
         if (!report) return json({ error: "Run the expert check first" }, 400);
         const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
         const want = new Set(Array.isArray(body.ids) ? body.ids : []), ov = body.overrides && typeof body.overrides === "object" ? body.overrides : {};

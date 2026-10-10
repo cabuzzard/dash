@@ -76,11 +76,17 @@
     const el = document.createElement('div'), S = { report: null, busy: '', err: '', edits: {}, pick: {} };
     el.style.cssText = `margin:14px 0 4px;border:1px solid ${C.line};border-radius:10px;padding:10px 12px;`;
     const init = () => { S.pick = {}; ((S.report || {}).items || []).forEach(x => { if (x.fix && !x.applied && /outdated|contested|wrong|mostly/.test(x.verdict)) S.pick[x.id] = true; }); };
-    async function load() { try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init(); } catch (err) {} draw(); }
+    // a check still running on the worker (e.g. the phone dropped the long request) → keep polling until the report lands
+    async function load(poll) {
+      try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init();
+        if (r.running) { S.busy = 'Still checking on the server — the results will appear here (about 1-2 minutes)…'; draw(); setTimeout(() => load(true), 10000); return; }
+        if (poll) { S.busy = ''; S.err = ''; } } catch (err) {}
+      draw(); }
     async function run() {
       if (cfg.beforeRun) { try { await cfg.beforeRun(); } catch (err) {} }
       S.busy = 'Checking every claim against the current expert standard (live search) — about 1-2 minutes…'; S.err = ''; draw();
-      try { const r = await req(cfg.call, 'ivExpertCheck', { interviewId: cfg.interviewId }); S.report = r.report; S.edits = {}; init(); } catch (err) { S.err = err.message; }
+      try { const r = await req(cfg.call, 'ivExpertCheck', { interviewId: cfg.interviewId }); S.report = r.report; S.edits = {}; init(); }
+      catch (err) { S.busy = 'The connection dropped — still checking on the server, the results will appear here…'; draw(); return load(true); }
       S.busy = ''; draw();
     }
     async function apply() {
