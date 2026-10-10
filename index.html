@@ -885,6 +885,7 @@
   <div class="tab-panel" id="tabDev2">
     <div id="reviewFlagsAll" style="margin:0 0 14px;"></div>
     <div id="ivFlagsAll" style="margin:0 0 14px;"></div>
+    <div id="ivSyncAll" style="margin:0 0 14px;"></div>
     <div class="oc-sec" data-ock="alloutput"><div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;cursor:pointer;user-select:none;margin:0 0 8px;">
       <span class="oc-chev" style="font-size:11px;color:var(--text3);width:12px;">▼</span><h2 style="margin:0;font-size:16px;">All Output</h2>
       <span style="font-size:11.5px;color:var(--text2);">Every product, title and asset from Notion.</span></div>
@@ -5681,7 +5682,7 @@ function loadTabContent(name) {
   if (name === 'globals'   && !globalsLoaded){ globalsLoaded = true; loadGlobalsTab(); }
   if (name === 'contenthubs' && !hubsTabLoaded) { hubsTabLoaded = true; renderHubsTab(); }
   if (name === 'output'    && !outputLoaded) { outputLoaded = true; ocApply(); loadOutputTab(); loadFlowTable('main'); plLoad(); }
-  if (name === 'dev2') { reviewFlagsLoad(); ivFlagsLoad(); }
+  if (name === 'dev2') { reviewFlagsLoad(); ivFlagsLoad(); ivSyncLoad(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('new'); loadFlowTable('methods').then(() => loadFlowTable('subassets')); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
@@ -11293,9 +11294,9 @@ function renderDev2() {
   const rowHtml = r => {
     const key = dev2RowKey(r);
     const dash = '<span style="color:var(--text3);">—</span>';
-    const titleCell = r.titleId ? `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>` : dash;
+    const titleCell = r.titleId ? `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>${r.pillarSync === 'Out of Sync' ? ivSyncBadge('pillar') : ''}` : dash;
     const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.assetName || '(untitled asset)')}</a>` : dash;
-    const assetTypeCell = r.assetId ? esc(r.assetType || '?') : dash;
+    const assetTypeCell = r.assetId ? esc(r.assetType || '?') + (/^Out of Sync/.test(r.ivSync || '') ? ivSyncBadge(/Regenerate/.test(r.ivSync) ? 'regenerate' : 'review') : '') : dash;
     const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
     // Hub → the care-gap-v2 microsite template, the campaign-agnostic
     // admin tool (pass its own campId as the query param — that's how it
@@ -15354,6 +15355,47 @@ function ivFlagOpen(id) {
   if (!window.InterviewPanel) return alert('interview-panel.js did not load — reload the page.');
   window.InterviewPanel.open({ call, interviewId: id, onDone: () => { ivFlagsLoad(); Object.values(_hubBuild || {}).forEach(b => { if (b && b.interviews) b.interviews = b.interviews.filter(x => x.id !== id); }); } });
 }
+// ⟳ Interview sync — a SEPARATE status from Asset Status (so no display's visibility changes): when a title's
+// interviews change, its pillar + assets go Out of Sync (by asset type: Regenerate / Review). Worker ivMarkDownstream.
+function ivSyncBadge(level) {
+  const L = { pillar: ['⟳ pillar out of sync', '#ff7a00', 'The title\'s interviews changed after this pillar was written — rewrite it'],
+    regenerate: ['⟳ regenerate', '#e5534b', 'Written from the interview, which changed — regenerate it'], review: ['⟳ review', '#ff7a00', 'The title\'s interviews changed — review / update it'] }[level];
+  return ` <span title="${L[2]}" style="font-size:10px;padding:0 6px;border-radius:8px;border:1px solid ${L[1]};color:${L[1]};white-space:nowrap;font-weight:700;">${L[0]}</span>`;
+}
+function ivSyncRows(list, showHub, hubs) {
+  const B = 'font-size:10px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;text-decoration:none;';
+  return list.map(x => `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;">
+    ${ivSyncBadge(x.level)}${showHub ? `<span style="color:var(--text3);min-width:140px;">${esc((hubs || {})[x.cid] || ivHubName(x.cid) || '—')}</span>` : ''}
+    <span style="flex:1;min-width:160px;color:var(--text);">${x.kind === 'pillar' ? 'Pillar · ' + esc(x.title) : esc(x.assetName || '(untitled asset)') + ` <span style="color:var(--text3);font-size:11px;">· ${esc(x.assetType)} · ${esc(x.status)}</span>`}</span>
+    <a href="https://www.notion.so/${esc(x.kind === 'pillar' ? x.titleId : x.assetId)}" target="_blank" rel="noopener" style="${B}">Notion ↗</a>
+    ${x.kind === 'pillar' ? `<button style="${B}border-color:#ff7a00;color:#ff7a00;" onclick="ivSyncPillar('${esc(x.titleId)}', this)">↻ Rewrite pillar</button>` : ''}
+    <button style="${B}border-color:#4ade80;color:#4ade80;" onclick="ivSyncMark('${esc(x.kind)}', '${esc(x.kind === 'pillar' ? x.titleId : x.assetId)}', this)">✓ Mark in sync</button></div>`).join('');
+}
+async function ivSyncMark(kind, id, btn) {
+  btn.disabled = true; btn.textContent = '…';
+  const r = await call('markInterviewSync', kind === 'pillar' ? { titleId: id } : { assetId: id }).catch(e => ({ error: e.message }));
+  if (r && r.error) { btn.disabled = false; btn.textContent = '✓ Mark in sync'; return alert(r.error); }
+  const row = btn.closest('div'); if (row) row.remove();
+  DEV2_ROWS.forEach(x => { if (kind === 'pillar' && x.titleId === id) x.pillarSync = 'In Sync'; if (kind !== 'pillar' && x.assetId === id) x.ivSync = 'In Sync'; });
+}
+async function ivSyncPillar(titleId, btn) {
+  btn.disabled = true; btn.textContent = '⏳ rewriting…';
+  const r = await call('writeTitlePillar', { titleId }).catch(e => ({ error: e.message }));
+  if (r && r.error) { btn.disabled = false; btn.textContent = '↻ Rewrite pillar'; return alert(r.error); }
+  const row = btn.closest('div'); if (row) row.remove();
+  DEV2_ROWS.forEach(x => { if (x.titleId === titleId) x.pillarSync = 'In Sync'; });
+}
+async function ivSyncLoad() {
+  const el = document.getElementById('ivSyncAll'); if (!el) return;
+  const r = await call('getInterviewSyncFlags', {}).catch(e => ({ error: e.message }));
+  const list = (r && r.flags) || [];
+  el.innerHTML = `<div style="border:1px solid ${list.length ? '#e5534b' : 'var(--border)'};border-radius:10px;background:var(--surface);">
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-bottom:1px solid var(--border);">
+      <span style="font-size:14px;font-weight:700;color:var(--text);">⟳ Out of sync with interviews — all hubs</span>
+      <span style="font-size:11px;color:var(--text3);">${r && r.error ? '✗ ' + esc(r.error) : list.length + ' · a separate sync status — Asset Status and visibility are unchanged'}</span>
+      <button onclick="ivSyncLoad()" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></div>
+    ${list.length ? ivSyncRows(list, true, r.hubs) : '<div style="padding:10px;font-size:12px;color:var(--text3);">Everything is in sync with its interviews.</div>'}</div>`;
+}
 async function ivFlagsLoad() {
   const el = document.getElementById('ivFlagsAll'); if (!el) return;
   const r = await call('getInterviews', { status: 'Flagged' }).catch(e => ({ error: e.message }));
@@ -15380,7 +15422,8 @@ function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
   const ivBox = (b.interviews || []).length ? `<div style="border:1px solid #ff7a00;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#ff7a00;border-bottom:1px solid var(--border);">🎤 ${b.interviews.length} interview${b.interviews.length === 1 ? '' : 's'} waiting for your answers</div>${ivFlagRows(b.interviews, false)}</div>` : '';
-  const flagBox = ivBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
+  const syncBox = (b.syncFlags || []).length ? `<div style="border:1px solid #e5534b;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#e5534b;border-bottom:1px solid var(--border);">⟳ ${b.syncFlags.length} out of sync with interviews</div>${ivSyncRows(b.syncFlags, false)}</div>` : '';
+  const flagBox = ivBox + syncBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
   const h = HUB_SITES.find(x => x.slug === slug) || {};
   const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
   let lastPhase = '';
