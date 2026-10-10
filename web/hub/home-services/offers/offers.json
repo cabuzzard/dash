@@ -1,5 +1,14 @@
 [
   {
+    "slug": "caretaker-plan",
+    "name": "Caretaker Plan",
+    "kicker": "Monthly retainer · $250–$600/mo",
+    "promise": "Your vacation property gets a local person who checks it weekly, fixes the small things before they stack, and handles the vendor calls you would have spent a half-day on.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb815683c7eaf01f144bdf"
+  },
+  {
     "slug": "live-in-trade-stay",
     "name": "Live-In Trade Stay",
     "kicker": "Work-trade, paid, or hybrid · terms set by scope and length of stay",
