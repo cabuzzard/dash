@@ -1,5 +1,15 @@
 [
   {
+    "slug": "private-farm-day",
+    "name": "Private Farm Day",
+    "kicker": "Private group booking · $150–$400 per group",
+    "promise": "A farm outing where everyone is in the field — not watching from the edge.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81d79272f5d1ee528924",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/sunflower-acres/private-accessible-farm-outing-blog-thumbnail-mv21ez7i.png"
+  },
+  {
     "slug": "garden-awareness",
     "name": "Garden Awareness",
     "kicker": "Donation drive · tiered giving",
