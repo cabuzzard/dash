@@ -1,5 +1,15 @@
 [
   {
+    "slug": "weekly-sessions",
+    "name": "Weekly Sessions",
+    "kicker": "Membership · $29–$49/mo",
+    "promise": "A weekly live session that holds your practice together when motivation does not — built around the acoustic and classic rock songs you actually want to play.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb8125a0a1e7f143d56f19",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/creative-flow-guitar/creative-flow-weekly-sessions-blog-thumbnail-mv223jli.png"
+  },
+  {
     "slug": "song-breakdown-packs",
     "name": "Song Breakdown Packs",
     "kicker": "Downloadable lesson pack · $15–$39 per pack",
@@ -18,15 +28,6 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb8118b579ead52aa4ffee",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/creative-flow-guitar/digital-downloads-and-licensing-blog-thumbnail-mv222j9r.png"
-  },
-  {
-    "slug": "weekly-sessions",
-    "name": "Weekly Sessions",
-    "kicker": "Membership · $29–$49/mo",
-    "promise": "A weekly live session that holds your practice together when motivation does not — built around the acoustic and classic rock songs you actually want to play.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8125a0a1e7f143d56f19"
   },
   {
     "slug": "original-covers-music-downloads",
