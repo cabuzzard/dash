@@ -10751,6 +10751,7 @@ const DEV2_COLS = [
   { key: 'research',     label: 'Research' },
   { key: 'interviews',   label: 'Interviews' },
   { key: 'pillarStatus', label: 'Pillar' },
+  { key: 'ivTier',       label: 'Interview tier' },
   { key: 'assetSync',    label: 'Asset sync' },
   { key: 'nextStep',     label: 'Next step' },
 ];
@@ -11329,7 +11330,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : (r.status === 'Review' || r.status === 'Flagged') ? '#ff7a00;color:#111;font-weight:700' : r.status === 'Finished' ? 'rgba(58,154,91,.22)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
-      ${['research', 'interviews', 'pillarStatus', 'assetSync', 'nextStep'].map(k => `<td style="padding:6px 10px;">${dev2VecCell(r[k])}</td>`).join('')}
+      ${['research', 'interviews', 'pillarStatus', 'ivTier', 'assetSync', 'nextStep'].map(k => `<td style="padding:6px 10px;">${dev2VecCell(r[k])}</td>`).join('')}
     </tr>`;
   };
   let tbody = '';
@@ -15409,6 +15410,14 @@ async function ivSyncLoad() {
       <button onclick="ivSyncLoad()" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></div>
     ${list.length ? ivSyncRows(list, true, r.hubs) : '<div style="padding:10px;font-size:12px;color:var(--text3);">Everything is in sync with its interviews.</div>'}</div>`;
 }
+// an Own-interview asset with no interview yet: write its own (Asset scope, linked to the asset), then open it
+async function ivOwnCreate(titleId, assetId, type, btn) {
+  btn.disabled = true; btn.textContent = '⏳ writing questions…';
+  const r = await call('createInterviews', { titleId, own: type, assetId }).catch(e => ({ error: e.message }));
+  if (r && r.error) { btn.disabled = false; btn.textContent = '🎤 create own interview'; return alert(r.error); }
+  const iv = (r.interviews || [])[0]; btn.textContent = '🎤 own interview →'; btn.disabled = false;
+  if (iv) { btn.onclick = () => ivFlagOpen(iv.id); ivFlagOpen(iv.id); }
+}
 async function ivFlagsLoad() {
   const el = document.getElementById('ivFlagsAll'); if (!el) return;
   const r = await call('getInterviews', { status: 'Flagged' }).catch(e => ({ error: e.message }));
@@ -15460,7 +15469,7 @@ function renderHubBuildRows(slug) {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
         return hubGridRow({ pad: 0, title: it.title, type: it.type, typeTip: 'Asset Type' + (it.section ? ' · placed here by Hub Section = ' + it.section : ''),
           typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
-          links: (it.ivFlag ? `<button onclick="ivFlagOpen('${esc(it.ivFlag.id)}')" title="This asset's title has ${it.ivFlag.n} unfinished interview${it.ivFlag.n === 1 ? '' : 's'} — the asset was written without them. Answer: ${esc(it.ivFlag.angle || '')}" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;">🎤 ${it.ivFlag.n} interview${it.ivFlag.n === 1 ? '' : 's'} →</button> ` : '') + (/^Out of Sync/.test(it.ivSync || '') ? ivSyncBadge(/Regenerate/.test(it.ivSync) ? 'regenerate' : 'review') + ' ' : '') + (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
+          links: (it.ivFlag && it.ivFlag.missing ? `<button onclick="ivOwnCreate('${esc(it.titleId)}','${esc(it.id)}','${esc(it.ivFlag.ownType)}', this)" title="This is an interview-based asset (tier: Own interview) and has no interview of its own yet — write one" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;font-weight:700;cursor:pointer;">🎤 create own interview</button> ` : '') + (it.ivFlag && it.ivFlag.id ? `<button onclick="ivFlagOpen('${esc(it.ivFlag.id)}')" title="${it.ivFlag.own ? 'This asset is built from its OWN interview — still flagged.' : `This asset's title has ${it.ivFlag.n} unfinished interview${it.ivFlag.n === 1 ? '' : 's'} — the asset was written without them.`} Answer: ${esc(it.ivFlag.angle || '')}" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;">🎤 ${it.ivFlag.n} interview${it.ivFlag.n === 1 ? '' : 's'} →</button> ` : '') + (/^Out of Sync/.test(it.ivSync || '') ? ivSyncBadge(/Regenerate/.test(it.ivSync) ? 'regenerate' : 'review') + ' ' : '') + (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
       // sections that also hold hand-picked products (CTA's): product records first, then the assets
       let prodRows = '', pick = '', np = 0;
