@@ -857,7 +857,8 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
-  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, siteError: g.siteError || "", thumb, thumbError, had: have };
+  const issue = await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "" }).catch(e => ({ error: e.message }));
+  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
 }
 // rewriteHubNewsPost {assetId} — fix a published hub news post IN PLACE (same blog URL): a new dated, no-invention headline
 // → the title renamed + its pillar rewritten (grounded) → refreshBlogAssetFromPillar republishes under the existing slug →
@@ -1019,6 +1020,99 @@ Give exactly 10 post ideas for this audience, spread across the topics (no topic
   if (!ideas.length) return { error: "ideas: " + ((ar.error && ar.error.message) || "none came back"), hub: hub.name };
   await env.TRADES.put("hubideas:" + cid, JSON.stringify({ at: new Date().toISOString(), ideas }));
   return { ok: true, hub: hub.name, slug: hub.slug, campaignId: cid, topicsBefore, topicsCreated: created, topics: topics.map(t => t.name), topicError, ideas };
+}
+// ── Hub newsletter welcome sequence (2026-10-10) ── every hub's main CTA is its newsletter, so each hub gets ONE
+// "email hub main - newsletter" sequence asset: titled off its primary main offering's existing title (the main-offering
+// titles carry a sales pillar), written with the nurture method's framework, and fed the hub's news nucleus (its published
+// news posts + staged digest ideas). Capture form "<slug>/main" (tag lead-hub-<slug>, ActiveCampaign list per hub).
+const NURTURE_METHOD_ID = "3d61f7d3a4bb8105ae8cc7b82beb23fe";
+async function runHubNewsletterSequence(env, cid, opts = {}) {
+  cid = String(cid || "").replace(/-/g, "");
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
+  if (!hub) return { error: "not a hub campaign" };
+  const K = "hubnlseq:" + cid, prev = await env.TRADES.get(K, "json").catch(() => null);
+  if (prev && prev.assetId && !opts.force) return { skipped: true, hub: hub.name, ...prev };
+  const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const hdr = { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+  // primary main product = first non-placeholder main offering; its main-offering title (preferred) or any title on it
+  const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
+  const tName = r => (r.properties?.Title?.title || []).map(t => t.plain_text).join("").trim();
+  const tProd = r => ((r.properties?.product?.relation || [])[0]?.id || "").replace(/-/g, "");
+  const tNotes = r => (r.properties?.Notes?.rich_text || []).map(t => t.plain_text).join("");
+  let title = null, productId = "";
+  for (const pid of await hubMainList(env, cid)) {
+    const p = String(pid).replace(/-/g, "");
+    const own = titles.filter(r => tProd(r) === p);
+    const pick = own.find(r => /^Main-offering title/.test(tNotes(r))) || own[0];
+    if (pick) { title = pick; productId = p; break; }
+  }
+  if (!title) return { error: "no main-offering title found", hub: hub.name };
+  // news nucleus: published news posts + staged digest ideas
+  const assets = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
+  const news = assets.filter(a => /\bnews\b/i.test(a.properties?.["Asset Type"]?.select?.name || "") && /^publish/i.test(a.properties?.["Asset Status"]?.select?.name || ""))
+    .map(a => ({ t: (a.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join(""), u: a.properties?.["Content URL"]?.url || "" })).filter(x => x.t).slice(0, 6);
+  const di = (await env.TRADES.get("digest:ideas:" + cid, "json").catch(() => null)) || {};
+  const ideas = (di.postIdeas || []).map(i => i.headline).filter(Boolean).slice(0, 8);
+  const audience = await hubAudienceBlock(env, cid).catch(() => "");
+  const site = hub.domain ? "https://" + hub.domain : `https://cabuzzard.github.io/dash/web/hub/${hub.slug}/`;
+  const brief = `This is the short NEWSLETTER WELCOME sequence for the ${hub.name} hub (${site}). People join from the hub's main call to action, "Get the newsletter". The regular newsletter is separate: an issue goes out each time the hub publishes a news article (about twice a week). Write exactly 3 emails:
+1. Immediately: welcome, what this newsletter is (the hub's news, explained for them, about twice a week), and the most useful recent post from the NEWS list below with its link.
+2. Day 3: a soft introduction to the main offering (the title/product above) — the problem it solves for this reader, no hard sell, one link.
+3. Day 7: an invitation to talk — reply to this email or use "Talk to us" on the site (call back now or book a time).
+Write for this audience, in plain words. Never invent news, statistics or offers; use only what is listed and the pillar.
+${audience}
+NEWS ALREADY PUBLISHED ON THE HUB:
+${news.map(n => "- " + n.t + (n.u ? " (" + n.u + ")" : "")).join("\n") || "(none yet)"}
+DIGEST IDEAS IN THE WORKS:
+${ideas.map(x => "- " + x).join("\n") || "(none yet)"}`;
+  const g = await selfAction(env, "generateTitleAssets", { titleId: title.id.replace(/-/g, ""), campaignId: cid, productId, methodId: NURTURE_METHOD_ID, title: tName(title),
+    assetType: "email hub main - newsletter", captureFormId: hub.slug + "/main", researchInstructions: brief, count: 1 });
+  const assetId = g && ((g.assets || [])[0] || {}).id || (g && g.assetId);
+  if (!assetId) return { error: "sequence: " + ((g && g.error) || "no asset"), hub: hub.name, title: tName(title) };
+  const rec = { assetId: String(assetId).replace(/-/g, ""), titleId: title.id.replace(/-/g, ""), title: tName(title), news: news.length, ideas: ideas.length, emails: g.emailCount || null, at: new Date().toISOString() };
+  await env.TRADES.put(K, JSON.stringify(rec));
+  return { ok: true, hub: hub.name, ...rec };
+}
+// writeHubNewsletterIssue — the regular newsletter: ONE ready-to-send email per hub news post (subject, preview, the
+// article's key points rewritten for email, link to the full post). Saved as a "Newsletter Issue" asset on the news title,
+// capture form "<slug>/main" (the hub's ActiveCampaign list). Called by writeHubNewsPost after each post publishes.
+async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl }) {
+  cid = String(cid || "").replace(/-/g, "");
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
+  if (!hub || !titleId) return { error: "hub or title missing" };
+  const hdr = { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+  const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const article = await extractPillarContent(hdr, nd(titleId)).catch(() => "");
+  if (!article) return { error: "no article text" };
+  const audience = await hubAudienceBlock(env, cid).catch(() => "");
+  const url = liveUrl && /^https?:/.test(liveUrl) ? liveUrl : (hub.domain ? "https://" + hub.domain + "/blog/" : `https://cabuzzard.github.io/dash/web/hub/${hub.slug}/blog/`);
+  const today = new Date().toISOString().slice(0, 10);
+  const ar = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1800, tools: [{ name: "submit_issue", description: "The newsletter issue.", input_schema: { type: "object", required: ["subject", "preview", "body"], properties: {
+      subject: { type: "string", description: "states what the reader learns, under 60 characters, no clickbait" }, preview: { type: "string", description: "inbox preview line, under 90 characters" },
+      body: { type: "string", description: "the email in Markdown: 1 short opening line, 3-5 short paragraphs or bullets with the article's key points written for this reader (real sentences from the article's substance, not a teaser), one line on what to do, then the link line" } } } }],
+      tool_choice: { type: "tool", name: "submit_issue" },
+      messages: [{ role: "user", content: `TODAY: ${today}. Write this week's newsletter issue for the ${hub.name} hub from its new article. Keep the article's facts exactly; invent nothing. Plain words, warm and direct, 180-280 words.
+${audience}
+ARTICLE: ${headline}
+LINK (end the email with: [Read the full article](${url})):
+${article.slice(0, 7000)}
+Sign off as "${hub.name}". Call submit_issue.` }] }) }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
+  const it = ((ar.content || []).find(b => b.type === "tool_use") || {}).input;
+  if (!it || !it.body) return { error: "issue: " + ((ar.error && ar.error.message) || "none") };
+  const md = `**Subject:** ${it.subject}\n**Preview:** ${it.preview}\n**Send:** to the ${hub.name} newsletter list (tag lead-hub-${hub.slug}) when the article is live\n\n${it.body}`;
+  const rt = t => [{ type: "text", text: { content: String(t).slice(0, 1990) } }];
+  await ensureDbRichTextProperty(hdr, ASSETS_DB, "Capture Form").catch(() => {});
+  const children = md.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 90).map(l => /^[-*]\s+/.test(l) ? { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rt(l.replace(/^[-*]\s+/, "")) } } : { object: "block", type: "paragraph", paragraph: { rich_text: rt(l) } });
+  const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
+    "Asset Title": { title: rt(`Newsletter — ${it.subject}`.slice(0, 200)) }, "Asset Status": { select: { name: "Publish" } }, "Asset Type": { select: { name: "Newsletter Issue" } },
+    "Body": { rich_text: rt(md) }, "Platform Title": { rich_text: rt(it.subject) }, "Content Strategy": { relation: [{ id: nd(titleId) }] }, "Campaign": { relation: [{ id: nd(cid) }] },
+    "Capture Form": { rich_text: rt(`${hub.slug}/main · ActiveCampaign · tag: lead-hub-${hub.slug}`) }, "Platform Name": { select: { name: "Email" } } }, children }) }).then(r => r.json()).catch(e => ({ message: e.message }));
+  if (!cr.id) return { error: "asset: " + (cr.message || "create failed") };
+  const K = "hubnl:issues:" + cid, list = (await env.TRADES.get(K, "json").catch(() => null)) || [];
+  list.push({ assetId: cr.id.replace(/-/g, ""), titleId, subject: it.subject, url, at: new Date().toISOString() });
+  await env.TRADES.put(K, JSON.stringify(list.slice(-50)));
+  return { ok: true, hub: hub.name, assetId: cr.id.replace(/-/g, ""), subject: it.subject };
 }
 async function hubNewsCronTick(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
@@ -11557,7 +11651,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^buildHubTopicIdeas$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -26916,6 +27010,9 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         const running = await cronRunningNow(env).catch(e => [{ kind: "error", label: "running scan", detail: e.message }]);
         return json({ ok: true, running, runs: logs.flat().filter(Boolean).sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 400), news, crons: ["*/4 * * * *", "*/30 * * * *", "*/5 12-16 * * MON-FRI", "0 0 * * *", "15 0 * * *"] });
       }
+      // writeHubNewsletterIssue {campaignId, titleId, headline, liveUrl?} — one newsletter issue from a news post (backfill / manual)
+      if (body.action === "writeHubNewsletterIssue") { try { return json(await writeHubNewsletterIssue(env, { cid: body.campaignId, titleId: body.titleId, headline: body.headline, liveUrl: body.liveUrl })); } catch (e) { return json({ error: e.message }, 500); } }
+      if (body.action === "runHubNewsletterSequence") { try { return json(await runHubNewsletterSequence(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "buildHubTopicIdeas") { try { return json(await buildHubTopicIdeas(env, body.campaignId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "getHubNewsRound") return json({ ok: true, sched: await env.TRADES.get("hubnews:sched", "json").catch(() => null), log: await env.TRADES.get("hubnews:log", "json").catch(() => null) });
