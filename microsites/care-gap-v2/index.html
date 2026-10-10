@@ -1041,11 +1041,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
           </div>
           <div style="display:flex;gap:10px;margin-top:4px;flex-wrap:wrap;align-items:center;font-size:10px;color:var(--ink3);">
             <label title="Panel's left edge, % of image width">Box X <input type="number" id="pubPostBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
-            <label title="Panel's top edge, % of image height">Y <input type="number" id="pubPostBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel's top edge, % of image height">Y <input type="number" id="pubPostBoxY" value="18" step="1" min="0" max="80" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel width, % of image width">W <input type="number" id="pubPostBoxW" value="62" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel height, % of image height">H <input type="number" id="pubPostBoxH" value="58" step="1" min="15" max="100" class="finput" style="width:40px;padding:2px 4px;min-width:0;">%</label>
             <label title="Panel fill color">Color <input type="color" id="pubPostBoxColor" value="#ffffff" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-            <label title="Panel opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubPostBoxOpacity" value="88" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+            <label title="Panel opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubPostBoxOpacity" value="0" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
           </div>
           <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
             <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
@@ -1111,11 +1111,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Starting font size, as a % of the image's width">Font size <input type="number" id="pubIgTextSizePct" value="8" step="0.5" min="2" max="15" class="finput" style="width:44px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Titles longer than this get cut short with '…'">Max chars <input type="number" id="pubIgMaxChars" value="70" step="5" min="20" max="300" class="finput" style="width:44px;padding:2px 4px;min-width:0;"></label>
                 <label title="Dark zone left edge, % of width">X <input type="number" id="pubIgBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
-                <label title="Dark zone top edge, % of height">Y <input type="number" id="pubIgBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone top edge, % of height">Y <input type="number" id="pubIgBoxY" value="18" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone width, % of width">W <input type="number" id="pubIgBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubIgBoxH" value="40" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone fill color">Color <input type="color" id="pubIgBoxColor" value="#191b1f" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-                <label title="Box opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubIgBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Box opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubIgBoxOpacity" value="0" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
                 <span style="color:var(--ink3);flex-shrink:0;">Background (before text):</span>
@@ -1146,11 +1146,11 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
                 <label title="Starting font size, as a % of the image's width">Font size <input type="number" id="pubThumbTextSizePct" value="7.5" step="0.5" min="2" max="15" class="finput" style="width:44px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Titles longer than this get cut short with '…'">Max chars <input type="number" id="pubThumbMaxChars" value="90" step="5" min="20" max="300" class="finput" style="width:44px;padding:2px 4px;min-width:0;"></label>
                 <label title="Dark zone left edge, % of width">X <input type="number" id="pubThumbBoxX" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
-                <label title="Dark zone top edge, % of height">Y <input type="number" id="pubThumbBoxY" value="0" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Dark zone top edge, % of height">Y <input type="number" id="pubThumbBoxY" value="18" step="1" min="0" max="80" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone width, % of width">W <input type="number" id="pubThumbBoxW" value="100" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone height, % of height">H <input type="number" id="pubThumbBoxH" value="48" step="1" min="15" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
                 <label title="Dark zone fill color">Color <input type="color" id="pubThumbBoxColor" value="#191b1f" style="width:28px;height:22px;padding:1px;border:1px solid var(--border2);border-radius:4px;"></label>
-                <label title="Box opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubThumbBoxOpacity" value="72" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
+                <label title="Box opacity — 100 = solid, 0 = none">Opacity <input type="number" id="pubThumbBoxOpacity" value="0" step="5" min="0" max="100" class="finput" style="width:38px;padding:2px 4px;min-width:0;">%</label>
               </div>
               <div style="display:flex;gap:6px;margin-top:5px;align-items:center;font-size:10px;">
                 <span style="color:var(--ink3);flex-shrink:0;">Image:</span>
@@ -8297,17 +8297,17 @@ let PUB_CAROUSEL = null;   // { forAsset, carousel, slides }
 // Each has a text layout matching the text zone its background was generated for. Adjusting a slide in
 // 🎯 Preview & Edit remembers that layout for its format (this browser), so every slide of that format follows.
 const SPC_LAYOUTS = {
-  cover: { label: 'Cover', xPct: 5, yPct: 4, wPct: 90, hPct: 32, sizePct: 9, maxChars: 60, bodyPct: 3.4, boxOpacity: 62 },
-  text:  { label: 'Text',  xPct: 6, yPct: 8, wPct: 88, hPct: 48, sizePct: 6.6, maxChars: 90, bodyPct: 4.4, boxOpacity: 88 },
-  end:   { label: 'End',   xPct: 7, yPct: 33, wPct: 86, hPct: 33, sizePct: 7.6, maxChars: 70, bodyPct: 4, boxOpacity: 82 },
+  cover: { label: 'Cover', xPct: 5, yPct: 18, wPct: 90, hPct: 32, sizePct: 9, maxChars: 60, bodyPct: 3.4, boxOpacity: 0 },
+  text:  { label: 'Text',  xPct: 6, yPct: 18, wPct: 88, hPct: 48, sizePct: 6.6, maxChars: 90, bodyPct: 4.4, boxOpacity: 0 },
+  end:   { label: 'End',   xPct: 7, yPct: 18, wPct: 86, hPct: 33, sizePct: 7.6, maxChars: 70, bodyPct: 4, boxOpacity: 0 },
 };
 let SPC_CUR_FMT = null;   // format of the carousel slide open in the Publish modal (null = not a carousel slide)
 function spcFormatOf(slide, total) { return slide <= 1 ? 'cover' : slide >= total ? 'end' : 'text'; }
 function spcLayout(fmt) {
-  let saved = null; try { saved = JSON.parse(localStorage.getItem('spcar:layout:' + fmt) || 'null'); } catch (e) {}
+  let saved = null; try { saved = JSON.parse(localStorage.getItem('spcar:layout:v2:' + fmt) || 'null'); } catch (e) {}
   return { boxColor: '#ffffff', ...SPC_LAYOUTS[fmt], ...(saved || {}) };
 }
-function spcSaveLayout(fmt, v) { try { localStorage.setItem('spcar:layout:' + fmt, JSON.stringify(v)); } catch (e) {} }
+function spcSaveLayout(fmt, v) { try { localStorage.setItem('spcar:layout:v2:' + fmt, JSON.stringify(v)); } catch (e) {} }
 function spcBodyPct() { return SPC_CUR_FMT ? SPC_LAYOUTS[SPC_CUR_FMT].bodyPct : undefined; }
 function spcApplyLayoutToInputs(fmt) {
   const L = spcLayout(fmt), set = (id, v) => { const el = document.getElementById(id); if (el && v != null) el.value = v; };
@@ -8884,12 +8884,19 @@ function readBoxStyle(prefix, defaults) {
 // lfText. Pixel values are for a 1080-wide image and scale with the canvas, so the small preview matches the save.
 // Remembered per slot (thumbnail / igBackground / postImage) in this browser, with the chosen typeface.
 const TX_STYLE = {};
+// Operator rule (2026-10-10), every text renderer (thumbnail, Instagram background, post image, carousel cover/text/end):
+// text centered, box top at 18%, transparent box (opacity 0), dark-gray shadow (#333333) at diffusion 50% (20 of 0-40).
+// Font + colour = the hub's own (display face; deepInk on titles, ink/accent on post parts) unless the operator overrides.
+const TX_TITLE_DEFAULT = { title: { align: 'center', shadowColor: '#333333', shadowBlur: 20, shadowDist: 0 } };
+const txKey = mode => 'txstyle:v2:' + mode;   // v2 = the 2026-10-10 rule; older saved styles / font overrides don't apply
 function txLoadStyle(mode) {
   if (TX_STYLE[mode]) return TX_STYLE[mode];
-  let v = null; try { v = JSON.parse(localStorage.getItem('txstyle:' + mode) || 'null'); } catch (e) {}
-  return (TX_STYLE[mode] = (v && typeof v === 'object') ? { styles: v.styles || {}, fontSet: v.fontSet || null } : { styles: {}, fontSet: null });
+  let v = null; try { v = JSON.parse(localStorage.getItem(txKey(mode)) || 'null'); } catch (e) {}
+  const sh = TX_TITLE_DEFAULT.title, def = (mode === 'thumbnail' || mode === 'igBackground') ? JSON.parse(JSON.stringify(TX_TITLE_DEFAULT))
+    : { primary: { ...sh }, accent: { ...sh }, body: { ...sh } };   // post image + carousel slides: same rule on every part
+  return (TX_STYLE[mode] = (v && typeof v === 'object') ? { styles: v.styles || def, fontSet: v.fontSet || null } : { styles: def, fontSet: null });
 }
-function txSaveStyle(mode, v) { TX_STYLE[mode] = v; try { localStorage.setItem('txstyle:' + mode, JSON.stringify(v)); } catch (e) {} }
+function txSaveStyle(mode, v) { TX_STYLE[mode] = v; try { localStorage.setItem(txKey(mode), JSON.stringify(v)); } catch (e) {} }
 // the hub design with a library typeface swapped in (heading = display, body = body); fonts loaded first
 async function txHub(hub, fs) {
   if (!fs || !fs.display) return hub;
@@ -8997,8 +9004,8 @@ async function compositeTitleOnThumbnail(overrideTitle) {
   // sizing), so they live here.
   const sizePct = parseFloat(document.getElementById('pubThumbTextSizePct').value) || 7.5;
   const maxChars = parseInt(document.getElementById('pubThumbMaxChars').value) || 90;
-  const box = readBoxParams('pubThumbBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 48 });
-  const style = readBoxStyle('pubThumbBox', { boxColor: '#191b1f', boxOpacity: 72 });
+  const box = readBoxParams('pubThumbBox', { xPct: 0, yPct: 18, wPct: 100, hPct: 48 });
+  const style = readBoxStyle('pubThumbBox', { boxColor: '#191b1f', boxOpacity: 0 });
   title = truncateToChars(title, maxChars);
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
@@ -9042,8 +9049,8 @@ async function compositeTitleOnIgBackground(overrideTitle) {
   if (!title) { alert('This asset has no title to render.'); return; }
   const sizePct = parseFloat(document.getElementById('pubIgTextSizePct').value) || 8;
   const maxChars = parseInt(document.getElementById('pubIgMaxChars').value) || 70;
-  const box = readBoxParams('pubIgBox', { xPct: 0, yPct: 0, wPct: 100, hPct: 40 });
-  const style = readBoxStyle('pubIgBox', { boxColor: '#191b1f', boxOpacity: 72 });
+  const box = readBoxParams('pubIgBox', { xPct: 0, yPct: 18, wPct: 100, hPct: 40 });
+  const style = readBoxStyle('pubIgBox', { boxColor: '#191b1f', boxOpacity: 0 });
   title = truncateToChars(title, maxChars);
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Loading hub fonts…';
@@ -9085,8 +9092,8 @@ async function compositeTextOnPostImage(overrideFields) {
   // Preview & Edit drag-editor) next to this button.
   const headSizePct = parseFloat(document.getElementById('pubPostHeadSizePct').value) || 6.2;
   const maxChars = parseInt(document.getElementById('pubPostMaxChars').value) || 40;
-  const box = readBoxParams('pubPostBox', { xPct: 0, yPct: 0, wPct: 62, hPct: 58 });
-  const style = readBoxStyle('pubPostBox', { boxColor: '#ffffff', boxOpacity: 88 });
+  const box = readBoxParams('pubPostBox', { xPct: 0, yPct: 18, wPct: 62, hPct: 58 });
+  const style = readBoxStyle('pubPostBox', { boxColor: '#ffffff', boxOpacity: 0 });
   btn.disabled = true; btn.textContent = '🔤 Working…';
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = overrideFields ? 'Rendering headline text…' : 'Fetching this post\'s copy…';
   const myAsset = pubAssetId;
@@ -9130,22 +9137,22 @@ const TEXT_EDITOR_SLOTS = {
   thumbnail: {
     title: 'Thumbnail — title placement', urlField: 'pubThumbnail', srcField: 'pubThumbBgSource', draw: 'title',
     sizeId: 'pubThumbTextSizePct', maxCharsId: 'pubThumbMaxChars', boxPrefix: 'pubThumbBox',
-    sizeDefault: 7.5, sizeMax: 15, maxCharsDefault: 90, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 48 },
-    styleDefaults: { boxColor: '#191b1f', boxOpacity: 72 },
+    sizeDefault: 7.5, sizeMax: 15, maxCharsDefault: 90, boxDefaults: { xPct: 0, yPct: 18, wPct: 100, hPct: 48 },
+    styleDefaults: { boxColor: '#191b1f', boxOpacity: 0 },
     save: (text) => compositeTitleOnThumbnail(text.title),
   },
   igBackground: {
     title: 'Instagram background — title placement', urlField: 'pubIgBgUrl', srcField: 'pubIgBgSource', draw: 'title',
     sizeId: 'pubIgTextSizePct', maxCharsId: 'pubIgMaxChars', boxPrefix: 'pubIgBox',
-    sizeDefault: 8, sizeMax: 15, maxCharsDefault: 70, boxDefaults: { xPct: 0, yPct: 0, wPct: 100, hPct: 40 },
-    styleDefaults: { boxColor: '#191b1f', boxOpacity: 72 },
+    sizeDefault: 8, sizeMax: 15, maxCharsDefault: 70, boxDefaults: { xPct: 0, yPct: 18, wPct: 100, hPct: 40 },
+    styleDefaults: { boxColor: '#191b1f', boxOpacity: 0 },
     save: (text) => compositeTitleOnIgBackground(text.title),
   },
   postImage: {
     title: 'Post image — headline placement', urlField: 'pubPostImage', srcField: 'pubPostImageSource', draw: 'post',
     sizeId: 'pubPostHeadSizePct', maxCharsId: 'pubPostMaxChars', boxPrefix: 'pubPostBox',
-    sizeDefault: 6.2, sizeMax: 14, maxCharsDefault: 40, boxDefaults: { xPct: 0, yPct: 0, wPct: 62, hPct: 58 },
-    styleDefaults: { boxColor: '#ffffff', boxOpacity: 88 },
+    sizeDefault: 6.2, sizeMax: 14, maxCharsDefault: 40, boxDefaults: { xPct: 0, yPct: 18, wPct: 62, hPct: 58 },
+    styleDefaults: { boxColor: '#ffffff', boxOpacity: 0 },
     save: (text) => compositeTextOnPostImage({ primary: text.primary, accent: text.accent, body: text.body }),
   },
 };
