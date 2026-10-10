@@ -17257,6 +17257,18 @@ Give a YouTube title in that format. Call submit_questions.`;
         const hubs = Object.fromEntries(HUB_SITES.map(h => [String(h.campaignId || "").replace(/-/g, ""), h.name]));
         return json({ ok: true, interviews: list, hubs });
       }
+      // ivSnapshot → KV iv:snapshot = per-hub interview list {id, hub, cid, syncedAt, titles:[{id, t, f, d, a}]} — the
+      // Worksheet artifact's Interviews section is synced from it (the artifact can't call this worker).
+      if (body.action === "ivSnapshot") {
+        await hubSitesMerge(env);
+        const hubs = Object.fromEntries(HUB_SITES.map(h => [String(h.campaignId || "").replace(/-/g, ""), h.name])), by = {}, at = new Date().toISOString();
+        (await ivList(null)).forEach(x => { const h = by[x.cid] = by[x.cid] || { id: (x.cid || "other").slice(0, 32), hub: hubs[x.cid] || "Other", cid: x.cid, syncedAt: at, titles: {} };
+          const t = h.titles[x.titleId] = h.titles[x.titleId] || { id: x.titleId, t: x.title, f: 0, d: 0, a: [] };
+          if (x.status === "Finished") t.d++; else t.f++; t.a.push((x.status === "Finished" ? "✓ " : "") + (x.scope === "Asset" ? "own: " : "") + x.angle); });
+        const snap = Object.values(by).map(h => ({ ...h, titles: Object.values(h.titles) }));
+        await env.TRADES.put("iv:snapshot", JSON.stringify(snap));
+        return json({ ok: true, hubs: snap.length, titles: snap.reduce((n, h) => n + h.titles.length, 0) });
+      }
       if (body.action === "getInterview") {
         const pg = await fetch(`https://api.notion.com/v1/pages/${ivDash(body.interviewId)}`, { headers: ivHdr() }).then(r => r.json());
         if (!pg || !pg.properties) return json({ error: "interview not found" }, 404);
