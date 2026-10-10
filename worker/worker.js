@@ -30004,7 +30004,7 @@ ${spec.slice(0, 6000)}`;
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
@@ -30102,7 +30102,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
           headers: { "Authorization": `Bearer ${(env.XAI_API_KEY || "").trim()}`, "content-type": "application/json" },
@@ -30167,7 +30167,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
@@ -30232,7 +30232,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
@@ -30341,7 +30341,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         prompt = (aiData.content?.[0]?.text || "").trim();
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
         }
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
@@ -30434,7 +30434,7 @@ Portrait Instagram post, ready to publish.`;
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Claude API error" }, 502);
         const prompt = (aiData.content?.[0]?.text || "").trim();
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",
@@ -30766,7 +30766,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const promptM = raw.match(/PROMPT:\s*([\s\S]+)$/i);
         const prompt = (promptM ? promptM[1] : raw.replace(/^\s*SCENE:.*$/mi, "")).trim();
         const scene = (sceneM ? sceneM[1] : prompt.slice(0, 90)).trim().slice(0, 140);
-        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502);
+        if (!prompt) return json({ error: "Claude returned an empty prompt" }, 502); if (body.promptOnly) return json({ success: true, promptOnly: true, prompt });
 
         const xr = await fetch("https://api.x.ai/v1/images/generations", {
           method: "POST",

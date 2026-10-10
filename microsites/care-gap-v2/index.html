@@ -1094,7 +1094,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="flex:1;min-width:0;">
               <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4, spec's Instagram-background safe-area rules</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
-                <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')">✨ Generate</button>
+                <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')" title="Render on Grok Imagine">✨ Generate</button>
+                <button class="btn" type="button" onclick="copyImagePrompt('ig-background', this)" title="Copy the prompt (the same one ✨ Generate would use) — paste it into ChatGPT or Grok; nothing is rendered">📋 Prompt</button>
                 <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('ig')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
                 <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
                 <button class="iconbtn" onclick="openImagePicker('instagramBackground')" title="Choose from this asset's other images">🖼️</button>
@@ -1132,7 +1133,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="flex:1;min-width:0;">
               <div id="pubBlogThumbLabel" style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— wide 16:9 banner, this method's actual thumbnail (not a social-media square)</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
-                <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()">✨ Generate</button>
+                <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()" title="Render on Grok Imagine">✨ Generate</button>
+                <button class="btn" type="button" onclick="copyImagePrompt('blog-thumbnail', this)" title="Copy the prompt (the same one ✨ Generate would use) — paste it into ChatGPT or Grok; nothing is rendered">📋 Prompt</button>
                 <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('thumb')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
                 <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
                 <button class="btn" id="pubThumbnailTextBtn" onclick="compositeTitleOnThumbnail()" style="display:none;">🔤 Add title text</button>
@@ -8187,6 +8189,23 @@ async function _offerImgFinish(kind, myAsset, imageUrl, prompt, genBtn, statusEl
     genBtn.disabled = false; genBtn.textContent = '✨ Retry';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Rendered OK but saving failed: ' + se.message;
   }
+}
+// 📋 Prompt: the generator writes its prompt (hub design + approved plate) but renders nothing — copied for ChatGPT / Grok
+async function copyImagePrompt(kind, btn) {
+  if (!pubAssetId) return;
+  const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
+  const statusEl = document.getElementById(OFFER_IMG[kind].status), o = btn.textContent;
+  btn.disabled = true; btn.textContent = '⏳ writing…'; statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Writing the prompt from the hub design…';
+  try {
+    const r = kind === 'ig-background' || isOffer ? await w('generateOfferImage', { assetId: pubAssetId, kind, promptOnly: true })
+      : await w(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail', { assetId: pubAssetId, promptOnly: true });
+    if (!r || !r.prompt) throw new Error((r && r.error) || 'no prompt returned');
+    const shape = kind === 'ig-background' ? 'vertical 3:4' : (isOffer ? 'square 1:1' : 'wide 16:9');
+    const text = `${r.prompt}\n\n(${shape} image — no text, letters or logos in the picture)`;
+    await navigator.clipboard.writeText(text);
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = '✓ Prompt copied — paste it into ChatGPT or Grok, then bring the picture back with 🧭 Direction → ⬆ Upload my own image.';
+  } catch (e) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Could not write the prompt: ' + e.message; }
+  btn.disabled = false; btn.textContent = o;
 }
 async function genOfferImage(kind) {
   if (!pubAssetId) return;
