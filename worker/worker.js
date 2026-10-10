@@ -12759,13 +12759,18 @@ the one aesthetic risk taken + why:`;
             // every page section holds hand-picked TITLES too (KV hub:sectiontitles:<key>:<cid>) — planned work for that slot
             let ids = []; try { ids = JSON.parse(secIds[ps.key] || "[]"); } catch (e) {}
             const txt = a => (a || []).map(t => t.plain_text).join("").trim();
-            ps.titleSlots = false;   // sections feature assets only now (2026-10-08); old hand-picked titles are cleared by hubDummies
+            ps.titleSlots = ps.key === "offers";   // 2026-10-09: the Products section takes titles (+ title → main-offering product → pillar → offer asset)
             ps.titles = (await Promise.all(ids.map(async id => { try {
               const pg = await fetch(`https://api.notion.com/v1/pages/${dashHb(id)}`, { headers: nhdr }).then(r => r.json());
               if (!pg || pg.object === "error" || pg.archived) return null; const pp = pg.properties || {};
               const mid = (pp.method?.relation || [])[0]?.id; let method = "";
               if (mid) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${mid}`, { headers: nhdr }).then(r => r.json()); method = txt(mp.properties?.Name?.title); } catch (e) {} }
-              return { id, title: txt(pp.Title?.title) || "Untitled", status: pp.Status?.select?.name || "", notes: txt(pp.Notes?.rich_text), method, date: (pg.created_time || "").slice(0, 10) };
+              const productId = ((pp.product?.relation || [])[0]?.id || "").replace(/-/g, "");
+              const assets = listed.filter(r => ((r.properties?.["Content Strategy"]?.relation || [])[0]?.id || "").replace(/-/g, "") === String(id).replace(/-/g, ""))
+                .map(r => ({ id: r.id.replace(/-/g, ""), title: txt(r.properties?.["Platform Title"]?.rich_text) || txt(r.properties?.["Asset Title"]?.title) || "Untitled",
+                  type: r.properties?.["Asset Type"]?.select?.name || "", status: r.properties?.["Asset Status"]?.select?.name || "", section: r.properties?.["Hub Section"]?.select?.name || "" }));
+              return { id, title: txt(pp.Title?.title) || "Untitled", status: pp.Status?.select?.name || "", notes: txt(pp.Notes?.rich_text), method, date: (pg.created_time || "").slice(0, 10),
+                productId, productName: (campProducts.find(p => p.id === productId) || {}).name || "", assets };
             } catch (e) { return null; } }))).filter(Boolean);
             ps.done = ps.done || ps.titles.length > 0;
           }

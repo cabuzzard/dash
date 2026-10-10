@@ -14880,17 +14880,42 @@ function hcTitleGo(btn, slug, sid) {
 //   new → createDevTitle (Planning, campaign + product) · existing → updateTitleStrategy { productId }
 function hcSectionTitleModal(slug, section) {
   hcTitleModal(slug, '');
+  { const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering) || {}, ids = mo.mainIds || [], byId = {}; (mo.products || []).forEach(p => { byId[p.id] = p; });
+    const go = document.getElementById('hcTitleGo'), box = document.createElement('div');
+    box.innerHTML = `<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Main-offering product for this title</label>
+      <select id="hcSecProd" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;">
+        ${ids.length ? ids.map(id => `<option value="${id}">★ ${esc((byId[id] || {}).name || id)}</option>`).join('') : ''}<option value="">— no product —</option></select>`;
+    if (go && go.parentElement) go.parentElement.parentElement.insertBefore(box, go.parentElement); }
   const lab = ((((_hubBuild[slug] || {}).steps || []).find(x => x.key === section)) || {}).label || section;
   const m = document.getElementById('hcModal'), sub = m.querySelector('h3 + div'); if (sub) sub.textContent = 'to ' + lab;
   const pn = m.querySelector('#hcPaneNew div'); if (pn) pn.textContent = 'Creates a title at Planning on this campaign and lists it under ' + lab + ' (orange until its asset is published there).';
   document.getElementById('hcTitleGo').onclick = function () {
     const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
-    const add = async tid => { const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId: tid, op: 'add', kind: 'title' }); if (!r || r.error) return (r && r.error) || 'Not saved'; _hubTitlesNeedRefetch(slug, section); return true; };
+    const prodId = (document.getElementById('hcSecProd') || {}).value || '';
+    const add = async tid => { if (prodId) { const u = await call('updateTitleStrategy', { titleId: tid, productId: prodId }); if (u && u.error) return u.error; }
+      const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId: tid, op: 'add', kind: 'title' }); if (!r || r.error) return (r && r.error) || 'Not saved'; _hubTitlesNeedRefetch(slug, section); return true; };
     if (window._hcTab === 'ex') hcModalRun(this, async () => window._hcPick ? add(window._hcPick) : 'Pick a title from the list');
     else hcModalRun(this, async () => { const v = document.getElementById('hcNewTitleName').value.trim(); if (!v) return 'Enter a title';
       const r = await call('createDevTitle', { title: v, campaignId: h.campaignId, status: 'Planning', skipPillar: true }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
       return add(r.id); });
   };
+}
+// ✍ Asset (Products section title): write the Offer – Content Hub asset from the title's pillar + product research, file it in Products
+const OFFER_CONTENT_HUB_METHOD_ID = '3cf1f7d3a4bb81b4b5a6eb7821cc462e';
+async function hubTitleOfferAsset(slug, titleId) {
+  const h = HUB_SITES.find(x => x.slug === slug), st = ((_hubBuild[slug] || {}).steps || []).find(x => x.key === 'offers'), t = st && (st.titles || []).find(x => x.id === titleId);
+  if (!h || !t) return;
+  if (!t.productId) return alert('This title has no product yet — an offer is always an offer OF a product. ✎ the title (or re-add it) with a main-offering product first.');
+  if (!confirm(`Write the Offer – Content Hub asset for “${t.title}” (product: ${t.productName || '?'}) and put it in the Products section?\n\nIt's written from the product's research and the title's pillar, and its offer page is published (the card goes live on the hub once the asset is Published).`)) return;
+  _hpNote[slug] = '⏳ Writing the offer asset for “' + t.title + '”…'; renderHubsTab();
+  try {
+    const r = await call('generateTitleAssets', { titleId, campaignId: h.campaignId, methodId: OFFER_CONTENT_HUB_METHOD_ID, title: t.title, description: t.notes || '', assetType: 'Offer – Content Hub', count: 1 });
+    if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    const ids = (r.assets || []).map(a => a.id).filter(Boolean);
+    for (const id of ids) await call('updateAllOutputField', { field: 'hubSection', assetId: id, value: 'Offers' });
+    _hpNote[slug] = `✓ Offer asset written for “${t.title}” and put in Products${r.sitePublished ? ' (its offer page is published)' : ''} — set it Published to show its card on the hub.`;
+  } catch (e) { _hpNote[slug] = '✗ Offer asset: ' + e.message; }
+  _hubBuildFetched[slug] = false; renderHubsTab();
 }
 function hcProdTitleModal(slug, pid) {
   const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid);
@@ -15098,8 +15123,14 @@ function renderHubBuildRows(slug) {
         // CTA's: hand-picked titles; + (on this line) adds a new or existing title
         const ts = s.titles || []; np = ts.length; ts.forEach(t => { _hubTitleIdx[t.id] = t; });
         pick = `<button onclick="event.stopPropagation();hcSectionTitleModal('${slug}','${s.key}')" title="Add a title (new or existing)" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>`;
-        if (open && np) prodRows = (rows ? '' : hubGridHead(0)) + ts.map(t => hubGridRow({ pad: 0, bar: t.status === 'Planning' || !t.status ? '#f6ad55' : '#4ade80', title: t.title, type: 'Title', method: t.method || '', status: t.status, date: t.date,
-          links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${t.id}','remove','title')" title="Take this title out of ${esc(s.label)} (the title itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` })).join('');
+        const moIds = (((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering) || {}).mainIds || [];
+        if (open && np) prodRows = (rows ? '' : hubGridHead(0)) + ts.map(t => { const as = t.assets || [], live = as.find(a => a.status === 'Published'), any = as[0];
+          return hubGridRow({ pad: 0, bar: live ? '#4ade80' : '#f6ad55', title: t.title,
+          type: t.productName ? (moIds.includes(t.productId) ? '★ ' : '') + t.productName : 'no product', typeTip: t.productName ? 'Product: ' + t.productName : 'No product yet — ✎ the title or re-add it with a main-offering product',
+          method: live ? 'offer live' : any ? `asset · ${any.status || '?'}` : (t.status === 'Development' ? 'pillar ✓ · no asset yet' : 'no pillar yet'), status: t.status, date: t.date,
+          links: `<button onclick="hcTitleEdit('${slug}','','${t.id}')" title="Edit title, notes and status — and ✍ Write pillar" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button>`
+          + ` <button onclick="hubTitleOfferAsset('${slug}','${t.id}')" title="Write the Offer – Content Hub asset from this title's pillar + product, and put it in the Products section" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍ Asset</button>`
+          + ` <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${t.id}','remove','title')" title="Take this title out of ${esc(s.label)} (the title itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('');
       }
       const countTxt = (s.titleSlots ? `${np} title${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
       // targets: Page content rows want 3+ assets; Interactive wants 1+ PUBLISHED asset — short of that the row goes orange
