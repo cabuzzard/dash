@@ -368,7 +368,7 @@ const HUB = {
     headline: "The owner's side of the table.",
     sub: "Your architect manages design. Your general contractor manages their margin. We manage the budget, schedule, scope and risk — for you, and only you — from feasibility through closeout.",
     ctaPrimary:   { label: "Get the newsletter", href: "#report" },
-    ctaSecondary: { label: "Book a project review",      href: "#trips" },
+    ctaSecondary: { label: "Talk to us", href: "#talk" },
   },
 
   projectExperience: {
@@ -406,7 +406,7 @@ const HUB = {
   },
   // Parked 2026-10-10 (status: Planning): the hub's main CTA is the newsletter now; this lead magnet and the old hero
   // button come back once the offering is developed. Not rendered.
-  parkedLeadMagnet: { status: "Planning", report: {
+  parkedLeadMagnet: { status: "Planning", heroSecondary: { label: "Book a project review",      href: "#trips" }, report: {
     label: "Start here — the free checklist",
     title: "18 things to have in place before you break ground.",
     blurb: "The introductory step into working with us: the free checklist we run every new client through — the contract terms, budget lines, insurance and approvals an owner should have locked before a shovel moves. Miss one and it costs you during construction, when the leverage is gone. When you want a set of eyes on your own project, the paid reviews start from here.",
@@ -812,6 +812,82 @@ async function renderHubProducts() {
   renderHubProducts();
   renderSocial();
   if (!window.matchMedia || !window.matchMedia("(prefers-reduced-motion: reduce)").matches) reveal();
+})();
+</script>
+
+<!-- Talk to us (2026-10-10): Call me now / Book a time → worker hubIntake → GoHighLevel (hub tag + field, one calendar) -->
+<style>
+#talkDlg{border:0;border-radius:16px;padding:0;max-width:440px;width:calc(100% - 32px);background:var(--bg,#fff);color:var(--ink,#1a1a1a);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+#talkDlg::backdrop{background:rgba(0,0,0,.5)}
+#talkDlg .tk{padding:22px 22px 18px}
+#talkDlg h3{margin:0 0 4px;font-size:1.35rem}
+#talkDlg .tk-sub{margin:0 0 14px;opacity:.75;font-size:.95rem}
+#talkDlg .tk-tabs{display:flex;gap:6px;margin:0 0 14px}
+#talkDlg .tk-tabs button{flex:1;padding:9px;border-radius:999px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;cursor:pointer;opacity:.7}
+#talkDlg .tk-tabs button[aria-selected="true"]{opacity:1;font-weight:700;background:rgba(127,127,127,.15)}
+#talkDlg label{display:block;font-size:.85rem;margin:0 0 10px}
+#talkDlg input{display:block;width:100%;box-sizing:border-box;margin-top:4px;padding:11px 12px;border-radius:10px;border:1px solid rgba(127,127,127,.45);background:transparent;color:inherit;font:inherit;font-size:16px}
+#talkDlg .tk-row{display:flex;gap:8px;align-items:center;margin-top:12px}
+#talkDlg .tk-row .btn{flex:1;text-align:center}
+#talkDlg .tk-x{position:absolute;top:10px;right:12px;background:none;border:0;color:inherit;font-size:22px;cursor:pointer;opacity:.6}
+#talkDlg .tk-msg{min-height:1.2em;font-size:.9rem;margin-top:10px}
+#talkDlg .tk-msg.err{color:#d9534f}
+</style>
+<dialog id="talkDlg" aria-labelledby="tkTitle">
+  <button class="tk-x" type="button" aria-label="Close" onclick="document.getElementById('talkDlg').close()">×</button>
+  <form class="tk" id="tkForm" novalidate>
+    <h3 id="tkTitle">Talk to us</h3>
+    <p class="tk-sub" id="tkSub">We'll call you in a minute or two, or you can pick a time that suits you.</p>
+    <div class="tk-tabs" role="tablist">
+      <button type="button" role="tab" id="tkTabCall" aria-selected="true">Call me now</button>
+      <button type="button" role="tab" id="tkTabBook" aria-selected="false">Book a time</button>
+    </div>
+    <label>Your name<input name="name" autocomplete="name" required></label>
+    <label>Phone<input name="phone" type="tel" autocomplete="tel" inputmode="tel" required></label>
+    <label id="tkEmailRow" hidden>Email<input name="email" type="email" autocomplete="email"></label>
+    <div id="tkTs"></div>
+    <div class="tk-row"><button class="btn" type="submit" id="tkGo">Call me now</button></div>
+    <div class="tk-msg" id="tkMsg" role="status"></div>
+  </form>
+</dialog>
+<script>
+(function () {
+  const dlg = document.getElementById("talkDlg"), form = document.getElementById("tkForm"), msg = document.getElementById("tkMsg"), go = document.getElementById("tkGo");
+  const slug = String((typeof HUB !== "undefined" && HUB.campaignTag) || "").replace(/^hub-/, "");
+  let op = "callback", tok = "", wid = null;
+  function setOp(o) {
+    op = o; document.getElementById("tkTabCall").setAttribute("aria-selected", String(o === "callback")); document.getElementById("tkTabBook").setAttribute("aria-selected", String(o === "book"));
+    document.getElementById("tkEmailRow").hidden = o !== "book"; go.textContent = o === "book" ? "Pick a time" : "Call me now";
+    document.getElementById("tkSub").textContent = o === "book" ? "Pick a time that suits you. We'll confirm by email." : "We'll call you in a minute or two. Keep your phone close.";
+    msg.textContent = ""; msg.className = "tk-msg";
+  }
+  document.getElementById("tkTabCall").onclick = () => setOp("callback");
+  document.getElementById("tkTabBook").onclick = () => setOp("book");
+  function open(e) {
+    if (e) e.preventDefault();
+    if (typeof dlg.showModal === "function") dlg.showModal(); else dlg.setAttribute("open", "");
+    if (window.turnstile && wid === null) wid = window.turnstile.render("#tkTs", { sitekey: "0x4AAAAAADUjP18lSj4N0zt1", callback: (t) => { tok = t; } });
+  }
+  document.addEventListener("click", (e) => { const a = e.target.closest('a[href="#talk"]'); if (a) open(e); });
+  if (location.hash === "#talk") setTimeout(open, 600);
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = form.elements, phone = f.phone.value.trim(), email = f.email.value.trim();
+    if (phone.replace(/\D/g, "").length < 10) { msg.textContent = "Enter your phone number with area code."; msg.className = "tk-msg err"; return; }
+    if (op === "book" && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = "Add your email so we can confirm the time."; msg.className = "tk-msg err"; return; }
+    if (!tok) { msg.textContent = "Tick the check box first."; msg.className = "tk-msg err"; return; }
+    go.disabled = true; const label = go.textContent; go.textContent = "Sending…";
+    try {
+      const r = await fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "hubIntake", op, slug, name: f.name.value.trim(), phone, email, tsToken: tok }) });
+      const d = await r.json();
+      if (!r.ok || d.error) throw new Error(d.error || "Something went wrong.");
+      if (op === "book" && d.bookingUrl) { msg.textContent = "Opening the calendar…"; msg.className = "tk-msg"; window.location.href = d.bookingUrl; return; }
+      msg.textContent = "Thanks! We're calling you now at " + phone + "."; msg.className = "tk-msg";
+      form.reset();
+    } catch (err) { msg.textContent = err.message; msg.className = "tk-msg err"; }
+    finally { go.disabled = false; go.textContent = label; tok = ""; if (window.turnstile && wid !== null) window.turnstile.reset(wid); }
+  });
 })();
 </script>
 </body>
