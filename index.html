@@ -5687,6 +5687,73 @@ function loadTabContent(name) {
     stopTradesAutoRefresh();
   }
 }
+// ── ⏱ Cron log flyout (every tab): the worker's scheduled() records each run (getCronLog). A fixed button opens a
+// right-hand drawer; while it is open it refreshes every 30 s. The button turns red when the latest run of any schedule failed.
+const CL_NAMES = { '*/30 * * * *': 'Every 30 min', '*/4 * * * *': 'Every 4 min (trades)', '*/5 12-16 * * MON-FRI': 'Market hours (5 min)', '0 0 * * *': 'Nightly 00:00 UTC', '15 0 * * *': 'Nightly 00:15 UTC' };
+let _clRuns = [], _clTimer = null, _clOpen = {};
+function cronLogInit() {
+  if (document.getElementById('clBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'clBtn'; btn.title = 'Cron log — every scheduled run and what it did'; btn.textContent = '⏱ Cron';
+  btn.style.cssText = 'position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:900;font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.25);';
+  btn.onclick = () => cronLogToggle();
+  const dr = document.createElement('div');
+  dr.id = 'clDrawer';
+  dr.style.cssText = 'position:fixed;top:0;right:0;bottom:0;width:min(620px,100vw);z-index:901;background:var(--bg);border-left:1px solid var(--border2);box-shadow:-8px 0 30px rgba(0,0,0,.3);display:none;flex-direction:column;';
+  dr.innerHTML = `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 14px;border-bottom:1px solid var(--border);">
+      <div style="font-size:15px;font-weight:700;color:var(--text);">⏱ Cron log</div>
+      <select id="clTrig" onchange="cronLogDraw()" style="margin-left:auto;font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:5px;background:var(--surface2);color:var(--text);"><option value="">All schedules</option></select>
+      <label style="font-size:11px;color:var(--text3);display:flex;align-items:center;gap:4px;"><input type="checkbox" id="clFail" onchange="cronLogDraw()">failures only</label>
+      <button onclick="cronLogLoad()" title="Refresh" style="font-size:11px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">⟳</button>
+      <button onclick="cronLogToggle(false)" title="Close" style="font-size:13px;padding:2px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>
+      <div style="flex-basis:100%;font-size:11px;color:var(--text3);">Every scheduled run: which jobs ran, how long, OK or failed, and what they logged. Click a run for its log lines.</div>
+    </div>
+    <div id="clBody" style="flex:1;overflow:auto;padding:10px 14px;font-size:12px;color:var(--text3);">Loading…</div>`;
+  document.body.appendChild(btn); document.body.appendChild(dr);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && dr.style.display === 'flex') cronLogToggle(false); });
+  setTimeout(() => { if (typeof SESSION_TOKEN !== 'undefined' && SESSION_TOKEN) cronLogLoad(); }, 4000);   // colour the button once on load
+}
+function cronLogToggle(force) {
+  const dr = document.getElementById('clDrawer'); if (!dr) return;
+  const open = force === undefined ? dr.style.display !== 'flex' : force;
+  dr.style.display = open ? 'flex' : 'none';
+  clearInterval(_clTimer);
+  if (open) { cronLogLoad(); _clTimer = setInterval(cronLogLoad, 30000); }
+}
+async function cronLogLoad() {
+  const r = await call('getCronLog').catch(e => ({ error: e.message }));
+  const body = document.getElementById('clBody');
+  if (!r || r.error) { if (body) body.textContent = '✗ ' + ((r && r.error) || 'Could not load'); return; }
+  _clRuns = r.runs || [];
+  const latest = {}; _clRuns.forEach(x => { if (!latest[x.cron]) latest[x.cron] = x; });
+  const failing = Object.values(latest).some(x => (x.jobs || []).some(j => !j.ok));
+  const btn = document.getElementById('clBtn');
+  if (btn) { btn.style.borderColor = failing ? '#f87171' : 'var(--border2)'; btn.style.color = failing ? '#f87171' : 'var(--text2)'; btn.textContent = failing ? '⏱ Cron ⚠' : '⏱ Cron'; }
+  cronLogDraw();
+}
+function cronLogDraw() {
+  const sel = document.getElementById('clTrig'); if (!sel) return;
+  const cur = sel.value, fails = document.getElementById('clFail').checked;
+  const trigs = [...new Set(_clRuns.map(x => x.cron))];
+  sel.innerHTML = '<option value="">All schedules</option>' + trigs.map(t => `<option value="${esc(t)}" ${t === cur ? 'selected' : ''}>${esc(CL_NAMES[t] || t)}</option>`).join('');
+  const runs = _clRuns.filter(x => (!cur || x.cron === cur) && (!fails || (x.jobs || []).some(j => !j.ok)));
+  const when = t => { const d = new Date(t); return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', second: '2-digit' }); };
+  const sec = ms => ms >= 60000 ? (ms / 60000).toFixed(1) + ' min' : (ms / 1000).toFixed(1) + ' s';
+  document.getElementById('clBody').innerHTML = runs.length ? runs.slice(0, 200).map(x => {
+    const bad = (x.jobs || []).filter(j => !j.ok).length, k = x.cron + '|' + x.at;
+    return `<div style="border:1px solid ${bad ? 'rgba(248,113,113,.5)' : 'var(--border)'};border-radius:8px;padding:7px 10px;margin:0 0 6px;">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;" onclick="_clOpen['${esc(k)}']=!_clOpen['${esc(k)}'];cronLogDraw()">
+        <span style="width:8px;height:8px;border-radius:50%;background:${bad ? '#f87171' : '#4ade80'};flex-shrink:0;"></span>
+        <span style="font-variant-numeric:tabular-nums;color:var(--text);">${when(x.at)}</span>
+        <span style="color:var(--text3);">${esc(CL_NAMES[x.cron] || x.cron)}</span>
+        <span style="margin-left:auto;color:var(--text3);font-size:11px;">${(x.lines || []).length} line${(x.lines || []).length === 1 ? '' : 's'} ${_clOpen[k] ? '▾' : '▸'}</span>
+        <span style="display:flex;gap:4px;flex-wrap:wrap;flex-basis:100%;padding-left:16px;">${(x.jobs || []).map(j => `<span title="${esc(j.error || 'OK')}" style="font-size:10.5px;padding:1px 7px;border-radius:10px;border:1px solid ${j.ok ? 'var(--border2)' : '#f87171'};color:${j.ok ? 'var(--text2)' : '#f87171'};">${j.ok ? '' : '✗ '}${esc(j.name)} · ${sec(j.ms || 0)}</span>`).join('')}</span>
+      </div>
+      ${_clOpen[k] ? `<div style="margin:6px 0 2px 16px;font-family:var(--mono,monospace);font-size:11px;line-height:1.5;">${(x.jobs || []).filter(j => !j.ok).map(j => `<div style="color:#f87171;">✗ ${esc(j.name)}: ${esc(j.error || '')}</div>`).join('')}${(x.lines || []).map(l => `<div style="color:${l.lvl === 'error' ? '#f87171' : 'var(--text2)'};white-space:pre-wrap;overflow-wrap:anywhere;">${esc(l.msg)}</div>`).join('') || '<div style="color:var(--text3);">No log lines.</div>'}</div>` : ''}
+    </div>`; }).join('')
+    : '<div style="padding:20px;text-align:center;">No runs recorded yet. The log starts with the next scheduled run, within 4 minutes.</div>';
+}
+document.addEventListener('DOMContentLoaded', cronLogInit); if (document.readyState !== 'loading') setTimeout(cronLogInit, 0);
 function switchTab(name) {
   setTimeout(() => document.querySelectorAll(".flow-tbl textarea").forEach(flowGrow), 0);   // cells in a hidden tab are measured once it shows
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));

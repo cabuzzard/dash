@@ -26728,6 +26728,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       if (body.action === "writeHubNewsPost") {
         try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); }
       }
+      // getCronLog → every trigger's recent runs (KV cron:log:<trigger>, written by scheduled()) for dash's Cron log tab.
+      if (body.action === "getCronLog") {
+        const list = await env.TRADES.list({ prefix: "cron:log:" }).catch(() => ({ keys: [] }));
+        const logs = await Promise.all((list.keys || []).map(k => env.TRADES.get(k.name, "json").catch(() => [])));
+        return json({ ok: true, runs: logs.flat().filter(Boolean).sort((x, y) => Date.parse(y.at) - Date.parse(x.at)).slice(0, 400) });
+      }
       if (body.action === "buildHubTopicIdeas") { try { return json(await buildHubTopicIdeas(env, body.campaignId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
       if (body.action === "getHubNewsRound") return json({ ok: true, sched: await env.TRADES.get("hubnews:sched", "json").catch(() => null), log: await env.TRADES.get("hubnews:log", "json").catch(() => null) });
@@ -47060,6 +47066,26 @@ Produce all of this by calling the submit_listing tool — do not include any of
   },
 
   async scheduled(event, env, ctx) {
+    // 📜 Cron log (2026-10-10): every job of this run is recorded — name, time, ok / failed — plus the console lines it
+    // printed, into KV cron:log:<trigger> (last 60 runs each). Dash → Cron log tab (getCronLog). A job whose catch only
+    // logs "<name> failed: …" still counts as failed.
+    const run = { cron: event.cron, at: new Date().toISOString(), jobs: [], lines: [] }, pend = [];
+    const oLog = console.log, oErr = console.error;
+    const cap = (lvl, args) => { try { if (run.lines.length < 80) run.lines.push({ t: Date.now(), lvl, msg: args.map(x => typeof x === "string" ? x : (x && x.message) || JSON.stringify(x)).join(" ").slice(0, 400) }); } catch (e) {} };
+    const myLog = (...x) => { cap("log", x); oLog(...x); }, myErr = (...x) => { cap("error", x); oErr(...x); };
+    console.log = myLog; console.error = myErr;
+    const cw = (name, p) => { const t0 = Date.now(), j = { name, ms: 0, ok: true }; run.jobs.push(j);
+      const q = Promise.resolve(p).then(() => { j.ms = Date.now() - t0; }, e => { j.ms = Date.now() - t0; j.ok = false; j.error = String((e && e.message) || e).slice(0, 300); });
+      pend.push(q); ctx.waitUntil(q); };
+    ctx.waitUntil((async () => {
+      await new Promise(r => setTimeout(r, 30));
+      let n; do { n = pend.length; await Promise.allSettled(pend); await new Promise(r => setTimeout(r, 20)); } while (pend.length !== n);
+      if (console.log === myLog) console.log = oLog; if (console.error === myErr) console.error = oErr;
+      for (const j of run.jobs) { const f = run.lines.find(l => l.lvl === "error" && l.msg.includes(j.name)); if (f && j.ok) { j.ok = false; j.error = f.msg.slice(0, 300); } }
+      run.ms = Date.now() - Date.parse(run.at);
+      const K = "cron:log:" + event.cron.replace(/[^0-9A-Za-z*-]+/g, "_");
+      try { const prev = (await env.TRADES.get(K, "json")) || []; prev.push(run); await env.TRADES.put(K, JSON.stringify(prev.slice(-60))); } catch (e) { oErr("cron log write failed:", e.message); }
+    })());
     await hubSitesMerge(env);
     if (event.cron === "*/5 12-16 * * MON-FRI") {
       // MON-FRI, not 1-5: Cloudflare numbers weekdays 1=Sunday, so "1-5" ran
@@ -47067,30 +47093,30 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // ORB_MOMENTUM_001 — morning screen (08:00-09:30 ET) + opening-range
       // breakout monitor (10:00-11:30 ET). runOrbStrategy no-ops outside those
       // windows, so the 5-min cadence is cheap the rest of the time.
-      ctx.waitUntil(runOrbStrategy(env).catch(e => console.error('runOrbStrategy failed:', e.message)));
+      cw("runOrbStrategy", runOrbStrategy(env).catch(e => console.error('runOrbStrategy failed:', e.message)));
       // ETF_MOMENTUM_V1 + FEAR_DIP_V1 — once per session at ~09:45 ET (self-gated).
-      ctx.waitUntil(runSwingStrategies(env).catch(e => console.error('runSwingStrategies failed:', e.message)));
+      cw("runSwingStrategies", runSwingStrategies(env).catch(e => console.error('runSwingStrategies failed:', e.message)));
       // SENTIMENT_REBOUND_V1 — oversold screen + X sentiment, once per session ~10:30 ET (self-gated)
       // CROWD_SENTIMENT_V1 — X crowd calls, twice per session (~10:00 / ~13:00 ET, self-gated)
-      ctx.waitUntil(runCrowdSentiment(env).then(r => { if (r.ran) console.log(`crowdSentiment: ${(r.calls || []).length} calls, ${r.traded.length} traded${r.error ? ' — ' + r.error : ''}`); }).catch(e => console.error('runCrowdSentiment failed:', e.message)));
+      cw("runCrowdSentiment", runCrowdSentiment(env).then(r => { if (r.ran) console.log(`crowdSentiment: ${(r.calls || []).length} calls, ${r.traded.length} traded${r.error ? ' — ' + r.error : ''}`); }).catch(e => console.error('runCrowdSentiment failed:', e.message)));
       // SENTIMENT_REBOUND_V1 paused 2026-10-08 (operator pivoting to pure X sentiment) — manual ▶ Run now only
       return;
     }
     if (event.cron === "*/30 * * * *") {
-      ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
+      cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
-      ctx.waitUntil(hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
+      cw("hubNewsCronTick", hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
     }
     if (event.cron === "*/4 * * * *") {
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
-      ctx.waitUntil(runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
+      cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
       // Bulk hub research+strategy: auto-seed the queue the first time (no KV
       // state), then drain ~2 products/tick until done. Once complete the KV
       // state persists with a full done-list, so this stays a cheap no-op
       // (1 KV read) forever after — a `reset` deliberately re-seeds it.
-      ctx.waitUntil((async () => {
+      cw("bulkHubStrategy tick", (async () => {
         try {
           const st = await env.TRADES.get(BULK_HUB_KV, "json");
           if (!st || !Array.isArray(st.targets)) return; // no queue → nothing to do (seed via bulkHubStrategyStart)
@@ -47107,8 +47133,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // nightly batch) so it gets a fresh subrequest budget. Transcribes /
       // mines / one-pass re-mines a capped batch of the 🔗 Saved Posts
       // backlog; drains over a few nights. See runBulkLinksNightly.
-      ctx.waitUntil(
-        runBulkLinksNightly(env)
+      cw("runBulkLinksNightly", runBulkLinksNightly(env)
           .then(r => console.log(r.ran
             ? `bulkLinksNightly: +${r.txDid} transcribed, +${r.mnDid} mined, +${r.rmDid} re-mined · ${r.txLeft}/${r.mnLeft}/${r.rmLeft} left${r.complete ? ' · backlog clear' : ''}`
             : `bulkLinksNightly skipped: ${r.reason}`))
@@ -47116,8 +47141,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       );
       return;
     }
-    ctx.waitUntil(deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
-    ctx.waitUntil(runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
+    cw("deepScan", deepScan(env).catch(e => console.error('deepScan failed:', e.message)));
+    cw("runAutoTradeScan", runAutoTradeScan(env).catch(e => console.error('runAutoTradeScan failed:', e.message)));
     // Twitter call scanner — daily sweep of the watchlist for swing-style
     // directional calls (2-day to ~1-2 week horizon; explicit scalp/day-trade
     // language is filtered out per operator direction). Shares this cron
@@ -47125,51 +47150,45 @@ Produce all of this by calling the submit_listing tool — do not include any of
     // Workers Free plan caps cron triggers at 5, already spoken for; every
     // other job here is on the same shared arrangement. Fires ~20:00 ET,
     // after the close, so a full trading day's tweets are captured.
-    ctx.waitUntil(
-      runTwitterCallScan(env)
+    cw("runTwitterCallScan", runTwitterCallScan(env)
         .then(r => console.log(`twitterCallScan: ${r.created || 0} created, ${r.notCalls || 0} skipped, ${r.fresh || 0}/${r.fetched || 0} fresh tweets`))
         .catch(e => console.error('runTwitterCallScan failed:', e.message))
     );
     // ORB_MOMENTUM_001 miss tracking — archive the day's rejected breakouts and
     // score MFE/MAE for every horizon that has come due, syncing each to the
     // 📉 ORB Misses Notion DB. Runs at ~20:00 ET, after the cash session closes.
-    ctx.waitUntil(
-      runOrbMissScoring(env)
+    cw("runOrbMissScoring", runOrbMissScoring(env)
         .then(r => console.log(`orb miss scoring: scored ${r.scored}, synced ${r.synced}, errors ${r.errors}`))
         .catch(e => console.error('runOrbMissScoring failed:', e.message))
     );
     // "link tagging" replaced runKnowledgeGraphAnalysis: the daily cron only
     // keeps Draft Tags fresh — the full mining pass is operator-triggered
     // per post so tags can be edited first (integrateLinkKnowledge).
-    ctx.waitUntil(
-      runLinkTagging(env, { limit: 20 })
+    cw("runLinkTagging", runLinkTagging(env, { limit: 20 })
         .then(n => console.log(`link tagging ran: ${n} post(s) tagged`))
         .catch(e => console.error('link tagging failed:', e.message))
     );
     // Full mining chain for links ticked "Mine" — transcribe → mine into
     // usefulness-scored Link Mining rows. Does nothing (no AI, no Apify)
     // when no link is tagged.
-    ctx.waitUntil(
-      runLinkMiningPipeline(env, { limit: 5 })
+    cw("runLinkMiningPipeline", runLinkMiningPipeline(env, { limit: 5 })
         .then(r => r.ran
           ? console.log(`link mining ran: ${r.transcribed} transcribed, ${r.mined} mined, ${r.bits} bit(s)`)
           : console.log(`link mining skipped: ${r.reason}`))
         .catch(e => console.error('link mining failed:', e.message))
     );
-    ctx.waitUntil(
-      buildEcosystemGraph(env)
+    cw("buildEcosystemGraph", buildEcosystemGraph(env)
         .then(g => env.TRADES.put(ECOSYSTEM_GRAPH_KV_KEY, JSON.stringify(g), { expirationTtl: 172800 }))
         .catch(e => console.error('buildEcosystemGraph failed:', e.message))
     );
-    ctx.waitUntil(runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
-    ctx.waitUntil(runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
-    ctx.waitUntil(runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
-    ctx.waitUntil(runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
+    cw("runListingRepostReminders", runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
+    cw("runHubFrontReminders", runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
+    cw("runStrategySequenceReminders", runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
+    cw("runAffiliateScan", runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
     // Lead sourcing — OPT-IN: no-ops unless a vertical key is in KV `leadsrc:auto`
     // (toggled from the 🧲 Lead Sourcing panel). Pulls listings via Apify, so it
     // stays off by default to avoid a standing scrape bill.
-    ctx.waitUntil(
-      runLeadSourcing(env)
+    cw("runLeadSourcing", runLeadSourcing(env)
         .then(r => r.ran
           ? console.log(`lead sourcing: +${r.created} new, ${r.seen} re-seen, ${r.skipped} skipped${r.errors.length ? ` (${r.errors.length} errs)` : ''}`)
           : console.log(`lead sourcing skipped: ${r.reason}`))
