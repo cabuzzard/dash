@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan Match &amp; Enrollment Review — Medicare Clarity</title>
+
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Nunito+Sans:wght@400;500;600;700&display=swap');
+:root { --bg:#fbf8f2; --ink:#2b3a3d; --accent:#6a4fb0; }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font-family:"Nunito Sans", system-ui, sans-serif; line-height:1.7; }
+.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
+header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
+header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
+header.site .back { font-size:.85rem; color:var(--accent); }
+.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
+h1,h2 { font-family:"Fraunces", Georgia, serif; color:var(--ink); line-height:1.2; }
+h1 { font-size:2.2rem; margin:.3rem 0 14px; }
+h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
+p { margin:0 0 18px; font-size:1.08rem; }
+.lede { font-size:1.2rem; }
+img.hero { display:block; width:100%; height:auto; border-radius:10px; margin:6px 0 22px; }
+ul.inc { list-style:none; padding:0; margin:0 0 18px; }
+ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
+.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
+.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
+.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
+.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
+.cf-turnstile { margin:12px 0; }
+.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
+.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
+footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
+.offerlist { list-style:none; margin:0; padding:0; }
+.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
+.offerlist a { color:var(--ink); text-decoration:none; font-family:"Fraunces", Georgia, serif; font-size:1.3rem; }
+.offerlist a:hover { color:var(--accent); }
+.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="site">
+  <a href="../../index.html">Medicare Clarity</a>
+  <a class="back" href="../index.html">&larr; All offers</a>
+</header>
+<div class="kicker">Fixed-fee review · $349–$599</div>
+<h1>Plan Match &amp; Enrollment Review</h1>
+
+<p class="lede">Your doctors, prescriptions, and budget checked against real plans — with a written recommendation, a penalty audit, and no carrier on the other end of the call.</p>
+<p><strong>Who it's for:</strong> Adults 62–67 making a Medicare coverage decision they cannot afford to get wrong</p>
+<h2>What's included</h2>
+<ul class="inc"><li>Structured intake covering your doctors, active prescriptions, anticipated care needs, and budget floor</li><li>Side-by-side plan comparison across available options in your area</li><li>Late-enrollment penalty audit — Part B, Part D, and secondary payer status if you are still working</li><li>Written recommendation naming a plan and explaining why it fits your specific situation</li><li>Prioritized enrollment timeline with no guesswork left in it</li><li>Optional enrollment support: guided through to submission and confirmation</li></ul>
+<h2>Why it works</h2>
+<p>Every broker in this space is paid by the carrier whose plan you choose — that is not guidance, that is a referral fee dressed up as advice. This engagement has one fee, paid by you, zero carrier compensation, and a written deliverable you can reread, share with a spouse, or hand to an attorney.</p>
+<h2>The objection it answers</h2>
+<p>A broker does this for free. A broker is paid by the carrier whose plan you choose — the cost is in the incentive structure, not the invoice. One flat fee, disclosed before anything starts, and the recommendation does not change based on what pays more.</p>
+<h2>Terms</h2>
+<p>Flat fee $349–$599, disclosed before the engagement begins. One-time consulting engagement. Clarity Consult fee credited toward this if applicable. Optional guided enrollment session available as add-on.</p>
+<h2>Check Your Plan Fit</h2>
+<form class="offer-form" id="of" novalidate>
+  <input type="email" name="email" placeholder="you@email.com" autocomplete="email" required aria-label="Email address">
+  <div class="cf-turnstile" data-sitekey="0x4AAAAAADUjP18lSj4N0zt1" data-callback="ofTs"></div>
+  <button class="btn" type="submit" id="ob">Check Your Plan Fit</button>
+  
+  <p class="msg" id="om" role="status"></p>
+</form>
+<footer class="site">Medicare Clarity</footer>
+</div>
+<script>
+(function(){
+  var f=document.getElementById('of'), b=document.getElementById('ob'), m=document.getElementById('om'), tok='';
+  window.ofTs=function(t){tok=t;};
+  if(!f) return;
+  f.addEventListener('submit',async function(e){
+    e.preventDefault();
+    var email=(f.email.value||'').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){m.textContent='Check that email address.';m.className='msg err';return;}
+    if(!tok){m.textContent='Complete the check above first.';m.className='msg err';return;}
+    b.disabled=true;b.textContent='Sending...';m.textContent='';m.className='msg';
+    try{
+      var r=await fetch("https://jolly-darkness-5dcc.trailnotes2026.workers.dev",{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'submitLead',campaign:"Medicare Clarity — offer: Plan Match & Enrollment Review",email:email,fraudType:'Other',note:"Offer interest - Plan Match & Enrollment Review",tsToken:tok})});
+      var d=await r.json(); if(!r.ok) throw new Error(d.error||'Something went wrong.');
+      f.reset(); m.textContent='You are on the list - we will be in touch.'; m.className='msg ok';
+    }catch(err){ m.textContent=err.message+' Try again in a minute.'; m.className='msg err'; }
+    finally{ b.disabled=false;b.textContent="Check Your Plan Fit"; tok=''; if(window.turnstile)window.turnstile.reset(); }
+  });
+})();
+</script>
+</body>
+</html>
