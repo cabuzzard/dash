@@ -784,6 +784,85 @@ async function handleStudio(env, body) {
   }
   return { error: "Unknown op" };
 }
+// ── Hub news posts (2026-10-10) ── one "Blog - SEO - News" post per hub, built off one of the hub's MAIN products
+// (rotating through them): createNewsBlogTitle (headline + grounded news-analysis pillar, the product as the lead) →
+// generateTitleAssets (SEO post branch: writes the article and publishes it to web/hub/<slug>/blog/) → Published +
+// Hub Section News → Grok blog thumbnail (generateBlogPostThumbnail → saveOfferImage, which republishes the post).
+// writeHubNewsPost {campaignId, force?} does one hub; the */30 cron runs hubNewsCronTick: every 48 h a new round queues
+// every hub still under HUB_NEWS_TARGET published news posts, then each tick writes ONE (fits the cron's time budget).
+// KV hubnews:round = {startedAt, queue:[cid], done:[{cid, ok, headline, error}]}.
+const HUB_NEWS_TARGET = 3, HUB_NEWS_EVERY_MS = 48 * 3600 * 1000;
+async function selfAction(env, action, extra) {
+  const token = await signToken((env.HMAC_SECRET || "").trim());
+  const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
+    body: JSON.stringify({ action, token, __inner: true, ...extra }) });
+  const t = await r.text();
+  try { return JSON.parse(t); } catch (e) { return { error: "Worker returned HTTP " + r.status }; }
+}
+async function hubNewsCount(env, cid) {
+  const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+  const rows = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
+  return rows.filter(r => { const t = r.properties?.["Asset Type"]?.select?.name || "", st = r.properties?.["Asset Status"]?.select?.name || "";
+    return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^publish/i.test(st); }).length;
+}
+async function writeHubNewsPost(env, cid, opts = {}) {
+  cid = String(cid || "").replace(/-/g, "");
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
+  if (!hub) return { error: "not a hub campaign" };
+  const have = await hubNewsCount(env, cid);
+  if (!opts.force && have >= HUB_NEWS_TARGET) return { skipped: true, hub: hub.name, have };
+  const hdrN = { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
+  const mains = [];
+  for (const pid of await hubMainList(env, cid)) {
+    const pg = await fetch(`https://api.notion.com/v1/pages/${pid}`, { headers: hdrN }).then(r => r.json()).catch(() => ({}));
+    const name = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+    const desc = (pg.properties?.Description?.rich_text || []).map(t => t.plain_text).join("").trim();
+    if (name && !/ - Main Offering$/.test(name)) mains.push({ id: String(pid).replace(/-/g, ""), name, desc });
+  }
+  if (!mains.length) return { error: "no main products", hub: hub.name };
+  let t = null, product = null;
+  for (let k = 0; k < mains.length && !t; k++) {
+    product = mains[(have + k) % mains.length];
+    const lead = `Main offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nFind a CURRENT, real development this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
+    const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: product.name, newsBody: lead, allowDuplicate: k === mains.length - 1 });
+    if (r && r.success && r.titleId) t = r;
+    else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
+  }
+  if (!t) return { error: "every angle was a duplicate", hub: hub.name };
+  const g = await selfAction(env, "generateTitleAssets", { titleId: t.titleId, campaignId: cid, productId: product.id, methodId: t.methodId, title: t.headline, assetType: "Blog - SEO - News", count: 1 });
+  const assetId = g && ((g.assets || [])[0] || {}).id;
+  if (!assetId) return { error: "article: " + ((g && g.error) || "no asset"), hub: hub.name, headline: t.headline };
+  await selfAction(env, "updatePublishFields", { assetId, status: "Published", hubSection: "news" });
+  let thumb = false, thumbError = "";
+  const im = await selfAction(env, "generateBlogPostThumbnail", { assetId });
+  if (im && im.imageUrl) {
+    const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
+    thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
+  } else thumbError = (im && im.error) || "no image";
+  return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl: g.liveUrl || "", thumb, thumbError, had: have };
+}
+async function hubNewsCronTick(env) {
+  const K = "hubnews:round";
+  let rd = await env.TRADES.get(K, "json").catch(() => null);
+  if (!rd) { await env.TRADES.put(K, JSON.stringify({ startedAt: new Date().toISOString(), queue: [], done: [] })); return { seeded: true }; }   // first sight: the clock starts now
+  if (((!rd.queue || !rd.queue.length) && Date.now() - Date.parse(rd.startedAt || 0) >= HUB_NEWS_EVERY_MS)) {
+    const queue = [];
+    for (const h of HUB_SITES) { const cid = String(h.campaignId || "").replace(/-/g, ""); if (cid && (await hubNewsCount(env, cid)) < HUB_NEWS_TARGET) queue.push(cid); }
+    rd = { startedAt: new Date().toISOString(), queue, done: [] };
+    await env.TRADES.put(K, JSON.stringify(rd));
+    return { started: queue.length };
+  }
+  if (!rd.queue || !rd.queue.length) return { idle: true };
+  if (rd.busyUntil && Date.now() < rd.busyUntil) return { busy: true };
+  const cid = rd.queue[0];
+  rd.busyUntil = Date.now() + 25 * 60000; await env.TRADES.put(K, JSON.stringify(rd));
+  let r; try { r = await writeHubNewsPost(env, cid); } catch (e) { r = { error: e.message }; }
+  rd = (await env.TRADES.get(K, "json").catch(() => null)) || rd;
+  rd.queue = (rd.queue || []).filter(x => x !== cid); delete rd.busyUntil;
+  rd.done = (rd.done || []).concat([{ cid, ok: !!r.ok, skipped: !!r.skipped, headline: r.headline || "", error: r.error || "", at: new Date().toISOString() }]).slice(-40);
+  await env.TRADES.put(K, JSON.stringify(rd));
+  return r;
+}
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -26513,6 +26592,13 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
               generating: p.generating, answered: p.answered, questions: p.qs.length, assetId: p.assetId, minutes: p.minutes, updatedAt: p.updatedAt }; }) } : {}) };
         })) });
       }
+      // writeHubNewsPost {campaignId, force?} — one Blog - SEO - News post for a hub off a main product (see writeHubNewsPost).
+      // force writes even when the hub already has HUB_NEWS_TARGET; startsRound stamps hubnews:round so the 48 h cadence counts from now.
+      if (body.action === "writeHubNewsPost") {
+        if (body.startsRound) { const rd = (await env.TRADES.get("hubnews:round", "json").catch(() => null)) || {}; await env.TRADES.put("hubnews:round", JSON.stringify({ ...rd, startedAt: new Date().toISOString(), queue: [], done: rd.done || [] })); }
+        try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); }
+      }
+      if (body.action === "getHubNewsRound") return json({ ok: true, round: await env.TRADES.get("hubnews:round", "json").catch(() => null) });
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
       if (body.action === "runMainProductResearch") return json(await runMainProductResearch(env, body.productIds ? { campaignId: body.campaignId, productIds: body.productIds } : null));
       if (body.action === "getBulkJobs") { const [pi, rs] = await Promise.all([env.TRADES.get("bulk:prodideas", "json").catch(() => null), env.TRADES.get("bulk:research", "json").catch(() => null)]); return json({ prodideas: pi, research: rs }); }
@@ -46860,6 +46946,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if (event.cron === "*/30 * * * *") {
       ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
+      // Hub news: every 48 h, one Blog - SEO - News post per hub still under 3 — one hub per tick (hubNewsCronTick).
+      ctx.waitUntil(hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
     }
     if (event.cron === "*/4 * * * *") {
