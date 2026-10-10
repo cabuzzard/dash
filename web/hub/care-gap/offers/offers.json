@@ -1,5 +1,15 @@
 [
   {
+    "slug": "disability-investor-call",
+    "name": "Disability Investor Call",
+    "kicker": "Discovery call · tiered pricing, proceeds fund caregiver relief",
+    "promise": "You leave with a named funding vehicle, a value-aligned rationale, and one concrete next step — not more research.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81d89714e7781a7b797c",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/the-care-gap/disability-nonprofit-investor-discovery-call-blog-thumbnail-mv21yvcp.png"
+  },
+  {
     "slug": "giving-circle",
     "name": "Giving Circle",
     "kicker": "Membership · $25–$250/mo",
@@ -7,15 +17,6 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81808d20c306fd7f6fe2"
-  },
-  {
-    "slug": "disability-investor-call",
-    "name": "Disability Investor Call",
-    "kicker": "Discovery call · tiered pricing, proceeds fund caregiver relief",
-    "promise": "You leave with a named funding vehicle, a value-aligned rationale, and one concrete next step — not more research.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81d89714e7781a7b797c"
   },
   {
     "slug": "burnout-decoded",
