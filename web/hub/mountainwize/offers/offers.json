@@ -1,5 +1,15 @@
 [
   {
+    "slug": "inner-edge-coaching",
+    "name": "Inner Edge Coaching",
+    "kicker": "1:1 Private Engagement · $1,500–$3,000 / 3 months",
+    "promise": "In three months you move from decisions that feel constructed to decisions that feel right — and the inner process that gets you there stays with you when the engagement ends.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb810b862cc03ebfd24cb1",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/1-1-executive-mindset-coaching-blog-thumbnail-mv22kw0d.png"
+  },
+  {
     "slug": "identity-reset",
     "name": "Identity Reset",
     "kicker": "30-Day Cohort Challenge · $97–$197 entry",
@@ -18,14 +28,5 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb8108b9a0f7d342989618",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/executive-mindset-blueprint-blog-thumbnail-mv22jb8r.png"
-  },
-  {
-    "slug": "inner-edge-coaching",
-    "name": "Inner Edge Coaching",
-    "kicker": "1:1 Private Engagement · $1,500–$3,000 / 3 months",
-    "promise": "In three months you move from decisions that feel constructed to decisions that feel right — and the inner process that gets you there stays with you when the engagement ends.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb810b862cc03ebfd24cb1"
   }
 ]
