@@ -4274,6 +4274,7 @@ async function checkPin() {
       session.authed = true;
       document.getElementById('pinScreen').classList.add('hidden');
       if (!ovLoaded) { ovLoaded = true; loadOverview(); }
+      setTimeout(topicsImportCheck, 300);   // a Worksheet "Create assets in dash →" link waiting on login
       // Whichever tab was on screen when the session expired (if not
       // Overview) needs its own reload too — resetLoadFlags() already
       // cleared its *Loaded flag when the 401 hit, so this actually
@@ -11326,7 +11327,7 @@ function renderDev2() {
       : '';
     const isSel = DEV2_SELECTED.has(key);
     return `<tr style="border-bottom:1px solid var(--border);background:${isSel ? 'rgba(255,80,80,.10)' : 'transparent'};">
-      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)">${r.assetId ? `<button title="Request this asset's OWN interview" onclick="dev2RequestInterview('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">🎤</button>` : ''}<button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
+      <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)">${r.assetId && /^topical post$/i.test(r.rawAssetType || '') ? `<button title="Write this topical SEO post (its 5-question interview first)" onclick="topicalWrite('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍</button><button title="Queue it for the 30-minute cron" onclick="topicalQueue('${esc(r.assetId)}', this)" style="margin-left:2px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">⏱</button>` : ''}${r.assetId ? `<button title="Request this asset's OWN interview" onclick="dev2RequestInterview('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">🎤</button>` : ''}<button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.hubSection || '')}</td>
@@ -15425,6 +15426,39 @@ async function ivOwnCreate(titleId, assetId, type, btn) {
   const iv = (r.interviews || [])[0]; btn.textContent = '🎤 own interview →'; btn.disabled = false;
   if (iv) { btn.onclick = () => ivFlagOpen(iv.id); ivFlagOpen(iv.id); }
 }
+// ✍ / ⏱ Topical Post assets (approved Worksheet topics): write now (worker writeTopicalPost — the first run writes the
+// asset's 5-question SEO interview and waits for it) or queue for the */30 cron (queueTopicalPost).
+async function topicalWrite(assetId, btn) {
+  btn.disabled = true; const t = btn.textContent; btn.textContent = '⏳ writing…';
+  const r = await call('writeTopicalPost', { assetId }).catch(e => ({ error: e.message }));
+  btn.disabled = false; btn.textContent = t;
+  if (r && r.needsInterview) { const iv = (r.interviews || [])[0]; if (iv && typeof ivFlagOpen === 'function') ivFlagOpen(iv.id);
+    return showToast ? showToast(r.created ? 'Wrote its 5-question interview — answer it, then ✍ Write again' : 'Answer its interview first, then ✍ Write again', 'info') : null; }
+  if (r && r.error) return alert(r.error);
+  btn.textContent = `✓ ${r.words || ''} words · Review`;
+}
+async function topicalQueue(assetId, btn) {
+  btn.disabled = true; const r = await call('queueTopicalPost', { assetId }).catch(e => ({ error: e.message }));
+  if (r && r.error) { btn.disabled = false; return alert(r.error); }
+  btn.textContent = '⏱ queued';
+}
+// Worksheet → dash: "Create assets in dash →" opens dash with #topics=<base64url JSON of approved ideas>.
+function topicsB64Decode(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return decodeURIComponent(escape(atob(s))); }
+let _topicsImportDone = false;
+async function topicsImportCheck() {
+  if (_topicsImportDone || !SESSION_TOKEN) return;
+  const m = /#topics=([A-Za-z0-9_-]+)/.exec(location.hash || ''); if (!m) return;
+  _topicsImportDone = true;
+  let ideas = []; try { ideas = JSON.parse(topicsB64Decode(m[1])); } catch (e) { return alert('Could not read the topics from the Worksheet link.'); }
+  history.replaceState(null, '', location.pathname + location.search);
+  if (!ideas.length || !confirm(`Create ${ideas.length} Topical Post asset${ideas.length === 1 ? '' : 's'} from the approved Worksheet topics?\n\nEach becomes a title + a Planning asset in its hub's Articles section, on the best-fit main offering.`)) return;
+  const r = await call('createTopicalAssets', { ideas }).catch(e => ({ error: e.message }));
+  if (r && r.error) return alert('Not created: ' + r.error);
+  const res = r.results || [], ok = res.filter(x => x.assetId && !x.existing).length, ex = res.filter(x => x.existing).length, bad = res.filter(x => x.error);
+  alert(`✓ ${ok} Topical Post asset${ok === 1 ? '' : 's'} created${ex ? ` · ${ex} already existed` : ''}${bad.length ? `\n✗ ${bad.length} failed: ${bad.map(x => x.error).join('; ').slice(0, 300)}` : ''}\n\nThey're in each hub's build checklist (Articles) and care-gap — ✍ Write or ⏱ Queue them there.`);
+}
+setTimeout(topicsImportCheck, 1500);
+window.addEventListener('hashchange', () => { _topicsImportDone = false; topicsImportCheck(); });
 async function ivFlagsLoad() {
   const el = document.getElementById('ivFlagsAll'); if (!el) return;
   const r = await call('getInterviews', { status: 'Flagged' }).catch(e => ({ error: e.message }));
@@ -15476,7 +15510,7 @@ function renderHubBuildRows(slug) {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
         return hubGridRow({ pad: 0, title: it.title, type: it.type, typeTip: 'Asset Type' + (it.section ? ' · placed here by Hub Section = ' + it.section : ''),
           typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
-          links: (it.ivFlag && it.ivFlag.missing ? `<button onclick="ivOwnCreate('${esc(it.titleId)}','${esc(it.id)}','${esc(it.ivFlag.ownType)}', this)" title="This is an interview-based asset (tier: Own interview) and has no interview of its own yet — write one" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;font-weight:700;cursor:pointer;">🎤 create own interview</button> ` : '') + (it.ivFlag && it.ivFlag.id ? `<button onclick="ivFlagOpen('${esc(it.ivFlag.id)}')" title="${it.ivFlag.own ? 'This asset is built from its OWN interview — still flagged.' : `This asset's title has ${it.ivFlag.n} unfinished interview${it.ivFlag.n === 1 ? '' : 's'} — the asset was written without them.`} Answer: ${esc(it.ivFlag.angle || '')}" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;">🎤 ${it.ivFlag.n} interview${it.ivFlag.n === 1 ? '' : 's'} →</button> ` : '') + (/^Out of Sync/.test(it.ivSync || '') ? ivSyncBadge(/Regenerate/.test(it.ivSync) ? 'regenerate' : 'review') + ' ' : '') + (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
+          links: (/^topical post$/i.test(it.type || '') ? `<button onclick="topicalWrite('${esc(it.id)}', this)" title="Write this topical SEO post — the first run writes its 5-question interview and waits for your answers" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-weight:700;cursor:pointer;">✍ Write</button> <button onclick="topicalQueue('${esc(it.id)}', this)" title="Queue it — the 30-minute cron writes it once its interview is answered" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⏱ Queue</button> ` : '') + (it.ivFlag && it.ivFlag.missing ? `<button onclick="ivOwnCreate('${esc(it.titleId)}','${esc(it.id)}','${esc(it.ivFlag.ownType)}', this)" title="This is an interview-based asset (tier: Own interview) and has no interview of its own yet — write one" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;font-weight:700;cursor:pointer;">🎤 create own interview</button> ` : '') + (it.ivFlag && it.ivFlag.id ? `<button onclick="ivFlagOpen('${esc(it.ivFlag.id)}')" title="${it.ivFlag.own ? 'This asset is built from its OWN interview — still flagged.' : `This asset's title has ${it.ivFlag.n} unfinished interview${it.ivFlag.n === 1 ? '' : 's'} — the asset was written without them.`} Answer: ${esc(it.ivFlag.angle || '')}" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;">🎤 ${it.ivFlag.n} interview${it.ivFlag.n === 1 ? '' : 's'} →</button> ` : '') + (/^Out of Sync/.test(it.ivSync || '') ? ivSyncBadge(/Regenerate/.test(it.ivSync) ? 'regenerate' : 'review') + ' ' : '') + (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
       // sections that also hold hand-picked products (CTA's): product records first, then the assets
       let prodRows = '', pick = '', np = 0;
