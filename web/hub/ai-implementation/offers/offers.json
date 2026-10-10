@@ -1,5 +1,15 @@
 [
   {
+    "slug": "full-funnel-retainer",
+    "name": "Full-Funnel Retainer",
+    "kicker": "Monthly retainer · no long-term contract",
+    "promise": "One account runs your SEO, paid media, content, and social as a single system — so your budget compounds instead of fragments across vendors who never talk to each other.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb8151b931f535763ba85d",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/small-business-digital-marketing-retainer-blog-thumbnail-mv22cj2x.png"
+  },
+  {
     "slug": "ai-marketing-build",
     "name": "AI Marketing Build",
     "kicker": "One-time build · $1,500–$4,000",
@@ -18,15 +28,6 @@
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb815cbf30d9af2ee913d5",
     "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/ai-implementation/ai-marketing-strategy-discovery-call-blog-thumbnail-mv22ajhp.png"
-  },
-  {
-    "slug": "full-funnel-retainer",
-    "name": "Full-Funnel Retainer",
-    "kicker": "Monthly retainer · no long-term contract",
-    "promise": "One account runs your SEO, paid media, content, and social as a single system — so your budget compounds instead of fragments across vendors who never talk to each other.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb8151b931f535763ba85d"
   },
   {
     "slug": "ai-business-audit",
