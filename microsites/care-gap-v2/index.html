@@ -504,6 +504,12 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div class="mtitle">Create Asset</div>
       <div class="mfield" id="caModalTitle"></div>
       <div style="display:flex;flex-direction:column;gap:10px;">
+        <label style="font-size:11px;color:var(--ink2);">Send to hub section <span style="color:var(--ink3);">— files the new asset(s) in that section of the hub's build checklist</span>
+          <select id="caHubSection" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
+            <option value="">— none (don't put it in a hub section) —</option>
+            <option value="CTA">CTA's</option><option value="Offers">Products</option><option value="News">News (journal)</option>
+            <option value="Articles">Articles</option><option value="Interactive">Interactive</option></select>
+        </label>
         <label style="font-size:11px;color:var(--ink2);position:relative;">Method
           <input type="text" id="caMethodInput" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" placeholder="Search all methods…" autocomplete="off" oninput="caMethodSearch()" onfocus="caMethodSearch()" onblur="caMethodBlur()">
           <input type="hidden" id="caMethod">
@@ -6006,7 +6012,23 @@ function caLfPick(i) {
   document.getElementById('caLfItems').value = ({ ...CA_LF_FORMATS, ...CA_LF_LEGACY }[f] || {}).items || 7;
   caLfRender();
 }
+// "Send to hub section": whatever generation path runs, every asset that is NEW on this title afterwards gets that Hub Section
 async function runCreateAsset() {
+  if (!CA_TITLE) return;
+  const sec = (document.getElementById('caHubSection') || {}).value || '', tid = CA_TITLE.id;
+  const idsOf = () => { const t = CAMPAIGN_TITLES.find(x => x.id === tid); return new Set(((t && t.assets) || []).map(a => a.id).filter(Boolean)); };
+  const before = idsOf();
+  await runCreateAssetInner();
+  if (!sec) return;
+  try { await loadTitleAndAssetTab(); } catch (e) {}
+  const fresh = [...idsOf()].filter(id => !before.has(id)); if (!fresh.length) return;
+  const resEl = document.getElementById('caResult'); let ok = 0;
+  for (const id of fresh) { try { const r = await w('updateAllOutputField', { field: 'hubSection', assetId: id, value: sec }); if (!r || !r.error) ok++; } catch (e) {} }
+  const label = (document.querySelector(`#caHubSection option[value="${sec}"]`) || {}).textContent || sec;
+  if (resEl) resEl.textContent = (resEl.textContent ? resEl.textContent + ' ' : '') + `· ${ok} of ${fresh.length} new asset(s) sent to the hub's ${label} section.`;
+  try { loadTitleAndAssetTab(); } catch (e) {}
+}
+async function runCreateAssetInner() {
   if (!CA_TITLE) return;
   const btn = document.getElementById('caGenBtn');
   const resEl = document.getElementById('caResult');
