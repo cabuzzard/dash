@@ -1318,6 +1318,7 @@ async function submitBlankGrouping() {
       <div style="display:flex;gap:6px;margin-top:4px;">
         <select class="modal-ta" id="pubStatus" style="height:32px;padding:0 8px;flex:1;background:#1e1e1e;color:#fff;border:1px solid #333;">
           <option value="Publish">Publish</option>
+          <option value="Review">Review</option>
           <option value="Published">Published</option>
         </select>
       </div>
@@ -3321,8 +3322,9 @@ const SC = { Planning:'ts-planning', Development:'ts-write', Writing:'ts-write',
 // modal either way, this only changes how it looks at rest. Top-level (not
 // scoped inside loadTitles/renderAssetRow) since savePublishAssetFields
 // also needs it to refresh a row's button live after a save.
-const PUBLISH_BTN_STYLE = status => `font-size:10px;padding:1px 7px;border:1px solid ${status === 'Published' ? '#9f7aea' : '#68d391'};background:transparent;color:${status === 'Published' ? '#9f7aea' : '#68d391'};border-radius:9px;cursor:pointer;flex-shrink:0;`;
-const PUBLISH_BTN_LABEL = status => status === 'Published' ? '📋 Published' : '📋 Publish';
+const PUBLISH_BTN_STYLE = status => status === 'Review' ? 'font-size:10px;padding:1px 7px;border:1px solid #ff9a3c;background:#ff7a00;color:#111;font-weight:700;border-radius:9px;cursor:pointer;flex-shrink:0;'   // Review (2026-10-10): written, awaiting review — bright orange
+  : `font-size:10px;padding:1px 7px;border:1px solid ${status === 'Published' ? '#9f7aea' : '#68d391'};background:transparent;color:${status === 'Published' ? '#9f7aea' : '#68d391'};border-radius:9px;cursor:pointer;flex-shrink:0;`;
+const PUBLISH_BTN_LABEL = status => status === 'Published' ? '📋 Published' : status === 'Review' ? '📋 Review' : '📋 Publish';
 
 // Collapsed/expanded state of the Product/Method/Phase/Grouping headers in
 // the Development + Publish title lists, persisted per-campaign so it

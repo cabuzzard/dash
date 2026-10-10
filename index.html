@@ -4902,9 +4902,10 @@ async function outRemoveRow(id) {
 }
 let landingTabLoaded = false;
 
-const ASSET_STATUS_CYCLE = ['Publish', 'Published'];
+const ASSET_STATUS_CYCLE = ['Publish', 'Review', 'Published'];   // Review (2026-10-10): written, awaiting review — bright orange
 function assetStatusStyle(status) {
   if (status === 'Publish')   return 'background:#0a2a0a;color:#4cff4c;border:1px solid #1a5a1a;';
+  if (status === 'Review')    return 'background:#ff7a00;color:#111;border:1px solid #ff9a3c;font-weight:700;';
   if (status === 'Published') return 'background:#fff;color:#000;border:1px solid #ccc;';
   return 'background:var(--surface2);color:var(--text3);border:1px solid var(--border2);';
 }
@@ -10757,7 +10758,7 @@ const DEV2_EDIT = {
   assetName:    { type: 'text', rec: 'Assets', ok: r => !!r.assetId },
   assetType:    { type: 'list', rec: 'Assets (Asset Type)', ok: r => !!r.assetId, val: r => r.rawAssetType || '' },
   hubSection:   { type: 'select', opts: ['', 'Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted'], rec: 'Assets (Hub Section)', ok: r => !!r.assetId },
-  status:       { type: 'select', opts: ['Planning', 'Development', 'Publish', 'Published'], rec: r => r.kind === 'asset' ? 'Assets' : r.kind === 'title' ? 'Content Strategy (title)' : 'Products', ok: r => !!(r.assetId || r.titleId || r.productId) },
+  status:       { type: 'select', opts: ['Planning', 'Development', 'Publish', 'Review', 'Published'], rec: r => r.kind === 'asset' ? 'Assets' : r.kind === 'title' ? 'Content Strategy (title)' : 'Products', ok: r => !!(r.assetId || r.titleId || r.productId) },
 };
 const DEV2_READONLY_WHY = { campaign: 'move records between campaigns from the microsite', hub: 'comes from the campaign' };
 let DEV2_EDIT_ROW = null;
@@ -10980,7 +10981,7 @@ const DEV2_PILLAR_TYPES = {
   'Digest': 'PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).',
 };
 const DEV2_BULK = {
-  a: { label: 'Assets', acts: { edit: { label: 'Edit in publish modal' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
+  a: { label: 'Assets', acts: { edit: { label: 'Edit in publish modal' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Review', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
   t: { label: 'Titles',   acts: { product: { label: 'Set product', opts: () => dev2ProductOpts() }, kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar', vals: Object.keys(DEV2_PILLAR_TYPES) }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
   p: { label: 'Products', acts: { research: { label: 'Run all research' }, kw: { label: 'Examine / regen keywords' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
 };
@@ -11303,7 +11304,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${r.titleId ? `<input type="checkbox" title="Select this title for bulk actions" ${DEV2_SEL_T.has(r.titleId) ? 'checked' : ''} onclick="dev2ToggleRec('t','${esc(r.titleId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${titleCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
-      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
+      <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : r.status === 'Review' ? '#ff7a00;color:#111;font-weight:700' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
     </tr>`;
   };
   let tbody = '';
@@ -14635,7 +14636,7 @@ const hubGridCols = pad => pad == null ? HUB_GRID_COLS : HUB_GRID_COLS.replace('
 function hubGridHead(pad) { return `<div style="${hubGridCols(pad)}font-size:9px;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);"><span>Title</span><span>Asset type</span><span>Method</span><span>Status</span><span>Date</span><span></span></div>`; }
 function hubGridRow(o) {
   const cut = 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', none = '<span style="color:var(--text3);">—</span>';
-  const st = o.status ? `<span style="padding:0 6px;border-radius:8px;font-size:10px;background:${o.status === 'Published' ? 'rgba(74,222,128,.18)' : o.status === 'Publish' ? 'rgba(246,173,85,.2)' : 'rgba(127,127,127,.15)'};">${esc(o.status)}</span>` : none;
+  const st = o.status ? `<span style="padding:0 6px;border-radius:8px;font-size:10px;background:${o.status === 'Published' ? 'rgba(74,222,128,.18)' : o.status === 'Review' ? '#ff7a00;color:#111;font-weight:700' : o.status === 'Publish' ? 'rgba(246,173,85,.2)' : 'rgba(127,127,127,.15)'};">${esc(o.status)}</span>` : none;
   return `<div style="${hubGridCols(o.pad)}font-size:11px;border-top:1px dashed var(--border);${o.bar ? `border-left:3px solid ${o.bar};padding-left:6px;` : ''}">
     <span style="${cut}" title="${esc(o.title)}">${o.lead || ''}${esc(o.title) || none}</span>
     <span style="${cut}" title="${esc(o.typeTip || o.type || '')}">${o.typeHtml || esc(o.type) || none}</span>

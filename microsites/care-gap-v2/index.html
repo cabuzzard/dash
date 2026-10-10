@@ -182,6 +182,7 @@ section.card{border:1px solid var(--border);background:var(--surface);border-rad
 .rstatus{font-family:var(--mono);font-size:9px;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:99px;flex-shrink:0;white-space:nowrap;}
 .s-dev{background:var(--manual-bg);color:var(--manual);}
 .s-pub{background:var(--amber-bg);color:var(--amber);}
+.s-review{background:#ff7a00;color:#111;font-weight:700;}
 .s-live{background:var(--fresh-bg);color:var(--fresh);}
 .rbody{display:none;padding:0 13px 13px 30px;}
 .rnode.open>.rbody{display:block;}
@@ -878,6 +879,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
         <label style="font-size:11px;color:var(--ink2);">Status
           <select id="pubStatus" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;">
             <option value="Publish">Publish</option>
+            <option value="Review">Review</option>
             <option value="Published">Published</option>
           </select>
         </label>
@@ -6215,6 +6217,7 @@ async function loadMethods() {
 function assetStatusClass(status) {
   if (status === 'Published') return 's-live';
   if (status === 'Publish') return 's-pub';
+  if (status === 'Review') return 's-review';
   return 's-dev';
 }
 // Same name pattern used everywhere else (isBlogType in openPublishAssetModal,
@@ -6345,7 +6348,7 @@ function renderCarouselRowHtml(g, t) {
   const sl = g.slides, first = sl[0];
   const name = String(first.assetTitle || first.title || 'Carousel').replace(/\s*·\s*\d+\/\d+\s*—.*$/, '');
   const done = sl.filter(x => x.postImage && x.postImage !== x.postImageSource).length;
-  const status = sl.every(x => x.status === 'Published') ? 'Published' : sl.every(x => x.status === 'Publish' || x.status === 'Published') ? 'Publish' : (first.status || 'Development');
+  const status = sl.every(x => x.status === 'Published') ? 'Published' : sl.every(x => x.status === 'Publish' || x.status === 'Review' || x.status === 'Published') ? (sl.some(x => x.status === 'Review') ? 'Review' : 'Publish') : (first.status || 'Development');
   const ids = sl.map(x => x.id);
   const thumbs = sl.map(x => { const img = x.postImage || x.postImageSource; return `<span title="Slide ${x.slide}" style="width:15px;height:20px;border-radius:2px;border:1px solid var(--border2);display:inline-block;background:${img ? `url('${esc(img)}') center/cover` : 'var(--surface2)'};"></span>`; }).join('');
   return `<div class="rasset" style="cursor:pointer;" onclick="openPublishAssetModal('${esc(first.id)}')" title="Open the carousel: all ${sl.length} slides in one editor"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
@@ -6408,7 +6411,7 @@ function openPublishAssetModal(assetId) {
   const myToken = ++PUB_OPEN_TOKEN;
   const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
-  document.getElementById('pubStatus').value = (data.status === 'Published') ? 'Published' : 'Publish';
+  document.getElementById('pubStatus').value = (data.status === 'Published' || data.status === 'Review') ? data.status : 'Publish';
   document.getElementById('pubPublishingDate').value = data.publishingDate || '';
   PUB_LOADED_PD = data.publishingDate || '';
   document.getElementById('pubLongform').style.display = 'none';
@@ -9117,8 +9120,8 @@ async function compositeTextOnPostImage(overrideFields) {
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', fileData: dataUrl });
     document.getElementById('pubPostImage').value = s.url;
     const ppImg = document.getElementById('pubPostImagePreview'); ppImg.src = s.url; ppImg.style.display = '';
-    document.getElementById('pubStatus').value = 'Publish';
-    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = s.url; PUB_ASSET_CACHE[myAsset].status = 'Publish'; }
+    { const ps = document.getElementById('pubStatus'); if (ps.value !== 'Review' && ps.value !== 'Published') ps.value = 'Publish'; }
+    if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = s.url; if (!['Review', 'Published'].includes(PUB_ASSET_CACHE[myAsset].status)) PUB_ASSET_CACHE[myAsset].status = 'Publish'; }
     btn.disabled = false; btn.textContent = '🔤 Re-render headline text';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Saved ✓ — status set to Publish.';
     loadTitleAndAssetTab();

@@ -815,7 +815,7 @@ async function hubNewsCount(env, cid) {
   const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const rows = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
   return rows.filter(r => { const t = r.properties?.["Asset Type"]?.select?.name || "", st = r.properties?.["Asset Status"]?.select?.name || "";
-    return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^publish/i.test(st); }).length;
+    return /\bblog\b/i.test(t) && /\bnews\b/i.test(t) && /^(publish|review)/i.test(st); }).length;
 }
 async function writeHubNewsPost(env, cid, opts = {}) {
   await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
@@ -1056,7 +1056,7 @@ async function runHubNewsletterSequence(env, cid, opts = {}) {
   if (!title) return { error: "no main-offering title found", hub: hub.name };
   // news nucleus: published news posts + staged digest ideas
   const assets = await notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []);
-  const news = assets.filter(a => /\bnews\b/i.test(a.properties?.["Asset Type"]?.select?.name || "") && /^publish/i.test(a.properties?.["Asset Status"]?.select?.name || ""))
+  const news = assets.filter(a => /\bnews\b/i.test(a.properties?.["Asset Type"]?.select?.name || "") && /^(publish|review)/i.test(a.properties?.["Asset Status"]?.select?.name || ""))
     .map(a => ({ t: (a.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join(""), u: a.properties?.["Content URL"]?.url || "" })).filter(x => x.t).slice(0, 6);
   const di = (await env.TRADES.get("digest:ideas:" + cid, "json").catch(() => null)) || {};
   const ideas = (di.postIdeas || []).map(i => i.headline).filter(Boolean).slice(0, 8);
@@ -1113,7 +1113,7 @@ Sign off as "${hub.name}". Call submit_issue.` }] }) }).then(r => r.json()).catc
   await ensureDbRichTextProperty(hdr, ASSETS_DB, "Capture Form").catch(() => {});
   const children = md.split("\n").map(l => l.trim()).filter(Boolean).slice(0, 90).map(l => /^[-*]\s+/.test(l) ? { object: "block", type: "bulleted_list_item", bulleted_list_item: { rich_text: rt(l.replace(/^[-*]\s+/, "")) } } : { object: "block", type: "paragraph", paragraph: { rich_text: rt(l) } });
   const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: {
-    "Asset Title": { title: rt(`Newsletter — ${it.subject}`.slice(0, 200)) }, "Asset Status": { select: { name: "Publish" } }, "Asset Type": { select: { name: "Newsletter Issue" } },
+    "Asset Title": { title: rt(`Newsletter — ${it.subject}`.slice(0, 200)) }, "Asset Status": { select: { name: "Review" } }, "Asset Type": { select: { name: "Newsletter Issue" } },
     "Body": { rich_text: rt(md) }, "Platform Title": { rich_text: rt(it.subject) }, "Content Strategy": { relation: [{ id: nd(titleId) }] }, "Campaign": { relation: [{ id: nd(cid) }] },
     "Capture Form": { rich_text: rt(`${hub.slug}/main · ActiveCampaign · tag: lead-hub-${hub.slug}`) }, "Platform Name": { select: { name: "Email" } } }, children }) }).then(r => r.json()).catch(e => ({ message: e.message }));
   if (!cr.id) return { error: "asset: " + (cr.message || "create failed") };
@@ -2349,6 +2349,17 @@ async function hfApi(env, method, path, body) {
   if (!r.ok) throw new Error(`HeyGen ${r.status}: ` + String(d?.error?.message || d?.message || JSON.stringify(d)).slice(0, 300));
   return (d && typeof d === "object" && d.data && typeof d.data === "object") ? d.data : d;
 }
+// Review (2026-10-10): a render/image save flips an asset to Publish — but never DEMOTE one already at Review or Published.
+async function noDemoteStatus(assetId, props) {
+  if (!props || !props["Asset Status"]) return props;
+  try {
+    const id = String(assetId).replace(/-/g, "");
+    const r = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION } });
+    const cur = r.ok ? ((await r.json()).properties?.["Asset Status"]?.select?.name || "") : "";
+    if (cur === "Review" || cur === "Published") delete props["Asset Status"];
+  } catch (e) {}
+  return props;
+}
 async function hfAssetPatch(assetId, props) {
   const id = String(assetId).replace(/-/g, "");
   const dashed = `${id.slice(0,8)}-${id.slice(8,12)}-${id.slice(12,16)}-${id.slice(16,20)}-${id.slice(20)}`;
@@ -2380,8 +2391,8 @@ async function hfFinalize(env, assetId) {
   const key = `videos/${aid}/hf-reel-${Date.now().toString(36)}.mp4`;
   await env.MEDIA.put(key, vr.body, { httpMetadata: { contentType: "video/mp4", cacheControl: "public, max-age=31536000, immutable" } });
   const videoUrl = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
-  await hfAssetPatch(aid, { "Video URL": { url: videoUrl }, "Asset Status": { select: { name: "Publish" } },
-    ...hfRenderNote(`done ${new Date().toISOString().slice(0, 16)} — ${job.renderId}`) });
+  await hfAssetPatch(aid, await noDemoteStatus(aid, { "Video URL": { url: videoUrl }, "Asset Status": { select: { name: "Publish" } },
+    ...hfRenderNote(`done ${new Date().toISOString().slice(0, 16)} — ${job.renderId}`) }));
   await env.TRADES.put("hf:asset:" + aid, JSON.stringify({ ...job, status: "done", videoUrl }));
   return { status: "done", videoUrl };
 }
@@ -3302,7 +3313,7 @@ async function republishOfferToLiveSite(env, hdr, assetId) {
     const page = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
     const p = page.properties || {};
     if (!/\boffer\b/i.test(p["Asset Type"]?.select?.name || "")) return { skipped: "not an offer" };
-    if (!/^publish/i.test(p["Asset Status"]?.select?.name || "") && !(p["Site URL"]?.url || "").includes("/offers/")) return { skipped: "not published yet — nothing live to update" };
+    if (!/^(publish|review)/i.test(p["Asset Status"]?.select?.name || "") && !(p["Site URL"]?.url || "").includes("/offers/")) return { skipped: "not published yet — nothing live to update" };
     const campaignId = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null; if (!campaignId) return { skipped: "asset has no Campaign relation" };
     const oname = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Offer";
     const ob = []; let cur;
@@ -3843,7 +3854,7 @@ const PRODUCT_STATUS_RANK = { "Planning": 0, "Development": 1, "Publish": 2, "Pu
 // FOUR statuses for products, titles and assets (operator, 2026-10-06): Planning · Development · Publish · Published.
 // Every status write goes through normStatus4, so older pages that still send Research / Active / Writing / Idea…
 // can't bring the old values back. In Development → Development, Active → Published, anything else → Planning.
-const STATUS4 = ["Planning", "Development", "Publish", "Published"];
+const STATUS4 = ["Planning", "Development", "Publish", "Review", "Published"];   // Review (assets): written, awaiting review — same visibility as Publish
 function normStatus4(v) {
   const x = String(v || "").trim();
   if (STATUS4.includes(x)) return x;
@@ -11570,6 +11581,7 @@ export default {
             { property: "Asset Type", select: { equals: "Project Experience" } },
             { or: [
               { property: "Asset Status", select: { equals: "Publish" } },
+              { property: "Asset Status", select: { equals: "Review" } },
               { property: "Asset Status", select: { equals: "Published" } },
             ] },
           ] },
@@ -11764,6 +11776,7 @@ export default {
               { property: "Campaign", relation: { contains: dashId(h.campaignId) } },
               { or: [
                 { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Review" } },
                 { property: "Asset Status", select: { equals: "Published" } },
               ] },
             ] },
@@ -12022,6 +12035,7 @@ Return ONLY this JSON, no other text, no fences:
               { property: "Campaign", relation: { contains: dashId(h.campaignId) } },
               { or: [
                 { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Review" } },
                 { property: "Asset Status", select: { equals: "Published" } },
               ] },
             ] },
@@ -13295,7 +13309,7 @@ the one aesthetic risk taken + why:`;
           let postsN = 0;
           try { const pj = postsF.text ? JSON.parse(postsF.text) : []; postsN = Array.isArray(pj) ? pj.length : (pj.posts || []).length; } catch (e) {}
           const man = id => !!kv[id]?.done;
-          const isPub = a => /^publish/i.test(a.properties?.["Asset Status"]?.select?.name || "");
+          const isPub = a => /^(publish|review)/i.test(a.properties?.["Asset Status"]?.select?.name || "");
           const offerLive = offerAssets.some(a => /\boffer\b/i.test(a.properties?.["Asset Type"]?.select?.name || "") && isPub(a));
           const emailLive = emailAssets.some(a => /^email hub main/i.test(a.properties?.["Asset Type"]?.select?.name || "") && isPub(a));
 
@@ -13777,6 +13791,7 @@ Return: {
               { property: "Asset Type", select: { equals: LANDING_METHOD_NAME } },
               { or: [
                 { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Review" } },
                 { property: "Asset Status", select: { equals: "Published" } },
               ] },
             ] } });
@@ -14177,6 +14192,7 @@ Return: {
           notionQuery(ASSETS_DB, {
             filter: { or: [
               { property: "Asset Status", select: { equals: "Publish" } },
+              { property: "Asset Status", select: { equals: "Review" } },
               { property: "Asset Status", select: { equals: "Published" } },
             ]},
           }),
@@ -16843,13 +16859,13 @@ ${bodyText.slice(0, 6000)}`;
         assetRows.forEach(a => {
           const p = a.properties || {};
           const stage = p["Asset Status"]?.select?.name || "";
-          if (stage !== "Publish" && stage !== "Published") return;
+          if (stage !== "Publish" && stage !== "Review" && stage !== "Published") return;
           const titleId = norm((p["Content Strategy"]?.relation || [])[0]?.id);
           const mId = norm((p["Method"]?.relation || [])[0]?.id) || titleMethodById[titleId];
           if (!mId || !colIds.has(mId)) return;
           const slug = hubByCamp[norm((p.Campaign?.relation || [])[0]?.id)] || "";
           const lpSlug = landingByProduct[norm((p.Product?.relation || [])[0]?.id) || norm(titleProductById[titleId])] || "";
-          const bucket = stage === "Publish" ? "pub" : "pubd";
+          const bucket = (stage === "Publish" || stage === "Review") ? "pub" : "pubd";   // Review counts with Publish
           if (slug) cellFor(slug, mId)[bucket]++;
           if (lpSlug) cellFor(lpSlug, mId)[bucket]++;
         });
@@ -20640,6 +20656,7 @@ Return ONLY this JSON, no other text, no fences:
               filter: { or: [
                 { property: "Asset Status", select: { equals: "Published" } },
                 { property: "Asset Status", select: { equals: "Publish" } },
+                { property: "Asset Status", select: { equals: "Review" } },
               ]},
               sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
             }),
@@ -24866,6 +24883,7 @@ ${promptBody}`;
         const statusOr = { or: [
           { property: "Asset Status", select: { equals: "Published" } },
           { property: "Asset Status", select: { equals: "Publish" } },
+          { property: "Asset Status", select: { equals: "Review" } },
         ] };
         const assetFilter = campaignId
           ? { and: [statusOr, { property: "Campaign", relation: { contains: dash(campaignId) } }] }
@@ -31313,7 +31331,7 @@ Portrait Instagram post, ready to publish.`;
         try { await ensureAssetsDbProperties(hdr, { "Post Image": { type: "url" } }); } catch (e) {}
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
-          body: JSON.stringify({ properties: { "Post Image": { url: imageUrl }, "Asset Status": { select: { name: "Publish" } } } }),
+          body: JSON.stringify({ properties: await noDemoteStatus(assetId, { "Post Image": { url: imageUrl }, "Asset Status": { select: { name: "Publish" } } }) }),
         });
         if (!patchResp.ok) { const r = await patchResp.json().catch(() => ({})); return json({ error: r.message || "Failed to save Post Image" }, 500); }
 
@@ -32058,7 +32076,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         if (!putResp.ok) { const r = await putResp.json().catch(() => ({})); return json({ error: `GitHub commit failed: ${r.message || putResp.status}` }, 500); }
         const url = `https://cabuzzard.github.io/dash/${path}?v=${Date.now()}`;
         try { await ensureAssetsDbProperties(hdr, { "Post Image": { type: "url" }, "Design Link": { type: "url" }, "Alt Text": { type: "rich_text" } }); } catch (e) {}
-        const props = { "Post Image": { url }, "Asset Status": { select: { name: "Publish" } } };
+        const props = await noDemoteStatus(assetId, { "Post Image": { url }, "Asset Status": { select: { name: "Publish" } } });
         if (designUrl && /^https:\/\//i.test(String(designUrl))) props["Design Link"] = { url: String(designUrl) };
         if (body.altText) props["Alt Text"] = { rich_text: [{ text: { content: String(body.altText).slice(0, 1990) } }] };
         const patchResp = await fetch(`https://api.notion.com/v1/pages/${dash(assetId)}`, {
@@ -32283,7 +32301,7 @@ ${steer.slice(0, 3000)}` }] }) });
           assetRows.forEach(a => {
             const p = a.properties || {};
             const stage = p["Asset Status"]?.select?.name || "";
-            if (stage !== "Publish" && stage !== "Published") return;
+            if (stage !== "Publish" && stage !== "Review" && stage !== "Published") return;
             const tid = norm((p["Content Strategy"]?.relation || [])[0]?.id);
             if (tid && !titleIds.has(tid)) return;
             publishedAssets.push({ title: (p["Asset Title"]?.title || []).map(t => t.plain_text).join("") || "Untitled", type: p["Asset Type"]?.select?.name || "" });
@@ -35414,7 +35432,7 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
           props["Content Hub"] = { select: (contentHub && okHub) ? { name: contentHub } : null };
         }
         if (status !== undefined && status !== "") {
-          const validStatus = ["Publish", "Published"];
+          const validStatus = ["Publish", "Review", "Published"];
           if (!validStatus.includes(status)) return json({ error: "Invalid status: " + status }, 400);
           props["Asset Status"] = { select: { name: status } };
         }
