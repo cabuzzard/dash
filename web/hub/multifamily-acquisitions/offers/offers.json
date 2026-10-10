@@ -1,5 +1,15 @@
 [
   {
+    "slug": "multifamily-deal-finder",
+    "name": "Multifamily Deal Finder",
+    "kicker": "Database · pricing TBC",
+    "promise": "Off-market multifamily leads pre-filtered for seller motivation and financing flexibility — so you stop sorting dead ends and start working deals that can actually close.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81a39177c4519031ff5f",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/multifamily-deal-finder-blog-thumbnail-mv21awn8.png"
+  },
+  {
     "slug": "off-market-pipeline",
     "name": "Off-Market Pipeline",
     "kicker": "Retainer · $1,500–$3,000/mo",
@@ -7,14 +17,5 @@
     "ctaUrl": "",
     "date": "2026-10-10",
     "assetId": "3f51f7d3a4bb81b88163e718406d37bb"
-  },
-  {
-    "slug": "multifamily-deal-finder",
-    "name": "Multifamily Deal Finder",
-    "kicker": "Database · pricing TBC",
-    "promise": "Off-market multifamily leads pre-filtered for seller motivation and financing flexibility — so you stop sorting dead ends and start working deals that can actually close.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81a39177c4519031ff5f"
   }
 ]
