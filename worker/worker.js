@@ -933,7 +933,7 @@ async function hubAudienceBlock(env, cid) {
   cid = String(cid || "").replace(/-/g, "");
   const K = "hubaudience:" + cid;
   const c = await env.TRADES.get(K, "json").catch(() => null);
-  if (c && Date.now() - c.at < 6 * 3600 * 1000) return c.text;
+  if (c && c.text && Date.now() - c.at < 6 * 3600 * 1000) return c.text;   // an empty audience (no main products yet) is never cached
   const hdr = { "Authorization": `Bearer ${(env.NOTION_TOKEN || "").trim()}`, "Notion-Version": NOTION_VERSION };
   const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
   const parts = [];
