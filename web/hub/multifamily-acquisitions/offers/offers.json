@@ -1,5 +1,15 @@
 [
   {
+    "slug": "deal-underwriting-review",
+    "name": "Deal Underwriting Review",
+    "kicker": "Fixed-fee review · $750–$1,500 per property",
+    "promise": "A professionally reconstructed underwrite of your value-add deal — rent comps, real expenses, capex, and a defensible max offer price — delivered before you sign anything.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81acb1f2f586a90da978",
+    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/hub/value-add-deal-underwriting-review-blog-thumbnail-mv21ba5u.png"
+  },
+  {
     "slug": "multifamily-deal-finder",
     "name": "Multifamily Deal Finder",
     "kicker": "Database · pricing TBC",
