@@ -30973,7 +30973,8 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         const { assetId } = body;
         if (!assetId) return json({ error: "assetId required" }, 400);
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
-        const result = await republishBlogThumbnailToLiveSite(env, hdr, assetId);
+        let result = await republishBlogThumbnailToLiveSite(env, hdr, assetId);
+        if (result && result.skipped === "not a blog asset") result = await republishOfferToLiveSite(env, hdr, assetId);   // offers too
         if (result.error) return json({ error: result.error }, 500);
         return json(result);
       }
