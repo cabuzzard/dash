@@ -788,11 +788,22 @@ async function handleStudio(env, body) {
 // (rotating through them): createNewsBlogTitle (headline + grounded news-analysis pillar, the product as the lead) →
 // generateTitleAssets (SEO post branch: writes the article and publishes it to web/hub/<slug>/blog/) → Published +
 // Hub Section News → Grok blog thumbnail (generateBlogPostThumbnail → saveOfferImage, which republishes the post).
-// writeHubNewsPost {campaignId, force?} does one hub; the */30 cron runs hubNewsCronTick. A round = one post for every hub
-// (one hub per tick — fits the cron's time budget). Build-up: a round every 48 h for the hubs still under HUB_NEWS_TARGET
-// published news posts. Once EVERY hub has HUB_NEWS_TARGET: a round every 7 days for all hubs, indefinitely.
-// KV hubnews:round = {startedAt, queue:[cid], done:[{cid, ok, headline, error}]}.
-const HUB_NEWS_TARGET = 3, HUB_NEWS_EVERY_MS = 48 * 3600 * 1000, HUB_NEWS_WEEKLY_MS = 7 * 24 * 3600 * 1000;
+// writeHubNewsPost {campaignId, force?} does one hub; the */30 cron runs hubNewsCronTick, which keeps a per-hub, randomised
+// schedule so posting never looks machine-timed (operator 2026-10-10). Each hub has its own next-post time:
+//   build-up (fewer than HUB_NEWS_TARGET published news posts): next post 3-10 h after the last, at a random minute;
+//   steady (target reached): twice a week, 2.5-4.5 days apart.
+// Posts only land between 07:00 and 21:00 Pacific; hubs are staggered; one post per tick (the cron's time budget).
+// KV hubnews:sched = {cid: nextAt ms}; hubnews:log = last 40 results; hubnews:busy = lock while a post is being written.
+const HUB_NEWS_TARGET = 3, H = 3600 * 1000;
+function hubNewsNextAt(steady) {
+  let t = Date.now() + (steady ? (60 + Math.random() * 48) * H : (3 + Math.random() * 7) * H);   // steady: 2.5-4.5 days
+  for (let i = 0; i < 24; i++) {   // keep it inside 07:00-21:00 Pacific (UTC-7/-8 — 14:00-04:00 UTC covers both well enough)
+    const hUtc = new Date(t).getUTCHours();
+    if (hUtc >= 14 || hUtc < 4) break;
+    t += (0.5 + Math.random()) * H;
+  }
+  return Math.round(t);
+}
 async function selfAction(env, action, extra) {
   const token = await signToken((env.HMAC_SECRET || "").trim());
   const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
@@ -882,32 +893,32 @@ async function rewriteHubNewsPost(env, assetId) {
   return { ok: true, old: oldHead, headline: h.headline, words: wp.wordCount, liveUrl: rf.liveUrl || "", thumb };
 }
 async function hubNewsCronTick(env) {
-  const K = "hubnews:round";
-  let rd = await env.TRADES.get(K, "json").catch(() => null);
-  if (!rd) { await env.TRADES.put(K, JSON.stringify({ startedAt: new Date().toISOString(), queue: [], done: [] })); return { seeded: true }; }   // first sight: the clock starts now
-  if ((!rd.queue || !rd.queue.length) && Date.now() - Date.parse(rd.startedAt || 0) >= (rd.weekly ? HUB_NEWS_WEEKLY_MS : HUB_NEWS_EVERY_MS)) {
-    const all = [], under = [];
-    for (const h of HUB_SITES) { const cid = String(h.campaignId || "").replace(/-/g, ""); if (!cid) continue; all.push(cid); if ((await hubNewsCount(env, cid)) < HUB_NEWS_TARGET) under.push(cid); }
-    const weekly = !under.length;   // every hub has its 3 → weekly rounds for all hubs from here on
-    if (weekly && !rd.weekly && Date.now() - Date.parse(rd.startedAt || 0) < HUB_NEWS_WEEKLY_MS) {   // just finished build-up: first weekly round a week after the last one
-      rd.weekly = true; await env.TRADES.put(K, JSON.stringify(rd)); return { switchedToWeekly: true };
-    }
-    const queue = weekly ? all : under;
-    rd = { startedAt: new Date().toISOString(), queue, done: [], weekly };
-    await env.TRADES.put(K, JSON.stringify(rd));
-    return { started: queue.length };
-  }
-  if (!rd.queue || !rd.queue.length) return { idle: true };
-  if (rd.busyUntil && Date.now() < rd.busyUntil) return { busy: true };
-  const cid = rd.queue[0];
-  rd.busyUntil = Date.now() + 25 * 60000; await env.TRADES.put(K, JSON.stringify(rd));
-  let r; try { r = await writeHubNewsPost(env, cid, { force: !!rd.weekly }); } catch (e) { r = { error: e.message }; }
-  rd = (await env.TRADES.get(K, "json").catch(() => null)) || rd;
-  rd.queue = (rd.queue || []).filter(x => x !== cid); delete rd.busyUntil;
-  rd.done = (rd.done || []).concat([{ cid, ok: !!r.ok, skipped: !!r.skipped, headline: r.headline || "", error: r.error || "", at: new Date().toISOString() }]).slice(-40);
-  await env.TRADES.put(K, JSON.stringify(rd));
+  if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
+  const sched = (await env.TRADES.get("hubnews:sched", "json").catch(() => null)) || {};
+  const cids = HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(Boolean);
+  let changed = false;
+  cids.forEach((cid, i) => { if (!sched[cid]) { sched[cid] = Date.now() + Math.round((0.3 + i * 0.9 + Math.random() * 0.8) * H); changed = true; } });   // first sight: staggered over the next hours
+  if (changed) await env.TRADES.put("hubnews:sched", JSON.stringify(sched));
+  const due = cids.filter(c => sched[c] <= Date.now());
+  if (!due.length) return { idle: true };
+  const cid = due[Math.floor(Math.random() * due.length)];
+  await env.TRADES.put("hubnews:busy", cid, { expirationTtl: 1800 });
+  let r;
+  try {
+    const have = await hubNewsCount(env, cid);
+    r = await writeHubNewsPost(env, cid, { force: true });
+    const nowHave = have + (r && r.ok ? 1 : 0);
+    sched[cid] = r && r.ok ? hubNewsNextAt(nowHave >= HUB_NEWS_TARGET) : Date.now() + Math.round((2 + Math.random() * 2) * H);   // failure: retry in 2-4 h
+  } catch (e) { r = { error: e.message }; sched[cid] = Date.now() + 3 * H; }
+  const fresh = (await env.TRADES.get("hubnews:sched", "json").catch(() => null)) || {};
+  fresh[cid] = sched[cid]; await env.TRADES.put("hubnews:sched", JSON.stringify(fresh));
+  const log = (await env.TRADES.get("hubnews:log", "json").catch(() => null)) || [];
+  log.push({ cid, ok: !!(r && r.ok), headline: (r && r.headline) || "", error: (r && r.error) || "", next: new Date(sched[cid]).toISOString(), at: new Date().toISOString() });
+  await env.TRADES.put("hubnews:log", JSON.stringify(log.slice(-40)));
+  await env.TRADES.delete("hubnews:busy").catch(() => {});
   return r;
 }
+
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -26642,13 +26653,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         })) });
       }
       // writeHubNewsPost {campaignId, force?} — one Blog - SEO - News post for a hub off a main product (see writeHubNewsPost).
-      // force writes even when the hub already has HUB_NEWS_TARGET; startsRound stamps hubnews:round so the 48 h cadence counts from now.
+      // force writes even when the hub already has HUB_NEWS_TARGET.
       if (body.action === "writeHubNewsPost") {
-        if (body.startsRound) { const rd = (await env.TRADES.get("hubnews:round", "json").catch(() => null)) || {}; await env.TRADES.put("hubnews:round", JSON.stringify({ ...rd, startedAt: new Date().toISOString(), queue: [], done: rd.done || [] })); }
         try { return json(await writeHubNewsPost(env, body.campaignId, { force: !!body.force })); } catch (e) { return json({ error: e.message }, 500); }
       }
       if (body.action === "rewriteHubNewsPost") { try { return json(await rewriteHubNewsPost(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); } }
-      if (body.action === "getHubNewsRound") return json({ ok: true, round: await env.TRADES.get("hubnews:round", "json").catch(() => null) });
+      if (body.action === "getHubNewsRound") return json({ ok: true, sched: await env.TRADES.get("hubnews:sched", "json").catch(() => null), log: await env.TRADES.get("hubnews:log", "json").catch(() => null) });
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
       if (body.action === "runMainProductResearch") return json(await runMainProductResearch(env, body.productIds ? { campaignId: body.campaignId, productIds: body.productIds } : null));
       if (body.action === "getBulkJobs") { const [pi, rs] = await Promise.all([env.TRADES.get("bulk:prodideas", "json").catch(() => null), env.TRADES.get("bulk:research", "json").catch(() => null)]); return json({ prodideas: pi, research: rs }); }
@@ -46996,7 +47006,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if (event.cron === "*/30 * * * *") {
       ctx.waitUntil(enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
-      // Hub news: every 48 h, one Blog - SEO - News post per hub still under 3 — one hub per tick (hubNewsCronTick).
+      // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
       ctx.waitUntil(hubNewsCronTick(env).then(r => { if (r && !r.idle && !r.busy) console.log("hubNews tick:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('hubNewsCronTick failed:', e.message)));
       return;
     }
