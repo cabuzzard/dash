@@ -1,5 +1,14 @@
 [
   {
+    "slug": "giving-circle",
+    "name": "Giving Circle",
+    "kicker": "Membership · $25–$250/mo",
+    "promise": "Your monthly gift stops disappearing — you see exactly what it houses, every quarter, and walk into it once a year.",
+    "ctaUrl": "",
+    "date": "2026-10-10",
+    "assetId": "3f51f7d3a4bb81808d20c306fd7f6fe2"
+  },
+  {
     "slug": "disability-investor-call",
     "name": "Disability Investor Call",
     "kicker": "Discovery call · tiered pricing, proceeds fund caregiver relief",
