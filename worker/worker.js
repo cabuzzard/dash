@@ -12058,7 +12058,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -17453,6 +17453,88 @@ Give a YouTube title in that format. Call submit_questions.`;
         const snap = Object.values(by).map(h => ({ ...h, titles: Object.values(h.titles) }));
         await env.TRADES.put("iv:snapshot", JSON.stringify(snap));
         return json({ ok: true, hubs: snap.length, titles: snap.reduce((n, h) => n + h.titles.length, 0) });
+      }
+      // ── 🔎 Expert check (interviews) ── the YouTube Longform 🔎 Fact check, for interview answers, done "very expertly"
+      // (operator 2026-10-10 — executive coaching, construction management… must be on point with the current level of
+      // expertise). Pass 1 (Opus): calibrate the FIELD and who sets its standard of practice today, pull the checkable
+      // claims (exact quotes). Pass 2 (Opus + live web search): each claim vs the CURRENT standard — verdict, expert view,
+      // sources, the SMALLEST fix in the owner's voice, and what a top practitioner would add. Opinions are kept, not judged.
+      // KV ivfact:<interviewId>. ivExpertApply swaps ONLY the quoted words for accepted fixes (operator rewrites → voice).
+      if (body.action === "ivExpertCheck") {
+        const id = String(body.interviewId || "").replace(/-/g, ""); if (!id && !body.sample) return json({ error: "interviewId required" }, 400);
+        // body.sample {title, qs, answers, cid?} = a dry run on sample answers (nothing read or saved) — for testing the check
+        const iv = body.sample ? { title: String(body.sample.title || "sample"), angle: "", qs: body.sample.qs || [], answers: body.sample.answers || [], cid: body.sample.cid || "", productId: "", titleId: "" } : ivParse(await ivPage(id));
+        const qa = iv.qs.map((q, i) => ({ i, q, a: String(iv.answers[i] || "").trim() })).filter(x => x.a);
+        if (!qa.length) return json({ error: "Answer (and save) some questions first" }, 400);
+        let pid = iv.productId; if (!pid && iv.titleId) { const tp = await ivPage(iv.titleId).catch(() => null); pid = tp ? ivRid(tp.properties, "product") : ""; }
+        const [prodRes, audience] = await Promise.all([pid ? ivProdResearch(pid) : "", iv.cid ? hubAudienceBlock(env, iv.cid).catch(() => "") : ""]);
+        const today = new Date().toISOString().slice(0, 10), OPUS = "claude-opus-5-5";
+        const ctxBlock = `INTERVIEW: ${iv.title}${iv.angle ? " — " + iv.angle : ""}\n${audience}${prodRes ? `\nTHE OFFERING (product research):\n${prodRes}\n` : ""}`;
+        const c1 = await claudeStream(env, { model: OPUS, max_tokens: 6000, messages: [{ role: "user", content:
+`TODAY: ${today}. You are a senior practitioner reviewing a business owner's own interview answers before they are used in published content.
+${ctxBlock}
+1) Name the professional FIELD these answers belong to as precisely as possible, and the bodies, standards, codes, regulations and research that define its CURRENT standard of practice (e.g. for construction management: CMAA standards of practice, AIA / ConsensusDocs contract families, PMI, OSHA, current delivery-method practice; for executive coaching: ICF core competencies and ethics, EMCC, peer-reviewed coaching research; for Medicare: this year's CMS / Medicare.gov rules).
+2) List the CLAIMS a knowledgeable peer could check — facts, numbers, terminology, regulations, how-the-work-is-done, and advice that implies an outcome. Strong opinions: include, marked "opinion" (not judged).
+For each claim: "q" (question index), "quote" (EXACT words from that answer, 4-30 words, character for character), "claim" (one plain sentence), "type" (fact | number | term | regulation | practice | advice | opinion). At most 20, most consequential first.
+
+ANSWERS (index: question → answer):
+${qa.map(x => `[${x.i}] Q: ${x.q}\nA: ${x.a}`).join("\n\n").slice(0, 40000)}
+
+Return ONLY a JSON object: {"field":"...","standards":["..."],"claims":[...]}` }] });
+        const d1 = await c1.json(); if (!c1.ok) return json({ error: d1.error?.message || "Claude error (claims)" }, 502);
+        const r1 = (d1.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+        let p1 = {}; try { p1 = JSON.parse(r1.slice(r1.indexOf("{"), r1.lastIndexOf("}") + 1)); } catch (e) { return json({ error: "Couldn't read the claim list — try again" }, 502); }
+        const claims = (p1.claims || []).filter(c => c && c.quote && c.claim).slice(0, 20).map((c, k) => ({ id: "c" + (k + 1), q: +c.q, quote: String(c.quote), claim: String(c.claim), type: String(c.type || "fact") }));
+        const checkable = claims.filter(c => c.type !== "opinion");
+        let p2 = { results: [], summary: "" };
+        if (checkable.length) {
+          const c2 = await claudeStream(env, { model: OPUS, max_tokens: 14000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 16 }], messages: [{ role: "user", content:
+`TODAY: ${today}. FIELD: ${p1.field || "(infer it)"}. CURRENT STANDARD-SETTERS: ${(p1.standards || []).join("; ")}.
+Check each claim from a practitioner's interview against the CURRENT standard of practice in this field and the dominant expert view — as a top practitioner in the field would, today. Search as needed; prefer primary sources (standards bodies, regulators, codes, contract documents, peer-reviewed research, recognized institutions). Flag outdated practice or terminology, wrong regulations or numbers, overclaims, and advice a senior peer would push back on. Be fair: sound practical wisdom that the field broadly accepts is "current" even when phrased casually.
+For each claim return: "id"; "verdict" (current | mostly current | outdated | contested | wrong); "expert_view" (1-2 plain sentences: what the current standard actually is); "sources" (1-3 {"title","url"} you actually found); "fix": the SMALLEST change to the quoted words that makes it accurate and current, keeping the speaker's voice, empty if none needed; "level_up": optional ONE line a top practitioner would add (only where it materially sharpens the advice), else empty.
+${ctxBlock}
+CLAIMS:
+${checkable.map(c => `${c.id} | ${c.type} | "${c.quote}" → ${c.claim}`).join("\n")}
+
+Then "summary": 2-3 sentences on how well these answers hold up against the current level of expertise.
+Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic-beta": "web-search-2025-03-05" });
+          const d2 = await c2.json(); if (!c2.ok) return json({ error: d2.error?.message || "Claude error (expert check)" }, 502);
+          const r2 = (d2.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+          try { p2 = JSON.parse(r2.slice(r2.indexOf("{"), r2.lastIndexOf("}") + 1)); } catch (e) { return json({ error: "Couldn't read the expert check — try again" }, 502); }
+        }
+        const byId = Object.fromEntries((p2.results || []).map(r => [r.id, r]));
+        const items = claims.map(c => c.type === "opinion" ? { ...c, verdict: "opinion", expert_view: "Your opinion — kept as yours, not judged.", sources: [], fix: "", level_up: "" }
+          : { ...c, verdict: String(byId[c.id]?.verdict || "unchecked"), expert_view: String(byId[c.id]?.expert_view || ""),
+              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || "") });
+        const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict)).length;
+        const report = { at: Date.now(), field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
+        if (!body.sample) await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
+        return json({ ok: true, report });
+      }
+      if (body.action === "ivExpertGet" || body.action === "ivExpertApply") {
+        const id = String(body.interviewId || "").replace(/-/g, "");
+        let report = null; try { report = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {}
+        if (body.action === "ivExpertGet") return json({ ok: true, report });
+        if (!report) return json({ error: "Run the expert check first" }, 400);
+        const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
+        const want = new Set(Array.isArray(body.ids) ? body.ids : []), ov = body.overrides && typeof body.overrides === "object" ? body.overrides : {};
+        let applied = 0; const missed = [], voiceEdits = [];
+        for (const x of report.items) {
+          if (!want.has(x.id)) continue;
+          const own = String(ov[x.id] || "").trim().slice(0, 1500), text = own || x.fix; if (!text) continue;
+          let k = String(answers[x.q] || "").includes(x.quote) ? x.q : answers.findIndex(a => String(a || "").includes(x.quote));
+          if (k < 0) { missed.push(x.id); continue; }
+          answers[k] = answers[k].replace(x.quote, text); x.applied = true; x.appliedText = text; applied++;
+          if (own && x.fix && own !== x.fix) voiceEdits.push({ field: "expert-check fix", before: x.fix, after: own });
+        }
+        if (applied) {
+          const ur = await fetch(`https://api.notion.com/v1/pages/${ivDash(id)}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Answers": { rich_text: ivRt(ivFormatAnswers(iv.qs, answers)) } } }) }).then(r => r.json());
+          if (!ur.id) return json({ error: "Notion: " + (ur.message || "save failed") }, 502);
+          if (iv.status === "Finished") ctx.waitUntil(ivMarkDownstream(env, iv).catch(e => console.error("ivMarkDownstream", e.message)));   // the answers changed → downstream out of sync
+        }
+        await env.TRADES.put("ivfact:" + id, JSON.stringify(report));
+        const learned = voiceEdits.length ? await voiceLogEdits(env, ctx, iv.cid, "interview expert-check", voiceEdits).catch(() => 0) : 0;
+        return json({ ok: true, applied, missed, learned, answers, report });
       }
       // ivArchiveLegacy {limit?} → archives EMPTY Title-scope interviews (the launch backfill, replaced by per-offering ones). Re-runnable.
       if (body.action === "ivArchiveLegacy") {
