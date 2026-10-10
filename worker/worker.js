@@ -2744,6 +2744,35 @@ ${posts.map(p => `<li><a href="./${esc(p.slug)}/index.html">${esc(p.title)}</a><
 // out on a hub with many published posts. Single-asset, so it's always
 // fast. Best-effort: called fire-and-forget, never blocks or fails the
 // thumbnail save itself.
+// Offer counterpart of republishBlogThumbnailToLiveSite: rebuild ONE live offer page from its asset (card + body + Thumbnail)
+async function republishOfferToLiveSite(env, hdr, assetId) {
+  const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
+  try {
+    const page = await fetch(`https://api.notion.com/v1/pages/${dashId(assetId)}`, { headers: hdr }).then(r => r.json());
+    const p = page.properties || {};
+    if (!/\boffer\b/i.test(p["Asset Type"]?.select?.name || "")) return { skipped: "not an offer" };
+    if (!/^publish/i.test(p["Asset Status"]?.select?.name || "") && !(p["Site URL"]?.url || "").includes("/offers/")) return { skipped: "not published yet — nothing live to update" };
+    const campaignId = (p["Campaign"]?.relation || [])[0]?.id?.replace(/-/g,"") || null; if (!campaignId) return { skipped: "asset has no Campaign relation" };
+    const oname = (p["Platform Title"]?.rich_text || []).map(t => t.plain_text).join("").trim() || (p["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "Offer";
+    const ob = []; let cur;
+    do { const r = await fetch(`https://api.notion.com/v1/blocks/${dashId(assetId)}/children?page_size=100${cur ? '&start_cursor=' + cur : ''}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+      ob.push(...(r.results || [])); cur = r.has_more ? r.next_cursor : null; } while (cur);
+    const otxt = b => (b[b.type]?.rich_text || []).map(t => t.plain_text).join("").trim();
+    let card = {}; const cb = ob.find(b => b.type === "code"); if (cb) { try { card = JSON.parse(otxt(cb)); } catch (e) {} }
+    const offer = { kicker: card.kicker || "", name: card.name || oname, promise: card.promise || (p["Body"]?.rich_text || []).map(t => t.plain_text).join(""), ctaLabel: card.ctaLabel || "", ctaUrl: card.ctaUrl || "", included: [], forWho: "" };
+    let head = "";
+    for (const b of ob) {
+      if (b.type === "heading_2") { head = otxt(b).toLowerCase(); continue; }
+      if (b.type === "bulleted_list_item" && head.includes("included")) { const t = otxt(b); if (t) offer.included.push(t); continue; }
+      if (b.type === "paragraph") { const t = otxt(b); if (!t) continue;
+        if (head.includes("why it works")) offer.whyItWorks = offer.whyItWorks ? offer.whyItWorks + "\n\n" + t : t;
+        else if (head.includes("objection")) offer.objection = offer.objection ? offer.objection + "\n\n" + t : t;
+        else if (head.includes("terms")) offer.terms = offer.terms || t;
+        else if (!head && /^for\s+/i.test(t)) offer.forWho = t.replace(/^for\s+/i, "").replace(/\.$/, ""); }
+    }
+    return await publishOfferToHub({ env, hdr, dash: dashId, campaignId, workingTitle: oname, offer, assetId: String(assetId).replace(/-/g, "") });
+  } catch (e) { return { error: e.message }; }
+}
 async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
   const dashId = raw => { const s = String(raw).replace(/-/g,""); return s.slice(0,8)+'-'+s.slice(8,12)+'-'+s.slice(12,16)+'-'+s.slice(16,20)+'-'+s.slice(20); };
   try {
@@ -2805,10 +2834,14 @@ async function republishBlogThumbnailToLiveSite(env, hdr, assetId) {
 // path) and, when the product has a checkout URL, an outbound "Buy now" button.
 // `offer` = { kicker, name, promise, forWho, included[], whyItWorks, objection,
 // terms, ctaLabel, ctaUrl }. Best-effort; caller treats a failure as non-fatal.
-async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTitle, assetId }) {
+async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTitle, assetId, thumbnail }) {
   const t = await hubSiteTarget({ env, hdr, dash, campaignId, sub: 'offers' });
   if (t.error) return { published: false, error: t.error };
   const { getFile, putFile, basePath, campName, s } = t;
+  // the offer's blog thumbnail = its page hero + share image (2026-10-09). Read from the asset itself so every publish path gets it.
+  let thumb = String(thumbnail || '').trim();
+  if (!thumb && assetId) { try { const ap = await fetch(`https://api.notion.com/v1/pages/${dash(String(assetId).replace(/-/g, ''))}`, { headers: hdr }).then(r => r.json());
+    thumb = String(ap?.properties?.["Thumbnail"]?.url || '').trim(); } catch (e) {} }
 
   const esc = str => String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   const slugify = str => String(str || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 70);
@@ -2830,7 +2863,7 @@ async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTit
   let slug = mine ? mine.slug : base0;
   if (!mine && aid && offers.some(o => o && o.slug === base0 && o.assetId && o.assetId !== aid)) slug = `${base0}-${aid.slice(-4)}`;
   offers = offers.filter(o => o && o.slug !== slug && !(aid && o.assetId === aid));
-  offers.unshift({ slug, name, kicker: String(offer.kicker || ''), promise: String(offer.promise || '').slice(0, 300), ctaUrl, date: today, ...(aid ? { assetId: aid } : {}) });
+  offers.unshift({ slug, name, kicker: String(offer.kicker || ''), promise: String(offer.promise || '').slice(0, 300), ctaUrl, date: today, ...(aid ? { assetId: aid } : {}), ...(thumb ? { thumbnail: thumb } : {}) });
 
   const fontParam = f => encodeURIComponent(String(f || '').trim()).replace(/%20/g, '+');
   const fontsImport = s.fontQuery
@@ -2849,6 +2882,7 @@ async function publishOfferToHub({ env, hdr, dash, campaignId, offer, workingTit
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(ttl)} — ${esc(campName)}</title>
+${withForm && thumb ? `<meta property="og:image" content="${esc(thumb)}">` : ''}
 ${withForm ? '<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>' : ''}
 <style>
 ${fontsImport}
@@ -2865,6 +2899,7 @@ h1 { font-size:2.2rem; margin:.3rem 0 14px; }
 h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
 p { margin:0 0 18px; font-size:1.08rem; }
 .lede { font-size:1.2rem; }
+img.hero { display:block; width:100%; height:auto; border-radius:10px; margin:6px 0 22px; }
 ul.inc { list-style:none; padding:0; margin:0 0 18px; }
 ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
 ul.inc li::before { content:"\\2192"; position:absolute; left:0; color:var(--accent); }
@@ -2917,6 +2952,7 @@ ${withForm ? `<script>
 
   const offerInner = `${offer.kicker ? `<div class="kicker">${esc(offer.kicker)}</div>` : ''}
 <h1>${esc(name)}</h1>
+${thumb ? `<img class="hero" src="${esc(thumb)}" alt="${esc(name)}">` : ''}
 ${offer.promise ? `<p class="lede">${esc(offer.promise)}</p>` : ''}
 ${offer.forWho ? `<p><strong>Who it's for:</strong> ${esc(offer.forWho)}</p>` : ''}
 ${included.length ? `<h2>What's included</h2>\n<ul class="inc">${included.map(i => `<li>${esc(i)}</li>`).join('')}</ul>` : ''}
@@ -30921,6 +30957,7 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
         let republish = null;
         if (kind === "blog-thumbnail") {
           republish = await republishBlogThumbnailToLiveSite(env, hdr, assetId).catch(e => ({ error: e.message }));
+          if (republish && republish.skipped === "not a blog asset") republish = await republishOfferToLiveSite(env, hdr, assetId).catch(e => ({ error: e.message }));   // offers: page hero = this thumbnail
         }
 
         return json({ success: true, url, prop: SLOT[kind].prop, republish });
