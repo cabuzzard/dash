@@ -977,8 +977,14 @@ async function ivBlock(env, titleId) {
 // Write 1-3 questionnaires for a title (or `count`), grounded in the title, its pillar, its product's research and the hub audience.
 async function ivCreateForTitle(env, titleId, opts = {}) {
   const hdr = ivHdr();
-  const tp = await fetch(`https://api.notion.com/v1/pages/${ivDash(titleId)}`, { headers: hdr }).then(r => r.json());
-  if (!tp || !tp.properties) throw new Error("title not found");
+  let tp = null;
+  for (let i = 0; i < 4; i++) {   // Notion rate limits come back as an error object, not the page — retry those, don't call them "not found"
+    tp = await fetch(`https://api.notion.com/v1/pages/${ivDash(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+    if (tp && tp.properties) break;
+    if (tp && tp.code && tp.code !== "rate_limited") throw new Error("title: " + (tp.message || tp.code));
+    await new Promise(r => setTimeout(r, 1500 * (i + 1)));
+  }
+  if (!tp || !tp.properties) throw new Error("Notion rate limited (title read) — retry");
   const P = tp.properties, name = (P.Title?.title || []).map(t => t.plain_text).join("").trim();
   const cid = ((P.Campaign?.relation || [])[0]?.id || "").replace(/-/g, ""), pid = ((P.product?.relation || [])[0]?.id || "").replace(/-/g, "");
   const mid = ((P.method?.relation || [])[0]?.id || "").replace(/-/g, "");
