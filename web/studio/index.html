@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Script Studio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f6f4ef; --surface: #ffffff; --surface2: #f0ede6; --text: #1d1b18; --text2: #4a463f; --text3: #827c71;
+  --border: #e3dfd6; --accent: #2f5d50; --accent-ink: #ffffff; --accent-soft: #e3eeea; --warn: #b4532a; --ok: #2f7a4b;
+  --radius: 14px; --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.05);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151513; --surface: #1e1d1a; --surface2: #262521; --text: #f2efe8; --text2: #c9c4b9; --text3: #8d877c;
+    --border: #34322d; --accent: #7fbfa9; --accent-ink: #10201b; --accent-soft: #22322d; --warn: #e48a62; --ok: #6cc28c;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 4px 16px rgba(0,0,0,.25);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 Inter, system-ui, -apple-system, Segoe UI, sans-serif; -webkit-font-smoothing: antialiased; }
+.wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 120px; }
+header.top { display: flex; align-items: center; gap: 12px; margin: 4px 0 22px; }
+.brand { flex: 1; min-width: 0; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--text3); }
+h1 { font: 600 26px/1.2 Fraunces, Georgia, serif; margin: 2px 0 0; }
+h2 { font: 600 21px/1.25 Fraunces, Georgia, serif; margin: 0 0 6px; }
+p.lede { color: var(--text2); margin: 0 0 18px; }
+button, .btn { font: 600 15px/1 Inter, system-ui, sans-serif; border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 12px 18px; cursor: pointer; min-height: 44px; }
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.ghost { background: transparent; }
+button:disabled { opacity: .55; cursor: default; }
+button.link { border: 0; background: none; padding: 8px 0; color: var(--text2); font-weight: 500; min-height: 0; }
+.plus { width: 52px; height: 52px; padding: 0; font-size: 28px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: var(--shadow); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; margin: 0 0 12px; }
+.item { display: block; width: 100%; text-align: left; font-weight: 400; border-radius: var(--radius); padding: 16px; }
+.item .t { font-weight: 600; font-size: 16px; line-height: 1.35; margin-bottom: 8px; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 13px; color: var(--text3); }
+.pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--surface2); color: var(--text2); }
+.pill.script { background: var(--accent-soft); color: var(--accent); }
+.pill.answering { background: #fbecd9; color: #8a5a1c; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .pill.answering { background: #3a2c18; color: #e7b877; } }
+.empty { text-align: center; padding: 40px 16px; color: var(--text2); }
+label.q { display: block; font-weight: 600; margin: 0 0 8px; line-height: 1.4; }
+.qn { color: var(--text3); font-weight: 500; margin-right: 6px; }
+textarea, input[type=text] { width: 100%; font: 16px/1.5 Inter, system-ui, sans-serif; color: var(--text); background: var(--surface2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 13px; }
+textarea { resize: vertical; min-height: 110px; }
+textarea:focus, input[type=text]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.sticky { position: fixed; left: 0; right: 0; bottom: 0; background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(8px); border-top: 1px solid var(--border); padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
+.sticky .in { max-width: 720px; margin: 0 auto; display: flex; gap: 10px; align-items: center; }
+.sticky .grow { flex: 1; min-width: 0; font-size: 13px; color: var(--text3); }
+.bar { height: 6px; background: var(--surface2); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.bar > i { display: block; height: 100%; background: var(--accent); border-radius: 99px; transition: width .3s; }
+.msg { padding: 12px 14px; border-radius: 10px; margin: 0 0 14px; font-size: 14px; }
+.msg.err { background: #fbe4dc; color: #7c2d12; }
+.msg.info { background: var(--accent-soft); color: var(--accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .msg.err { background: #3b1f17; color: #f2b39a; } }
+.busy { display: flex; flex-direction: column; align-items: center; gap: 14px; text-align: center; padding: 48px 16px; color: var(--text2); }
+.spin { width: 34px; height: 34px; border: 3px solid var(--surface2); border-top-color: var(--accent); border-radius: 50%; animation: s 1s linear infinite; }
+@keyframes s { to { transform: rotate(360deg); } }
+.seg { border-left: 3px solid var(--border); padding: 2px 0 2px 14px; margin: 0 0 22px; }
+.seg.item { border-left-color: var(--accent); }
+.seg h3 { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--text3); margin: 0 0 8px; font-weight: 600; }
+.seg .f { margin: 0 0 10px; }
+.seg .f span { display: block; font-size: 13px; color: var(--text3); margin: 0 0 4px; }
+.saved { font-size: 13px; color: var(--ok); }
+.examples { font-size: 14px; color: var(--text3); margin: 10px 0 0; }
+.examples button { display: block; text-align: left; width: 100%; font-weight: 400; font-size: 14px; color: var(--text2); background: var(--surface2); border: 0; border-radius: 10px; padding: 10px 12px; margin: 6px 0 0; min-height: 0; }
+.back { margin: -6px 0 10px; }
+.hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><div class="busy"><div class="spin"></div>Loading…</div></div>
+<div class="sticky hidden" id="foot"><div class="in" id="footIn"></div></div>
+<script>
+const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
+const KEY = new URLSearchParams(location.search).get("k") || "";
+const app = document.getElementById("app"), foot = document.getElementById("foot"), footIn = document.getElementById("footIn");
+let INFO = null, CUR = null, SCRIPT = null, saveTimer = null, dirty = false;
+
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const when = t => { if (!t) return ""; const d = new Date(t), m = Math.round((Date.now() - t) / 60000);
+  return m < 1 ? "just now" : m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : d.toLocaleDateString(undefined, { month: "short", day: "numeric" }); };
+
+async function api(op, extra) {
+  const r = await fetch(WORKER_URL, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "studio", op, k: KEY, ...(extra || {}) }) });
+  const t = await r.text(); let d;
+  try { d = JSON.parse(t); } catch (e) { throw new Error("The server didn't answer properly. Try again."); }
+  if (d.error) { const e = new Error(d.error); e.code = d.code; throw e; }
+  return d;
+}
+function setFoot(html) { if (!html) { foot.classList.add("hidden"); footIn.innerHTML = ""; return; } footIn.innerHTML = html; foot.classList.remove("hidden"); }
+function busy(text, sub) { setFoot(""); app.innerHTML = `<div class="busy"><div class="spin"></div><div><b>${esc(text)}</b>${sub ? `<div style="font-size:14px;margin-top:6px;">${esc(sub)}</div>` : ""}</div></div>`; }
+function fail(e) {
+  if (e && e.code === "bad_link") { setFoot(""); app.innerHTML = `<div class="empty"><h2>This link isn't active</h2><p>Ask for a new link to keep recording your interviews.</p></div>`; return; }
+  const box = document.getElementById("err");
+  if (box) { box.textContent = e.message || String(e); box.classList.remove("hidden"); box.scrollIntoView({ behavior: "smooth", block: "center" }); }
+  else alert(e.message || String(e));
+}
+function go(hash) { if (location.hash === hash) route(); else location.hash = hash; }
+window.addEventListener("hashchange", route);
+window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
+
+async function load() {
+  if (!KEY) { app.innerHTML = `<div class="empty"><h2>Missing link</h2><p>Open the private link you were sent.</p></div>`; return; }
+  try { INFO = await api("info"); route(); } catch (e) { fail(e); }
+}
+function header(sub) {
+  return `<header class="top"><div class="brand"><div class="eyebrow">${esc(INFO.hub || "Script Studio")}</div><h1>${esc(INFO.title || INFO.product || "Your scripts")}</h1></div>${sub || ""}</header>`;
+}
+
+async function route() {
+  const h = location.hash.replace(/^#\/?/, "").split("/");
+  if (dirty && CUR) await flushAnswers();
+  if (h[0] === "new") return viewNew();
+  if (h[0] === "i" && h[1]) return viewInterview(h[1]);
+  if (h[0] === "s" && h[1]) return viewScript(h[1]);
+  return viewList();
+}
+
+// ── list ──
+async function viewList() {
+  CUR = null; SCRIPT = null;
+  try { INFO = await api("info"); } catch (e) { return fail(e); }
+  const items = INFO.items || [];
+  const STATUS = { script: "Script ready", answering: "In progress", new: "Not started" };
+  app.innerHTML = header() + `
+    <p class="lede">Each interview becomes a video script in your own words. Press <b>New script</b>, answer the questions, and we'll write it for you. You can come back and edit it any time.</p>
+    <div id="err" class="msg err hidden"></div>
+    <button class="primary" style="width:100%;margin:0 0 18px;font-size:17px;padding:16px;" onclick="go('#/new')">+ New script</button>
+    ${items.length ? `<div class="eyebrow" style="margin:0 0 8px;">Your scripts</div>` + items.map(x => `<button class="card item" onclick="go('${x.assetId ? "#/s/" : "#/i/"}${x.d}')">
+        <div class="t">${esc(x.title || x.topic)}</div>
+        <div class="meta"><span class="pill ${x.status}">${x.generating ? "Writing script…" : STATUS[x.status]}</span>
+          ${x.status !== "script" ? `<span>${x.answered} of ${x.qs.length} answered</span>` : x.minutes ? `<span>about ${x.minutes} min</span>` : ""}
+          <span>· ${when(x.updatedAt)}</span></div></button>`).join("")
+      : `<div class="card empty"><h2>No scripts yet</h2><p style="margin:0;">Your first interview takes about 20 minutes to answer, and you can stop and come back any time.</p></div>`}`;
+  setFoot("");
+}
+
+// ── new script: title + product are set by the link; the client can add an optional direction, then the interview loads ──
+let starting = false;
+function viewNew() {
+  CUR = null;
+  app.innerHTML = header() + `<div class="back"><button class="link" onclick="go('#/')">← All scripts</button></div>
+    <div class="card"><h2>New script</h2>
+      <p class="lede" style="margin-bottom:12px;">Anything you'd like this one to focus on? A story, a type of client, a mistake people make, a question you hear a lot. Leave it blank and we'll choose.</p>
+      <div id="err" class="msg err hidden"></div>
+      <textarea id="direction" rows="4" maxlength="600" placeholder="Optional, e.g. focus on people turning 65 who are still working"></textarea></div>`;
+  setFoot(`<span class="grow">Takes about 30 seconds.</span><button class="primary" onclick="startInterview()">Start interview</button>`);
+}
+async function startInterview() {
+  if (starting) return; starting = true;
+  const direction = (document.getElementById("direction") || {}).value || "";
+  busy("Preparing your interview…", "About 30 seconds.");
+  try { const r = await api("start", { direction: direction.trim() }); starting = false; history.replaceState(null, "", "#/i/" + r.item.d); INFO.items = [r.item].concat(INFO.items || []); viewInterview(r.item.d); }
+  catch (e) { starting = false; viewNew(); document.getElementById("direction").value = direction; fail(e); }
+}
+
+// ── interview ──
+async function viewInterview(d) {
+  let it = (INFO && INFO.items || []).find(x => x.d === d);
+  if (!it) { try { INFO = await api("info"); it = (INFO.items || []).find(x => x.d === d); } catch (e) { return fail(e); } }
+  if (!it) return go("#/");
+  if (it.assetId) return go("#/s/" + d);
+  CUR = it; dirty = false;
+  app.innerHTML = header() + `<div class="back"><button class="link" onclick="go('#/')">← All scripts</button></div>
+    <h2>${esc(it.topic)}</h2>
+    ${it.direction ? `<p style="margin:0 0 8px;color:var(--text3);font-size:14px;">Focus: ${esc(it.direction)}</p>` : ""}
+    <p class="lede">Answer in your own words, the way you'd explain it to a client. Full paragraphs work best: stories, examples, what you've seen. Skip any question you don't want to answer. Your answers save as you type.</p>
+    <div id="err" class="msg err hidden"></div>
+    ${it.generating ? `<div class="msg info">Your script is being written. Reload in a minute or two.</div>` : ""}
+    ${it.qs.map((q, i) => `<div class="card"><label class="q" for="a${i}"><span class="qn">${i + 1}.</span>${esc(q)}</label>
+      <textarea id="a${i}" rows="5" oninput="answerChanged()">${esc(it.answers[i] || "")}</textarea></div>`).join("")}
+    ${it.status === "new" ? `<button class="link" style="color:var(--warn);" onclick="deleteInterview()">Delete this interview</button>` : ""}`;
+  updateFoot();
+}
+function answers() { return (CUR ? CUR.qs : []).map((_, i) => { const el = document.getElementById("a" + i); return el ? el.value : ""; }); }
+function updateFoot(state) {
+  if (!CUR) return;
+  const a = answers(), n = a.filter(x => x.trim()).length, pct = Math.round(n / Math.max(1, CUR.qs.length) * 100);
+  setFoot(`<div class="grow"><span id="saveState">${state || (n + " of " + CUR.qs.length + " answered")}</span><div class="bar"><i style="width:${pct}%"></i></div></div>
+    <button class="primary" ${n < 3 ? "disabled" : ""} onclick="makeScript()" title="${n < 3 ? "Answer at least 3 questions" : ""}">Create my script</button>`);
+}
+function answerChanged() { dirty = true; updateFoot("Saving…"); clearTimeout(saveTimer); saveTimer = setTimeout(flushAnswers, 1200); }
+async function flushAnswers() {
+  clearTimeout(saveTimer); if (!CUR || !dirty) return;
+  const a = answers(); dirty = false;
+  try { const r = await api("save", { d: CUR.d, answers: a }); CUR.answers = r.item.answers; updateFoot("Saved"); setTimeout(() => updateFoot(), 1500); }
+  catch (e) { dirty = true; updateFoot("Not saved yet. Retrying…"); saveTimer = setTimeout(flushAnswers, 5000); }
+}
+async function deleteInterview() {
+  if (!CUR || !confirm("Delete this interview?")) return;
+  try { await api("delete", { d: CUR.d }); dirty = false; go("#/"); } catch (e) { fail(e); }
+}
+async function makeScript() {
+  const a = answers(); clearTimeout(saveTimer); dirty = false;
+  const d = CUR.d;
+  busy("Writing your script…", "This takes 1 to 3 minutes. Keep this page open.");
+  try { await api("generate", { d, answers: a }); go("#/s/" + d); }
+  catch (e) { await viewInterview(d); fail(e); }
+}
+
+// ── script ──
+async function viewScript(d) {
+  CUR = null; busy("Loading your script…");
+  try { SCRIPT = await api("script", { d }); } catch (e) { if (e.code === "bad_link") return fail(e); go("#/i/" + d); return; }
+  SCRIPT.d = d;
+  const LABEL = { hook: "Opening", item: "Question", ask: "Call to action", outro: "Closing", talk: "Narration" };
+  app.innerHTML = header() + `<div class="back"><button class="link" onclick="leaveScript()">← All scripts</button></div>
+    <div id="err" class="msg err hidden"></div>
+    <div class="card"><div class="f"><span class="eyebrow">Video title</span></div>
+      <input type="text" id="sTitle" value="${esc(SCRIPT.title)}" oninput="scriptChanged()"></div>
+    <p class="lede" style="margin:14px 0 18px;">This is your script, written from your answers. Change anything you like, then save.</p>
+    ${SCRIPT.segments.map(x => `<div class="seg ${x.kind === "item" ? "item" : ""}">
+      <h3>${LABEL[x.kind] || x.kind}${x.kind === "item" && x.n ? " " + x.n : ""}${x.kind === "item" && x.name ? " · " + esc(x.name) : ""}</h3>
+      ${x.kind === "item" ? `<div class="f"><span>The viewer asks</span><input type="text" data-i="${x.i}" data-f="ask" value="${esc(x.ask)}" oninput="scriptChanged()"></div>` : ""}
+      <div class="f">${x.kind === "item" ? "<span>Your answer</span>" : ""}<textarea data-i="${x.i}" data-f="text" rows="${Math.min(14, Math.max(3, Math.ceil(x.text.length / 70)))}" oninput="scriptChanged()">${esc(x.text)}</textarea></div>
+    </div>`).join("")}`;
+  scriptFoot();
+}
+function scriptFoot(state) {
+  setFoot(`<span class="grow" id="saveState">${state || (SCRIPT && SCRIPT.item && SCRIPT.item.minutes ? "About " + SCRIPT.item.minutes + " minutes" : "")}</span>
+    <button class="primary" id="saveBtn" ${dirty ? "" : "disabled"} onclick="saveScript()">Save changes</button>`);
+}
+function scriptChanged() { dirty = true; const b = document.getElementById("saveBtn"); if (b) b.disabled = false; const s = document.getElementById("saveState"); if (s) s.textContent = "Unsaved changes"; }
+async function saveScript() {
+  const b = document.getElementById("saveBtn"); b.disabled = true; b.textContent = "Saving…";
+  const segs = {};
+  document.querySelectorAll("[data-i]").forEach(el => { const i = el.dataset.i; (segs[i] = segs[i] || { i: +i })[el.dataset.f] = el.value; });
+  try { await api("saveScript", { d: SCRIPT.d, title: document.getElementById("sTitle").value, segments: Object.values(segs) }); dirty = false; scriptFoot(`<span class="saved">✓ Saved</span>`); }
+  catch (e) { b.disabled = false; b.textContent = "Save changes"; fail(e); }
+}
+function leaveScript() { if (dirty && !confirm("You have unsaved changes. Leave without saving?")) return; dirty = false; go("#/"); }
+
+load();
+</script>
+</body>
+</html>

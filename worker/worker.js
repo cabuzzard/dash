@@ -679,6 +679,111 @@ async function runMainProductResearch(env, only) {
   st.running = false; st.current = ""; st.phase = "done"; st.finishedAt = new Date().toISOString(); await save();
   return st;
 }
+// ── Client Studio (2026-10-09) ── customer-facing page web/studio/: a client records Interview long-form scripts for
+// ONE hub product. Access = a private link (KV client:link:<id>; URL key "<id>.<HMAC('cl:'+id) first 32 hex>") the operator
+// makes from the hub card's Main products row (clientStudioLink). The link is pinned to a title + product: "New script"
+// asks longformInterview for questions on that title, from the hub's campaign research + the product's research, never
+// repeating an earlier interview's questions. Every op runs the existing operator action through SELF, flagged __client
+// (operator voice neither injected nor learned from). KV client:items:<id> = the client's interviews
+// [{d, topic, qs, answers, assetId, title, minutes, at, updatedAt}]; client:rate:<id>:<day> = daily limits.
+const STUDIO_INTERVIEW_METHOD_ID = "3eb1f7d3a4bb81189890e536a35ae1ed";   // YouTube Longform — Interview
+const STUDIO_DAILY = { start: 30, generate: 12 };
+async function studioInner(env, action, extra) {
+  const token = await signToken((env.HMAC_SECRET || "").trim());
+  const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
+    body: JSON.stringify({ action, token, __inner: true, __client: true, ...extra }) });
+  const t = await r.text();
+  try { return JSON.parse(t); } catch (e) { return { error: "Worker returned HTTP " + r.status }; }
+}
+async function studioLinkFromKey(env, key) {
+  const [id, sig] = String(key || "").split(".");
+  if (!/^[a-z0-9]{8,24}$/.test(id || "") || !sig) return null;
+  if (sig !== (await hmacHex((env.HMAC_SECRET || "").trim(), "cl:" + id)).slice(0, 32)) return null;
+  const link = await env.TRADES.get("client:link:" + id, "json").catch(() => null);
+  return link && !link.revoked ? link : null;
+}
+function studioPublicItem(x) {
+  const answered = (x.answers || []).filter(a => String(a || "").trim()).length;
+  return { d: x.d, topic: x.topic, direction: x.direction || "", qs: x.qs || [], answers: x.answers || [], answered, assetId: x.assetId || "", title: x.title || "", minutes: x.minutes || 0,
+    at: x.at, updatedAt: x.updatedAt || x.at, generating: !!(x.generating && Date.now() - x.generating < 10 * 60000),
+    status: x.assetId ? "script" : answered ? "answering" : "new" };
+}
+async function handleStudio(env, body) {
+  const link = await studioLinkFromKey(env, body.k);
+  if (!link) return { error: "This link isn't active any more. Ask for a new one.", code: "bad_link" };
+  const KI = "client:items:" + link.id;
+  let items = (await env.TRADES.get(KI, "json").catch(() => null)) || [];
+  const saveItems = () => env.TRADES.put(KI, JSON.stringify(items.slice(-60)));
+  const KR = "client:rate:" + link.id + ":" + new Date().toISOString().slice(0, 10);
+  const rate = async kind => {
+    const r = (await env.TRADES.get(KR, "json").catch(() => null)) || {};
+    if ((r[kind] || 0) >= STUDIO_DAILY[kind]) return false;
+    r[kind] = (r[kind] || 0) + 1; await env.TRADES.put(KR, JSON.stringify(r), { expirationTtl: 172800 }); return true;
+  };
+  const cleanAnswers = (arr, n) => (Array.isArray(arr) ? arr : []).slice(0, n).map(a => String(a == null ? "" : a).slice(0, 4000));
+  const op = body.op || "info";
+  if (op === "info") return { ok: true, hub: link.hubName || "", product: link.productName || "", title: link.titleName || "", label: link.label || "", items: items.slice().reverse().map(studioPublicItem) };
+  if (op === "start") {
+    const topic = String(link.titleName || link.productName || "").trim().slice(0, 300);
+    if (!topic) return { error: "This link has no title set up yet." };
+    if (!(await rate("start"))) return { error: "That's the limit of new interviews for today. Try again tomorrow." };
+    const existing = [...new Set(items.flatMap(x => x.qs || []))].slice(-60);   // each new script goes into new ground
+    const direction = String(body.direction || "").trim().slice(0, 600);
+    const r = await studioInner(env, "longformInterview", { question: topic, format: "interview", campaignId: link.campaignId, productId: link.productId, count: 12, fresh: true, existing, direction });
+    if (!r || r.error || !(r.questions || []).length) return { error: (r && r.error) || "No questions came back. Try again." };
+    const it = { d: Math.random().toString(36).slice(2, 10), topic, direction, qs: r.questions.map(q => String(q).slice(0, 400)).slice(0, 40), answers: [], at: Date.now() };
+    items.push(it); await saveItems();
+    return { ok: true, item: studioPublicItem(it) };
+  }
+  const it = items.find(x => x.d === String(body.d || ""));
+  if (!it) return { error: "That interview wasn't found." };
+  if (op === "save") {
+    it.answers = cleanAnswers(body.answers, it.qs.length); it.updatedAt = Date.now(); await saveItems();
+    return { ok: true, item: studioPublicItem(it) };
+  }
+  if (op === "delete") {
+    if (it.assetId) return { error: "This interview already has a script, so it stays." };
+    items = items.filter(x => x !== it); await saveItems(); return { ok: true };
+  }
+  if (op === "generate") {
+    if (Array.isArray(body.answers)) it.answers = cleanAnswers(body.answers, it.qs.length);
+    if (it.assetId) return { error: "This interview already has a script. Open it to edit." };
+    const interview = it.qs.map((q, i) => ({ q, a: String(it.answers[i] || "").trim() })).filter(x => x.a);
+    if (interview.length < 3) return { error: "Answer at least 3 questions first." };
+    if (it.generating && Date.now() - it.generating < 10 * 60000) return { error: "This script is already being written. Give it a minute, then reload." };
+    if (!(await rate("generate"))) return { error: "That's the limit of scripts for today. Try again tomorrow." };
+    it.generating = Date.now(); await saveItems();
+    const r = await studioInner(env, "generateLongformScript", { titleId: link.titleId, campaignId: link.campaignId, productId: link.productId, methodId: STUDIO_INTERVIEW_METHOD_ID,
+      question: it.topic, format: "interview", layout: "presenter", interview });
+    items = (await env.TRADES.get(KI, "json").catch(() => null)) || items;   // re-read: answers may have autosaved meanwhile
+    const cur = items.find(x => x.d === it.d) || it; delete cur.generating;
+    if (!r || r.error || !r.assetId) { await saveItems(); return { error: (r && r.error) || "The script didn't come back. Try again." }; }
+    Object.assign(cur, { assetId: r.assetId, title: r.title || "", minutes: r.minutes || 0, updatedAt: Date.now() });
+    if (!items.includes(cur)) items.push(cur);
+    await saveItems();
+    return { ok: true, item: studioPublicItem(cur) };
+  }
+  if (!it.assetId) return { error: "This interview has no script yet." };
+  if (op === "script") {
+    const r = await studioInner(env, "getLongformScript", { assetId: it.assetId });
+    if (!r || r.error) return { error: (r && r.error) || "Couldn't load the script." };
+    return { ok: true, item: studioPublicItem(it), title: r.title || "",
+      segments: (r.segments || []).map(x => ({ i: x.i, kind: x.kind, n: x.n, name: x.name || "", ask: x.ask || "", text: x.text || "", label: x.label || "" })) };
+  }
+  if (op === "saveScript") {
+    const segs = (Array.isArray(body.segments) ? body.segments : []).map(x => {
+      const o = { i: parseInt(x.i, 10) };
+      for (const f of ["name", "ask", "text", "label"]) if (typeof x[f] === "string") o[f] = x[f];
+      return o;
+    }).filter(x => Number.isInteger(x.i));
+    const r = await studioInner(env, "saveLongformScript", { assetId: it.assetId, ...(typeof body.title === "string" ? { title: body.title } : {}), segments: segs });
+    if (!r || r.error) return { error: (r && r.error) || "Couldn't save." };
+    if (typeof body.title === "string" && body.title.trim()) it.title = body.title.trim().slice(0, 200);
+    it.updatedAt = Date.now(); await saveItems();
+    return { ok: true, saved: r.saved || 0, item: studioPublicItem(it) };
+  }
+  return { error: "Unknown op" };
+}
 function hubSlugForCampaign(campaignId) {
   const n = String(campaignId || "").replace(/-/g, "");
   return (HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === n) || {}).slug || "";
@@ -11084,6 +11189,19 @@ export default {
     // read-only, and gives back only what getMicrositeNotes itself would —
     // never a write path. Deliberately checked BEFORE the session-token
     // gate below, since this request carries no session token at all.
+    // Client Studio (web/studio/): the private link key is the only credential. start / generate run long (Claude), so
+    // they stream a space every 15 s then the JSON (same keep-alive as the operator writers).
+    if (body.action === "studio") {
+      if (!["start", "generate"].includes(body.op)) { try { return json(await handleStudio(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
+      const { readable, writable } = new TransformStream();
+      const writer = writable.getWriter(), enc = new TextEncoder();
+      const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
+      ctx.waitUntil((async () => {
+        let out; try { out = JSON.stringify(await handleStudio(env, body)); } catch (e) { out = JSON.stringify({ error: e.message || String(e) }); }
+        clearInterval(beat); try { await writer.write(enc.encode(out)); await writer.close(); } catch (e) {}
+      })());
+      return new Response(readable, { status: 200, headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" } });
+    }
     if (body.action === "getMicrositeNotes" && body.pollSecret) {
       const POLL_SECRET = (env.NOTES_POLL_SECRET || "").trim();
       if (POLL_SECRET && body.pollSecret === POLL_SECRET) {
@@ -11135,7 +11253,7 @@ export default {
     // each writer's prompt. Learned from the operator's final-pass edits in the
     // asset Publish modal (voiceLogEdits). Writers that resolve their campaign
     // later (slot → campaign, title → campaign) fill body.__voice themselves.
-    if (body.campaignId && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
+    if (body.campaignId && !body.__client && /^(generate|write|regenerate)/.test(String(body.action || ""))) {
       body.__voice = await voiceBlock(env, body.campaignId).catch(() => "");
     }
 
@@ -16378,10 +16496,15 @@ Give a YouTube title in that format. Call submit_questions.`;
         const want = isIv ? Math.min(40, Math.max(3, parseInt(body.count) || plan.needed)) : 0;
         const brief = body.campaignId ? await assembleImageBrief(env, { campaignId: body.campaignId }).catch(() => null) : null;
         const camp = brief ? brief.facts.filter(f => /^Campaign Research/.test(f)).join("\n").slice(0, 3000) : "";
+        let prodRes = "";
+        if (body.productId) {
+          const pr = await findBestProductResearchRecord({ "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION }, String(body.productId).replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5")).catch(() => null);
+          if (pr) prodRes = STRATEGY_FIELDS.map(f => { const v = lfReadRich(pr.properties?.[f]); return v && `${f}: ${v}`; }).filter(Boolean).join("\n").slice(0, 4000);
+        }
         const ir = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: isIv ? 4000 : 1500, messages: [{ role: "user", content:
-            "You are a ghostwriter interviewing the owner of a YouTube channel before writing an episode that answers this viewer question:\n\nQUESTION: " + q + "\n\n" + (camp ? "WHAT THE CHANNEL/BUSINESS IS ABOUT:\n" + camp + "\n\n" : "")
+            "You are a ghostwriter interviewing the owner of a YouTube channel before writing an episode that answers this viewer question:\n\nQUESTION: " + q + "\n\n" + (camp ? "WHAT THE CHANNEL/BUSINESS IS ABOUT:\n" + camp + "\n\n" : "") + (prodRes ? "THE PRODUCT THIS EPISODE IS ABOUT (its research: who it serves, their pains, the transformation):\n" + prodRes + "\n\n" : "") + (String(body.direction || "").trim() ? "DIRECTION FROM THE PERSON BEING INTERVIEWED (steer this episode's questions toward it):\n" + String(body.direction).trim().slice(0, 600) + "\n\n" : "")
             + (isIv
               ? `This episode will BE the interview: their answers, lightly edited, are the whole script. Ask exactly ${want} questions that together make a complete ${Math.round(plan.targetSecs / 60)}-minute episode, ordered the way the episode should flow: open with why this matters to them, then go deep — stories, clients or people they've seen, mistakes, turning points, numbers they actually know, strong opinions, what most advice gets wrong, what they'd tell someone starting today. Each question opens one thing up and invites a full paragraph. No generic questions the internet could answer; no two questions that cover the same ground.`
                 + (existing.length ? `\n\nALREADY ASKED (don't repeat or overlap; go further or into what's missing):\n${existing.map(x => "- " + x).join("\n")}` : "")
@@ -16490,7 +16613,7 @@ Write for the ear: short sentences, concrete examples, no jargon. Call submit_ti
         if (format === "interview" && !interview.length) return json({ error: "The interview format needs your answers — answer at least one question first" }, 400);
         const items = format === "interview" ? interview.length : Math.min(Math.max(parseInt(body.items) || LF_FORMATS[format].items, 3), 15);
         if (!titleId || !campaignId || !String(question || "").trim()) return json({ error: "titleId, campaignId and question required" }, 400);
-        if (interview.length) await voiceLogSamples(env, ctx, campaignId, "longform interview", interview).catch(e => console.error("voiceLogSamples", e.message));
+        if (interview.length && !body.__client) await voiceLogSamples(env, ctx, campaignId, "longform interview", interview).catch(e => console.error("voiceLogSamples", e.message));
         const nd = s2 => { const x = String(s2 || "").replace(/-/g, ""); return `${x.slice(0,8)}-${x.slice(8,12)}-${x.slice(12,16)}-${x.slice(16,20)}-${x.slice(20)}`; };
         const hdrS = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const hasMethod = methodId && methodId !== "__none__";
@@ -16854,7 +16977,7 @@ Give "title" (≤70 chars, searchable), 2 "altTitles", 3 "thumbnailText" options
         if (!edits.length && !body.force) return json({ ok: true, saved: 0, learned: 0 });
         await lfSaveSpec(aid, spec);
         const cid = page.properties["Campaign"]?.relation?.[0]?.id || "";
-        const learned = await voiceLogEdits(env, ctx, cid, "longform script", edits).catch(() => 0);
+        const learned = body.__client ? 0 : await voiceLogEdits(env, ctx, cid, "longform script", edits).catch(() => 0);
         return json({ ok: true, saved: edits.length, learned });
       }
       // longformLayout {assetId, op: "get" | "save", boxes?, campaignDefault?} — the 📐 Layout editor.
@@ -26337,6 +26460,55 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // ── deleteAsset ──
       // Archives an Asset record (Notion soft-delete) — used by the ✕ on
       // asset rows under publish titles.
+      // clientStudioLink {op: create | list | revoke, campaignId, productId, titleId?, label?, id?} — the 🎤 Client links on a hub's
+      // Main products row. Each link is pinned to ONE title + product (titleId, else the product's own main title, else a new
+      // one named after the product); every script the client makes is an asset under that title.
+      if (body.action === "clientStudioLink") {
+        const op = body.op || "list", cid = String(body.campaignId || "").replace(/-/g, ""), pid = String(body.productId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const KX = "client:links:" + cid;
+        const idx = (await env.TRADES.get(KX, "json").catch(() => null)) || [];
+        const urlFor = async id => `https://cabuzzard.github.io/dash/web/studio/?k=${id}.${(await hmacHex(HMAC_SECRET, "cl:" + id)).slice(0, 32)}`;
+        const nd = x => { const v = String(x).replace(/-/g, ""); return `${v.slice(0,8)}-${v.slice(8,12)}-${v.slice(12,16)}-${v.slice(16,20)}-${v.slice(20)}`; };
+        const hdrC = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        if (op === "create") {
+          if (!pid) return json({ error: "productId required" }, 400);
+          const pg = await fetch(`https://api.notion.com/v1/pages/${nd(pid)}`, { headers: hdrC }).then(r => r.json()).catch(() => ({}));
+          const pname = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+          if (!pname) return json({ error: "Product not found" }, 404);
+          const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid) || {};
+          const label = String(body.label || "").trim().slice(0, 80) || "Client";
+          const ttl = p2 => (p2?.properties?.Title?.title || []).map(t => t.plain_text).join("").trim();
+          let titleId = String(body.titleId || "").replace(/-/g, ""), titleName = "";
+          if (titleId) titleName = ttl(await fetch(`https://api.notion.com/v1/pages/${nd(titleId)}`, { headers: hdrC }).then(r => r.json()).catch(() => ({})));
+          else {
+            const rows = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "product", relation: { contains: nd(pid) } } }).catch(() => []);
+            const pick = rows.find(r => ttl(r).toLowerCase() === pname.toLowerCase()) || null;
+            if (pick) { titleId = pick.id.replace(/-/g, ""); titleName = ttl(pick); }
+            else {
+              const tr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdrC, body: JSON.stringify({ parent: { database_id: CONTENT_STRATEGY_DB }, properties: {
+                Title: { title: [{ type: "text", text: { content: pname.slice(0, 200) } }] }, Status: { select: { name: "Development" } },
+                Campaign: { relation: [{ id: nd(cid) }] }, product: { relation: [{ id: nd(pid) }] } } }) }).then(r => r.json()).catch(e => ({ message: e.message }));
+              if (!tr.id) return json({ error: "Couldn't create the title: " + (tr.message || "Notion error") }, 502);
+              titleId = tr.id.replace(/-/g, ""); titleName = pname;
+            }
+          }
+          if (!titleName) return json({ error: "Title not found" }, 404);
+          const id = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => "abcdefghijklmnopqrstuvwxyz0123456789"[b % 36]).join("");
+          const link = { id, campaignId: cid, productId: pid, titleId, titleName, label, productName: pname, hubName: hub.name || "", hubSlug: hub.slug || "", at: Date.now() };
+          await env.TRADES.put("client:link:" + id, JSON.stringify(link));
+          idx.push(id); await env.TRADES.put(KX, JSON.stringify(idx));
+          return json({ ok: true, link: { ...link, url: await urlFor(id), count: 0 } });
+        }
+        if (op === "revoke") {
+          const id = String(body.id || ""); if (!idx.includes(id)) return json({ error: "Link not found" }, 404);
+          const link = await env.TRADES.get("client:link:" + id, "json"); link.revoked = Date.now();
+          await env.TRADES.put("client:link:" + id, JSON.stringify(link)); return json({ ok: true });
+        }
+        const links = (await Promise.all(idx.map(id => env.TRADES.get("client:link:" + id, "json").catch(() => null)))).filter(l => l && (!pid || l.productId === pid));
+        return json({ ok: true, links: await Promise.all(links.reverse().map(async l => ({ ...l, url: l.revoked ? "" : await urlFor(l.id),
+          count: ((await env.TRADES.get("client:items:" + l.id, "json").catch(() => null)) || []).length }))) });
+      }
       if (body.action === "runAllHubProductIdeas") return json(await runAllHubProductIdeas(env));
       if (body.action === "runMainProductResearch") return json(await runMainProductResearch(env, body.productIds ? { campaignId: body.campaignId, productIds: body.productIds } : null));
       if (body.action === "getBulkJobs") { const [pi, rs] = await Promise.all([env.TRADES.get("bulk:prodideas", "json").catch(() => null), env.TRADES.get("bulk:research", "json").catch(() => null)]); return json({ prodideas: pi, research: rs }); }
