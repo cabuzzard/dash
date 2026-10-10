@@ -14298,13 +14298,14 @@ async function bulkJobsPoll() {   // every long server-side run (KV bulk:*) → 
         return `✓ Main-product research done — ${ok} of ${j.total} researched + saved${j.upToDate ? ` · ${j.upToDate} already up to date` : ''}${j.placeholders ? ` · ${j.placeholders} placeholders skipped` : ''}${bad.length ? ` · failed: ${bad.map(r => esc(r.name) + ' (' + esc(r.error || '?') + ')').join(', ')}` : ''}`; } },
   };
   const seen = k => { try { return localStorage.getItem('bulkSeen:' + k) || ''; } catch (e) { return ''; } };
-  const list = Object.keys(DEF).map(k => ({ k, j: jobs && jobs[k] })).filter(x => x.j && (x.j.running || (x.j.finishedAt && x.j.finishedAt !== seen(x.k) && Date.now() - Date.parse(x.j.finishedAt) < 6 * 3600e3)));
+  const list = Object.keys(DEF).map(k => ({ k, j: jobs && jobs[k] })).filter(x => x.j && ((x.j.running && Date.now() - Date.parse(x.j.at || 0) < 3 * 3600e3) || (x.j.finishedAt && x.j.finishedAt !== seen(x.k) && Date.now() - Date.parse(x.j.finishedAt) < 6 * 3600e3)));
+  list.forEach(x => { if (x.j.running && Date.now() - Date.parse(x.j.at || 0) >= 3 * 3600e3) x.j.running = false; });   // a run that died mid-way (no update for 3 h) is not 'running'
   list.sort((a, b) => (b.j.running ? 1 : 0) - (a.j.running ? 1 : 0));
   let bar = document.getElementById('bulkJobBar');
   if (!list.length) { if (bar) bar.remove(); return setTimeout(bulkJobsPoll, 30000); }
-  if (!bar) { bar = document.createElement('div'); bar.id = 'bulkJobBar'; document.body.appendChild(bar); }
+  if (!bar) { bar = document.createElement('div'); bar.id = 'bulkJobBar'; document.body.prepend(bar); }   // in the flow (sticky), so it pushes the header down instead of covering it
   const any = list.some(x => x.j.running);
-  bar.style.cssText = `position:fixed;top:0;left:0;right:0;z-index:10001;padding:8px 14px;font-size:13px;display:flex;flex-direction:column;gap:4px;align-items:center;background:var(--surface2);color:var(--text);border-bottom:2px solid ${any ? '#e67e22' : '#4ade80'};`;
+  bar.style.cssText = `position:sticky;top:0;z-index:10001;padding:8px 14px;font-size:13px;display:flex;flex-direction:column;gap:4px;align-items:center;background:var(--surface2);color:var(--text);border-bottom:2px solid ${any ? '#e67e22' : '#4ade80'};`;
   bar.innerHTML = list.map(({ k, j }) => `<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center;">${j.running ? DEF[k].run(j) : DEF[k].fin(j)}${j.running ? '' : ` <button onclick="try{localStorage.setItem('bulkSeen:${k}','${j.finishedAt}')}catch(e){};bulkJobsPoll()" style="font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text);cursor:pointer;">OK</button>`}</div>`).join('');
   setTimeout(bulkJobsPoll, any ? 8000 : 60000);
 }
