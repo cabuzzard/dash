@@ -17460,8 +17460,13 @@ Give a YouTube title in that format. Call submit_questions.`;
       // claims (exact quotes). Pass 2 (Opus + live web search): each claim vs the CURRENT standard — verdict, expert view,
       // sources, the SMALLEST fix in the owner's voice, and what a top practitioner would add. Opinions are kept, not judged.
       // KV ivfact:<interviewId>. ivExpertApply swaps ONLY the quoted words for accepted fixes (operator rewrites → voice).
+      // Any failure (Claude error, unreadable JSON, thrown exception) is parked in KV ivfact:err:<id> and the run marker is
+      // cleared — the panel polls ivExpertGet after a dropped connection, so an error that only went back on the (dead) stream
+      // used to leave it "still checking" for 6 minutes and then blank, with no message.
       if (body.action === "ivExpertCheck") {
-        const id = String(body.interviewId || "").replace(/-/g, ""); if (!id && !body.sample) return json({ error: "interviewId required" }, 400);
+        const xid = String(body.interviewId || "").replace(/-/g, "");
+        let resp; try { resp = await (async () => {
+        const id = xid; if (!id && !body.sample) return json({ error: "interviewId required" }, 400);
         // body.sample {title, qs, answers, cid?} = a dry run on sample answers (nothing read or saved) — for testing the check
         const iv = body.sample ? { title: String(body.sample.title || "sample"), angle: "", qs: body.sample.qs || [], answers: body.sample.answers || [], cid: body.sample.cid || "", productId: "", titleId: "" } : ivParse(await ivPage(id));
         const qa = iv.qs.map((q, i) => ({ i, q, a: String(iv.answers[i] || "").trim() })).filter(x => x.a);
@@ -17469,7 +17474,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         let pid = iv.productId; if (!pid && iv.titleId) { const tp = await ivPage(iv.titleId).catch(() => null); pid = tp ? ivRid(tp.properties, "product") : ""; }
         const [prodRes, audience] = await Promise.all([pid ? ivProdResearch(pid) : "", iv.cid ? hubAudienceBlock(env, iv.cid).catch(() => "") : ""]);
         const today = new Date().toISOString().slice(0, 10), OPUS = "claude-opus-5-5";
-        if (!body.sample) await env.TRADES.put("ivfact:run:" + id, String(Date.now()), { expirationTtl: 600 });
+        if (!body.sample) await env.TRADES.put("ivfact:run:" + id, String(Date.now()), { expirationTtl: 3600 });
         // PASS 2+ (operator: "my responses to the first expert check also need a second pass by the experts before writing"):
         // the reviewer sees what the previous pass raised and verifies the REVISED answers against it.
         let prev = null; if (!body.sample) { try { prev = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {} }
@@ -17520,14 +17525,27 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
               sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || ""), carried: !!byId[c.id]?.carried });
         const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
         const report = { at: Date.now(), pass, field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
-        if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); }
+        if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); await env.TRADES.delete("ivfact:err:" + id).catch(() => {}); }
         return json({ ok: true, report });
+        })(); } catch (e) { console.error("ivExpertCheck", xid, e); resp = json({ error: "Expert check failed: " + (e.message || e) }, 500); }
+        if (!body.sample && xid && resp.status >= 400) {
+          const m = (await resp.clone().json().catch(() => ({}))).error || `Expert check failed (HTTP ${resp.status})`;
+          console.error("ivExpertCheck failed", xid, m);
+          await env.TRADES.put("ivfact:err:" + xid, JSON.stringify({ at: Date.now(), error: m }), { expirationTtl: 86400 }).catch(() => {});
+          await env.TRADES.delete("ivfact:run:" + xid).catch(() => {});
+        }
+        return resp;
       }
       if (body.action === "ivExpertGet" || body.action === "ivExpertApply") {
         const id = String(body.interviewId || "").replace(/-/g, "");
         let report = null; try { report = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {}
         if (body.action === "ivExpertGet") { const run = await env.TRADES.get("ivfact:run:" + id).catch(() => null);
-          return json({ ok: true, report, running: !!(run && Date.now() - +run < 6 * 60 * 1000 && (!report || report.at < +run)) }); }
+          let err = null; try { err = await env.TRADES.get("ivfact:err:" + id, "json"); } catch (e) {}
+          const pending = !!(run && (!report || report.at < +run)), age = run ? Date.now() - +run : 0;
+          // a marker with no report and no error after 10 min = the run was killed mid-flight (e.g. the request was dropped)
+          const lastError = err && (!report || err.at > report.at) ? err.error
+            : pending && age >= 10 * 60 * 1000 ? "The expert check stopped before finishing (no result after 10 minutes) — run it again." : "";
+          return json({ ok: true, report, running: pending && age < 10 * 60 * 1000, lastError }); }
         if (!report) return json({ error: "Run the expert check first" }, 400);
         const iv = ivParse(await ivPage(id)), answers = iv.answers.slice();
         const want = new Set(Array.isArray(body.ids) ? body.ids : []), ov = body.overrides && typeof body.overrides === "object" ? body.overrides : {};

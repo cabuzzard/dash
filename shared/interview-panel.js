@@ -14,7 +14,7 @@
   const BTN = `font-size:11px;padding:4px 10px;border:1px solid ${C.line};border-radius:6px;background:${C.surf2};color:${C.ink};cursor:pointer;`;
   const BTNP = `font-size:11px;padding:4px 10px;border:1px solid ${DONE};border-radius:6px;background:${DONE};color:#fff;font-weight:600;cursor:pointer;`;
   const TA = `width:100%;box-sizing:border-box;font-family:inherit;font-size:12.5px;line-height:1.45;padding:7px 9px;border:1px solid ${C.line};border-radius:6px;background:${C.surf};color:${C.ink};`;
-  const req = async (call, a, b) => { const r = await call(a, b || {}); if (r && r.error) throw new Error(r.error); return r || {}; };
+  const req = async (call, a, b) => { const r = await call(a, b || {}); if (r && r.error) { const x = new Error(r.error); x.server = true; throw x; } return r || {}; };   // x.server = the worker answered with an error (vs a dropped connection)
   const pill = st => `<span style="font-size:10.5px;padding:1px 8px;border-radius:9px;font-weight:700;${st === 'Finished' ? `background:rgba(58,154,91,.18);color:${DONE};` : `background:${FLAG};color:#111;`}">${st === 'Finished' ? 'Finished' : 'Flagged'}</span>`;
   const listeners = new Set();
   const changed = () => listeners.forEach(f => { try { f(); } catch (err) {} });
@@ -92,13 +92,14 @@
     async function load(poll) {
       try { const r = await req(cfg.call, 'ivExpertGet', { interviewId: cfg.interviewId }); S.report = r.report || null; init();
         if (r.running) { S.busy = 'Still checking on the server — the results will appear here (about 1-2 minutes)…'; draw(); setTimeout(() => load(true), 10000); return; }
-        if (poll) { S.busy = ''; S.err = ''; } } catch (err) {}
+        if (poll) S.busy = ''; S.err = r.lastError || ''; } catch (err) {}
       draw(); }
     async function run() {
       if (cfg.beforeRun) { try { await cfg.beforeRun(); } catch (err) {} }
       S.busy = 'Checking every claim against the current expert standard (live search) — about 1-2 minutes…'; S.err = ''; draw();
       try { const r = await req(cfg.call, 'ivExpertCheck', { interviewId: cfg.interviewId }); S.report = r.report; S.edits = {}; init(); }
-      catch (err) { S.busy = 'The connection dropped — still checking on the server, the results will appear here…'; draw(); return load(true); }
+      catch (err) { if (err.server) { S.busy = ''; S.err = err.message; return draw(); }
+        S.busy = 'The connection dropped — still checking on the server, the results will appear here…'; draw(); return load(true); }
       S.busy = ''; draw();
     }
     async function apply() {
