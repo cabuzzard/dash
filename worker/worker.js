@@ -17475,11 +17475,13 @@ Give a YouTube title in that format. Call submit_questions.`;
         let prev = null; if (!body.sample) { try { prev = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {} }
         const pass = prev ? (prev.pass || 1) + 1 : 1;
         const prevBlock = prev ? `\nPASS ${pass} — the owner REVISED these answers after the previous expert review. Previous summary: ${prev.summary}\nIssues it raised (quote → verdict → suggested fix / what they applied):\n${prev.items.filter(x => x.verdict !== "opinion" && (/outdated|contested|wrong|mostly/.test(x.verdict) || x.market)).map(x => `- "${x.quote}" → ${x.verdict}${x.market ? " (marketability: " + x.market + ")" : ""}${x.applied ? " → applied: " + (x.appliedText || x.fix) : x.fix ? " → suggested: " + x.fix : ""}`).join("\n").slice(0, 6000)}\nVerify the REVISED answers to the same standard: confirm what is now right (verdict current), and flag only what still falls short or any NEW problem the revisions introduced. Don't re-flag points that are now fixed.\n` : "";   // a phone that drops the long request can see it's still running
+        const fieldKey = "ivfield:" + (pid || iv.cid || "x");
+        let known = null; if (!body.sample) { try { known = await env.TRADES.get(fieldKey, "json"); } catch (e) {} }
         const ctxBlock = `INTERVIEW: ${iv.title}${iv.angle ? " — " + iv.angle : ""}\n${audience}${prodRes ? `\nTHE OFFERING (product research):\n${prodRes}\n` : ""}${prevBlock}`;
-        const c1 = await claudeStream(env, { model: OPUS, max_tokens: 6000, messages: [{ role: "user", content:
+        const c1 = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: 6000, messages: [{ role: "user", content:
 `TODAY: ${today}. You are a senior practitioner reviewing a business owner's own interview answers before they are used in published content.
 ${ctxBlock}
-1) Name the professional FIELD these answers belong to as precisely as possible, and the bodies, standards, codes, regulations and research that define its CURRENT standard of practice (e.g. for construction management: CMAA standards of practice, AIA / ConsensusDocs contract families, PMI, OSHA, current delivery-method practice; for executive coaching: ICF core competencies and ethics, EMCC, peer-reviewed coaching research; for Medicare: this year's CMS / Medicare.gov rules).
+${known ? `KNOWN FIELD (from earlier checks of this offering — reuse it unless these answers clearly belong elsewhere): ${known.field}\nKNOWN STANDARD-SETTERS: ${(known.standards || []).join("; ")}\n` : ""}1) Name the professional FIELD these answers belong to as precisely as possible, and the bodies, standards, codes, regulations and research that define its CURRENT standard of practice (e.g. for construction management: CMAA standards of practice, AIA / ConsensusDocs contract families, PMI, OSHA, current delivery-method practice; for executive coaching: ICF core competencies and ethics, EMCC, peer-reviewed coaching research; for Medicare: this year's CMS / Medicare.gov rules).
 2) List the CLAIMS a knowledgeable peer could check — facts, numbers, terminology, regulations, how-the-work-is-done, and advice that implies an outcome. Strong opinions: include, marked "opinion" (not judged).
 For each claim: "q" (question index), "quote" (EXACT words from that answer, 4-30 words, character for character), "claim" (one plain sentence), "type" (fact | number | term | regulation | practice | advice | opinion). At most 20, most consequential first.
 
@@ -17491,10 +17493,14 @@ Return ONLY a JSON object: {"field":"...","standards":["..."],"claims":[...]}` }
         const r1 = (d1.content || []).filter(b => b.type === "text").map(b => b.text).join("");
         let p1 = {}; try { p1 = JSON.parse(r1.slice(r1.indexOf("{"), r1.lastIndexOf("}") + 1)); } catch (e) { return json({ error: "Couldn't read the claim list — try again" }, 502); }
         const claims = (p1.claims || []).filter(c => c && c.quote && c.claim).slice(0, 20).map((c, k) => ({ id: "c" + (k + 1), q: +c.q, quote: String(c.quote), claim: String(c.claim), type: String(c.type || "fact") }));
-        const checkable = claims.filter(c => c.type !== "opinion");
-        let p2 = { results: [], summary: "" };
+        if (!body.sample && p1.field) await env.TRADES.put(fieldKey, JSON.stringify({ field: p1.field, standards: p1.standards || [], at: Date.now() })).catch(() => {});
+        const carried = {};
+        if (prev) for (const c of claims) { const old = prev.items.find(x => x.quote === c.quote && /^(current|mostly current)$/.test(x.verdict) && !x.market);
+          if (old) carried[c.id] = { verdict: old.verdict, expert_view: old.expert_view, sources: old.sources || [], fix: "", level_up: old.level_up || "", market: "", carried: true }; }
+        const checkable = claims.filter(c => c.type !== "opinion" && !carried[c.id]);
+        let p2 = { results: [], summary: checkable.length ? "" : "Every claim was already verified in the previous pass and is unchanged." };
         if (checkable.length) {
-          const c2 = await claudeStream(env, { model: OPUS, max_tokens: 14000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 16 }], messages: [{ role: "user", content:
+          const c2 = await claudeStream(env, { model: OPUS, max_tokens: 14000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: Math.min(16, 4 + checkable.length) }], messages: [{ role: "user", content:
 `TODAY: ${today}. FIELD: ${p1.field || "(infer it)"}. CURRENT STANDARD-SETTERS: ${(p1.standards || []).join("; ")}.
 Check each claim from a practitioner's interview against the CURRENT standard of practice in this field and the dominant expert view — as a top practitioner in the field would, today. These answers become MARKETING for a professional offering sold to sophisticated buyers (see the audience below), so the output must be marketable: anything that would cost credibility with a knowledgeable buyer — vague or generic claims, amateur or dated terminology, overpromising, advice a senior peer would wince at — counts as an issue even when it isn't strictly false. Search as needed; prefer primary sources (standards bodies, regulators, codes, contract documents, peer-reviewed research, recognized institutions). Flag outdated practice or terminology, wrong regulations or numbers, overclaims, and advice a senior peer would push back on. Be fair: sound practical wisdom that the field broadly accepts is "current" even when phrased casually.
 For each claim return: "id"; "verdict" (current | mostly current | outdated | contested | wrong); "expert_view" (1-2 plain sentences: what the current standard actually is); "sources" (1-3 {"title","url"} you actually found); "fix": the SMALLEST change to the quoted words that makes it accurate and current, keeping the speaker's voice, empty if none needed; "level_up": optional ONE line a top practitioner would add that makes a sophisticated buyer trust them — a concrete method, standard, outcome or proof point in plain words (only where it materially sharpens it), else empty; "market": optional ONE short note when the wording itself undercuts marketability (generic, hedged, jargon a buyer won't follow, or overpromise), else empty.
@@ -17508,10 +17514,10 @@ Return ONLY a JSON object: {"results":[...],"summary":"..."}` }] }, { "anthropic
           const r2 = (d2.content || []).filter(b => b.type === "text").map(b => b.text).join("");
           try { p2 = JSON.parse(r2.slice(r2.indexOf("{"), r2.lastIndexOf("}") + 1)); } catch (e) { return json({ error: "Couldn't read the expert check — try again" }, 502); }
         }
-        const byId = Object.fromEntries((p2.results || []).map(r => [r.id, r]));
+        const byId = { ...carried, ...Object.fromEntries((p2.results || []).map(r => [r.id, r])) };
         const items = claims.map(c => c.type === "opinion" ? { ...c, verdict: "opinion", expert_view: "Your opinion — kept as yours, not judged.", sources: [], fix: "", level_up: "" }
           : { ...c, verdict: String(byId[c.id]?.verdict || "unchecked"), expert_view: String(byId[c.id]?.expert_view || ""),
-              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || "") });
+              sources: (byId[c.id]?.sources || []).filter(x => x && /^https?:\/\//.test(x.url)).slice(0, 3), fix: String(byId[c.id]?.fix || ""), level_up: String(byId[c.id]?.level_up || ""), market: String(byId[c.id]?.market || ""), carried: !!byId[c.id]?.carried });
         const needs = items.filter(x => /outdated|contested|wrong/.test(x.verdict) || x.market).length;
         const report = { at: Date.now(), pass, field: String(p1.field || ""), standards: (p1.standards || []).map(String).slice(0, 10), summary: String(p2.summary || ""), items, status: needs ? "Needs edits" : "Passed" };
         if (!body.sample) { await env.TRADES.put("ivfact:" + id, JSON.stringify(report)); await env.TRADES.delete("ivfact:run:" + id).catch(() => {}); }
