@@ -75,6 +75,18 @@
   function expert(cfg) {
     const el = document.createElement('div'), S = { report: null, busy: '', err: '', edits: {}, pick: {} };
     el.style.cssText = `margin:14px 0 4px;border:1px solid ${C.line};border-radius:10px;padding:10px 12px;`;
+    // the WHOLE answer for context: the quoted words struck through, the proposed change in orange (live as you edit it)
+    const answerOf = i => String(((cfg.answers ? cfg.answers() : null) || (cfg.iv || {}).answers || [])[i] || '');
+    const questionOf = i => String(((cfg.iv || {}).qs || [])[i] || '');
+    function inContext(x, fixText) {
+      let a = answerOf(x.q), at = a.indexOf(x.quote);
+      if (at < 0) { const k = ((cfg.answers ? cfg.answers() : null) || []).findIndex(v => String(v || '').includes(x.quote)); if (k >= 0) { a = answerOf(k); at = a.indexOf(x.quote); } }
+      if (at < 0) return `<div style="font-size:12px;color:${C.ink3};">(that answer has changed since this check)</div>`;
+      const before = e(a.slice(0, at)), after = e(a.slice(at + x.quote.length));
+      const mid = fixText == null ? `<span style="text-decoration:underline;text-decoration-color:${FLAG};text-underline-offset:3px;">${e(x.quote)}</span>`
+        : `<span style="text-decoration:line-through;color:${C.ink3};">${e(x.quote)}</span> <span style="color:#ff7a00;font-weight:700;">${e(fixText)}</span>`;
+      return `<div style="font-size:13px;line-height:1.5;color:${C.ink};background:${C.surf2};border-radius:8px;padding:8px 10px;margin-top:6px;">${before}${mid}${after}</div>`;
+    }
     const init = () => { S.pick = {}; ((S.report || {}).items || []).forEach(x => { if (x.fix && !x.applied && /outdated|contested|wrong|mostly/.test(x.verdict)) S.pick[x.id] = true; }); };
     // a check still running on the worker (e.g. the phone dropped the long request) → keep polling until the report lands
     async function load(poll) {
@@ -112,7 +124,8 @@
           ${items.map(x => { const v = VC[x.verdict] || ['#888', 'rgba(127,127,127,.12)'];
             return `<div style="border-top:1px solid ${C.line};padding:9px 0;">
               <div style="display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;"><span style="font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:8px;background:${v[1]};color:${v[0]};text-transform:uppercase;letter-spacing:.03em;">${e(x.verdict)}</span>
-                <span style="font-size:12.5px;font-style:italic;color:${C.ink};flex:1;min-width:200px;">“${e(x.quote)}”</span></div>
+                <span style="font-size:11.5px;color:${C.ink3};flex:1;min-width:200px;">${questionOf(x.q) ? 'Q' + (x.q + 1) + ' · ' + e(questionOf(x.q)) : ''}</span></div>
+              <div data-xpv="${e(x.id)}">${x.applied ? inContext({ ...x, quote: x.appliedText || x.fix }, null) : inContext(x, x.fix && x.verdict !== 'opinion' ? (S.edits[x.id] != null ? S.edits[x.id] : x.fix) : null)}</div>
               ${x.expert_view && x.verdict !== 'opinion' ? `<div style="font-size:12px;color:${C.ink2};margin-top:4px;">${e(x.expert_view)}</div>` : ''}
               ${x.market ? `<div style="font-size:12px;color:#c25e00;margin-top:4px;">⚠ Marketability: ${e(x.market)}</div>` : ''}
               ${x.level_up ? `<div style="font-size:12px;color:${C.acc};margin-top:4px;">★ A top practitioner would add: ${e(x.level_up)}</div>` : ''}
@@ -148,7 +161,9 @@
     }
     el.addEventListener('click', ev => { const b = ev.target.closest('[data-x]'); if (!b || S.busy) return; if (b.dataset.x === 'run') run(); else if (b.dataset.x === 'apply') apply(); else if (b.dataset.x === 'finish') finishWrite(); });
     el.addEventListener('change', ev => { const t = ev.target; if (t.dataset.xp) { S.pick[t.dataset.xp] = t.checked; draw(); } });
-    el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) S.edits[t.dataset.xe] = t.value; ev.stopPropagation(); });
+    el.addEventListener('input', ev => { const t = ev.target; if (t.dataset.xe) { S.edits[t.dataset.xe] = t.value;
+        const x = ((S.report || {}).items || []).find(i => i.id === t.dataset.xe), pv = el.querySelector(`[data-xpv="${t.dataset.xe}"]`);
+        if (x && pv) pv.innerHTML = inContext(x, t.value); } ev.stopPropagation(); });
     draw(); load();
     return el;
   }
@@ -188,7 +203,7 @@
             <button data-m="save" style="${BTN}">💾 Save draft</button>
             <button data-m="finish" style="${BTNP}">✓ ${iv.status === 'Finished' ? 'Save' : 'Finish'}</button></div>` : ''}`;
       const xh = box.querySelector('[data-xhost]');
-      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, iv, beforeRun: () => S.dirty ? save(false) : null,
+      if (xh && iv) { S.xEl = S.xEl || expert({ call: cfg.call, interviewId: iv.id, iv, answers: () => S.answers, beforeRun: () => S.dirty ? save(false) : null,
         finish: async () => { if (!S.answers.some(a => (a || '').trim())) throw new Error('Answer at least one question first.'); await save(true); if (S.err) throw new Error(S.err); },
         onApplied: answers => { if (answers) { S.answers = answers.slice(); S.iv.answers = answers.slice(); S.dirty = false; draw(); } } }); xh.appendChild(S.xEl); }
     }

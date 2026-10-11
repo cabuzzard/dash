@@ -46,7 +46,7 @@
 </head>
 <body>
 <div id="app"></div>
-<script src="../shared/interview-panel.js?v=2026101005"></script>
+<script src="../shared/interview-panel.js?v=2026101006"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 let TOKEN = localStorage.getItem('hermes_token_remember') || sessionStorage.getItem('hermes_token') || null;
@@ -136,7 +136,7 @@ function draw() {
   const xh = document.getElementById('xhost');
   if (xh && window.InterviewPanel && window.InterviewPanel.expert) {
     S.xEls = S.xEls || {};
-    S.xEls[x.id] = S.xEls[x.id] || window.InterviewPanel.expert({ call, interviewId: x.id, iv: x, beforeRun: () => S.dirty ? saveCur(false) : null,
+    S.xEls[x.id] = S.xEls[x.id] || window.InterviewPanel.expert({ call, interviewId: x.id, iv: x, answers: () => S.answers, beforeRun: () => S.dirty ? saveCur(false) : null,
       // ✓ Finish & write asset — finish but STAY on this interview (S.keep) so the write result shows here
       finish: async () => { if (!S.answers.some(a => (a || '').trim())) throw new Error('Answer at least one question first.');
         const r = await call('saveInterview', { interviewId: x.id, answers: S.answers, finish: true }); Object.assign(x, r.interview); S.keep = x.id; S.dirty = false; S.finishedNow++; },
