@@ -5136,6 +5136,7 @@ async function findClusterKeywordsForStack(env, hdr, stack, campaignId, topicId)
     env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json").catch(() => []),
   ]);
   const tid = String(topicId || "").replace(/-/g, "");
+  if (tid === "__main") return "";   // product placed on ★ Main — it follows the main keywords, not a topic
   if (tid) {   // stable link (Keywords tab hub reorganize) — survives topic renames
     const byIdC = committedRows.find(r => r.id.replace(/-/g, "") === tid); if (byIdC) return rtx(byIdC, "Cluster Keywords");
     const byIdS = (staged || []).find(c => String(c.id || "").replace(/-/g, "") === tid); if (byIdS) return byIdS.keywords;
@@ -15796,8 +15797,10 @@ Return ONLY this JSON, no other text, no fences:
       // ── attachProductToTopic {productId, stack, topicId, keyword?} ── (dash Content Hubs → Keywords › ＋ product › Existing)
       // Product Stack = the topic name, the stable "Topic ID" link, and the suggested keyword appended to Keywords. No research.
       if (body.action === "attachProductToTopic") {
-        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32 || !body.stack) return json({ error: "productId and stack required" }, 400);
-        const props = { "Product Stack": { rich_text: [{ type: "text", text: { content: String(body.stack).trim().slice(0, 100) } }] } };
+        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32 || (!body.stack && !body.topicId)) return json({ error: "productId and topicId (or stack) required" }, 400);
+        // Product Stack / Group are designations other pages still sort by — only written when explicitly given
+        const props = body.stack ? { "Product Stack": { rich_text: [{ type: "text", text: { content: String(body.stack).trim().slice(0, 100) } }] } } : {};
+        if (body.markOutOfSync) { await kwEnsureProductProps(env); props["Keywords Out of Sync"] = { checkbox: true }; }   // its upstream (topic) changed
         if (body.topicId) { await kwEnsureProductProps(env); props["Topic ID"] = { rich_text: [{ type: "text", text: { content: String(body.topicId).replace(/-/g, "").slice(0, 60) } }] }; }
         const kw = String(body.keyword || "").trim();
         if (kw) {
@@ -15807,7 +15810,7 @@ Return ONLY this JSON, no other text, no fences:
             props.Keywords = { rich_text: await kwNotionRichText((cur.trim() ? cur.trim().replace(/[,\s]+$/, "") + ", " : "") + kw) };
         }
         try { await kwNotionPatch(env, pid, props); } catch (e) { return json({ error: e.message }, 500); }
-        const groupFinal = body.campaignId ? await ensureStackGroup(env, body.campaignId, body.stack).catch(() => "") : "";
+        const groupFinal = body.campaignId && body.stack ? await ensureStackGroup(env, body.campaignId, body.stack).catch(() => "") : "";
         return json({ success: true, group: groupFinal || "" });
       }
 
@@ -49142,7 +49145,7 @@ async function kwHubState(env, campaignId) {
   const products = prodRows.map(p => {
     const id = p.id.replace(/-/g, ""), stack = kwRt(p, "Product Stack").trim(), prop = kwRt(p, "Topic ID").trim().replace(/-/g, "");
     const hit = prop && topics.find(t => t.id.replace(/-/g, "") === prop), byId = hit ? hit.id : "";
-    const topicId = byId || byName[kwNorm(stack)] || "";
+    const topicId = prop === "__main" ? "" : (byId || byName[kwNorm(stack)] || "");   // "__main" = placed on ★ Main
     return { id, name: kwTitleOf(p), stack, status: ((p.properties?.Status?.select || p.properties?.Status?.status) || {}).name || "",
       topicIdProp: prop, topicId, linkedBy: byId ? "id" : topicId ? "name" : "", keywords: kwSplit(kwRt(p, "Keywords")),
       outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox };
