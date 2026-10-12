@@ -16592,9 +16592,11 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
       }
 
       if (body.action === "createProduct") {
-        const { title, type, description, stack, campaignId, status, keywords } = body;
+        const { title, type, description, stack, campaignId, status, keywords, topicId } = body;
         if (!title) return json({ error: "title required" }, 400);
         const createProps = { Name: { title: [{ type: "text", text: { content: title } }] } };
+        // + product on a keyword topic (dash Content Hubs → Keywords): the stable Topic ID link, set at birth
+        if (topicId) { await kwEnsureProductProps(env); createProps["Topic ID"] = { rich_text: [{ type: "text", text: { content: String(topicId).replace(/-/g, "").slice(0, 60) } }] }; }
         createProps["Status"] = { select: { name: normStatus4(status || "Planning") } };
         // Attach to a campaign at creation (the Development-tab "+ Add
         // product" quick-add) — Products relate to campaigns via "Campaigns".
@@ -19636,6 +19638,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           // Marketing Phase = funnel role (Top of funnel/Lead-in/Core
           // offer/Retention) — orders rows within an ecosystem group.
           marketingPhase: (p.properties?.["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("") || null,
+          topicId: (p.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").replace(/-/g, "") || null,
+          outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
         }));
         return json({ products });
       }

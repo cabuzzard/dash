@@ -15127,45 +15127,109 @@ function hubGridRow(o) {
 }
 // ── Content → Keywords: the campaign's keyword tree exactly as care-gap's Keywords tab holds it — Master keywords
 // (Research "Keywords"), then CLUSTERS (KV seotopicclusters) → TOPICS (staged + committed SEO clusters) → their keywords.
-// Read-only here; editing stays on care-gap. Every level starts collapsed.
+// Editable here (2026-10-12): ＋ cluster / 🗑 cluster (its topics become unclustered), drag a topic onto a cluster or
+// "Unclustered topics" (or its 🧩 move-to select on touch) — saved with saveTopicClusters, the same store care-gap uses.
+// Each topic lists its 📦 products (Topic ID, else Product Stack = topic name) and ＋ product creates a Planning product
+// on that topic (createProduct with stack + topicId — no research runs here). Every level starts collapsed.
 const _hubKw = {}, _hubKwOpen = {};
 async function hubKwLoad(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || _hubKw[slug]) return;
   _hubKw[slug] = { loading: true }; hubKwRefresh(slug);
   try {
-    const [res, cl] = await Promise.all([call('getResearch', { campaignId: h.campaignId }), call('getKeywordClusters', { campaignId: h.campaignId })]);
+    const [res, cl, pr] = await Promise.all([call('getResearch', { campaignId: h.campaignId }), call('getKeywordClusters', { campaignId: h.campaignId }),
+      call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({ products: [] }))]);
     if (cl && cl.error) throw new Error(cl.error);
     _hubKw[slug] = { master: String((res && res.research && res.research.keywords) || ''), staged: (cl && cl.staged) || [], committed: (cl && cl.committed) || [],
-      tc: (cl && cl.topicClusters) || { clusters: [], assign: {} } };
+      tc: (cl && cl.topicClusters) || { clusters: [], assign: {} }, products: (pr && pr.products) || [] };
   } catch (e) { _hubKw[slug] = { error: e.message }; }
   hubKwRefresh(slug);
 }
 function hubKwRefresh(slug) { const el = document.getElementById('hubKwBody-' + slug); if (el) el.innerHTML = renderHubKw(slug); }
+// ── editing: saveTopicClusters saves the whole {clusters, assign}; createProduct for ＋ product ──
+async function hubKwSaveClusters(slug, clusters, assign, msg) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
+  const before = K.tc; K.tc = { clusters, assign }; K.msg = 'Saving…'; hubKwRefresh(slug);
+  try { const r = await call('saveTopicClusters', { campaignId: h.campaignId, clusters, assign }); if (r.error) throw new Error(r.error);
+    K.tc = { clusters: r.clusters || clusters, assign: r.assign || assign }; K.msg = '✓ ' + msg; }
+  catch (e) { K.tc = before; K.msg = '✗ Not saved: ' + e.message; }
+  hubKwRefresh(slug);
+}
+function hubKwAddCluster(slug) {
+  const K = _hubKw[slug]; if (!K) return;
+  const n = (prompt('New cluster name (usually the keyword that groups its topics):') || '').trim(); if (!n) return;
+  if ((K.tc.clusters || []).some(c => c.toLowerCase() === n.toLowerCase())) return alert('There is already a cluster called "' + n + '".');
+  hubKwSaveClusters(slug, [...(K.tc.clusters || []), n], { ...(K.tc.assign || {}) }, 'Cluster "' + n + '" added');
+}
+function hubKwDeleteCluster(slug, ci) {
+  const K = _hubKw[slug]; if (!K) return; const c = (K.tc.clusters || [])[ci]; if (c == null) return;
+  const n = Object.values(K.tc.assign || {}).filter(v => v === c).length;
+  if (!confirm('Delete cluster "' + c + '"?' + (n ? '\n\nIts ' + n + ' topic' + (n === 1 ? '' : 's') + ' become unclustered — no topic, keyword or product is deleted.' : ''))) return;
+  const assign = {}; for (const [k, v] of Object.entries(K.tc.assign || {})) if (v !== c) assign[k] = v;
+  hubKwSaveClusters(slug, (K.tc.clusters || []).filter(x => x !== c), assign, 'Cluster "' + c + '" deleted');
+}
+function hubKwMoveTopic(slug, topicId, cluster) {
+  const K = _hubKw[slug]; if (!K || cluster === '__') return;
+  const assign = { ...(K.tc.assign || {}) }; if (cluster) assign[topicId] = cluster; else delete assign[topicId];
+  if ((K.tc.assign || {})[topicId] === assign[topicId]) return hubKwRefresh(slug);
+  hubKwSaveClusters(slug, [...(K.tc.clusters || [])], assign, cluster ? 'Moved to "' + cluster + '"' : 'Moved to unclustered');
+}
+let _hubKwDrag = null;
+function hubKwDragStart(e, topicId) { e.stopPropagation(); _hubKwDrag = topicId; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', topicId); } catch (x) {} }
+function hubKwDragOver(e) { if (_hubKwDrag == null) return; e.preventDefault(); e.stopPropagation(); e.currentTarget.style.outline = '2px dashed #8ab4f8'; }
+function hubKwDrop(e, slug) { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.outline = ''; const id = _hubKwDrag; _hubKwDrag = null; if (id == null) return; hubKwMoveTopic(slug, id, e.currentTarget.dataset.drop || ''); }
+async function hubKwAddProduct(slug, topicId) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
+  const t = [...K.staged, ...K.committed].find(x => String(x.id) === String(topicId)); if (!t) return;
+  const name = (prompt('New product on topic "' + t.name + '" (created at Planning — run its research from Products):') || '').trim(); if (!name) return;
+  K.msg = 'Creating product…'; hubKwRefresh(slug);
+  try { const r = await call('createProduct', { title: name, campaignId: h.campaignId, stack: t.name, topicId: t.id, status: 'Planning' }); if (r.error) throw new Error(r.error);
+    K.products = [...(K.products || []), { id: r.id, name, status: 'Planning', stack: t.name, topicId: String(t.id).replace(/-/g, ''), outOfSync: false }];
+    _hubKwOpen[slug + '|t:' + t.id] = true; K.msg = '✓ Product "' + name + '" added to "' + t.name + '"'; }
+  catch (e) { K.msg = '✗ Product not created: ' + e.message; }
+  hubKwRefresh(slug);
+}
 function hubKwToggle(slug, k) { _hubKwOpen[slug + '|' + k] = !_hubKwOpen[slug + '|' + k]; hubKwRefresh(slug); }
 function renderHubKw(slug) {
   const K = _hubKw[slug];
   if (!K || K.loading) return '<div style="font-size:11px;color:var(--text3);">' + (K ? 'Loading keywords…' : 'Open to load.') + '</div>';
   if (K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load keywords: ${esc(K.error)}</div>`;
-  const h = HUB_SITES.find(x => x.slug === slug) || {};
   const pills = arr => arr.map(k => `<span style="display:inline-block;font-size:10.5px;padding:1px 7px;margin:2px 3px 2px 0;border:1px solid var(--border2);border-radius:9px;color:var(--text2);">${esc(k)}</span>`).join('');
   const split = s => String(s || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
-  const node = (k, depth, color, label, sub, inner) => { const open = !!_hubKwOpen[slug + '|' + k];
-    return `<div style="margin-left:${depth * 14}px;border-left:3px solid ${color};padding-left:8px;margin-bottom:4px;">
-      <div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;user-select:none;font-size:11.5px;">
-        <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span></div>
+  const btn = 'font-size:10px;padding:1px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
+  // opt.drop = a cluster name ('' = unclustered) when topics can be dropped on this node; opt.topicId = draggable topic
+  const node = (k, depth, color, label, sub, inner, opt) => { opt = opt || {}; const open = !!_hubKwOpen[slug + '|' + k];
+    const dropAttr = opt.drop != null ? ` data-drop="${esc(opt.drop)}" ondragover="hubKwDragOver(event)" ondragleave="this.style.outline=''" ondrop="hubKwDrop(event,'${slug}')"` : '';
+    const dragAttr = opt.topicId ? ` draggable="true" ondragstart="hubKwDragStart(event,'${esc(opt.topicId)}')"` : '';
+    const tools = opt.tools ? `<span style="margin-left:auto;display:flex;gap:4px;align-items:center;" onclick="event.stopPropagation()">${opt.tools}</span>` : '';
+    return `<div${dropAttr}${dragAttr} style="margin-left:${depth * 14}px;border-left:3px solid ${color};padding-left:8px;margin-bottom:4px;">
+      <div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:${opt.topicId ? 'grab' : 'pointer'};user-select:none;font-size:11.5px;flex-wrap:wrap;">
+        <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span>${tools}</div>
       ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
-  const topic = (t, depth) => { const kws = split(t.keywords);
-    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), `— ${t.staged ? 'staged' : 'committed'} · ${kws.length} keyword${kws.length === 1 ? '' : 's'}${t.searchIntent ? ' · ' + esc(t.searchIntent) : ''}`,
-      (kws.length ? pills(kws) : '<span style="font-size:11px;color:var(--text3);">No keywords.</span>') + (t.rationale ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;margin-top:3px;">${esc(t.rationale)}</div>` : '')); };
+  const clusters = K.tc.clusters || [];
+  const prodsOf = t => (K.products || []).filter(p => p.topicId ? p.topicId === String(t.id).replace(/-/g, '') : (p.stack || '').trim().toLowerCase() === String(t.name || '').trim().toLowerCase());
+  const topic = (t, depth) => {
+    const kws = split(t.keywords), ps = prodsOf(t), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
+    const moveSel = clusters.length ? `<select title="Move this topic to a cluster" style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);max-width:130px;" onchange="hubKwMoveTopic('${slug}','${esc(t.id)}',this.value)"><option value="__">🧩 move to…</option>${cur ? '<option value="">— unclustered —</option>' : ''}${clusters.filter(c => c !== cur).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : '';
+    const addBtn = `<button style="${btn}" title="Add a product to this topic (Planning — run its research from Products)" onclick="hubKwAddProduct('${slug}','${esc(t.id)}')">＋ product</button>`;
+    const prods = `<div style="margin-top:4px;font-size:11px;">${ps.map(p => `<div style="padding:1px 0;">📦 ${esc(p.name)} <span style="color:var(--text3);">· ${esc(p.status || '')}${p.outOfSync ? ' · <span style="color:#f6ad55;">⚠ keywords out of sync</span>' : ''}</span></div>`).join('') || '<span style="color:var(--text3);">No products on this topic yet.</span>'}</div>`;
+    const sub = `— ${t.staged ? 'staged' : 'committed'} · ${kws.length} keyword${kws.length === 1 ? '' : 's'}${ps.length ? ' · ' + ps.length + ' product' + (ps.length === 1 ? '' : 's') : ''}${t.searchIntent ? ' · ' + esc(t.searchIntent) : ''}`;
+    const inner = (kws.length ? pills(kws) : '<span style="font-size:11px;color:var(--text3);">No keywords.</span>')
+      + (t.rationale ? `<div style="font-size:10.5px;color:var(--text3);font-style:italic;margin-top:3px;">${esc(t.rationale)}</div>` : '') + prods;
+    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), sub, inner, { topicId: t.id, tools: moveSel + addBtn });
+  };
   const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
   const by = {}, un = [];
-  topics.forEach(t => { const c = K.tc.assign && K.tc.assign[t.id]; if (c && (K.tc.clusters || []).includes(c)) (by[c] = by[c] || []).push(t); else un.push(t); });
+  topics.forEach(t => { const c = K.tc.assign && K.tc.assign[t.id]; if (c && clusters.includes(c)) (by[c] = by[c] || []).push(t); else un.push(t); });
   const master = split(K.master);
-  let out = node('master', 0, '#4ade80', 'Master', `— ${master.length} keyword${master.length === 1 ? '' : 's'}`, master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>');
-  (K.tc.clusters || []).forEach((c, ci) => { const ts = by[c] || [];
-    out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`, ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster.</span>'); });
-  if (un.length) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`, un.map(t => topic(t, 0)).join(''));
-  if (!topics.length && !(K.tc.clusters || []).length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
+  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><span style="font-size:10.5px;color:var(--text3);">Drag a topic onto a cluster to move it · 🗑 deletes a cluster (its topics become unclustered)</span>${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
+  out += node('master', 0, '#4ade80', 'Master', `— ${master.length} keyword${master.length === 1 ? '' : 's'}`, master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>');
+  clusters.forEach((c, ci) => { const ts = by[c] || [];
+    out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`,
+      ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster — drag one here.</span>',
+      { drop: c, tools: `<button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
+  if (un.length || clusters.length) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`,
+    un.length ? un.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">None — drag a topic here to take it out of its cluster.</span>', { drop: '' });
+  if (!topics.length && !clusters.length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
   return out;
 }
 // ── Production → 🛠 Interactive tools (worker interactiveTool + utilityScout) ──
