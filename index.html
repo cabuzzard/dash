@@ -6217,7 +6217,7 @@ function kwLoadResults(offset) {
   const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${['keyword', 'intent', 'topic', 'cluster', 'src'].includes(k) ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
     + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
   const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
-  const rowHtml = r => `<tr>
+  const rowHtml = r => `<tr${grouped ? ` draggable="true" data-kw="${esc(r.keyword)}" ondragstart="kwHubDragStart(event)" style="cursor:grab;"` : ''}>
       <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
       <td style="text-align:left;">${esc(r.keyword)}${r.local ? ' <span class="kw-chip">local</span>' : ''}${r.brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
       <td style="text-align:left;"><span class="kw-chip">${esc(kwIntentLabel(r.intent))}</span></td>${hubOn ? `<td style="text-align:left;${r.topic ? '' : 'color:var(--text3);'}">${r.topic ? esc(r.topic) : '—'}</td><td style="text-align:left;color:var(--text2);">${esc(r.cluster || '')}</td><td style="text-align:left;color:var(--text3);white-space:nowrap;">${r.src == null ? '<i>not in hub</i>' : esc(r.src)}</td>` : ''}<td>${kwNum(r.vol)}</td>
@@ -6576,7 +6576,7 @@ function kwHubGroupBody(rows, rowHtml, span) {
     KW._hubGroupRows.set(g.key, g.rows.map(r => r.keyword)); count++;
     const open = KW.hubOpen.has(g.key), all = g.rows.length && g.rows.every(r => KW.selected.has(r.keyword));
     const v = g.rows.reduce((a, r) => a + (r.vol || 0), 0);
-    return `<tr><td colspan="${span}" data-k="${esc(g.key)}" onclick="kwHubGrpToggle(this.dataset.k)" style="text-align:left;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};padding-left:${6 + lvl * 18}px;border-top:1px solid var(--border);">
+    return `<tr${g.key.startsWith('t:') ? ' draggable="true"' : ''} data-k="${esc(g.key)}" ondragstart="kwHubDragStart(event)" ondragover="kwHubDragOver(event)" ondragleave="this.style.outline=''" ondrop="kwHubDrop(event)"><td colspan="${span}" data-k="${esc(g.key)}" onclick="kwHubGrpToggle(this.dataset.k)" style="text-align:left;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};padding-left:${6 + lvl * 18}px;border-top:1px solid var(--border);">
       <input type="checkbox" ${all ? 'checked' : ''} data-k="${esc(g.key)}" onclick="event.stopPropagation();kwHubGrpSel(this.dataset.k, this.checked)" title="Select every keyword in this group">
       ${open ? '▾' : '▸'} <b>${esc(g.label)}</b> <span style="color:var(--text3);">· ${kwNum(g.rows.length)} kw · ${kwNum(v)}/mo${g.note ? ' · ' + esc(g.note) : ''}</span></td></tr>`
       + (open ? (g.sub ? g.sub.map(s => head(s, lvl + 1)).join('') : g.rows.map(rowHtml).join('')) : '');
@@ -6584,6 +6584,32 @@ function kwHubGroupBody(rows, rowHtml, span) {
   const html = groups.map(g => head(g, 0)).join('');
   KW._hubGroupCount = count;
   return html;
+}
+// Drag & drop (grouped view, mouse): a keyword row → a topic header = move (Ctrl = add, keep its other topics);
+// → "— in no topic —" = out of every topic. A ticked row drags the whole selection. A topic header → a cluster
+// header = re-file it; → another topic header = merge (asks). Everything lands in the draft (💾 Apply saves).
+let _kwDrag = null;
+function kwHubDragStart(e) {
+  const tr = e.target.closest('tr'); if (!tr) return;
+  if (tr.dataset.kw) { const k = tr.dataset.kw; _kwDrag = { kws: KW.selected.has(k) ? [...KW.selected] : [k] }; }
+  else if (tr.dataset.k && tr.dataset.k.startsWith('t:')) _kwDrag = { topic: tr.dataset.k.slice(2) };
+  else { _kwDrag = null; return; }
+  e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', _kwDrag.kws ? _kwDrag.kws.join(', ') : 'topic'); } catch (x) {}
+}
+function kwHubDragOver(e) {
+  if (!_kwDrag) return; const k = e.currentTarget.dataset.k || '';
+  const ok = _kwDrag.kws ? (k.startsWith('t:') || k === 'x:none') : (k.startsWith('c:') || (k.startsWith('t:') && k.slice(2) !== _kwDrag.topic));
+  if (!ok) return; e.preventDefault(); e.currentTarget.style.outline = '2px dashed #4cff4c';
+}
+function kwHubDrop(e) {
+  e.preventDefault(); e.currentTarget.style.outline = ''; const k = e.currentTarget.dataset.k || '', d = _kwDrag; _kwDrag = null; if (!d) return;
+  if (d.kws) {
+    if (k === 'x:none') return kwHubOp({ op: 'unassign', keywords: d.kws, from: '*' });
+    if (k.startsWith('t:')) return kwHubOp({ op: 'assign', keywords: d.kws, to: k.slice(2), move: !(e.ctrlKey || e.metaKey || e.altKey) });
+  } else if (d.topic) {
+    if (k.startsWith('c:')) return kwHubOp({ op: 'setCluster', ids: [d.topic], cluster: k.slice(2) });
+    if (k.startsWith('t:')) return kwHubTopicAct(d.topic, 'merge', k.slice(2));
+  }
 }
 function kwHubGrpToggle(k) { KW.hubOpen.has(k) ? KW.hubOpen.delete(k) : KW.hubOpen.add(k); kwLoadResults(KW.offset); }
 function kwHubGrpSel(k, on) { (KW._hubGroupRows.get(k) || []).forEach(kw => on ? KW.selected.add(kw) : KW.selected.delete(kw)); kwLoadResults(KW.offset); }
