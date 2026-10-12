@@ -4217,7 +4217,7 @@
 
 <script src="shared/design-panel.js?v=2026101001"></script>
 <script src="shared/interview-panel.js?v=2026101101"></script>
-<script src="shared/kw-hub-ops.js?v=2026101201"></script>
+<script src="worker/kw-hub-ops.mjs?v=2026101201"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
@@ -6474,7 +6474,7 @@ function kwRenderSortBar() {
     ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>` : '');
 }
 
-// ── 🌐 Hub keywords in the tool (worker kwHubLoad / kwHubApply / kwHubUndo; rules in shared/kw-hub-ops.js) ────────
+// ── 🌐 Hub keywords in the tool (worker kwHubLoad / kwHubApply / kwHubUndo; rules in worker/kw-hub-ops.mjs) ────────
 // Load a hub → a "🌐 Hub · <name>" run holding Main + every topic + cluster names + product + title keywords, with
 // real Google numbers. While it's in view, rows get Topic / Cluster / In-hub columns and filters, and the selection
 // can be moved / added / removed between topics. Changes are a DRAFT (previewed with the same rules the worker

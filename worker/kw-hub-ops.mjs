@@ -1,7 +1,8 @@
 // Hub keyword reorganizer — the ONE set of rules for re-shaping a hub's keyword groups, used by BOTH the dash
 // Keywords tab (instant draft preview) and the worker (kwHubApply, the real write), so the preview can never
 // disagree with what gets saved. Pure data, no DOM / network. Loaded as a classic <script> in the browser
-// (window.KwHubOps) and bundled into the worker (import "../shared/kw-hub-ops.js" → globalThis.KwHubOps).
+// (window.KwHubOps, served by GitHub Pages) and uploaded with the worker as an extra module (worker.js:
+// import "./kw-hub-ops.mjs" → globalThis.KwHubOps; wrangler.toml find_additional_modules). Keep it dependency-free.
 //
 // model = {
 //   main:     ["kw", …],                                    // the hub's Main Keywords (Research "Keywords")

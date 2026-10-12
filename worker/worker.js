@@ -1,7 +1,7 @@
 ﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET, ETSY_KEYSTRING, ETSY_SHARED_SECRET
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
-import "../shared/kw-hub-ops.js";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
+import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
 const ETSY_REDIRECT_URI  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev/etsy/callback";
@@ -49082,7 +49082,7 @@ async function kwDropSnapshots(env, runIds) {
 
 // ── 🌐 Hub keywords in the Keywords tab (2026-10-12) ─────────────────────────────────────────────────────────
 // Load a hub's whole keyword structure into the tool (a "hub run" — every filter / sort / intent tool works on it),
-// then reorganize it there. The reorganize RULES live in shared/kw-hub-ops.js (same file the tab previews with).
+// then reorganize it there. The reorganize RULES live in worker/kw-hub-ops.mjs (same file the tab previews with).
 // Stores read/written: Research "Keywords" (Main), KV seoclusters:staged:<cid> (proposed topics), Notion 🔑 Keyword
 // Clusters (committed topics, Status Active → Archived when emptied), KV seotopicclusters:<cid> (clusters → topics),
 // KV stackgroups:<cid> (cluster renames only). Products: "Topic ID" (stable link to the topic, backfilled from the
