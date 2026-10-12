@@ -14943,6 +14943,7 @@ function renderHubsTab() {
         <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|ti']=!_hubContentOpen['${slug}|ti'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|ti']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|ti']?'▼':'▶';if(_hubContentOpen['${slug}|ti'])hubTitlesLoad('${slug}')" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|ti'] ? '▼' : '▶'}</span>
           <span style="color:var(--text);flex:1;" title="Every title of this campaign by product, with its published assets — including content outside the hub sections">Titles <span id="hubTitlesW-${slug}" style="float:right;margin-right:6px;">${hubTitlesWork(slug)}</span><span id="hubTitlesN-${slug}" style="color:var(--text3);">${_hubTitles[slug] && _hubTitles[slug].rows ? '— ' + new Set(_hubTitles[slug].rows.filter(r => r.titleId).map(r => r.titleId)).size + ' titles' : ''}</span></span>
+          <button onclick="event.stopPropagation();hubTitlesLoad('${slug}').then(() => hubTitleNewModal('${slug}'))" title="New title (title · guidance · product)" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;margin-right:4px;">＋</button>
           <button onclick="event.stopPropagation();hubTitlesLoad('${slug}', true)" title="Reload titles + assets" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></div>
         <div id="hubTitlesBody-${slug}" style="display:${_hubContentOpen[slug + '|ti'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubTitles(slug)}</div></div>
         <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|it']=!_hubContentOpen['${slug}|it'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|it']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|it']?'▼':'▶';if(_hubContentOpen['${slug}|it'])hubToolsLoad('${slug}')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;padding:3px 0;">
@@ -15258,7 +15259,7 @@ async function hubTitlesLoad(slug, force) {
     if (dev) { if (dev.error) throw new Error(dev.error); DEV2_ROWS = dev.rows || []; }
     if (strat) { const m = {}; ((strat && strat.products) || []).forEach(p => { m[p.productId] = p.researchState; }); _hubResState[slug] = m; }
     const prodFlags = {}; ((prods && prods.products) || []).forEach(p => { prodFlags[String(p.id).replace(/-/g, '')] = { kwOOS: !!p.outOfSync }; });
-    _hubTitles[slug] = { rows: DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid && (r.titleId || r.kind === 'interview')), prodFlags };
+    _hubTitles[slug] = { rows: DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid && (r.titleId || r.kind === 'interview')), prodFlags, products: (prods && prods.products) || [] };
   } catch (e) { _hubTitles[slug] = { error: e.message }; }
   hubTitlesRefresh(slug);
 }
@@ -15274,7 +15275,7 @@ function renderHubTitles(slug, counter) {
   const T = _hubTitles[slug];
   if (!T || T.loading) return `<div style="font-size:11px;color:var(--text3);">${T ? 'Loading titles…' : 'Open to load.'}</div>`;
   if (T.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load titles: ${esc(T.error)}</div>`;
-  if (!T.rows.some(r => r.titleId)) return '<div style="font-size:11px;color:var(--text3);">No titles in this campaign yet.</div>';
+  if (!T.rows.some(r => r.titleId)) return `<div style="font-size:11px;color:var(--text3);">No titles in this campaign yet — <a href="#" onclick="event.preventDefault();hubTitleNewModal('${slug}')" style="color:var(--accent);">＋ add one</a>.</div>`;
   const B = 'color:var(--text3);text-decoration:none;font-size:10.5px;';
   const nid = x => String(x || '').replace(/-/g, '');
   const chip = (txt, color, tip, onclick) => `<span ${onclick ? `onclick="event.stopPropagation();${onclick}"` : ''} title="${esc(tip)}" style="font-size:10px;padding:0 6px;border:1px solid ${color};border-radius:4px;color:${color};font-weight:700;white-space:nowrap;${onclick ? 'cursor:pointer;' : ''}">${txt}</span>`;
@@ -15333,7 +15334,8 @@ function renderHubTitles(slug, counter) {
     if (counter) counter.n += titles.reduce((a, t) => a + t.pub.filter(assetFlagged).length, 0);
     return node('ti:p:' + (pid || 'none'), 0, (pid ? '📦 ' : '') + esc(P.name), `— ${titles.length} title${titles.length === 1 ? '' : 's'} · ${pubN} published`, pst.own.join(' ') + hubWorkTag(inside),
       titles.map(t => { const tst = titleStatus(t.id, pst);
-        return node('ti:t:' + t.id, 0, esc(t.title || '(untitled)'), `— ${t.pub.length} published${t.wip ? ' · ' + t.wip + ' in progress' : ''}`, tst.own.concat(tst.up).join(' ') + hubWorkTag(t.pub.filter(assetFlagged).length, 'asset'),
+        return node('ti:t:' + t.id, 0, esc(t.title || '(untitled)'), `— ${t.pub.length} published${t.wip ? ' · ' + t.wip + ' in progress' : ''}`, tst.own.concat(tst.up).join(' ') + hubWorkTag(t.pub.filter(assetFlagged).length, 'asset')
+          + ` <span style="display:inline-flex;gap:4px;margin-left:4px;"><button onclick="event.stopPropagation();hubTitlePillarModal('${slug}','${esc(t.id)}')" title="Write this title's pillar" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍ Pillar</button><button onclick="event.stopPropagation();hubTitleAssetModal('${slug}','${esc(t.id)}')" title="Create an asset for this title" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">＋ Asset</button></span>`,
           (t.pub.length ? t.pub.sort((a, b) => String(b.datePublished || '').localeCompare(String(a.datePublished || ''))).map(a => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;padding:2px 0;border-bottom:1px solid var(--border);">
               <span style="flex:1;min-width:160px;">${esc(a.assetName || '(untitled asset)')} <span style="color:var(--text3);">· ${esc(a.assetType || '')}${a.datePublished ? ' · ' + esc(String(a.datePublished).slice(0, 10)) : ''}${a.hubSection ? ' · hub: ' + esc(a.hubSection) : ''}</span></span>
               ${assetStatus(a, tst)}
@@ -15341,6 +15343,75 @@ function renderHubTitles(slug, counter) {
             : '<div style="font-size:11px;color:var(--text3);">Nothing published yet.</div>')
           + `<div style="margin-top:3px;"><a href="https://www.notion.so/${esc(nid(t.id))}" target="_blank" rel="noopener" style="${B}">title in Notion ↗</a></div>`); }).join(''));
   }).join('');
+}
+// ── Production → Titles actions: ＋ Title (title · guidance · existing product), per title ✍ Write pillar and ＋ Asset ──
+// ＋ Title = createDevTitle at Planning (guidance → the title's research instructions / Notes, read by every writer).
+// ✍ = writeTitlePillar with a pillar type (Planning → Development). ＋ Asset = generateTitleAssets — the same payload as
+// care-gap's Create Asset modal (method · platform · count · guidance · single-post content type · the title's product).
+const HT_IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+const HT_LBL = s => `<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${s}</label>`;
+let _htMethods = null, _htPlatforms = null;
+const htTitleOf = (slug, tid) => { const T = _hubTitles[slug]; const r = T && (T.rows || []).find(x => x.titleId === tid); return r ? { id: tid, title: r.title, productId: r.productId || '', product: r.product } : null; };
+function hubTitleNewModal(slug) {
+  const T = _hubTitles[slug] || {}, prods = (T.products || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  hcModal(`<h3 style="margin:0 0 4px;">New title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Created at Planning on this campaign — then ✍ Write pillar and ＋ Asset from its row.</div>
+    ${HT_LBL('Title')}<input id="htNewTitle" style="${HT_IN}" placeholder="What the piece is about">
+    ${HT_LBL('Guidance / direction')}<textarea id="htNewGuide" rows="5" style="${HT_IN}resize:vertical;" placeholder="Angle, audience, points to make, sources, tone… (saved as the title's research instructions — every writer reads it)"></textarea>
+    ${HT_LBL('Product')}<select id="htNewProd" style="${HT_IN}"><option value="">— no product —</option>${prods.map(p => `<option value="${esc(p.id)}">📦 ${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" id="htNewGo" onclick="hcModalRun(this, () => hubTitleNewGo('${slug}'))">Create title</button>${HC_CANCEL}</div>`);
+  setTimeout(() => { const i = document.getElementById('htNewTitle'); if (i) i.focus(); }, 50);
+}
+async function hubTitleNewGo(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
+  const title = document.getElementById('htNewTitle').value.trim(); if (!title) return 'Enter a title';
+  const guide = document.getElementById('htNewGuide').value.trim(), productId = document.getElementById('htNewProd').value || undefined;
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
+  if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+  _hubContentOpen[slug + '|ti:p:' + (productId || 'none')] = true;
+  hubTitlesLoad(slug, true); return true;
+}
+function hubTitlePillarModal(slug, tid) {
+  const t = htTitleOf(slug, tid); if (!t) return;
+  hcModal(`<h3 style="margin:0 0 4px;">✍ Write pillar</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${esc(t.title)}${t.productId ? ' · 📦 ' + esc(t.product) : ''}</div>
+    ${HT_LBL('Pillar type')}<select id="htPillarType" style="${HT_IN}">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Writes the pillar onto this title (1-2 min) and moves it Planning → Development. Same writer as All Output.</div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="this.textContent='⏳ writing…';hcModalRun(this, () => hubTitlePillarGo('${slug}','${tid}'))">✍ Write pillar</button>${HC_CANCEL}</div>`);
+}
+async function hubTitlePillarGo(slug, tid) {
+  const type = document.getElementById('htPillarType').value;
+  const r = await call('writeTitlePillar', { titleId: tid, styleGuidance: DEV2_PILLAR_TYPES[type] }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return 'Pillar failed: ' + ((r && r.error) || 'no response');
+  hubTitlesLoad(slug, true); return true;
+}
+async function hubTitleAssetModal(slug, tid) {
+  const t = htTitleOf(slug, tid); if (!t) return;
+  hcModal(`<h3 style="margin:0 0 4px;">＋ Asset</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${esc(t.title)}${t.productId ? ' · 📦 ' + esc(t.product) : ''}</div><div id="htAssetForm" style="font-size:12px;color:var(--text3);">Loading methods…</div>`);
+  try {
+    if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(m => m.status === 'Live').sort((a, b) => a.name.localeCompare(b.name));
+    if (!_htPlatforms) _htPlatforms = ((await call('getPlatforms').catch(() => ({}))).platforms || []).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) { document.getElementById('htAssetForm').textContent = 'Could not load methods: ' + e.message; return; }
+  document.getElementById('htAssetForm').innerHTML = `
+    ${HT_LBL('Method')}<select id="htAssetMethod" style="${HT_IN}" onchange="document.getElementById('htAssetCT').style.display=/single post/i.test(this.options[this.selectedIndex].text)?'':'none'"><option value="">— choose a method —</option>${_htMethods.map(m => `<option value="${esc(m.id)}">${esc(m.name)}</option>`).join('')}</select>
+    <div id="htAssetCT" style="display:none;">${HT_LBL('Content type (single post)')}<select id="htAssetCTv" style="${HT_IN}">${['Hook', 'Pain Point', 'Benefit', 'Informational', 'Customer Focus', 'Proof', 'Objection', 'Contrarian'].map(x => `<option>${x}</option>`).join('')}</select></div>
+    ${_htPlatforms.length ? HT_LBL('Platform (optional)') + `<select id="htAssetPlat" style="${HT_IN}"><option value="">— method default —</option>${_htPlatforms.map(p => `<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+    ${HT_LBL('How many')}<input id="htAssetCount" type="number" min="1" max="10" value="1" style="${HT_IN}width:90px;">
+    ${HT_LBL('Guidance / direction (optional)')}<textarea id="htAssetGuide" rows="4" style="${HT_IN}resize:vertical;" placeholder="Anything this asset should do differently from the title's own direction"></textarea>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="this.textContent='⏳ generating…';hcModalRun(this, () => hubTitleAssetGo('${slug}','${tid}'))">Create asset</button>${HC_CANCEL}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:8px;">Uses the title's pillar, product and research — same generator as care-gap's Create Asset. Can take a minute or two.</div>`;
+}
+async function hubTitleAssetGo(slug, tid) {
+  const h = HUB_SITES.find(x => x.slug === slug), t = htTitleOf(slug, tid); if (!h || !t) return 'Title not found';
+  const ms = document.getElementById('htAssetMethod'); if (!ms.value) return 'Choose a method';
+  const methodName = ms.options[ms.selectedIndex].text, ps = document.getElementById('htAssetPlat');
+  const payload = { titleId: tid, campaignId: h.campaignId, methodId: ms.value, assetType: methodName, title: t.title,
+    count: Math.max(1, Math.min(10, parseInt(document.getElementById('htAssetCount').value) || 1)),
+    researchInstructions: document.getElementById('htAssetGuide').value.trim() || undefined };
+  if (ps && ps.value) { payload.platformId = ps.value; payload.platformName = ps.options[ps.selectedIndex].dataset.name; }
+  if (/single post/i.test(methodName)) payload.contentType = document.getElementById('htAssetCTv').value;
+  if (t.productId) payload.productId = t.productId;
+  const r = await call('generateTitleAssets', payload).catch(e => ({ error: e.message }));
+  if (!r || r.error) return 'Asset not created: ' + ((r && r.error) || 'no response');
+  _hubContentOpen[slug + '|ti:t:' + tid] = true; hubTitlesLoad(slug, true); return true;
 }
 // ── Production → 🛠 Interactive tools (worker interactiveTool + utilityScout) ──
 // Pick a seed → Utility site scout finds tool searches and groups them into ideas → 🔎 checks Google's top 10
