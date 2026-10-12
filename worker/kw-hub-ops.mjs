@@ -13,7 +13,9 @@
 // Keywords are compared normalised (lower case, single spaces).
 //
 // ops (applied in order):
-//   { op: "assign",   keywords, to: topicId, move }          add to a topic; move = also take them out of every other topic
+// Main Keywords act as one more topic, id "__main" (shown as the ★ Main cluster/topic): a target for assign,
+// a source for unassign, and "move" / "from all" include it.
+//   { op: "assign",   keywords, to: topicId, move }          add to a topic; move = also take them out of every other topic (and Main)
 //   { op: "newTopics", keywords, mode: "one"|"each", ids: [..], name?, cluster?, move }
 //                                                            one new topic for all of them, or one per keyword (ids are
 //                                                            made by the caller so preview and save agree)
@@ -29,6 +31,7 @@
 // apply() returns { model, fx } — fx describes what changed (for the preview text and for the worker's writes).
 (function (root) {
   const norm = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+  const MAIN = "__main";
   const uniq = a => [...new Set(a)];
   const clone = m => ({
     main: [...(m.main || [])],
@@ -43,8 +46,10 @@
     const merged = [], repoint = {}, clusterRenamed = {};
     for (const o of ops || []) {
       const kws = uniq((o.keywords || []).map(norm).filter(Boolean)), set = new Set(kws);
-      const strip = (except) => m.topics.forEach(t => { if (t.id !== except) t.keywords = t.keywords.filter(k => !set.has(k)); });
-      if (o.op === "assign") {
+      const strip = (except) => { m.topics.forEach(t => { if (t.id !== except) t.keywords = t.keywords.filter(k => !set.has(k)); });
+        if (except !== MAIN) m.main = m.main.filter(k => !set.has(k)); };
+      if (o.op === "assign" && o.to === MAIN) { if (o.move) strip(MAIN); m.main = uniq([...m.main, ...kws]); }
+      else if (o.op === "assign") {
         const t = byId(o.to); if (!t) continue;
         if (o.move) strip(t.id);
         t.keywords = uniq([...t.keywords, ...kws]);
@@ -64,6 +69,7 @@
         if (o.cluster && !m.clusters.includes(o.cluster)) m.clusters.push(o.cluster);
       } else if (o.op === "unassign") {
         if (o.from === "*") strip(null);
+        else if (o.from === MAIN) m.main = m.main.filter(k => !set.has(k));
         else { const t = byId(o.from); if (t) t.keywords = t.keywords.filter(k => !set.has(k)); }
       } else if (o.op === "main") {
         m.main = o.add ? uniq([...m.main, ...kws]) : m.main.filter(k => !set.has(k));
@@ -136,5 +142,5 @@
     return L;
   }
 
-  root.KwHubOps = { apply, describe, norm };
+  root.KwHubOps = { apply, describe, norm, MAIN };
 })(typeof globalThis !== "undefined" ? globalThis : this);
