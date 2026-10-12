@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'worker/**'
+      - 'shared/kw-hub-ops.js'   # bundled into the worker (hub keyword reorganize rules)
   workflow_dispatch: {}
 
 # Without this, rapid back-to-back pushes to worker/** can trigger overlapping

@@ -1,6 +1,7 @@
 ﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET, ETSY_KEYSTRING, ETSY_SHARED_SECRET
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
+import "../shared/kw-hub-ops.js";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
 const ETSY_REDIRECT_URI  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev/etsy/callback";
@@ -5125,8 +5126,8 @@ async function autoGroupStacks(env, cid, stacks, groups) {
   if (changed) await env.TRADES.put("stackgroups:" + cid, JSON.stringify(groups));
   return changed;
 }
-async function findClusterKeywordsForStack(env, hdr, stack, campaignId) {
-  if (!stack || !campaignId) return "";
+async function findClusterKeywordsForStack(env, hdr, stack, campaignId, topicId) {
+  if ((!stack && !topicId) || !campaignId) return "";
   const norm = s => String(s || "").replace(/-/g, "");
   const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
   const rtx = (r, k) => (r?.properties?.[k]?.rich_text || []).map(t => t.plain_text).join("");
@@ -5134,6 +5135,11 @@ async function findClusterKeywordsForStack(env, hdr, stack, campaignId) {
     notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dash(norm(campaignId)) } }, { property: "Status", select: { equals: "Active" } }] } }).catch(() => []),
     env.TRADES.get(`seoclusters:staged:${norm(campaignId)}`, "json").catch(() => []),
   ]);
+  const tid = String(topicId || "").replace(/-/g, "");
+  if (tid) {   // stable link (Keywords tab hub reorganize) — survives topic renames
+    const byIdC = committedRows.find(r => r.id.replace(/-/g, "") === tid); if (byIdC) return rtx(byIdC, "Cluster Keywords");
+    const byIdS = (staged || []).find(c => String(c.id || "").replace(/-/g, "") === tid); if (byIdS) return byIdS.keywords;
+  }
   const committedMatch = committedRows.find(r => ((r.properties?.Name?.title || []).map(t => t.plain_text).join("")) === stack);
   if (committedMatch) return rtx(committedMatch, "Cluster Keywords");
   const stagedMatch = (staged || []).find(c => c.name === stack);
@@ -16442,7 +16448,7 @@ Return via the submit_digest_email tool ONLY. The "html" field MUST be real HTML
 
         let clusterBlock = "";
         if (productStack && campaignId) {
-          const clusterKeywords = await findClusterKeywordsForStack(env, hdr, productStack, campaignId);
+          const clusterKeywords = await findClusterKeywordsForStack(env, hdr, productStack, campaignId, (pp["Topic ID"]?.rich_text || []).map(t => t.plain_text).join(""));
           if (clusterKeywords) clusterBlock = `\nSEO CLUSTER THIS PRODUCT BELONGS TO (Product Stack "${productStack}") — stay faithful to these, merge with the product's own keywords rather than drifting from them: ${clusterKeywords}\n`;
         }
 
@@ -16469,6 +16475,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
           body: JSON.stringify({ properties: { Keywords: { rich_text: [{ type: "text", text: { content: keywords.slice(0, 1990) } }] } } }),
         });
+        await kwClearOutOfSync(env, productId);   // its keywords were re-derived from the current keyword group
         return json({ success: true, keywords });
       }
 
@@ -16496,7 +16503,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
           const stack = (productPage.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("");
           const campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
           if (stack && campaignId) {
-            const clusterKeywords = await findClusterKeywordsForStack(env, hdr, stack, campaignId);
+            const clusterKeywords = await findClusterKeywordsForStack(env, hdr, stack, campaignId, (productPage.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join(""));
             if (clusterKeywords) clusterBlock = `\nSEO CLUSTER THIS TITLE'S PRODUCT BELONGS TO (Product Stack "${stack}") — stay faithful to these, merge with the title's own keywords rather than drifting from them: ${clusterKeywords}\n`;
           }
         }
@@ -16558,7 +16565,7 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
             const stack = rtx(productPage.properties, "Product Stack");
             campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
             if (stack && campaignId) {
-              const found = await findClusterKeywordsForStack(env, hdr, stack, campaignId);
+              const found = await findClusterKeywordsForStack(env, hdr, stack, campaignId, rtx(productPage.properties, "Topic ID"));
               if (found) { clusterName = stack; clusterKeywords = found; }
             }
           }
@@ -23395,6 +23402,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
         }
 
         await promoteProductStatus(hdr, productId, "Planning");   // research generated ⇒ at least Planning
+        await kwClearOutOfSync(env, productId);   // product research re-ran → keyword group change absorbed
         return json({ success: true, strategyId, url: strategyUrl, fields });
       }
 
@@ -49032,7 +49040,7 @@ async function kwBuildSnapshot(env, runId) {
       + "m.low_top_of_page_bid lb, m.high_top_of_page_bid hb, m.average_cpc cpc, m.trend_pct tr, m.intent, m.is_local lo, m.is_brand br, "
       + "f.depth, pk.text parent, rk.text root, m.concepts_json cj, m.monthly_json mj, m.retrieved_at at "
       + "FROM kw_frontier f JOIN kw_keywords k ON k.id = f.keyword_id "
-      + "JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
+      + (run.params && run.params.hub ? "LEFT " : "") + "JOIN kw_metrics m ON m.keyword_id = f.keyword_id AND m.provider = 'google_ads' AND m.language_id = ? AND m.geo_key = ? AND m.network = ? "
       + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id "
       + "WHERE f.run_id = ? AND f.keyword_id > ? ORDER BY f.keyword_id LIMIT 5000")
       .bind(mk.languageId, kwGeoKey(mk.geoIds), mk.network, runId, after).all()).results;
@@ -49072,6 +49080,243 @@ async function kwDropSnapshots(env, runIds) {
   return ids.length;
 }
 
+// ── 🌐 Hub keywords in the Keywords tab (2026-10-12) ─────────────────────────────────────────────────────────
+// Load a hub's whole keyword structure into the tool (a "hub run" — every filter / sort / intent tool works on it),
+// then reorganize it there. The reorganize RULES live in shared/kw-hub-ops.js (same file the tab previews with).
+// Stores read/written: Research "Keywords" (Main), KV seoclusters:staged:<cid> (proposed topics), Notion 🔑 Keyword
+// Clusters (committed topics, Status Active → Archived when emptied), KV seotopicclusters:<cid> (clusters → topics),
+// KV stackgroups:<cid> (cluster renames only). Products: "Topic ID" (stable link to the topic, backfilled from the
+// Product Stack name) + "Keywords Out of Sync" (set when their topic changes; cleared when their research re-runs).
+// Product keyword/research content is never rewritten here. Every apply saves KV kwhub:backup:<cid> first (↶ Undo).
+const kwDashId = s => { s = String(s || "").replace(/-/g, ""); return `${s.slice(0, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}-${s.slice(16, 20)}-${s.slice(20)}`; };
+const kwSplit = t => [...new Set(String(t || "").split(/[,;\n]/).map(kwNorm).filter(Boolean))];
+const kwRt = (p, k) => ((p && p.properties && p.properties[k] && p.properties[k].rich_text) || []).map(t => t.plain_text).join("");
+const kwTitleOf = p => ((p && p.properties && p.properties.Name && p.properties.Name.title) || []).map(t => t.plain_text).join("").trim();
+
+async function kwHubState(env, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, ""); if (cid.length !== 32) throw new Error("campaignId required");
+  const dc = kwDashId(cid);
+  // research / topics / products must load — an apply on a half-loaded hub would treat missing topics as deleted
+  const [resRows, committedRows, staged, tc, prodRows, titleRows] = await Promise.all([
+    notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dc } } }),
+    notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dc } }, { property: "Status", select: { equals: "Active" } }] } }),
+    env.TRADES.get("seoclusters:staged:" + cid, "json"),
+    env.TRADES.get("seotopicclusters:" + cid, "json"),
+    notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dc } } }),
+    notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),   // view only
+  ]);
+  const score = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + kwRt(r, k).length, 0);
+  const research = resRows.slice().sort((a, b) => score(b) - score(a))[0] || null;
+  const assign = {}, assignKey = {};
+  for (const [k, v] of Object.entries((tc && tc.assign) || {})) { const n = String(k).replace(/-/g, ""); assign[n] = v; assignKey[n] = k; }
+  const topics = [
+    ...committedRows.map(r => { const id = r.id.replace(/-/g, ""); return { id, name: kwTitleOf(r), keywords: kwSplit(kwRt(r, "Cluster Keywords")), committed: true, cluster: assign[id] || "" }; }),
+    ...(Array.isArray(staged) ? staged : []).filter(c => c && c.id).map(c => ({ id: String(c.id), name: String(c.name || "").trim(), keywords: kwSplit(c.keywords), committed: false, cluster: assign[String(c.id).replace(/-/g, "")] || "" })),
+  ];
+  const byName = {}; topics.forEach(t => { if (t.name) byName[kwNorm(t.name)] = byName[kwNorm(t.name)] || t.id; });
+  const products = prodRows.map(p => {
+    const id = p.id.replace(/-/g, ""), stack = kwRt(p, "Product Stack").trim(), prop = kwRt(p, "Topic ID").trim().replace(/-/g, "");
+    const hit = prop && topics.find(t => t.id.replace(/-/g, "") === prop), byId = hit ? hit.id : "";
+    const topicId = byId || byName[kwNorm(stack)] || "";
+    return { id, name: kwTitleOf(p), stack, status: ((p.properties?.Status?.select || p.properties?.Status?.status) || {}).name || "",
+      topicIdProp: prop, topicId, linkedBy: byId ? "id" : topicId ? "name" : "", keywords: kwSplit(kwRt(p, "Keywords")),
+      outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox };
+  });
+  const titles = titleRows.map(t => ({ id: t.id.replace(/-/g, ""), name: kwTitleOf(t), productId: (((t.properties?.Product?.relation) || [])[0]?.id || "").replace(/-/g, ""),
+    status: ((t.properties?.Status?.select || t.properties?.Status?.status) || {}).name || "", keywords: kwSplit(kwRt(t, "seed idea")) }));
+  const model = { main: research ? kwSplit(kwRt(research, "Keywords")) : [], topics,
+    clusters: [...new Set([...(Array.isArray(tc && tc.clusters) ? tc.clusters : []), ...topics.map(t => t.cluster).filter(Boolean)])],
+    products: products.map(p => ({ id: p.id, name: p.name, topicId: p.topicId })) };
+  return { cid, research, committedRows, staged: Array.isArray(staged) ? staged : [], tc: tc || { clusters: [], assign: {} }, assignKey, model, products, titles };
+}
+
+// Exact Google numbers for a given list (GenerateKeywordHistoricalMetrics) — only for keywords with no metrics in
+// this market from the last 30 days. Keywords Google has no data for are stored with empty metrics so they still
+// show in the tool. Returns { fetched, calls }.
+async function kwHistMetrics(env, keywords, market) {
+  const db = env.KWDB, geo = kwGeoKey(market.geoIds), cutoff = new Date(Date.now() - KW_CACHE_DAYS * 864e5).toISOString();
+  const have = new Set();
+  for (let i = 0; i < keywords.length; i += 2000) {
+    (await db.prepare("SELECT k.text FROM json_each(?1) j JOIN kw_keywords k ON k.text = j.value JOIN kw_metrics m ON m.keyword_id = k.id "
+      + "AND m.provider = 'google_ads' AND m.language_id = ?2 AND m.geo_key = ?3 AND m.network = ?4 AND m.retrieved_at >= ?5")
+      .bind(JSON.stringify(keywords.slice(i, i + 2000)), market.languageId, geo, market.network, cutoff).all()).results.forEach(r => have.add(r.text));
+  }
+  const need = keywords.filter(k => !have.has(k) && k.length <= 80 && k.split(" ").length <= 10);
+  let calls = 0, fetched = 0;
+  for (let i = 0; i < need.length; i += 1000) {
+    const used = (await db.prepare("SELECT COUNT(*) n FROM kw_api_calls WHERE ts >= ?").bind(kwNow().slice(0, 10)).first()).n;
+    if (used >= Number(env.KW_DAILY_BUDGET || 1000)) throw new Error("Daily Google call budget reached (" + used + ")");
+    const chunk = need.slice(i, i + 1000);
+    const data = await kwAds(env, "customers/" + kwCid(env) + ":generateKeywordHistoricalMetrics", {
+      keywords: chunk, language: "languageConstants/" + market.languageId, geoTargetConstants: market.geoIds.map(g => "geoTargetConstants/" + g),
+      keywordPlanNetwork: market.network, includeAdultKeywords: false, historicalMetricsOptions: { includeAverageCpc: true } }, null, "generateKeywordHistoricalMetrics");
+    calls++;
+    const got = new Map();
+    for (const r of data.results || []) {
+      const c = kwConvert({ text: r.text, keywordIdeaMetrics: r.keywordMetrics || {} }, 0);
+      if (c.t) got.set(c.t, c);
+      for (const v of r.closeVariants || []) { const t = kwNorm(v); if (t && !got.has(t)) got.set(t, { ...c, t }); }
+    }
+    const rows = chunk.map(k => got.get(k) || kwConvert({ text: k, keywordIdeaMetrics: {} }, 0));
+    fetched += rows.length;
+    const ts = kwNow(), stmts = [];
+    for (let j = 0; j < rows.length; j += 250) {
+      const cj = JSON.stringify(rows.slice(j, j + 250));
+      stmts.push(db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(ts, cj));
+      stmts.push(db.prepare("INSERT OR REPLACE INTO kw_metrics(keyword_id, provider, language_id, geo_key, network, avg_monthly_searches, competition, competition_index, "
+        + "low_top_of_page_bid, high_top_of_page_bid, average_cpc, trend_pct, intent, is_local, is_brand, monthly_json, concepts_json, request_id, retrieved_at) "
+        + "SELECT k.id, 'google_ads', ?1, ?2, ?3, json_extract(j.value,'$.v'), json_extract(j.value,'$.c'), json_extract(j.value,'$.ci'), "
+        + "json_extract(j.value,'$.lb'), json_extract(j.value,'$.hb'), json_extract(j.value,'$.cpc'), json_extract(j.value,'$.tr'), "
+        + "json_extract(j.value,'$.it'), json_extract(j.value,'$.lo'), json_extract(j.value,'$.br'), json_extract(j.value,'$.m'), json_extract(j.value,'$.k'), NULL, ?4 "
+        + "FROM json_each(?5) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(market.languageId, geo, market.network, ts, cj));
+    }
+    if (stmts.length) await db.batch(stmts);
+  }
+  return { fetched, calls };
+}
+
+// The hub's run: one per campaign (params.hub.cid), rebuilt in place on every load/apply so its id stays put.
+async function kwHubRun(env, cid, name, keywords, market) {
+  const db = env.KWDB;
+  const old = await db.prepare("SELECT id FROM kw_runs WHERE json_extract(params_json,'$.hub.cid') = ? ORDER BY id DESC LIMIT 1").bind(cid).first();
+  const params = JSON.stringify({ hub: { cid, name }, keywords: [], market, config: KW_DEFAULT_CONFIG });
+  let id;
+  if (old) {
+    id = old.id;
+    await db.batch([db.prepare("DELETE FROM kw_frontier WHERE run_id = ?").bind(id),
+      db.prepare("UPDATE kw_runs SET name = ?, params_json = ?, status = 'done', finished_at = ?, notes = ? WHERE id = ?").bind("🌐 Hub · " + name, params, kwNow(), "hub keywords", id)]);
+  } else {
+    id = (await db.prepare("INSERT INTO kw_runs(name, params_json, status, started_at, finished_at, root_done, notes) VALUES (?,?,?,?,?,1,?) RETURNING id")
+      .bind("🌐 Hub · " + name, params, "done", kwNow(), kwNow(), "hub keywords").first()).id;
+  }
+  const stmts = [];
+  for (let i = 0; i < keywords.length; i += 500) {
+    const kj = JSON.stringify(keywords.slice(i, i + 500).map(t => ({ t })));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_keywords(text, first_seen_at) SELECT json_extract(value,'$.t'), ?1 FROM json_each(?2)").bind(kwNow(), kj));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, root_seed_id, queued, expanded) "
+      + "SELECT ?1, k.id, 0, k.id, 0, 1 FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(id, kj));
+  }
+  stmts.push(db.prepare("UPDATE kw_runs SET keywords = ? WHERE id = ?").bind(keywords.length, id));
+  await db.batch(stmts);
+  await kwDropSnapshots(env, [String(id)]);
+  await kwBuildSnapshot(env, id);
+  await env.TRADES.delete("kw:stats");
+  return id;
+}
+
+async function kwHubLoad(env, campaignId, name) {
+  const st = await kwHubState(env, campaignId);
+  const all = [...new Set([...st.model.main, ...st.model.topics.flatMap(t => t.keywords), ...st.model.clusters.map(kwNorm),
+    ...st.products.flatMap(p => p.keywords), ...st.titles.flatMap(t => t.keywords)])].filter(Boolean).slice(0, 8000);
+  const market = await kwMarket(env, {});
+  let warn = "", metrics = { fetched: 0, calls: 0 };
+  try { metrics = await kwHistMetrics(env, all, market); } catch (e) { warn = "Google numbers not fetched: " + (e.message || e); }
+  const hubName = String(name || (st.research ? kwTitleOf(st.research) : "") || "Hub").slice(0, 100);
+  const runId = await kwHubRun(env, st.cid, hubName, all, market);
+  let backup = null; try { backup = await env.TRADES.get("kwhub:backup:" + st.cid, "json"); } catch (e) {}
+  return { ok: true, runId, cid: st.cid, name: hubName, model: st.model, warn, metrics,
+    products: st.products.map(({ id, name, stack, status, topicId, linkedBy, keywords, outOfSync }) => ({ id, name, stack, status, topicId, linkedBy, keywords, outOfSync })),
+    titles: st.titles, undo: backup ? { at: backup.at, lines: backup.lines || [] } : null };
+}
+
+async function kwNotionPatch(env, pageId, properties) {
+  const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(pageId), { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion " + r.status); }
+}
+async function kwEnsureProductProps(env) {
+  if (await env.TRADES.get("kwhub:props")) return;
+  const r = await fetch("https://api.notion.com/v1/databases/" + PRODUCTS_DB, { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Topic ID": { rich_text: {} }, "Keywords Out of Sync": { checkbox: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Topic ID / Keywords Out of Sync to Products: " + (d.message || r.status)); }
+  await env.TRADES.put("kwhub:props", "1");
+}
+// a product's research / keywords re-ran → it is in sync again (best effort; no-op until the property exists)
+async function kwClearOutOfSync(env, productId) {
+  try { if (productId && await env.TRADES.get("kwhub:props")) await kwNotionPatch(env, productId, { "Keywords Out of Sync": { checkbox: false } }); } catch (e) {}
+}
+
+async function kwHubApply(env, campaignId, ops, name) {
+  const H = globalThis.KwHubOps;
+  const st = await kwHubState(env, campaignId), cid = st.cid;
+  const before = st.model, { model: after, fx } = H.apply(before, ops);
+  const lines = H.describe(before, after, fx);
+  // the stable Topic ID link is written for every product still linked only by name, even when nothing else changed
+  const touch = st.products.filter(p => { const want = (after.products.find(x => x.id === p.id) || {}).topicId || "";
+    return (want && want.replace(/-/g, "") !== p.topicIdProp) || (fx.outOfSync.includes(p.id) && !p.outOfSync); });
+  if (fx.empty && !touch.length) return { ...(await kwHubLoad(env, cid, name)), applied: false, lines: [], errors: [] };
+  // backup first — everything this apply can touch
+  await env.TRADES.put("kwhub:backup:" + cid, JSON.stringify({ at: Date.now(), lines,
+    staged: st.staged, tc: st.tc, stackgroups: await env.TRADES.get("stackgroups:" + cid, "json").catch(() => null),
+    main: st.research ? { id: st.research.id, text: kwRt(st.research, "Keywords") } : null,
+    committed: st.committedRows.map(r => ({ id: r.id, name: kwTitleOf(r), keywords: kwRt(r, "Cluster Keywords") })),
+    products: st.products.map(p => ({ id: p.id, topicIdProp: p.topicIdProp, outOfSync: p.outOfSync })) }));
+  const errors = [], tryW = async (what, fn) => { try { await fn(); } catch (e) { errors.push(what + ": " + (e.message || e)); } };
+  const now = new Map(after.topics.map(t => [t.id, t]));
+  const join = t => t.keywords.join(", ");
+
+  // proposed topics (KV) — update in place, keep every other field (rationale, product proposals…); drop orphans; add new
+  const staged = [];
+  for (const c of st.staged) { if (!c || !c.id) continue; const t = now.get(String(c.id)); if (t) staged.push({ ...c, name: t.name, keywords: join(t) }); }
+  for (const id of fx.created) { const t = now.get(id); staged.push({ id, name: t.name, keywords: join(t), rationale: "Created in the Keywords tab (hub reorganize).", searchIntent: "", source: "keywords-tab" }); }
+  await tryW("proposed topics", () => env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(staged)));
+  // committed topics (Notion) — keyword list + name only; emptied ones archived
+  for (const t of before.topics.filter(x => x.committed)) {
+    if (fx.removed.includes(t.id)) await tryW(`archive "${t.name}"`, () => kwNotionPatch(env, t.id, { Status: { select: { name: "Archived" } } }));
+    else if (fx.changed.includes(t.id)) { const n = now.get(t.id);
+      await tryW(`update "${n.name}"`, async () => kwNotionPatch(env, t.id, { Name: { title: [{ type: "text", text: { content: n.name.slice(0, 200) } }] }, "Cluster Keywords": { rich_text: await kwNotionRichText(join(n)) } })); }
+  }
+  // clusters → topics (KV seotopicclusters), keeping the key format each topic already had
+  const known = new Set(before.topics.map(t => t.id.replace(/-/g, "")));
+  const assign = {};
+  for (const [k, v] of Object.entries(st.tc.assign || {})) if (!known.has(String(k).replace(/-/g, ""))) assign[k] = v;   // ids this hub doesn't load (archived…) untouched
+  for (const t of after.topics) if (t.cluster) assign[st.assignKey[t.id.replace(/-/g, "")] || t.id] = t.cluster;
+  await tryW("clusters", () => env.TRADES.put("seotopicclusters:" + cid, JSON.stringify({ ...st.tc, clusters: after.clusters, assign })));
+  // Product Groups follow a cluster rename (organizing labels only)
+  if (Object.keys(fx.clusterRenamed).length) await tryW("product groups", async () => {
+    const g = await env.TRADES.get("stackgroups:" + cid, "json"); if (!g || typeof g !== "object") return;
+    const rn = v => fx.clusterRenamed[v] || v;
+    g.map = Object.fromEntries(Object.entries(g.map || {}).map(([s, c]) => [s, rn(c)]));
+    g.order = [...new Set((g.order || []).map(rn))];
+    await env.TRADES.put("stackgroups:" + cid, JSON.stringify(g));
+  });
+  // Main Keywords
+  if (fx.mainChanged) {
+    if (!st.research) errors.push("Main Keywords: the hub has no Research record");
+    else await tryW("Main Keywords", async () => kwNotionPatch(env, st.research.id, { Keywords: { rich_text: await kwNotionRichText(after.main.join(", ")) } }));
+  }
+  // products: stable Topic ID link (backfill from the stack name, follow merges) + out-of-sync flag — nothing else
+  if (touch.length) {
+    let propsOk = true; await tryW("product fields", async () => { try { await kwEnsureProductProps(env); } catch (e) { propsOk = false; throw e; } });
+    if (propsOk) for (const p of touch) {
+      const want = (after.products.find(x => x.id === p.id) || {}).topicId || "", props = {};
+      if (want && want.replace(/-/g, "") !== p.topicIdProp) props["Topic ID"] = { rich_text: [{ type: "text", text: { content: want } }] };
+      if (fx.outOfSync.includes(p.id)) props["Keywords Out of Sync"] = { checkbox: true };
+      if (Object.keys(props).length) await tryW(`product "${p.name}"`, () => kwNotionPatch(env, p.id, props));
+    }
+  }
+  const load = await kwHubLoad(env, cid, name);
+  return { ...load, applied: true, lines, errors };
+}
+
+async function kwHubUndo(env, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, "");
+  const b = await env.TRADES.get("kwhub:backup:" + cid, "json"); if (!b) throw new Error("Nothing to undo");
+  const errors = [], tryW = async (what, fn) => { try { await fn(); } catch (e) { errors.push(what + ": " + (e.message || e)); } };
+  await tryW("proposed topics", () => env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(b.staged || [])));
+  await tryW("clusters", () => env.TRADES.put("seotopicclusters:" + cid, JSON.stringify(b.tc || { clusters: [], assign: {} })));
+  if (b.stackgroups) await tryW("product groups", () => env.TRADES.put("stackgroups:" + cid, JSON.stringify(b.stackgroups)));
+  if (b.main) await tryW("Main Keywords", async () => kwNotionPatch(env, b.main.id, { Keywords: { rich_text: await kwNotionRichText(b.main.text) } }));
+  for (const c of b.committed || []) await tryW(`topic "${c.name}"`, async () => kwNotionPatch(env, c.id, { Status: { select: { name: "Active" } },
+    Name: { title: [{ type: "text", text: { content: c.name.slice(0, 200) } }] }, "Cluster Keywords": { rich_text: await kwNotionRichText(c.keywords) } }));
+  if (await env.TRADES.get("kwhub:props")) for (const p of b.products || []) await tryW("product " + p.id, () => kwNotionPatch(env, p.id, {
+    "Topic ID": { rich_text: p.topicIdProp ? [{ type: "text", text: { content: p.topicIdProp } }] : [] }, "Keywords Out of Sync": { checkbox: !!p.outOfSync } }));
+  await env.TRADES.delete("kwhub:backup:" + cid);
+  return { undone: b.lines || [], errors };
+}
+
 function kwParseConfig(bc) {
   const c = Object.assign({}, KW_DEFAULT_CONFIG);
   bc = bc || {};
@@ -49152,7 +49397,7 @@ async function handleKeywordAction(body, env) {
   }
 
   if (a === "kwRuns") {
-    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, r.keywords keywords_live "
+    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, r.keywords keywords_live, json_extract(r.params_json,'$.hub.cid') hub_cid "
       + "FROM kw_runs r ORDER BY r.id DESC LIMIT 100").all()).results;
     const meta = (await env.TRADES.get("kwsnap:meta", "json")) || {};
     for (const r of rows) {
@@ -49194,6 +49439,7 @@ async function handleKeywordAction(body, env) {
   // of what the run already used, Discover expansion confined to the new seeds' branches.
   // Seeds the run already expanded are skipped. The loop is the usual kwStepRun.
   if (a === "kwAugmentRun") {
+    { const hr = await kwRunSummary(env, Number(body.runId)); if (hr && hr.params && hr.params.hub) return json({ error: "A hub run is rebuilt from the hub (🌐 Load hub) — start a normal run to explore new keywords" }, 400); }
     const runId = Number(body.runId);
     const run = await db.prepare("SELECT * FROM kw_runs WHERE id = ?").bind(runId).first();
     if (!run) return json({ error: "run not found" }, 404);
@@ -49230,6 +49476,11 @@ async function handleKeywordAction(body, env) {
     if (!raw) return json({ error: "run not found" }, 404);
     return new Response(raw, { headers: { "Content-Type": "application/json", ...CORS } });
   }
+
+  // 🌐 hub keywords: load into the tool / apply a reorganize / undo the last apply
+  if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubApply") { try { return json(await kwHubApply(env, body.campaignId, Array.isArray(body.ops) ? body.ops : [], body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubUndo") { try { const u = await kwHubUndo(env, body.campaignId); return json({ ...(await kwHubLoad(env, body.campaignId, body.name)), ...u }); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
 
   // Tab → campaign: add to Main Keywords / stage an SEO cluster / create a campaign.
   if (a === "kwSendKeywords") return kwSendKeywords(env, body);
