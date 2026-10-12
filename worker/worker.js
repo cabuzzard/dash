@@ -15794,6 +15794,13 @@ Return ONLY this JSON, no other text, no fences:
         return json({ stacks: [...seen.values()].sort((a, b) => a.localeCompare(b)) });
       }
 
+      // ── setProductIsolated {productId, isolated} ── 🔒 in dash's product research modal: an isolated product's research
+      // takes no direction from the hub's Main keywords / campaign research — only its own fields, keywords and topic.
+      if (body.action === "setProductIsolated") {
+        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32) return json({ error: "productId required" }, 400);
+        try { await kwEnsureProductProps(env); await kwNotionPatch(env, pid, { "Keywords Isolated": { checkbox: !!body.isolated } }); } catch (e) { return json({ error: e.message }, 500); }
+        return json({ success: true, isolated: !!body.isolated });
+      }
       // ── attachProductToTopic {productId, stack, topicId, keyword?} ── (dash Content Hubs → Keywords › ＋ product › Existing)
       // Product Stack = the topic name, the stable "Topic ID" link, and the suggested keyword appended to Keywords. No research.
       if (body.action === "attachProductToTopic") {
@@ -23005,12 +23012,13 @@ Return ONLY a JSON object, no other text, no markdown fences:
         ]);
         const keywords = (productPage.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
         const jobBoardListings = (productPage.properties?.["Job Board Listings"]?.rich_text || []).map(t => t.plain_text).join("");
-        if (!record) return json({ strategy: null, keywords, jobBoardListings });
+        const isolated = !!productPage.properties?.["Keywords Isolated"]?.checkbox;   // 🔒 takes no direction from the hub's Main / campaign research
+        if (!record) return json({ strategy: null, keywords, jobBoardListings, isolated });
         const props = record.properties || {};
         const rt = key => (props[key]?.rich_text || []).map(t => t.plain_text).join("");
         const fields = {};
         for (const f of STRATEGY_FIELDS) fields[f] = rt(f);
-        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields }, keywords, jobBoardListings });
+        return json({ strategy: { id: record.id.replace(/-/g,""), url: record.url, status: props.Status?.select?.name || "", fields }, keywords, jobBoardListings, isolated });
       }
 
       // ── getProductJobBoardListings ──
@@ -23189,7 +23197,8 @@ Return ONLY a JSON object, no other text, no markdown fences:
           // has one but its stamped Keywords Version is behind the campaign's
           // current one (main keywords moved since this was last generated
           // or edited) -> 'off-main'; caught up -> 'updated'.
-          const researchState = !sr ? 'empty' : ((sr.properties?.["Keywords Version"]?.number || 0) < campaignKwVersion ? 'off-main' : 'updated');
+          const isolated = !!p.properties?.["Keywords Isolated"]?.checkbox;   // 🔒 Main isn't its upstream
+          const researchState = !sr ? 'empty' : (!isolated && (sr.properties?.["Keywords Version"]?.number || 0) < campaignKwVersion ? 'off-main' : 'updated');
           return {
             productId, productName,
             strategy: sr ? { id: undash(sr.id), url: sr.url, status: sr.properties?.Status?.select?.name || "" } : null,
@@ -23351,10 +23360,11 @@ Write ONLY the content for this field — 2-5 sentences, or a short bulleted lis
         const productDesc = (pp.Description?.rich_text || []).map(t => t.plain_text).join("");
         const producedContent = (pp["Produced Content"]?.rich_text || []).map(t => t.plain_text).join("");
         const productKeywords = (pp.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+        const isolated = !!pp["Keywords Isolated"]?.checkbox;   // 🔒 isolated: researched from its own fields + keywords only
 
         let researchBlock = '';
         let campaignKwVersion = 0;
-        if (campaignId) {
+        if (campaignId && !isolated) {
           const researchRows = await fetch(`https://api.notion.com/v1/databases/${RESEARCH_DB}/query`, {
             method: "POST", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ filter: { property: "Campaign", relation: { contains: dash(campaignId) } } }),
@@ -49254,12 +49264,12 @@ async function kwNotionPatch(env, pageId, properties) {
   if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion " + r.status); }
 }
 async function kwEnsureProductProps(env) {
-  if (await env.TRADES.get("kwhub:props")) return;
+  if (await env.TRADES.get("kwhub:props2")) return;
   const r = await fetch("https://api.notion.com/v1/databases/" + PRODUCTS_DB, { method: "PATCH",
     headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-    body: JSON.stringify({ properties: { "Topic ID": { rich_text: {} }, "Keywords Out of Sync": { checkbox: {} } } }) });
-  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Topic ID / Keywords Out of Sync to Products: " + (d.message || r.status)); }
-  await env.TRADES.put("kwhub:props", "1");
+    body: JSON.stringify({ properties: { "Topic ID": { rich_text: {} }, "Keywords Out of Sync": { checkbox: {} }, "Keywords Isolated": { checkbox: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Topic ID / Keywords Out of Sync / Keywords Isolated to Products: " + (d.message || r.status)); }
+  await env.TRADES.put("kwhub:props", "1"); await env.TRADES.put("kwhub:props2", "1");
 }
 // a product's research / keywords re-ran → it is in sync again (best effort; no-op until the property exists)
 async function kwClearOutOfSync(env, productId) {

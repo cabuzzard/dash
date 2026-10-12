@@ -15649,7 +15649,7 @@ async function hubResOpen(slug, pid) {
   const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid); if (!p) return;
   _hubRes = { slug, pid, name: p.name, stack: p.stack || '', keywords: '', fields: null, busy: 'Loading…', log: '', open: false };
   hubResDraw();
-  try { const r = await call('getProductStrategy', { productId: pid }); _hubRes.keywords = r.keywords || ''; _hubRes.fields = (r.strategy && r.strategy.fields) || {}; _hubRes.busy = ''; }
+  try { const r = await call('getProductStrategy', { productId: pid }); _hubRes.keywords = r.keywords || ''; _hubRes.fields = (r.strategy && r.strategy.fields) || {}; _hubRes.isolated = !!r.isolated; _hubRes.busy = ''; }
   catch (e) { _hubRes.busy = ''; _hubRes.log = 'Load failed: ' + e.message; }
   hubResDraw();
 }
@@ -15666,6 +15666,9 @@ function hubResDraw() {
     <div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">${badge} · <a href="https://www.notion.so/${esc(R.pid)}" target="_blank" rel="noopener" style="color:var(--accent);">Notion ↗</a></div>
     <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword group (Product Stack)</div>
     <div style="font-size:12.5px;margin:2px 0 10px;">${R.stack ? esc(R.stack) : '<span style="color:var(--text3);">none — set a stack on care-gap to tie this product to a keyword group</span>'}</div>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:12px;margin:0 0 12px;padding:8px 10px;border:1px solid ${R.isolated ? '#8ab4f8' : 'var(--border2)'};border-radius:6px;cursor:pointer;">
+      <input type="checkbox" ${R.isolated ? 'checked' : ''} ${dis} onchange="hubResIsolate(this.checked)" style="margin-top:2px;">
+      <span><b>🔒 Isolate</b> — this product takes no direction from the hub's Main keywords or campaign research. Its research runs from its own description, content, keywords and keyword topic only, and it never shows "behind the keywords" when Main changes.</span></label>
     <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product keywords — the research runs off these</div>
     <textarea id="hubResKw" rows="4" oninput="_hubRes.keywords=this.value;_hubRes.kwDirty=true" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;margin:3px 0 6px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${esc(R.keywords)}</textarea>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
@@ -15681,6 +15684,14 @@ function hubResDraw() {
       ${HUB_STRATEGY_FIELDS.map(f => `<div style="margin:8px 0;"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${f}</div><div style="font-size:12px;white-space:pre-wrap;line-height:1.45;">${esc(R.fields[f] || '') || '<span style="color:var(--text3);">(empty)</span>'}</div></div>`).join('')}</details>` : ''}
     <div style="margin-top:12px;"><button class="modal-btn" onclick="document.getElementById('hubResModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
   m.classList.add('open');
+}
+async function hubResIsolate(on) {
+  const R = _hubRes; R.busy = on ? 'Isolating…' : 'Un-isolating…'; hubResDraw();
+  try { const r = await call('setProductIsolated', { productId: R.pid, isolated: on }); if (r.error) throw new Error(r.error);
+    R.isolated = on; R.log = on ? '🔒 Isolated — re-run the research to drop the hub-level direction.' : 'Un-isolated — re-run the research to take the hub\'s campaign research in again.';
+    _hubResState[R.slug] = null; hubResLoad(R.slug, true); }
+  catch (e) { R.log = 'Not changed: ' + e.message; }
+  R.busy = ''; hubResDraw();
 }
 async function hubResKwRefresh() {
   const R = _hubRes; R.busy = 'Refreshing the keywords from the product’s keyword group…'; hubResDraw();
