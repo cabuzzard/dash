@@ -15793,6 +15793,24 @@ Return ONLY this JSON, no other text, no fences:
         return json({ stacks: [...seen.values()].sort((a, b) => a.localeCompare(b)) });
       }
 
+      // ── attachProductToTopic {productId, stack, topicId, keyword?} ── (dash Content Hubs → Keywords › ＋ product › Existing)
+      // Product Stack = the topic name, the stable "Topic ID" link, and the suggested keyword appended to Keywords. No research.
+      if (body.action === "attachProductToTopic") {
+        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32 || !body.stack) return json({ error: "productId and stack required" }, 400);
+        const props = { "Product Stack": { rich_text: [{ type: "text", text: { content: String(body.stack).trim().slice(0, 100) } }] } };
+        if (body.topicId) { await kwEnsureProductProps(env); props["Topic ID"] = { rich_text: [{ type: "text", text: { content: String(body.topicId).replace(/-/g, "").slice(0, 60) } }] }; }
+        const kw = String(body.keyword || "").trim();
+        if (kw) {
+          const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(pid), { headers: { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+          const cur = (pg.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("");
+          if (!cur.split(/[,;\n]/).map(x => x.trim().toLowerCase()).includes(kw.toLowerCase()))
+            props.Keywords = { rich_text: await kwNotionRichText((cur.trim() ? cur.trim().replace(/[,\s]+$/, "") + ", " : "") + kw) };
+        }
+        try { await kwNotionPatch(env, pid, props); } catch (e) { return json({ error: e.message }, 500); }
+        const groupFinal = body.campaignId ? await ensureStackGroup(env, body.campaignId, body.stack).catch(() => "") : "";
+        return json({ success: true, group: groupFinal || "" });
+      }
+
       // ── setProductStack ──
       // Explicitly (re)writes a product's Product Stack property, same
       // creation-race reasoning as setProductType.

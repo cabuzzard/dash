@@ -15186,16 +15186,53 @@ let _hubKwDrag = null;
 function hubKwDragStart(e, topicId) { e.stopPropagation(); _hubKwDrag = topicId; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', topicId); } catch (x) {} }
 function hubKwDragOver(e) { if (_hubKwDrag == null) return; e.preventDefault(); e.stopPropagation(); e.currentTarget.style.outline = '2px dashed #8ab4f8'; }
 function hubKwDrop(e, slug) { e.preventDefault(); e.stopPropagation(); e.currentTarget.style.outline = ''; const id = _hubKwDrag; _hubKwDrag = null; if (id == null) return; hubKwMoveTopic(slug, id, e.currentTarget.dataset.drop || ''); }
-async function hubKwAddProduct(slug, topicId) {
-  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
+// ＋ product on a keyword topic: a NEW product (name) or an EXISTING campaign product attached to the topic, plus a
+// suggested keyword (one of the topic's, or typed) that seeds / is added to the product's Keywords. No research runs —
+// new = createProduct (stack = topic name, topicId, keywords); existing = attachProductToTopic (stack + Topic ID + keyword).
+function hubKwAddProduct(slug, topicId) {
+  const K = _hubKw[slug]; if (!K) return;
   const t = [...K.staged, ...K.committed].find(x => String(x.id) === String(topicId)); if (!t) return;
-  const name = (prompt('New product on topic "' + t.name + '" (created at Planning — run its research from Products):') || '').trim(); if (!name) return;
-  K.msg = 'Creating product…'; hubKwRefresh(slug);
-  try { const r = await call('createProduct', { title: name, campaignId: h.campaignId, stack: t.name, topicId: t.id, status: 'Planning' }); if (r.error) throw new Error(r.error);
-    K.products = [...(K.products || []), { id: r.id, name, status: 'Planning', stack: t.name, topicId: String(t.id).replace(/-/g, ''), outOfSync: false }];
-    _hubKwOpen[slug + '|t:' + t.id] = true; K.msg = '✓ Product "' + name + '" added to "' + t.name + '"'; }
-  catch (e) { K.msg = '✗ Product not created: ' + e.message; }
-  hubKwRefresh(slug);
+  const kws = String(t.keywords || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean);
+  const onTopic = new Set((K.products || []).filter(p => p.topicId === String(t.id).replace(/-/g, '')).map(p => p.id));
+  const others = (K.products || []).filter(p => !onTopic.has(p.id)).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = x => `<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${x}</label>`;
+  hcModal(`<h3 style="margin:0 0 4px;">Add product to topic</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${esc(t.name)} — no research runs; run it from Products when you're ready.</div>
+    <div style="display:flex;gap:14px;font-size:12px;margin-bottom:10px;">
+      <label><input type="radio" name="hkpMode" value="new" checked onchange="hubKwProdMode()"> New product</label>
+      <label><input type="radio" name="hkpMode" value="ex" ${others.length ? '' : 'disabled'} onchange="hubKwProdMode()"> Existing product${others.length ? '' : ' (none to attach)'}</label></div>
+    <div id="hkpNew">${L('Product title')}<input id="hkpTitle" style="${IN}" placeholder="Name of the product"></div>
+    <div id="hkpEx" style="display:none;">${L('Existing product')}<select id="hkpExisting" style="${IN}">${others.map(p => `<option value="${esc(p.id)}">📦 ${esc(p.name)}${p.stack ? ' · ' + esc(p.stack) : ''}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>
+      <div style="font-size:11px;color:var(--text3);margin:-4px 0 10px;">Moves it onto this topic (Product Stack = "${esc(t.name)}" + the stable topic link).</div></div>
+    ${L('Suggested keyword — optional override')}<input id="hkpKw" list="hkpKwList" style="${IN}" value="" placeholder="leave empty to use the topic's keywords">
+    <div style="font-size:11px;color:var(--text3);margin:-4px 0 10px;">Empty → a new product takes the topic's keywords${kws.length ? ' (' + esc(kws.slice(0, 4).join(', ')) + (kws.length > 4 ? ', …' : '') + ')' : ''}; an attached product keeps its own and reads the topic's through its topic link. Typed → used instead.</div>
+    <datalist id="hkpKwList">${kws.map(k => `<option value="${esc(k)}">`).join('')}</datalist>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwAddProductGo('${slug}','${esc(t.id)}'))">Add product</button>${HC_CANCEL}</div>`);
+  setTimeout(() => { const i = document.getElementById('hkpTitle'); if (i) i.focus(); }, 50);
+}
+function hubKwProdMode() {
+  const ex = (document.querySelector('input[name=hkpMode]:checked') || {}).value === 'ex';
+  document.getElementById('hkpNew').style.display = ex ? 'none' : ''; document.getElementById('hkpEx').style.display = ex ? '' : 'none';
+}
+async function hubKwAddProductGo(slug, topicId) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return 'Hub not found';
+  const t = [...K.staged, ...K.committed].find(x => String(x.id) === String(topicId)); if (!t) return 'Topic not found';
+  const ex = (document.querySelector('input[name=hkpMode]:checked') || {}).value === 'ex', kw = document.getElementById('hkpKw').value.trim();
+  const tid = String(t.id).replace(/-/g, '');
+  if (ex) {
+    const pid = document.getElementById('hkpExisting').value; if (!pid) return 'Choose a product';
+    const r = await call('attachProductToTopic', { productId: pid, stack: t.name, topicId: tid, keyword: kw || undefined, campaignId: h.campaignId }); if (!r || r.error) return (r && r.error) || 'Not attached';
+    const p = (K.products || []).find(x => x.id === pid); if (p) { p.stack = t.name; p.topicId = tid; }
+    K.msg = '✓ "' + (p ? p.name : 'Product') + '" attached to "' + t.name + '"';
+  } else {
+    const name = document.getElementById('hkpTitle').value.trim(); if (!name) return 'Enter a product title';
+    const topicKws = String(t.keywords || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean).join(', ');
+    const r = await call('createProduct', { title: name, campaignId: h.campaignId, stack: t.name, topicId: tid, status: 'Planning', keywords: kw || topicKws || undefined });
+    if (!r || r.error) return (r && r.error) || 'Create failed';
+    K.products = [...(K.products || []), { id: r.id, name, status: 'Planning', stack: t.name, topicId: tid, outOfSync: false }];
+    K.msg = '✓ Product "' + name + '" added to "' + t.name + '"';
+  }
+  _hubKwOpen[slug + '|t:' + t.id] = true; hubKwRefresh(slug); return true;
 }
 function hubKwToggle(slug, k) { _hubKwOpen[slug + '|' + k] = !_hubKwOpen[slug + '|' + k]; hubKwRefresh(slug); }
 function renderHubKw(slug) {
