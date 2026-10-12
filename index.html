@@ -14926,20 +14926,25 @@ function renderHubsTab() {
       <div style="padding:4px 0 6px;">
         <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|kw']=!_hubContentOpen['${slug}|kw'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|kw']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|kw']?'▼':'▶';if(_hubContentOpen['${slug}|kw'])hubKwLoad('${slug}')" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|kw'] ? '▼' : '▶'}</span>
-          <span style="color:var(--text);">Keywords</span>
+          <span style="color:var(--text);">Keywords<span id="hubKwW-${slug}">${hubKwWork(slug)}</span></span>
           ${h.campaignId ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="margin-left:auto;font-size:10.5px;color:var(--accent);text-decoration:none;">edit keywords in care-gap ↗</a>` : ''}</div>
         <div id="hubKwBody-${slug}" style="display:${_hubContentOpen[slug + '|kw'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubKw(slug)}</div></div>
         ${(() => { const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), prods = mo ? (mo.products || []) : null, open = !!_hubContentOpen[slug + '|pr'];
           // committed products for the hub = the campaign's real Products records (same list as the Main offering picker)
           return `<div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|pr']=!_hubContentOpen['${slug}|pr'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|pr']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|pr']?'▼':'▶'" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
             <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>
-            <span style="color:var(--text);flex:1;">Products <span style="color:var(--text3);">${prods ? '— ' + prods.length : ''}</span></span></div>
+            <span style="color:var(--text);flex:1;">Products <span style="color:var(--text3);">${prods ? '— ' + prods.length : ''}</span><span id="hubProdW-${slug}">${hubProdWork(slug)}</span></span></div>
           <div id="hubProdTree-${slug}" style="display:${open ? '' : 'none'};padding:2px 0 4px 16px;">${hubProdTree(slug)}</div></div>`; })()}
         <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|st']=!_hubContentOpen['${slug}|st'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|st']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|st']?'▼':'▶'" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|st'] ? '▼' : '▶'}</span>
           <span style="color:var(--text);flex:1;">Strategies <span style="color:var(--text3);">${_hubContent[slug] ? '— ' + _hubContent[slug].length : ''}</span></span>
           <button onclick="event.stopPropagation();hcStratModal('${slug}')" title="New strategy" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button></div>
         <div id="hubContentBody-${slug}" style="display:${_hubContentOpen[slug + '|st'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubContent(slug)}</div></div>
+        <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|ti']=!_hubContentOpen['${slug}|ti'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|ti']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|ti']?'▼':'▶';if(_hubContentOpen['${slug}|ti'])hubTitlesLoad('${slug}')" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|ti'] ? '▼' : '▶'}</span>
+          <span style="color:var(--text);flex:1;" title="Every title of this campaign by product, with its published assets — including content outside the hub sections">Titles <span id="hubTitlesW-${slug}" style="float:right;margin-right:6px;">${hubTitlesWork(slug)}</span><span id="hubTitlesN-${slug}" style="color:var(--text3);">${_hubTitles[slug] && _hubTitles[slug].rows ? '— ' + new Set(_hubTitles[slug].rows.filter(r => r.titleId).map(r => r.titleId)).size + ' titles' : ''}</span></span>
+          <button onclick="event.stopPropagation();hubTitlesLoad('${slug}', true)" title="Reload titles + assets" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></div>
+        <div id="hubTitlesBody-${slug}" style="display:${_hubContentOpen[slug + '|ti'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubTitles(slug)}</div></div>
         <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|it']=!_hubContentOpen['${slug}|it'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|it']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|it']?'▼':'▶';if(_hubContentOpen['${slug}|it'])hubToolsLoad('${slug}')" style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;padding:3px 0;">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|it'] ? '▼' : '▶'}</span>
           <span style="color:var(--text);flex:1;">🛠 Interactive tools <span style="color:var(--text3);">${_hubTools[slug] ? '— ' + (_hubTools[slug].tools || []).length + ' built' : ''}</span></span></div>
@@ -15144,7 +15149,10 @@ async function hubKwLoad(slug) {
   } catch (e) { _hubKw[slug] = { error: e.message }; }
   hubKwRefresh(slug);
 }
-function hubKwRefresh(slug) { const el = document.getElementById('hubKwBody-' + slug); if (el) el.innerHTML = renderHubKw(slug); }
+function hubKwRefresh(slug) { const el = document.getElementById('hubKwBody-' + slug); if (el) el.innerHTML = renderHubKw(slug); const w = document.getElementById('hubKwW-' + slug); if (w) w.innerHTML = hubKwWork(slug); }
+const hubKwWork = slug => { const K = _hubKw[slug]; return K && K.products ? hubWorkTag(K.products.filter(p => p.outOfSync).length, 'product') : ''; };
+const hubProdWork = slug => { const rs = _hubResState[slug]; if (!rs) return ''; const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering);
+  const ids = mo ? (mo.products || []).map(p => p.id) : Object.keys(rs); return hubWorkTag(ids.filter(id => rs[id] === 'off-main' || rs[id] === 'empty').length, 'product'); };
 // ── editing: saveTopicClusters saves the whole {clusters, assign}; createProduct for ＋ product ──
 async function hubKwSaveClusters(slug, clusters, assign, msg) {
   const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
@@ -15232,6 +15240,108 @@ function renderHubKw(slug) {
   if (!topics.length && !clusters.length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
   return out;
 }
+// ── Production → Titles: everything the CAMPAIGN produces, not only the hub sections — every title of the hub's
+// campaign grouped by product ("No product" last), each with its PUBLISHED assets (in-progress ones counted; assets
+// already in a hub section tagged with it). Data = All Output's getDevAssetsTable rows (DEV2_ROWS), loaded once.
+const _hubTitles = {};
+async function hubTitlesLoad(slug, force) {
+  if (_hubTitles[slug] && _hubTitles[slug].rows && !force) return hubTitlesRefresh(slug);
+  _hubTitles[slug] = { loading: true }; hubTitlesRefresh(slug);
+  try {
+    const h = HUB_SITES.find(x => x.slug === slug) || {}, cid = String(h.campaignId || '').replace(/-/g, '');
+    // titles + assets + interviews (All Output rows), products' keyword flag, products' research-vs-keywords state
+    const [dev, prods, strat] = await Promise.all([
+      force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length ? call('getDevAssetsTable') : Promise.resolve(null),
+      call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({ products: [] })),
+      force || !_hubResState[slug] ? call('getCampaignStrategies', { campaignId: h.campaignId }).catch(() => null) : Promise.resolve(null),
+    ]);
+    if (dev) { if (dev.error) throw new Error(dev.error); DEV2_ROWS = dev.rows || []; }
+    if (strat) { const m = {}; ((strat && strat.products) || []).forEach(p => { m[p.productId] = p.researchState; }); _hubResState[slug] = m; }
+    const prodFlags = {}; ((prods && prods.products) || []).forEach(p => { prodFlags[String(p.id).replace(/-/g, '')] = { kwOOS: !!p.outOfSync }; });
+    _hubTitles[slug] = { rows: DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid && (r.titleId || r.kind === 'interview')), prodFlags };
+  } catch (e) { _hubTitles[slug] = { error: e.message }; }
+  hubTitlesRefresh(slug);
+}
+function hubTitlesRefresh(slug) {
+  const el = document.getElementById('hubTitlesBody-' + slug); if (el) el.innerHTML = renderHubTitles(slug);
+  const n = document.getElementById('hubTitlesN-' + slug); const T = _hubTitles[slug];
+  if (n && T && T.rows) n.textContent = '— ' + new Set(T.rows.filter(r => r.titleId).map(r => r.titleId)).size + ' titles';
+  const w = document.getElementById('hubTitlesW-' + slug); if (w) w.innerHTML = hubTitlesWork(slug);
+}
+// rows to update under the Titles section (assets ⟳/⚑, titles ⟳ pillar / 🎤, products keywords / research)
+function hubTitlesWork(slug) { const T = _hubTitles[slug]; if (!T || !T.rows) return ''; const c = { n: 0 }; renderHubTitles(slug, c); return hubWorkTag(c.n); }
+function renderHubTitles(slug, counter) {
+  const T = _hubTitles[slug];
+  if (!T || T.loading) return `<div style="font-size:11px;color:var(--text3);">${T ? 'Loading titles…' : 'Open to load.'}</div>`;
+  if (T.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load titles: ${esc(T.error)}</div>`;
+  if (!T.rows.some(r => r.titleId)) return '<div style="font-size:11px;color:var(--text3);">No titles in this campaign yet.</div>';
+  const B = 'color:var(--text3);text-decoration:none;font-size:10.5px;';
+  const nid = x => String(x || '').replace(/-/g, '');
+  const chip = (txt, color, tip, onclick) => `<span ${onclick ? `onclick="event.stopPropagation();${onclick}"` : ''} title="${esc(tip)}" style="font-size:10px;padding:0 6px;border:1px solid ${color};border-radius:4px;color:${color};font-weight:700;white-space:nowrap;${onclick ? 'cursor:pointer;' : ''}">${txt}</span>`;
+  // ── information-flow status, upstream → downstream ──
+  const resState = _hubResState[slug] || {}, build = _hubBuild[slug] || {};
+  const pillarOOS = new Set(((build.syncFlags || []).filter(x => x.kind === 'pillar')).map(x => nid(x.titleId)));
+  const reviewBy = {}; (build.flags || []).forEach(f => { if (f.assetId) (reviewBy[nid(f.assetId)] = reviewBy[nid(f.assetId)] || []).push(f); });
+  const ivByTitle = {}, ivByProduct = {};
+  T.rows.filter(r => r.kind === 'interview' && r.ivStatus === 'Flagged').forEach(r => {
+    if (r.titleId) (ivByTitle[r.titleId] = ivByTitle[r.titleId] || []).push(r); else if (r.productId) (ivByProduct[nid(r.productId)] = ivByProduct[nid(r.productId)] || []).push(r); });
+  const prodStatus = pid => { pid = nid(pid); if (!pid) return { own: [], stale: false };
+    const own = [], f = (T.prodFlags || {})[pid] || {}, rs = resState[pid];
+    if (f.kwOOS) own.push(chip('⚠ keywords changed', '#f6ad55', 'Its keyword topic changed — re-run this product\'s research / keywords'));
+    if (rs === 'off-main') own.push(chip('✗ research behind keywords', '#f6ad55', 'Product research is older than the campaign\'s current keywords — regenerate it'));
+    if (rs === 'empty') own.push(chip('✗ no research', '#f6ad55', 'This product has no Product Research yet'));
+    const iv = ivByProduct[pid] || [];
+    if (iv.length) own.push(chip(`🎤 ${iv.length} to answer`, '#ff7a00', 'Product interview' + (iv.length === 1 ? '' : 's') + ' waiting for your answers', `ivFlagOpen('${esc(iv[0].interviewId)}')`));
+    if (counter && own.length) counter.n++;
+    return { own, stale: own.length > 0 }; };
+  const titleStatus = (tid, pst, noCount) => { const own = [];
+    if (pillarOOS.has(nid(tid))) own.push(chip('⟳ pillar out of sync', '#ff7a00', 'The title\'s interviews changed after its pillar was written — rewrite it'));
+    const iv = ivByTitle[tid] || [];
+    if (iv.length) own.push(chip(`🎤 ${iv.length} to answer`, '#ff7a00', 'Interview' + (iv.length === 1 ? '' : 's') + ' on this title waiting for your answers — its assets were written without them', `ivFlagOpen('${esc(iv[0].interviewId)}')`));
+    if (counter && own.length && !noCount) counter.n++;
+    const up = pst.stale ? [chip('↑ product', 'var(--text3)', 'Upstream: this title\'s product is out of date (keywords / research) — update it first')] : [];
+    return { own, up, stale: own.length > 0 || pst.stale }; };
+  const assetFlagged = a => /^Out of Sync/.test(a.ivSync || '') || !!(reviewBy[nid(a.assetId)] || []).length;
+  const assetStatus = (a, tst) => { const own = [];
+    if (/^Out of Sync/.test(a.ivSync || '')) own.push(ivSyncBadge(/Regenerate/.test(a.ivSync) ? 'regenerate' : 'review'));
+    (reviewBy[nid(a.assetId)] || []).forEach(f => own.push(`<button onclick="reviewFlagDone('${esc(f.id)}', this)" title="Waiting for your review — ${esc(f.note || f.kind || '')} · click when reviewed" style="font-size:10px;padding:0 6px;border:1px solid #f6ad55;border-radius:4px;background:transparent;color:#f6ad55;font-weight:700;cursor:pointer;">⚑ review</button>`));
+    const up = tst.stale ? [chip('↑ upstream', 'var(--text3)', 'Upstream: its title or product needs updating (interviews / keywords / research) — this asset may need a refresh after')] : [];
+    return own.concat(up).join(' '); };
+  // ── tree: product → title → published assets ──
+  const byProd = new Map();
+  for (const r of T.rows) {
+    if (!r.titleId || r.kind === 'interview') continue;
+    const key = r.productId ? nid(r.productId) : '';
+    if (!byProd.has(key)) byProd.set(key, { name: r.productId ? r.product : 'No product', titles: new Map() });
+    const titles = byProd.get(key).titles;
+    if (!titles.has(r.titleId)) titles.set(r.titleId, { title: r.title, id: r.titleId, pub: [], wip: 0 });
+    const t = titles.get(r.titleId);
+    if (r.kind === 'asset') { if (r.assetStatus === 'Published') t.pub.push(r); else t.wip++; }
+  }
+  const prods = [...byProd.entries()].sort((a, b) => (!a[0]) - (!b[0]) || a[1].name.localeCompare(b[1].name));
+  const node = (k, depth, label, sub, badges, inner) => { const open = !!_hubContentOpen[slug + '|' + k];
+    return `<div style="margin-left:${depth * 14}px;border-left:3px solid ${depth ? 'var(--border2)' : '#8ab4f8'};padding-left:8px;margin-bottom:4px;">
+      <div data-k="${esc(k)}" onclick="_hubContentOpen['${slug}|' + this.dataset.k]=!_hubContentOpen['${slug}|' + this.dataset.k];hubTitlesRefresh('${slug}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;user-select:none;font-size:11.5px;flex-wrap:wrap;">
+        <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span>${badges ? `<span style="display:inline-flex;gap:4px;flex-wrap:wrap;">${badges}</span>` : ''}</div>
+      ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
+  return `<div style="font-size:10.5px;color:var(--text3);margin-bottom:4px;">Status shows on each row; <b>↑</b> = something upstream (product keywords / research, title interviews) changed first.</div>` + prods.map(([pid, P]) => {
+    const pst = prodStatus(pid);
+    const titles = [...P.titles.values()].sort((a, b) => b.pub.length - a.pub.length || String(a.title).localeCompare(String(b.title)));
+    const pubN = titles.reduce((a, t) => a + t.pub.length, 0);
+    // flagged rows inside (titles with their own flags + flagged published assets) → orange count on the collapsed product
+    const inside = titles.reduce((a, t) => a + (titleStatus(t.id, { stale: false }, true).own.length ? 1 : 0) + t.pub.filter(assetFlagged).length, 0);
+    if (counter) counter.n += titles.reduce((a, t) => a + t.pub.filter(assetFlagged).length, 0);
+    return node('ti:p:' + (pid || 'none'), 0, (pid ? '📦 ' : '') + esc(P.name), `— ${titles.length} title${titles.length === 1 ? '' : 's'} · ${pubN} published`, pst.own.join(' ') + hubWorkTag(inside),
+      titles.map(t => { const tst = titleStatus(t.id, pst);
+        return node('ti:t:' + t.id, 0, esc(t.title || '(untitled)'), `— ${t.pub.length} published${t.wip ? ' · ' + t.wip + ' in progress' : ''}`, tst.own.concat(tst.up).join(' ') + hubWorkTag(t.pub.filter(assetFlagged).length, 'asset'),
+          (t.pub.length ? t.pub.sort((a, b) => String(b.datePublished || '').localeCompare(String(a.datePublished || ''))).map(a => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;padding:2px 0;border-bottom:1px solid var(--border);">
+              <span style="flex:1;min-width:160px;">${esc(a.assetName || '(untitled asset)')} <span style="color:var(--text3);">· ${esc(a.assetType || '')}${a.datePublished ? ' · ' + esc(String(a.datePublished).slice(0, 10)) : ''}${a.hubSection ? ' · hub: ' + esc(a.hubSection) : ''}</span></span>
+              ${assetStatus(a, tst)}
+              <a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="${B}">Notion ↗</a></div>`).join('')
+            : '<div style="font-size:11px;color:var(--text3);">Nothing published yet.</div>')
+          + `<div style="margin-top:3px;"><a href="https://www.notion.so/${esc(nid(t.id))}" target="_blank" rel="noopener" style="${B}">title in Notion ↗</a></div>`); }).join(''));
+  }).join('');
+}
 // ── Production → 🛠 Interactive tools (worker interactiveTool + utilityScout) ──
 // Pick a seed → Utility site scout finds tool searches and groups them into ideas → 🔎 checks Google's top 10
 // → 🛠 builds the SEO tool page + embeddable widget on the hub (web/hub/<hub>/tools/<tool>/). Methods:
@@ -15309,7 +15419,7 @@ function hubResLoad(slug, force) {
   _hubResBusy[slug] = true;
   call('getCampaignStrategies', { campaignId: h.campaignId }).then(r => { const m = {}; ((r && r.products) || []).forEach(p => { m[p.productId] = p.researchState; }); _hubResState[slug] = m; })
     .catch(() => { _hubResState[slug] = {}; })
-    .finally(() => { _hubResBusy[slug] = false; const el = document.getElementById('hubProdTree-' + slug); if (el) el.innerHTML = hubProdTree(slug); });
+    .finally(() => { _hubResBusy[slug] = false; const el = document.getElementById('hubProdTree-' + slug); if (el) el.innerHTML = hubProdTree(slug); const w = document.getElementById('hubProdW-' + slug); if (w) w.innerHTML = hubProdWork(slug); });
 }
 function hubResMark(slug, pid) {
   const st = (_hubResState[slug] || {})[pid];
@@ -15837,7 +15947,25 @@ function hubLvl(head, body, headAttrs) {
   return `<div style="margin:2px 12px 4px 22px;padding-left:11px;"><div ${headAttrs || ''} style="padding:3px 0;display:flex;align-items:center;gap:6px;user-select:none;font-size:11.5px;${headAttrs ? 'cursor:pointer;' : ''}">${head}</div>${body ? `<div style="padding:2px 0 4px 16px;">${body}</div>` : ''}</div>`;
 }   // build-checklist phases + Production: collapsed until opened
 // section heading summaries (right side): orange until the section has something live, then green
-function hubPhaseSummary(b, phase) {
+// ── "to update" markers (information flow): a row that must be refreshed because something upstream changed —
+// an asset out of sync with its interviews (⟳) or waiting for review (⚑), a product whose research is behind the keywords /
+// missing or whose keyword topic changed. Collapsed headers show the count in orange so you know where to expand.
+const hubWorkTag = (n, what) => n ? ` <span title="${n} ${what || 'item'}${n === 1 ? '' : 's'} to update — expand to see them" style="color:#ff7a00;font-weight:700;white-space:nowrap;">● ${n} to update</span>` : '';
+function hubItemNeedsWork(b, it) {
+  if (/^Out of Sync/.test(it.ivSync || '')) return true;
+  const id = String(it.id || '').replace(/-/g, '');
+  return (b.flags || []).some(f => f.assetId && String(f.assetId).replace(/-/g, '') === id);
+}
+function hubStepWork(b, s, slug) {
+  if (s.pageSection) return (s.items || []).filter(it => hubItemNeedsWork(b, it)).length;
+  if (s.mainOffering) { const rs = _hubResState[slug] || {}; return (s.mainIds || (s.mainId ? [s.mainId] : [])).filter(id => rs[id] === 'off-main' || rs[id] === 'empty').length; }
+  return 0;
+}
+function hubPhaseSummary(b, phase, slug) {
+  const work = (b.steps || []).filter(x => x.phase === phase && !x.hidden).reduce((a, x) => a + hubStepWork(b, x, slug), 0);
+  return hubPhaseSummary0(b, phase) + hubWorkTag(work);
+}
+function hubPhaseSummary0(b, phase) {
   const steps = (b.steps || []).filter(x => x.phase === phase && !x.hidden), O = '#f6ad55', G = '#4ade80';
   const pill = (txt, ok) => `<span style="color:${ok ? G : O};font-weight:600;">${txt}</span>`;
   if (steps.some(x => x.flow)) { const d = steps.filter(x => x.done).length, nx = steps.find(x => !x.done);
@@ -15991,12 +16119,19 @@ async function reviewFlagsLoad() {
       <button onclick="reviewFlagsLoad()" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></div>
     ${flags.length ? reviewFlagRows(flags, true) : '<div style="padding:10px;font-size:12px;color:var(--text3);">Nothing waiting for review.</div>'}</div>`;
 }
+const _hubNotifOpen = {};   // build checklist 🔔 Notifications — collapsed by default
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
   // 🎤 interviews are listed on All Output + the Worksheet, not here (operator, 2026-10-10)
   const syncBox = (b.syncFlags || []).length ? `<div style="border:1px solid #e5534b;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#e5534b;border-bottom:1px solid var(--border);">⟳ ${b.syncFlags.length} out of sync with interviews</div>${ivSyncRows(b.syncFlags, false)}</div>` : '';
-  const flagBox = syncBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
+  const flagInner = syncBox + ((b.flags || []).length ? `<div style="border:1px solid #f6ad55;border-radius:8px;margin:2px 0 10px;"><div style="padding:6px 10px;font-size:12px;font-weight:700;color:#f6ad55;border-bottom:1px solid var(--border);">⚑ ${b.flags.length} waiting for your review</div>${reviewFlagRows(b.flags, false)}</div>` : '');
+  // collapsed by default — the out-of-sync / review badges also sit on the asset rows themselves
+  const nSync = (b.syncFlags || []).length, nRev = (b.flags || []).length, nOpen = !!_hubNotifOpen[slug];
+  const flagBox = nSync || nRev ? `<div style="margin:2px 12px 8px;"><div onclick="_hubNotifOpen['${slug}']=!_hubNotifOpen['${slug}'];hubBuildRefreshRows('${slug}')" style="display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;padding:3px 0;">
+      <span style="font-size:10px;color:var(--text3);width:10px;">${nOpen ? '▼' : '▶'}</span><span style="font-weight:600;">🔔 Notifications</span>
+      <span style="font-size:10.5px;">${nSync ? `<span style="color:#e5534b;">⟳ ${nSync} out of sync</span>` : ''}${nSync && nRev ? ' · ' : ''}${nRev ? `<span style="color:#f6ad55;">⚑ ${nRev} for review</span>` : ''}</span></div>
+    ${nOpen ? flagInner : ''}</div>` : '';
   const h = HUB_SITES.find(x => x.slug === slug) || {};
   const msUrl = h.campaignId ? 'https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=' + h.campaignId : '';
   let lastPhase = '';
@@ -16006,7 +16141,7 @@ function renderHubBuildRows(slug) {
     const phOpen = !!_hubPhaseOpen[slug + '|' + s.phase];
     const single = (s.pageSection || s.mainOffering) && b.steps.filter(x => x.phase === s.phase && !x.hidden).length === 1;   // one row → no redundant inner header
     const phHead = extra => `<div data-ph="${esc(s.phase)}" onclick="_hubPhaseOpen['${slug}|' + this.dataset.ph]=!_hubPhaseOpen['${slug}|' + this.dataset.ph];hubBuildRefreshRows('${slug}')" style="padding:7px 12px 3px;font-size:9px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--text2);display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;"><span style="font-size:9px;color:var(--text3);width:10px;">${phOpen ? '▼' : '▶'}</span>${esc(s.phase)}${s.build ? ' <span style="color:#ffb020;">· not built</span>' : ''}${extra ? `<span onclick="event.stopPropagation()" style="display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--text);cursor:default;">${extra}</span>` : ''}</div>`;
-    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, single ? '' : phHead(hubPhaseSummary(b, s.phase))) : '';
+    const phaseHdr = s.phase !== lastPhase ? (lastPhase = s.phase, single ? '' : phHead(hubPhaseSummary(b, s.phase, slug))) : '';
     const wrapRow = (head, body, attrs, headSingle) => single
       ? phHead(headSingle) + (phOpen && body ? `<div style="margin:2px 12px 4px 22px;padding-left:11px;"><div style="padding:2px 0 4px 16px;">${body}</div></div>` : '')
       : phaseHdr + hubLvl(head, body, attrs);
@@ -16020,7 +16155,7 @@ function renderHubBuildRows(slug) {
         const live = it.url ? (/^https?:/.test(it.url) ? it.url : hubBase + it.url.replace(/^\.?\//, '')) : '';
         return hubGridRow({ pad: 0, title: it.title, type: it.type, typeTip: 'Asset Type' + (it.section ? ' · placed here by Hub Section = ' + it.section : ''),
           typeHtml: it.type ? esc(it.type) + (it.section ? ' <span style="color:var(--text3);">↳</span>' : '') : '', method: it.method, status: it.status, date: it.date,
-          links: (/^topical post$/i.test(it.type || '') ? `<button onclick="topicalWrite('${esc(it.id)}', this)" title="Write this topical SEO post — the first run writes its 5-question interview and waits for your answers" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-weight:700;cursor:pointer;">✍ Write</button> <button onclick="topicalQueue('${esc(it.id)}', this)" title="Queue it — the 30-minute cron writes it once its interview is answered" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⏱ Queue</button> ` : '') + (it.ivFlag && it.ivFlag.missing ? `<button onclick="ivOwnCreate('${esc(it.titleId)}','${esc(it.id)}','${esc(it.ivFlag.ownType)}', this)" title="This is an interview-based asset (tier: Own interview) and has no interview of its own yet — write one" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;font-weight:700;cursor:pointer;">🎤 create own interview</button> ` : '') + (it.ivFlag && it.ivFlag.id ? `<button onclick="ivFlagOpen('${esc(it.ivFlag.id)}')" title="${it.ivFlag.own ? 'This asset is built from its OWN interview — still flagged.' : `This asset's title has ${it.ivFlag.n} unfinished interview${it.ivFlag.n === 1 ? '' : 's'} — the asset was written without them.`} Answer: ${esc(it.ivFlag.angle || '')}" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;">🎤 ${it.ivFlag.n} interview${it.ivFlag.n === 1 ? '' : 's'} →</button> ` : '') + (/^Out of Sync/.test(it.ivSync || '') ? ivSyncBadge(/Regenerate/.test(it.ivSync) ? 'regenerate' : 'review') + ' ' : '') + (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
+          links: (/^topical post$/i.test(it.type || '') ? `<button onclick="topicalWrite('${esc(it.id)}', this)" title="Write this topical SEO post — the first run writes its 5-question interview and waits for your answers" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-weight:700;cursor:pointer;">✍ Write</button> <button onclick="topicalQueue('${esc(it.id)}', this)" title="Queue it — the 30-minute cron writes it once its interview is answered" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">⏱ Queue</button> ` : '') + (it.ivFlag && it.ivFlag.missing ? `<button onclick="ivOwnCreate('${esc(it.titleId)}','${esc(it.id)}','${esc(it.ivFlag.ownType)}', this)" title="This is an interview-based asset (tier: Own interview) and has no interview of its own yet — write one" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;font-weight:700;cursor:pointer;">🎤 create own interview</button> ` : '') + (it.ivFlag && it.ivFlag.id ? `<button onclick="ivFlagOpen('${esc(it.ivFlag.id)}')" title="${it.ivFlag.own ? 'This asset is built from its OWN interview — still flagged.' : `This asset's title has ${it.ivFlag.n} unfinished interview${it.ivFlag.n === 1 ? '' : 's'} — the asset was written without them.`} Answer: ${esc(it.ivFlag.angle || '')}" style="font-size:10px;padding:0 6px;border:1px solid #ff7a00;border-radius:4px;background:#ff7a00;color:#111;font-weight:700;cursor:pointer;">🎤 ${it.ivFlag.n} interview${it.ivFlag.n === 1 ? '' : 's'} →</button> ` : '') + (/^Out of Sync/.test(it.ivSync || '') ? ivSyncBadge(/Regenerate/.test(it.ivSync) ? 'regenerate' : 'review') + ' ' : '') + ((b.flags || []).filter(f => f.assetId && String(f.assetId).replace(/-/g, '') === String(it.id).replace(/-/g, '')).map(f => `<button onclick="reviewFlagDone('${esc(f.id)}', this)" title="Waiting for your review — ${esc(f.note || f.kind || '')} · click when reviewed" style="font-size:10px;padding:0 6px;border:1px solid #f6ad55;border-radius:4px;background:transparent;color:#f6ad55;font-weight:700;cursor:pointer;">⚑ review</button> `).join('')) + (it.linkedTitle ? `<button onclick="hubAssetTitleEdit('${slug}','${s.id}','${it.id}')" title="Edit the attached title: ${esc(it.linkedTitle.title)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎ Title</button> ` : '') + `<button onclick="hubAssetEdit('${slug}','${s.id}','${it.id}')" title="Edit title, notes, status and section" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> ` + (live ? `<a href="${esc(live)}" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;">page ↗</a> ` : '') + `<a href="https://www.notion.so/${esc(it.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a>` }); }).join('');
       const n = (s.items || []).length;
       // sections that also hold hand-picked products (CTA's): product records first, then the assets
       let prodRows = '', pick = '', np = 0;
@@ -16045,9 +16180,9 @@ function renderHubBuildRows(slug) {
       const cntCol = target === false ? 'color:#f6ad55;' : 'color:var(--text3);';
       if (open && s.titleSlots && !n && !np) prodRows = '<div style="font-size:11px;color:var(--text3);padding:2px 0;">Nothing here yet — use + on this line to add a title.</div>';
       return wrapRow(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np || s.titleSlots ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
-        <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="${cntCol}">— ${countTxt}</span></span>${pick}`, (rows ? rows.replace(hubGridHead(0), hubGridHead(0) + prodRows) : prodRows),
+        <span style="flex:1;min-width:0;color:var(--text);">${esc(s.label)} <span style="${cntCol}">— ${countTxt}</span>${hubWorkTag(hubStepWork(b, s, slug))}</span>${pick}`, (rows ? rows.replace(hubGridHead(0), hubGridHead(0) + prodRows) : prodRows),
         `onclick="_hubPageOpen['${slug}|${s.id}']=!_hubPageOpen['${slug}|${s.id}'];hubBuildRefreshRows('${slug}')"`,
-        `${hubPhaseSummary(b, s.phase)}${pick}`);
+        `${hubPhaseSummary(b, s.phase, slug)}${pick}`);
     } else if (s.mainOffering) {
       // the hub's main offering: one real Products record — pick one of the campaign's products, or add a new one
       const SEL = 'font-size:10.5px;padding:2px 4px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:220px;';
