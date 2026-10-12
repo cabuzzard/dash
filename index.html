@@ -6354,10 +6354,12 @@ async function kwRenderSendBar() {
   document.getElementById('kwSelCount').textContent = `${KW.selected.size} selected →`;
   { const hs = document.getElementById('kwHubSelN'); if (hs) hs.textContent = KW.selected.size ? KW.selected.size + ' selected →' : 'tick keywords, then →'; }
   const sel = document.getElementById('kwSendCampaign');
-  if (KW.selected.size && !KW.campaigns) {
+  // fill whenever this select hasn't got the current list (the 🌐 hub picker may have loaded KW.campaigns first)
+  if (KW.selected.size && (!KW.campaigns || sel._list !== KW.campaigns)) {
     try {
-      KW.campaigns = await kwHubCampaigns();
-      sel.innerHTML = '<option value="">choose campaign…</option>' + kwCampaignOptions(KW.campaigns);
+      if (!KW.campaigns) KW.campaigns = await kwHubCampaigns();
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">choose campaign…</option>' + kwCampaignOptions(KW.campaigns, cur); sel._list = KW.campaigns;
     } catch (e) { document.getElementById('kwSendMsg').textContent = 'Could not load campaigns: ' + e.message; }
   }
 }
@@ -6525,9 +6527,11 @@ async function kwHubPickLoad() {
   kwHubLoadUI(sel.value, c ? c.name : '');
 }
 async function kwHubFillPick() {
-  const sel = document.getElementById('kwHubPick'); if (!sel || sel.options.length > 1) return;
+  const sel = document.getElementById('kwHubPick'); if (!sel || (KW.campaigns && sel._list === KW.campaigns)) return;
   try { if (!KW.campaigns) KW.campaigns = await kwHubCampaigns();
-    sel.innerHTML = '<option value="">choose a hub…</option>' + kwCampaignOptions(KW.campaigns); } catch (e) {}
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">choose a hub…</option>' + kwCampaignOptions(KW.campaigns, cur); sel._list = KW.campaigns;
+  } catch (e) { const m = document.getElementById('kwHubLoadMsg'); if (m) m.textContent = 'Could not load campaigns: ' + e.message; }
 }
 // row decoration from the DRAFT model — topic / cluster / where in the hub the keyword lives
 function kwHubDecorate(rows) {
