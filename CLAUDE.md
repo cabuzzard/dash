@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 > **Deep history / incident write-ups live in `docs/`** to keep this file small (it's injected every turn):
-> `docs/visual-brief.md` · `docs/hub-hosting-history.md` · `docs/notion-incidents.md` · `docs/strategy-changelog.md` · `docs/methods-titles-assets.md` · `docs/strategy-sequence-next.md` · `docs/lead-sourcing.md`
+> `docs/page-versioning.md` (version bar + `?v=` rules — read before shipping any page/shared-JS change) · `docs/visual-brief.md` · `docs/hub-hosting-history.md` · `docs/notion-incidents.md` · `docs/strategy-changelog.md` · `docs/methods-titles-assets.md` · `docs/strategy-sequence-next.md` · `docs/lead-sourcing.md`
 
 ## Architecture Overview
 
