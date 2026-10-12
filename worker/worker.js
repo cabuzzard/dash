@@ -48298,6 +48298,7 @@ const KW_DEFAULT_CONFIG = {
   max_depth: 1, seeds_per_level: 10, seeds_per_request: 1, min_volume: 100, max_volume: 0,
   min_cpc: 0, max_cpc: 0, competition: [], include: [], exclude: ["jobs", "salary", "hiring", "certification"],
   max_requests: 25, max_keywords: 10000, rank_by: "volume_x_cpc",
+  seed_match: 0,   // 1 = Discover only expands keywords sharing a meaningful word with the seeds (kwSeedVocab)
 };
 const KW_SORTS = { keyword: "k.text", vol: "m.avg_monthly_searches", ci: "m.competition_index", lb: "m.low_top_of_page_bid",
   hb: "m.high_top_of_page_bid", cpc: "m.average_cpc", trend: "m.trend_pct", depth: "f.depth", intent: "m.intent" };
@@ -48541,6 +48542,13 @@ function kwPasses(cfg, r) {
   if ((cfg.exclude || []).some(x => x && t.includes(String(x).toLowerCase()))) return false;
   return true;
 }
+// "Stay on topic" (cfg.seed_match): the seeds' distinctive words, crudely stemmed. Generic words don't count —
+// "payroll software for small business" shares "business" with a bootstrapping seed list but is off topic.
+const KW_GENERIC = new Set("a an and the of for to in on with without at by from your you my how what why when where who which is are can do does best top near me free online new get make start starting business businesses small company companies service services idea ideas tips guide ways way vs per".split(" "));
+const kwStem = w => w.replace(/(ing|ed|es|s)$/, m => w.length - m.length >= 4 ? "" : m);
+const kwWords = t => String(t || "").toLowerCase().split(/[^a-z0-9$]+/).filter(w => w.length > 2 && !KW_GENERIC.has(w)).map(kwStem);
+const kwSeedVocab = seeds => new Set([].concat(seeds || []).flatMap(kwWords));
+const kwOnTopic = (vocab, t) => kwWords(t).some(w => vocab.has(w));
 const kwScore = (cfg, r) => cfg.rank_by === "volume" ? (r.vol || 0) : cfg.rank_by === "cpc" ? (r.hb || 0) : (r.vol || 0) * Math.max(r.hb || 0, 0.01);
 
 async function kwRunSummary(env, runId) {
@@ -48625,7 +48633,8 @@ async function kwStepRun(env, runId) {
           + "WHERE f.run_id = ? AND f.depth = ? AND f.expanded = 0"
           + (p.augment ? " AND f.root_seed_id IN (SELECT value FROM json_each(?))" : ""))
           .bind(p.market.languageId, kwGeoKey(p.market.geoIds), p.market.network, runId, next, ...(p.augment ? [JSON.stringify(p.augment.roots)] : [])).all()).results;
-        const ok = cands.filter(r => kwPasses(cfg, r)).sort((a, b) => kwScore(cfg, b) - kwScore(cfg, a));
+        const vocab = cfg.seed_match ? kwSeedVocab(p.augment ? p.augment.keywords : p.keywords) : null;
+        const ok = cands.filter(r => kwPasses(cfg, r) && (!vocab || !vocab.size || kwOnTopic(vocab, r.text))).sort((a, b) => kwScore(cfg, b) - kwScore(cfg, a));
         const chosen = ok.slice(0, cfg.seeds_per_level);
         await db.batch([
           db.prepare("UPDATE kw_runs SET level = ? WHERE id = ?").bind(next, runId),
@@ -48633,7 +48642,7 @@ async function kwStepRun(env, runId) {
             .bind(runId, JSON.stringify(chosen.map(c => c.id))),
         ]);
         if (!chosen.length) return kwFinish(env, runId, "done", "no keywords at depth " + next + " passed the filters");
-        step = { line: "L" + next + ": " + cands.length.toLocaleString() + " candidates → " + ok.length.toLocaleString() + " pass filters → expanding top "
+        step = { line: "L" + next + ": " + cands.length.toLocaleString() + " candidates → " + ok.length.toLocaleString() + " pass filters" + (vocab ? " (on-topic only)" : "") + " → expanding top "
           + chosen.length + ": " + chosen.slice(0, 6).map(c => c.text).join(", ") + (chosen.length > 6 ? " …" : "") };
       }
     }

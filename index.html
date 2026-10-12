@@ -1162,6 +1162,7 @@
           <label class="kw-f">Min bid $<input id="kwc_min_cpc" type="number" min="0" step="0.5" value="0" title="high top-of-page bid"></label>
           <label class="kw-f">Max bid $<input id="kwc_max_cpc" type="number" min="0" step="0.5" value="0" title="0 = no cap"></label>
           <label class="kw-f">Rank next seeds by<select id="kwc_rank_by"><option value="volume_x_cpc">volume × bid</option><option value="volume">volume</option><option value="cpc">bid</option></select></label>
+          <label class="kw-f" title="Discover only expands keywords that share a distinctive word with your seeds (generic words like business / small / how don't count) — stops a run drifting off to e.g. payroll software"><span><input id="kwc_seed_match" type="checkbox" style="width:auto;"> Stay on topic</span><span class="kw-hint">expand only keywords sharing a seed word</span></label>
           <label class="kw-f" style="grid-column:span 2;">Include terms <span class="kw-hint">expand only these, comma-sep</span><input id="kwc_include"></label>
           <label class="kw-f" style="grid-column:span 2;">Exclude terms<input id="kwc_exclude" value="jobs, salary, hiring, certification"></label>
         </div>
@@ -6390,6 +6391,7 @@ function kwFormConfig() {
     for (const k of ['max_depth', 'seeds_per_level', 'seeds_per_request', 'max_requests', 'max_keywords', 'min_volume', 'max_volume', 'min_cpc', 'max_cpc'])
       config[k] = document.getElementById('kwc_' + k).value;
     config.rank_by = document.getElementById('kwc_rank_by').value;
+    config.seed_match = document.getElementById('kwc_seed_match').checked ? 1 : 0;
     config.include = list(document.getElementById('kwc_include').value);
     config.exclude = list(document.getElementById('kwc_exclude').value);
     config.competition = [...document.querySelectorAll('.kwc-comp:checked')].map(c => c.value);
