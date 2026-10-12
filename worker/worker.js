@@ -19641,7 +19641,10 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           topicId: (p.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").replace(/-/g, "") || null,
           outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
         }));
-        return json({ products });
+        // Group → Stack → Product: the campaign's product groups (stack → group name, + the saved group order)
+        let sg = null; try { sg = await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json"); } catch (e) {}
+        products.forEach(p => { p.group = ((sg && sg.map) || {})[p.stack || ""] || null; });
+        return json({ products, groupOrder: (sg && sg.order) || [] });
       }
 
       // ── getHubMainProduct ── the single Product a content hub is built

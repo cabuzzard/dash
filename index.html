@@ -15259,7 +15259,7 @@ async function hubTitlesLoad(slug, force) {
     if (dev) { if (dev.error) throw new Error(dev.error); DEV2_ROWS = dev.rows || []; }
     if (strat) { const m = {}; ((strat && strat.products) || []).forEach(p => { m[p.productId] = p.researchState; }); _hubResState[slug] = m; }
     const prodFlags = {}; ((prods && prods.products) || []).forEach(p => { prodFlags[String(p.id).replace(/-/g, '')] = { kwOOS: !!p.outOfSync }; });
-    _hubTitles[slug] = { rows: DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid && (r.titleId || r.kind === 'interview')), prodFlags, products: (prods && prods.products) || [] };
+    _hubTitles[slug] = { rows: DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid && (r.titleId || r.kind === 'interview')), prodFlags, products: (prods && prods.products) || [], groupOrder: (prods && prods.groupOrder) || [] };
   } catch (e) { _hubTitles[slug] = { error: e.message }; }
   hubTitlesRefresh(slug);
 }
@@ -15270,6 +15270,29 @@ function hubTitlesRefresh(slug) {
   const w = document.getElementById('hubTitlesW-' + slug); if (w) w.innerHTML = hubTitlesWork(slug);
 }
 // rows to update under the Titles section (assets ⟳/⚑, titles ⟳ pillar / 🎤, products keywords / research)
+// Group → Stack → Product (→ Title → Asset): products sorted into their Product Group (saved order first, "No group" last)
+// and Product Stack ("No stack" last); titles with no product go last. A level that would only hold the empty bucket is
+// skipped (no groups at all → starts at stacks). Orange counts roll up from the products inside.
+function hubTitlesTree(slug, prods, prodRow, prodWork, node, T) {
+  const info = {}; (T.products || []).forEach(p => { info[String(p.id).replace(/-/g, '')] = p; });
+  const order = T.groupOrder || [], NOPROD = '\u0000noprod', groups = new Map();
+  for (const e of prods) { const pid = e[0], p = info[pid] || {}, g = !pid ? NOPROD : (p.group || ''), st = pid ? (p.stack || '') : '';
+    if (!groups.has(g)) groups.set(g, new Map()); const sm = groups.get(g); if (!sm.has(st)) sm.set(st, []); sm.get(st).push(e); }
+  const rank = g => { const i = order.indexOf(g); return i < 0 ? 1e9 : i; };
+  const gKeys = [...groups.keys()].sort((a, b) => (a === NOPROD) - (b === NOPROD) || (!a) - (!b) || rank(a) - rank(b) || a.localeCompare(b));
+  const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
+  const stacks = (g, sm) => [...sm.keys()].sort((a, b) => (!a) - (!b) || a.localeCompare(b)).map(st => {
+    const list = sm.get(st), inner = list.map(prodRow).join('');
+    if (g === NOPROD || (!st && sm.size === 1)) return inner;   // no-product titles / only "no stack" → no stack level
+    const w = list.reduce((a, e) => a + prodWork(e[0], e[1]), 0);
+    return node('ti:s:' + g + '|' + st, 0, st ? '🧱 ' + esc(st) : 'No stack', '— ' + plural(list.length, 'product'), hubWorkTag(w), inner);
+  }).join('');
+  if (gKeys.every(g => !g || g === NOPROD)) return gKeys.map(g => stacks(g, groups.get(g))).join('');   // no groups set up
+  return gKeys.map(g => { const sm = groups.get(g); if (g === NOPROD) return stacks(g, sm);
+    const list = [...sm.values()].flat(), w = list.reduce((a, e) => a + prodWork(e[0], e[1]), 0);
+    return node('ti:g:' + g, 0, g ? '🗂 ' + esc(g) : 'No group', '— ' + plural(sm.size, 'stack') + ' · ' + plural(list.length, 'product'), hubWorkTag(w), stacks(g, sm));
+  }).join('');
+}
 function hubTitlesWork(slug) { const T = _hubTitles[slug]; if (!T || !T.rows) return ''; const c = { n: 0 }; renderHubTitles(slug, c); return hubWorkTag(c.n); }
 function renderHubTitles(slug, counter) {
   const T = _hubTitles[slug];
@@ -15286,14 +15309,14 @@ function renderHubTitles(slug, counter) {
   const ivByTitle = {}, ivByProduct = {};
   T.rows.filter(r => r.kind === 'interview' && r.ivStatus === 'Flagged').forEach(r => {
     if (r.titleId) (ivByTitle[r.titleId] = ivByTitle[r.titleId] || []).push(r); else if (r.productId) (ivByProduct[nid(r.productId)] = ivByProduct[nid(r.productId)] || []).push(r); });
-  const prodStatus = pid => { pid = nid(pid); if (!pid) return { own: [], stale: false };
+  const prodStatus = (pid, noCount) => { pid = nid(pid); if (!pid) return { own: [], stale: false };
     const own = [], f = (T.prodFlags || {})[pid] || {}, rs = resState[pid];
     if (f.kwOOS) own.push(chip('⚠ keywords changed', '#f6ad55', 'Its keyword topic changed — re-run this product\'s research / keywords'));
     if (rs === 'off-main') own.push(chip('✗ research behind keywords', '#f6ad55', 'Product research is older than the campaign\'s current keywords — regenerate it'));
     if (rs === 'empty') own.push(chip('✗ no research', '#f6ad55', 'This product has no Product Research yet'));
     const iv = ivByProduct[pid] || [];
     if (iv.length) own.push(chip(`🎤 ${iv.length} to answer`, '#ff7a00', 'Product interview' + (iv.length === 1 ? '' : 's') + ' waiting for your answers', `ivFlagOpen('${esc(iv[0].interviewId)}')`));
-    if (counter && own.length) counter.n++;
+    if (counter && own.length && !noCount) counter.n++;
     return { own, stale: own.length > 0 }; };
   const titleStatus = (tid, pst, noCount) => { const own = [];
     if (pillarOOS.has(nid(tid))) own.push(chip('⟳ pillar out of sync', '#ff7a00', 'The title\'s interviews changed after its pillar was written — rewrite it'));
@@ -15325,7 +15348,10 @@ function renderHubTitles(slug, counter) {
       <div data-k="${esc(k)}" onclick="_hubContentOpen['${slug}|' + this.dataset.k]=!_hubContentOpen['${slug}|' + this.dataset.k];hubTitlesRefresh('${slug}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;user-select:none;font-size:11.5px;flex-wrap:wrap;">
         <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span>${badges ? `<span style="display:inline-flex;gap:4px;flex-wrap:wrap;">${badges}</span>` : ''}</div>
       ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
-  return `<div style="font-size:10.5px;color:var(--text3);margin-bottom:4px;">Status shows on each row; <b>↑</b> = something upstream (product keywords / research, title interviews) changed first.</div>` + prods.map(([pid, P]) => {
+  const intro = `<div style="font-size:10.5px;color:var(--text3);margin-bottom:4px;">Status shows on each row; <b>↑</b> = something upstream (product keywords / research, title interviews) changed first.</div>`;
+  // rows to update under one product (its own flags + flagged titles + flagged published assets) — for the group / stack roll-ups
+  const prodWork = (pid, P) => (prodStatus(pid, true).own.length ? 1 : 0) + [...P.titles.values()].reduce((a, t) => a + (titleStatus(t.id, { stale: false }, true).own.length ? 1 : 0) + t.pub.filter(assetFlagged).length, 0);
+  const prodRow = ([pid, P]) => {
     const pst = prodStatus(pid);
     const titles = [...P.titles.values()].sort((a, b) => b.pub.length - a.pub.length || String(a.title).localeCompare(String(b.title)));
     const pubN = titles.reduce((a, t) => a + t.pub.length, 0);
@@ -15342,7 +15368,8 @@ function renderHubTitles(slug, counter) {
               <a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="${B}">Notion ↗</a></div>`).join('')
             : '<div style="font-size:11px;color:var(--text3);">Nothing published yet.</div>')
           + `<div style="margin-top:3px;"><a href="https://www.notion.so/${esc(nid(t.id))}" target="_blank" rel="noopener" style="${B}">title in Notion ↗</a></div>`); }).join(''));
-  }).join('');
+  };
+  return intro + hubTitlesTree(slug, prods, prodRow, prodWork, node, T);
 }
 // ── Production → Titles actions: ＋ Title (title · guidance · existing product), per title ✍ Write pillar and ＋ Asset ──
 // ＋ Title = createDevTitle at Planning (guidance → the title's research instructions / Notes, read by every writer).
