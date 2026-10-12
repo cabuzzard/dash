@@ -25,6 +25,8 @@
 
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+  /* room under every tab's last row so the fixed ⏱ Cron / 📝 Notes flyout buttons never cover it (e.g. the Keywords pager) */
+  body { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
 
   /* ── PIN ── */
   .pin-screen {
