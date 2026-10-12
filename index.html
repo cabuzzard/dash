@@ -5803,6 +5803,64 @@ function cronLogDraw() {
     : '<div style="padding:20px;text-align:center;">No runs recorded yet. The log starts with the next scheduled run, within 4 minutes.</div>');
 }
 document.addEventListener('DOMContentLoaded', cronLogInit); if (document.readyState !== 'loading') setTimeout(cronLogInit, 0);
+// ── 📝 Notes flyout (every tab): the SAME Method Matrix Notes scratchpad (getPanelNote/setPanelNote, HAM_NOTE_KEY) in a
+// drawer, for a quick note from anywhere. Re-reads the note on every open and keeps the TD-tab textarea in sync, so the
+// two never overwrite each other with stale text.
+let _qnLast = '', _qnTimer = null;
+function quickNoteInit() {
+  if (document.getElementById('qnBtn')) return;
+  const btn = document.createElement('button');
+  btn.id = 'qnBtn'; btn.title = 'Method Matrix notes — quick note'; btn.textContent = '📝 Notes';
+  btn.style.cssText = 'position:fixed;right:96px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:900;font-size:11px;font-weight:700;padding:7px 12px;border-radius:999px;border:1px solid var(--border2);background:var(--surface);color:var(--text2);cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.25);';
+  btn.onclick = () => quickNoteToggle();
+  const dr = document.createElement('div');
+  dr.id = 'qnDrawer';
+  dr.style.cssText = 'position:fixed;top:0;right:0;bottom:0;width:min(520px,100vw);z-index:901;background:var(--bg);border-left:1px solid var(--border2);box-shadow:-8px 0 30px rgba(0,0,0,.3);display:none;flex-direction:column;';
+  dr.innerHTML = `<div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);">
+      <div style="font-size:15px;font-weight:700;color:var(--text);">📝 Method Matrix notes</div>
+      <span id="qnSaved" style="font-size:11px;color:var(--text3);"></span>
+      <button onclick="quickNoteToggle(false)" title="Close" style="margin-left:auto;font-size:13px;padding:2px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>
+    </div>
+    <textarea id="qnTa" placeholder="Working notes for the method matrix…" oninput="quickNoteDirty()" onblur="quickNoteFlush()" style="flex:1;margin:10px 14px calc(14px + env(safe-area-inset-bottom, 0px));box-sizing:border-box;font-size:14px;line-height:1.5;font-family:inherit;background:var(--surface);border:1px solid var(--border2);border-radius:var(--radius-sm);color:var(--text);padding:10px 12px;resize:none;outline:none;"></textarea>`;
+  document.body.appendChild(btn); document.body.appendChild(dr);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && dr.style.display === 'flex') quickNoteToggle(false); });
+}
+async function quickNoteToggle(force) {
+  const dr = document.getElementById('qnDrawer'); if (!dr) return;
+  const open = force === undefined ? dr.style.display !== 'flex' : force;
+  if (!open) { await quickNoteFlush(); dr.style.display = 'none'; return; }
+  if (typeof hamNotesFlush === 'function') await hamNotesFlush().catch(() => {});   // TD-tab edits land first
+  dr.style.display = 'flex';
+  const ta = document.getElementById('qnTa'), tag = document.getElementById('qnSaved');
+  ta.disabled = true; tag.textContent = 'loading…';
+  try {
+    const r = await call('getPanelNote', { key: HAM_NOTE_KEY }); if (r.error) throw new Error(r.error);
+    ta.value = r.text || ''; _qnLast = ta.value; tag.textContent = '';
+    ta.disabled = false;
+    // a fresh line at the end, cursor on it — ready to type
+    if (ta.value && !/\n$/.test(ta.value)) ta.value += '\n';
+    ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); ta.scrollTop = ta.scrollHeight;
+  } catch (e) { tag.textContent = 'load failed — ' + e.message; }
+}
+function quickNoteDirty() {
+  document.getElementById('qnSaved').textContent = 'unsaved…';
+  clearTimeout(_qnTimer); _qnTimer = setTimeout(quickNoteFlush, 900);
+}
+async function quickNoteFlush() {
+  clearTimeout(_qnTimer); _qnTimer = null;
+  const ta = document.getElementById('qnTa'), tag = document.getElementById('qnSaved');
+  if (!ta || ta.disabled) return;
+  const text = ta.value;
+  if (text.replace(/\s+$/, '') === _qnLast.replace(/\s+$/, '')) return;   // only the blank line we added → nothing to save
+  tag.textContent = 'saving…';
+  try {
+    const r = await call('setPanelNote', { key: HAM_NOTE_KEY, text }); if (r.error) throw new Error(r.error);
+    _qnLast = text; tag.textContent = 'saved ✓'; setTimeout(() => { if (tag.textContent === 'saved ✓') tag.textContent = ''; }, 1500);
+    const hta = document.getElementById('hamNotesTa');   // keep the TD-tab copy current
+    if (hta && typeof _hamNotesLoaded !== 'undefined' && _hamNotesLoaded) { hta.value = text; _hamNotesLast = text; }
+  } catch (e) { tag.textContent = 'save failed — ' + e.message; }
+}
+document.addEventListener('DOMContentLoaded', quickNoteInit); if (document.readyState !== 'loading') setTimeout(quickNoteInit, 0);
 function switchTab(name) {
   setTimeout(() => document.querySelectorAll(".flow-tbl textarea").forEach(flowGrow), 0);   // cells in a hidden tab are measured once it shows
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
