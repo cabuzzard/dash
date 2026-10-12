@@ -49397,7 +49397,7 @@ async function handleKeywordAction(body, env) {
   }
 
   if (a === "kwRuns") {
-    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, r.keywords keywords_live, json_extract(r.params_json,'$.hub.cid') hub_cid "
+    const rows = (await db.prepare("SELECT r.id, r.name, r.status, r.started_at, r.finished_at, r.api_calls, r.requests, r.cache_hits, r.notes, r.level, r.keywords keywords_live, json_extract(r.params_json,'$.hub.cid') hub_cid, json_extract(r.params_json,'$.hubLink.cid') link_cid "
       + "FROM kw_runs r ORDER BY r.id DESC LIMIT 100").all()).results;
     const meta = (await env.TRADES.get("kwsnap:meta", "json")) || {};
     for (const r of rows) {
@@ -49415,9 +49415,15 @@ async function handleKeywordAction(body, env) {
     if (!keywords.length && !url && !site) return json({ error: "Give at least one keyword, a URL, or a site" }, 400);
     if (site && (keywords.length || url)) return json({ error: "A whole-site seed can't be combined with keywords or a URL" }, 400);
     const c = kwParseConfig(body.config);
-    const market = await kwMarket(env, body);
+    // 🔬 research run from the hub view: same methodology as any run, but the HUB RUN's market so numbers line up
+    let hubLink = null, market = null;
+    if (body.hubLink && body.hubLink.runId) {
+      const hr = await kwRunSummary(env, Number(body.hubLink.runId));
+      if (hr && hr.params && hr.params.hub) { hubLink = { cid: hr.params.hub.cid, name: hr.params.hub.name, runId: hr.id }; market = hr.params.market; }
+    }
+    if (!market) market = await kwMarket(env, body);
     const name = String(body.name || site || url || keywords.slice(0, 3).join(", ")).slice(0, 120);
-    const params = { keywords, url, site, market, config: c };
+    const params = { keywords, url, site, market, config: c, ...(hubLink ? { hubLink } : {}) };
     const ins = await db.prepare("INSERT INTO kw_runs(name, params_json, status, started_at) VALUES (?,?,?,?) RETURNING id")
       .bind(name, JSON.stringify(params), "running", kwNow()).first();
     if (keywords.length) {

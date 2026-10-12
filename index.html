@@ -1221,6 +1221,7 @@
         <select id="kwIntentF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">any intent</option></select>
         <select id="kwLocalF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">local: any</option><option value="only">local only</option><option value="exclude">no local</option></select>
         <select id="kwBrandF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">brand: any</option><option value="only">brands only</option><option value="exclude">no brands</option></select>
+        <select id="kwGroupBy" onchange="kwSetGroupBy(this.value)" class="kw-sel" title="Group the results — collapsible groups with totals; the header checkbox selects the whole group"></select>
         <button class="kw-btn" onclick="kwLoadResults(0)">Apply</button>
         <button class="kw-btn" onclick="kwTogglePaste()" title="Paste keyword lists (one per line) to select them — e.g. several lists you copied earlier">📥 Select from list</button>
       </div>
@@ -6200,7 +6201,7 @@ function kwLoadResults(offset) {
   const rfg = document.getElementById('kwRemoveGrpBtn'); if (rfg) rfg.style.display = grp ? '' : 'none';
   const sob = document.getElementById('kwSelOnlyBtn'); if (sob) sob.textContent = KW.selOnly ? '👁 Show all' : '👁 Show selected only';
   KW.filtered = rows; KW.total = rows.length;
-  const grouped = hubOn && !KW.selOnly && KW.hubGroup;
+  const grouped = !KW.selOnly && kwGroupApplies(hubOn) ? KW.groupBy : '';
   const page = grouped ? rows : rows.slice(KW.offset, KW.offset + KW.limit);
   const snaps = KW.viewSnaps || [], multi = snaps.length > 1;
   const one = snaps.length === 1 ? snaps[0].run : null, mk = one && one.market;
@@ -6217,13 +6218,14 @@ function kwLoadResults(offset) {
   const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${['keyword', 'intent', 'topic', 'cluster', 'src'].includes(k) ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
     + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
   const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
-  const rowHtml = r => `<tr${grouped ? ` draggable="true" data-kw="${esc(r.keyword)}" ondragstart="kwHubDragStart(event)" style="cursor:grab;"` : ''}>
+  const rowHtml = r => `<tr${grouped && hubOn ? ` draggable="true" data-kw="${esc(r.keyword)}" ondragstart="kwHubDragStart(event)" style="cursor:grab;"` : ''}>
       <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
       <td style="text-align:left;">${esc(r.keyword)}${r.local ? ' <span class="kw-chip">local</span>' : ''}${r.brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
       <td style="text-align:left;"><span class="kw-chip">${esc(kwIntentLabel(r.intent))}</span></td>${hubOn ? `<td style="text-align:left;${r.topic ? '' : 'color:var(--text3);'}">${r.topic ? esc(r.topic) : '—'}</td><td style="text-align:left;color:var(--text2);">${esc(r.cluster || '')}</td><td style="text-align:left;color:var(--text3);white-space:nowrap;">${r.src == null ? '<i>not in hub</i>' : esc(r.src)}</td>` : ''}<td>${kwNum(r.vol)}</td>
       <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
       <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
       <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td>${multi ? `<td style="text-align:left;color:var(--text3);">${esc(r.runs.map(x => '#' + x).join(' '))}</td>` : ''}</tr>`;
+  kwRenderGroupBy(hubOn);
   const body = grouped ? kwHubGroupBody(rows, rowHtml, cols.length + 2 + (multi ? 1 : 0)) : page.map(rowHtml).join('');
   kwRenderSortBar();
   kwRenderSendBar();
@@ -6494,6 +6496,7 @@ function kwHubOp(op) { KW.hubOps.push(op); KW._hubDraft = null; KW.selected.clea
 function kwHubSet(r) {
   KW.hub = { cid: r.cid, name: r.name, runId: r.runId, model: r.model, products: r.products || [], titles: r.titles || [], undo: r.undo, warn: r.warn || '' };
   KW.hubOps = []; KW._hubDraft = null;
+  if (!KW.groupBy) KW.groupBy = 'cluster';
   delete KW.snaps[r.runId]; delete KW.snaps['live:' + r.runId];
   KW.group = null; KW.view = [r.runId]; KW.selected.clear();
   kwViewChanged();
@@ -6551,7 +6554,7 @@ function kwHubFilter(rows) {
 // Group by cluster → topic (or topic): collapsible header rows inside the results table, groups ordered by total
 // volume, rows inside a group in the table's current sort. A keyword in several topics shows under each.
 // Header checkbox = select the whole group (then Move / Add it like any selection).
-KW.hubGroup = 'cluster'; KW.hubOpen = new Set(); KW._hubGroupRows = new Map();
+KW.groupBy = ''; KW.hubOpen = new Set(); KW._hubGroupRows = new Map();
 function kwHubGroups(rows) {
   // groups: { key, label, own: [rows shown directly], sub: [groups], rows: [all rows — counts + select-all], note }
   const d = kwHubDraft(), H = KW.hub, byKw = new Map(rows.map(r => [r.keyword, r]));
@@ -6580,13 +6583,13 @@ function kwHubGroups(rows) {
   const noTopicProducts = prodsFor('');
   const noTopicGroup = noTopicProducts.length ? { key: 'c:__prod', label: '📦 Products with no topic', own: [], sub: noTopicProducts,
     rows: uniqRows(noTopicProducts.flatMap(s => s.rows)), note: noTopicProducts.length + ' product' + (noTopicProducts.length === 1 ? '' : 's') + ' (Master / generated separately)' } : null;
-  if (KW.hubGroup === 'product') {
+  if (KW.groupBy === 'product') {
     out.push(...H.products.map(prodGroup).filter(Boolean).sort(order));
     const rest = rows.filter(r => !onProduct.has(r.keyword));
     if (rest.length) out.push({ key: 'x:noprod', label: 'Keywords on no product', own: rest, rows: rest, note: 'topics / Main / titles / other runs' });
     return out;
   }
-  if (KW.hubGroup === 'topic') out.push(...[...topicIds].map(tg).sort((a, b) => (b.first - a.first) || order(a, b)));
+  if (KW.groupBy === 'topic') out.push(...[...topicIds].map(tg).sort((a, b) => (b.first - a.first) || order(a, b)));
   else {
     const byC = new Map();
     for (const id of topicIds) { const c = tById.get(id).cluster || ''; if (!byC.has(c)) byC.set(c, []); byC.get(c).push(tg(id)); }
@@ -6600,7 +6603,7 @@ function kwHubGroups(rows) {
   return out;
 }
 function kwHubGroupBody(rows, rowHtml, span) {
-  const groups = kwHubGroups(rows); KW._hubGroupRows = new Map(); let count = 0;
+  const groups = KW_HUB_GROUPS.includes(KW.groupBy) ? kwHubGroups(rows) : kwRunGroups(rows); KW._hubGroupRows = new Map(); let count = 0;
   const head = (g, lvl) => {
     KW._hubGroupRows.set(g.key, g.rows.map(r => r.keyword)); count++;
     const open = KW.hubOpen.has(g.key), all = g.rows.length && g.rows.every(r => KW.selected.has(r.keyword));
@@ -6644,9 +6647,80 @@ function kwHubGrpToggle(k) { KW.hubOpen.has(k) ? KW.hubOpen.delete(k) : KW.hubOp
 function kwHubGrpSel(k, on) { (KW._hubGroupRows.get(k) || []).forEach(kw => on ? KW.selected.add(kw) : KW.selected.delete(kw)); kwLoadResults(KW.offset); }
 function kwHubGrpAll(open) {
   if (!open) KW.hubOpen.clear();
-  else { const walk = gs => gs.forEach(g => { KW.hubOpen.add(g.key); if (g.sub) walk(g.sub); }); walk(kwHubGroups(KW.filtered || [])); }
+  else { const walk = gs => gs.forEach(g => { KW.hubOpen.add(g.key); if (g.sub) walk(g.sub); }); walk(KW_HUB_GROUPS.includes(KW.groupBy) ? kwHubGroups(KW.filtered || []) : kwRunGroups(KW.filtered || [])); }
   kwLoadResults(KW.offset);
 }
+// ── Group by (every run) ─────────────────────────────────────────────────────────────────────────────────────────
+// Run groupings: seed / found via, intent, Google concept, saved group. Hub groupings (cluster → topic → product,
+// topic → product, product) only when a loaded hub's run is in the view. Same collapsible headers everywhere
+// (kwHubGroupBody); the header checkbox selects the whole group.
+const KW_HUB_GROUPS = ['cluster', 'topic', 'product'];
+const KW_RUN_GROUPS = [['seed', 'seed / found via'], ['intent', 'intent'], ['concept', 'Google concept'], ['saved', 'saved group']];
+const kwGroupApplies = hubOn => !!KW.groupBy && (KW_HUB_GROUPS.includes(KW.groupBy) ? hubOn : true);
+function kwGroupByOptions(hubOn) {
+  const o = (v, l) => `<option value="${v}" ${v === (KW.groupBy || '') ? 'selected' : ''}>${l}</option>`;
+  return o('', 'no grouping') + (hubOn ? '<optgroup label="🌐 Hub">' + o('cluster', 'cluster → topic → product') + o('topic', 'topic → product') + o('product', 'product') + '</optgroup>' : '')
+    + '<optgroup label="Run">' + KW_RUN_GROUPS.map(([v, l]) => o(v, l)).join('') + '</optgroup>';
+}
+function kwRenderGroupBy(hubOn) {
+  const sel = document.getElementById('kwGroupBy'); if (!sel) return;
+  if (KW_HUB_GROUPS.includes(KW.groupBy) && !hubOn) KW.groupBy = '';
+  sel.innerHTML = kwGroupByOptions(hubOn).replace('>no grouping<', '>group: none<');
+  sel.style.outline = KW.groupBy ? '2px solid #4cff4c' : '';
+}
+function kwSetGroupBy(v) { KW.groupBy = v || ''; KW.hubOpen = new Set(); kwLoadResults(0); }
+function kwRunGroups(rows) {
+  const by = new Map(), none = [];
+  const put = (key, label, r) => { if (!by.has(key)) by.set(key, { key, label, own: [], rows: [] }); const g = by.get(key); g.own.push(r); g.rows = g.own; };
+  const g = KW.groupBy;
+  const saved = g === 'saved' ? (KW.groups || []).map(x => ({ x, set: new Set(x.keywords) })) : [];
+  for (const r of rows) {
+    if (g === 'seed') { const k = r.root || r.parent || r.keyword; put('s:' + k, '🌱 ' + k, r); }
+    else if (g === 'intent') put('i:' + (r.intent || 'general'), kwIntentLabel(r.intent || 'general'), r);
+    else if (g === 'concept') {
+      const cs = (r.concepts || []).filter(c => c && c[1] && !KW_DIM_SKIP.test(c[1]) && !KW_DIM_SKIP.test(c[0] || ''));
+      if (!cs.length) none.push(r); else cs.forEach(c => put('k:' + c[0] + '|' + c[1], '🏷 ' + c[1] + (c[0] ? ' · ' + c[0] : ''), r));
+    }
+    else if (g === 'saved') { const hit = saved.filter(s => s.set.has(r.keyword)); if (!hit.length) none.push(r); else hit.forEach(s => put('v:' + s.x.id, '💾 ' + s.x.name, r)); }
+  }
+  const vol = x => x.rows.reduce((a, r) => a + (r.vol || 0), 0);
+  const out = [...by.values()].sort((a, b) => vol(b) - vol(a));
+  out.forEach(x => { x.note = g === 'seed' ? 'from this seed / parent' : ''; });
+  if (none.length) out.push({ key: 'n:none', label: g === 'concept' ? 'No Google concept' : 'Not in a saved group', own: none, rows: none });
+  return out;
+}
+
+// ── 🔬 Research selection (hub view) ── a normal keyword-tool run on the selection: the form's Quick / Discover
+// settings, the hub run's market (worker kwStartRun hubLink), tagged to the hub; when it finishes it opens next to
+// the hub run so the hub grouping + "not in the hub" gaps apply. Same steps as ▶ Go (kwLoop).
+async function kwHubResearch() {
+  if (!KW.hub || KW.running) return;
+  const kws = [...KW.selected]; if (!kws.length) return alert('Tick the keywords to research first (a group header ticks a whole group).');
+  if (kws.length > 200) return alert(`A run takes at most 200 seed keywords — ${kws.length} are selected.`);
+  const { config, disc } = kwFormConfig();
+  const top = kwCoreSort((KW.rows || []).filter(r => KW.selected.has(r.keyword)), [{ col: 'vol', dir: 'desc' }])[0];
+  const name = `🔬 ${KW.hub.name}: ${(top || {}).keyword || kws[0]}${kws.length > 1 ? ` +${kws.length - 1}` : ''}`;
+  if (!confirm(`Research ${kws.length} keyword${kws.length === 1 ? '' : 's'} with the keyword tool?\n\n${disc ? `Discover — depth ≤${config.max_depth}, ≤${config.max_requests} requests${config.seed_match ? ', stay on topic' : ''}` : 'Quick — one Google request per 20 seeds'} (the settings in the search form above), in ${KW.hub.name}'s market.\nThe result opens next to the hub.`)) return;
+  document.getElementById('kwLog').textContent = '';
+  try {
+    const { run } = await call('kwStartRun', { keywords: kws, name, config, hubLink: { runId: KW.hub.runId } });
+    kwLog(`🔬 Run #${run.id} "${run.name}" · ${KW.hub.name}'s market` + (disc ? ` · depth ≤${run.params.config.max_depth}` : ' · quick'));
+    KW.runId = run.id; KW.selected.clear();
+    KW._afterRun = { runId: run.id, view: [KW.hub.runId, run.id] };
+    document.getElementById('kwLog').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    await kwLoop(run.id);
+  } catch (e) { kwLog('✗ ' + e.message); }
+}
+function kwHubResearchRuns() {
+  const H = KW.hub; if (!H) return '';
+  const runs = (KW.runsList || []).filter(r => r.link_cid === H.cid);
+  if (!runs.length) return '';
+  return `<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><span style="color:var(--text3);">🔬 Research runs:</span>${runs.map(r => {
+    const on = KW.view.includes(r.id);
+    return `<span class="kw-x" style="${on ? 'color:#4cff4c;font-weight:700;' : ''}" title="${on ? 'In view — click to hide' : 'Show next to the hub'}" onclick="kwHubToggleResearch(${r.id})">#${r.id} ${esc(String(r.name || '').replace(/^🔬 [^:]*: /, ''))} · ${r.keywords == null ? '–' : kwNum(r.keywords)} kw${r.status === 'running' ? ' · running' : ''}</span>`; }).join('')}</div>`;
+}
+function kwHubToggleResearch(id) { KW.group = null; KW.view = KW.view.includes(id) ? KW.view.filter(x => x !== id) : [...new Set([KW.hub.runId, ...KW.view, id])]; kwViewChanged(); }
+
 function kwHubSetF(k, v) { KW.hubF[k] = v; kwLoadResults(0); }
 const kwHubNewId = i => 's' + Date.now().toString(36) + (i || 0).toString(36) + Math.random().toString(36).slice(2, 5);
 function kwHubSelAct(kind) {
@@ -6734,8 +6808,8 @@ function kwHubRender() {
       <select class="kw-sel" style="${f.src ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('src', this.value)">${[['', 'anywhere'], ['topic', 'in a topic'], ['main', 'in Main Keywords'], ['product', 'on a product'], ['title', 'on a title'], ['cluster', 'a cluster name'], ['none', 'not in the hub (other runs)']].map(([v, l]) => `<option value="${v}" ${v === f.src ? 'selected' : ''}>${l}</option>`).join('')}</select>
       ${f.topic || f.cluster || f.src ? `<span class="kw-x" onclick="KW.hubF={topic:'',cluster:'',src:''};kwLoadResults(0)">✕ clear</span>` : ''}
       <span style="color:var(--text3);margin-left:8px;">Group:</span>
-      <select class="kw-sel" onchange="KW.hubGroup=this.value;kwLoadResults(0)">${[['cluster', 'cluster → topic → product'], ['topic', 'topic → product'], ['product', 'product'], ['', 'no grouping (paged list)']].map(([v, l]) => `<option value="${v}" ${v === (KW.hubGroup || '') ? 'selected' : ''}>${l}</option>`).join('')}</select>
-      ${KW.hubGroup ? `<span class="kw-x" onclick="kwHubGrpAll(true)">expand all</span><span class="kw-x" onclick="kwHubGrpAll(false)">collapse all</span>` : ''}
+      <select class="kw-sel" onchange="kwSetGroupBy(this.value)">${kwGroupByOptions(true)}</select>
+      ${KW.groupBy ? `<span class="kw-x" onclick="kwHubGrpAll(true)">expand all</span><span class="kw-x" onclick="kwHubGrpAll(false)">collapse all</span>` : ''}
       <span style="color:var(--text3);">Tick another run too to compare (“not in the hub” = gaps).</span>
     </div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;padding:6px;border:1px solid #2a5a2a;border-radius:4px;">
@@ -6748,7 +6822,9 @@ function kwHubRender() {
       <button class="kw-btn" onclick="kwHubSelAct('rmAll')">− From all topics</button>
       <button class="kw-btn" onclick="kwHubSelAct('main+')">★ + Main</button>
       <button class="kw-btn" onclick="kwHubSelAct('main-')">☆ − Main</button>
+      <button class="kw-btn" onclick="kwHubResearch()" title="Run the keyword tool on the selected keywords — your Quick / Discover settings, the hub's market — and open the result next to the hub (gaps = 'not in the hub')">🔬 Research selection</button>
     </div>
+    ${kwHubResearchRuns()}
     <details ${_kwHubOpenTopics ? 'open' : ''} ontoggle="_kwHubOpenTopics=this.open" style="margin-top:6px;"><summary style="cursor:pointer;color:var(--text2);">Topics &amp; clusters (${m.topics.length} / ${m.clusters.length})</summary>
       <div style="max-height:320px;overflow:auto;margin-top:4px;">${clusterNames.map(c => `
         <div style="margin-top:6px;font-weight:700;color:var(--text2);">${c ? '🧩 ' + esc(c) + ` <span class="kw-x" title="Rename cluster" onclick="kwHubClusterRename(${esc(JSON.stringify(c))})">✎</span>` : 'No cluster'}</div>
@@ -6858,7 +6934,7 @@ async function kwLoop(runId) {
   document.getElementById('kwStopBtn').style.display = 'none';
   delete KW.snaps['live:' + runId]; delete KW.snaps[runId];
   KW.runId = runId;
-  KW.view = [runId]; KW.group = null;
+  KW.view = KW._afterRun && KW._afterRun.runId === runId ? KW._afterRun.view : [runId]; KW.group = null; KW._afterRun = null;
   kwRefresh();
 }
 
