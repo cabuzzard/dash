@@ -6311,6 +6311,14 @@ function kwSelCsv() {
   msg.textContent = `✓ Downloaded ${rows.length} keywords as CSV`;
 }
 function kwClearSel() { KW.selected.clear(); kwLoadResults(KW.offset); }
+// Keyword-tool campaign pickers list HUB campaigns only (a hub IS its campaign): HUB_SITES + the KV-registered extras.
+async function kwHubCampaigns() {
+  if (typeof hubSitesExtraLoad === 'function') await hubSitesExtraLoad().catch(() => {});
+  const seen = new Set();
+  return HUB_SITES.filter(h => h.campaignId && !seen.has(h.campaignId) && seen.add(h.campaignId))
+    .map(h => ({ id: h.campaignId, name: h.name || h.campaign || h.slug, status: h.domain || '' }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
 async function kwRenderSendBar() {
   const bar = document.getElementById('kwSendBar');
   bar.style.display = KW.selected.size ? 'flex' : 'none';
@@ -6318,8 +6326,8 @@ async function kwRenderSendBar() {
   const sel = document.getElementById('kwSendCampaign');
   if (KW.selected.size && !KW.campaigns) {
     try {
-      KW.campaigns = ((await call('getCampaigns')).campaigns || []).filter(c => c.name && c.status !== 'Delete').sort((a, b) => a.name.localeCompare(b.name));
-      sel.innerHTML = '<option value="">choose campaign…</option>' + KW.campaigns.map(c => `<option value="${c.id}">${esc(c.name)}${c.status ? ' · ' + esc(c.status) : ''}</option>`).join('');
+      KW.campaigns = await kwHubCampaigns();
+      sel.innerHTML = '<option value="">choose hub…</option>' + KW.campaigns.map(c => `<option value="${c.id}">${esc(c.name)}${c.status ? ' · ' + esc(c.status) : ''}</option>`).join('');
     } catch (e) { document.getElementById('kwSendMsg').textContent = 'Could not load campaigns: ' + e.message; }
   }
 }
@@ -6360,7 +6368,7 @@ async function kwSend(mode, each) {
 async function kwStartHub() {
   const msg = document.getElementById('kwSendMsg');
   if (!KW.selected.size) { msg.textContent = 'Select the keywords for the hub first (e.g. select all in a run).'; return; }
-  if (!KW.campaigns) { try { KW.campaigns = ((await call('getCampaigns')).campaigns || []).filter(c => c.name && c.status !== 'Delete').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) { KW.campaigns = []; } }
+  if (!KW.campaigns) { try { KW.campaigns = await kwHubCampaigns(); } catch (e) { KW.campaigns = []; } }
   const top = kwCoreSort((KW.rows || []).filter(r => KW.selected.has(r.keyword)), [{ col: 'vol', dir: 'desc' }])[0];
   const sug = top ? top.keyword.replace(/\b\w/g, c => c.toUpperCase()) : '';
   document.getElementById('kwHubModal')?.remove();
