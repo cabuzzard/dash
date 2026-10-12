@@ -6544,6 +6544,7 @@ function kwHubDecorate(rows) {
     r.cluster = ts.length ? [...new Set(ts.map(t => t.cluster).filter(Boolean))].join(' · ') || null : null;
     r.hubIn = { main: main.has(r.keyword), topic: ts.some(t => t.id !== KwHubOps.MAIN), product: prod.get(r.keyword) || 0, title: tit.get(r.keyword) || 0, cluster: cl.has(r.keyword) };
     const s = []; if (r.hubIn.cluster) s.push('🧩'); if (r.hubIn.product) s.push('P' + r.hubIn.product); if (r.hubIn.title) s.push('T' + r.hubIn.title);
+    if (r.hubIn.main) s.unshift('★Main');   // Main is a topic in the Topic column; still say so here — a Main-only keyword IS in the hub
     r.src = s.join(' ') || (r.hubIn.topic ? '' : null);
     r.productList = prodNames.get(r.keyword) || []; r.product = r.productList.join(' · ') || null;
   }
