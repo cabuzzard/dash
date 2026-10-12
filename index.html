@@ -6311,13 +6311,21 @@ function kwSelCsv() {
   msg.textContent = `✓ Downloaded ${rows.length} keywords as CSV`;
 }
 function kwClearSel() { KW.selected.clear(); kwLoadResults(KW.offset); }
-// Keyword-tool campaign pickers list HUB campaigns only (a hub IS its campaign): HUB_SITES + the KV-registered extras.
+// Keyword-tool campaign pickers: every campaign, with the ones that ARE a hub (HUB_SITES + KV-registered extras) flagged
+// hub:true — shown first, as "🌐 <name> · <domain>", under a "Hubs" group; the rest under "Other campaigns".
 async function kwHubCampaigns() {
   if (typeof hubSitesExtraLoad === 'function') await hubSitesExtraLoad().catch(() => {});
-  const seen = new Set();
-  return HUB_SITES.filter(h => h.campaignId && !seen.has(h.campaignId) && seen.add(h.campaignId))
-    .map(h => ({ id: h.campaignId, name: h.name || h.campaign || h.slug, status: h.domain || '' }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+  const norm = x => String(x || '').replace(/-/g, ''), hubs = {};
+  HUB_SITES.forEach(h => { if (h.campaignId) hubs[norm(h.campaignId)] = h; });
+  const all = ((await call('getCampaigns')).campaigns || []).filter(c => c.name && c.status !== 'Delete');
+  const out = all.map(c => { const h = hubs[norm(c.id)]; return { id: c.id, name: c.name, status: c.status || '', hub: !!h, domain: h ? (h.domain || '') : '' }; });
+  for (const [id, h] of Object.entries(hubs)) if (!out.some(c => norm(c.id) === id)) out.push({ id, name: h.name || h.slug, status: '', hub: true, domain: h.domain || '' });
+  return out.sort((a, b) => (b.hub - a.hub) || a.name.localeCompare(b.name));
+}
+function kwCampaignOptions(list, selected) {
+  const opt = c => `<option value="${c.id}" ${c.id === selected ? 'selected' : ''}>${c.hub ? '🌐 ' : ''}${esc(c.name)}${c.hub ? (c.domain ? ' · ' + esc(c.domain) : ' · hub') : (c.status ? ' · ' + esc(c.status) : '')}</option>`;
+  const h = list.filter(c => c.hub), o = list.filter(c => !c.hub);
+  return (h.length ? `<optgroup label="🌐 Hubs">${h.map(opt).join('')}</optgroup>` : '') + (o.length ? `<optgroup label="Other campaigns (no hub)">${o.map(opt).join('')}</optgroup>` : '');
 }
 async function kwRenderSendBar() {
   const bar = document.getElementById('kwSendBar');
@@ -6327,7 +6335,7 @@ async function kwRenderSendBar() {
   if (KW.selected.size && !KW.campaigns) {
     try {
       KW.campaigns = await kwHubCampaigns();
-      sel.innerHTML = '<option value="">choose hub…</option>' + KW.campaigns.map(c => `<option value="${c.id}">${esc(c.name)}${c.status ? ' · ' + esc(c.status) : ''}</option>`).join('');
+      sel.innerHTML = '<option value="">choose campaign…</option>' + kwCampaignOptions(KW.campaigns);
     } catch (e) { document.getElementById('kwSendMsg').textContent = 'Could not load campaigns: ' + e.message; }
   }
 }
@@ -6378,7 +6386,7 @@ async function kwStartHub() {
     <div style="font-weight:700;font-size:14px;margin-bottom:4px;">🏗 Start a hub</div>
     <div style="color:var(--text3);margin-bottom:10px;">${KW.selected.size} selected keywords become the hub's main keywords, then its site is scaffolded.</div>
     <label style="display:block;margin-bottom:6px;"><input type="radio" name="kwHubMode" value="existing" checked> Existing campaign</label>
-    <select id="kwHubCamp" class="kw-sel" style="width:100%;margin:0 0 10px;"><option value="">choose campaign…</option>${(KW.campaigns || []).map(c => `<option value="${c.id}" ${c.id === document.getElementById('kwSendCampaign').value ? 'selected' : ''}>${esc(c.name)}${c.status ? ' · ' + esc(c.status) : ''}</option>`).join('')}</select>
+    <select id="kwHubCamp" class="kw-sel" style="width:100%;margin:0 0 10px;"><option value="">choose campaign…</option>${kwCampaignOptions(KW.campaigns || [], document.getElementById('kwSendCampaign').value)}</select>
     <label style="display:block;margin-bottom:6px;"><input type="radio" name="kwHubMode" value="new"> New campaign</label>
     <input id="kwHubName" placeholder="campaign / hub name" value="${esc(sug)}" style="width:100%;box-sizing:border-box;margin-bottom:12px;">
     <div style="display:flex;gap:8px;justify-content:flex-end;"><button class="kw-btn" onclick="document.getElementById('kwHubModal').remove()">Cancel</button>
