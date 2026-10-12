@@ -6483,7 +6483,7 @@ function kwRenderSortBar() {
   document.getElementById('kwSortBar').innerHTML = 'Sort: ' + chips + (KW.sorts.length < 4 && avail.length
     ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}${KW_TIER_COLS.includes(k) ? ' ☰' : ''}</option>`).join('')}</select>` : '')
     + ` <button class="kw-btn" style="margin-left:8px;${KW.groupOn ? 'border-color:#4cff4c;color:#4cff4c;' : ''}" onclick="kwSetGroupOn(!KW.groupOn)" title="Each sort level on a repeated-value column (☰) becomes a collapsible group tier">☰ Group by sort: ${KW.groupOn ? 'on' : 'off'}</button>`
-    + (KW.groupOn && kwTiers(kwHubActive()).length ? ` <span class="kw-x" onclick="kwHubGrpAll(true)">expand all</span> <span class="kw-x" onclick="kwHubGrpAll(false)">collapse all</span>` : '')
+    + (KW.groupOn && kwTiers(kwHubActive()).length ? ` <button class="kw-btn" onclick="kwHubGrpAll(true)" title="Open every group, every tier">⊞ Expand all</button> <button class="kw-btn" onclick="kwHubGrpAll(false)" title="Close every group">⊟ Collapse all</button>` : '')
     + ` <span style="color:var(--text3);">Ctrl-click a heading to add a level (max 4) · Alt-click removes</span>`;
 }
 
