@@ -2617,6 +2617,11 @@
       <div id="campDropdown" class="camp-dropdown" style="display:none;"></div>
     </div>
 
+    <div class="modal-field" id="prodTopicField" style="display:none;">
+      <label class="modal-label">Keyword topic</label>
+      <select class="modal-select" id="prodTopic"><option value="">— choose a campaign first —</option></select>
+    </div>
+
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="closeProductModal()">Cancel</button>
       <button class="btn btn-primary" id="prodSubmitBtn" onclick="submitProduct()">Add</button>
@@ -4062,6 +4067,10 @@
       <input class="modal-input" id="devProdCampInput" type="text" placeholder="Search campaigns…" autocomplete="off" oninput="filterDevProdCampaigns()" onfocus="filterDevProdCampaigns()" />
       <input type="hidden" id="devProdCampId" />
       <div id="devProdCampDropdown" class="camp-dropdown" style="display:none;"></div>
+    </div>
+    <div class="modal-field" id="devProdTopicField" style="display:none;">
+      <label class="modal-label">Keyword topic</label>
+      <select class="modal-select" id="devProdTopic"><option value="">— choose a campaign first —</option></select>
     </div>
     <div class="modal-field">
       <label class="modal-label">Status</label>
@@ -10300,7 +10309,7 @@ function openProductModal() {
   document.getElementById('prodDropdown').style.display = 'none';
   document.getElementById('prodCampaignField').style.display = 'none';
   document.getElementById('prodCampaignInput').value = '';
-  document.getElementById('prodCampaignId').value = '';
+  document.getElementById('prodCampaignId').value = ''; kwTopicSelectFill('prodTopic', '', 'prodTopicField');
   document.getElementById('campDropdown').style.display = 'none';
   document.getElementById('prodSubmitBtn').disabled = false;
   document.getElementById('prodSubmitBtn').textContent = 'Add';
@@ -10376,7 +10385,7 @@ function filterCampaigns() {
     div.textContent = c.name + (c.site ? ' (' + c.site + ')' : '');
     div.onmousedown = () => {
       document.getElementById('prodCampaignInput').value = c.name;
-      document.getElementById('prodCampaignId').value = c.id;
+      document.getElementById('prodCampaignId').value = c.id; kwTopicSelectFill('prodTopic', c.id, 'prodTopicField');
       dd.style.display = 'none';
     };
     dd.appendChild(div);
@@ -10396,7 +10405,7 @@ function filterCampaigns() {
         // Add to local cache
         ovData.push({ id: res.id, name, site: '' });
         document.getElementById('prodCampaignInput').value = name;
-        document.getElementById('prodCampaignId').value = res.id;
+        document.getElementById('prodCampaignId').value = res.id; kwTopicSelectFill('prodTopic', res.id, 'prodTopicField');
         dd.style.display = 'none';
         showToast('Campaign created ✓', 'success');
       } catch (e) {
@@ -10422,6 +10431,47 @@ function closeProductModal() {
   document.getElementById('campDropdown').style.display = 'none';
 }
 
+// ── Keyword topic picker — every "add product" in dash (2026-10-12: every product follows a keyword topic) ──
+// Options: ★ Main, then each cluster's topics, then "Topics with no cluster (isolated)". The new product gets its Topic ID
+// ("__main" = ★ Main), Product Stack = the topic name ("Master" for Main) and the topic's keywords to start from. No research.
+const _kwTopicCache = {};   // campaignId → { topics, tc }
+const kwNid = x => String(x || '').replace(/-/g, '');
+async function kwTopicsFor(cid) {
+  cid = kwNid(cid); if (!cid) return null;
+  if (!_kwTopicCache[cid]) {
+    const r = await call('getKeywordClusters', { campaignId: cid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    _kwTopicCache[cid] = { topics: [...(r.staged || []).map(t => ({ ...t, staged: true })), ...(r.committed || [])], tc: r.topicClusters || { clusters: [], assign: {} } };
+  }
+  return _kwTopicCache[cid];
+}
+function kwTopicOptions(d, sel) {
+  const o = (v, l) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${l}</option>`;
+  const cl = d.tc.clusters || [], as = d.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
+  const by = (list) => list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => o(kwNid(t.id), esc(t.name) + (t.staged ? ' · proposed' : ''))).join('');
+  return o('', '— pick a keyword topic —') + o('__main', "★ Main (the hub's main keywords)")
+    + cl.map(c => { const ts = d.topics.filter(t => cOf(t) === c); return ts.length ? `<optgroup label="🧩 ${esc(c)}">${by(ts)}</optgroup>` : ''; }).join('')
+    + (() => { const ts = d.topics.filter(t => !cOf(t)); return ts.length ? `<optgroup label="Topics with no cluster (isolated)">${by(ts)}</optgroup>` : ''; })();
+}
+// fill a <select id> for a campaign (async); no campaign → hidden until one is chosen
+async function kwTopicSelectFill(id, cid, wrapId) {
+  const sel = document.getElementById(id); if (!sel) return; const wrap = wrapId ? document.getElementById(wrapId) : null;
+  if (!kwNid(cid)) { sel.innerHTML = '<option value="">— choose a campaign first —</option>'; if (wrap) wrap.style.display = 'none'; return; }
+  if (wrap) wrap.style.display = '';
+  sel.innerHTML = '<option value="">loading topics…</option>';
+  try { sel.innerHTML = kwTopicOptions(await kwTopicsFor(cid), ''); } catch (e) { sel.innerHTML = '<option value="">couldn’t load topics — ' + esc(e.message) + '</option>'; }
+}
+// synchronous options for inline rows (re-rendered often): cached → options; else "loading…" and rerender when ready
+function kwTopicOptionsSync(cid, rerender) {
+  const d = _kwTopicCache[kwNid(cid)]; if (d) return kwTopicOptions(d, '');
+  kwTopicsFor(cid).then(() => rerender && rerender()).catch(() => {}); return '<option value="">loading topics…</option>';
+}
+// what the picker means for createProduct; null = nothing picked
+function kwTopicPicked(id, cid) {
+  const sel = document.getElementById(id), v = sel ? sel.value : ''; if (!v) return null;
+  if (v === '__main') return { topicId: '__main', stack: 'Master' };
+  const d = _kwTopicCache[kwNid(cid)] || { topics: [] }, t = d.topics.find(x => kwNid(x.id) === v);
+  return t ? { topicId: v, stack: t.name, keywords: String(t.keywords || '').split(/[,\n]/).map(x => x.trim()).filter(Boolean).join(', ') || undefined } : { topicId: v };
+}
 async function submitProduct() {
   const title      = document.getElementById('prodTitle').value.trim();
   const existingId = document.getElementById('prodSearchId').value;
@@ -10441,8 +10491,10 @@ async function submitProduct() {
       if (p) p.status = 'Development';
       showToast('Moved to Development ✓', 'success');
     } else {
-      // Create brand-new product, always In Development
-      await call('createProduct', { title, campaignId, status: 'Development' });
+      // Create brand-new product, always In Development — on a keyword topic when it has a campaign
+      const topic = kwTopicPicked('prodTopic', campaignId);
+      if (campaignId && !topic) { btn.disabled = false; btn.textContent = 'Add'; showToast('Pick a keyword topic for the product', 'error'); document.getElementById('prodTopic').focus(); return; }
+      await call('createProduct', { title, campaignId, status: 'Development', ...(topic || {}) });
       showToast('Product created ✓', 'success');
       prodLoaded = false; prodTdLoaded = false;
     }
@@ -12413,7 +12465,7 @@ document.addEventListener('click', e => {
 function openDevProductModal() {
   document.getElementById('devProdName').value = '';
   document.getElementById('devProdCampInput').value = '';
-  document.getElementById('devProdCampId').value = '';
+  document.getElementById('devProdCampId').value = ''; kwTopicSelectFill('devProdTopic', '', 'devProdTopicField');
   document.getElementById('devProdCampDropdown').style.display = 'none';
   document.getElementById('devProdStatus').value = 'In Development';
   document.getElementById('devProdErr').textContent = '';
@@ -12436,7 +12488,7 @@ function filterDevProdCampaigns() {
     div.textContent = c.name + (c.site ? ' (' + c.site + ')' : '');
     div.onmousedown = () => {
       document.getElementById('devProdCampInput').value = c.name;
-      document.getElementById('devProdCampId').value = c.id;
+      document.getElementById('devProdCampId').value = c.id; kwTopicSelectFill('devProdTopic', c.id, 'devProdTopicField');
       dd.style.display = 'none';
     };
     dd.appendChild(div);
@@ -12451,7 +12503,9 @@ async function submitDevProduct() {
   const btn = document.getElementById('devProdSubmitBtn');
   btn.disabled = true; btn.textContent = 'Creating…';
   try {
-    const r = await call('createProduct', { title, campaignId, status });
+    const topic = kwTopicPicked('devProdTopic', campaignId);
+    if (campaignId && !topic) { btn.disabled = false; btn.textContent = 'Create'; showToast('Pick a keyword topic for the product', 'error'); document.getElementById('devProdTopic').focus(); return; }
+    const r = await call('createProduct', { title, campaignId, status, ...(topic || {}) });
     if (r.error) throw new Error(r.error);
     closeDevProductModal();
     showToast('Product created ✓', 'success');
@@ -15157,6 +15211,7 @@ const hubProdWork = slug => { const rs = _hubResState[slug]; if (!rs) return '';
   const ids = mo ? (mo.products || []).map(p => p.id) : Object.keys(rs); return hubWorkTag(ids.filter(id => rs[id] === 'off-main' || rs[id] === 'empty').length, 'product'); };
 // ── editing: saveTopicClusters saves the whole {clusters, assign}; createProduct for ＋ product ──
 async function hubKwSaveClusters(slug, clusters, assign, msg) {
+  { const hh = HUB_SITES.find(x => x.slug === slug); if (hh) delete _kwTopicCache[kwNid(hh.campaignId)]; }
   const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
   const before = K.tc; K.tc = { clusters, assign }; K.msg = 'Saving…'; hubKwRefresh(slug);
   try { const r = await call('saveTopicClusters', { campaignId: h.campaignId, clusters, assign }); if (r.error) throw new Error(r.error);
@@ -16419,6 +16474,7 @@ function renderHubBuildRows(slug) {
       const others = (s.products || []).filter(p => !ids.includes(p.id));
       ctrl = `<button ${busy ? 'disabled' : ''} onclick="hubMainOfferModal('${slug}')" title="Add a main product (existing or new)" style="font-size:12px;padding:0 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">+</button>`;
       const add = _hubMainAdd[slug] ? `<div style="padding:2px 0 6px;display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+        <select id="hubMainAddTopic-${slug}" title="Keyword topic for the new product" style="font-size:11px;padding:3px 5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:200px;">${kwTopicOptionsSync(h.campaignId, () => hubBuildRefreshRows('${slug}'))}</select>
         <input id="hubMainAddName-${slug}" placeholder="New product name" onkeydown="if(event.key==='Enter')hubMainOfferAdd('${slug}');if(event.key==='Escape'){_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')}" style="flex:1;min-width:160px;font-size:11px;padding:3px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);">
         <button ${busy ? 'disabled' : ''} onclick="hubMainOfferAdd('${slug}')" style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:var(--accent);color:var(--bg);cursor:pointer;">${busy ? '…' : 'Create + add as main'}</button>
         <button onclick="_hubMainAdd['${slug}']=false;hubBuildRefreshRows('${slug}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">cancel</button></div>` : '';
@@ -16590,10 +16646,11 @@ function hubMainOfferModal(slug) {
     <div id="hmoPaneEx"><input id="hmoSearch" placeholder="Search the campaign's products…" oninput="hmoDraw()" style="${IN}">
       <div id="hmoList" style="max-height:260px;overflow:auto;margin-top:6px;border:1px solid var(--border);border-radius:6px;"></div></div>
     <div id="hmoPaneNew" style="display:none;"><input id="hmoName" placeholder="New product name" style="${IN}" onkeydown="if(event.key==='Enter')document.getElementById('hmoGo').click()">
+      <select id="hmoTopic" style="${IN}"><option value="">loading topics…</option></select>
       <div style="font-size:11px;color:var(--text3);margin-top:6px;">Creates the product (Planning), links it to this campaign and adds it as a main product.</div></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:10px;"><button class="modal-btn" id="hmoGo" onclick="hmoGo(this,'${slug}')">Add</button>${HC_CANCEL}
       ${h.campaignId ? `<a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(h.campaignId)}" target="_blank" rel="noopener" style="margin-left:auto;font-size:11px;color:var(--text3);text-decoration:none;">care-gap ↗</a>` : ''}</div>`);
-  window._hmoOthers = others; hmoDraw();
+  window._hmoOthers = others; hmoDraw(); kwTopicSelectFill('hmoTopic', h.campaignId);
 }
 function hmoTab(t) {
   window._hmoTab = t;
@@ -16614,14 +16671,17 @@ function hmoGo(btn, slug) {
   const add = async pid => { const r = await call('setHubMainOffering', { campaignId: h.campaignId, productId: pid, op: 'add' }); if (!r || r.error) return (r && r.error) || 'Not saved'; _hubBuildFetched[slug] = false; renderHubsTab(); return true; };
   if (window._hmoTab === 'ex') hcModalRun(btn, async () => window._hmoPick ? add(window._hmoPick) : 'Pick a product from the list');
   else hcModalRun(btn, async () => { const v = document.getElementById('hmoName').value.trim(); if (!v) return 'Enter a product name';
-    const r = await call('createProduct', { title: v, campaignId: h.campaignId, status: 'Planning' }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+    const topic = kwTopicPicked('hmoTopic', h.campaignId); if (!topic) return 'Pick a keyword topic for the product';
+    const r = await call('createProduct', { title: v, campaignId: h.campaignId, status: 'Planning', ...topic }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
     return add(r.id); });
 }
 async function hubMainOfferAdd(slug) {
   const h = HUB_SITES.find(x => x.slug === slug), inp = document.getElementById('hubMainAddName-' + slug);
   const name = inp ? inp.value.trim() : ''; if (!h || !name) return;
   _hubBuildBusy[slug + '|mainproduct'] = true; hubBuildRefreshRows(slug);
-  try { const r = await call('createProduct', { title: name, campaignId: h.campaignId, status: 'Planning' }); if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
+  const topic = kwTopicPicked('hubMainAddTopic-' + slug, h.campaignId);
+  if (!topic) { _hpNote[slug] = 'Pick a keyword topic for the new product.'; _hubBuildBusy[slug + '|mainproduct'] = false; return hubBuildRefreshRows(slug); }
+  try { const r = await call('createProduct', { title: name, campaignId: h.campaignId, status: 'Planning', ...topic }); if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
     _hubMainAdd[slug] = false; _hubBuildBusy[slug + '|mainproduct'] = false;
     await hubMainOfferSet(slug, r.id, 'add'); return; }
   catch (e) { _hpNote[slug] = '✗ Add product: ' + e.message; }
