@@ -1221,7 +1221,6 @@
         <select id="kwIntentF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">any intent</option></select>
         <select id="kwLocalF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">local: any</option><option value="only">local only</option><option value="exclude">no local</option></select>
         <select id="kwBrandF" onchange="kwLoadResults(0)" class="kw-sel"><option value="">brand: any</option><option value="only">brands only</option><option value="exclude">no brands</option></select>
-        <select id="kwGroupBy" onchange="kwSetGroupBy(this.value)" class="kw-sel" title="Group the results — collapsible groups with totals; the header checkbox selects the whole group"></select>
         <button class="kw-btn" onclick="kwLoadResults(0)">Apply</button>
         <button class="kw-btn" onclick="kwTogglePaste()" title="Paste keyword lists (one per line) to select them — e.g. several lists you copied earlier">📥 Select from list</button>
       </div>
@@ -6201,7 +6200,8 @@ function kwLoadResults(offset) {
   const rfg = document.getElementById('kwRemoveGrpBtn'); if (rfg) rfg.style.display = grp ? '' : 'none';
   const sob = document.getElementById('kwSelOnlyBtn'); if (sob) sob.textContent = KW.selOnly ? '👁 Show all' : '👁 Show selected only';
   KW.filtered = rows; KW.total = rows.length;
-  const grouped = !KW.selOnly && kwGroupApplies(hubOn) ? KW.groupBy : '';
+  kwDecorateRun(KW.rows || []);
+  const grouped = !KW.selOnly && KW.groupOn && kwTiers(hubOn).length ? 'tiers' : '';
   const page = grouped ? rows : rows.slice(KW.offset, KW.offset + KW.limit);
   const snaps = KW.viewSnaps || [], multi = snaps.length > 1;
   const one = snaps.length === 1 ? snaps[0].run : null, mk = one && one.market;
@@ -6209,23 +6209,25 @@ function kwLoadResults(offset) {
     ? `— #${one.id} ${one.name} · ${(mk?.geoLabels || []).join(', ')} · ${mk?.languageLabel || ''}`
     : multi ? `— ${KW.view.length ? snaps.length + ' runs combined (' + snaps.map(s => '#' + s.run.id).join(', ') + ')' : 'all keywords (' + snaps.length + ' runs)'} · duplicates merged` : '— all keywords';
   const cols = [['keyword', 'Keyword'], ['intent', 'Intent'], ['vol', 'Avg/mo'], ['ci', 'Comp'], ['lb', 'Low bid'], ['hb', 'High bid'], ['cpc', 'Avg CPC'], ['trend', '12m trend'], ['depth', 'Depth']];
-  if (hubOn) cols.splice(2, 0, ['topic', 'Topic'], ['cluster', 'Cluster'], ['src', 'In hub']);
+  if (hubOn) cols.splice(2, 0, ['topic', 'Topic'], ['cluster', 'Cluster'], ['product', 'Product'], ['src', 'In hub']);
+  KW.sorts = KW.sorts.filter(x => hubOn || !KW_HUB_COLS.includes(x.col)); if (!KW.sorts.length) KW.sorts = [{ col: 'vol', dir: 'desc' }];
+  const showC = KW.sorts.some(x => x.col === 'concept'), showS = KW.sorts.some(x => x.col === 'saved');
+  if (showC) cols.push(['concept', 'Concept']); if (showS) cols.push(['saved', 'Saved group']);
   KW.cols = cols;
   const mark = k => { const i = KW.sorts.findIndex(x => x.col === k); if (i < 0) return '';
     return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
   KW.pageRows = page.map(r => r.keyword);
   const allOn = KW.pageRows.length && KW.pageRows.every(k => KW.selected.has(k));
-  const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${['keyword', 'intent', 'topic', 'cluster', 'src'].includes(k) ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
-    + '<th style="text-align:left;">Found via</th>' + (multi ? '<th style="text-align:left;">In runs</th>' : '');
+  const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${['keyword', 'intent', 'topic', 'cluster', 'product', 'src', 'concept', 'saved'].includes(k) ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
+    + `<th onclick="kwSort('root', event)" title="Click to sort · Ctrl-click to add a level" style="cursor:pointer;text-align:left;">Found via${mark('root')}</th>` + (multi ? '<th style="text-align:left;">In runs</th>' : '');
   const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
   const rowHtml = r => `<tr${grouped && hubOn ? ` draggable="true" data-kw="${esc(r.keyword)}" ondragstart="kwHubDragStart(event)" style="cursor:grab;"` : ''}>
       <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
       <td style="text-align:left;">${esc(r.keyword)}${r.local ? ' <span class="kw-chip">local</span>' : ''}${r.brand ? ' <span class="kw-chip">brand</span>' : ''}</td>
-      <td style="text-align:left;"><span class="kw-chip">${esc(kwIntentLabel(r.intent))}</span></td>${hubOn ? `<td style="text-align:left;${r.topic ? '' : 'color:var(--text3);'}">${r.topic ? esc(r.topic) : '—'}</td><td style="text-align:left;color:var(--text2);">${esc(r.cluster || '')}</td><td style="text-align:left;color:var(--text3);white-space:nowrap;">${r.src == null ? '<i>not in hub</i>' : esc(r.src)}</td>` : ''}<td>${kwNum(r.vol)}</td>
+      <td style="text-align:left;"><span class="kw-chip">${esc(kwIntentLabel(r.intent))}</span></td>${hubOn ? `<td style="text-align:left;${r.topic ? '' : 'color:var(--text3);'}">${r.topic ? esc(r.topic) : '—'}</td><td style="text-align:left;color:var(--text2);">${esc(r.cluster || '')}</td><td style="text-align:left;color:var(--text2);">${esc((r.productList || []).join(' · '))}</td><td style="text-align:left;color:var(--text3);white-space:nowrap;">${r.src == null ? '<i>not in hub</i>' : esc(r.src)}</td>` : ''}<td>${kwNum(r.vol)}</td>
       <td title="${esc(r.comp || '')}">${r.ci ?? '–'}${r.comp ? ' ' + r.comp[0] : ''}</td>
-      <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>
+      <td>${kwMoney(r.lb)}</td><td>${kwMoney(r.hb)}</td><td>${kwMoney(r.cpc)}</td><td>${trend(r.trend)}</td><td>${r.depth ?? '–'}</td>${showC ? `<td style="text-align:left;color:var(--text2);">${esc(r.concept || '')}</td>` : ''}${showS ? `<td style="text-align:left;color:var(--text2);">${esc(r.saved || '')}</td>` : ''}
       <td style="text-align:left;color:var(--text3);">${esc(r.parent || r.root || '')}</td>${multi ? `<td style="text-align:left;color:var(--text3);">${esc(r.runs.map(x => '#' + x).join(' '))}</td>` : ''}</tr>`;
-  kwRenderGroupBy(hubOn);
   const body = grouped ? kwHubGroupBody(rows, rowHtml, cols.length + 2 + (multi ? 1 : 0)) : page.map(rowHtml).join('');
   kwRenderSortBar();
   kwRenderSendBar();
@@ -6287,7 +6289,7 @@ function kwFilterIntent(k) {
 }
 
 // Click = sort by this column only (again = flip). Shift-click = add/flip it as the next tiebreaker.
-const kwDefaultDir = col => (col === 'keyword' || col === 'intent' || col === 'depth') ? 'asc' : 'desc';
+const kwDefaultDir = col => ['keyword', 'intent', 'depth', 'topic', 'cluster', 'product', 'src', 'root', 'concept', 'saved'].includes(col) ? 'asc' : 'desc';
 function kwSel(cb, kw) { cb.checked ? KW.selected.add(kw) : KW.selected.delete(kw); kwRenderSendBar(); }
 function kwSelPage(on) { for (const k of KW.pageRows || []) on ? KW.selected.add(k) : KW.selected.delete(k); kwLoadResults(KW.offset); }
 // Selected keywords → clipboard, one per line (in the table's current sort order).
@@ -6457,9 +6459,12 @@ async function kwHubReadyWatch(slug, name) {
 }
 function kwSort(col, ev) {
   const i = KW.sorts.findIndex(x => x.col === col);
-  if (ev && ev.shiftKey) {
-    if (i >= 0) KW.sorts[i].dir = KW.sorts[i].dir === 'asc' ? 'desc' : 'asc';
-    else if (KW.sorts.length < 4) KW.sorts.push({ col, dir: kwDefaultDir(col) });
+  if (ev && ev.altKey) { if (i >= 0 && KW.sorts.length > 1) KW.sorts.splice(i, 1); }
+  else if (ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey)) {   // add a level → flip → remove
+    if (i < 0) { if (KW.sorts.length < 4) KW.sorts.push({ col, dir: kwDefaultDir(col) }); }
+    else if (KW.sorts[i].dir === kwDefaultDir(col) && KW.sorts.length > 1) KW.sorts[i].dir = KW.sorts[i].dir === 'asc' ? 'desc' : 'asc';
+    else if (KW.sorts.length > 1) KW.sorts.splice(i, 1);
+    else KW.sorts[i].dir = KW.sorts[i].dir === 'asc' ? 'desc' : 'asc';
   } else if (i === 0 && KW.sorts.length === 1) {
     KW.sorts[0].dir = KW.sorts[0].dir === 'asc' ? 'desc' : 'asc';
   } else {
@@ -6474,9 +6479,12 @@ function kwRenderSortBar() {
   const label = c => ((KW.cols || []).find(x => x[0] === c) || [c, c])[1];
   const chips = KW.sorts.map((x, i) => `${i ? '<span>›</span>' : ''}<span class="kw-chip" style="cursor:pointer;" onclick="kwSortFlip(${i})" title="Flip direction">${esc(label(x.col))} ${x.dir === 'asc' ? '▲' : '▼'}</span>`
     + (KW.sorts.length > 1 ? `<span class="kw-x" onclick="kwSortRemove(${i})" title="Remove">✕</span>` : '')).join('');
-  const avail = (KW.cols || []).filter(([k]) => !KW.sorts.some(x => x.col === k));
+  const avail = [...(KW.cols || []), ...KW_EXTRA_COLS.filter(([k]) => !(KW.cols || []).some(c => c[0] === k))].filter(([k]) => !KW.sorts.some(x => x.col === k));
   document.getElementById('kwSortBar').innerHTML = 'Sort: ' + chips + (KW.sorts.length < 4 && avail.length
-    ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join('')}</select>` : '');
+    ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}${KW_TIER_COLS.includes(k) ? ' ☰' : ''}</option>`).join('')}</select>` : '')
+    + ` <button class="kw-btn" style="margin-left:8px;${KW.groupOn ? 'border-color:#4cff4c;color:#4cff4c;' : ''}" onclick="kwSetGroupOn(!KW.groupOn)" title="Each sort level on a repeated-value column (☰) becomes a collapsible group tier">☰ Group by sort: ${KW.groupOn ? 'on' : 'off'}</button>`
+    + (KW.groupOn && kwTiers(kwHubActive()).length ? ` <span class="kw-x" onclick="kwHubGrpAll(true)">expand all</span> <span class="kw-x" onclick="kwHubGrpAll(false)">collapse all</span>` : '')
+    + ` <span style="color:var(--text3);">Ctrl-click a heading to add a level (max 4) · Alt-click removes</span>`;
 }
 
 // ── 🌐 Hub keywords in the tool (worker kwHubLoad / kwHubApply / kwHubUndo; rules in worker/kw-hub-ops.mjs) ────────
@@ -6496,7 +6504,7 @@ function kwHubOp(op) { KW.hubOps.push(op); KW._hubDraft = null; KW.selected.clea
 function kwHubSet(r) {
   KW.hub = { cid: r.cid, name: r.name, runId: r.runId, model: r.model, products: r.products || [], titles: r.titles || [], undo: r.undo, warn: r.warn || '' };
   KW.hubOps = []; KW._hubDraft = null;
-  if (!KW.groupBy) KW.groupBy = 'cluster';
+  if (!KW.sorts.some(x => KW_HUB_COLS.includes(x.col))) KW.sorts = [{ col: 'cluster', dir: 'asc' }, { col: 'topic', dir: 'asc' }, { col: 'vol', dir: 'desc' }];
   delete KW.snaps[r.runId]; delete KW.snaps['live:' + r.runId];
   KW.group = null; KW.view = [r.runId]; KW.selected.clear();
   kwViewChanged();
@@ -6527,7 +6535,8 @@ function kwHubDecorate(rows) {
   const m = d.model, topicsOf = new Map(), main = new Set(m.main), cl = new Set(m.clusters.map(c => KwHubOps.norm(c)));
   m.topics.forEach(t => t.keywords.forEach(k => { if (!topicsOf.has(k)) topicsOf.set(k, []); topicsOf.get(k).push(t); }));
   const prod = new Map(), tit = new Map();
-  KW.hub.products.forEach(p => p.keywords.forEach(k => prod.set(k, (prod.get(k) || 0) + 1)));
+  const prodNames = new Map();
+  KW.hub.products.forEach(p => p.keywords.forEach(k => { prod.set(k, (prod.get(k) || 0) + 1); if (!prodNames.has(k)) prodNames.set(k, []); prodNames.get(k).push(p.name || 'product'); }));
   KW.hub.titles.forEach(t => t.keywords.forEach(k => tit.set(k, (tit.get(k) || 0) + 1)));
   for (const r of rows) {
     const ts = [...(main.has(r.keyword) ? [{ id: KwHubOps.MAIN, name: '★ Main', cluster: '★ Main' }] : []), ...(topicsOf.get(r.keyword) || [])];
@@ -6536,6 +6545,7 @@ function kwHubDecorate(rows) {
     r.hubIn = { main: main.has(r.keyword), topic: ts.some(t => t.id !== KwHubOps.MAIN), product: prod.get(r.keyword) || 0, title: tit.get(r.keyword) || 0, cluster: cl.has(r.keyword) };
     const s = []; if (r.hubIn.cluster) s.push('🧩'); if (r.hubIn.product) s.push('P' + r.hubIn.product); if (r.hubIn.title) s.push('T' + r.hubIn.title);
     r.src = s.join(' ') || (r.hubIn.topic ? '' : null);
+    r.productList = prodNames.get(r.keyword) || []; r.product = r.productList.join(' · ') || null;
   }
 }
 function kwHubFilter(rows) {
@@ -6554,69 +6564,7 @@ function kwHubFilter(rows) {
 // Group by cluster → topic (or topic): collapsible header rows inside the results table, groups ordered by total
 // volume, rows inside a group in the table's current sort. A keyword in several topics shows under each.
 // Header checkbox = select the whole group (then Move / Add it like any selection).
-KW.groupBy = ''; KW.hubOpen = new Set(); KW._hubGroupRows = new Map();
-function kwHubGroups(rows) {
-  // groups: { key, label, own: [rows shown directly], sub: [groups], rows: [all rows — counts + select-all], note }
-  const d = kwHubDraft(), H = KW.hub, byKw = new Map(rows.map(r => [r.keyword, r]));
-  const tById = new Map(d.model.topics.map(t => [t.id, t]));
-  tById.set(KwHubOps.MAIN, { id: KwHubOps.MAIN, name: '★ Main Keywords', cluster: '★ Main', main: true });
-  const topicOf = new Map(d.model.products.map(p => [p.id, p.topicId || '']));
-  const vol = g => g.rows.reduce((a, r) => a + (r.vol || 0), 0), order = (a, b) => vol(b) - vol(a);
-  const uniqRows = list => { const seen = new Map(); list.forEach(r => seen.set(r.keyword, r)); return [...seen.values()]; };
-  // 📦 one group per product: its own keywords (the ones in this view)
-  const prodGroup = p => { const own = p.keywords.map(k => byKw.get(k)).filter(Boolean);
-    return own.length ? { key: 'p:' + p.id, label: '📦 ' + (p.name || 'product'), own, rows: own, note: (p.outOfSync ? '⚠ out of sync · ' : '') + (p.status ? p.status + ' · ' : '') + 'product keywords' } : null; };
-  const prodsFor = tid => H.products.filter(p => (topicOf.get(p.id) || '') === tid).map(prodGroup).filter(Boolean).sort(order);
-  const onProduct = new Set(H.products.flatMap(p => p.keywords));
-  // topic rows (★ Main included)
-  const byTopic = new Map(), loose = [];
-  for (const r of rows) {
-    const ids = (r.topicIds || []).filter(id => tById.has(id));
-    if (ids.length) ids.forEach(id => { if (!byTopic.has(id)) byTopic.set(id, []); byTopic.get(id).push(r); });
-    else if (!onProduct.has(r.keyword)) loose.push(r);
-  }
-  const topicIds = new Set([...byTopic.keys(), ...d.model.products.map(p => p.topicId).filter(id => id && tById.has(id))]);
-  const tg = id => { const t = tById.get(id), own = byTopic.get(id) || [], sub = t.main ? [] : prodsFor(id);
-    return { key: 't:' + id, label: t.name, own, sub, rows: uniqRows([...own, ...sub.flatMap(s => s.rows)]), first: !!t.main,
-      note: (sub.length ? sub.length + ' product' + (sub.length === 1 ? '' : 's') + ' · ' : '') + (t.main ? 'Research Keywords' : t.committed ? 'committed' : 'proposed') }; };
-  const out = [];
-  const noTopicProducts = prodsFor('');
-  const noTopicGroup = noTopicProducts.length ? { key: 'c:__prod', label: '📦 Products with no topic', own: [], sub: noTopicProducts,
-    rows: uniqRows(noTopicProducts.flatMap(s => s.rows)), note: noTopicProducts.length + ' product' + (noTopicProducts.length === 1 ? '' : 's') + ' (Master / generated separately)' } : null;
-  if (KW.groupBy === 'product') {
-    out.push(...H.products.map(prodGroup).filter(Boolean).sort(order));
-    const rest = rows.filter(r => !onProduct.has(r.keyword));
-    if (rest.length) out.push({ key: 'x:noprod', label: 'Keywords on no product', own: rest, rows: rest, note: 'topics / Main / titles / other runs' });
-    return out;
-  }
-  if (KW.groupBy === 'topic') out.push(...[...topicIds].map(tg).sort((a, b) => (b.first - a.first) || order(a, b)));
-  else {
-    const byC = new Map();
-    for (const id of topicIds) { const c = tById.get(id).cluster || ''; if (!byC.has(c)) byC.set(c, []); byC.get(c).push(tg(id)); }
-    out.push(...[...byC.entries()].map(([c, subs]) => { const isMain = c === '★ Main';
-      return { key: 'c:' + c, label: isMain ? c : c ? '🧩 ' + c : 'Topics with no cluster', own: [], sub: subs.sort(order), rows: uniqRows(subs.flatMap(s => s.rows)), first: isMain,
-        note: isMain ? 'the hub main list' : subs.length + ' topic' + (subs.length === 1 ? '' : 's'), last: c ? 0 : 1 }; })
-      .sort((a, b) => (b.first - a.first) || (a.last - b.last) || order(a, b)));
-  }
-  if (noTopicGroup) out.push(noTopicGroup);
-  if (loose.length) out.push({ key: 'x:none', label: 'Keywords in no topic', own: loose, rows: loose, note: 'only on titles / a cluster name, or from another run' });
-  return out;
-}
-function kwHubGroupBody(rows, rowHtml, span) {
-  const groups = KW_HUB_GROUPS.includes(KW.groupBy) ? kwHubGroups(rows) : kwRunGroups(rows); KW._hubGroupRows = new Map(); let count = 0;
-  const head = (g, lvl) => {
-    KW._hubGroupRows.set(g.key, g.rows.map(r => r.keyword)); count++;
-    const open = KW.hubOpen.has(g.key), all = g.rows.length && g.rows.every(r => KW.selected.has(r.keyword));
-    const v = g.rows.reduce((a, r) => a + (r.vol || 0), 0), drag = g.key.startsWith('t:') && g.key !== 't:' + KwHubOps.MAIN;
-    return `<tr${drag ? ' draggable="true"' : ''} data-k="${esc(g.key)}" ondragstart="kwHubDragStart(event)" ondragover="kwHubDragOver(event)" ondragleave="this.style.outline=''" ondrop="kwHubDrop(event)"><td colspan="${span}" data-k="${esc(g.key)}" onclick="kwHubGrpToggle(this.dataset.k)" style="text-align:left;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};padding-left:${6 + lvl * 18}px;border-top:1px solid var(--border);">
-      <input type="checkbox" ${all ? 'checked' : ''} data-k="${esc(g.key)}" onclick="event.stopPropagation();kwHubGrpSel(this.dataset.k, this.checked)" title="Select every keyword in this group">
-      ${open ? '▾' : '▸'} <b>${esc(g.label)}</b> <span style="color:var(--text3);">· ${kwNum(g.rows.length)} kw · ${kwNum(v)}/mo${g.note ? ' · ' + esc(g.note) : ''}</span></td></tr>`
-      + (open ? (g.own || []).map(rowHtml).join('') + (g.sub || []).map(x => head(x, lvl + 1)).join('') : '');
-  };
-  const html = groups.map(g => head(g, 0)).join('');
-  KW._hubGroupCount = count;
-  return html;
-}
+KW.hubOpen = new Set(); KW._hubGroupRows = new Map();
 // Drag & drop (grouped view, mouse): a keyword row → a topic header = move (Ctrl = add, keep its other topics);
 // → "— in no topic —" = out of every topic. A ticked row drags the whole selection. A topic header → a cluster
 // header = re-file it; → another topic header = merge (asks). Everything lands in the draft (💾 Apply saves).
@@ -6624,17 +6572,17 @@ let _kwDrag = null;
 function kwHubDragStart(e) {
   const tr = e.target.closest('tr'); if (!tr) return;
   if (tr.dataset.kw) { const k = tr.dataset.kw; _kwDrag = { kws: KW.selected.has(k) ? [...KW.selected] : [k] }; }
-  else if (tr.dataset.k && tr.dataset.k.startsWith('t:')) _kwDrag = { topic: tr.dataset.k.slice(2) };
+  else if (tr.dataset.drop && tr.dataset.drop.startsWith('t:')) _kwDrag = { topic: tr.dataset.drop.slice(2) };
   else { _kwDrag = null; return; }
   e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', _kwDrag.kws ? _kwDrag.kws.join(', ') : 'topic'); } catch (x) {}
 }
 function kwHubDragOver(e) {
-  if (!_kwDrag) return; const k = e.currentTarget.dataset.k || '';
+  if (!_kwDrag) return; const k = e.currentTarget.dataset.drop || '';
   const ok = _kwDrag.kws ? (k.startsWith('t:') || k === 'x:none') : (_kwDrag.topic !== KwHubOps.MAIN && ((k.startsWith('c:') && k !== 'c:★ Main' && k !== 'c:__prod') || (k.startsWith('t:') && k.slice(2) !== _kwDrag.topic && k.slice(2) !== KwHubOps.MAIN)));
   if (!ok) return; e.preventDefault(); e.currentTarget.style.outline = '2px dashed #4cff4c';
 }
 function kwHubDrop(e) {
-  e.preventDefault(); e.currentTarget.style.outline = ''; const k = e.currentTarget.dataset.k || '', d = _kwDrag; _kwDrag = null; if (!d) return;
+  e.preventDefault(); e.currentTarget.style.outline = ''; const k = e.currentTarget.dataset.drop || '', d = _kwDrag; _kwDrag = null; if (!d) return;
   if (d.kws) {
     if (k === 'x:none') return kwHubOp({ op: 'unassign', keywords: d.kws, from: '*' });
     if (k.startsWith('t:')) return kwHubOp({ op: 'assign', keywords: d.kws, to: k.slice(2), move: !(e.ctrlKey || e.metaKey || e.altKey) });
@@ -6643,53 +6591,86 @@ function kwHubDrop(e) {
     if (k.startsWith('t:')) return kwHubTopicAct(d.topic, 'merge', k.slice(2));
   }
 }
-function kwHubGrpToggle(k) { KW.hubOpen.has(k) ? KW.hubOpen.delete(k) : KW.hubOpen.add(k); kwLoadResults(KW.offset); }
-function kwHubGrpSel(k, on) { (KW._hubGroupRows.get(k) || []).forEach(kw => on ? KW.selected.add(kw) : KW.selected.delete(kw)); kwLoadResults(KW.offset); }
+// ── Sort levels → group tiers (same model as All Output) ────────────────────────────────────────────────────────
+// Click a column = sort by it; Ctrl/Shift-click = add a level (A→Z → Z→A → remove), Alt-click = remove; up to 4.
+// ☰ Group by sort ON: every level on a REPEATED-VALUE column becomes a collapsible tier (Topic, Cluster, Product,
+// In hub, Intent, Depth, Found via, Concept, Saved group); number columns only order the rows inside the groups.
+// A keyword in several topics / products / concepts shows under each. OFF = the plain paged list.
+const KW_TIER_COLS = ['topic', 'cluster', 'product', 'src', 'intent', 'depth', 'root', 'concept', 'saved'];
+const KW_HUB_COLS = ['topic', 'cluster', 'product', 'src'];
+const KW_EXTRA_COLS = [['root', 'Found via'], ['concept', 'Concept'], ['saved', 'Saved group']];
+KW.groupOn = (() => { try { return localStorage.getItem('kwGroupOn') !== 'off'; } catch (e) { return true; } })();
+function kwSetGroupOn(on) { KW.groupOn = on; try { localStorage.setItem('kwGroupOn', on ? 'on' : 'off'); } catch (e) {} KW.hubOpen = new Set(); kwLoadResults(0); }
+const kwTiers = hubOn => KW.sorts.filter(s => KW_TIER_COLS.includes(s.col) && (hubOn || !KW_HUB_COLS.includes(s.col))).slice(0, 4);
+// concept / saved-group text for sorting + their columns
+function kwDecorateRun(rows) {
+  const need = KW.sorts.some(s => s.col === 'concept' || s.col === 'saved'); if (!need) return;
+  const saved = (KW.groups || []).map(g => ({ name: g.name, set: new Set(g.keywords) }));
+  for (const r of rows) {
+    r.conceptList = [...new Set((r.concepts || []).filter(c => c && c[1] && !KW_DIM_SKIP.test(c[1]) && !KW_DIM_SKIP.test(c[0] || '')).map(c => c[1]))];
+    r.concept = r.conceptList.join(' · ') || null;
+    r.savedList = saved.filter(s => s.set.has(r.keyword)).map(s => s.name);
+    r.saved = r.savedList.join(' · ') || null;
+  }
+}
+// the group values a row belongs to for one column: [{ v: label, drop?: hub drop target }]
+function kwColVals(r, col, ctx) {
+  ctx = ctx || {};
+  const none = l => [{ v: l, none: true }];
+  const clusterOf = id => id === KwHubOps.MAIN ? '★ Main' : ((kwHubDraft().model.topics.find(x => x.id === id) || {}).cluster || '');
+  if (col === 'topic') { const d = kwHubDraft(); const ts = (r.topicIds || []).filter(id => !('cluster' in ctx) || clusterOf(id) === ctx.cluster).map(id => id === KwHubOps.MAIN ? { v: '★ Main Keywords', drop: 't:' + id } : (() => { const t = d && d.model.topics.find(x => x.id === id); return t ? { v: t.name, drop: 't:' + id, id } : null; })()).filter(Boolean);
+    return ts.length ? ts : [{ v: '— in no topic —', none: true, drop: 'x:none' }]; }
+  if (col === 'cluster') { const cs = 'topicId' in ctx ? (ctx.topicId ? [clusterOf(ctx.topicId)].filter(Boolean) : []) : String(r.cluster || '').split(' · ').filter(Boolean); return cs.length ? cs.map(c => ({ v: c, drop: c === '★ Main' ? '' : 'c:' + c })) : [{ v: '— no cluster —', none: true, drop: 'c:' }]; }
+  if (col === 'product') return (r.productList || []).length ? r.productList.map(p => ({ v: '📦 ' + p })) : none('— on no product —');
+  if (col === 'src') return r.src == null ? none('— not in the hub —') : [{ v: r.src || 'in a topic' }];
+  if (col === 'intent') return [{ v: kwIntentLabel(r.intent || 'general') }];
+  if (col === 'depth') return [{ v: r.depth == null ? '–' : 'depth ' + r.depth }];
+  if (col === 'root') return [{ v: '🌱 ' + (r.root || r.parent || r.keyword) }];
+  if (col === 'concept') return (r.conceptList || []).length ? r.conceptList.map(c => ({ v: '🏷 ' + c })) : none('— no Google concept —');
+  if (col === 'saved') return (r.savedList || []).length ? r.savedList.map(s => ({ v: '💾 ' + s })) : none('— not in a saved group —');
+  return [{ v: String(r[col] ?? '–') }];
+}
+const kwTierCtx = (ctx, col, g) => col === 'cluster' ? { ...ctx, cluster: g.none ? '' : g.v } : col === 'topic' ? { ...ctx, topicId: g.drop && g.drop.startsWith('t:') ? g.drop.slice(2) : '' } : ctx;
+function kwHubGroupBody(rows, rowHtml, span) {
+  const tiers = kwTiers(kwHubActive()); KW._hubGroupRows = new Map(); let count = 0;
+  const label = c => ((KW.cols || []).find(x => x[0] === c) || KW_EXTRA_COLS.find(x => x[0] === c) || [c, c])[1];
+  const build = (list, lvl, path, ctx) => {
+    if (lvl >= tiers.length) return list.map(rowHtml).join('');
+    const t = tiers[lvl], by = new Map();
+    for (const r of list) for (const x of kwColVals(r, t.col, ctx)) { if (!by.has(x.v)) by.set(x.v, { ...x, rows: [] }); by.get(x.v).rows.push(r); }
+    const groups = [...by.values()].sort((a, b) => (!!a.none - !!b.none) || (t.dir === 'desc' ? -1 : 1) * a.v.localeCompare(b.v, undefined, { numeric: true }));
+    return groups.map(g => {
+      const key = path + '|' + t.col + '=' + g.v; count++;
+      KW._hubGroupRows.set(key, [...new Set(g.rows.map(r => r.keyword))]);
+      const open = KW.hubOpen.has(key), all = g.rows.every(r => KW.selected.has(r.keyword)), v = g.rows.reduce((a, r) => a + (r.vol || 0), 0);
+      const drag = g.drop && g.drop.startsWith('t:') && g.drop !== 't:' + KwHubOps.MAIN;
+      return `<tr${drag ? ' draggable="true"' : ''} data-drop="${esc(g.drop || '')}" ondragstart="kwHubDragStart(event)" ondragover="kwHubDragOver(event)" ondragleave="this.style.outline=''" ondrop="kwHubDrop(event)"><td colspan="${span}" data-k="${esc(key)}" onclick="kwHubGrpToggle(this.dataset.k)" style="text-align:left;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};padding-left:${6 + lvl * 18}px;border-top:1px solid var(--border);">
+        <input type="checkbox" ${all ? 'checked' : ''} data-k="${esc(key)}" onclick="event.stopPropagation();kwHubGrpSel(this.dataset.k, this.checked)" title="Select every keyword in this group">
+        ${open ? '▾' : '▸'} <span style="color:var(--text3);">${esc(label(t.col))}:</span> <b>${esc(g.v)}</b> <span style="color:var(--text3);">· ${kwNum(new Set(g.rows.map(r => r.keyword)).size)} kw · ${kwNum(v)}/mo</span></td></tr>`
+        + (open ? build(g.rows, lvl + 1, key, kwTierCtx(ctx, t.col, g)) : '');
+    }).join('');
+  };
+  const html = build(rows, 0, '', {});
+  KW._hubGroupCount = count;
+  return html;
+}
 function kwHubGrpAll(open) {
   if (!open) KW.hubOpen.clear();
-  else { const walk = gs => gs.forEach(g => { KW.hubOpen.add(g.key); if (g.sub) walk(g.sub); }); walk(KW_HUB_GROUPS.includes(KW.groupBy) ? kwHubGroups(KW.filtered || []) : kwRunGroups(KW.filtered || [])); }
+  else { const tiers = kwTiers(kwHubActive());
+    const walk = (list, lvl, path, ctx) => { if (lvl >= tiers.length) return; const by = new Map();
+      for (const r of list) for (const x of kwColVals(r, tiers[lvl].col, ctx)) { if (!by.has(x.v)) by.set(x.v, { ...x, rows: [] }); by.get(x.v).rows.push(r); }
+      for (const [v, g] of by) { const key = path + '|' + tiers[lvl].col + '=' + v; KW.hubOpen.add(key); walk(g.rows, lvl + 1, key, kwTierCtx(ctx, tiers[lvl].col, g)); } };
+    walk(KW.filtered || [], 0, '', {}); }
   kwLoadResults(KW.offset);
 }
+function kwRenderGroupBy() {}
+
+function kwHubGrpToggle(k) { KW.hubOpen.has(k) ? KW.hubOpen.delete(k) : KW.hubOpen.add(k); kwLoadResults(KW.offset); }
+function kwHubGrpSel(k, on) { (KW._hubGroupRows.get(k) || []).forEach(kw => on ? KW.selected.add(kw) : KW.selected.delete(kw)); kwLoadResults(KW.offset); }
 // ── Group by (every run) ─────────────────────────────────────────────────────────────────────────────────────────
 // Run groupings: seed / found via, intent, Google concept, saved group. Hub groupings (cluster → topic → product,
 // topic → product, product) only when a loaded hub's run is in the view. Same collapsible headers everywhere
 // (kwHubGroupBody); the header checkbox selects the whole group.
-const KW_HUB_GROUPS = ['cluster', 'topic', 'product'];
-const KW_RUN_GROUPS = [['seed', 'seed / found via'], ['intent', 'intent'], ['concept', 'Google concept'], ['saved', 'saved group']];
-const kwGroupApplies = hubOn => !!KW.groupBy && (KW_HUB_GROUPS.includes(KW.groupBy) ? hubOn : true);
-function kwGroupByOptions(hubOn) {
-  const o = (v, l) => `<option value="${v}" ${v === (KW.groupBy || '') ? 'selected' : ''}>${l}</option>`;
-  return o('', 'no grouping') + (hubOn ? '<optgroup label="🌐 Hub">' + o('cluster', 'cluster → topic → product') + o('topic', 'topic → product') + o('product', 'product') + '</optgroup>' : '')
-    + '<optgroup label="Run">' + KW_RUN_GROUPS.map(([v, l]) => o(v, l)).join('') + '</optgroup>';
-}
-function kwRenderGroupBy(hubOn) {
-  const sel = document.getElementById('kwGroupBy'); if (!sel) return;
-  if (KW_HUB_GROUPS.includes(KW.groupBy) && !hubOn) KW.groupBy = '';
-  sel.innerHTML = kwGroupByOptions(hubOn).replace('>no grouping<', '>group: none<');
-  sel.style.outline = KW.groupBy ? '2px solid #4cff4c' : '';
-}
-function kwSetGroupBy(v) { KW.groupBy = v || ''; KW.hubOpen = new Set(); kwLoadResults(0); }
-function kwRunGroups(rows) {
-  const by = new Map(), none = [];
-  const put = (key, label, r) => { if (!by.has(key)) by.set(key, { key, label, own: [], rows: [] }); const g = by.get(key); g.own.push(r); g.rows = g.own; };
-  const g = KW.groupBy;
-  const saved = g === 'saved' ? (KW.groups || []).map(x => ({ x, set: new Set(x.keywords) })) : [];
-  for (const r of rows) {
-    if (g === 'seed') { const k = r.root || r.parent || r.keyword; put('s:' + k, '🌱 ' + k, r); }
-    else if (g === 'intent') put('i:' + (r.intent || 'general'), kwIntentLabel(r.intent || 'general'), r);
-    else if (g === 'concept') {
-      const cs = (r.concepts || []).filter(c => c && c[1] && !KW_DIM_SKIP.test(c[1]) && !KW_DIM_SKIP.test(c[0] || ''));
-      if (!cs.length) none.push(r); else cs.forEach(c => put('k:' + c[0] + '|' + c[1], '🏷 ' + c[1] + (c[0] ? ' · ' + c[0] : ''), r));
-    }
-    else if (g === 'saved') { const hit = saved.filter(s => s.set.has(r.keyword)); if (!hit.length) none.push(r); else hit.forEach(s => put('v:' + s.x.id, '💾 ' + s.x.name, r)); }
-  }
-  const vol = x => x.rows.reduce((a, r) => a + (r.vol || 0), 0);
-  const out = [...by.values()].sort((a, b) => vol(b) - vol(a));
-  out.forEach(x => { x.note = g === 'seed' ? 'from this seed / parent' : ''; });
-  if (none.length) out.push({ key: 'n:none', label: g === 'concept' ? 'No Google concept' : 'Not in a saved group', own: none, rows: none });
-  return out;
-}
-
 // ── 🔬 Research selection (hub view) ── a normal keyword-tool run on the selection: the form's Quick / Discover
 // settings, the hub run's market (worker kwStartRun hubLink), tagged to the hub; when it finishes it opens next to
 // the hub run so the hub grouping + "not in the hub" gaps apply. Same steps as ▶ Go (kwLoop).
@@ -6807,9 +6788,6 @@ function kwHubRender() {
       <select class="kw-sel" style="max-width:200px;${f.cluster ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('cluster', this.value)"><option value="">any cluster</option><option value="__none" ${f.cluster === '__none' ? 'selected' : ''}>— no cluster —</option><option ${f.cluster === '★ Main' ? 'selected' : ''}>★ Main</option>${m.clusters.map(c => `<option ${c === f.cluster ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
       <select class="kw-sel" style="${f.src ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('src', this.value)">${[['', 'anywhere'], ['topic', 'in a topic'], ['main', 'in Main Keywords'], ['product', 'on a product'], ['title', 'on a title'], ['cluster', 'a cluster name'], ['none', 'not in the hub (other runs)']].map(([v, l]) => `<option value="${v}" ${v === f.src ? 'selected' : ''}>${l}</option>`).join('')}</select>
       ${f.topic || f.cluster || f.src ? `<span class="kw-x" onclick="KW.hubF={topic:'',cluster:'',src:''};kwLoadResults(0)">✕ clear</span>` : ''}
-      <span style="color:var(--text3);margin-left:8px;">Group:</span>
-      <select class="kw-sel" onchange="kwSetGroupBy(this.value)">${kwGroupByOptions(true)}</select>
-      ${KW.groupBy ? `<span class="kw-x" onclick="kwHubGrpAll(true)">expand all</span><span class="kw-x" onclick="kwHubGrpAll(false)">collapse all</span>` : ''}
       <span style="color:var(--text3);">Tick another run too to compare (“not in the hub” = gaps).</span>
     </div>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;padding:6px;border:1px solid #2a5a2a;border-radius:4px;">
