@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Methods &amp; Strategies · Hermes</title>
+  <style>
+    :root{color-scheme:dark;--bg:#0c1116;--surface:#121a21;--surface2:#17232c;--border:#293844;--text:#e8eef2;--muted:#92a4b0;--accent:#6fd0d4;--note:#2b2818}
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+    header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 16px;background:rgba(12,17,22,.96);border-bottom:1px solid var(--border);backdrop-filter:blur(10px)}
+    header strong{font-size:12px;letter-spacing:.12em;text-transform:uppercase} .spacer{flex:1}
+    a,.button{color:var(--accent);text-decoration:none;border:1px solid var(--border);border-radius:7px;padding:6px 9px;background:transparent;font:inherit;cursor:pointer}
+    main{max-width:1440px;margin:auto;padding:18px 16px 60px} h1{margin:0 0 5px;font-size:25px} p{margin:0 0 18px;color:var(--muted)}
+    .table-wrap{overflow:auto;border:1px solid var(--border);border-radius:10px;background:var(--surface)} table{width:100%;border-collapse:collapse;min-width:860px}
+    th{position:sticky;top:0;text-align:left;background:#245e62;color:white;font-size:12px;padding:10px;border-bottom:1px solid var(--border)}
+    td{vertical-align:top;padding:10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border)} tr:last-child td{border-bottom:0}
+    td:first-child{width:25%;font-weight:700;color:#bfecef;background:var(--surface2)} td:nth-child(2){width:50%} td.notes{width:25%;min-width:230px;background:var(--note);outline:none}
+    td.notes:empty:before{content:'Tap to add notes…';color:#8e8766} td.notes:focus{box-shadow:inset 0 0 0 2px var(--accent)}
+    .saved{font-size:12px;color:var(--muted)}
+    @media(max-width:680px){main{padding:14px 10px 40px}h1{font-size:21px}.table-wrap{overflow:visible;border:0;background:transparent}table,tbody,tr,td{display:block;min-width:0;width:100%}thead{display:none}tr{margin-bottom:12px;border:1px solid var(--border);border-radius:10px;overflow:hidden;background:var(--surface)}td,td:first-child,td:nth-child(2),td.notes{width:100%;min-width:0;border-right:0;padding:11px}td:first-child{font-size:15px}td:nth-child(2):before{content:'Strategy';display:block;margin-bottom:5px;color:var(--muted);font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}td.notes:before{content:'Notes';display:block;margin-bottom:5px;color:#b8ac74;font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase}td.notes:empty:after{content:'Tap to add notes…';color:#8e8766}}
+  </style>
+</head>
+<body>
+<header><strong>Hermes</strong><a href="../">← Dash</a><span class="spacer"></span><span class="saved" id="saved">Notes save on this device</span><a href="../downloads/methods-and-strategies.xlsx" download>Excel ↓</a></header>
+<main>
+  <h1>Methods &amp; Strategies</h1>
+  <p>23 content-production methods with default cadence and scheduling rules. Notes are editable and saved automatically in this browser.</p>
+  <div class="table-wrap"><table><thead><tr><th>Method</th><th>Strategy</th><th>Notes</th></tr></thead><tbody id="rows"></tbody></table></div>
+</main>
+<script>
+const DATA = [
+['Hub Production Run','On demand per hub, then quarterly review. Finalize keywords → main product → research → real titles → pillars → assets → publish. Progress is completed stages out of seven; next due is the first incomplete stage.'],
+['Digest','Weekly. Research Monday, curate and rank Tuesday, approve Wednesday, publish Thursday. Use asset keywords, standing creators, associations, Gemini and Perplexity. Retain sources and flag changes.'],
+['Digest → Blog News SEO','Three per week. Select timely, high-fit digest sources, publish an SEO-first news post within 48 hours, and link to the relevant offer as secondary intent.'],
+['Digest → Podcast','Weekly Friday. Turn the approved digest into a cold open, feature, joke, sponsor or affiliate read, topical story and outro. Produce one episode plus two to four clips.'],
+['Digest → Newsletter Paid','Weekly Friday after digest research closes. Synthesize at least three tier-one sources and include What Changed. Keep Draft until the audience threshold is met.'],
+['Digest → Newsletter Free','Weekly Wednesday or Thursday. Choose one timely item plus teasers from news, products and benefits not promoted in six weeks. Use pain and benefit framing to convert to paid.'],
+['Long Form Topical','Two per month per hub. Choose a sub-keyword and format by intent; prioritize engagement and watch time, place product intent last, and mark two to four clip sections.'],
+['Long Form Topical → YouTube Long Form QA','Weekly. Choose a high-watch-time, high-CPC YouTube question matched to hub topics. Keep product pitch off by default. Interview, script, thumbnail and publish within seven days, then create shorts.'],
+['Long Form Topical → Blog Article','Weekly from an approved topical pillar. Reshape into keyword-led headings, FAQ, internal links and a relevant product call to action; publish within three days and review quarterly.'],
+['Long Form Sales','One canonical sales pillar per active product, created at launch and reviewed quarterly. Cover awareness, pain, benefit, proof and objections; child assets inherit this source.'],
+['Long Form Sales → Sales Article','One per active product. Publish the complete persuasive version with awareness, reviews, proof, related offers and calls to action. Hide empty sections and refresh quarterly.'],
+['Long Form Sales → Sales Page','One page per promoted offer or domain. Launch from the sales pillar with its own keywords, metadata, proof, conversion actions and two to three supporting posts. Review monthly; refresh quarterly.'],
+['Any Pillar → Short Video','Three per week from marked pillar clip sections. Mix talking-head or avatar and kinetic-text formats. Each clip gets a parent asset, platform variant and publish date.'],
+['Any Pillar → Single Post','Three image posts per week from active pillar clips. Rotate Hook → Pain → Benefit → Information → Proof → Objection → Contrarian. Avoid repeating an angle within six weeks.'],
+['Any Pillar → Carousel','One per week from the strongest unused pillar sequence. Build six to nine slides: hook, problem, teaching, proof and call to action. Publish variants together and rotate source pillars.'],
+['Products','Deferred. No automatic recurrence while product work is paused. When activated, select one product format and create a finite launch plan. Keep status Deferred and next due blank.'],
+['Interactivity','Monthly per active hub. Run the lossless Utility Site Scout and preserve every query, volume, competition value, search-result weakness and traffic note. Approve the best opportunity; recheck quarterly.'],
+['Interactivity → Interactive Page','One approved tool per month. Build a functional page plus 600–1,000 words and optional ads. Publish after quality review; review usability monthly and search data quarterly.'],
+['Interactivity → Interactive Widget','Create automatically with every Interactive Page from the same specification and codebase. Inherit the parent status and next due date; run quarterly compatibility checks.'],
+['Pillar','Default two per month. At creation choose Digest, Topical, Sales, Product or Interactivity, then select a compatible method strategy and copy its rules onto child assets. Resynchronize only explicitly.'],
+['Any Pillar → Pinterest Pin','Five per week from Single Post-ready material. Reuse approved design and copy, render 2:3, add a search-led title, description, destination URL and board, and rotate evergreen pins quarterly.'],
+['Any Pillar → Resume + Cover Letter','On demand for each approved job opportunity. Research title keywords and job boards, extract requirements, match verified experience, then write a tailored resume and cover letter. Next due is 48 hours before the deadline.'],
+['Any Pillar or Product → Marketplace Listing','On demand per item or offer, with monthly refreshes for active listings. Produce Etsy, Craigslist and Facebook Marketplace variants with title, description, category, keywords, price guidance, images, fulfillment details and call to action.']
+];
+const KEY='hermes-method-strategy-notes-v1', notes=JSON.parse(localStorage.getItem(KEY)||'{}'), body=document.getElementById('rows'), saved=document.getElementById('saved');
+DATA.forEach(([method,strategy],i)=>{const tr=document.createElement('tr'); tr.innerHTML=`<td>${method}</td><td>${strategy}</td><td class="notes" contenteditable="true" data-i="${i}"></td>`; const n=tr.lastElementChild; n.textContent=notes[i]||''; n.addEventListener('input',()=>{notes[i]=n.textContent.trim();localStorage.setItem(KEY,JSON.stringify(notes));saved.textContent='Saved';clearTimeout(window._st);window._st=setTimeout(()=>saved.textContent='Notes save on this device',1200)}); body.appendChild(tr)});
+</script>
+</body>
+</html>
