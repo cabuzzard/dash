@@ -14986,7 +14986,7 @@ function renderHubsTab() {
         <div id="hubTitlesBody-${slug}" style="display:${_hubContentOpen[slug + '|ti'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubTitles(slug)}</div></div>
         <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|as']=!_hubContentOpen['${slug}|as'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|as']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|as']?'▼':'▶';if(_hubContentOpen['${slug}|as'])hubTitlesLoad('${slug}').then(() => hubAssetsPaint('${slug}'))" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|as'] ? '▼' : '▶'}</span>
-          <span style="color:var(--text);flex:1;" title="Every published asset of this campaign — sort, filter and group like All Output">Assets <span id="hubAssetsN-${slug}" style="color:var(--text3);">${hubAssetsRows(slug) ? '— ' + hubAssetsRows(slug).length + ' published' : ''}</span></span></div>
+          <span style="color:var(--text);flex:1;" title="Every published asset of this campaign — sort, filter and group like All Output (starts Cluster › Topic › newest)">Assets <span id="hubAssetsN-${slug}" style="color:var(--text3);">${hubAssetsRows(slug) ? '— ' + hubAssetsRows(slug).length + ' published' : ''}</span></span></div>
         <div id="hubAssetsBody-${slug}" style="display:${_hubContentOpen[slug + '|as'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubAssets(slug)}</div></div>
         
       </div>
@@ -15474,22 +15474,24 @@ function hubToolsPhase(slug) {
 // level, max 4; Alt-click removes), filterable (text + Type / Product / Topic / Section), ☰ Group by sort (each level on a
 // repeated-value column = a collapsible tier). Data = the Titles section's rows (All Output's getDevAssetsTable).
 const _hubAssetsUI = {};
-const HA_COLS = [['asset', 'Asset'], ['type', 'Type'], ['title', 'Title'], ['product', 'Product'], ['topic', 'Keyword topic'], ['section', 'Hub section'], ['date', 'Published'], ['sync', 'Sync']];
-const HA_TIER = ['type', 'title', 'product', 'topic', 'section', 'sync'];
+const HA_COLS = [['asset', 'Asset'], ['title', 'Title'], ['product', 'Product'], ['cluster', 'Cluster'], ['topic', 'Keyword topic'], ['section', 'Hub section'], ['date', 'Published'], ['sync', 'Sync'], ['type', 'Type']];
+const HA_TIER = ['type', 'title', 'product', 'cluster', 'topic', 'section', 'sync'];
 function hubAssetsUI(slug) {
   if (!_hubAssetsUI[slug]) { let g = true; try { g = localStorage.getItem('hubAssetsGroup') !== 'off'; } catch (e) {}
-    _hubAssetsUI[slug] = { sorts: [{ col: 'topic', dir: 'asc' }, { col: 'date', dir: 'desc' }], group: g, q: '', f: {}, open: new Set() }; }
+    _hubAssetsUI[slug] = { sorts: [{ col: 'cluster', dir: 'asc' }, { col: 'topic', dir: 'asc' }, { col: 'date', dir: 'desc' }], group: g, q: '', f: {}, open: new Set() }; }
   return _hubAssetsUI[slug];
 }
 function hubAssetsRows(slug) {
   const T = _hubTitles[slug]; if (!T || !T.rows) return null;
   const nid = x => String(x || '').replace(/-/g, ''), K = _hubKw[slug] || {}, topics = [...(K.staged || []), ...(K.committed || [])];
   const flagged = new Set(((_hubBuild[slug] || {}).flags || []).filter(f => f.assetId).map(f => nid(f.assetId)));
+  const tc = (K.tc || {}), clOf = tid => { if (tid === '__main') return '★ Main'; const c = (tc.assign || {})[tid]; return c && (tc.clusters || []).includes(c) ? c : '— no cluster —'; };
+  const clusterName = pid => { if (!pid) return '— no product —'; const p = (T.products || []).find(x => nid(x.id) === nid(pid)); if (!p) return '— no cluster —'; const tid = hubTiTopicOf(slug, p); return tid ? clOf(tid) : '— no topic —'; };
   const topicName = pid => { if (!pid) return '— no product —'; const p = (T.products || []).find(x => nid(x.id) === nid(pid)); if (!p) return '— no topic —';
     const tid = hubTiTopicOf(slug, p); if (tid === '__main') return '★ Main'; const t = topics.find(x => x.id === tid); return t ? t.name : '— no topic —'; };
   return T.rows.filter(r => r.kind === 'asset' && r.assetStatus === 'Published').map(r => ({
     id: nid(r.assetId), asset: r.assetName || '(untitled asset)', type: r.assetType || '—', title: r.title || '—', product: r.productId ? (r.product || '—') : '— no product —',
-    topic: topicName(r.productId), section: r.hubSection || '— not in a hub section —', date: String(r.datePublished || '').slice(0, 10),
+    cluster: clusterName(r.productId), topic: topicName(r.productId), section: r.hubSection || '— not in a hub section —', date: String(r.datePublished || '').slice(0, 10),
     sync: /^Out of Sync/.test(r.ivSync || '') ? (/Regenerate/.test(r.ivSync) ? '⟳ regenerate' : '⟳ review') : flagged.has(nid(r.assetId)) ? '⚑ review' : '✓ in sync' }));
 }
 function hubAssetsSort(slug, col, ev) {
@@ -15521,9 +15523,10 @@ function renderHubAssets(slug) {
   const U = hubAssetsUI(slug), all = hubAssetsRows(slug) || [];
   const vals = k => [...new Set(all.map(r => r[k]))].sort((a, b) => a.localeCompare(b));
   const q = U.q.trim().toLowerCase();
-  let rows = all.filter(r => (!q || HA_COLS.some(([k]) => String(r[k]).toLowerCase().includes(q))) && ['type', 'product', 'topic', 'section'].every(k => !U.f[k] || r[k] === U.f[k]));
+  let rows = all.filter(r => (!q || HA_COLS.some(([k]) => String(r[k]).toLowerCase().includes(q))) && ['type', 'product', 'cluster', 'topic', 'section'].every(k => !U.f[k] || r[k] === U.f[k]));
   const cmp = (a, b, col) => col === 'date' ? String(a[col]).localeCompare(String(b[col])) : String(a[col]).localeCompare(String(b[col]), undefined, { numeric: true });
-  rows.sort((a, b) => { for (const s of U.sorts) { const d = cmp(a, b, s.col); if (d) return s.dir === 'asc' ? d : -d; } return a.asset.localeCompare(b.asset); });
+  const blank = v => String(v).startsWith('—') || v === '' ? 1 : 0;   // '— no … —' / empty always last, either direction
+  rows.sort((a, b) => { for (const s of U.sorts) { const z = blank(a[s.col]) - blank(b[s.col]); if (z) return z; const d = cmp(a, b, s.col); if (d) return s.dir === 'asc' ? d : -d; } return a.asset.localeCompare(b.asset); });
   U._filtered = rows;
   const S = 'font-size:10.5px;padding:2px 5px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text);max-width:170px;';
   const sel = (k, label) => `<select style="${S}${U.f[k] ? 'outline:2px solid #4cff4c;' : ''}" onchange="hubAssetsSet('${slug}','${k}',this.value)"><option value="">${label}: any</option>${vals(k).map(v => `<option ${U.f[k] === v ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
@@ -15531,7 +15534,7 @@ function renderHubAssets(slug) {
   const B = 'font-size:10.5px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
   const bar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px;">
     <input value="${esc(U.q)}" placeholder="filter: any text" onkeydown="if(event.key==='Enter')hubAssetsSet('${slug}','q',this.value)" onchange="hubAssetsSet('${slug}','q',this.value)" style="${S}min-width:150px;max-width:220px;">
-    ${sel('type', 'Type')}${sel('product', 'Product')}${sel('topic', 'Topic')}${sel('section', 'Section')}
+    ${sel('product', 'Product')}${sel('cluster', 'Cluster')}${sel('topic', 'Topic')}${sel('section', 'Section')}${sel('type', 'Type')}
     ${U.q || Object.values(U.f).some(Boolean) ? `<span style="cursor:pointer;color:var(--text3);" onclick="_hubAssetsUI['${slug}'].q='';_hubAssetsUI['${slug}'].f={};hubAssetsPaint('${slug}')">✕ clear</span>` : ''}
     <button style="${B}${U.group ? 'border-color:#4ade80;color:#4ade80;' : ''}" onclick="hubAssetsSet('${slug}','group',${!U.group})" title="Each sort level on a repeated-value column becomes a collapsible group">☰ Group by sort: ${U.group ? 'on' : 'off'}</button>
     ${tiers.length ? `<button style="${B}" onclick="hubAssetsAll('${slug}',true)">⊞ Expand all</button><button style="${B}" onclick="hubAssetsAll('${slug}',false)">⊟ Collapse all</button>` : ''}
@@ -15542,7 +15545,7 @@ function renderHubAssets(slug) {
   const head = `<tr>${HA_COLS.map(([k, l]) => `<th style="${TH}" onclick="hubAssetsSort('${slug}','${k}',event)" title="Click to sort · Ctrl-click to add a level${HA_TIER.includes(k) ? ' (groups when ☰ is on)' : ''}">${l}${mark(k)}</th>`).join('')}</tr>`;
   const TD = 'padding:3px 6px;font-size:11.5px;border-bottom:1px solid var(--border);vertical-align:top;';
   const syncCol = v => v.startsWith('⟳') ? '#ff7a00' : v.startsWith('⚑') ? '#f6ad55' : '#4ade80';
-  const row = r => `<tr><td style="${TD}"><a href="https://www.notion.so/${esc(r.id)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.asset)}</a></td><td style="${TD}color:var(--text2);">${esc(r.type)}</td><td style="${TD}">${esc(r.title)}</td><td style="${TD}color:var(--text2);">${esc(r.product)}</td><td style="${TD}color:var(--text2);">${esc(r.topic)}</td><td style="${TD}color:var(--text3);">${esc(r.section)}</td><td style="${TD}color:var(--text3);white-space:nowrap;">${esc(r.date)}</td><td style="${TD}color:${syncCol(r.sync)};white-space:nowrap;">${esc(r.sync)}</td></tr>`;
+  const row = r => `<tr><td style="${TD}"><a href="https://www.notion.so/${esc(r.id)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.asset)}</a></td><td style="${TD}">${esc(r.title)}</td><td style="${TD}color:var(--text2);">${esc(r.product)}</td><td style="${TD}color:var(--text2);">${esc(r.cluster)}</td><td style="${TD}color:var(--text2);">${esc(r.topic)}</td><td style="${TD}color:var(--text3);">${esc(r.section)}</td><td style="${TD}color:var(--text3);white-space:nowrap;">${esc(r.date)}</td><td style="${TD}color:${syncCol(r.sync)};white-space:nowrap;">${esc(r.sync)}</td><td style="${TD}color:var(--text2);">${esc(r.type)}</td></tr>`;
   const label = c => (HA_COLS.find(x => x[0] === c) || [c, c])[1], span = HA_COLS.length;
   const build = (list, lvl, path) => {
     if (lvl >= tiers.length) return list.map(row).join('');
