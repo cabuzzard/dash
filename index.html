@@ -15692,18 +15692,28 @@ async function hubOutputProdSave(slug, pid) {
 function hubOutputTitleEdit(slug, titleId) {
   const T = _hubTitles[slug]; if (!T || !T.rows) return;
   const tid = kwNid(titleId), row = T.rows.find(r => r.titleId && kwNid(r.titleId) === tid); if (!row) return;
+  const curPid = kwNid(row.productId), products = [...(T.products || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
   hcModal('<h3 style="margin:0 0 10px;">Edit title</h3>'
     + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>'
     + '<input id="hotTitle" type="text" value="' + esc(row.title || '') + '" style="' + IN + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'hotTitleSave\').click();}">'
+    + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>'
+    + '<select id="hotProduct" data-cur="' + esc(curPid) + '" style="' + IN + '"><option value="__none__">No product</option>'
+    + products.map(p => '<option value="' + esc(kwNid(p.id)) + '" ' + (kwNid(p.id) === curPid ? 'selected' : '') + '>' + esc(p.name || '(untitled product)') + '</option>').join('') + '</select>'
     + '<div style="display:flex;gap:8px;"><button class="modal-btn" id="hotTitleSave" onclick="hcModalRun(this, () => hubOutputTitleSave(\'' + slug + '\',\'' + esc(tid) + '\'))">Save</button>' + HC_CANCEL + '</div>');
   setTimeout(() => { const el = document.getElementById('hotTitle'); if (el) { el.focus(); el.select(); } }, 0);
 }
 async function hubOutputTitleSave(slug, titleId) {
-  const el = document.getElementById('hotTitle'), value = el ? el.value.trim() : ''; if (!value) return 'The title can’t be empty';
-  const r = await call('updateAllOutputField', { kind: 'title', field: 'title', titleId, value }).catch(e => ({ error: e.message }));
-  if (!r || r.error) return (r && r.error) || 'Could not save title';
-  const T = _hubTitles[slug]; if (T && T.rows) T.rows.forEach(x => { if (x.titleId && kwNid(x.titleId) === kwNid(titleId)) x.title = value; });
+  const el = document.getElementById('hotTitle'), value = el ? el.value.trim() : '', psel = document.getElementById('hotProduct'); if (!value) return 'The title can’t be empty';
+  const T = _hubTitles[slug], row = T && T.rows && T.rows.find(x => x.titleId && kwNid(x.titleId) === kwNid(titleId));
+  if (!row) return 'Title not found';
+  const oldTitle = row.title || '', oldPid = kwNid(row.productId), productId = psel ? psel.value : (oldPid || '__none__');
+  try {
+    if (value !== oldTitle) { const r = await call('updateAllOutputField', { kind: 'title', field: 'title', titleId, value }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save title'); }
+    if (productId !== (oldPid || '__none__')) { const r = await call('updateTitleStrategy', { titleId, productId }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
+  } catch (e) { return e.message; }
+  const product = productId === '__none__' ? null : (T.products || []).find(p => kwNid(p.id) === kwNid(productId));
+  T.rows.forEach(x => { if (x.titleId && kwNid(x.titleId) === kwNid(titleId)) { x.title = value; x.productId = product ? kwNid(product.id) : ''; x.product = product ? product.name : ''; } });
   hubOutputPaint(slug); hubTitlesRefresh(slug);
   return true;
 }
