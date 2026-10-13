@@ -6227,8 +6227,8 @@ function kwLoadResults(offset) {
     return (KW.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (KW.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
   KW.pageRows = page.map(r => r.keyword);
   const allOn = KW.pageRows.length && KW.pageRows.every(k => KW.selected.has(k));
-  const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${['keyword', 'intent', 'topic', 'cluster', 'product', 'src', 'concept', 'saved'].includes(k) ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
-    + `<th onclick="kwSort('root', event)" title="Click to sort · Ctrl-click to add a level" style="cursor:pointer;text-align:left;">Found via${mark('root')}</th>` + (multi ? '<th style="text-align:left;">In runs</th>' : '');
+  const th = `<th style="width:18px;"><input type="checkbox" ${allOn ? 'checked' : ''} onclick="kwSelPage(this.checked)" title="Select all on this page"></th>` + cols.map(([k, label]) => `<th${lpAttrs(`kwSort('${k}', ev)`)}onclick="kwSort('${k}', event)" title="Click to sort · Shift-click to add as a secondary sort" style="cursor:pointer;${['keyword', 'intent', 'topic', 'cluster', 'product', 'src', 'concept', 'saved'].includes(k) ? 'text-align:left;' : ''}">${label}${mark(k)}</th>`).join('')
+    + `<th${lpAttrs(`kwSort('root', ev)`)}onclick="kwSort('root', event)" title="Click to sort · Ctrl-click to add a level" style="cursor:pointer;text-align:left;">Found via${mark('root')}</th>` + (multi ? '<th style="text-align:left;">In runs</th>' : '');
   const trend = t => t == null ? '–' : `<span style="color:${t > 0 ? '#4cff4c' : t < 0 ? '#ff6b6b' : 'var(--text3)'}">${t > 0 ? '+' : ''}${t}%</span>`;
   const rowHtml = r => `<tr${grouped && hubOn ? ` draggable="true" data-kw="${esc(r.keyword)}" ondragstart="kwHubDragStart(event)" style="cursor:grab;"` : ''}>
       <td><input type="checkbox" ${KW.selected.has(r.keyword) ? 'checked' : ''} onclick="kwSel(this, ${esc(JSON.stringify(r.keyword))})"></td>
@@ -6469,6 +6469,7 @@ async function kwHubReadyWatch(slug, name) {
   bar.innerHTML = `The "${esc(name)}" hub is taking longer than usual — reload in a minute or two. <button onclick="location.reload()" style="font-size:12px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text);cursor:pointer;">↻ Reload</button> <button onclick="this.parentElement.remove()" style="font-size:11px;padding:3px 8px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;">✕</button>`;
 }
 function kwSort(col, ev) {
+  if (ev && ev.type === 'click' && typeof lpSwallow === 'function' && lpSwallow()) return;
   const i = KW.sorts.findIndex(x => x.col === col);
   if (ev && ev.altKey) { if (i >= 0 && KW.sorts.length > 1) KW.sorts.splice(i, 1); }
   else if (ev && (ev.shiftKey || ev.ctrlKey || ev.metaKey)) {   // add a level → flip → remove
@@ -6495,7 +6496,7 @@ function kwRenderSortBar() {
     ? ` <select class="kw-sel" onchange="kwSortAdd(this.value)"><option value="">+ then by…</option>${avail.map(([k, l]) => `<option value="${k}">${esc(l)}${KW_TIER_COLS.includes(k) ? ' ☰' : ''}</option>`).join('')}</select>` : '')
     + ` <button class="kw-btn" style="margin-left:8px;${KW.groupOn ? 'border-color:#4cff4c;color:#4cff4c;' : ''}" onclick="kwSetGroupOn(!KW.groupOn)" title="Each sort level on a repeated-value column (☰) becomes a collapsible group tier">☰ Group by sort: ${KW.groupOn ? 'on' : 'off'}</button>`
     + (KW.groupOn && kwTiers(kwHubActive()).length ? ` <button class="kw-btn" onclick="kwHubGrpAll(true)" title="Open every group, every tier">⊞ Expand all</button> <button class="kw-btn" onclick="kwHubGrpAll(false)" title="Close every group">⊟ Collapse all</button>` : '')
-    + ` <span style="color:var(--text3);">Ctrl-click a heading to add a level (max 4) · Alt-click removes</span>`;
+    + ` <span style="color:var(--text3);">Ctrl-click or long-press a heading to add a level (max 4) · Alt-click removes</span>`;
 }
 
 // ── 🌐 Hub keywords in the tool (worker kwHubLoad / kwHubApply / kwHubUndo; rules in worker/kw-hub-ops.mjs) ────────
@@ -15494,7 +15495,19 @@ function hubAssetsRows(slug) {
     cluster: clusterName(r.productId), topic: topicName(r.productId), section: r.hubSection || '— not in a hub section —', date: String(r.datePublished || '').slice(0, 10),
     sync: /^Out of Sync/.test(r.ivSync || '') ? (/Regenerate/.test(r.ivSync) ? '⟳ regenerate' : '⟳ review') : flagged.has(nid(r.assetId)) ? '⚑ review' : '✓ in sync' }));
 }
+// ── Long-press = Ctrl-click on touch screens (sort headings: add a sort level / flip / remove) ──
+let _lpTimer = null, _lpFired = 0;
+function lpStart(e, fn) {
+  clearTimeout(_lpTimer); const t = e.touches && e.touches[0], x = t ? t.clientX : 0, y = t ? t.clientY : 0;
+  _lpTimer = setTimeout(() => { _lpTimer = null; _lpFired = Date.now(); if (navigator.vibrate) try { navigator.vibrate(15); } catch (er) {} fn({ ctrlKey: true }); }, 500);
+  e.currentTarget._lpXY = [x, y];
+}
+function lpMove(e) { const t = e.touches && e.touches[0], p = e.currentTarget._lpXY; if (t && p && Math.hypot(t.clientX - p[0], t.clientY - p[1]) > 10) { clearTimeout(_lpTimer); _lpTimer = null; } }
+function lpEnd() { clearTimeout(_lpTimer); _lpTimer = null; }
+const lpSwallow = () => Date.now() - _lpFired < 700;   // the click that follows a long-press
+const lpAttrs = fnSrc => ` ontouchstart="lpStart(event, ev => ${fnSrc})" ontouchmove="lpMove(event)" ontouchend="lpEnd()" ontouchcancel="lpEnd()" oncontextmenu="return false" `;
 function hubAssetsSort(slug, col, ev) {
+  if (ev && ev.type === 'click' && lpSwallow()) return;
   const U = hubAssetsUI(slug), i = U.sorts.findIndex(x => x.col === col), def = col === 'date' ? 'desc' : 'asc';
   if (ev && ev.altKey) { if (i >= 0 && U.sorts.length > 1) U.sorts.splice(i, 1); }
   else if (ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey)) {
@@ -15538,11 +15551,11 @@ function renderHubAssets(slug) {
     ${U.q || Object.values(U.f).some(Boolean) ? `<span style="cursor:pointer;color:var(--text3);" onclick="_hubAssetsUI['${slug}'].q='';_hubAssetsUI['${slug}'].f={};hubAssetsPaint('${slug}')">✕ clear</span>` : ''}
     <button style="${B}${U.group ? 'border-color:#4ade80;color:#4ade80;' : ''}" onclick="hubAssetsSet('${slug}','group',${!U.group})" title="Each sort level on a repeated-value column becomes a collapsible group">☰ Group by sort: ${U.group ? 'on' : 'off'}</button>
     ${tiers.length ? `<button style="${B}" onclick="hubAssetsAll('${slug}',true)">⊞ Expand all</button><button style="${B}" onclick="hubAssetsAll('${slug}',false)">⊟ Collapse all</button>` : ''}
-    <span style="color:var(--text3);">${rows.length} of ${all.length} · Ctrl-click a heading adds a sort level (max 4) · Alt-click removes</span></div>`;
+    <span style="color:var(--text3);">${rows.length} of ${all.length} · Ctrl-click or long-press a heading adds a sort level (max 4) · Alt-click removes</span></div>`;
   if (!all.length) return bar + '<div style="font-size:11px;color:var(--text3);">No published assets in this campaign yet.</div>';
   const mark = k => { const i = U.sorts.findIndex(x => x.col === k); return i < 0 ? '' : (U.sorts[i].dir === 'asc' ? ' ▲' : ' ▼') + (U.sorts.length > 1 ? `<sup>${i + 1}</sup>` : ''); };
   const TH = 'text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);cursor:pointer;white-space:nowrap;user-select:none;';
-  const head = `<tr>${HA_COLS.map(([k, l]) => `<th style="${TH}" onclick="hubAssetsSort('${slug}','${k}',event)" title="Click to sort · Ctrl-click to add a level${HA_TIER.includes(k) ? ' (groups when ☰ is on)' : ''}">${l}${mark(k)}</th>`).join('')}</tr>`;
+  const head = `<tr>${HA_COLS.map(([k, l]) => `<th style="${TH}-webkit-touch-callout:none;"${lpAttrs(`hubAssetsSort('${slug}','${k}',ev)`)}onclick="hubAssetsSort('${slug}','${k}',event)" title="Click to sort · Ctrl-click or long-press to add a level${HA_TIER.includes(k) ? ' (groups when ☰ is on)' : ''}">${l}${mark(k)}</th>`).join('')}</tr>`;
   const TD = 'padding:3px 6px;font-size:11.5px;border-bottom:1px solid var(--border);vertical-align:top;';
   const syncCol = v => v.startsWith('⟳') ? '#ff7a00' : v.startsWith('⚑') ? '#f6ad55' : '#4ade80';
   const row = r => `<tr><td style="${TD}"><a href="https://www.notion.so/${esc(r.id)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.asset)}</a></td><td style="${TD}">${esc(r.title)}</td><td style="${TD}color:var(--text2);">${esc(r.product)}</td><td style="${TD}color:var(--text2);">${esc(r.cluster)}</td><td style="${TD}color:var(--text2);">${esc(r.topic)}</td><td style="${TD}color:var(--text3);">${esc(r.section)}</td><td style="${TD}color:var(--text3);white-space:nowrap;">${esc(r.date)}</td><td style="${TD}color:${syncCol(r.sync)};white-space:nowrap;">${esc(r.sync)}</td><td style="${TD}color:var(--text2);">${esc(r.type)}</td></tr>`;
