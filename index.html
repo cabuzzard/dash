@@ -15637,7 +15637,7 @@ function renderHubOutput(slug) {
       html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span title="${esc(pname)}">📦 ${esc(cut(pname, 26))}</span></td>`
         + `<td style="${PR}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td>`
         + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td>`
-        + `<td style="${PR}">${resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td></tr>` + rows;
+        + `<td style="${PR}">${rsS && !rsS.ok ? `<span onclick="hubResOpen('${slug}','${esc(pid)}')" title="${esc(rsS.why)} — open this product's research" style="cursor:pointer;text-decoration:underline dotted;">${resCell}</span>` : resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td></tr>` + rows;
     });
     return { html, res, iv, c }; };
   const tag = (res, iv) => (res ? ` <span style="color:#ff7a00;font-weight:700;">● ${res} research</span>` : '') + (iv ? ` <span style="color:#e5534b;font-weight:700;">● ${iv} interview</span>` : '');
@@ -15911,7 +15911,9 @@ function hubResMark(slug, pid) {
 }
 let _hubRes = null;   // { slug, pid, name, stack, keywords, fields, busy, log }
 async function hubResOpen(slug, pid) {
-  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), p = mo && (mo.products || []).find(x => x.id === pid); if (!p) return;
+  const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), nidR = x => String(x || '').replace(/-/g, '');
+  const p = (mo && (mo.products || []).find(x => nidR(x.id) === nidR(pid))) || ((_hubTitles[slug] || {}).products || []).find(x => nidR(x.id) === nidR(pid)); if (!p) return;
+  pid = nidR(pid);
   _hubRes = { slug, pid, name: p.name, stack: p.stack || '', keywords: '', fields: null, busy: 'Loading…', log: '', open: false };
   hubResDraw();
   try { const r = await call('getProductStrategy', { productId: pid }); _hubRes.keywords = r.keywords || ''; _hubRes.fields = (r.strategy && r.strategy.fields) || {}; _hubRes.isolated = !!r.isolated; _hubRes.busy = ''; }
