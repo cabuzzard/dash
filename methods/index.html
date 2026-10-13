@@ -30,15 +30,15 @@
 <script>
 const DATA = [
 ['Hub Production Run','On demand per hub, then quarterly review. Finalize keywords → main product → research → real titles → pillars → assets → publish. Progress is completed stages out of seven; next due is the first incomplete stage.'],
-['Digest','Weekly. Research Monday, curate and rank Tuesday, approve Wednesday, publish Thursday. Use asset keywords, standing creators, associations, Gemini and Perplexity. Retain sources and flag changes.'],
+['Digest','Weekly cron creates one digest draft from asset keywords, standing creators, associations, Gemini and Perplexity. Retain sources and flag changes. The generated digest is flagged for approval and is never published automatically.'],
 ['Digest → Blog News SEO','Three per week. Select timely, high-fit digest sources, publish an SEO-first news post within 48 hours, and link to the relevant offer as secondary intent.'],
 ['Digest → Podcast','Weekly Friday. Turn the approved digest into a cold open, feature, joke, sponsor or affiliate read, topical story and outro. Produce one episode plus two to four clips.'],
 ['Digest → Newsletter Paid','Weekly Friday after digest research closes. Synthesize at least three tier-one sources and include What Changed. Keep Draft until the audience threshold is met.'],
 ['Digest → Newsletter Free','Weekly Wednesday or Thursday. Choose one timely item plus teasers from news, products and benefits not promoted in six weeks. Use pain and benefit framing to convert to paid.'],
 ['Long Form Topical','Two per month per hub. Choose a sub-keyword and format by intent; prioritize engagement and watch time, place product intent last, and mark two to four clip sections.'],
-['Long Form Topical → YouTube Long Form QA','Weekly. Choose a high-watch-time, high-CPC YouTube question matched to hub topics. Keep product pitch off by default. Interview, script, thumbnail and publish within seven days, then create shorts.'],
+['Long Form Topical → YouTube Long Form QA','Queue two long-form topical interviews every week. Choose high-watch-time, high-CPC questions matched to hub topics. Keep product pitch off by default. Each finished interview feeds its script, thumbnail, long-form asset and later clips.'],
 ['Long Form Topical → Blog Article','Weekly from an approved topical pillar. Reshape into keyword-led headings, FAQ, internal links and a relevant product call to action; publish within three days and review quarterly.'],
-['Long Form Sales','One canonical sales pillar per active product, created at launch and reviewed quarterly. Cover awareness, pain, benefit, proof and objections; child assets inherit this source.'],
+['Long Form Sales','Every existing active product must have one written canonical sales pillar. Content Hubs Output flags missing pillars orange until written. Review completed pillars quarterly; child sales assets inherit this source.'],
 ['Long Form Sales → Sales Article','One per active product. Publish the complete persuasive version with awareness, reviews, proof, related offers and calls to action. Hide empty sections and refresh quarterly.'],
 ['Long Form Sales → Sales Page','One page per promoted offer or domain. Launch from the sales pillar with its own keywords, metadata, proof, conversion actions and two to three supporting posts. Review monthly; refresh quarterly.'],
 ['Any Pillar → Short Video','Three per week from marked pillar clip sections. Mix talking-head or avatar and kinetic-text formats. Each clip gets a parent asset, platform variant and publish date.'],

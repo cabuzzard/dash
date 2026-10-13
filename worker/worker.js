@@ -14861,6 +14861,7 @@ Return: {
             status: p.Status?.select?.name || "",
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
             productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
+            methodId: (p.method?.relation || [])[0]?.id ? dropDash((p.method.relation)[0].id) : null,
             pillarStatus: p["Pillar Status"]?.select?.name || "",
             strategySlotId: (p["Strategy Slot"]?.relation || [])[0]?.id ? dropDash(p["Strategy Slot"].relation[0].id) : null,
             growthStrategyId: (p["Growth Strategy"]?.relation || [])[0]?.id ? dropDash(p["Growth Strategy"].relation[0].id) : null,
@@ -14891,6 +14892,7 @@ Return: {
         // with no titles too. Asset name = Asset Title; Group = the campaign's product group for the stack.
         const assetsByTitle = {}, orphanAssets = [];
         const methIdSet = new Set();
+        Object.values(titleById).forEach(t => { if (t.methodId) methIdSet.add(t.methodId); });
         assetRows.forEach(a => {
           const p = a.properties || {};
           const titleId = (p["Content Strategy"]?.relation || [])[0]?.id ? dropDash((p["Content Strategy"].relation)[0].id) : null;
@@ -14946,7 +14948,7 @@ Return: {
             product: prod ? prod.name : "No Product",
             title: t.title,
             titleId,
-            pillarStatus: t.pillarStatus || "", productId: t.productId || null,
+            pillarStatus: t.pillarStatus || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
             ...scheduleFields(t.strategySlotId),
           };
           (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
