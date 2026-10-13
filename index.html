@@ -15689,6 +15689,24 @@ async function hubOutputProdSave(slug, pid) {
   hubOutputPaint(slug); hubTitlesRefresh(slug); if (typeof hubKwRefresh === 'function') hubKwRefresh(slug);
   return true;
 }
+function hubOutputTitleEdit(slug, titleId) {
+  const T = _hubTitles[slug]; if (!T || !T.rows) return;
+  const tid = kwNid(titleId), row = T.rows.find(r => r.titleId && kwNid(r.titleId) === tid); if (!row) return;
+  const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
+  hcModal('<h3 style="margin:0 0 10px;">Edit title</h3>'
+    + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>'
+    + '<input id="hotTitle" type="text" value="' + esc(row.title || '') + '" style="' + IN + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'hotTitleSave\').click();}">'
+    + '<div style="display:flex;gap:8px;"><button class="modal-btn" id="hotTitleSave" onclick="hcModalRun(this, () => hubOutputTitleSave(\'' + slug + '\',\'' + esc(tid) + '\'))">Save</button>' + HC_CANCEL + '</div>');
+  setTimeout(() => { const el = document.getElementById('hotTitle'); if (el) { el.focus(); el.select(); } }, 0);
+}
+async function hubOutputTitleSave(slug, titleId) {
+  const el = document.getElementById('hotTitle'), value = el ? el.value.trim() : ''; if (!value) return 'The title can’t be empty';
+  const r = await call('updateAllOutputField', { kind: 'title', field: 'title', titleId, value }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return (r && r.error) || 'Could not save title';
+  const T = _hubTitles[slug]; if (T && T.rows) T.rows.forEach(x => { if (x.titleId && kwNid(x.titleId) === kwNid(titleId)) x.title = value; });
+  hubOutputPaint(slug); hubTitlesRefresh(slug);
+  return true;
+}
 function renderHubOutput(slug) {
   const T = _hubTitles[slug], K = _hubKw[slug];
   if (!T || T.loading || !K || K.loading) return `<div style="font-size:11px;color:var(--text3);">${T || K ? 'Loading…' : 'Open to load.'}</div>`;
@@ -15729,7 +15747,7 @@ function renderHubOutput(slug) {
   const assetCell = a => `${bulk ? `<input type="checkbox" ${selected.has(nid(a.assetId)) ? 'checked' : ''} onchange="hubOutputSelectAsset('${slug}','${esc(nid(a.assetId))}',this.checked)" onclick="event.stopPropagation()" title="Select this asset" style="margin:0 5px 0 0;vertical-align:-2px;accent-color:#ff7a00;">` : ''}<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" title="${esc((a.assetName || '(untitled asset)') + (a.assetStatus ? ' · ' + a.assetStatus : ''))}" style="color:var(--text);text-decoration:none;">${esc(cut(a.assetType || 'asset', 22))}</a>${a.assetStatus && a.assetStatus !== 'Published' ? ` <span style="color:var(--text3);" title="${esc(a.assetStatus)}">·${esc(a.assetStatus.slice(0, 3).toLowerCase())}</span>` : ''}`;
   const schedCells = r => { r = r || {}; const tip = [r.schedule, r.scheduleGroup].filter(Boolean).join(' · '), due = r.nextDue ? String(r.nextDue).slice(0, 10) : '';
     return `<td style="${TD}" title="${esc(tip)}">${r.schedule ? esc(cut(r.schedule, 18)) : ''}</td><td style="${TD}color:var(--text2);">${esc(r.cadence || '')}</td><td style="${TD}color:var(--text2);">${esc(r.progress || '')}</td><td style="${TD}color:${due && due < new Date().toISOString().slice(0,10) ? '#e5534b' : 'var(--text2)'};">${esc(due)}</td><td style="${TD}color:var(--text2);">${esc(r.scheduleStatus || '')}</td>`; };
-  const titleCell = (t, n) => `<span title="${esc(t.title || '(untitled)')}" style="cursor:help;">Title ${n}</span>`;
+  const titleCell = (t, n) => `<button type="button" onclick="hubOutputTitleEdit('${slug}','${esc(nid(t.id))}')" style="padding:0;border:0;background:transparent;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;">Title ${n}</button>`;
   const salesPillarState = pid => {
     const ts = [...(titlesByProd.get(pid) || new Map()).values()], sales = ts.filter(t => /long form sales|sales pillar|qa\s*[–—-]?\s*sales/i.test(t.methodName || '') || (t.assets || []).some(a => /qa\s*[–—-]?\s*sales|sales article|sales page/i.test([a.assetType, a.rawAssetType].join(' '))));
     const written = sales.some(t => /written|current|complete/i.test(t.pillarStatus || '') || (t.assets || []).some(a => /publish|published/i.test(a.assetStatus || '')));
