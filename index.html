@@ -15690,7 +15690,7 @@ async function hubOutputProdSave(slug, pid) {
   return true;
 }
 function hubOutputTitleEdit(slug, titleId) {
-  const T = _hubTitles[slug]; if (!T || !T.rows) return;
+  const T = _hubTitles[slug], h = HUB_SITES.find(x => x.slug === slug); if (!T || !T.rows || !h) return;
   const tid = kwNid(titleId), row = T.rows.find(r => r.titleId && kwNid(r.titleId) === tid); if (!row) return;
   const curPid = kwNid(row.productId), products = [...(T.products || [])].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
   const IN = 'width:100%;box-sizing:border-box;font-size:13px;padding:8px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
@@ -15698,21 +15698,36 @@ function hubOutputTitleEdit(slug, titleId) {
     + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>'
     + '<input id="hotTitle" type="text" value="' + esc(row.title || '') + '" style="' + IN + '" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'hotTitleSave\').click();}">'
     + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>'
-    + '<select id="hotProduct" data-cur="' + esc(curPid) + '" style="' + IN + '"><option value="__none__">No product</option>'
-    + products.map(p => '<option value="' + esc(kwNid(p.id)) + '" ' + (kwNid(p.id) === curPid ? 'selected' : '') + '>' + esc(p.name || '(untitled product)') + '</option>').join('') + '</select>'
+    + '<select id="hotProduct" onchange="hubOutputTitleProductChange()" style="' + IN + '"><option value="__none__">No product</option>'
+    + products.map(p => '<option value="' + esc(kwNid(p.id)) + '" ' + (kwNid(p.id) === curPid ? 'selected' : '') + '>' + esc(p.name || '(untitled product)') + '</option>').join('') + '<option value="__new__">＋ Add new product…</option></select>'
+    + '<div id="hotNewProductWrap" style="display:none;padding:10px;margin:-4px 0 12px;border:1px solid var(--border2);border-radius:7px;background:var(--surface2);">'
+    + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">New product name</label><input id="hotNewProduct" type="text" placeholder="Product name" style="' + IN + 'background:var(--surface);" onkeydown="if(event.key===\'Enter\'){event.preventDefault();document.getElementById(\'hotTitleSave\').click();}">'
+    + '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword topic</label><select id="hotNewProductTopic" style="' + IN + 'margin-bottom:0;background:var(--surface);"><option value="">Loading topics…</option></select></div>'
     + '<div style="display:flex;gap:8px;"><button class="modal-btn" id="hotTitleSave" onclick="hcModalRun(this, () => hubOutputTitleSave(\'' + slug + '\',\'' + esc(tid) + '\'))">Save</button>' + HC_CANCEL + '</div>');
+  kwTopicsFor(h.campaignId).then(d => { const sel = document.getElementById('hotNewProductTopic'); if (sel) sel.innerHTML = kwTopicOptions(d, ''); }).catch(e => { const sel = document.getElementById('hotNewProductTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; });
   setTimeout(() => { const el = document.getElementById('hotTitle'); if (el) { el.focus(); el.select(); } }, 0);
+}
+function hubOutputTitleProductChange() {
+  const sel = document.getElementById('hotProduct'), wrap = document.getElementById('hotNewProductWrap'); if (!sel || !wrap) return;
+  wrap.style.display = sel.value === '__new__' ? 'block' : 'none'; if (sel.value === '__new__') setTimeout(() => document.getElementById('hotNewProduct')?.focus(), 0);
 }
 async function hubOutputTitleSave(slug, titleId) {
   const el = document.getElementById('hotTitle'), value = el ? el.value.trim() : '', psel = document.getElementById('hotProduct'); if (!value) return 'The title can’t be empty';
-  const T = _hubTitles[slug], row = T && T.rows && T.rows.find(x => x.titleId && kwNid(x.titleId) === kwNid(titleId));
-  if (!row) return 'Title not found';
-  const oldTitle = row.title || '', oldPid = kwNid(row.productId), productId = psel ? psel.value : (oldPid || '__none__');
+  const T = _hubTitles[slug], h = HUB_SITES.find(x => x.slug === slug), row = T && T.rows && T.rows.find(x => x.titleId && kwNid(x.titleId) === kwNid(titleId));
+  if (!row || !h) return 'Title or hub not found';
+  const oldTitle = row.title || '', oldPid = kwNid(row.productId); let productId = psel ? psel.value : (oldPid || '__none__'), product = null;
+  const newName = productId === '__new__' ? (document.getElementById('hotNewProduct')?.value || '').trim() : '', newTopic = productId === '__new__' ? kwTopicPicked('hotNewProductTopic', h.campaignId) : null;
+  if (productId === '__new__' && !newName) return 'Enter a name for the new product'; if (productId === '__new__' && !newTopic) return 'Pick a keyword topic for the new product';
   try {
     if (value !== oldTitle) { const r = await call('updateAllOutputField', { kind: 'title', field: 'title', titleId, value }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save title'); }
+    if (productId === '__new__') {
+      const r = await call('createProduct', { title: newName, campaignId: h.campaignId, status: 'Planning', ...newTopic }); if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Could not create product');
+      productId = kwNid(r.id); product = { id: productId, name: newName, status: 'Planning', topicId: newTopic.topicId, productStack: newTopic.stack || '' }; (T.products ||= []).push(product);
+      const K = _hubKw[slug]; if (K && K.products) K.products.push(product);
+    }
     if (productId !== (oldPid || '__none__')) { const r = await call('updateTitleStrategy', { titleId, productId }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
   } catch (e) { return e.message; }
-  const product = productId === '__none__' ? null : (T.products || []).find(p => kwNid(p.id) === kwNid(productId));
+  product = productId === '__none__' ? null : product || (T.products || []).find(p => kwNid(p.id) === kwNid(productId));
   T.rows.forEach(x => { if (x.titleId && kwNid(x.titleId) === kwNid(titleId)) { x.title = value; x.productId = product ? kwNid(product.id) : ''; x.product = product ? product.name : ''; } });
   hubOutputPaint(slug); hubTitlesRefresh(slug);
   return true;
