@@ -13815,6 +13815,12 @@ the one aesthetic risk taken + why:`;
             // hidden: kept only as the product list Production › Products reads; Main offerings is an asset section now
             { id: "mainproduct", phase: "Main offerings", label: "Main products", mainOffering: true, hidden: false, /* shown again 2026-10-09 (operator): the ★ main products, listed under Main offerings */ products: campProducts, groupOrder: stackGroups.order || [], mainIds,
               mainId, mainName, done: !!mainId, hint: "" },
+            { id: "production-digest", phase: "Production", label: "Add one digest", assetCreator: true, presetType: "Digest",
+              done: listed.some(r => /^digest$/i.test(r.properties?.["Asset Type"]?.select?.name || "")), hint: "Create from a researched product and a written, synchronized title" },
+            { id: "production-interview-stream", phase: "Production", label: "Add one interview stream", assetCreator: true, presetType: "Long Form Topical → YouTube Long Form QA",
+              done: listed.some(r => /interview stream|youtube longform|long form topical.*youtube/i.test(r.properties?.["Asset Type"]?.select?.name || "")), hint: "Create from a researched product and a written, synchronized title" },
+            { id: "production-assets", phase: "Production", label: "Add new asset types", assetCreator: true, presetType: "",
+              done: false, hint: "Choose any available method or asset type" },
             // (2026-10-09, operator) Main offerings = products only — they publish nowhere; assets get built off them in other sections
             ...pageSections.filter(x => x.phase === "CTA's"),   // right under Main offerings
             ...pageSections.filter(x => x.phase !== "CTA's" && x.phase !== "Main offerings"),
@@ -24575,6 +24581,45 @@ Return ONLY a JSON array — no other text, no markdown fences:
         });
         return json({ runs });
       }
+      // Hub Build → Create Assets: only expose product/title pairs that are
+      // safe to build from. A product must have research at the campaign's
+      // current keyword version; its title must have a written, in-sync
+      // pillar. Methods are returned from the canonical Methods database so
+      // the modal never falls back to a partial list of previously used types.
+      if (body.action === "getHubAssetCreationOptions") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const dashed = s => String(s || "").replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const [products, titles, productResearch, campaignResearch, methods, methodAssetTypes] = await Promise.all([
+          notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashed(cid) } } }).catch(() => []),
+          notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dashed(cid) } } }).catch(() => []),
+          notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
+          notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashed(cid) } } }).catch(() => []),
+          notionQuery(METHODS_DB, {}).catch(() => []),
+          notionQuery(MAT_TYPES_DB, {}).catch(() => []),
+        ]);
+        const txt = (p, k, type) => ((p?.[k]?.[type || "rich_text"] || []).map(x => x.plain_text).join(""));
+        const campaignVersion = campaignResearch.reduce((n, r) => Math.max(n, Number(r.properties?.["Keywords Version"]?.number || 0)), 0);
+        const bestResearch = {};
+        productResearch.forEach(r => { const pid = String((r.properties?.Product?.relation || [])[0]?.id || "").replace(/-/g, ""); if (!pid) return;
+          const v = Number(r.properties?.["Keywords Version"]?.number || 0), filled = ["Statement", "Unique Opportunity", "Pain Points", "Benefits", "Proof Points", "Keywords"].filter(k => txt(r.properties, k).trim()).length;
+          if (!bestResearch[pid] || filled > bestResearch[pid].filled) bestResearch[pid] = { version: v, filled };
+        });
+        const productRows = products.map(p => { const id = String(p.id).replace(/-/g, ""), r = bestResearch[id]; return {
+          id, name: txt(p.properties, "Name", "title") || "Untitled", researched: !!r && r.filled > 0 && r.version >= campaignVersion,
+        }; }).filter(p => p.researched);
+        const allowed = new Set(productRows.map(p => p.id));
+        const titleRows = titles.map(t => { const p = t.properties || {}, productId = String((p.product?.relation || [])[0]?.id || "").replace(/-/g, ""), pillarStatus = p["Pillar Status"]?.select?.name || ""; return {
+          id: String(t.id).replace(/-/g, ""), title: txt(p, "Title", "title") || "Untitled", productId, stage: p.Status?.select?.name || "", pillarStatus,
+        }; }).filter(t => allowed.has(t.productId) && /^written$/i.test(t.pillarStatus));
+        const byName = new Map();
+        methods.forEach(m => { const name = txt(m.properties, "Name", "title").trim(); if (name) byName.set(name.toLowerCase(), { id: String(m.id).replace(/-/g, ""), name }); });
+        methodAssetTypes.forEach(m => { const name = txt(m.properties, "Name", "title").trim(); if (name && !byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), { id: "", name }); });
+        const methodRows = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+        const used = new Set(titleRows.map(t => t.productId));
+        return json({ products: productRows.filter(p => used.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)), titles: titleRows, methods: methodRows });
+      }
+
       if (body.action === "getTitles") {
         const { stages, campaignId, productId } = body;
         const stageFilters = (stages || ["Review", "Publish"]).map(s => ({
@@ -31431,19 +31476,20 @@ Rules:
 
       // ── createAsset ──────────────────────────────────────────────────
       if (body.action === "createAsset") {
-        const { titleId, campId, assetTitle, platformName, assetType, content } = body;
+        const { titleId, campId, productId, assetTitle, platformName, assetType, assetStatus, content } = body;
         if (!titleId || !assetTitle) return json({ error: "titleId and assetTitle required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
 
         const properties = {
           "Asset Title": { title: [{ text: { content: assetTitle } }] },
-          "Asset Status": { select: { name: "Publish" } },
+          "Asset Status": { select: { name: assetStatus || "Publish" } },
           "Body": { rich_text: [{ text: { content: (content || "").slice(0, 2000) } }] },
           "Content Strategy": { relation: [{ id: dash(titleId) }] },
         };
         if (platformName) properties["Platform Name"] = { select: { name: platformName } };
         if (assetType)    properties["Asset Type"]    = { select: { name: assetType } };
         if (campId)       properties["Campaign"]      = { relation: [{ id: dash(campId) }] };
+        if (productId)    properties["Product"]       = { relation: [{ id: dash(productId) }] };
         Object.assign(properties, await assetMethodProp(body.methodId, assetType));
 
         const resp = await fetch("https://api.notion.com/v1/pages", {

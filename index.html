@@ -3636,7 +3636,12 @@
 <!-- New Asset Modal -->
 <div class="modal-bg" id="newAssetModal" onclick="if(event.target===this)closeNewAssetModal()">
   <div class="modal">
-    <div class="modal-title">New Asset</div>
+    <div class="modal-title" id="newAssetModalTitle">New Asset</div>
+    <div class="modal-field" id="newAssetProductField">
+      <label class="modal-label">Product</label>
+      <select class="modal-select" id="newAssetProduct" onchange="newAssetProductChanged()"></select>
+      <div id="newAssetEligibility" style="font-size:10.5px;color:var(--text3);margin-top:5px;line-height:1.35;">Only products with current research and titles with a written, synchronized pillar are available.</div>
+    </div>
     <div class="modal-field" style="position:relative;">
       <label class="modal-label">Title (Content Strategy)</label>
       <input class="modal-input" id="newAssetTitleInput" type="text" placeholder="Search titles..." autocomplete="off" oninput="filterNewAssetTitles()" onfocus="filterNewAssetTitles()" />
@@ -16790,6 +16795,9 @@ function renderHubBuildRows(slug) {
         return hubGridRow({ pad: 0, bar: p.status === 'Planning' || !p.status ? '#f6ad55' : '#4ade80', title: (p.name || (id === s.mainId ? s.mainName : '') || 'Product') + (n === 0 && ids.length > 1 ? ' ★' : ''), type: 'Product', method: '', status: p.status || '', date: p.date,
           links: `<button onclick="hubProdFullEdit('${slug}','${id}')" title="Edit name, notes and status" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button> <button onclick="hubClientLinks('${slug}','${id}')" title="Client Studio: private links where a client records Interview scripts for this product" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">🎤</button> <a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button ${busy ? 'disabled' : ''} onclick="hubMainOfferSet('${slug}','${id}','remove')" title="Remove from the main offerings (the product itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('') : '';
       return wrapRow(`<span style="font-size:10px;width:10px;"></span><span style="flex-shrink:0;">${dot}</span><span style="flex:1;min-width:140px;color:var(--text);line-height:1.35;">Main products <span style="color:var(--text3);">— ${ids.length ? ids.length + (ids.length > 1 ? ' (★ = primary: hub generation + image briefs)' : '') : 'add one or more of the campaign\'s products'}</span></span>${ctrl}`, add + grid, '', `${hubPhaseSummary(b, s.phase)}${ctrl}`);
+    } else if (s.assetCreator) {
+      const pre = JSON.stringify(s.presetType || '');
+      ctrl = `<button onclick='openNewAssetModal(${JSON.stringify(slug)},${pre})' style="font-size:10px;padding:2px 9px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);font-weight:700;cursor:pointer;flex-shrink:0;">${s.presetType ? '＋ Add' : '＋ Create assets'}</button>`;
     } else if (s.flow) {
       const B = 'font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;flex-shrink:0;text-decoration:none;';
       ctrl = (s.go === 'none' ? '' : s.go === 'kwtool' ? `<button onclick="switchTab('keywords')" style="${B}">Keywords tool</button>`
@@ -23872,12 +23880,20 @@ function _renderMorningTasks(theme, briefing) {
 // ── New Asset Modal ────────────────────────────────────────────────────────────
 let _newAssetTitles = [];
 let _newAssetTypes  = [];
+let _newAssetMethods = [];
+let _newAssetHubSlug = '';
+let _newAssetPresetType = '';
 
-async function openNewAssetModal() {
+async function openNewAssetModal(slug, presetType) {
+  _newAssetHubSlug = slug || '';
+  _newAssetPresetType = presetType || '';
+  _newAssetTitles = []; _newAssetTypes = []; _newAssetMethods = [];
+  document.getElementById('newAssetModalTitle').textContent = _newAssetHubSlug ? 'Create hub asset' : 'New Asset';
+  document.getElementById('newAssetProductField').style.display = _newAssetHubSlug ? '' : 'none';
   document.getElementById('newAssetTitleInput').value = '';
   document.getElementById('newAssetTitleId').value = '';
   document.getElementById('newAssetAssetTitle').value = '';
-  document.getElementById('newAssetTypeInput').value = '';
+  document.getElementById('newAssetTypeInput').value = _newAssetPresetType;
   document.getElementById('newAssetPlatform').value = '';
   document.getElementById('newAssetTitleDropdown').style.display = 'none';
   document.getElementById('newAssetTypeDropdown').style.display = 'none';
@@ -23886,16 +23902,36 @@ async function openNewAssetModal() {
   document.getElementById('newAssetModal').classList.add('open');
   setTimeout(() => document.getElementById('newAssetTitleInput').focus(), 280);
 
-  // Load titles and known asset types in parallel
+  // Hub Build uses a stricter source: current product research + written,
+  // synchronized title only, with every canonical Method available.
   try {
-    const [titlesData] = await Promise.all([
-      call('getTitles', { stages: ['Review', 'Publish', 'Published'] }),
-    ]);
-    _newAssetTitles = titlesData.titles || [];
-  } catch(e) { _newAssetTitles = []; }
+    if (_newAssetHubSlug) {
+      const h = HUB_SITES.find(x => x.slug === _newAssetHubSlug) || {};
+      const data = await call('getHubAssetCreationOptions', { campaignId: h.campaignId });
+      _newAssetTitles = data.titles || [];
+      _newAssetMethods = data.methods || [];
+      _newAssetTypes = _newAssetMethods.map(m => m.name);
+      const ps = document.getElementById('newAssetProduct');
+      ps.innerHTML = (data.products || []).length ? (data.products || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('') : '<option value="">No eligible products</option>';
+      newAssetProductChanged();
+      const msg = document.getElementById('newAssetEligibility');
+      msg.textContent = _newAssetTitles.length ? `${(data.products || []).length} researched product${(data.products || []).length === 1 ? '' : 's'} · ${_newAssetTitles.length} synchronized title${_newAssetTitles.length === 1 ? '' : 's'} available` : 'No eligible title yet. Finish product research and write/synchronize its pillar first.';
+    } else {
+      const titlesData = await call('getTitles', { stages: ['Review', 'Publish', 'Published'] });
+      _newAssetTitles = titlesData.titles || [];
+      _newAssetMethods = [];
+      _newAssetTypes = [...new Set((_pubAssets || []).map(a => a.type).filter(Boolean))].sort();
+    }
+  } catch(e) {
+    _newAssetTitles = []; _newAssetTypes = []; _newAssetMethods = [];
+    if (_newAssetHubSlug) document.getElementById('newAssetEligibility').textContent = 'Could not load eligible products and titles: ' + e.message;
+  }
+}
 
-  // Collect unique asset types from already-loaded published assets
-  _newAssetTypes = [...new Set((_pubAssets || []).map(a => a.type).filter(Boolean))].sort();
+function newAssetProductChanged() {
+  document.getElementById('newAssetTitleInput').value = '';
+  document.getElementById('newAssetTitleId').value = '';
+  document.getElementById('newAssetTitleDropdown').style.display = 'none';
 }
 
 function closeNewAssetModal() {
@@ -23907,7 +23943,8 @@ function closeNewAssetModal() {
 function filterNewAssetTitles() {
   const q = document.getElementById('newAssetTitleInput').value.toLowerCase();
   const dd = document.getElementById('newAssetTitleDropdown');
-  const matches = _newAssetTitles.filter(t => !q || t.title.toLowerCase().includes(q));
+  const pid = _newAssetHubSlug ? document.getElementById('newAssetProduct').value : '';
+  const matches = _newAssetTitles.filter(t => (!pid || t.productId === pid) && (!q || t.title.toLowerCase().includes(q)));
   if (!matches.length) { dd.style.display = 'none'; return; }
   dd.innerHTML = matches.slice(0, 30).map(t =>
     '<div style="padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);border-bottom:1px solid var(--border);" ' +
@@ -23920,6 +23957,8 @@ function filterNewAssetTitles() {
 function selectNewAssetTitle(id, title) {
   document.getElementById('newAssetTitleId').value = id;
   document.getElementById('newAssetTitleInput').value = title;
+  const ai = document.getElementById('newAssetAssetTitle');
+  if (!ai.value.trim()) ai.value = title + (document.getElementById('newAssetTypeInput').value.trim() ? ' — ' + document.getElementById('newAssetTypeInput').value.trim() : '');
   document.getElementById('newAssetTitleDropdown').style.display = 'none';
 }
 
@@ -23930,10 +23969,15 @@ function filterNewAssetTypeDropdown() {
   if (!matches.length) { dd.style.display = 'none'; return; }
   dd.innerHTML = matches.map(t =>
     '<div style="padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);border-bottom:1px solid var(--border);" ' +
-    'onmousedown="document.getElementById(\'newAssetTypeInput\').value=\'' + t.replace(/'/g,"\\'") + '\';document.getElementById(\'newAssetTypeDropdown\').style.display=\'none\'">' +
+    'onmousedown="selectNewAssetType(' + _newAssetTypes.indexOf(t) + ')">' +
     esc(t) + '</div>'
   ).join('');
   dd.style.display = 'block';
+}
+
+function selectNewAssetType(i) {
+  document.getElementById('newAssetTypeInput').value = _newAssetTypes[i] || '';
+  document.getElementById('newAssetTypeDropdown').style.display = 'none';
 }
 
 async function submitNewAsset() {
@@ -23964,10 +24008,15 @@ async function submitNewAsset() {
       assetTitle,
       assetType:    assetType || undefined,
       platformName: platform || undefined,
+      campId: _newAssetHubSlug ? ((HUB_SITES.find(x => x.slug === _newAssetHubSlug) || {}).campaignId || undefined) : undefined,
+      methodId: ((_newAssetMethods.find(m => m.name.toLowerCase() === assetType.toLowerCase()) || {}).id || undefined),
+      productId: _newAssetHubSlug ? (document.getElementById('newAssetProduct').value || undefined) : undefined,
+      assetStatus: _newAssetHubSlug ? 'Planning' : undefined,
     });
     showToast('Asset created ✓', 'success');
     closeNewAssetModal();
     loadPublishedAssets();
+    if (_newAssetHubSlug) { _hubBuildFetched[_newAssetHubSlug] = false; renderHubsTab(); }
   } catch(e) {
     showToast('Failed: ' + e.message, 'error');
     btn.disabled = false;
