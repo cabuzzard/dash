@@ -15626,13 +15626,18 @@ function renderHubOutput(slug) {
       const rsS = research(pid); if (rsS && !rsS.ok) res++; c.p++; const isMain = mainIds.has(pid); if (isMain) c.m++;
       const resCell = rsS ? pill(rsS, '#4ade80', '#ff7a00', shortR) : `<span title="${resLoaded ? 'No research state for this product — it may not be in this campaign\'s product list' : 'Research state not loaded yet — open Production again or press ⟳'}" style="color:var(--text3);cursor:help;">?</span>`; if (rsS) { if (rsS.ok) c.ro++; else c.rb++; }
       const titles = [...(titlesByProd.get(pid) || new Map()).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
-      let firstP = true, tn = 0;
-      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++; if (t && firstT) { c.t++; tn++; } if (a) { c.a++; if (a.hubSection) c.sc++; } if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
-        html += `<tr><td style="${TD}padding-left:${pad}px;"><span title="${esc(pname)}" style="${firstP ? '' : 'color:var(--text3);'}">📦 ${esc(cut(pname, 24))}</span></td><td style="${TD}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td><td style="${TD}">${t && firstT ? titleCell(t, tn) : ''}</td>`
+      // the product is its own row (name · ★ · its counts · its research warning); its title / asset rows sit below it
+      let tn = 0, rows = '', pt = 0, pa = 0, pib = 0;
+      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) { iv++; pib++; } if (t && firstT) { c.t++; tn++; pt++; } if (a) { pa++; c.a++; if (a.hubSection) c.sc++; } if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
+        rows += `<tr><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}padding-left:${pad + 16}px;">${t && firstT ? titleCell(t, tn) : ''}</td>`
           + `<td style="${TD}">${a ? assetCell(a) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}color:var(--text2);">${a && a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td>`
-          + `<td style="${TD}">${resCell}</td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; firstP = false; };
-      if (!titles.length) line(null, null, true);
+          + `<td style="${TD}"></td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; };
       titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
+      const PR = TD + 'border-top:1px solid var(--border);';
+      html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span title="${esc(pname)}">📦 ${esc(cut(pname, 26))}</span></td>`
+        + `<td style="${PR}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td>`
+        + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td>`
+        + `<td style="${PR}">${resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td></tr>` + rows;
     });
     return { html, res, iv, c }; };
   const tag = (res, iv) => (res ? ` <span style="color:#ff7a00;font-weight:700;">● ${res} research</span>` : '') + (iv ? ` <span style="color:#e5534b;font-weight:700;">● ${iv} interview</span>` : '');
