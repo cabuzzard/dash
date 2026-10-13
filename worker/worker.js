@@ -15794,6 +15794,23 @@ Return ONLY this JSON, no other text, no fences:
         return json({ stacks: [...seen.values()].sort((a, b) => a.localeCompare(b)) });
       }
 
+      // ── 🧩 Client apps (Globals tab): a hand-kept registry of custom apps built for clients — KV "clientapps".
+      // clientAppsList → { apps }; clientAppSave {app:{id?, name, client, hub, url, where, status, notes}} → upsert.
+      // Nothing is ever deleted — an app that's done is set to status "Retired" and stays listed.
+      if (body.action === "clientAppsList" || body.action === "clientAppSave") {
+        const apps = (await env.TRADES.get("clientapps", "json").catch(() => null)) || [];
+        if (body.action === "clientAppsList") return json({ apps });
+        const a = body.app || {}, name = String(a.name || "").trim().slice(0, 120); if (!name) return json({ error: "name required" }, 400);
+        const STATUSES = ["Building", "Live", "Paused", "Retired"];
+        const rec = { name, client: String(a.client || "").trim().slice(0, 120), hub: String(a.hub || "").trim().slice(0, 80),
+          url: String(a.url || "").trim().slice(0, 500), where: String(a.where || "").trim().slice(0, 300),
+          status: STATUSES.includes(a.status) ? a.status : "Building", notes: String(a.notes || "").slice(0, 4000), updated: new Date().toISOString() };
+        const i = a.id ? apps.findIndex(x => x.id === a.id) : -1;
+        if (i >= 0) apps[i] = { ...apps[i], ...rec };
+        else apps.unshift({ id: "ca" + Date.now().toString(36), created: rec.updated, ...rec });
+        await env.TRADES.put("clientapps", JSON.stringify(apps));
+        return json({ ok: true, apps });
+      }
       // ── setProductIsolated {productId, isolated} ── 🔒 in dash's product research modal: an isolated product's research
       // takes no direction from the hub's Main keywords / campaign research — only its own fields, keywords and topic.
       if (body.action === "setProductIsolated") {

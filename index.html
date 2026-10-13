@@ -1386,6 +1386,16 @@
       </div>
     </div>
 
+    <!-- 🧩 CLIENT APPS — hand-kept registry of custom client-facing builds (worker clientAppsList / clientAppSave, KV
+         "clientapps"). Nothing is deleted: a finished app is set to Retired and stays listed. -->
+    <div style="border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:10px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:11px 13px;cursor:pointer;" onclick="glToggle('clientApps')">
+        <span style="font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text2);">🧩 Client apps <span id="glCaCount" style="color:var(--text3);font-weight:400;"></span> <span style="color:var(--text3);font-weight:400;text-transform:none;letter-spacing:0;">— custom builds for clients</span></span>
+        <span id="glCaIcon" style="font-size:11px;color:var(--text3);">▸</span>
+      </div>
+      <div id="glCaBody" style="display:none;padding:0 13px 13px;"><div id="glCaList"></div></div>
+    </div>
+
     <!-- ⏰ CRON SCRIPTS — read-only registry of everything running on a schedule.
          Source of truth is worker/worker.js `scheduled()`
          + worker/wrangler.toml `[triggers] crons` — CRON_REGISTRY below is a
@@ -17989,6 +17999,7 @@ const GL_SECTIONS = {
   affiliate:{ icon: 'glAffIcon',      body: 'glAffBody',      load: () => loadGlAffiliate() },
   hubForms: { icon: 'glHubFormsIcon', body: 'glHubFormsBody', load: () => loadGlHubForms() },
   cronScripts: { icon: 'glCronIcon',  body: 'glCronBody',     load: () => renderCronScripts() },
+  clientApps: { icon: 'glCaIcon',    body: 'glCaBody',       load: () => glCaLoad() },
   leadSourcing:{ icon: 'glLeadIcon',  body: 'glLeadBody',     load: () => loadGlLeadSourcing() },
   mfFeeds:     { icon: 'glMfIcon',    body: 'glMfBody',       load: () => renderMfFeeds() },
   postTypes: { icon: 'glPostTypesIcon', body: 'glPostTypesBody', load: () => loadGlPostTypes() },
@@ -18005,6 +18016,55 @@ function glToggle(key) {
   document.getElementById(s.body).style.display = glOpen[key] ? '' : 'none';
   document.getElementById(s.icon).textContent = glOpen[key] ? '▾' : '▸';
   if (glOpen[key] && !s._loaded) { s._loaded = true; s.load(); }
+}
+// ── 🧩 CLIENT APPS — custom client-facing builds (name · client · hub · status · where it lives · notes) ──
+let GL_CA = null, GL_CA_SHOW_RETIRED = false;
+const GL_CA_STATUS = { Building: '#f6ad55', Live: '#4ade80', Paused: 'var(--text3)', Retired: 'var(--text3)' };
+async function glCaLoad() {
+  const el = document.getElementById('glCaList'); el.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:6px 0;">Loading...</div>';
+  try { const r = await call('clientAppsList'); if (r.error) throw new Error(r.error); GL_CA = r.apps || []; glCaRender(); }
+  catch (e) { el.innerHTML = '<div class="error-msg">Could not load: ' + esc(e.message) + '</div>'; }
+}
+function glCaRender() {
+  const el = document.getElementById('glCaList'); if (!el) return;
+  const all = GL_CA || [], list = all.filter(a => GL_CA_SHOW_RETIRED || a.status !== 'Retired'), nRet = all.filter(a => a.status === 'Retired').length;
+  const cnt = document.getElementById('glCaCount'); if (cnt) cnt.textContent = '(' + all.filter(a => a.status !== 'Retired').length + ')';
+  const B = 'font-size:11px;padding:3px 10px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;';
+  const TD = 'padding:5px 6px;font-size:12px;border-bottom:1px solid var(--border);vertical-align:top;';
+  const hubName = slug => { const h = (typeof HUB_SITES !== 'undefined' ? HUB_SITES : []).find(x => x.slug === slug); return h ? h.name : slug; };
+  el.innerHTML = '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;"><button style="' + B + 'border-color:var(--accent);color:var(--accent);" onclick="glCaEdit()">＋ New client app</button>'
+    + (nRet ? '<label style="font-size:11px;color:var(--text3);display:flex;gap:4px;align-items:center;"><input type="checkbox" ' + (GL_CA_SHOW_RETIRED ? 'checked' : '') + ' onchange="GL_CA_SHOW_RETIRED=this.checked;glCaRender()">show retired (' + nRet + ')</label>' : '')
+    + '<span style="font-size:11px;color:var(--text3);">Custom apps built for clients — kept by hand; set Retired when done (nothing is deleted).</span></div>'
+    + (list.length ? '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>' + ['App', 'Client', 'Hub', 'Status', 'Where it lives', 'Updated', ''].map(h => '<th style="text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);">' + h + '</th>').join('') + '</tr></thead><tbody>'
+      + list.map(a => '<tr style="' + (a.status === 'Retired' ? 'opacity:.55;' : '') + '"><td style="' + TD + '">' + (a.url ? '<a href="' + esc(a.url) + '" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none;font-weight:600;">' + esc(a.name) + ' ↗</a>' : '<b>' + esc(a.name) + '</b>')
+        + (a.notes ? '<div style="font-size:11px;color:var(--text3);margin-top:2px;white-space:pre-wrap;">' + esc(a.notes.length > 160 ? a.notes.slice(0, 159) + '…' : a.notes) + '</div>' : '') + '</td>'
+        + '<td style="' + TD + '">' + esc(a.client || '') + '</td><td style="' + TD + 'color:var(--text2);">' + esc(a.hub ? hubName(a.hub) : '') + '</td>'
+        + '<td style="' + TD + 'color:' + (GL_CA_STATUS[a.status] || 'var(--text2)') + ';font-weight:600;">' + esc(a.status || '') + '</td>'
+        + '<td style="' + TD + 'color:var(--text3);font-size:11px;">' + esc(a.where || '') + '</td><td style="' + TD + 'color:var(--text3);font-size:11px;white-space:nowrap;">' + esc(String(a.updated || '').slice(0, 10)) + '</td>'
+        + '<td style="' + TD + '"><button style="' + B + '" onclick="glCaEdit(\'' + esc(a.id) + '\')">✎</button></td></tr>').join('') + '</tbody></table></div>'
+      : '<div style="font-size:12px;color:var(--text3);padding:6px 0;">No client apps yet — ＋ New client app.</div>');
+}
+function glCaEdit(id) {
+  const a = (GL_CA || []).find(x => x.id === id) || { status: 'Building' };
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = x => '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">' + x + '</label>';
+  const hubs = (typeof HUB_SITES !== 'undefined' ? HUB_SITES : []);
+  hcModal('<h3 style="margin:0 0 10px;">' + (id ? 'Edit client app' : 'New client app') + '</h3>'
+    + L('App name') + '<input id="caName" value="' + esc(a.name || '') + '" style="' + IN + '" placeholder="e.g. Medicare Services interview app">'
+    + L('Client') + '<input id="caClient" value="' + esc(a.client || '') + '" style="' + IN + '" placeholder="who it\'s for">'
+    + L('Hub') + '<select id="caHub" style="' + IN + '"><option value="">— none —</option>' + hubs.map(h => '<option value="' + esc(h.slug) + '" ' + (h.slug === a.hub ? 'selected' : '') + '>' + esc(h.name) + '</option>').join('') + '</select>'
+    + L('Link (what the client opens)') + '<input id="caUrl" value="' + esc(a.url || '') + '" style="' + IN + '" placeholder="https://…">'
+    + L('Where it lives') + '<input id="caWhere" value="' + esc(a.where || '') + '" style="' + IN + '" placeholder="repo path / host / claude.ai artifact…">'
+    + L('Status') + '<select id="caStatus" style="' + IN + '">' + ['Building', 'Live', 'Paused', 'Retired'].map(x => '<option ' + (x === a.status ? 'selected' : '') + '>' + x + '</option>').join('') + '</select>'
+    + L('Notes') + '<textarea id="caNotes" rows="5" style="' + IN + 'resize:vertical;" placeholder="what it does, how the client uses it, logins, next steps…">' + esc(a.notes || '') + '</textarea>'
+    + '<div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => glCaSave(\'' + esc(id || '') + '\'))">Save</button>' + HC_CANCEL + '</div>');
+}
+async function glCaSave(id) {
+  const v = k => document.getElementById(k).value;
+  const app = { id: id || undefined, name: v('caName').trim(), client: v('caClient'), hub: v('caHub'), url: v('caUrl'), where: v('caWhere'), status: v('caStatus'), notes: v('caNotes') };
+  if (!app.name) return 'Enter the app name';
+  try { const r = await call('clientAppSave', { app }); if (!r || r.error) throw new Error((r && r.error) || 'not saved'); GL_CA = r.apps || GL_CA; glCaRender(); return true; }
+  catch (e) { return e.message; }
 }
 function loadGlobalsTab() {
   // All sections start collapsed and lazy-load on first open (glToggle).
