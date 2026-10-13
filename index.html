@@ -15583,12 +15583,29 @@ const _hubOutputOpen = {};
 function hubOutputPaint(slug) { const el = document.getElementById('hubOutputBody-' + slug); if (el) el.innerHTML = renderHubOutput(slug); }
 function hubOutputToggle(slug, k) { const o = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(); o.has(k) ? o.delete(k) : o.add(k); hubOutputPaint(slug); }
 function hubOutputAll(slug, open) { _hubOutputOpen[slug] = new Set(open ? (window._hubOutputKeys || {})[slug] || [] : []); hubOutputPaint(slug); }
+// Output › asset-type multi-select: a dropdown of checkboxes, one per asset type in this hub's data; none ticked = all
+const _hubOutputTypes = {}, _hubOutputTypesOpen = {};
+function hubOutputTypeSelect(slug, all, sel) {
+  const open = !!_hubOutputTypesOpen[slug], label = sel.size ? [...sel].join(', ') : 'all';
+  const B = 'font-size:10.5px;padding:1px 8px;border:1px solid ' + (sel.size ? '#4cff4c' : 'var(--border2)') + ';border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+  return '<span style="position:relative;display:inline-block;">'
+    + '<button style="' + B + '" onclick="event.stopPropagation();_hubOutputTypesOpen[\'' + slug + '\']=!_hubOutputTypesOpen[\'' + slug + '\'];hubOutputPaint(\'' + slug + '\')" title="' + esc(label) + '">Asset types: ' + esc(label) + ' ▾</button>'
+    + (open ? '<div onclick="event.stopPropagation()" style="position:absolute;z-index:50;top:100%;left:0;margin-top:3px;min-width:200px;max-height:280px;overflow:auto;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);box-shadow:0 6px 18px rgba(0,0,0,.35);">'
+      + '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:10.5px;"><span style="color:var(--text3);">' + (sel.size ? sel.size + ' selected' : 'none = all') + '</span>'
+      + '<span style="cursor:pointer;color:var(--accent);" onclick="_hubOutputTypes[\'' + slug + '\']=new Set();hubOutputPaint(\'' + slug + '\')">clear</span>'
+      + '<span style="cursor:pointer;color:var(--text3);" onclick="_hubOutputTypesOpen[\'' + slug + '\']=false;hubOutputPaint(\'' + slug + '\')">done ✕</span></div>'
+      + (all.length ? all.map(t => '<label style="display:flex;gap:6px;align-items:center;font-size:11.5px;padding:2px 0;cursor:pointer;white-space:nowrap;"><input type="checkbox" ' + (sel.has(t) ? 'checked' : '') + ' data-t="' + esc(t) + '" onchange="hubOutputTypeToggle(\'' + slug + '\',this.dataset.t,this.checked)">' + esc(t) + '</label>').join('') : '<div style="font-size:11px;color:var(--text3);">No assets yet.</div>')
+      + '</div>' : '') + '</span>';
+}
+function hubOutputTypeToggle(slug, t, on) { const sel = _hubOutputTypes[slug] = _hubOutputTypes[slug] || new Set(); if (on) sel.add(t); else sel.delete(t); hubOutputPaint(slug); }
 function renderHubOutput(slug) {
   const T = _hubTitles[slug], K = _hubKw[slug];
   if (!T || T.loading || !K || K.loading) return `<div style="font-size:11px;color:var(--text3);">${T || K ? 'Loading…' : 'Open to load.'}</div>`;
   if (T.error || K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load: ${esc(T.error || K.error)}</div>`;
   const nid = x => String(x || '').replace(/-/g, ''), open = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(), keys = [];
   const rs = _hubResState[slug] || {}, resLoaded = !!_hubResState[slug];
+  const typeOf = a => a.assetType || '(no type)', typesAll = [...new Set(T.rows.filter(r => r.kind === 'asset').map(typeOf))].sort((x, y) => x.localeCompare(y));
+  const tsel = _hubOutputTypes[slug] || new Set(), filtering = tsel.size > 0, typeOk = a => !filtering || tsel.has(typeOf(a));
   const moStep = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), mainIds = new Set(((moStep && (moStep.mainIds || (moStep.mainId ? [moStep.mainId] : []))) || []).map(nid));
   // ── research state per product ──
   const research = pid => { pid = nid(pid); if (!pid) return null; const f = (T.prodFlags || {})[pid] || {}, st = rs[pid];
@@ -15606,8 +15623,9 @@ function renderHubOutput(slug) {
   for (const r of T.rows) { if (!r.titleId || r.kind === 'interview') continue; const pid = r.productId ? nid(r.productId) : '';
     if (!titlesByProd.has(pid)) titlesByProd.set(pid, new Map()); const tm = titlesByProd.get(pid);
     if (!tm.has(r.titleId)) tm.set(r.titleId, { id: r.titleId, title: r.title, assets: [], pname: r.product });
-    if (r.kind === 'asset') tm.get(r.titleId).assets.push(r); }
-  const allPids = new Set([...Object.keys(prodById), ...[...titlesByProd.keys()].filter(Boolean)]);
+    if (r.kind === 'asset' && typeOk(r)) tm.get(r.titleId).assets.push(r); }
+  if (filtering) for (const [pid, tm] of titlesByProd) { for (const [tid, t] of tm) if (!t.assets.length) tm.delete(tid); if (!tm.size) titlesByProd.delete(pid); }   // only titles with a matching asset
+  const allPids = new Set(filtering ? [...titlesByProd.keys()].filter(Boolean) : [...Object.keys(prodById), ...[...titlesByProd.keys()].filter(Boolean)]);
   const byTopic = new Map(); for (const pid of allPids) { const tid = hubTiTopicOf(slug, prodById[pid] || {}); if (!byTopic.has(tid)) byTopic.set(tid, []); byTopic.get(tid).push(pid); }
   // ── cells ──
   // compact cells: one short word + coloured dot; the full reason / name sits in the hover tip
@@ -15651,12 +15669,13 @@ function renderHubOutput(slug) {
       + '<td style="' + H + '">' + n(c.t, 'title') + '</td><td style="' + H + '">' + n(c.a, 'asset') + '</td>'
       + '<td style="' + H + '">' + (c.sc ? c.sc + ' in sections' : '<span style="color:var(--text3);">—</span>') + '</td>'
       + '<td style="' + H + '">' + two(c.ro, c.rb, '#ff7a00') + '</td><td style="' + H + '">' + two(c.io, c.ib, '#e5534b') + '</td></tr>' + (o ? inner : ''); };
-  const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || [], r = rowsFor(pids, lvl + 1); nRes += r.res; nIv += r.iv;
+  const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || []; if (filtering && !pids.length) return { html: '', res: 0, iv: 0, c: Z() }; const r = rowsFor(pids, lvl + 1); nRes += r.res; nIv += r.iv;
     return { html: head('t:' + t.id, lvl, '🔑 ' + esc(t.name), `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html || `<tr><td colspan="${span}" style="${TD}color:var(--text3);padding-left:${6 + (lvl + 1) * 16}px;">no products on this topic</td></tr>`, r.res, r.iv, r.c), res: r.res, iv: r.iv, c: r.c }; };
   const topics = [...K.staged, ...K.committed], cl = K.tc.clusters || [], as = K.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
   let body = '';
-  { const pids = byTopic.get('__main') || [], r = rowsFor(pids, 1); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', '', r.html, r.res, r.iv, r.c); }
-  const clusterBlock = (c, label, list) => { const parts = list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => topicBlock(t, 1));
+  { const pids = byTopic.get('__main') || []; if (!filtering || pids.length) { const r = rowsFor(pids, 1); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', '', r.html, r.res, r.iv, r.c); } }
+  const clusterBlock = (c, label, list) => { const parts = list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => topicBlock(t, 1)).filter(x => !filtering || x.html);
+    if (filtering && !parts.length) return '';
     const res = parts.reduce((a, x) => a + x.res, 0), iv = parts.reduce((a, x) => a + x.iv, 0);
     return head('c:' + c, 0, label + ' <span style="font-weight:400;color:var(--text3);">· ' + list.length + ' topic' + (list.length === 1 ? '' : 's') + '</span>', '', parts.map(x => x.html).join(''), res, iv, parts.reduce((a, x) => add(a, x.c), Z())); };
   cl.forEach(c => { body += clusterBlock(c, '🧩 ' + esc(c), topics.filter(t => cOf(t) === c)); });
@@ -15673,6 +15692,7 @@ function renderHubOutput(slug) {
   const TH = 'text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);white-space:nowrap;';
   const B = 'font-size:10.5px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px;">
+      ${hubOutputTypeSelect(slug, typesAll, tsel)}
       <button style="${B}" onclick="hubOutputAll('${slug}',true)">⊞ Expand all</button><button style="${B}" onclick="hubOutputAll('${slug}',false)">⊟ Collapse all</button>
       <span style="color:var(--text3);">Only what's out of sync shows: <span style="color:#ff7a00;">● research</span> · <span style="color:#e5534b;">● interview (regen · review · 🎤 to answer)</span> — blank = in sync or not used</span>${tag(nRes, nIv)}</div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Product</th><th style="${TH}text-align:center;" title="★ = a Main offering of this hub">Main</th><th style="${TH}">Title</th><th style="${TH}">Asset</th><th style="${TH}" title="The hub (blog) section the asset is listed in">Section</th><th style="${TH}">Research</th><th style="${TH}">Interview</th></tr></thead><tbody>${body}</tbody></table></div>`;
