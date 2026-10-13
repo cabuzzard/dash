@@ -15633,7 +15633,7 @@ function renderHubOutput(slug) {
           + `<td style="${TD}">${a ? assetCell(a) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}color:var(--text2);">${a && a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td>`
           + `<td style="${TD}"></td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; };
       titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
-      const PR = TD + 'border-top:1px solid var(--border);';
+      const PR = TD + 'border-top:1px solid var(--border);background:rgba(246,195,68,.09);';
       html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span title="${esc(pname)}">📦 ${esc(cut(pname, 26))}</span></td>`
         + `<td style="${PR}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td>`
         + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td>`
@@ -15642,7 +15642,7 @@ function renderHubOutput(slug) {
     return { html, res, iv, c }; };
   const tag = (res, iv) => (res ? ` <span style="color:#ff7a00;font-weight:700;">● ${res} research</span>` : '') + (iv ? ` <span style="color:#e5534b;font-weight:700;">● ${iv} interview</span>` : '');
   const span = 7, head = (k, lvl, label, sub, inner, res, iv, c) => { keys.push(k); const o = open.has(k); c = c || Z();
-    const H = 'padding:4px 6px;font-size:11px;cursor:pointer;background:' + (lvl ? 'var(--surface)' : 'var(--surface2)') + ';border-top:1px solid var(--border);white-space:nowrap;color:var(--text2);';
+    const H = 'padding:4px 6px;font-size:11px;cursor:pointer;background:' + (lvl ? 'rgba(138,180,248,.09)' : 'rgba(138,180,248,.22)') + ';border-top:1px solid ' + (lvl ? 'var(--border)' : 'rgba(138,180,248,.45)') + ';white-space:nowrap;color:var(--text2);';
     const n = (v, w) => v ? v + ' ' + w + (v === 1 ? '' : 's') : '<span style="color:var(--text3);">—</span>';
     const two = (ok, bad) => bad ? '<span style="color:#ff7a00;font-weight:700;">● ' + bad + '</span>' : '';
     return '<tr data-k="' + esc(k) + '" onclick="hubOutputToggle(\'' + slug + '\',this.dataset.k)">'
