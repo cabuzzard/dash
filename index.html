@@ -16712,6 +16712,39 @@ async function reviewFlagsLoad() {
     ${flags.length ? reviewFlagRows(flags, true) : '<div style="padding:10px;font-size:12px;color:var(--text3);">Nothing waiting for review.</div>'}</div>`;
 }
 const _hubNotifOpen = {};   // build checklist 🔔 Notifications — collapsed by default
+const _hubAssetMixOpen = {};
+function hubAssetClass(it) {
+  const s = `${it.type || ''} ${it.method || ''}`.toLowerCase();
+  if (/resume|cover letter|job proposal|career/.test(s)) return 'Career';
+  if (/interactive|widget|quiz|calculator|tool/.test(s)) return 'Interactive';
+  if (/digest|newsletter|email/.test(s)) return 'Email';
+  if (/sales|listing|landing|offer|product page|marketplace|etsy|craigslist/.test(s)) return 'Conversion';
+  if (/short|single post|carousel|pinterest|pin|reel|story|social/.test(s)) return 'Short form';
+  if (/pillar/.test(s)) return 'Pillars';
+  if (/blog|article|podcast|youtube|long form|longform|interview/.test(s)) return 'Long form';
+  return 'Other';
+}
+function hubAssetMixBox(b, slug) {
+  const seen = new Set(), assets = [];
+  (b.steps || []).filter(s => s.pageSection).forEach(s => (s.items || []).forEach(it => { const id = String(it.id || ''); if (id && !seen.has(id)) { seen.add(id); assets.push(it); } }));
+  if (!assets.length) return '';
+  const order = ['Pillars', 'Long form', 'Short form', 'Email', 'Conversion', 'Interactive', 'Career', 'Other'];
+  const groups = {};
+  assets.forEach(it => { const k = hubAssetClass(it), g = groups[k] ||= { items: [], needs: 0 }; g.items.push(it); if (hubItemNeedsWork(b, it)) g.needs++; });
+  const chip = k => { const g = groups[k]; if (!g || !g.items.length) return ''; const orange = g.needs > 0;
+    return `<span title="${g.items.length} existing${orange ? ` · ${g.needs} need syncing or review` : ''}" style="white-space:nowrap;color:${orange ? '#ff7a00' : 'var(--text2)'};font-weight:${orange ? '700' : '500'};">${orange ? '● ' : ''}${esc(k)} ${g.items.length}</span>`; };
+  const open = !!_hubAssetMixOpen[slug];
+  let detail = '';
+  if (open) detail = order.filter(k => groups[k]).map(k => {
+    const byType = {};
+    groups[k].items.forEach(it => { const t = it.type || it.method || 'Unclassified', x = byType[t] ||= { n: 0, needs: 0 }; x.n++; if (hubItemNeedsWork(b, it)) x.needs++; });
+    const types = Object.entries(byType).sort((a, z) => a[0].localeCompare(z[0])).map(([t, x]) => `<span style="white-space:nowrap;color:${x.needs ? '#ff7a00' : 'var(--text3)'};${x.needs ? 'font-weight:700;' : ''}">${x.needs ? '● ' : ''}${esc(t)} ${x.n}</span>`).join(' · ');
+    return `<div style="padding:3px 0;font-size:10.5px;"><b style="color:var(--text2);">${esc(k)}</b> <span style="color:var(--text3);">—</span> ${types}</div>`;
+  }).join('');
+  return `<div style="margin:2px 12px 8px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:5px 0;">
+    <div onclick="_hubAssetMixOpen['${slug}']=!_hubAssetMixOpen['${slug}'];hubBuildRefreshRows('${slug}')" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;cursor:pointer;user-select:none;font-size:10.5px;"><span style="color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><b style="color:var(--text);">Asset mix</b>${order.map(chip).filter(Boolean).join('<span style="color:var(--border2);">·</span>')}</div>
+    ${open ? `<div style="padding:5px 0 2px 18px;">${detail}</div>` : ''}</div>`;
+}
 function renderHubBuildRows(slug) {
   const b = _hubBuild[slug];
   if (!b || !b.steps) return '<div style="padding:8px 12px;font-size:11px;color:var(--text3);">Loading checklist…</div>';
@@ -16730,7 +16763,7 @@ function renderHubBuildRows(slug) {
   let kwDone = false, seenHub = false, itDone = false;
   const pre = s => { let o = ''; if (!kwDone && seenHub && s.phase !== 'Hub build') { kwDone = true; o = hubKwPhase(slug); } if (s.phase === 'Hub build') seenHub = true; return o; };
   const vis = b.steps.filter(s => !s.hidden && s.phase !== 'Email');   // Email section removed from the checklist (2026-10-12)
-  return flagBox + vis.map(s => { const p = pre(s);
+  return flagBox + hubAssetMixBox(b, slug) + vis.map(s => { const p = pre(s);
     if (s.phase === 'Interactive') { if (itDone) return p; itDone = true; lastPhase = s.phase; return p + hubToolsPhase(slug); }   // the 🛠 Interactive tools panel
     return p + (() => {
     const busy = _hubBuildBusy[slug + '|' + s.id];
