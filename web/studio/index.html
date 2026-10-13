@@ -77,6 +77,7 @@ textarea:focus, input[type=text]:focus { outline: 2px solid var(--accent); outli
 <body>
 <div class="wrap" id="app"><div class="busy"><div class="spin"></div>Loading…</div></div>
 <div class="sticky hidden" id="foot"><div class="in" id="footIn"></div></div>
+<script src="../../shared/interview-panel.js?v=2026101201"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 const KEY = new URLSearchParams(location.search).get("k") || "";
@@ -93,6 +94,11 @@ async function api(op, extra) {
   try { d = JSON.parse(t); } catch (e) { throw new Error("The server didn't answer properly. Try again."); }
   if (d.error) { const e = new Error(d.error); e.code = d.code; throw e; }
   return d;
+}
+async function expertCall(action, extra) {
+  const op = { ivExpertCheck: "expertCheck", ivExpertGet: "expertGet", ivExpertApply: "expertApply" }[action];
+  if (!op) throw new Error("Unknown expert-check action");
+  return api(op, { d: extra.interviewId, ids: extra.ids, overrides: extra.overrides });
 }
 function setFoot(html) { if (!html) { foot.classList.add("hidden"); footIn.innerHTML = ""; return; } footIn.innerHTML = html; foot.classList.remove("hidden"); }
 function busy(text, sub) { setFoot(""); app.innerHTML = `<div class="busy"><div class="spin"></div><div><b>${esc(text)}</b>${sub ? `<div style="font-size:14px;margin-top:6px;">${esc(sub)}</div>` : ""}</div></div>`; }
@@ -176,8 +182,22 @@ async function viewInterview(d) {
     ${it.generating ? `<div class="msg info">Your script is being written. Reload in a minute or two.</div>` : ""}
     ${it.qs.map((q, i) => `<div class="card"><label class="q" for="a${i}"><span class="qn">${i + 1}.</span>${esc(q)}</label>
       <textarea id="a${i}" rows="5" oninput="answerChanged()">${esc(it.answers[i] || "")}</textarea></div>`).join("")}
+    <div id="expertHost"></div>
     ${it.status === "new" ? `<button class="link" style="color:var(--warn);" onclick="deleteInterview()">Delete this interview</button>` : ""}`;
   updateFoot();
+  mountExpert(it, document.getElementById("expertHost"), answers, flushAnswers);
+}
+function mountExpert(it, host, getAnswers, beforeRun) {
+  if (!host || !window.InterviewPanel || !window.InterviewPanel.expert) return;
+  host.appendChild(window.InterviewPanel.expert({ call: expertCall, interviewId: it.d, iv: it, answers: getAnswers,
+    beforeRun,
+    onApplied: fixed => {
+      if (!fixed) return;
+      it.answers = fixed.slice();
+      fixed.forEach((v, i) => { const box = document.getElementById("a" + i); if (box) box.value = v; });
+      if (CUR === it) { dirty = false; updateFoot("Expert fixes applied"); }
+    }
+  }));
 }
 function answers() { return (CUR ? CUR.qs : []).map((_, i) => { const el = document.getElementById("a" + i); return el ? el.value : ""; }); }
 function updateFoot(state) {
@@ -216,12 +236,14 @@ async function viewScript(d) {
     <div class="card"><div class="f"><span class="eyebrow">Video title</span></div>
       <input type="text" id="sTitle" value="${esc(SCRIPT.title)}" oninput="scriptChanged()"></div>
     <p class="lede" style="margin:14px 0 18px;">This is your script, written from your answers. Change anything you like, then save.</p>
+    <div id="expertHost"></div>
     ${SCRIPT.segments.map(x => `<div class="seg ${x.kind === "item" ? "item" : ""}">
       <h3>${LABEL[x.kind] || x.kind}${x.kind === "item" && x.n ? " " + x.n : ""}${x.kind === "item" && x.name ? " · " + esc(x.name) : ""}</h3>
       ${x.kind === "item" ? `<div class="f"><span>The viewer asks</span><input type="text" data-i="${x.i}" data-f="ask" value="${esc(x.ask)}" oninput="scriptChanged()"></div>` : ""}
       <div class="f">${x.kind === "item" ? "<span>Your answer</span>" : ""}<textarea data-i="${x.i}" data-f="text" rows="${Math.min(14, Math.max(3, Math.ceil(x.text.length / 70)))}" oninput="scriptChanged()">${esc(x.text)}</textarea></div>
     </div>`).join("")}`;
   scriptFoot();
+  mountExpert(SCRIPT.item, document.getElementById("expertHost"), () => SCRIPT.item.answers || [], null);
 }
 function scriptFoot(state) {
   setFoot(`<span class="grow" id="saveState">${state || (SCRIPT && SCRIPT.item && SCRIPT.item.minutes ? "About " + SCRIPT.item.minutes + " minutes" : "")}</span>

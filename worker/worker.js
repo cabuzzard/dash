@@ -746,6 +746,32 @@ async function handleStudio(env, body) {
     if (it.assetId) return { error: "This interview already has a script, so it stays." };
     items = items.filter(x => x !== it); await saveItems(); return { ok: true };
   }
+  // Studio interviews live in client KV, not the Notion Interviews DB. Reuse the same live-search expert engine with
+  // a sample payload, then persist its report and any accepted corrections on this client interview.
+  if (op === "expertCheck") {
+    if (!it.answers.some(a => String(a || "").trim())) return { error: "Answer and save some questions first." };
+    const r = await studioInner(env, "ivExpertCheck", { sample: { title: it.topic, qs: it.qs, answers: it.answers,
+      cid: link.campaignId, productId: link.productId, titleId: link.titleId, previous: it.expert || null } });
+    if (!r || r.error || !r.report) return { error: (r && r.error) || "The expert check didn't come back. Try again." };
+    it.expert = r.report; it.updatedAt = Date.now(); await saveItems();
+    return { ok: true, report: it.expert };
+  }
+  if (op === "expertGet") return { ok: true, report: it.expert || null, running: false, lastError: "" };
+  if (op === "expertApply") {
+    if (!it.expert) return { error: "Run the expert check first." };
+    const want = new Set(Array.isArray(body.ids) ? body.ids : []), ov = body.overrides && typeof body.overrides === "object" ? body.overrides : {};
+    const answers = it.answers.slice(); let applied = 0; const missed = [];
+    for (const x of it.expert.items || []) {
+      if (!want.has(x.id)) continue;
+      const own = String(ov[x.id] || "").trim().slice(0, 1500), replacement = own || x.fix;
+      if (!replacement) continue;
+      const k = String(answers[x.q] || "").includes(x.quote) ? x.q : answers.findIndex(a => String(a || "").includes(x.quote));
+      if (k < 0) { missed.push(x.id); continue; }
+      answers[k] = String(answers[k]).replace(x.quote, replacement); x.applied = true; x.appliedText = replacement; applied++;
+    }
+    it.answers = answers; it.updatedAt = Date.now(); await saveItems();
+    return { ok: true, report: it.expert, answers, applied, missed };
+  }
   if (op === "generate") {
     if (Array.isArray(body.answers)) it.answers = cleanAnswers(body.answers, it.qs.length);
     if (it.assetId) return { error: "This interview already has a script. Open it to edit." };
@@ -12029,7 +12055,7 @@ export default {
       return json({ ok: true, op: isCall ? "callback" : "book", ...(isCall ? {} : { bookingUrl: (cfg.bookingUrl || "") + (cfg.bookingUrl ? "?" + q : "") }) });
     }
     if (body.action === "studio") {
-      if (!["start", "generate"].includes(body.op)) { try { return json(await handleStudio(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
+      if (!["start", "generate", "expertCheck"].includes(body.op)) { try { return json(await handleStudio(env, body)); } catch (e) { return json({ error: e.message }, 500); } }
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -17522,7 +17548,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         let resp; try { resp = await (async () => {
         const id = xid; if (!id && !body.sample) return json({ error: "interviewId required" }, 400);
         // body.sample {title, qs, answers, cid?} = a dry run on sample answers (nothing read or saved) — for testing the check
-        const iv = body.sample ? { title: String(body.sample.title || "sample"), angle: "", qs: body.sample.qs || [], answers: body.sample.answers || [], cid: body.sample.cid || "", productId: "", titleId: "" } : ivParse(await ivPage(id));
+        const iv = body.sample ? { title: String(body.sample.title || "sample"), angle: "", qs: body.sample.qs || [], answers: body.sample.answers || [], cid: body.sample.cid || "", productId: body.sample.productId || "", titleId: body.sample.titleId || "" } : ivParse(await ivPage(id));
         const qa = iv.qs.map((q, i) => ({ i, q, a: String(iv.answers[i] || "").trim() })).filter(x => x.a);
         if (!qa.length) return json({ error: "Answer (and save) some questions first" }, 400);
         let pid = iv.productId; if (!pid && iv.titleId) { const tp = await ivPage(iv.titleId).catch(() => null); pid = tp ? ivRid(tp.properties, "product") : ""; }
@@ -17531,7 +17557,7 @@ Give a YouTube title in that format. Call submit_questions.`;
         if (!body.sample) await env.TRADES.put("ivfact:run:" + id, String(Date.now()), { expirationTtl: 3600 });
         // PASS 2+ (operator: "my responses to the first expert check also need a second pass by the experts before writing"):
         // the reviewer sees what the previous pass raised and verifies the REVISED answers against it.
-        let prev = null; if (!body.sample) { try { prev = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {} }
+        let prev = body.sample && body.sample.previous ? body.sample.previous : null; if (!body.sample) { try { prev = await env.TRADES.get("ivfact:" + id, "json"); } catch (e) {} }
         const pass = prev ? (prev.pass || 1) + 1 : 1;
         const prevBlock = prev ? `\nPASS ${pass} — the owner REVISED these answers after the previous expert review. Previous summary: ${prev.summary}\nIssues it raised (quote → verdict → suggested fix / what they applied):\n${prev.items.filter(x => x.verdict !== "opinion" && (/outdated|contested|wrong|mostly/.test(x.verdict) || x.market)).map(x => `- "${x.quote}" → ${x.verdict}${x.market ? " (marketability: " + x.market + ")" : ""}${x.applied ? " → applied: " + (x.appliedText || x.fix) : x.fix ? " → suggested: " + x.fix : ""}`).join("\n").slice(0, 6000)}\nVerify the REVISED answers to the same standard: confirm what is now right (verdict current), and flag only what still falls short or any NEW problem the revisions introduced. Don't re-flag points that are now fixed.\n` : "";   // a phone that drops the long request can see it's still running
         const fieldKey = "ivfield:" + (pid || iv.cid || "x");
