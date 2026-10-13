@@ -15598,6 +15598,43 @@ function hubOutputTypeSelect(slug, all, sel) {
       + '</div>' : '') + '</span>';
 }
 function hubOutputTypeToggle(slug, t, on) { const sel = _hubOutputTypes[slug] = _hubOutputTypes[slug] || new Set(); if (on) sel.add(t); else sel.delete(t); hubOutputPaint(slug); }
+// ── Output › Edit product (click a product row's name): name · status · keyword topic. Moving it to another topic sets
+// only its Topic ID (Product Stack + Group untouched) and marks its research out of sync (attachProductToTopic markOutOfSync).
+async function hubOutputProdEdit(slug, pid) {
+  const T = _hubTitles[slug], h = HUB_SITES.find(x => x.slug === slug); if (!T || !h) return;
+  const p = (T.products || []).find(x => kwNid(x.id) === kwNid(pid)); if (!p) return;
+  const cur = hubTiTopicOf(slug, p), curSel = cur === '__main' ? '__main' : kwNid(cur);
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = x => '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">' + x + '</label>';
+  hcModal('<h3 style="margin:0 0 10px;">Edit product</h3>'
+    + L('Name') + '<input id="hpeName" value="' + esc(p.name || '') + '" style="' + IN + '">'
+    + L('Status') + '<select id="hpeStatus" style="' + IN + '">' + [...new Set([...(HUB_PROD_STATUSES || []), p.status].filter(Boolean))].map(x => '<option ' + (x === p.status ? 'selected' : '') + '>' + esc(x) + '</option>').join('') + '</select>'
+    + L('Keyword topic') + '<select id="hpeTopic" style="' + IN + '"><option>loading topics…</option></select>'
+    + '<div id="hpeNote" style="font-size:11px;color:var(--text3);margin:-4px 0 10px;">Moving it to another topic marks its research out of sync (orange) — re-run it from the research modal. Its Product Stack and Group stay as they are.</div>'
+    + '<div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubOutputProdSave(\'' + slug + '\',\'' + esc(kwNid(pid)) + '\'))">Save</button>' + HC_CANCEL + '</div>');
+  try { const d = await kwTopicsFor(h.campaignId); const sel = document.getElementById('hpeTopic'); if (sel) { sel.innerHTML = kwTopicOptions(d, curSel); sel.dataset.cur = curSel; } }
+  catch (e) { const sel = document.getElementById('hpeTopic'); if (sel) sel.innerHTML = '<option value="">couldn’t load topics — ' + esc(e.message) + '</option>'; }
+}
+async function hubOutputProdSave(slug, pid) {
+  const T = _hubTitles[slug], h = HUB_SITES.find(x => x.slug === slug); if (!T || !h) return 'Hub not loaded';
+  const p = (T.products || []).find(x => kwNid(x.id) === pid); if (!p) return 'Product not found';
+  const name = document.getElementById('hpeName').value.trim(), status = document.getElementById('hpeStatus').value;
+  const tSel = document.getElementById('hpeTopic'), topic = tSel ? tSel.value : '', curT = tSel ? tSel.dataset.cur || '' : '';
+  if (!name) return 'The name can’t be empty';
+  try {
+    if (name !== p.name) { const r = await call('updateAllOutputField', { kind: 'product', field: 'product', productId: pid, value: name }); if (!r || r.error) throw new Error((r && r.error) || 'rename failed'); p.name = name; }
+    if (status && status !== p.status) { const r = await call('updateProductStatus', { productId: pid, status }); if (!r || r.error) throw new Error((r && r.error) || 'status failed'); p.status = status; }
+    if (topic && topic !== curT) {
+      const r = await call('attachProductToTopic', { productId: pid, topicId: topic, campaignId: h.campaignId, markOutOfSync: true }); if (!r || r.error) throw new Error((r && r.error) || 'move failed');
+      p.topicId = topic; p.outOfSync = true; (T.prodFlags[pid] = T.prodFlags[pid] || {}).kwOOS = true;
+      const kp = ((_hubKw[slug] || {}).products || []).find(x => kwNid(x.id) === pid); if (kp) { kp.topicId = topic; kp.outOfSync = true; }
+    }
+  } catch (e) { return e.message; }
+  // the row's title list carries the old name — refresh the shared rows quietly, repaint now
+  T.rows.forEach(r => { if (kwNid(r.productId) === pid) r.product = name; });
+  hubOutputPaint(slug); hubTitlesRefresh(slug); if (typeof hubKwRefresh === 'function') hubKwRefresh(slug);
+  return true;
+}
 function renderHubOutput(slug) {
   const T = _hubTitles[slug], K = _hubKw[slug];
   if (!T || T.loading || !K || K.loading) return `<div style="font-size:11px;color:var(--text3);">${T || K ? 'Loading…' : 'Open to load.'}</div>`;
@@ -15652,7 +15689,7 @@ function renderHubOutput(slug) {
           + `<td style="${TD}"></td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; };
       titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
       const PR = TD + 'border-top:1px solid var(--border);background:rgba(246,195,68,.09);';
-      html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span title="${esc(pname)}">📦 ${esc(cut(pname, 26))}</span></td>`
+      html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span onclick="hubOutputProdEdit('${slug}','${esc(pid)}')" title="${esc(pname)} — edit product / move to another topic" style="cursor:pointer;">📦 ${esc(cut(pname, 26))}</span></td>`
         + `<td style="${PR}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td>`
         + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td>`
         + `<td style="${PR}">${rsS && !rsS.ok ? `<span onclick="hubResOpen('${slug}','${esc(pid)}')" title="${esc(rsS.why)} — open this product's research" style="cursor:pointer;text-decoration:underline dotted;">${resCell}</span>` : resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td></tr>` + rows;
