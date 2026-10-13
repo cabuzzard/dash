@@ -14975,7 +14975,7 @@ function renderHubsTab() {
     </details>
 
     <details class="hub-sec" ${hubSecOpen('production') ? 'open' : ''} ontoggle="hubSecToggle('production', this.open);if(this.open){if(!_hubBuildFetched['${slug}'])renderHubsTab();}">
-      <summary><span>Production</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">titles · assets</span>
+      <summary><span>Production</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">titles · assets · output</span>
         <button onclick="event.preventDefault();event.stopPropagation();hubTitlesLoad('${slug}', true).then(() => hubAssetsPaint('${slug}'))" title="Reload titles + assets" style="margin-left:auto;font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;text-transform:none;letter-spacing:0;font-weight:400;">⟳</button>
       </summary>
       <div style="padding:4px 0 6px;">
@@ -14989,6 +14989,10 @@ function renderHubsTab() {
           <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|as'] ? '▼' : '▶'}</span>
           <span style="color:var(--text);flex:1;" title="Every published asset of this campaign — sort, filter and group like All Output (starts Cluster › Topic › newest)">Assets <span id="hubAssetsN-${slug}" style="color:var(--text3);">${hubAssetsRows(slug) ? '— ' + hubAssetsRows(slug).length + ' published' : ''}</span></span></div>
         <div id="hubAssetsBody-${slug}" style="display:${_hubContentOpen[slug + '|as'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubAssets(slug)}</div></div>
+        <div style="margin:2px 12px 4px 22px;padding-left:11px;"><div onclick="_hubContentOpen['${slug}|ou']=!_hubContentOpen['${slug}|ou'];this.nextElementSibling.style.display=_hubContentOpen['${slug}|ou']?'':'none';this.querySelector('.hcchev').textContent=_hubContentOpen['${slug}|ou']?'▼':'▶';if(_hubContentOpen['${slug}|ou'])hubTitlesLoad('${slug}').then(() => hubOutputPaint('${slug}'))" style="padding:3px 0;display:flex;align-items:center;gap:6px;cursor:pointer;user-select:none;font-size:11.5px;">
+          <span class="hcchev" style="font-size:10px;color:var(--text3);width:10px;">${_hubContentOpen[slug + '|ou'] ? '▼' : '▶'}</span>
+          <span style="color:var(--text);flex:1;" title="Keyword clusters + topics → products → titles → every asset, with research + interview sync">Output</span></div>
+        <div id="hubOutputBody-${slug}" style="display:${_hubContentOpen[slug + '|ou'] ? '' : 'none'};padding:2px 0 4px 16px;">${renderHubOutput(slug)}</div></div>
         
       </div>
     </details>
@@ -15345,6 +15349,7 @@ async function hubTitlesLoad(slug, force) {
 }
 function hubTitlesRefresh(slug) {
   if (typeof hubAssetsPaint === 'function') hubAssetsPaint(slug);
+  if (typeof hubOutputPaint === 'function') hubOutputPaint(slug);
   const el = document.getElementById('hubTitlesBody-' + slug); if (el) el.innerHTML = renderHubTitles(slug);
   const n = document.getElementById('hubTitlesN-' + slug); const T = _hubTitles[slug];
   if (n && T && T.rows) n.textContent = '— ' + new Set(T.rows.filter(r => r.titleId).map(r => r.titleId)).size + ' titles';
@@ -15568,6 +15573,84 @@ function renderHubAssets(slug) {
       return `<tr><td colspan="${span}" data-k="${esc(k)}" onclick="hubAssetsToggle('${slug}',this.dataset.k)" style="padding:4px 6px 4px ${6 + lvl * 16}px;font-size:11.5px;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};border-top:1px solid var(--border);">${open ? '▾' : '▸'} <span style="color:var(--text3);">${esc(label(t.col))}:</span> <b>${esc(v)}</b> <span style="color:var(--text3);">· ${n} asset${n === 1 ? '' : 's'}</span></td></tr>` + (open ? build(by.get(v), lvl + 1, k) : ''); }).join('');
   };
   return bar + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead>${head}</thead><tbody>${build(rows, 0, '')}</tbody></table></div>`;
+}
+// ── Production → Output: keyword structure down to every asset, with sync columns ──
+// Collapsible header rows ★ Main → 🧩 cluster → 🔑 topic (→ topics with no cluster → ⚠ products with no topic → no product);
+// rows Product | Title | Asset | Research | Interview. Research (per product): green in sync / orange out of sync (topic
+// keywords changed, research behind the keywords, no research). Interview (per asset, "Interview Sync"): green In Sync /
+// red Out of Sync (regenerate · review) or interview still to answer on its title / blank = asset doesn't use interviews.
+const _hubOutputOpen = {};
+function hubOutputPaint(slug) { const el = document.getElementById('hubOutputBody-' + slug); if (el) el.innerHTML = renderHubOutput(slug); }
+function hubOutputToggle(slug, k) { const o = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(); o.has(k) ? o.delete(k) : o.add(k); hubOutputPaint(slug); }
+function hubOutputAll(slug, open) { _hubOutputOpen[slug] = new Set(open ? (window._hubOutputKeys || {})[slug] || [] : []); hubOutputPaint(slug); }
+function renderHubOutput(slug) {
+  const T = _hubTitles[slug], K = _hubKw[slug];
+  if (!T || T.loading || !K || K.loading) return `<div style="font-size:11px;color:var(--text3);">${T || K ? 'Loading…' : 'Open to load.'}</div>`;
+  if (T.error || K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load: ${esc(T.error || K.error)}</div>`;
+  const nid = x => String(x || '').replace(/-/g, ''), open = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(), keys = [];
+  const rs = _hubResState[slug] || {};
+  // ── research state per product ──
+  const research = pid => { pid = nid(pid); if (!pid) return null; const f = (T.prodFlags || {})[pid] || {}, st = rs[pid];
+    if (f.kwOOS) return { ok: false, why: 'keywords changed' }; if (st === 'off-main') return { ok: false, why: 'research behind keywords' };
+    if (st === 'empty') return { ok: false, why: 'no research yet' }; if (st === 'updated') return { ok: true, why: 'in sync' }; return null; };
+  // ── interview state per asset ──
+  const ivOpen = {}; T.rows.filter(r => r.kind === 'interview' && r.ivStatus === 'Flagged' && r.titleId).forEach(r => { ivOpen[r.titleId] = (ivOpen[r.titleId] || 0) + 1; });
+  const interview = (a, tid) => { const v = a.ivSync || ''; if (!v) return null;
+    if (/^Out of Sync/.test(v)) return { ok: false, why: /Regenerate/.test(v) ? 'out of sync · regenerate' : 'out of sync · review' };
+    if (ivOpen[tid]) return { ok: false, why: '🎤 ' + ivOpen[tid] + ' to answer' };
+    return { ok: true, why: 'in sync' }; };
+  // ── products → titles → assets ──
+  const prodById = {}; (T.products || []).forEach(p => { prodById[nid(p.id)] = p; });
+  const titlesByProd = new Map();
+  for (const r of T.rows) { if (!r.titleId || r.kind === 'interview') continue; const pid = r.productId ? nid(r.productId) : '';
+    if (!titlesByProd.has(pid)) titlesByProd.set(pid, new Map()); const tm = titlesByProd.get(pid);
+    if (!tm.has(r.titleId)) tm.set(r.titleId, { id: r.titleId, title: r.title, assets: [], pname: r.product });
+    if (r.kind === 'asset') tm.get(r.titleId).assets.push(r); }
+  const allPids = new Set([...Object.keys(prodById), ...[...titlesByProd.keys()].filter(Boolean)]);
+  const byTopic = new Map(); for (const pid of allPids) { const tid = hubTiTopicOf(slug, prodById[pid] || {}); if (!byTopic.has(tid)) byTopic.set(tid, []); byTopic.get(tid).push(pid); }
+  // ── cells ──
+  const pill = (s, okC, badC) => !s ? '' : `<span style="color:${s.ok ? okC : badC};font-weight:600;white-space:nowrap;">● ${esc(s.why)}</span>`;
+  const TD = 'padding:3px 6px;font-size:11.5px;border-bottom:1px solid var(--border);vertical-align:top;';
+  let nRes = 0, nIv = 0;
+  const rowsFor = pids => { let html = '', res = 0, iv = 0;
+    pids.sort((a, b) => String((prodById[a] || {}).name || '').localeCompare(String((prodById[b] || {}).name || ''))).forEach(pid => {
+      const p = prodById[pid] || {}, pname = p.name || ([...(titlesByProd.get(pid) || new Map()).values()][0] || {}).pname || '(product)';
+      const rsS = research(pid); if (rsS && !rsS.ok) res++;
+      const titles = [...(titlesByProd.get(pid) || new Map()).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
+      let firstP = true;
+      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++;
+        html += `<tr><td style="${TD}">${firstP ? `📦 ${esc(pname)}` : ''}</td><td style="${TD}">${t && firstT ? esc(t.title || '(untitled)') : ''}</td>`
+          + `<td style="${TD}">${a ? `<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}${a.assetStatus ? ' · ' + esc(a.assetStatus) : ''}</span>` : `<span style="color:var(--text3);">${t ? 'no assets yet' : 'no titles yet'}</span>`}</td>`
+          + `<td style="${TD}">${firstP ? pill(rsS, '#4ade80', '#ff7a00') : ''}</td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b')}</td></tr>`; firstP = false; };
+      if (!titles.length) line(null, null, true);
+      titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
+    });
+    return { html, res, iv }; };
+  const tag = (res, iv) => (res ? ` <span style="color:#ff7a00;font-weight:700;">● ${res} research</span>` : '') + (iv ? ` <span style="color:#e5534b;font-weight:700;">● ${iv} interview</span>` : '');
+  const span = 5, head = (k, lvl, label, sub, inner, res, iv) => { keys.push(k); const o = open.has(k);
+    return `<tr><td colspan="${span}" data-k="${esc(k)}" onclick="hubOutputToggle('${slug}',this.dataset.k)" style="padding:4px 6px 4px ${6 + lvl * 16}px;font-size:11.5px;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};border-top:1px solid var(--border);">${o ? '▾' : '▸'} <b>${label}</b> <span style="color:var(--text3);">${sub}</span>${tag(res, iv)}</td></tr>` + (o ? inner : ''); };
+  const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv;
+    return { html: head('t:' + t.id, lvl, '🔑 ' + esc(t.name), `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html || `<tr><td colspan="${span}" style="${TD}color:var(--text3);padding-left:${6 + (lvl + 1) * 16}px;">no products on this topic</td></tr>`, r.res, r.iv), res: r.res, iv: r.iv }; };
+  const topics = [...K.staged, ...K.committed], cl = K.tc.clusters || [], as = K.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
+  let body = '';
+  { const pids = byTopic.get('__main') || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html, r.res, r.iv); }
+  const clusterBlock = (c, label, list) => { const parts = list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => topicBlock(t, 1));
+    const res = parts.reduce((a, x) => a + x.res, 0), iv = parts.reduce((a, x) => a + x.iv, 0);
+    return head('c:' + c, 0, label, `· ${list.length} topic${list.length === 1 ? '' : 's'}`, parts.map(x => x.html).join(''), res, iv); };
+  cl.forEach(c => { body += clusterBlock(c, '🧩 ' + esc(c), topics.filter(t => cOf(t) === c)); });
+  const loose = topics.filter(t => !cOf(t)); if (loose.length) body += clusterBlock('', 'Topics with no cluster (isolated)', loose);
+  { const pids = byTopic.get('') || []; if (pids.length) { const r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('n', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', `· ${pids.length}`, r.html, r.res, r.iv); } }
+  { const tm = titlesByProd.get(''); if (tm && tm.size) { let html = ''; let iv = 0;
+      [...tm.values()].forEach(t => { if (!t.assets.length) html += `<tr><td style="${TD}"></td><td style="${TD}">${esc(t.title || '(untitled)')}</td><td style="${TD}color:var(--text3);">no assets yet</td><td style="${TD}"></td><td style="${TD}"></td></tr>`;
+        else t.assets.forEach((a, i) => { const s = interview(a, t.id); if (s && !s.ok) iv++; html += `<tr><td style="${TD}"></td><td style="${TD}">${i ? '' : esc(t.title || '(untitled)')}</td><td style="${TD}"><a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}</span></td><td style="${TD}"></td><td style="${TD}">${pill(s, '#4ade80', '#e5534b')}</td></tr>`; }); });
+      nIv += iv; body += head('x', 0, 'No product', `· ${tm.size} title${tm.size === 1 ? '' : 's'}`, html, 0, iv); } }
+  (window._hubOutputKeys = window._hubOutputKeys || {})[slug] = keys;
+  const TH = 'text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);white-space:nowrap;';
+  const B = 'font-size:10.5px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
+  return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px;">
+      <button style="${B}" onclick="hubOutputAll('${slug}',true)">⊞ Expand all</button><button style="${B}" onclick="hubOutputAll('${slug}',false)">⊟ Collapse all</button>
+      <span style="color:var(--text3);">Research: <span style="color:#4ade80;">● in sync</span> · <span style="color:#ff7a00;">● out of sync</span> — Interview: <span style="color:#4ade80;">● in sync</span> · <span style="color:#e5534b;">● out of sync / to answer</span> · blank = no interview used</span>${tag(nRes, nIv)}</div>
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Product</th><th style="${TH}">Title</th><th style="${TH}">Asset</th><th style="${TH}">Research</th><th style="${TH}">Interview</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function hubTitlesWork(slug) { const T = _hubTitles[slug]; if (!T || !T.rows) return ''; const c = { n: 0 }; renderHubTitles(slug, c); return hubWorkTag(c.n); }
 function renderHubTitles(slug, counter) {
