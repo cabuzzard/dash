@@ -14818,7 +14818,7 @@ Return: {
       // a status flip to Published is itself an edit, so this is a close,
       // zero-schema-change proxy rather than an exact timestamp.
       if (body.action === "getDevAssetsTable") {
-        const [campRows, productRows, titleRows, assetRows, ivRows, prRows, resRows] = await Promise.all([
+        const [campRows, productRows, titleRows, assetRows, ivRows, prRows, resRows, slotRows, strategyRows, tdRows] = await Promise.all([
           notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } }),
           notionQuery(PRODUCTS_DB, {}),
           notionQuery(CONTENT_STRATEGY_DB, {}),
@@ -14826,6 +14826,9 @@ Return: {
           ivList(null).catch(() => []),   // 🎤 interviews — their own rows under the title (Flagged / Finished)
           notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
           notionQuery(RESEARCH_DB, {}).catch(() => []),
+          notionQuery(STRATEGY_SLOTS_DB, {}).catch(() => []),
+          notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []),
+          notionQuery(MAIN_TD_DB, { filter: { property: "Strategy Slot", relation: { is_not_empty: true } } }).catch(() => []),
         ]);
         const ivByTitle = {}, ivByProduct = {};
         ivRows.forEach(iv => { if (iv.scope === "Product" && iv.productId) (ivByProduct[iv.productId] ||= []).push(iv); else if (iv.titleId) (ivByTitle[iv.titleId] ||= []).push(iv); });
@@ -14859,8 +14862,30 @@ Return: {
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
             productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
             pillarStatus: p["Pillar Status"]?.select?.name || "",
+            strategySlotId: (p["Strategy Slot"]?.relation || [])[0]?.id ? dropDash(p["Strategy Slot"].relation[0].id) : null,
+            growthStrategyId: (p["Growth Strategy"]?.relation || [])[0]?.id ? dropDash(p["Growth Strategy"].relation[0].id) : null,
           };
         });
+
+        // Production schedule metadata. Strategy Slots are the existing source
+        // of truth for recurring/sequential work; Main TD carries the next due
+        // date. Keep this flattened onto every Output row so all views can show
+        // the same schedule without another round trip.
+        const strategyNames = {};
+        strategyRows.forEach(s => { const p = s.properties || {}; strategyNames[dropDash(s.id)] = (p["Strategy Name"]?.title || []).map(x => x.plain_text).join("") || "Strategy"; });
+        const dueBySlot = {};
+        tdRows.forEach(td => { const p = td.properties || {}, sid = dropDash((p["Strategy Slot"]?.relation || [])[0]?.id || ""), due = p["Due Date"]?.date?.start || ""; if (sid && due && (!dueBySlot[sid] || due < dueBySlot[sid])) dueBySlot[sid] = due; });
+        const slotMeta = {}, lineStats = {};
+        slotRows.forEach(s => {
+          const p = s.properties || {}, id = dropDash(s.id), strategyId = dropDash((p["Growth Strategy"]?.relation || [])[0]?.id || "");
+          const grouping = (p.Grouping?.rich_text || []).map(x => x.plain_text).join("") || (p.Name?.title || []).map(x => x.plain_text).join("") || "Schedule";
+          const recurrence = (p.Recurrence?.rich_text || []).map(x => x.plain_text).join(""), status = p.Status?.select?.name || "Planned", sequence = p.Sequence?.number || null;
+          const lineKey = (strategyId || "none") + "|" + grouping, isDone = /published|filled|complete|done/i.test(status);
+          const stat = lineStats[lineKey] ||= { total: 0, done: 0, recurring: false };
+          stat.total++; if (isDone) stat.done++; if (recurrence) stat.recurring = true;
+          slotMeta[id] = { id, strategyId, schedule: strategyNames[strategyId] || grouping, grouping, cadence: recurrence || (sequence ? "Sequence" : "One-time"), status, sequence, nextDue: dueBySlot[id] || "", lineKey };
+        });
+        Object.values(slotMeta).forEach(m => { const s = lineStats[m.lineKey] || { total: 1, done: 0, recurring: false }; m.progress = s.recurring ? `${s.done} published · ongoing` : `${s.done}/${s.total}`; });
 
         // ALL OUTPUT (2026-10-06): every product, title and asset gets a row — assets with no title and products
         // with no titles too. Asset name = Asset Title; Group = the campaign's product group for the stack.
@@ -14882,6 +14907,7 @@ Return: {
             lastEditedTime: a.last_edited_time || null,
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash(p.Campaign.relation[0].id) : null,
             productId: (p.Product?.relation || [])[0]?.id ? dropDash(p.Product.relation[0].id) : null,
+            strategySlotId: (p["Strategy Slot"]?.relation || [])[0]?.id ? dropDash(p["Strategy Slot"].relation[0].id) : null,
           };
           if (titleId && titleById[titleId]) (assetsByTitle[titleId] ||= []).push(row); else orphanAssets.push(row);
         });
@@ -14900,11 +14926,13 @@ Return: {
 
         const rows = [];
         const usedProducts = new Set();
+        const scheduleFields = slotId => { const m = slotMeta[dropDash(slotId || "")]; return m ? { schedule: m.schedule, scheduleGroup: m.grouping, cadence: m.cadence, progress: m.progress, nextDue: m.nextDue, scheduleStatus: m.status } : { schedule: "", scheduleGroup: "", cadence: "", progress: "", nextDue: "", scheduleStatus: "" }; };
         const assetFields = a => ({
           assetId: a.id, assetName: a.name,
           assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "",
           datePublished: a.status === "Published" ? a.lastEditedTime : null,
+          ...scheduleFields(a.strategySlotId),
         });
         Object.entries(titleById).forEach(([titleId, t]) => {
           if (t.productId) usedProducts.add(t.productId);
@@ -14919,6 +14947,7 @@ Return: {
             title: t.title,
             titleId,
             pillarStatus: t.pillarStatus || "", productId: t.productId || null,
+            ...scheduleFields(t.strategySlotId),
           };
           (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
             assetName: "🎤 " + (iv.scope === "Asset" ? `[own · ${iv.forType}] ` : "") + (iv.angle || "Interview"), assetType: iv.scope === "Asset" ? "Interview (own)" : "Interview (title)", rawAssetType: "Interview", assetStatus: "", hubSection: "", datePublished: iv.finishedAt }));
@@ -14942,6 +14971,7 @@ Return: {
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", hubSection: a.hubSection || "", ivSync: a.ivSync || "",
               datePublished: a.status === "Published" ? a.lastEditedTime : null,
+              ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
           });
         });

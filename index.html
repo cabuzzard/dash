@@ -15589,6 +15589,17 @@ function renderHubAssets(slug) {
 // rows Product | Title | Asset | Research | Interview. Research (per product): green in sync / orange out of sync (topic
 // keywords changed, research behind the keywords, no research). Interview (per asset, "Interview Sync"): green In Sync /
 // red Out of Sync (regenerate · review) or interview still to answer on its title / blank = asset doesn't use interviews.
+const HUB_OUTPUT_ASSET_CATALOG = {
+  'Social': ['Instagram Post', 'Instagram Carousel', 'Instagram Story', 'Facebook Post', 'LinkedIn Post', 'LinkedIn Carousel', 'X Post', 'X Thread', 'Pinterest Pin', 'Community Post'],
+  'Short video': ['Instagram Reel', 'TikTok Video', 'YouTube Short', 'LinkedIn Short Video', 'Facebook Reel', 'Short Video'],
+  'Long video': ['YouTube Long-form Video', 'Video Essay', 'Tutorial Video', 'Webinar', 'Live Stream', 'Long Video'],
+  'Audio': ['Podcast Episode', 'Podcast Clip', 'Audio Newsletter', 'Audio Article'],
+  'Editorial': ['Blog - SEO - News', 'Blog Post', 'SEO Article', 'News Article', 'Newsletter Issue', 'Newsletter Digest', 'Email Broadcast', 'Case Study', 'Guide', 'White Paper', 'Report'],
+  'Web & conversion': ['Offer – Content Hub', 'Landing Page', 'Content Hub', 'Product Page', 'Lead Magnet', 'Downloadable', 'Quiz', 'Tool'],
+  'Sales & outreach': ['Sales Email', 'Email Sequence', 'Proposal', 'Pitch Deck', 'One Sheet', 'Direct Message'],
+  'Career': ['Resume', 'Cover Letter', 'Job Proposal', 'Upwork Proposal', 'LinkedIn Profile', 'Portfolio Case Study']
+};
+const HUB_OUTPUT_ASSET_TYPES = Object.values(HUB_OUTPUT_ASSET_CATALOG).flat();
 const _hubOutputOpen = {};
 function hubOutputPaint(slug) { const el = document.getElementById('hubOutputBody-' + slug); if (el) el.innerHTML = renderHubOutput(slug); }
 function hubOutputToggle(slug, k) { const o = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(); o.has(k) ? o.delete(k) : o.add(k); hubOutputPaint(slug); }
@@ -15597,6 +15608,9 @@ function hubOutputAll(slug, open) { _hubOutputOpen[slug] = new Set(open ? (windo
 const _hubOutputTypes = {}, _hubOutputTypesOpen = {};
 function hubOutputTypeSelect(slug, all, sel) {
   const open = !!_hubOutputTypesOpen[slug], label = sel.size ? [...sel].join(', ') : 'all';
+  const known = new Set(HUB_OUTPUT_ASSET_TYPES), labelFor = t => '<label style="display:flex;gap:6px;align-items:center;font-size:11.5px;padding:2px 0;cursor:pointer;white-space:nowrap;"><input type="checkbox" ' + (sel.has(t) ? 'checked' : '') + ' data-t="' + esc(t) + '" onchange="hubOutputTypeToggle(\'' + slug + '\',this.dataset.t,this.checked)">' + esc(t) + '</label>';
+  const catalog = Object.entries(HUB_OUTPUT_ASSET_CATALOG).map(([group, types]) => '<div style="margin:7px 0 2px;color:var(--text3);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">' + esc(group) + '</div>' + types.map(labelFor).join('')).join('');
+  const extras = all.filter(t => !known.has(t));
   const B = 'font-size:10.5px;padding:1px 8px;border:1px solid ' + (sel.size ? '#4cff4c' : 'var(--border2)') + ';border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
   return '<span style="position:relative;display:inline-block;">'
     + '<button style="' + B + '" onclick="event.stopPropagation();_hubOutputTypesOpen[\'' + slug + '\']=!_hubOutputTypesOpen[\'' + slug + '\'];hubOutputPaint(\'' + slug + '\')" title="' + esc(label) + '">Asset types: ' + esc(label) + ' ▾</button>'
@@ -15604,7 +15618,7 @@ function hubOutputTypeSelect(slug, all, sel) {
       + '<div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:4px;font-size:10.5px;"><span style="color:var(--text3);">' + (sel.size ? sel.size + ' selected' : 'none = all') + '</span>'
       + '<span style="cursor:pointer;color:var(--accent);" onclick="_hubOutputTypes[\'' + slug + '\']=new Set();hubOutputPaint(\'' + slug + '\')">clear</span>'
       + '<span style="cursor:pointer;color:var(--text3);" onclick="_hubOutputTypesOpen[\'' + slug + '\']=false;hubOutputPaint(\'' + slug + '\')">done ✕</span></div>'
-      + (all.length ? all.map(t => '<label style="display:flex;gap:6px;align-items:center;font-size:11.5px;padding:2px 0;cursor:pointer;white-space:nowrap;"><input type="checkbox" ' + (sel.has(t) ? 'checked' : '') + ' data-t="' + esc(t) + '" onchange="hubOutputTypeToggle(\'' + slug + '\',this.dataset.t,this.checked)">' + esc(t) + '</label>').join('') : '<div style="font-size:11px;color:var(--text3);">No assets yet.</div>')
+      + catalog + (extras.length ? '<div style="margin:7px 0 2px;color:var(--text3);font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">Existing custom types</div>' + extras.map(labelFor).join('') : '')
       + '</div>' : '') + '</span>';
 }
 function hubOutputTypeToggle(slug, t, on) { const sel = _hubOutputTypes[slug] = _hubOutputTypes[slug] || new Set(); if (on) sel.add(t); else sel.delete(t); hubOutputPaint(slug); }
@@ -15651,7 +15665,7 @@ function renderHubOutput(slug) {
   if (T.error || K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load: ${esc(T.error || K.error)}</div>`;
   const nid = x => String(x || '').replace(/-/g, ''), open = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(), keys = [];
   const rs = _hubResState[slug] || {}, resLoaded = !!_hubResState[slug];
-  const typeOf = a => a.assetType || '(no type)', typesAll = [...new Set(T.rows.filter(r => r.kind === 'asset').map(typeOf))].sort((x, y) => x.localeCompare(y));
+  const typeOf = a => a.assetType || '(no type)', typesAll = [...new Set([...HUB_OUTPUT_ASSET_TYPES, ...T.rows.filter(r => r.kind === 'asset').map(typeOf)])].sort((x, y) => x.localeCompare(y));
   const tsel = _hubOutputTypes[slug] || new Set(), filtering = tsel.size > 0, typeOk = a => !filtering || tsel.has(typeOf(a));
   const moStep = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering), mainIds = new Set(((moStep && (moStep.mainIds || (moStep.mainId ? [moStep.mainId] : []))) || []).map(nid));
   // ── research state per product ──
@@ -15669,7 +15683,7 @@ function renderHubOutput(slug) {
   const titlesByProd = new Map();
   for (const r of T.rows) { if (!r.titleId || r.kind === 'interview') continue; const pid = r.productId ? nid(r.productId) : '';
     if (!titlesByProd.has(pid)) titlesByProd.set(pid, new Map()); const tm = titlesByProd.get(pid);
-    if (!tm.has(r.titleId)) tm.set(r.titleId, { id: r.titleId, title: r.title, assets: [], pname: r.product });
+    if (!tm.has(r.titleId)) tm.set(r.titleId, { id: r.titleId, title: r.title, assets: [], pname: r.product, schedule: r.schedule || '', scheduleGroup: r.scheduleGroup || '', cadence: r.cadence || '', progress: r.progress || '', nextDue: r.nextDue || '', scheduleStatus: r.scheduleStatus || '' });
     if (r.kind === 'asset' && typeOk(r)) tm.get(r.titleId).assets.push(r); }
   if (filtering) for (const [pid, tm] of titlesByProd) { for (const [tid, t] of tm) if (!t.assets.length) tm.delete(tid); if (!tm.size) titlesByProd.delete(pid); }   // only titles with a matching asset
   const allPids = new Set(filtering ? [...titlesByProd.keys()].filter(Boolean) : [...Object.keys(prodById), ...[...titlesByProd.keys()].filter(Boolean)]);
@@ -15682,6 +15696,8 @@ function renderHubOutput(slug) {
   const TD = 'padding:2px 6px;font-size:11px;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap;';
   const cut = (v, n) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
   const assetCell = a => `<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" title="${esc((a.assetName || '(untitled asset)') + (a.assetStatus ? ' · ' + a.assetStatus : ''))}" style="color:var(--text);text-decoration:none;">${esc(cut(a.assetType || 'asset', 22))}</a>${a.assetStatus && a.assetStatus !== 'Published' ? ` <span style="color:var(--text3);" title="${esc(a.assetStatus)}">·${esc(a.assetStatus.slice(0, 3).toLowerCase())}</span>` : ''}`;
+  const schedCells = r => { r = r || {}; const tip = [r.schedule, r.scheduleGroup].filter(Boolean).join(' · '), due = r.nextDue ? String(r.nextDue).slice(0, 10) : '';
+    return `<td style="${TD}" title="${esc(tip)}">${r.schedule ? esc(cut(r.schedule, 18)) : ''}</td><td style="${TD}color:var(--text2);">${esc(r.cadence || '')}</td><td style="${TD}color:var(--text2);">${esc(r.progress || '')}</td><td style="${TD}color:${due && due < new Date().toISOString().slice(0,10) ? '#e5534b' : 'var(--text2)'};">${esc(due)}</td><td style="${TD}color:var(--text2);">${esc(r.scheduleStatus || '')}</td>`; };
   const titleCell = (t, n) => `<span title="${esc(t.title || '(untitled)')}" style="cursor:help;">Title ${n}</span>`;
   let nRes = 0, nIv = 0;
   const Z = () => ({ p: 0, m: 0, t: 0, a: 0, sc: 0, ro: 0, rb: 0, io: 0, ib: 0 }), add = (x, y) => { for (const k in y) x[k] += y[k]; return x; };
@@ -15695,18 +15711,18 @@ function renderHubOutput(slug) {
       let tn = 0, rows = '', pt = 0, pa = 0, pib = 0;
       const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) { iv++; pib++; } if (t && firstT) { c.t++; tn++; pt++; } if (a) { pa++; c.a++; if (a.hubSection) c.sc++; } if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
         rows += `<tr><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}padding-left:${pad + 16}px;">${t && firstT ? titleCell(t, tn) : ''}</td>`
-          + `<td style="${TD}">${a ? assetCell(a) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}color:var(--text2);">${a && a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td>`
+          + `<td style="${TD}">${a ? assetCell(a) : '<span style="color:var(--text3);">—</span>'}</td>${schedCells(a || t)}<td style="${TD}color:var(--text2);">${a && a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td>`
           + `<td style="${TD}"></td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; };
       titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
       const PR = TD + 'border-top:1px solid var(--border);background:rgba(246,195,68,.09);';
       html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span onclick="hubOutputProdEdit('${slug}','${esc(pid)}')" title="${esc(pname)} — edit product / move to another topic" style="cursor:pointer;">📦 ${esc(cut(pname, 26))}</span></td>`
         + `<td style="${PR}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td>`
-        + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td>`
+        + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td>`
         + `<td style="${PR}">${rsS && !rsS.ok ? `<span onclick="hubResOpen('${slug}','${esc(pid)}')" title="${esc(rsS.why)} — open this product's research" style="cursor:pointer;text-decoration:underline dotted;">${resCell}</span>` : resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td></tr>` + rows;
     });
     return { html, res, iv, c }; };
   const tag = (res, iv) => (res ? ` <span style="color:#ff7a00;font-weight:700;">● ${res} research</span>` : '') + (iv ? ` <span style="color:#e5534b;font-weight:700;">● ${iv} interview</span>` : '');
-  const span = 7, head = (k, lvl, label, sub, inner, res, iv, c) => { keys.push(k); const o = open.has(k); c = c || Z();
+  const span = 12, head = (k, lvl, label, sub, inner, res, iv, c) => { keys.push(k); const o = open.has(k); c = c || Z();
     const H = 'padding:4px 6px;font-size:11px;cursor:pointer;background:' + (lvl ? 'rgba(138,180,248,.09)' : 'rgba(138,180,248,.22)') + ';border-top:1px solid ' + (lvl ? 'var(--border)' : 'rgba(138,180,248,.45)') + ';white-space:nowrap;color:var(--text2);';
     const n = (v, w) => v ? v + ' ' + w + (v === 1 ? '' : 's') : '<span style="color:var(--text3);">—</span>';
     const two = (ok, bad) => bad ? '<span style="color:#ff7a00;font-weight:700;">● ' + bad + '</span>' : '';
@@ -15714,6 +15730,7 @@ function renderHubOutput(slug) {
       + '<td style="' + H + 'padding-left:' + (6 + lvl * 16) + 'px;color:var(--text);">' + (o ? '▾' : '▸') + ' <b>' + label + '</b> <span style="color:var(--text3);">' + n(c.p, 'product') + '</span></td>'
       + '<td style="' + H + 'text-align:center;">' + (c.m ? '<span style="color:#f6c344;">★' + (c.m > 1 ? ' ' + c.m : '') + '</span>' : '') + '</td>'
       + '<td style="' + H + '">' + n(c.t, 'title') + '</td><td style="' + H + '">' + n(c.a, 'asset') + '</td>'
+      + '<td style="' + H + '"></td><td style="' + H + '"></td><td style="' + H + '"></td><td style="' + H + '"></td><td style="' + H + '"></td>'
       + '<td style="' + H + '">' + (c.sc ? c.sc + ' in sections' : '<span style="color:var(--text3);">—</span>') + '</td>'
       + '<td style="' + H + '">' + two(c.ro, c.rb, '#ff7a00') + '</td><td style="' + H + '">' + two(c.io, c.ib, '#e5534b') + '</td></tr>' + (o ? inner : ''); };
   const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || []; if (filtering && !pids.length) return { html: '', res: 0, iv: 0, c: Z() }; const r = rowsFor(pids, lvl + 1); nRes += r.res; nIv += r.iv;
@@ -15731,9 +15748,9 @@ function renderHubOutput(slug) {
   { const tm = titlesByProd.get(''); if (tm && tm.size) { let html = ''; let iv = 0; const c = Z(); c.t = tm.size;
       let tn = 0;
       [...tm.values()].forEach(t => { tn++;
-        if (!t.assets.length) html += `<tr><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}">${titleCell(t, tn)}</td><td style="${TD}color:var(--text3);">—</td><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}"></td></tr>`;
+        if (!t.assets.length) html += `<tr><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}">${titleCell(t, tn)}</td><td style="${TD}color:var(--text3);">—</td>${schedCells(t)}<td style="${TD}"></td><td style="${TD}"></td><td style="${TD}"></td></tr>`;
         else t.assets.forEach((a, i) => { const sI = interview(a, t.id); if (sI && !sI.ok) iv++; c.a++; if (a.hubSection) c.sc++; if (sI) { if (sI.ok) c.io++; else c.ib++; }
-          html += `<tr><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}">${i ? '' : titleCell(t, tn)}</td><td style="${TD}">${assetCell(a)}</td><td style="${TD}color:var(--text2);">${a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td><td style="${TD}"></td><td style="${TD}">${pill(sI, '#4ade80', '#e5534b', shortI)}</td></tr>`; }); });
+          html += `<tr><td style="${TD}"></td><td style="${TD}"></td><td style="${TD}">${i ? '' : titleCell(t, tn)}</td><td style="${TD}">${assetCell(a)}</td>${schedCells(a)}<td style="${TD}color:var(--text2);">${a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td><td style="${TD}"></td><td style="${TD}">${pill(sI, '#4ade80', '#e5534b', shortI)}</td></tr>`; }); });
       nIv += iv; body += head('x', 0, 'No product', '', html, 0, iv, c); } }
   (window._hubOutputKeys = window._hubOutputKeys || {})[slug] = keys;
   const TH = 'text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);white-space:nowrap;';
@@ -15742,7 +15759,7 @@ function renderHubOutput(slug) {
       ${hubOutputTypeSelect(slug, typesAll, tsel)}
       <button style="${B}" onclick="hubOutputAll('${slug}',true)">⊞ Expand all</button><button style="${B}" onclick="hubOutputAll('${slug}',false)">⊟ Collapse all</button>
       <span style="color:var(--text3);">Only what's out of sync shows: <span style="color:#ff7a00;">● research</span> · <span style="color:#e5534b;">● interview (regen · review · 🎤 to answer)</span> — blank = in sync or not used</span>${tag(nRes, nIv)}</div>
-    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Product</th><th style="${TH}text-align:center;" title="★ = a Main offering of this hub">Main</th><th style="${TH}">Title</th><th style="${TH}">Asset</th><th style="${TH}" title="The hub (blog) section the asset is listed in">Section</th><th style="${TH}">Research</th><th style="${TH}">Interview</th></tr></thead><tbody>${body}</tbody></table></div>`;
+    <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Product</th><th style="${TH}text-align:center;" title="★ = a Main offering of this hub">Main</th><th style="${TH}">Title</th><th style="${TH}">Asset</th><th style="${TH}">Schedule</th><th style="${TH}">Cadence</th><th style="${TH}">Progress</th><th style="${TH}">Next due</th><th style="${TH}">Status</th><th style="${TH}" title="The hub (blog) section the asset is listed in">Section</th><th style="${TH}">Research</th><th style="${TH}">Interview</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function hubTitlesWork(slug) { const T = _hubTitles[slug]; if (!T || !T.rows) return ''; const c = { n: 0 }; renderHubTitles(slug, c); return hubWorkTag(c.n); }
 function renderHubTitles(slug, counter) {
