@@ -15700,17 +15700,18 @@ function renderHubOutput(slug) {
   const schedCells = r => { r = r || {}; const tip = [r.schedule, r.scheduleGroup].filter(Boolean).join(' · '), due = r.nextDue ? String(r.nextDue).slice(0, 10) : '';
     return `<td style="${TD}" title="${esc(tip)}">${r.schedule ? esc(cut(r.schedule, 18)) : ''}</td><td style="${TD}color:var(--text2);">${esc(r.cadence || '')}</td><td style="${TD}color:var(--text2);">${esc(r.progress || '')}</td><td style="${TD}color:${due && due < new Date().toISOString().slice(0,10) ? '#e5534b' : 'var(--text2)'};">${esc(due)}</td><td style="${TD}color:var(--text2);">${esc(r.scheduleStatus || '')}</td>`; };
   const titleCell = (t, n) => `<span title="${esc(t.title || '(untitled)')}" style="cursor:help;">Title ${n}</span>`;
-  const salesPillar = pid => {
+  const salesPillarState = pid => {
     const ts = [...(titlesByProd.get(pid) || new Map()).values()], sales = ts.filter(t => /long form sales|sales pillar|qa\s*[–—-]?\s*sales/i.test(t.methodName || '') || (t.assets || []).some(a => /qa\s*[–—-]?\s*sales|sales article|sales page/i.test([a.assetType, a.rawAssetType].join(' '))));
     const written = sales.some(t => /written|current|complete/i.test(t.pillarStatus || '') || (t.assets || []).some(a => /publish|published/i.test(a.assetStatus || '')));
-    return written ? '<span title="A written sales pillar exists for this product" style="color:#4ade80;font-weight:700;">● Written</span>' : '<span title="No written Long Form Sales pillar was found for this product" style="color:#ff7a00;font-weight:700;">● Not written</span>';
+    return { written, html: written ? '<span title="A written sales pillar exists for this product" style="color:#4ade80;font-weight:700;">● Written</span>' : '<span title="No written Long Form Sales pillar was found for this product" style="color:#ff7a00;font-weight:700;">● Not written</span>' };
   };
   let nRes = 0, nIv = 0;
-  const Z = () => ({ p: 0, m: 0, t: 0, a: 0, sc: 0, ro: 0, rb: 0, io: 0, ib: 0 }), add = (x, y) => { for (const k in y) x[k] += y[k]; return x; };
+  const Z = () => ({ p: 0, m: 0, t: 0, a: 0, sc: 0, ro: 0, rb: 0, io: 0, ib: 0, sb: 0 }), add = (x, y) => { for (const k in y) x[k] += y[k]; return x; };
   const rowsFor = (pids, lvl) => { const pad = 6 + (lvl || 0) * 16; let html = '', res = 0, iv = 0; const c = Z();
     pids.sort((a, b) => String((prodById[a] || {}).name || '').localeCompare(String((prodById[b] || {}).name || ''))).forEach(pid => {
       const p = prodById[pid] || {}, pname = p.name || ([...(titlesByProd.get(pid) || new Map()).values()][0] || {}).pname || '(product)';
       const rsS = research(pid); if (rsS && !rsS.ok) res++; c.p++; const isMain = mainIds.has(pid); if (isMain) c.m++;
+      const spS = salesPillarState(pid); if (!spS.written) c.sb++;
       const resCell = rsS ? pill(rsS, '#4ade80', '#ff7a00', shortR) : `<span title="${resLoaded ? 'No research state for this product — it may not be in this campaign\'s product list' : 'Research state not loaded yet — open Production again or press ⟳'}" style="color:var(--text3);cursor:help;">?</span>`; if (rsS) { if (rsS.ok) c.ro++; else c.rb++; }
       const titles = [...(titlesByProd.get(pid) || new Map()).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
       // the product is its own row (name · ★ · its counts · its research warning); its title / asset rows sit below it
@@ -15722,7 +15723,7 @@ function renderHubOutput(slug) {
       const PR = TD + 'border-top:1px solid var(--border);background:rgba(246,195,68,.09);';
       html += `<tr><td style="${PR}padding-left:${pad}px;font-weight:600;"><span onclick="hubOutputProdEdit('${slug}','${esc(pid)}')" title="${esc(pname)} — edit product / move to another topic" style="cursor:pointer;">📦 ${esc(cut(pname, 26))}</span></td>`
         + `<td style="${PR}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td>`
-        + `<td style="${PR}">${rsS && !rsS.ok ? `<span onclick="hubResOpen('${slug}','${esc(pid)}')" title="${esc(rsS.why)} — open this product's research" style="cursor:pointer;text-decoration:underline dotted;">${resCell}</span>` : resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td><td style="${PR}">${salesPillar(pid)}</td>`
+        + `<td style="${PR}">${rsS && !rsS.ok ? `<span onclick="hubResOpen('${slug}','${esc(pid)}')" title="${esc(rsS.why)} — open this product's research" style="cursor:pointer;text-decoration:underline dotted;">${resCell}</span>` : resCell}</td><td style="${PR}">${pib ? '<span style="color:#ff7a00;font-weight:700;">● ' + pib + '</span>' : ''}</td><td style="${PR}">${spS.html}</td>`
         + `<td style="${PR}color:var(--text3);">${pt ? pt + ' title' + (pt === 1 ? '' : 's') : 'no titles'}</td><td style="${PR}color:var(--text3);">${pa ? pa + ' asset' + (pa === 1 ? '' : 's') : ''}</td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td><td style="${PR}"></td></tr>` + rows;
     });
     return { html, res, iv, c }; };
@@ -15735,7 +15736,7 @@ function renderHubOutput(slug) {
       + '<td style="' + H + 'padding-left:' + (6 + lvl * 16) + 'px;color:var(--text);">' + (o ? '▾' : '▸') + ' <b>' + label + '</b> <span style="color:var(--text3);">' + n(c.p, 'product') + '</span></td>'
       + '<td style="' + H + 'text-align:center;">' + (c.m ? '<span style="color:#f6c344;">★' + (c.m > 1 ? ' ' + c.m : '') + '</span>' : '') + '</td>'
       + '<td style="' + H + '">' + two(c.ro, c.rb, '#ff7a00') + '</td><td style="' + H + '">' + two(c.io, c.ib, '#e5534b') + '</td>'
-      + '<td style="' + H + '"></td>'
+      + '<td style="' + H + '">' + (c.sb ? '<span title="Products missing a written Long Form Sales pillar" style="color:#ff7a00;font-weight:700;">● ' + c.sb + '</span>' : '') + '</td>'
       + '<td style="' + H + '">' + n(c.t, 'title') + '</td><td style="' + H + '">' + n(c.a, 'asset') + '</td>'
       + '<td style="' + H + '"></td><td style="' + H + '"></td><td style="' + H + '"></td><td style="' + H + '"></td><td style="' + H + '"></td>'
       + '<td style="' + H + '">' + (c.sc ? c.sc + ' in sections' : '<span style="color:var(--text3);">—</span>') + '</td></tr>' + (o ? inner : ''); };
