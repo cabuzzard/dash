@@ -15612,38 +15612,45 @@ function renderHubOutput(slug) {
   const pill = (s, okC, badC) => !s ? '' : `<span style="color:${s.ok ? okC : badC};font-weight:600;white-space:nowrap;">● ${esc(s.why)}</span>`;
   const TD = 'padding:3px 6px;font-size:11.5px;border-bottom:1px solid var(--border);vertical-align:top;';
   let nRes = 0, nIv = 0;
-  const rowsFor = pids => { let html = '', res = 0, iv = 0;
+  const Z = () => ({ p: 0, t: 0, a: 0, ro: 0, rb: 0, io: 0, ib: 0 }), add = (x, y) => { for (const k in y) x[k] += y[k]; return x; };
+  const rowsFor = pids => { let html = '', res = 0, iv = 0; const c = Z();
     pids.sort((a, b) => String((prodById[a] || {}).name || '').localeCompare(String((prodById[b] || {}).name || ''))).forEach(pid => {
       const p = prodById[pid] || {}, pname = p.name || ([...(titlesByProd.get(pid) || new Map()).values()][0] || {}).pname || '(product)';
-      const rsS = research(pid); if (rsS && !rsS.ok) res++;
+      const rsS = research(pid); if (rsS && !rsS.ok) res++; c.p++; if (rsS) { if (rsS.ok) c.ro++; else c.rb++; }
       const titles = [...(titlesByProd.get(pid) || new Map()).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
       let firstP = true;
-      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++;
+      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++; if (t && firstT) c.t++; if (a) c.a++; if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
         html += `<tr><td style="${TD}">${firstP ? `📦 ${esc(pname)}` : ''}</td><td style="${TD}">${t && firstT ? esc(t.title || '(untitled)') : ''}</td>`
           + `<td style="${TD}">${a ? `<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}${a.assetStatus ? ' · ' + esc(a.assetStatus) : ''}</span>` : `<span style="color:var(--text3);">${t ? 'no assets yet' : 'no titles yet'}</span>`}</td>`
           + `<td style="${TD}">${firstP ? pill(rsS, '#4ade80', '#ff7a00') : ''}</td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b')}</td></tr>`; firstP = false; };
       if (!titles.length) line(null, null, true);
       titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
     });
-    return { html, res, iv }; };
+    return { html, res, iv, c }; };
   const tag = (res, iv) => (res ? ` <span style="color:#ff7a00;font-weight:700;">● ${res} research</span>` : '') + (iv ? ` <span style="color:#e5534b;font-weight:700;">● ${iv} interview</span>` : '');
-  const span = 5, head = (k, lvl, label, sub, inner, res, iv) => { keys.push(k); const o = open.has(k);
-    return `<tr><td colspan="${span}" data-k="${esc(k)}" onclick="hubOutputToggle('${slug}',this.dataset.k)" style="padding:4px 6px 4px ${6 + lvl * 16}px;font-size:11.5px;cursor:pointer;background:${lvl ? 'var(--surface)' : 'var(--surface2)'};border-top:1px solid var(--border);">${o ? '▾' : '▸'} <b>${label}</b> <span style="color:var(--text3);">${sub}</span>${tag(res, iv)}</td></tr>` + (o ? inner : ''); };
+  const span = 5, head = (k, lvl, label, sub, inner, res, iv, c) => { keys.push(k); const o = open.has(k); c = c || Z();
+    const H = 'padding:4px 6px;font-size:11px;cursor:pointer;background:' + (lvl ? 'var(--surface)' : 'var(--surface2)') + ';border-top:1px solid var(--border);white-space:nowrap;color:var(--text2);';
+    const n = (v, w) => v ? v + ' ' + w + (v === 1 ? '' : 's') : '<span style="color:var(--text3);">—</span>';
+    const two = (ok, bad, badC) => (ok || bad) ? (ok ? '<span style="color:#4ade80;">● ' + ok + '</span>' : '') + (ok && bad ? ' ' : '') + (bad ? '<span style="color:' + badC + ';font-weight:700;">● ' + bad + '</span>' : '') : '<span style="color:var(--text3);">—</span>';
+    return '<tr data-k="' + esc(k) + '" onclick="hubOutputToggle(\'' + slug + '\',this.dataset.k)">'
+      + '<td style="' + H + 'padding-left:' + (6 + lvl * 16) + 'px;color:var(--text);">' + (o ? '▾' : '▸') + ' <b>' + label + '</b> <span style="color:var(--text3);">' + n(c.p, 'product') + '</span></td>'
+      + '<td style="' + H + '">' + n(c.t, 'title') + '</td><td style="' + H + '">' + n(c.a, 'asset') + '</td>'
+      + '<td style="' + H + '">' + two(c.ro, c.rb, '#ff7a00') + '</td><td style="' + H + '">' + two(c.io, c.ib, '#e5534b') + '</td></tr>' + (o ? inner : ''); };
   const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv;
-    return { html: head('t:' + t.id, lvl, '🔑 ' + esc(t.name), `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html || `<tr><td colspan="${span}" style="${TD}color:var(--text3);padding-left:${6 + (lvl + 1) * 16}px;">no products on this topic</td></tr>`, r.res, r.iv), res: r.res, iv: r.iv }; };
+    return { html: head('t:' + t.id, lvl, '🔑 ' + esc(t.name), `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html || `<tr><td colspan="${span}" style="${TD}color:var(--text3);padding-left:${6 + (lvl + 1) * 16}px;">no products on this topic</td></tr>`, r.res, r.iv, r.c), res: r.res, iv: r.iv, c: r.c }; };
   const topics = [...K.staged, ...K.committed], cl = K.tc.clusters || [], as = K.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
   let body = '';
-  { const pids = byTopic.get('__main') || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html, r.res, r.iv); }
+  { const pids = byTopic.get('__main') || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', '', r.html, r.res, r.iv, r.c); }
   const clusterBlock = (c, label, list) => { const parts = list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => topicBlock(t, 1));
     const res = parts.reduce((a, x) => a + x.res, 0), iv = parts.reduce((a, x) => a + x.iv, 0);
-    return head('c:' + c, 0, label, `· ${list.length} topic${list.length === 1 ? '' : 's'}`, parts.map(x => x.html).join(''), res, iv); };
+    return head('c:' + c, 0, label + ' <span style="font-weight:400;color:var(--text3);">· ' + list.length + ' topic' + (list.length === 1 ? '' : 's') + '</span>', '', parts.map(x => x.html).join(''), res, iv, parts.reduce((a, x) => add(a, x.c), Z())); };
   cl.forEach(c => { body += clusterBlock(c, '🧩 ' + esc(c), topics.filter(t => cOf(t) === c)); });
   const loose = topics.filter(t => !cOf(t)); if (loose.length) body += clusterBlock('', 'Topics with no cluster (isolated)', loose);
-  { const pids = byTopic.get('') || []; if (pids.length) { const r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('n', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', `· ${pids.length}`, r.html, r.res, r.iv); } }
-  { const tm = titlesByProd.get(''); if (tm && tm.size) { let html = ''; let iv = 0;
+  { const pids = byTopic.get('') || []; if (pids.length) { const r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('n', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', '', r.html, r.res, r.iv, r.c); } }
+  { const tm = titlesByProd.get(''); if (tm && tm.size) { let html = ''; let iv = 0; const c = Z(); c.t = tm.size;
       [...tm.values()].forEach(t => { if (!t.assets.length) html += `<tr><td style="${TD}"></td><td style="${TD}">${esc(t.title || '(untitled)')}</td><td style="${TD}color:var(--text3);">no assets yet</td><td style="${TD}"></td><td style="${TD}"></td></tr>`;
-        else t.assets.forEach((a, i) => { const s = interview(a, t.id); if (s && !s.ok) iv++; html += `<tr><td style="${TD}"></td><td style="${TD}">${i ? '' : esc(t.title || '(untitled)')}</td><td style="${TD}"><a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}</span></td><td style="${TD}"></td><td style="${TD}">${pill(s, '#4ade80', '#e5534b')}</td></tr>`; }); });
-      nIv += iv; body += head('x', 0, 'No product', `· ${tm.size} title${tm.size === 1 ? '' : 's'}`, html, 0, iv); } }
+        else t.assets.forEach((a, i) => { const s = interview(a, t.id); if (s && !s.ok) iv++; c.a++; if (s) { if (s.ok) c.io++; else c.ib++; } html += `<tr><td style="${TD}"></td><td style="${TD}">${i ? '' : esc(t.title || '(untitled)')}</td><td style="${TD}"><a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}</span></td><td style="${TD}"></td><td style="${TD}">${pill(s, '#4ade80', '#e5534b')}</td></tr>`; }); });
+      nIv += iv; body += head('x', 0, 'No product', '', html, 0, iv, c); } }
   (window._hubOutputKeys = window._hubOutputKeys || {})[slug] = keys;
   const TH = 'text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);white-space:nowrap;';
   const B = 'font-size:10.5px;padding:1px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;';
