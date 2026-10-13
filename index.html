@@ -15609,8 +15609,14 @@ function renderHubOutput(slug) {
   const allPids = new Set([...Object.keys(prodById), ...[...titlesByProd.keys()].filter(Boolean)]);
   const byTopic = new Map(); for (const pid of allPids) { const tid = hubTiTopicOf(slug, prodById[pid] || {}); if (!byTopic.has(tid)) byTopic.set(tid, []); byTopic.get(tid).push(pid); }
   // ── cells ──
-  const pill = (s, okC, badC) => !s ? '' : `<span style="color:${s.ok ? okC : badC};font-weight:600;white-space:nowrap;">● ${esc(s.why)}</span>`;
-  const TD = 'padding:3px 6px;font-size:11.5px;border-bottom:1px solid var(--border);vertical-align:top;';
+  // compact cells: one short word + coloured dot; the full reason / name sits in the hover tip
+  const shortR = w => ({ 'in sync': '✓', 'keywords changed': 'keywords', 'research behind keywords': 'behind', 'no research yet': 'none' })[w] || w;
+  const shortI = w => w === 'in sync' ? '✓' : /regenerate/.test(w) ? 'regen' : /review/.test(w) ? 'review' : w.replace(/ to answer$/, '');
+  const pill = (s, okC, badC, sh) => !s ? '' : `<span title="${esc(s.why)}" style="color:${s.ok ? okC : badC};font-weight:600;white-space:nowrap;cursor:help;">● ${esc(sh(s.why))}</span>`;
+  const TD = 'padding:2px 6px;font-size:11px;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap;';
+  const cut = (v, n) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
+  const assetCell = a => `<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" title="${esc((a.assetName || '(untitled asset)') + (a.assetStatus ? ' · ' + a.assetStatus : ''))}" style="color:var(--text);text-decoration:none;">${esc(cut(a.assetType || 'asset', 22))}</a>${a.assetStatus && a.assetStatus !== 'Published' ? ` <span style="color:var(--text3);" title="${esc(a.assetStatus)}">·${esc(a.assetStatus.slice(0, 3).toLowerCase())}</span>` : ''}`;
+  const titleCell = (t, n) => `<span title="${esc(t.title || '(untitled)')}" style="cursor:help;">Title ${n}</span>`;
   let nRes = 0, nIv = 0;
   const Z = () => ({ p: 0, t: 0, a: 0, ro: 0, rb: 0, io: 0, ib: 0 }), add = (x, y) => { for (const k in y) x[k] += y[k]; return x; };
   const rowsFor = pids => { let html = '', res = 0, iv = 0; const c = Z();
@@ -15618,11 +15624,11 @@ function renderHubOutput(slug) {
       const p = prodById[pid] || {}, pname = p.name || ([...(titlesByProd.get(pid) || new Map()).values()][0] || {}).pname || '(product)';
       const rsS = research(pid); if (rsS && !rsS.ok) res++; c.p++; if (rsS) { if (rsS.ok) c.ro++; else c.rb++; }
       const titles = [...(titlesByProd.get(pid) || new Map()).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
-      let firstP = true;
-      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++; if (t && firstT) c.t++; if (a) c.a++; if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
-        html += `<tr><td style="${TD}">${firstP ? `📦 ${esc(pname)}` : ''}</td><td style="${TD}">${t && firstT ? esc(t.title || '(untitled)') : ''}</td>`
-          + `<td style="${TD}">${a ? `<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}${a.assetStatus ? ' · ' + esc(a.assetStatus) : ''}</span>` : `<span style="color:var(--text3);">${t ? 'no assets yet' : 'no titles yet'}</span>`}</td>`
-          + `<td style="${TD}">${firstP ? pill(rsS, '#4ade80', '#ff7a00') : ''}</td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b')}</td></tr>`; firstP = false; };
+      let firstP = true, tn = 0;
+      const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++; if (t && firstT) { c.t++; tn++; } if (a) c.a++; if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
+        html += `<tr><td style="${TD}">${firstP ? `<span title="${esc(pname)}">📦 ${esc(cut(pname, 24))}</span>` : ''}</td><td style="${TD}">${t && firstT ? titleCell(t, tn) : ''}</td>`
+          + `<td style="${TD}">${a ? assetCell(a) : '<span style="color:var(--text3);">—</span>'}</td>`
+          + `<td style="${TD}">${firstP ? pill(rsS, '#4ade80', '#ff7a00', shortR) : ''}</td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; firstP = false; };
       if (!titles.length) line(null, null, true);
       titles.forEach(t => { if (!t.assets.length) line(t, null, true); else t.assets.forEach((a, i) => line(t, a, i === 0)); });
     });
@@ -15648,8 +15654,11 @@ function renderHubOutput(slug) {
   const loose = topics.filter(t => !cOf(t)); if (loose.length) body += clusterBlock('', 'Topics with no cluster (isolated)', loose);
   { const pids = byTopic.get('') || []; if (pids.length) { const r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('n', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', '', r.html, r.res, r.iv, r.c); } }
   { const tm = titlesByProd.get(''); if (tm && tm.size) { let html = ''; let iv = 0; const c = Z(); c.t = tm.size;
-      [...tm.values()].forEach(t => { if (!t.assets.length) html += `<tr><td style="${TD}"></td><td style="${TD}">${esc(t.title || '(untitled)')}</td><td style="${TD}color:var(--text3);">no assets yet</td><td style="${TD}"></td><td style="${TD}"></td></tr>`;
-        else t.assets.forEach((a, i) => { const s = interview(a, t.id); if (s && !s.ok) iv++; c.a++; if (s) { if (s.ok) c.io++; else c.ib++; } html += `<tr><td style="${TD}"></td><td style="${TD}">${i ? '' : esc(t.title || '(untitled)')}</td><td style="${TD}"><a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(a.assetName || '(untitled asset)')}</a> <span style="color:var(--text3);">· ${esc(a.assetType || '')}</span></td><td style="${TD}"></td><td style="${TD}">${pill(s, '#4ade80', '#e5534b')}</td></tr>`; }); });
+      let tn = 0;
+      [...tm.values()].forEach(t => { tn++;
+        if (!t.assets.length) html += `<tr><td style="${TD}"></td><td style="${TD}">${titleCell(t, tn)}</td><td style="${TD}color:var(--text3);">—</td><td style="${TD}"></td><td style="${TD}"></td></tr>`;
+        else t.assets.forEach((a, i) => { const sI = interview(a, t.id); if (sI && !sI.ok) iv++; c.a++; if (sI) { if (sI.ok) c.io++; else c.ib++; }
+          html += `<tr><td style="${TD}"></td><td style="${TD}">${i ? '' : titleCell(t, tn)}</td><td style="${TD}">${assetCell(a)}</td><td style="${TD}"></td><td style="${TD}">${pill(sI, '#4ade80', '#e5534b', shortI)}</td></tr>`; }); });
       nIv += iv; body += head('x', 0, 'No product', '', html, 0, iv, c); } }
   (window._hubOutputKeys = window._hubOutputKeys || {})[slug] = keys;
   const TH = 'text-align:left;padding:4px 6px;font-size:10.5px;color:var(--text2);border-bottom:1px solid var(--border2);white-space:nowrap;';
