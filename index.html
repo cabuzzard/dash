@@ -15628,6 +15628,30 @@ function hubOutputTypeSelect(slug, all, sel) {
       + '</div>' : '') + '</span>';
 }
 function hubOutputTypeToggle(slug, t, on) { const sel = _hubOutputTypes[slug] = _hubOutputTypes[slug] || new Set(); if (on) sel.add(t); else sel.delete(t); hubOutputPaint(slug); }
+const _hubOutputBulk = {}, _hubOutputSelected = {}, _hubOutputVisible = {};
+function hubOutputBulkToggle(slug) {
+  _hubOutputBulk[slug] = !_hubOutputBulk[slug];
+  if (!_hubOutputBulk[slug]) (_hubOutputSelected[slug] ||= new Set()).clear();
+  hubOutputPaint(slug);
+}
+function hubOutputSelectAsset(slug, id, checked) {
+  const s = _hubOutputSelected[slug] ||= new Set(); checked ? s.add(id) : s.delete(id); hubOutputPaint(slug);
+}
+function hubOutputSelectVisible(slug) {
+  const s = _hubOutputSelected[slug] ||= new Set(); (_hubOutputVisible[slug] || []).forEach(id => s.add(id)); hubOutputPaint(slug);
+}
+function hubOutputClearSelected(slug) { (_hubOutputSelected[slug] ||= new Set()).clear(); hubOutputPaint(slug); }
+async function hubOutputBulkDelete(slug) {
+  const s = _hubOutputSelected[slug] ||= new Set(), ids = [...s]; if (!ids.length) return;
+  if (!confirm(`Move ${ids.length} selected asset${ids.length === 1 ? '' : 's'} to Delete?\n\nThis is recoverable in Notion.`)) return;
+  const r = await call('bulkDeleteHubAssets', { assetIds: ids }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return alert((r && r.error) || 'Bulk delete failed');
+  const done = new Set(r.deletedIds || []), T = _hubTitles[slug]; if (T && T.rows) T.rows = T.rows.filter(x => !x.assetId || !done.has(String(x.assetId).replace(/-/g, '')));
+  done.forEach(id => s.delete(id)); if (!s.size) _hubOutputBulk[slug] = false; _hubBuildFetched[slug] = false; hubOutputPaint(slug);
+  const n = Number(r.deleted || 0); showToast(`${n} asset${n === 1 ? '' : 's'} moved to Delete`, n ? 'success' : 'error');
+  if ((r.failed || []).length) alert(`${r.failed.length} asset${r.failed.length === 1 ? '' : 's'} could not be deleted and remain selected.`);
+}
+
 // ── Output › Edit product (click a product row's name): name · status · keyword topic. Moving it to another topic sets
 // only its Topic ID (Product Stack + Group untouched) and marks its research out of sync (attachProductToTopic markOutOfSync).
 async function hubOutputProdEdit(slug, pid) {
@@ -15669,7 +15693,7 @@ function renderHubOutput(slug) {
   const T = _hubTitles[slug], K = _hubKw[slug];
   if (!T || T.loading || !K || K.loading) return `<div style="font-size:11px;color:var(--text3);">${T || K ? 'Loading…' : 'Open to load.'}</div>`;
   if (T.error || K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load: ${esc(T.error || K.error)}</div>`;
-  const nid = x => String(x || '').replace(/-/g, ''), open = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(), keys = [];
+  const nid = x => String(x || '').replace(/-/g, ''), open = _hubOutputOpen[slug] = _hubOutputOpen[slug] || new Set(), keys = [], bulk = !!_hubOutputBulk[slug], selected = _hubOutputSelected[slug] ||= new Set();
   const rs = _hubResState[slug] || {}, resLoaded = !!_hubResState[slug];
   const typeOf = a => a.assetType || '(no type)', typesAll = [...new Set([...HUB_OUTPUT_ASSET_TYPES, ...T.rows.filter(r => r.kind === 'asset').map(typeOf)])].sort((x, y) => x.localeCompare(y));
   const tsel = _hubOutputTypes[slug] || new Set(), filtering = tsel.size > 0, typeOk = a => !filtering || tsel.has(typeOf(a));
@@ -15692,6 +15716,7 @@ function renderHubOutput(slug) {
     if (!tm.has(r.titleId)) tm.set(r.titleId, { id: r.titleId, title: r.title, assets: [], pname: r.product, methodName: r.methodName || '', pillarStatus: r.pillarStatus || '', schedule: r.schedule || '', scheduleGroup: r.scheduleGroup || '', cadence: r.cadence || '', progress: r.progress || '', nextDue: r.nextDue || '', scheduleStatus: r.scheduleStatus || '' });
     if (r.kind === 'asset' && typeOk(r)) tm.get(r.titleId).assets.push(r); }
   if (filtering) for (const [pid, tm] of titlesByProd) { for (const [tid, t] of tm) if (!t.assets.length) tm.delete(tid); if (!tm.size) titlesByProd.delete(pid); }   // only titles with a matching asset
+  _hubOutputVisible[slug] = [...titlesByProd.values()].flatMap(tm => [...tm.values()].flatMap(t => t.assets.map(a => nid(a.assetId))));
   const allPids = new Set(filtering ? [...titlesByProd.keys()].filter(Boolean) : [...Object.keys(prodById), ...[...titlesByProd.keys()].filter(Boolean)]);
   const byTopic = new Map(); for (const pid of allPids) { const tid = hubTiTopicOf(slug, prodById[pid] || {}); if (!byTopic.has(tid)) byTopic.set(tid, []); byTopic.get(tid).push(pid); }
   // ── cells ──
@@ -15701,7 +15726,7 @@ function renderHubOutput(slug) {
   const pill = (s, okC, badC, sh) => !s || s.ok ? '' : `<span title="${esc(s.why)}" style="color:${s.ok ? okC : badC};font-weight:600;white-space:nowrap;cursor:help;">● ${esc(sh(s.why))}</span>`;
   const TD = 'padding:2px 6px;font-size:11px;border-bottom:1px solid var(--border);vertical-align:top;white-space:nowrap;';
   const cut = (v, n) => { v = String(v || ''); return v.length > n ? v.slice(0, n - 1) + '…' : v; };
-  const assetCell = a => `<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" title="${esc((a.assetName || '(untitled asset)') + (a.assetStatus ? ' · ' + a.assetStatus : ''))}" style="color:var(--text);text-decoration:none;">${esc(cut(a.assetType || 'asset', 22))}</a>${a.assetStatus && a.assetStatus !== 'Published' ? ` <span style="color:var(--text3);" title="${esc(a.assetStatus)}">·${esc(a.assetStatus.slice(0, 3).toLowerCase())}</span>` : ''}`;
+  const assetCell = a => `${bulk ? `<input type="checkbox" ${selected.has(nid(a.assetId)) ? 'checked' : ''} onchange="hubOutputSelectAsset('${slug}','${esc(nid(a.assetId))}',this.checked)" onclick="event.stopPropagation()" title="Select this asset" style="margin:0 5px 0 0;vertical-align:-2px;accent-color:#ff7a00;">` : ''}<a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" title="${esc((a.assetName || '(untitled asset)') + (a.assetStatus ? ' · ' + a.assetStatus : ''))}" style="color:var(--text);text-decoration:none;">${esc(cut(a.assetType || 'asset', 22))}</a>${a.assetStatus && a.assetStatus !== 'Published' ? ` <span style="color:var(--text3);" title="${esc(a.assetStatus)}">·${esc(a.assetStatus.slice(0, 3).toLowerCase())}</span>` : ''}`;
   const schedCells = r => { r = r || {}; const tip = [r.schedule, r.scheduleGroup].filter(Boolean).join(' · '), due = r.nextDue ? String(r.nextDue).slice(0, 10) : '';
     return `<td style="${TD}" title="${esc(tip)}">${r.schedule ? esc(cut(r.schedule, 18)) : ''}</td><td style="${TD}color:var(--text2);">${esc(r.cadence || '')}</td><td style="${TD}color:var(--text2);">${esc(r.progress || '')}</td><td style="${TD}color:${due && due < new Date().toISOString().slice(0,10) ? '#e5534b' : 'var(--text2)'};">${esc(due)}</td><td style="${TD}color:var(--text2);">${esc(r.scheduleStatus || '')}</td>`; };
   const titleCell = (t, n) => `<span title="${esc(t.title || '(untitled)')}" style="cursor:help;">Title ${n}</span>`;
@@ -15770,6 +15795,8 @@ function renderHubOutput(slug) {
   return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:6px;font-size:11px;">
       ${hubOutputTypeSelect(slug, typesAll, tsel)}
       <button style="${B}" onclick="hubOutputAll('${slug}',true)">⊞ Expand all</button><button style="${B}" onclick="hubOutputAll('${slug}',false)">⊟ Collapse all</button>
+      <button style="${B}${bulk ? 'border-color:#ff7a00;color:#ff7a00;' : ''}" onclick="hubOutputBulkToggle('${slug}')">${bulk ? '✓ Selecting' : '☑ Bulk select'}</button>
+      ${bulk ? `<button style="${B}" onclick="hubOutputSelectVisible('${slug}')">Select visible</button><button style="${B}" onclick="hubOutputClearSelected('${slug}')">Clear</button><button ${selected.size ? '' : 'disabled'} style="${B}border-color:${selected.size ? '#e5534b' : 'var(--border2)'};color:${selected.size ? '#e5534b' : 'var(--text3)'};font-weight:700;" onclick="hubOutputBulkDelete('${slug}')">Delete selected (${selected.size})</button>` : ''}
       <span style="color:var(--text3);">Only what's out of sync shows: <span style="color:#ff7a00;">● research</span> · <span style="color:#e5534b;">● interview (regen · review · 🎤 to answer)</span> — blank = in sync, not used, or not scheduled</span>${tag(nRes, nIv)}</div>
     <div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Product</th><th style="${TH}text-align:center;" title="★ = a Main offering of this hub">Main</th><th style="${TH}" title="The hub (blog) section the asset is listed in">Section</th><th style="${TH}" title="Blank means research is current or not required">Research</th><th style="${TH}" title="Blank means no interview action is required">Interview</th><th style="${TH}" title="Orange means this existing product still needs a written Long Form Sales pillar">Sales pillar</th><th style="${TH}">Title</th><th style="${TH}">Asset</th><th style="${TH}" title="Blank means the title or asset has no Strategy Slot yet">Schedule</th><th style="${TH}" title="Blank until a recurring Strategy Slot supplies a recurrence rule">Cadence</th><th style="${TH}" title="Blank until the item belongs to a scheduled strategy line">Progress</th><th style="${TH}" title="Blank until a dated task exists for its Strategy Slot">Next due</th><th style="${TH}" title="Blank until a Strategy Slot supplies production status">Status</th></tr></thead><tbody>${body}</tbody></table></div>`;
 }

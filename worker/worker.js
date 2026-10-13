@@ -15050,6 +15050,23 @@ Return: {
         return json({ rows });
       }
 
+      // Output bulk delete is deliberately a soft delete: Assets remain in
+      // Notion and can be restored by changing Asset Status. Limit each call
+      // so an accidental oversized selection cannot fan out indefinitely.
+      if (body.action === "bulkDeleteHubAssets") {
+        const ids = [...new Set((Array.isArray(body.assetIds) ? body.assetIds : []).map(x => String(x || "").replace(/-/g, "")).filter(x => /^[0-9a-f]{32}$/i.test(x)))].slice(0, 100);
+        if (!ids.length) return json({ error: "assetIds required" }, 400);
+        const dash = s => `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`;
+        const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        let deleted = 0; const deletedIds = [], failed = [];
+        for (const id of ids) {
+          const resp = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Asset Status": { select: { name: "Delete" } } } }) });
+          if (resp.ok) { deleted++; deletedIds.push(id); } else failed.push({ id, error: ((await resp.json().catch(() => ({}))).message || `HTTP ${resp.status}`).slice(0, 180) });
+          await new Promise(r => setTimeout(r, 180));
+        }
+        return json({ success: failed.length === 0, deleted, deletedIds, failed });
+      }
+
       // ── updateAllOutputField ── the All Output row editor: one displayed field → its own record.
       // product / productStack → Products · title → Content Strategy · assetName / assetType → Assets ·
       // status → the row's own record (asset, else title, else product; four statuses only) ·
