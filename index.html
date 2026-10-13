@@ -15620,7 +15620,7 @@ function renderHubOutput(slug) {
   const titleCell = (t, n) => `<span title="${esc(t.title || '(untitled)')}" style="cursor:help;">Title ${n}</span>`;
   let nRes = 0, nIv = 0;
   const Z = () => ({ p: 0, m: 0, t: 0, a: 0, sc: 0, ro: 0, rb: 0, io: 0, ib: 0 }), add = (x, y) => { for (const k in y) x[k] += y[k]; return x; };
-  const rowsFor = pids => { let html = '', res = 0, iv = 0; const c = Z();
+  const rowsFor = (pids, lvl) => { const pad = 6 + (lvl || 0) * 16; let html = '', res = 0, iv = 0; const c = Z();
     pids.sort((a, b) => String((prodById[a] || {}).name || '').localeCompare(String((prodById[b] || {}).name || ''))).forEach(pid => {
       const p = prodById[pid] || {}, pname = p.name || ([...(titlesByProd.get(pid) || new Map()).values()][0] || {}).pname || '(product)';
       const rsS = research(pid); if (rsS && !rsS.ok) res++; c.p++; const isMain = mainIds.has(pid); if (isMain) c.m++;
@@ -15628,7 +15628,7 @@ function renderHubOutput(slug) {
       const titles = [...(titlesByProd.get(pid) || new Map()).values()].sort((a, b) => String(a.title).localeCompare(String(b.title)));
       let firstP = true, tn = 0;
       const line = (t, a, firstT) => { const ivS = a ? interview(a, t.id) : null; if (ivS && !ivS.ok) iv++; if (t && firstT) { c.t++; tn++; } if (a) { c.a++; if (a.hubSection) c.sc++; } if (ivS) { if (ivS.ok) c.io++; else c.ib++; }
-        html += `<tr><td style="${TD}">${firstP ? `<span title="${esc(pname)}">📦 ${esc(cut(pname, 24))}</span>` : ''}</td><td style="${TD}text-align:center;">${firstP && isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td><td style="${TD}">${t && firstT ? titleCell(t, tn) : ''}</td>`
+        html += `<tr><td style="${TD}padding-left:${pad}px;"><span title="${esc(pname)}" style="${firstP ? '' : 'color:var(--text3);'}">📦 ${esc(cut(pname, 24))}</span></td><td style="${TD}text-align:center;">${isMain ? '<span title="Main offering of this hub" style="color:#f6c344;">★</span>' : ''}</td><td style="${TD}">${t && firstT ? titleCell(t, tn) : ''}</td>`
           + `<td style="${TD}">${a ? assetCell(a) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}color:var(--text2);">${a && a.hubSection ? `<span title="Hub section: ${esc(a.hubSection)}">${esc(cut(a.hubSection, 14))}</span>` : ''}</td>`
           + `<td style="${TD}">${resCell}</td><td style="${TD}">${pill(ivS, '#4ade80', '#e5534b', shortI)}</td></tr>`; firstP = false; };
       if (!titles.length) line(null, null, true);
@@ -15646,17 +15646,17 @@ function renderHubOutput(slug) {
       + '<td style="' + H + '">' + n(c.t, 'title') + '</td><td style="' + H + '">' + n(c.a, 'asset') + '</td>'
       + '<td style="' + H + '">' + (c.sc ? c.sc + ' in sections' : '<span style="color:var(--text3);">—</span>') + '</td>'
       + '<td style="' + H + '">' + two(c.ro, c.rb, '#ff7a00') + '</td><td style="' + H + '">' + two(c.io, c.ib, '#e5534b') + '</td></tr>' + (o ? inner : ''); };
-  const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv;
+  const topicBlock = (t, lvl) => { const pids = byTopic.get(t.id) || [], r = rowsFor(pids, lvl + 1); nRes += r.res; nIv += r.iv;
     return { html: head('t:' + t.id, lvl, '🔑 ' + esc(t.name), `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html || `<tr><td colspan="${span}" style="${TD}color:var(--text3);padding-left:${6 + (lvl + 1) * 16}px;">no products on this topic</td></tr>`, r.res, r.iv, r.c), res: r.res, iv: r.iv, c: r.c }; };
   const topics = [...K.staged, ...K.committed], cl = K.tc.clusters || [], as = K.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
   let body = '';
-  { const pids = byTopic.get('__main') || [], r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', '', r.html, r.res, r.iv, r.c); }
+  { const pids = byTopic.get('__main') || [], r = rowsFor(pids, 1); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', '', r.html, r.res, r.iv, r.c); }
   const clusterBlock = (c, label, list) => { const parts = list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => topicBlock(t, 1));
     const res = parts.reduce((a, x) => a + x.res, 0), iv = parts.reduce((a, x) => a + x.iv, 0);
     return head('c:' + c, 0, label + ' <span style="font-weight:400;color:var(--text3);">· ' + list.length + ' topic' + (list.length === 1 ? '' : 's') + '</span>', '', parts.map(x => x.html).join(''), res, iv, parts.reduce((a, x) => add(a, x.c), Z())); };
   cl.forEach(c => { body += clusterBlock(c, '🧩 ' + esc(c), topics.filter(t => cOf(t) === c)); });
   const loose = topics.filter(t => !cOf(t)); if (loose.length) body += clusterBlock('', 'Topics with no cluster (isolated)', loose);
-  { const pids = byTopic.get('') || []; if (pids.length) { const r = rowsFor(pids); nRes += r.res; nIv += r.iv; body += head('n', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', '', r.html, r.res, r.iv, r.c); } }
+  { const pids = byTopic.get('') || []; if (pids.length) { const r = rowsFor(pids, 1); nRes += r.res; nIv += r.iv; body += head('n', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', '', r.html, r.res, r.iv, r.c); } }
   { const tm = titlesByProd.get(''); if (tm && tm.size) { let html = ''; let iv = 0; const c = Z(); c.t = tm.size;
       let tn = 0;
       [...tm.values()].forEach(t => { tn++;
