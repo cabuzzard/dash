@@ -15956,13 +15956,23 @@ ${JSON.stringify(products)}`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
-          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }], messages: [{ role: "user", content: prompt }] }),
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 6000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }], messages: [{ role: "user", content: prompt }] }),
         });
         const aiData = await aiResp.json();
         if (!aiResp.ok) return json({ error: aiData.error?.message || "Category naming failed" }, 502);
         let raw = ""; for (const b of (aiData.content || [])) if (b.type === "text") raw += b.text;
         let proposed = [];
-        try { const s = raw.indexOf("{"), e = raw.lastIndexOf("}"); proposed = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1))).groups || []; }
+        try {
+          const start = raw.indexOf("{"); if (start < 0) throw new Error("no JSON object in the response");
+          let depth = 0, quote = false, escape = false, end = -1;
+          for (let i = start; i < raw.length; i++) {
+            const ch = raw[i];
+            if (quote) { if (escape) escape = false; else if (ch === "\\") escape = true; else if (ch === '"') quote = false; continue; }
+            if (ch === '"') quote = true; else if (ch === "{") depth++; else if (ch === "}" && --depth === 0) { end = i; break; }
+          }
+          if (end < 0) throw new Error("incomplete JSON object in the response");
+          proposed = JSON.parse(sanitizeJsonControlChars(raw.slice(start, end + 1))).groups || [];
+        }
         catch (e) { return json({ error: "Couldn't parse category names: " + e.message }, 502); }
 
         const allowed = new Set(products.map(p => p.id)), used = new Set(), groups = [];
