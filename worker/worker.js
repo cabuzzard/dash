@@ -15919,6 +15919,98 @@ Return ONLY this JSON, no other text, no fences:
         return json({ success: true, group: groupFinal || "" });
       }
 
+      // ── categorizeUntopicedProducts {campaignId, hubName} ──
+      // Light organization pass for Content Hubs. It groups products whose Topic ID is blank,
+      // uses a very small public-web search allowance only to make the broad topic names natural,
+      // creates those topics as UNRESEARCHED staged rows, links the products, and marks them out
+      // of sync. It intentionally does not run the normal keyword-research pipeline.
+      if (body.action === "categorizeUntopicedProducts") {
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (cid.length !== 32) return json({ error: "campaignId required" }, 400);
+        if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+        const hubName = String(body.hubName || "Content Hub").trim().slice(0, 120) || "Content Hub";
+        const nd = raw => { const s = String(raw).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const rows = await notionQuery(PRODUCTS_DB, {
+          filter: { property: "Campaigns", relation: { contains: nd(cid) } },
+          sorts: [{ timestamp: "created_time", direction: "ascending" }],
+        }).catch(e => { console.error("categorizeUntopicedProducts products:", e.message); return null; });
+        if (!rows) return json({ error: "Couldn't read the Products DB" }, 502);
+        const txt = (p, k) => (p.properties?.[k]?.rich_text || []).map(x => x.plain_text).join("").trim();
+        const products = rows.filter(p => (p.properties?.Status?.select?.name || "") !== "Archived" && !p.properties?.Archived?.checkbox && !txt(p, "Topic ID"))
+          .map(p => ({ id: p.id.replace(/-/g, ""), name: (p.properties?.Name?.title || []).map(x => x.plain_text).join("").trim() || "Untitled", type: txt(p, "Type"), stack: txt(p, "Product Stack") }));
+        if (!products.length) return json({ success: true, products: 0, categories: [], created: 0, reused: 0 });
+
+        const prompt = `Organize the following products from the ${hubName} content hub into the SMALLEST useful set of broad SEO topic categories.
+
+This is a LIGHT naming pass, not keyword research. Use web search sparingly only to verify that each category name is phrased the way people commonly search for the subject. Do not report volumes, competition, trends, or invented data.
+
+Rules:
+- Make 3-7 categories total unless the products clearly need fewer.
+- Category names must be 2-5 words, plain-language, broad, search-friendly topic labels — not product names, brands, slogans, or full article titles.
+- Group by the customer's subject/problem, not by format (PDF, course, checklist, etc.).
+- Every product ID must appear exactly once.
+- Return ONLY JSON: {"groups":[{"name":"Category Name","productIds":["id"]}]}.
+
+PRODUCTS:
+${JSON.stringify(products)}`;
+        const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "anthropic-beta": "web-search-2025-03-05", "content-type": "application/json" },
+          body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 3000, tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 2 }], messages: [{ role: "user", content: prompt }] }),
+        });
+        const aiData = await aiResp.json();
+        if (!aiResp.ok) return json({ error: aiData.error?.message || "Category naming failed" }, 502);
+        let raw = ""; for (const b of (aiData.content || [])) if (b.type === "text") raw += b.text;
+        let proposed = [];
+        try { const s = raw.indexOf("{"), e = raw.lastIndexOf("}"); proposed = JSON.parse(sanitizeJsonControlChars(raw.slice(s, e + 1))).groups || []; }
+        catch (e) { return json({ error: "Couldn't parse category names: " + e.message }, 502); }
+
+        const allowed = new Set(products.map(p => p.id)), used = new Set(), groups = [];
+        for (const g of Array.isArray(proposed) ? proposed : []) {
+          const name = String(g && g.name || "").trim().replace(/\s+/g, " ").slice(0, 100);
+          const ids = [...new Set((Array.isArray(g && g.productIds) ? g.productIds : []).map(x => String(x).replace(/-/g, "")).filter(id => allowed.has(id) && !used.has(id)))];
+          if (!name || !ids.length) continue;
+          ids.forEach(id => used.add(id)); groups.push({ name, productIds: ids });
+        }
+        const missing = products.map(p => p.id).filter(id => !used.has(id));
+        if (missing.length) groups.push({ name: `${hubName} Products`.slice(0, 100), productIds: missing });
+        if (!groups.length) return json({ error: "No usable categories came back" }, 502);
+
+        const [stagedRaw, committed] = await Promise.all([
+          env.TRADES.get("seoclusters:staged:" + cid, "json").catch(() => []),
+          notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { property: "Campaign", relation: { contains: nd(cid) } } }).catch(() => []),
+        ]);
+        const staged = Array.isArray(stagedRaw) ? stagedRaw : [];
+        const byName = new Map();
+        for (const t of staged) if (t && t.name) byName.set(String(t.name).trim().toLowerCase(), { id: String(t.id).replace(/-/g, ""), existing: true });
+        for (const t of committed) {
+          const name = (t.properties?.Name?.title || []).map(x => x.plain_text).join("").trim();
+          if (name) byName.set(name.toLowerCase(), { id: t.id.replace(/-/g, ""), existing: true });
+        }
+        let created = 0, reused = 0, seq = 0;
+        for (const g of groups) {
+          let topic = byName.get(g.name.toLowerCase());
+          if (topic) reused++;
+          else {
+            const id = "s" + Date.now().toString(36) + (seq++).toString(36) + Math.random().toString(36).slice(2, 7);
+            staged.push({ id, name: g.name, keywords: g.name.toLowerCase(), rationale: "Unresearched placeholder grouped from existing products; run keyword research to expand.", searchIntent: "", source: "product-categorization", unresearched: true });
+            topic = { id, existing: false }; byName.set(g.name.toLowerCase(), topic); created++;
+          }
+          g.topicId = topic.id; g.existing = topic.existing;
+        }
+        await env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(staged));
+        await kwEnsureProductProps(env);
+        let assigned = 0;
+        for (const g of groups) for (const pid of g.productIds) {
+          await kwNotionPatch(env, pid, {
+            "Topic ID": { rich_text: [{ type: "text", text: { content: String(g.topicId).replace(/-/g, "").slice(0, 60) } }] },
+            "Keywords Out of Sync": { checkbox: true },
+          });
+          assigned++;
+        }
+        return json({ success: true, products: assigned, created, reused, categories: groups.map(g => ({ name: g.name, products: g.productIds.length, existing: g.existing })) });
+      }
+
       // ── setProductStack ──
       // Explicitly (re)writes a product's Product Stack property, same
       // creation-race reasoning as setProductType.

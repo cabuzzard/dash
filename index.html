@@ -14957,6 +14957,7 @@ function renderHubsTab() {
   <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px;">
     <div style="display:flex;gap:5px;flex-wrap:wrap;">${HUB_SITES.map((x, i) => `<button onclick="hubJump(${i})" style="font-size:10px;padding:4px 8px;border:1px solid ${i === _hubIdx ? 'var(--accent)' : 'var(--border2)'};border-radius:5px;background:${i === _hubIdx ? 'var(--surface2)' : 'transparent'};color:${i === _hubIdx ? 'var(--text)' : 'var(--text3)'};cursor:pointer;">${esc(x.name)}</button>`).join('')}</div>
     <div style="display:flex;align-items:center;gap:8px;">
+      <button id="hubCategorizeBtn" onclick="hubCategorizeAll(this)" title="Lightly group every product without a keyword topic, use limited public-web signals to correct category names, and mark the products out of sync" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid #f6ad55;border-radius:5px;background:transparent;color:#f6ad55;cursor:pointer;">Group unassigned products</button>
       <a href="https://claude.ai/artifact/RYPUvHguwFCitrqqXggq8i" target="_blank" rel="noopener" title="Ten topical SEO post ideas per hub (from each hub's keyword topics) — approve the ones to write as topical SEO posts" style="font-size:10px;font-weight:600;padding:4px 10px;border:1px solid var(--accent);border-radius:5px;color:var(--accent);text-decoration:none;">Topical post ideas ↗</a>
       <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${String(_hubIdx + 1).padStart(2, '0')} / ${HUB_SITES.length}</span>
       <button onclick="hubGo(-1)" style="width:30px;height:30px;border:1px solid var(--border2);border-radius:50%;background:var(--surface);color:var(--text);cursor:pointer;font-size:15px;line-height:1;">‹</button>
@@ -15197,6 +15198,28 @@ function hubGridRow(o) {
 // Each topic lists its 📦 products (Topic ID, else Product Stack = topic name) and ＋ product creates a Planning product
 // on that topic (createProduct with stack + topicId — no research runs here). Every level starts collapsed.
 const _hubKw = {}, _hubKwOpen = {};
+let _hubCategorizing = false;
+async function hubCategorizeAll(btn) {
+  if (_hubCategorizing) return;
+  const hubs = HUB_SITES.filter(h => h.campaignId);
+  if (!confirm('Group every active product that has no keyword topic across ' + hubs.length + ' content hubs?\n\nThis uses a light public-web naming check only. It creates unresearched staged topics, attaches the products, and marks them out of sync. It does not run full keyword research.')) return;
+  _hubCategorizing = true; btn = btn || document.getElementById('hubCategorizeBtn');
+  if (btn) btn.disabled = true;
+  let products = 0, created = 0, reused = 0; const failed = [], named = [];
+  for (let i = 0; i < hubs.length; i++) {
+    const h = hubs[i]; if (btn) btn.textContent = 'Grouping ' + (i + 1) + '/' + hubs.length + '…';
+    try {
+      const r = await call('categorizeUntopicedProducts', { campaignId: h.campaignId, hubName: h.name });
+      if (!r || r.error) throw new Error((r && r.error) || 'No response');
+      products += r.products || 0; created += r.created || 0; reused += r.reused || 0;
+      if (r.products) named.push(h.name + ': ' + (r.categories || []).map(x => x.name + ' (' + x.products + ')').join(', '));
+      delete _hubKw[h.slug]; delete _hubTitles[h.slug]; _hubBuildFetched[h.slug] = false;
+    } catch (e) { failed.push(h.name + ': ' + e.message); }
+  }
+  _hubCategorizing = false; if (btn) { btn.disabled = false; btn.textContent = 'Group unassigned products'; }
+  renderHubsTab();
+  alert('Light topic grouping finished.\n\nProducts attached: ' + products + '\nNew staged topics: ' + created + '\nExisting topics reused: ' + reused + (named.length ? '\n\n' + named.join('\n') : '') + (failed.length ? '\n\nNeeds attention:\n' + failed.join('\n') : ''));
+}
 async function hubKwLoad(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || _hubKw[slug]) return;
   _hubKw[slug] = { loading: true }; hubKwRefresh(slug);
