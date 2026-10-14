@@ -5579,8 +5579,10 @@ function caMethodBlur() {
   setTimeout(() => { document.getElementById('caMethodOptions').style.display = 'none'; }, 150);
 }
 async function openCreateAssetModal(titleId) {
-  const t = CAMPAIGN_TITLES.find(x => x.id === titleId);
-  if (!t) return;
+  const wantedTitleId = String(titleId || '').replace(/-/g, '');
+  const t = CAMPAIGN_TITLES.find(x => String(x.id || '').replace(/-/g, '') === wantedTitleId);
+  if (!t) { alert('That title could not be loaded. Refresh the page and try again.'); return; }
+  titleId = t.id;
   // closeCreateAssetModal() nulls CA_TITLE, so "same title" has to be
   // checked against the QA state's own tracked title id, not CA_TITLE.
   const reopeningSameTitle = titleId === CA_QA_STATE_TITLE_ID;
@@ -6333,9 +6335,18 @@ async function hfReel(btn) {
   } catch (e) { btn.disabled = false; btn.textContent = '🎬 Render'; alert('Reel render: ' + e.message); }
 }
 let PUB_ASSET_CACHE = {};
+const normalizedRecordId = id => String(id || '').replace(/-/g, '');
+function cachePublishAsset(a) {
+  if (!a || !a.id) return;
+  PUB_ASSET_CACHE[a.id] = a;
+  PUB_ASSET_CACHE[normalizedRecordId(a.id)] = a;
+}
+function getCachedPublishAsset(id) {
+  return PUB_ASSET_CACHE[id] || PUB_ASSET_CACHE[normalizedRecordId(id)] || null;
+}
 // One asset row — shared by the Assets section and the Hub tab's Sections list.
 function renderAssetRowHtml(a, t) {
-  PUB_ASSET_CACHE[a.id] = a;
+  cachePublishAsset(a);
   return `<div class="rasset"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><input type="checkbox" class="asset-select-cb" data-id="${esc(a.id)}" onclick="event.stopPropagation();toggleAssetSelect('${esc(a.id)}',this.checked)" style="flex-shrink:0;"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(a.assetTitle || a.title)}</span><span style="color:var(--ink2);flex-shrink:0;">${esc(a.type)}</span><span class="rstatus ${assetStatusClass(a.status)}" style="flex-shrink:0;cursor:pointer;" title="Open publish fields" onclick="event.stopPropagation();openPublishAssetModal('${esc(a.id)}')">${esc(a.status || '—')}</span><a class="kwlink" href="${esc(a.designLink || notionUrl(a.id))}" target="_blank" rel="noopener">↗</a>${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Regenerate this article from the title's current Pillar Content and push it to the SAME live URL — rewriting a published post in place, not creating a new one" onclick="event.stopPropagation();pushAssetFromPillar('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">🔄 Push from Pillar</button>` : ''}${isBlogAssetType(a.type) ? `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Push this asset's CURRENT content + Thumbnail to its live page — no rewrite, no Claude call, always fast (unlike the bulk Republish to Hub). Use this after generating a thumbnail on a post published before the auto-push existed." onclick="event.stopPropagation();pushAssetToHub('${esc(a.id)}','${esc((a.assetTitle || a.title).replace(/'/g,"\\'"))}')">📤 Push to Hub</button>` : ''}${/\bhyperframes\b/i.test(a.type || '') ? (a.videoUrl ? `<a class="kwlink" href="${esc(a.videoUrl)}" target="_blank" rel="noopener" title="The rendered Reel (MP4)">▶ Reel</a><button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render again on HeyGen (replaces the Video URL)" onclick="event.stopPropagation();hfReel(this)">↻</button>` : `<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" data-assetid="${esc(a.id)}" data-op="render" title="Render this Reel on HeyGen's cloud (~1-3 min); the MP4 lands on Video URL" onclick="event.stopPropagation();hfReel(this)">🎬 Render</button>`) : ''}<button class="iconbtn" style="font-size:9.5px;padding:2px 7px;" title="Delete this asset" onclick="event.stopPropagation();deleteAssetRow('${esc(a.id)}','${esc(a.assetTitle || a.title)}','${esc(t.id)}')">✕</button><button class="notebtn" style="font-size:9.5px;padding:2px 7px;" onclick="event.stopPropagation();openNoteModal('asset-${esc(a.id)}','${esc(a.assetTitle || a.title)}','asset')">📝</button></div></div>`;
 }
 // A single post carousel's slides are separate assets underneath; the list shows each carousel as ONE row.
@@ -6375,7 +6386,7 @@ async function deleteCarouselRow(idList, name) {
 }
 function renderAssetTitleNode(t, data) {
   const allAssets = (data && data.assets) || [];
-  allAssets.forEach(a => { PUB_ASSET_CACHE[a.id] = a; });
+  allAssets.forEach(cachePublishAsset);
   const assets = collapseCarousels(allAssets);
   // grouped by ASSET TYPE (single post, single post carousel, …), each type its own collapsible group
   const typeOf = a => String(a.type || 'No type').trim() || 'No type';
@@ -6417,11 +6428,13 @@ async function requestAssetInterview(btn) {
 }
 let PUB_OPEN_TOKEN = 0;
 function openPublishAssetModal(assetId) {
+  const data = getCachedPublishAsset(assetId);
+  if (!data) { alert('That asset could not be loaded. Refresh the page and try again.'); return; }
+  assetId = data.id || assetId;
   pubAssetId = assetId;
   SPC_CUR_FMT = null;
   imgDirRefresh(assetId);
   const myToken = ++PUB_OPEN_TOKEN;
-  const data = PUB_ASSET_CACHE[assetId] || {};
   document.getElementById('pubAssetTitle').textContent = data.assetTitle || data.title || 'Publish';
   document.getElementById('pubStatus').value = (data.status === 'Published' || data.status === 'Review') ? data.status : 'Publish';
   document.getElementById('pubPublishingDate').value = data.publishingDate || '';
@@ -10288,7 +10301,14 @@ async function init() {
     // after its title/asset cache is complete.
     TAB_LOADED.strategy = true;
     switchTo('strategy');
-    try { await Promise.all([loadProductTab(), loadTitleAndAssetTab()]); } catch (e) {}
+    // Product data is useful in the Create modal, but it must not race or
+    // short-circuit the asset-tree load that populates the modal cache.
+    loadProductTab().catch(() => {});
+    try { await loadTitleAndAssetTab(); } catch (e) {
+      alert('Could not load the asset list: ' + e.message);
+      return;
+    }
+    await new Promise(resolve => requestAnimationFrame(resolve));
     if (openAsset) openPublishAssetModal(openAsset);
     else if (createAssetFor) openCreateAssetModal(createAssetFor);
   }
