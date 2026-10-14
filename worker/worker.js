@@ -50591,6 +50591,8 @@ function dsInputsBlock(inp, fallbackKeywords) {
     + (r.look ? `\n   What the page-one sites for them look like: ${r.look}` : "") + ((r.sites || []).length ? `\n   Ranked sites: ${r.sites.join(" | ")}` : ""));
   out.push(`2. SEED PHOTO (the style seed — decides medium, palette, line, character style, mood): ${ph.url ? (ph.read ? ph.read : "attached; not described yet") : "(none uploaded)"}`);
   out.push(`3. TEXT OVERRIDE (the operator's own words — beats 1 and 2 on anything it mentions): ${String(inp.override || "").trim() || "(none)"}`);
+  const lib = (inp.mediaLibrary || []).filter(x => x && x.url);
+  if (lib.length) out.push(`4. SAVED HUB BRAND GUIDES + IMAGE CATALOG (consult automatically; use each according to its role):\n${lib.slice(0, 20).map(x => `   - ${x.role || "site-image"}: ${x.name || "Untitled"}${x.notes ? ` — ${x.notes}` : ""} — ${x.url}`).join("\n")}`);
   return out.join("\n");
 }
 function dsClean(fields, defaultSrc, allowSrc) {
@@ -50690,6 +50692,7 @@ function dsChatPrompt(name, inp, spec, facts, opts) {
     return g.length ? `# ${tl}\n` + g.join("\n") : ""; }).filter(Boolean).join("\n\n");
   const imgs = [inp.plate ? `- APPROVED CAMPAIGN PLATE — the visual authority every image must belong with: ${inp.plate}` : "",
     inp.photo && inp.photo.url ? `- SEED PHOTO — the style seed: match its medium, line work, palette and character style: ${inp.photo.url}` : "",
+    ...(inp.mediaLibrary || []).filter(x => x && x.url).slice(0, 20).map(x => `- SAVED HUB REFERENCE · ${(x.role || "site-image").toUpperCase()} · ${x.name || "Untitled"}${x.notes ? ` — ${x.notes}` : ""}: ${x.url}`),
     ...Object.entries(inp.renders || {}).filter(([k, r]) => r && r.url).map(([k, r]) => `- current ${k.replace(/_/g, " ")} image, rendered from the current fields — judge it: ${r.url}`),
     inp.page && inp.page.url ? `- the current mockup page built from the current fields (open it): ${inp.page.url}` : "",
     (inp.cards || [])[0] ? `- the current SITE SPEC CARD (a design board of the whole system): ${inp.cards[0].url}` : ""].filter(Boolean);
@@ -50845,6 +50848,26 @@ async function handleDesignSpec(body, env, ctx) {
     await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: "public, max-age=31536000, immutable" } });
     inputs.photo = { url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key, at: new Date().toISOString() };
     await put(K.inputs, inputs); return out({ note: "Seed photo stored — ✨ Build fields from inputs reads it." });
+  }
+  if (op === "library") {  // brand guides + site-image catalog, automatically included in every design prompt
+    inputs.mediaLibrary = Array.isArray(inputs.mediaLibrary) ? inputs.mediaLibrary : [];
+    if (body.remove) {
+      inputs.mediaLibrary = inputs.mediaLibrary.filter(x => x.id !== String(body.remove));
+      await put(K.inputs, inputs); return out({ mediaLibrary: inputs.mediaLibrary });
+    }
+    const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/i.exec(String(body.data || ""));
+    if (!m) return { error: "send a png, jpg or webp image" };
+    if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
+    const bytes = Uint8Array.from(atob(m[3]), c => c.charCodeAt(0)); if (bytes.length > 8e6) return { error: "keep each library image under 8 MB" };
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ext = m[2].toLowerCase().replace("jpeg", "jpg");
+    const key = `design/${cid}/library-${id}.${ext}`;
+    await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: "public, max-age=31536000, immutable" } });
+    const item = { id, url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key,
+      name: String(body.name || "Reference image").trim().slice(0, 120),
+      role: ["brand-guide", "site-image", "motif-reference", "approved-example", "logo"].includes(body.role) ? body.role : "site-image",
+      notes: String(body.notes || "").trim().slice(0, 500), at: new Date().toISOString() };
+    inputs.mediaLibrary = [item, ...inputs.mediaLibrary].slice(0, 60);
+    await put(K.inputs, inputs); return out({ mediaLibrary: inputs.mediaLibrary });
   }
   if (op === "edit") {     // a manual edit — the highest-ranked source
     const k = String(body.key || ""); if (!DS_KEYS.has(k)) return { error: "unknown field " + k };
