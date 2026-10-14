@@ -15431,8 +15431,18 @@ function hub2CodexAttach(slug) {
 }
 function hub2PreviewLoaded(slug) {
   hub2PreviewPaint(slug);
+  hub2PreviewSectionLabels(slug);
   hub2PreviewFit(slug);
-  [300, 900, 2200].forEach(ms => setTimeout(() => hub2PreviewFit(slug), ms));
+  [300, 900, 2200].forEach(ms => setTimeout(() => { hub2PreviewSectionLabels(slug); hub2PreviewFit(slug); }, ms));
+}
+function hub2PreviewSectionLabels(slug) {
+  const f = document.getElementById('hub2Frame-' + slug); let doc; try { doc = f && f.contentDocument; } catch (e) { return; } if (!doc) return;
+  let style = doc.getElementById('hub2DbSectionLabelStyle');
+  if (!style) { style = doc.createElement('style'); style.id = 'hub2DbSectionLabelStyle'; style.textContent = '.hub2-db-section{position:relative!important}.hub2-db-section-label{position:absolute;z-index:2147483646;top:4px;left:5px;padding:1px 5px;border:1px solid rgba(255,255,255,.32);border-radius:3px;background:rgba(12,14,18,.82);color:#fff;font:700 9px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;letter-spacing:.04em;text-transform:uppercase;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.25)}'; doc.head.appendChild(style); }
+  doc.querySelectorAll('.hub2-db-section-label').forEach(x => x.remove());
+  [['section.hero','Main Offering'],['#trips','Offers'],['#report','CTA'],['#projectExperience','Project Experience'],['#journal','News'],['#articles','Articles'],['#elsewhere','Social']].forEach(([sel, label]) => {
+    const section = doc.querySelector(sel); if (!section) return; section.classList.add('hub2-db-section'); const badge = doc.createElement('span'); badge.className = 'hub2-db-section-label'; badge.textContent = label; section.insertBefore(badge, section.firstChild);
+  });
 }
 function hub2PreviewFit(slug) {
   const f = document.getElementById('hub2Frame-' + slug), wrap = document.getElementById('hub2Wrap-' + slug); if (!f || !wrap) return;
