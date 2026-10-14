@@ -15321,7 +15321,7 @@ async function hub2ContentLoad(slug, force) {
     hubRows.forEach(r => {
       const common = { cluster: r.keywordCluster || '', topic: r.keywordTopic || '', group: r.group || '', stack: r.productStack || '' };
       if (r.productId && !byId.has('p:' + r.productId)) byId.set('p:' + r.productId, { ...common, id: r.productId, type: 'Product', name: r.product || 'Untitled product', section: '', status: r.productStatus || (r.kind === 'product' ? r.status : '') || '' });
-      if (r.titleId && !byId.has('t:' + r.titleId)) byId.set('t:' + r.titleId, { ...common, id: r.titleId, type: 'Title', name: r.title || 'Untitled title', notes: r.titleNotes || '', section: '', status: r.titleStatus || (r.kind === 'title' ? r.status : '') || '' });
+      if (r.titleId && !byId.has('t:' + r.titleId)) byId.set('t:' + r.titleId, { ...common, id: r.titleId, type: 'Title', name: r.title || 'Untitled title', notes: r.titleNotes || '', productId: r.productId || '', product: r.product || '', section: '', status: r.titleStatus || (r.kind === 'title' ? r.status : '') || '' });
       if (r.assetId && !byId.has('a:' + r.assetId)) byId.set('a:' + r.assetId, { ...common, id: r.assetId, type: 'Asset', name: r.platformTitle || '', section: r.hubSection || r.hubSectionKey || '', status: r.assetStatus || r.status || '' });
     });
     const rows = [...byId.values()];
@@ -15346,7 +15346,7 @@ function hub2ContentFilterRemove(slug, i) { _hub2ContentFilterOpen[slug] = true;
 function hub2ContentOpenRecord(slug, type, id) {
   const st = _hub2Content[slug], r = st && (st.rows || []).find(x => x.type === type && x.id === id), h = HUB_SITES.find(x => x.slug === slug); if (!r || !h) return;
   if (type === 'Asset') return openCareGapEditor(h.campaignId, id, '');
-  if (type === 'Title') { _hubTitleIdx[id] = { id, title: r.name, notes: r.notes || '', status: r.status || 'Planning' }; hcTitleEdit(slug, '', id); }
+  if (type === 'Title') { _hubTitleIdx[id] = { id, title: r.name, notes: r.notes || '', status: r.status || 'Planning', productId: r.productId || '', product: r.product || '' }; hcTitleEdit(slug, '', id); }
 }
 function hub2ContentHtml(slug) {
   const st = _hub2Content[slug];
@@ -16828,9 +16828,15 @@ function hubAssetTitleEdit(slug, stepId, aid) {
 function hcTitleEdit(slug, sid, tid) {
   const t = hubTitleFind(slug, sid, tid), h = HUB_SITES.find(x => x.slug === slug); if (!t || !h) return;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const products = [...new Map([...
+    (((_hubTitles[slug] || {}).products) || []).map(p => [kwNid(p.id), { id: kwNid(p.id), name: p.name || '(untitled product)' }]),
+    ...(((_hub2Content[slug] || {}).rows) || []).filter(r => r.type === 'Product').map(p => [kwNid(p.id), { id: kwNid(p.id), name: p.name || '(untitled product)' }])
+  ]).values()].sort((a, b) => a.name.localeCompare(b.name));
   hcModal(`<h3 style="margin:0 0 10px;">Edit title</h3>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>
     <input id="hcEdTitle" value="${esc(t.title)}" style="${IN}">
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>
+    <select id="hcEdProduct" style="${IN}"><option value="">— no product —</option>${products.map(p => `<option value="${esc(p.id)}" ${kwNid(t.productId) === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label>
     <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
@@ -16860,16 +16866,18 @@ async function hcWritePillar(slug, sid, tid, btn) {
 }
 async function hcTitleSave(slug, sid, tid) {
   const t = hubTitleFind(slug, sid, tid); if (!t) return 'Title not found';
-  const nv = { title: document.getElementById('hcEdTitle').value.trim(), titleNotes: document.getElementById('hcEdNotes').value, status: document.getElementById('hcEdStatus').value };
-  const cur = { title: t.title, titleNotes: t.notes || '', status: t.status };
+  const nv = { title: document.getElementById('hcEdTitle').value.trim(), titleNotes: document.getElementById('hcEdNotes').value, status: document.getElementById('hcEdStatus').value, productId: kwNid(document.getElementById('hcEdProduct').value) };
+  const cur = { title: t.title, titleNotes: t.notes || '', status: t.status, productId: kwNid(t.productId) };
   if (!nv.title) return 'The title can’t be empty';
   try {
     for (const f of ['title', 'titleNotes', 'status']) if (nv[f] !== cur[f]) {
       const r = await call('updateAllOutputField', { kind: 'title', field: f, value: nv[f], titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     }
-    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status;
-    const h2 = _hub2Content[slug] && (_hub2Content[slug].rows || []).find(x => x.type === 'Title' && x.id === tid); if (h2) { h2.name = nv.title; h2.notes = nv.titleNotes; h2.status = nv.status; }
-    hub2ContentPaint(slug); hubContentRefresh(slug); hubBuildRefreshRows(slug); return true;
+    if (nv.productId !== cur.productId) { const r = await call('updateTitleStrategy', { titleId: tid, productId: nv.productId || null }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
+    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; t.productId = nv.productId;
+    const h2 = _hub2Content[slug] && (_hub2Content[slug].rows || []).find(x => x.type === 'Title' && x.id === tid); if (h2) { h2.name = nv.title; h2.notes = nv.titleNotes; h2.status = nv.status; h2.productId = nv.productId; }
+    if (nv.productId !== cur.productId) await hub2ContentLoad(slug, true); else hub2ContentPaint(slug);
+    hubContentRefresh(slug); hubBuildRefreshRows(slug); return true;
   } catch (e) { return e.message; }
 }
 function renderHubContent(slug) {
