@@ -15276,7 +15276,7 @@ function renderHubsTab() {
 // preview, and an independent Codex Design panel (collapsed on every render).
 let HUB2_IDX = 0;
 const _hub2CodexPanels = {}, _hub2Preview = {};
-const _hub2Content = {};
+const _hub2Content = {}, _hub2ContentSort = {}, _hub2ContentGroup = {}, _hub2ContentClosed = {};
 function hub2Jump(i) { HUB2_IDX = Math.max(0, Math.min(HUB_SITES.length - 1, i)); renderHubs2(); }
 function hub2Go(d) { if (!HUB_SITES.length) return; HUB2_IDX = (HUB2_IDX + d + HUB_SITES.length) % HUB_SITES.length; renderHubs2(); }
 function renderHubs2() {
@@ -15309,24 +15309,58 @@ async function hub2ContentLoad(slug, force) {
   try {
     let source = DEV2_ROWS;
     if (force || !Array.isArray(source) || !source.length) { const r = await call('getDevAssetsTable'); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; }
-    const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map();
-    source.filter(r => String(r.campId || '').replace(/-/g, '') === cid && r.titleId).forEach(r => {
-      if (!byId.has(r.titleId)) byId.set(r.titleId, { id: r.titleId, cluster: r.keywordCluster || '', topic: r.keywordTopic || '', title: r.title || 'Untitled' });
+    const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map(), hubRows = source.filter(r => String(r.campId || '').replace(/-/g, '') === cid);
+    hubRows.forEach(r => {
+      const common = { cluster: r.keywordCluster || '', topic: r.keywordTopic || '' };
+      if (r.productId && !byId.has('p:' + r.productId)) byId.set('p:' + r.productId, { ...common, id: r.productId, type: 'Product', name: r.product || 'Untitled product' });
+      if (r.titleId && !byId.has('t:' + r.titleId)) byId.set('t:' + r.titleId, { ...common, id: r.titleId, type: 'Title', name: r.title || 'Untitled title' });
+      if (r.assetId && !byId.has('a:' + r.assetId)) byId.set('a:' + r.assetId, { ...common, id: r.assetId, type: 'Asset', name: r.assetName || 'Untitled asset' });
     });
-    const rows = [...byId.values()].sort((a, b) => a.cluster.localeCompare(b.cluster) || a.topic.localeCompare(b.topic) || a.title.localeCompare(b.title));
+    const rows = [...byId.values()];
+    ['Product', 'Title', 'Asset'].forEach(type => rows.filter(r => r.type === type).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).forEach((r, i) => { r.short = type + ' ' + (i + 1); }));
     _hub2Content[slug] = { loading: false, rows };
   } catch (e) { _hub2Content[slug] = { loading: false, rows: null, error: e.message }; }
   hub2ContentPaint(slug);
 }
 function hub2ContentPaint(slug) { const el = document.getElementById('hub2Content-' + slug); if (el) el.innerHTML = hub2ContentHtml(slug); }
+function hub2ContentSetSort(slug, col, ev) {
+  const s = _hub2ContentSort[slug] ||= [{ col: 'cluster', asc: true }, { col: 'topic', asc: true }], i = s.findIndex(x => x.col === col), multi = ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey);
+  if (!multi) _hub2ContentSort[slug] = i === 0 && s.length === 1 ? [{ col, asc: !s[0].asc }] : [{ col, asc: true }];
+  else if (i < 0) s.push({ col, asc: true }); else if (s[i].asc) s[i].asc = false; else s.splice(i, 1);
+  hub2ContentPaint(slug);
+}
+function hub2ContentToggleGroup(slug) { _hub2ContentGroup[slug] = _hub2ContentGroup[slug] === false; hub2ContentPaint(slug); }
+function hub2ContentToggleHeading(slug, key) { const s = _hub2ContentClosed[slug] ||= new Set(); s.has(key) ? s.delete(key) : s.add(key); hub2ContentPaint(slug); }
 function hub2ContentHtml(slug) {
   const st = _hub2Content[slug];
   if (!st || (st.loading && !st.rows)) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading content…</div>';
   if (st.error) return `<div style="font-size:11px;color:#f87171;padding:6px;">${esc(st.error)}</div>`;
-  const rows = st.rows || []; if (!rows.length) return '<div style="font-size:11px;color:var(--text3);padding:6px;">No titles attached to this hub.</div>';
+  let rows = st.rows || []; if (!rows.length) return '<div style="font-size:11px;color:var(--text3);padding:6px;">No products, titles or assets attached to this hub.</div>';
+  const cols = [{ key: 'cluster', label: 'Keyword cluster' }, { key: 'topic', label: 'Topic' }, { key: 'short', label: 'Short title' }, { key: 'type', label: 'Type' }];
+  const sort = _hub2ContentSort[slug] ||= [{ col: 'cluster', asc: true }, { col: 'topic', asc: true }], grouped = _hub2ContentGroup[slug] !== false, closed = _hub2ContentClosed[slug] ||= new Set();
+  const raw = (r, col) => col === 'short' ? r.name : (r[col] || ''), shown = (r, col) => col === 'short' ? r.short : (r[col] || '');
+  rows = rows.slice().sort((a, b) => { for (const s of sort) { const n = raw(a, s.col).localeCompare(raw(b, s.col)); if (n) return s.asc ? n : -n; } return a.type.localeCompare(b.type) || a.name.localeCompare(b.name); });
   const TH = 'text-align:left;padding:6px 9px;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
   const TD = 'padding:6px 9px;border-bottom:1px solid var(--border);font-size:11.5px;vertical-align:top;';
-  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Keyword cluster</th><th style="${TH}">Topic</th><th style="${TH}">Short title</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td style="${TD}">${r.cluster ? esc(r.cluster) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}">${r.topic ? esc(r.topic) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}"><span title="${esc(r.title)}" style="color:var(--accent);cursor:help;text-decoration:underline dotted;text-underline-offset:2px;">Title ${i + 1}</span></td></tr>`).join('')}</tbody></table></div>`;
+  const row = r => `<tr>${[r.cluster, r.topic].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}"><span title="${esc(r.name)}" style="color:var(--accent);cursor:help;text-decoration:underline dotted;text-underline-offset:2px;">${esc(r.short)}</span></td><td style="${TD}">${esc(r.type)}</td></tr>`;
+  let body = '';
+  if (!grouped || !sort.length) body = rows.map(row).join('');
+  else {
+    const prev = [];
+    rows.forEach(r => {
+      let hidden = false;
+      sort.forEach((s, d) => {
+        const parts = sort.slice(0, d + 1).map(x => raw(r, x.col)), key = JSON.stringify(parts);
+        if (prev[d] !== key) { prev[d] = key; prev.length = d + 1; const c = closed.has(key), lab = (cols.find(x => x.key === s.col) || {}).label || s.col;
+          if (!hidden) body += `<tr onclick="hub2ContentToggleHeading('${slug}',this.dataset.k)" data-k="${esc(key)}" style="cursor:pointer;background:rgba(127,127,127,${(0.15 - d * .025).toFixed(3)});"><td colspan="4" style="padding:5px 9px 5px ${9 + d * 18}px;font-size:11.5px;font-weight:${d ? 600 : 700};"><span style="display:inline-block;width:14px;">${c ? '▶' : '▼'}</span><span style="color:var(--text3);font-weight:400;">${esc(lab)}:</span> ${shown(r, s.col) ? esc(shown(r, s.col)) : '<span style="color:var(--text3);">(blank)</span>'}</td></tr>`;
+        }
+        if (closed.has(key)) hidden = true;
+      });
+      if (!hidden) body += row(r);
+    });
+  }
+  const controls = `<div style="display:flex;gap:7px;align-items:center;margin-bottom:6px;"><button onclick="hub2ContentToggleGroup('${slug}')" style="font-size:10.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">☰ Group by sort: ${grouped ? 'on' : 'off'}</button><span style="font-size:10.5px;color:var(--text3);">Click a heading to sort · Ctrl/Shift-click adds another heading level</span></div>`;
+  return controls + `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${cols.map(c => { const i = sort.findIndex(x => x.col === c.key), mark = i < 0 ? '' : ' ' + (sort[i].asc ? '▲' : '▼') + (sort.length > 1 ? i + 1 : ''); return `<th onclick="hub2ContentSetSort('${slug}','${c.key}',event)" style="${TH}cursor:pointer;user-select:none;">${esc(c.label)}${mark}</th>`; }).join('')}</tr></thead><tbody>${body}</tbody></table></div>`;
 }
 function hub2CodexAttach(slug) {
   const host = document.getElementById('hub2CdpHost-' + slug), h = HUB_SITES.find(x => x.slug === slug); if (!host || !h || !h.campaignId || !window.CodexDesignPanel) return;
