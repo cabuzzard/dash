@@ -13741,7 +13741,7 @@ the one aesthetic risk taken + why:`;
           // page itself uses (getHubBlog): Asset Status Publish/Published, section from hubSectionOf, this hub's slug.
           const HUB_BLOG_SECTIONS = [{ key: "main", label: "Main offerings", phase: "Main offerings" }, { key: "offers", label: "Products" }, { key: "news", label: "News (journal)" }, { key: "articles", label: "Articles" },
             { key: "interactive", label: "Interactive", phase: "Interactive" }, { key: "cta", label: "CTA's", phase: "CTA's" }, { key: "email", label: "Email — newsletter (welcome sequence + issues)", phase: "Email" }];   // CTA's: assets with Hub Section = CTA   // interactive pieces (tools, quizzes, calculators): assets with Hub Section = Interactive
-          const listed = (await P_listed)   // 2026-10-08: the card shows every asset in a section (Planning dummies too); the live hub still shows only Publish/Published
+          const listed = (await P_listed)
             .filter(r => { const h = r.properties?.["Content Hub"]?.select?.name || ""; return !h || h === slug; });
           // method names, so each row shows which method produced it (the Asset Type select alone can be a legacy label)
           const mIds = [...new Set(listed.map(r => (r.properties?.Method?.relation || [])[0]?.id).filter(Boolean))];
@@ -13749,7 +13749,10 @@ the one aesthetic risk taken + why:`;
             try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
             const nm = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); if (nm) _hubMethodNames.set(id, nm); return [id, nm]; } catch (e) { return [id, ""]; } })));
           const pageSections = HUB_BLOG_SECTIONS.map(sec => {
-            const items = listed.filter(r => hubSectionOf(r.properties) === sec.key)
+            // Page Content mirrors the public hub, not the planning queue:
+            // a section contains only a real Asset whose effective Hub
+            // Section is this section AND whose Asset Status is Published.
+            const items = listed.filter(r => hubSectionOf(r.properties) === sec.key && r.properties?.["Asset Status"]?.select?.name === "Published")
               .sort((a, b) => new Date(b.created_time || 0) - new Date(a.created_time || 0))
               .map(r => { const p = r.properties || {};
                 return { id: r.id.replace(/-/g, ""),
@@ -13807,7 +13810,9 @@ the one aesthetic risk taken + why:`;
               return { id, title: txt(pp.Title?.title) || "Untitled", status: pp.Status?.select?.name || "", notes: txt(pp.Notes?.rich_text), method, date: (pg.created_time || "").slice(0, 10),
                 productId, productName: (campProducts.find(p => p.id === productId) || {}).name || "", assets };
             } catch (e) { return null; } }))).filter(Boolean);
-            ps.done = ps.done || ps.titles.length > 0;
+            // Hand-picked titles are planning slots. They stay available to
+            // create/edit, but never make a page section complete and never
+            // contribute to its published-content count.
           }
           let mainName = (campProducts.find(p => p.id === mainId) || {}).name || "";
           if (mainId && !mainName) { try { const mp = await fetch(`https://api.notion.com/v1/pages/${dashHb(mainId)}`, { headers: nhdr }).then(r => r.json());

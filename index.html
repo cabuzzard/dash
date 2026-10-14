@@ -16937,11 +16937,11 @@ function renderHubBuildRows(slug) {
           + ` <button onclick="hubTitleOfferAsset('${slug}','${t.id}')" title="Write the Offer – Content Hub asset from this title's pillar + product, and put it in the Products section" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍ Asset</button>`
           + ` <a href="https://www.notion.so/${esc(t.id)}" target="_blank" rel="noopener" style="color:var(--text3);text-decoration:none;">Notion ↗</a> <button onclick="hubSectionProd('${slug}','${s.key}','${t.id}','remove','title')" title="Take this title out of ${esc(s.label)} (the title itself stays)" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✕</button>` }); }).join('');
       }
-      const countTxt = (s.titleSlots ? `${np} title${np === 1 ? '' : 's'} · ` : '') + `${n} asset${n === 1 ? '' : 's'}` + (n || np ? '' : ' (nothing here yet)');
-      // targets: Page content rows want 3+ assets; Interactive wants 1+ PUBLISHED asset — short of that the row goes orange
+      const countTxt = `${n} published asset${n === 1 ? '' : 's'}` + (s.titleSlots && np ? ` · ${np} planning title slot${np === 1 ? '' : 's'} (not counted)` : '') + (n || np ? '' : ' (nothing here yet)');
+      // targets: Page content rows want 3+ PUBLISHED assets; title slots do not count.
       const target = s.phase === 'Page content' ? (n >= 3) : s.key === 'interactive' ? ((s.items || []).filter(it => it.status === 'Published').length >= 1) : null;
       if (target !== null) { const c = target ? '#4ade80' : '#f6ad55';
-        dot = `<span style="color:${c};" title="${s.key === 'interactive' ? 'Target: at least 1 published interactive asset' : 'Target: at least 3 assets'}">●</span>`; }
+        dot = `<span style="color:${c};" title="${s.key === 'interactive' ? 'Target: at least 1 published interactive asset' : 'Target: at least 3 published assets'}">●</span>`; }
       const cntCol = target === false ? 'color:#f6ad55;' : 'color:var(--text3);';
       if (open && s.titleSlots && !n && !np) prodRows = '<div style="font-size:11px;color:var(--text3);padding:2px 0;">Nothing here yet — use + on this line to add a title.</div>';
       return wrapRow(`<span style="font-size:10px;color:var(--text3);width:10px;">${n || np || s.titleSlots ? (open ? '▼' : '▶') : ''}</span><span style="flex-shrink:0;">${dot}</span>
