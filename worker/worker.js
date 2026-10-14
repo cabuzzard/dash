@@ -50470,6 +50470,16 @@ const DS_SCHEMA = [
     ["img.negative_space", "Negative space", "where and how much"], ["img.light", "Light", "flat / directional, warm / cool"],
     ["img.palette_use", "How the palette shows in images", "which colors where"], ["img.mood", "Mood", "1 line"],
   ] },
+  { id: "reference", tier: "image", label: "Approved reference recipe", fields: [
+    ["ref.approved_image", "Approved reference image", "durable https URL of the image to match"],
+    ["ref.role", "Reference role", "master look / composition reference / character reference / other"],
+    ["ref.signature", "Visual signature", "the shortest description that makes this look recognizable"],
+    ["ref.invariants", "Must stay consistent", "semicolon list of features every generation must preserve"],
+    ["ref.variables", "May vary", "semicolon list of elements that can change safely"],
+    ["ref.master_prompt", "Reusable master prompt", "prompt prefix used for every related image"],
+    ["ref.negative_prompt", "Reusable negative prompt", "specific failures, styles and artifacts to exclude"],
+    ["ref.model_notes", "Generation notes", "model, aspect, quality, seed or settings when known"],
+  ] },
   { id: "overlay", tier: "image", label: "Text on images (all assets)", fields: [
     ["ovl.headline_font", "Overlay headline font", "family + weight"], ["ovl.headline_size", "Overlay headline size", "% of image height or px at 1080"],
     ["ovl.max_words", "Max words", "number"], ["ovl.position", "Position", "zone"],
@@ -50695,6 +50705,7 @@ Rules:
 - Never contradict the seed photo or the text override.
 - Body text on the background, and white text on the accent button, must pass WCAG AA (4.5:1).
 - Image fields describe images that look like the seed photo, so every image in the project feels like one set.
+- If an approved campaign plate or site-spec card is present, reverse-engineer it into every ref.* field. Put its URL in ref.approved_image, state what must never change in ref.invariants, what may vary in ref.variables, and write reusable ref.master_prompt and ref.negative_prompt values. These are production instructions, not praise or aesthetic commentary.
 - The site's STRUCTURE is a fixed scaffold shared by every hub — this pass only repaints it (colors, type, shapes, components, imagery). Leave these structure fields as they are: ${[...DS_STRUCTURE].join(", ")}.
 
 ${only ? `FIELDS TO FILL — key — what it controls (format): current value. Return ONLY these keys:
