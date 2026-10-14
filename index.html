@@ -904,7 +904,6 @@
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Go back to the saved filters and sort" onclick="dev2LoadSaved()">↺ Revert</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" title="Move every product, title and asset onto the four statuses: Planning, Development, Publish, Published" onclick="dev2Normalize(this)">⇢ 4 statuses</button>
         <button id="dev2GroupBtn" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2SetGroup(!DEV2_GROUP)" title="Group the rows under collapsible headers, one tier per sort level">☰ Group by sort: on</button>
-        <button id="dev2PublishedBtn" style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2TogglePublishedOnly()" title="Hide products, titles, interviews and assets that are not Published">Published assets only: off</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(true)">▸ Collapse all</button>
         <button style="font-size:11.5px;padding:4px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);cursor:pointer;" onclick="dev2CollapseAll(false)">▾ Expand all</button>
         <span id="dev2Chips" style="display:inline-flex;gap:6px;flex-wrap:wrap;"></span>
@@ -11266,12 +11265,6 @@ async function submitRun() {
 // replace both the Development and Publishing tabs; for now it's purely
 // additive (nothing else reads DEV2_ROWS).
 let DEV2_ROWS = [];
-let DEV2_PUBLISHED_ONLY = (() => { try { return localStorage.getItem('dev2PublishedOnly') === '1'; } catch (e) { return false; } })();
-function dev2TogglePublishedOnly() {
-  DEV2_PUBLISHED_ONLY = !DEV2_PUBLISHED_ONLY;
-  try { localStorage.setItem('dev2PublishedOnly', DEV2_PUBLISHED_ONLY ? '1' : '0'); } catch (e) {}
-  DEV2_SELECTED.clear(); renderDev2();
-}
 // Multi-column sort — an ordered list of {col, asc} keys, evaluated in
 // order (first key wins, later keys only break ties). Plain click on a
 // header resets to that one column; shift-click adds it as the next tie-
@@ -11875,7 +11868,7 @@ function renderDev2() {
   // Comma-separated terms, OR'd together — "care gap, owners rep" shows
   // rows matching EITHER, same idea as filtering to a set of values rather
   // than narrowing with every extra word.
-  let rows = DEV2_ROWS.filter(r => (!DEV2_PUBLISHED_ONLY || (r.assetId && r.assetStatus === 'Published')) && dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
+  let rows = DEV2_ROWS.filter(r => dev2Pass(r, DEV2_F[0]) && dev2Pass(r, DEV2_F[1]));
   const chips = document.getElementById('dev2Chips');
   if (chips) chips.innerHTML = DEV2_F.filter(f => f.col && f.val).map(f => `<span style="font-size:11px;padding:2px 8px;border-radius:10px;background:var(--surface2);border:1px solid var(--border2);">${esc((DEV2_COLS.find(c => c.key === f.col) || {}).label || f.col)} ${f.neg ? '≠' : '='} ${f.val === DEV2_BLANK ? '(blank)' : esc(f.val)}</span>`).join('')
     + (DEV2_SORT.length ? `<span style="font-size:11px;color:var(--text3);">sorted by ${DEV2_SORT.map(x => ((DEV2_COLS.find(c => c.key === x.col) || {}).label || x.col) + (x.asc ? ' ▲' : ' ▼')).join(', then ')}</span>` : '');
@@ -11886,7 +11879,6 @@ function renderDev2() {
   const visibleRows = gOn ? rows.filter(r => !isHidden(r)) : rows;
   DEV2_VISIBLE_ROWS = visibleRows;
   const gb = document.getElementById('dev2GroupBtn'); if (gb) gb.textContent = '☰ Group by sort: ' + (DEV2_GROUP ? 'on' : 'off');
-  const pb = document.getElementById('dev2PublishedBtn'); if (pb) { pb.textContent = 'Published assets only: ' + (DEV2_PUBLISHED_ONLY ? 'on' : 'off'); pb.style.borderColor = DEV2_PUBLISHED_ONLY ? '#4ade80' : 'var(--border2)'; pb.style.color = DEV2_PUBLISHED_ONLY ? '#4ade80' : 'var(--text)'; }
 
   if (countEl) countEl.textContent = rows.length + ' / ' + DEV2_ROWS.length + ' rows';
   dev2UpdateBulkBar();
