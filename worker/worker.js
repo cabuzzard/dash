@@ -14885,6 +14885,7 @@ Return: {
             topicId: (p.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").trim().replace(/-/g, "") || null,
             campId: (p.properties?.Campaigns?.relation || [])[0]?.id ? dropDash(p.properties.Campaigns.relation[0].id) : null,
             status: p.properties?.Status?.select?.name || p.properties?.Status?.status?.name || "",
+            outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
           };
         });
 
@@ -15118,7 +15119,11 @@ Return: {
         const tierOf = await ivTierFn(env);
         rows.forEach(r => {
           r.ivTier = r.kind === "asset" ? IV_TIER_LABEL[tierOf(r.assetType || r.rawAssetType)] : "";
+          // Pillar/title interview dependence follows the title's assigned
+          // Method row in the same Current Methods interview-tier matrix.
+          r.methodIvTier = r.titleId && r.methodName ? IV_TIER_LABEL[tierOf(r.methodName)] : "";
           r.research = researchOf(r.productId);
+          r.keywordOutOfSync = !!(r.productId && productById[r.productId] && productById[r.productId].outOfSync);
           const pv = r.productId ? ivSum["p:" + r.productId] : null, tv = r.titleId ? ivSum[r.titleId] : null;
           const iv = (pv || tv) ? { f: ((pv || {}).f || 0) + ((tv || {}).f || 0), d: ((pv || {}).d || 0) + ((tv || {}).d || 0) } : null;
           r.interviews = !r.titleId && r.kind !== "product" ? "" : !iv ? "— none" : [iv.f ? `⚑ ${iv.f} flagged` : "", iv.d ? `✓ ${iv.d} finished` : ""].filter(Boolean).join(" · ");
