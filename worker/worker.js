@@ -14852,7 +14852,7 @@ Return: {
       // a status flip to Published is itself an edit, so this is a close,
       // zero-schema-change proxy rather than an exact timestamp.
       if (body.action === "getDevAssetsTable") {
-        const [campRows, productRows, titleRows, assetRows, ivRows, prRows, resRows, slotRows, strategyRows, tdRows] = await Promise.all([
+        const [campRows, productRows, titleRows, assetRows, ivRows, prRows, resRows, slotRows, strategyRows, tdRows, topicRows] = await Promise.all([
           notionQuery(CAMPAIGNS_DB, { filter: { property: "Status", select: { does_not_equal: "Delete" } } }),
           notionQuery(PRODUCTS_DB, {}),
           notionQuery(CONTENT_STRATEGY_DB, {}),
@@ -14863,6 +14863,7 @@ Return: {
           notionQuery(STRATEGY_SLOTS_DB, {}).catch(() => []),
           notionQuery(GROWTH_STRATEGY_DB, {}).catch(() => []),
           notionQuery(MAIN_TD_DB, { filter: { property: "Strategy Slot", relation: { is_not_empty: true } } }).catch(() => []),
+          notionQuery(SEO_KEYWORD_CLUSTERS_DB, {}).catch(() => []),
         ]);
         const ivByTitle = {}, ivByProduct = {};
         ivRows.forEach(iv => { if (iv.scope === "Product" && iv.productId) (ivByProduct[iv.productId] ||= []).push(iv); else if (iv.titleId) (ivByTitle[iv.titleId] ||= []).push(iv); });
@@ -14881,6 +14882,7 @@ Return: {
           productById[dropDash(p.id)] = {
             name: (p.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?",
             stack: (p.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("").trim() || null,
+            topicId: (p.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").trim().replace(/-/g, "") || null,
             campId: (p.properties?.Campaigns?.relation || [])[0]?.id ? dropDash(p.properties.Campaigns.relation[0].id) : null,
             status: p.properties?.Status?.select?.name || p.properties?.Status?.status?.name || "",
           };
@@ -15057,8 +15059,19 @@ Return: {
         const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
         const groupMaps = {};
         const sectionHeadings = {};
+        const keywordTopics = {}, keywordTopicClusters = {};
+        topicRows.forEach(t => {
+          const p = t.properties || {}, cid = dropDash((p.Campaign?.relation || [])[0]?.id || ""), id = dropDash(t.id);
+          if (!cid || !id) return;
+          (keywordTopics[cid] ||= {})[id] = (p.Name?.title || []).map(x => x.plain_text).join("").trim() || "Untitled topic";
+        });
         await Promise.all(campIds.map(async cid => {
           try { const g = await env.TRADES.get("stackgroups:" + cid, "json"); groupMaps[cid] = (g && g.map) || {}; } catch (e) { groupMaps[cid] = {}; }
+          try {
+            const [tc, staged] = await Promise.all([env.TRADES.get("seotopicclusters:" + cid, "json"), env.TRADES.get("seoclusters:staged:" + cid, "json")]);
+            const a = {}; Object.entries((tc && tc.assign) || {}).forEach(([id, name]) => { a[dropDash(id)] = name; }); keywordTopicClusters[cid] = a;
+            (Array.isArray(staged) ? staged : []).forEach(t => { if (t && t.id) (keywordTopics[cid] ||= {})[dropDash(t.id)] = String(t.name || "Untitled topic").trim(); });
+          } catch (e) { keywordTopicClusters[cid] = {}; }
           const slug = hubSlugByCampId[cid]; if (!slug) return;
           try {
             const c = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/content.json?v=${Date.now()}`).then(r => r.ok ? r.json() : null);
@@ -15067,6 +15080,16 @@ Return: {
         }));
         rows.forEach(r => {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
+          const prod = r.productId ? productById[r.productId] : null, topics = keywordTopics[r.campId] || {}, assign = keywordTopicClusters[r.campId] || {};
+          let topicId = prod && prod.topicId || "", topicName = "";
+          if (topicId === "__main") { topicName = "★ Main Keywords"; }
+          else if (topicId && topics[topicId]) topicName = topics[topicId];
+          else if (prod && prod.stack) {
+            const hit = Object.entries(topics).find(([, name]) => String(name).trim().toLowerCase() === String(prod.stack).trim().toLowerCase());
+            if (hit) { topicId = hit[0]; topicName = hit[1]; }
+          }
+          r.keywordTopic = topicName;
+          r.keywordCluster = topicName === "★ Main Keywords" ? "★ Main" : (topicId ? (assign[dropDash(topicId)] || "") : "");
           r.status = r.kind === "interview" ? r.ivStatus : r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
           r.hubSectionHeading = r.hubSectionKey ? ((sectionHeadings[r.campId] || {})[r.hubSectionKey] || "") : "";
         });

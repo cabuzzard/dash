@@ -11320,6 +11320,8 @@ const DEV2_COLS = [
   { key: 'group',        label: 'Group' },
   { key: 'productStack', label: 'Stack' },
   { key: 'product',      label: 'Product' },
+  { key: 'keywordCluster', label: 'Keyword cluster' },
+  { key: 'keywordTopic',   label: 'Keyword topic' },
   { key: 'title',        label: 'Title' },
   { key: 'assetName',    label: 'Asset name' },
   { key: 'assetType',    label: 'Asset type' },
@@ -11918,6 +11920,8 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${esc(r.group || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.productId ? `<input type="checkbox" title="Select this product for bulk actions" ${DEV2_SEL_P.has(r.productId) ? 'checked' : ''} onclick="dev2ToggleRec('p','${esc(r.productId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${productCell}</td>
+      <td style="padding:6px 10px;font-size:12px;">${r.keywordCluster ? esc(r.keywordCluster) : dash}</td>
+      <td style="padding:6px 10px;font-size:12px;">${r.keywordTopic ? esc(r.keywordTopic) : dash}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.titleId ? `<input type="checkbox" title="Select this title for bulk actions" ${DEV2_SEL_T.has(r.titleId) ? 'checked' : ''} onclick="dev2ToggleRec('t','${esc(r.titleId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${titleCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
