@@ -16244,6 +16244,33 @@ ${JSON.stringify(products)}`;
         const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return json({ error: "campaignId required" }, 400);
         return json({ mainIds: await hubMainList(env, cid) });
       }
+      // Temporary Content Hubs worksheet: one compact cross-hub readout of
+      // Hub → main campaign keywords → every campaign product + current main
+      // selections. Selection writes through the existing setHubMainOffering
+      // action, so this is a worksheet view over real data, not a second store.
+      if (body.action === "getHubFocusWorksheet") {
+        const [products, research] = await Promise.all([
+          notionQuery(PRODUCTS_DB, {}).catch(() => []),
+          notionQuery(RESEARCH_DB, {}).catch(() => []),
+        ]);
+        const norm = x => String(x || "").replace(/-/g, ""), txt = a => (a || []).map(x => x.plain_text).join("").trim();
+        const productsByCampaign = {};
+        products.forEach(p => {
+          const item = { id: norm(p.id), name: txt(p.properties?.Name?.title) || "Untitled product", status: p.properties?.Status?.select?.name || p.properties?.Status?.status?.name || "" };
+          (p.properties?.Campaigns?.relation || []).forEach(c => (productsByCampaign[norm(c.id)] ||= []).push(item));
+        });
+        const researchByCampaign = {};
+        research.forEach(r => {
+          const cid = norm((r.properties?.Campaign?.relation || [])[0]?.id); if (!cid) return;
+          const keywords = txt(r.properties?.Keywords?.rich_text), score = keywords.length + ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence"].reduce((n, k) => n + txt(r.properties?.[k]?.rich_text).length, 0);
+          if (!researchByCampaign[cid] || score > researchByCampaign[cid].score) researchByCampaign[cid] = { keywords, score };
+        });
+        const rows = await Promise.all(HUB_SITES.filter(h => h.campaignId).map(async h => {
+          const cid = norm(h.campaignId), list = (productsByCampaign[cid] || []).sort((a, b) => a.name.localeCompare(b.name));
+          return { slug: h.slug, hub: h.name, campaignId: cid, mainKeywords: researchByCampaign[cid]?.keywords || "", products: list, mainIds: await hubMainList(env, cid) };
+        }));
+        return json({ rows });
+      }
       if (body.action === "setHubMainOffering") {
         const campaignId = String(body.campaignId || "").replace(/-/g, ""), productId = String(body.productId || "").replace(/-/g, "");
         if (!campaignId) return json({ error: "campaignId required" }, 400);
