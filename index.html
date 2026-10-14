@@ -15293,15 +15293,15 @@ function renderHubs2() {
     <div class="hub-layout">
       <div class="hub-left">
         <details class="hub-sec" open ontoggle="if(this.open)hub2ChecklistLoad('${slug}')">
-          <summary><span>Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">published · unpublished · goals · cadence</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <summary title="Checklist"><span title="Checklist">Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">published · unpublished · goals · cadence</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Checklist-${slug}" style="padding:8px 12px;">${hub2ChecklistHtml(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2ContentLoad('${slug}')">
-          <summary><span>Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <summary title="Content"><span title="Content">Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2CodexAttach('${slug}')">
-          <summary><span>Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
+          <summary title="Codex Design"><span title="Codex Design">Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
           <div style="padding:10px 12px;"><div id="hub2CdpHost-${slug}"></div></div>
         </details>
       </div>
