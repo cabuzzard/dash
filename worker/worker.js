@@ -14999,6 +14999,7 @@ Return: {
             product: prod ? prod.name : "No Product",
             title: t.title,
             titleId,
+            titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
             pillarStatus: t.pillarStatus || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
             ...scheduleFields(t.strategySlotId),
           };
@@ -15045,7 +15046,7 @@ Return: {
           const campId = a.campId || (prod && prod.campId) || null, camp = campId ? campById[campId] : null;
           rows.push({ kind: "asset", campaign: camp ? camp.name : "?", campId, hub: campId ? (hubByCampId[campId] || "") : "",
             productStack: prod ? (prod.stack || "No Stack") : "No Product", product: prod ? prod.name : "No Product", productId: a.productId || null,
-            title: "", titleId: null, ...assetFields(a, campId) });
+            productStatus: prod ? (prod.status || "") : "", title: "", titleId: null, ...assetFields(a, campId) });
         });
         // products with no titles and no assets
         Object.entries(productById).forEach(([pid, prod]) => {
@@ -15053,7 +15054,7 @@ Return: {
           const camp = prod.campId ? campById[prod.campId] : null;
           rows.push({ kind: "product", campaign: camp ? camp.name : "?", campId: prod.campId || null, hub: prod.campId ? (hubByCampId[prod.campId] || "") : "",
             productStack: prod.stack || "No Stack", product: prod.name, productId: pid, title: "", titleId: null,
-            assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
+            productStatus: prod.status || "", assetId: null, assetName: "", assetType: "", rawAssetType: "", assetStatus: "", datePublished: null });
         });
         // Group = the campaign's product group for this stack (KV stackgroups:<campaignId>, Group → Stack → Product)
         const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
