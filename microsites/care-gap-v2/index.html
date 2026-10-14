@@ -10279,8 +10279,19 @@ async function init() {
   loadNotes();
   loadContentHubsList();
   // ?asset=<id> (dash All Output › Bulk actions › Assets › Edit in publish modal): open that asset's Publish modal
-  const openAsset = (new URLSearchParams(location.search).get('asset') || '').replace(/-/g, '');
-  if (openAsset) { try { await loadTitleAndAssetTab(); } catch (e) {} openPublishAssetModal(openAsset); }
+  const deepParams = new URLSearchParams(location.search);
+  const openAsset = (deepParams.get('asset') || '').replace(/-/g, '');
+  const createAssetFor = (deepParams.get('createAssetFor') || '').replace(/-/g, '');
+  if (openAsset || createAssetFor) {
+    // Prevent switchTo from starting a second concurrent tree load; this
+    // deep-link path owns the awaited load so the requested modal opens only
+    // after its title/asset cache is complete.
+    TAB_LOADED.strategy = true;
+    switchTo('strategy');
+    try { await Promise.all([loadProductTab(), loadTitleAndAssetTab()]); } catch (e) {}
+    if (openAsset) openPublishAssetModal(openAsset);
+    else if (createAssetFor) openCreateAssetModal(createAssetFor);
+  }
 }
 
 // ── Version bar (for the iPhone home-screen shortcut, which has no address bar) ──
