@@ -321,6 +321,28 @@ function bgPlatformKey(name) {
   return /insta/.test(n) ? "instagram" : /facebook|fb/.test(n) ? "facebook" : /linkedin/.test(n) ? "linkedin" : /tiktok/.test(n) ? "tiktok"
     : /youtube/.test(n) ? "youtube" : /twitter|^x\b|x \//.test(n) ? "x" : /blog|wordpress|substack|beehiiv|pillar|live site/.test(n) ? "blog" : "";
 }
+async function assetImageSubjectContext(hdr, assetId, ap) {
+  const rt = k => (ap?.[k]?.rich_text || []).map(t => t.plain_text).join(" ").trim();
+  const title = rt("Platform Title") || (ap?.["Asset Title"]?.title || []).map(t => t.plain_text).join(" ").trim();
+  const propertyBody = rt("Body");
+  let pageBody = "";
+  try { pageBody = await extractBlocksTextRecursive(hdr, String(assetId || "").replace(/-/g, "")); } catch (e) {}
+  const content = [propertyBody, pageBody].filter(Boolean).join("\n\n").replace(/\s+/g, " ").trim().slice(0, 8000);
+  return { title, content };
+}
+async function hubImageExclusions(env, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, ""); if (!cid) return "";
+  try { return String(await env.TRADES.get("image:exclusions:" + cid) || "").trim().slice(0, 4000); } catch (e) { return ""; }
+}
+function assetSubjectPrompt(subject, exclusions) {
+  const has = subject && (subject.title || subject.content);
+  return `\n\nASSET SUBJECT SOURCE — this controls the concrete subject matter ONLY, never the design, motif, palette, light or finish:
+Publish title: ${(subject && subject.title) || "(blank)"}
+Written asset/blog content: ${(subject && subject.content) || "(blank)"}
+
+SUBJECT DECISION: First decide whether the title and written content identify a clear, concrete, photographable subject, setting, activity, object or situation. If yes, make that the scene while keeping all visual styling from the hub design spec. If the subject is vague, abstract, contradictory or absent, DO NOT force a metaphor and do not invent specifics: fall back to a strong generic subject explicitly allowed by the hub image spec.${has ? "" : " The asset has no usable subject source, so use the hub-generic fallback."}
+${exclusions ? `HUB GLOBAL SUBJECT EXCLUSIONS — never select these subjects, objects, people, settings or situations. Choose a different allowed subject, and do not repeat these exclusions in the final Grok prompt: ${exclusions}` : ""}`;
+}
 async function bgLayersBlock(hdr, ap, fmt) {
   ap = ap || {};
   const rt = k => (ap[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
@@ -31904,6 +31926,7 @@ Rules:
         const assetTitle    = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
         const platformTitle = rtp(ap, "Platform Title");
         const bodyPromise   = rtp(ap, "Body");
+        const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
 
         // OFFER CARD json + "What's included" bullets, straight off the asset page
         let cardObj = {}, included = [];
@@ -31921,6 +31944,9 @@ Rules:
         const promise   = String(cardObj.promise || bodyPromise || "").trim();
         const kicker    = String(cardObj.kicker || "").trim();
         const offerLines = `${offerName}${kicker ? `\nShape: ${kicker}` : ""}${promise ? `\nPromise: ${promise}` : ""}${included.length ? `\nIncludes: ${included.join("; ")}` : ""}`;
+        const subject = await assetImageSubjectContext(hdr, assetId, ap);
+        if (!subject.content && offerLines) subject.content = offerLines;
+        const exclusions = await hubImageExclusions(env, campaignId);
 
         // The shared, customer-grounded art-direction spec for this hub — the
         // frozen "Image Spec" written by publishHubDesign if there is one,
@@ -31948,8 +31974,9 @@ Rules:
 - Pick the single strongest, most beautiful scene the art direction allows.
 - Last words: "no text".
 
-ART DIRECTION (decides WHAT to show — do not copy it, distill one picture from it):
-${spec.slice(0, 6000)}`;
+HUB ART DIRECTION (controls style, motif, palette, light and finish; it supplies generic fallback subjects only when the asset subject is unclear):
+${spec.slice(0, 6000)}
+${assetSubjectPrompt(subject, exclusions)}`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -32017,6 +32044,8 @@ ${spec.slice(0, 6000)}`;
         const videoTitle = rtp("Platform Title") || (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
         const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+        const subject = await assetImageSubjectContext(hdr, assetId, ap);
+        const exclusions = await hubImageExclusions(env, campaignId);
         // thumbnail text options: the property, else the outline's "Thumbnail text:" line
         let thumbOpts = rtp("Thumbnail Text");
         if (!thumbOpts) for (const b of (blocksResp.results || [])) {
@@ -32046,6 +32075,7 @@ Title: ${videoTitle}
 Thumbnail words that will go on the left: ${thumbText || "(short, punchy)"}
 Outline opening:
 ${outline}
+${assetSubjectPrompt({ title: videoTitle || subject.title, content: subject.content || outline }, exclusions)}
 ${thumbDir ? `\nOPERATOR'S DIRECTION FOR THIS THUMBNAIL (follow it; where it conflicts with the spec or the video, the operator wins — still wordless, still leave the left side for the words):\n${thumbDir}\n` : ""}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -32090,9 +32120,10 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
         const assetTitle    = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
         const platformTitle = rtp(ap, "Platform Title") || assetTitle;
-        const excerpt       = rtp(ap, "Body");
         const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+        const subject       = await assetImageSubjectContext(hdr, assetId, ap);
+        const exclusions    = await hubImageExclusions(env, campaignId);
 
         const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
         let spec = "";
@@ -32107,9 +32138,8 @@ WHAT IT IS: a WIDE 16:9 banner — this hub's blog post header image (a headline
 Obey this hub's image spec exactly — palette hexes, subjects, light, the "Never" list:
 ${spec}
 
-THE ARTICLE THIS THUMBNAIL IS FOR (pick a real scene from the spec's world that fits what this article is actually about — do NOT put its words in the image):
-Headline: ${platformTitle}
-Opening: ${excerpt}
+THE ARTICLE THIS THUMBNAIL IS FOR:
+${assetSubjectPrompt({ title: platformTitle || subject.title, content: subject.content }, exclusions)}
 ${await bgLayersBlock(hdr, ap, "wide 16:9 blog header; headline goes over the top ~45%")}
 End the prompt with: "No text, no letters, no logos, no watermarks."`;
 
@@ -32644,6 +32674,8 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const assetTitle = (ap["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim() || "social post";
         const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
+        const subject = await assetImageSubjectContext(hdr, assetId, ap);
+        const exclusions = await hubImageExclusions(env, campaignId);
 
         const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
         let spec = "";
@@ -32654,7 +32686,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         // same "calm desk + notebook" scene — every call saw the same strict spec and only the title.
         // Now each background is driven by ITS post's message (Body = headline + accent + body), and
         // the campaign's recent scenes (KV bgscenes:<campaignId>) are passed so a batch never repeats.
-        const postText = (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim().slice(0, 700);
+        const postText = (subject.content || (ap["Body"]?.rich_text || []).map(t => t.plain_text).join("").trim()).slice(0, 8000);
         const contentType = (assetTitle.match(/—\s*([^—]+)$/) || [])[1]?.trim() || "";
         const car = /carousel/i.test(ap["Asset Type"]?.select?.name || "") ? await spCarouselInfo(hdr, assetId).catch(() => null) : null;
         // the whole narrative, in order, from every slide's CURRENT words (operator edits included)
@@ -32685,6 +32717,7 @@ ${spec}
 
 THIS POST'S MESSAGE (do NOT put its words in the image):
 ${postText || assetTitle}${contentType ? `\nPOST TYPE: ${contentType}` : ""}
+${assetSubjectPrompt({ title: subject.title || assetTitle, content: postText }, exclusions)}
 
 ${car ? `THIS IS SLIDE ${car.index} OF ${car.total} IN ONE CAROUSEL ("${car.title}") — the backgrounds tell ONE visual story in step with the words:
 THE CAROUSEL'S NARRATIVE (every slide's words, in swipe order; ▶ = this slide):
@@ -32699,7 +32732,7 @@ THIS SLIDE'S ROLE: ${carRole}
 (Ignore the variety rubric below — it is for unrelated single posts.)
 
 ` : ""}VARIETY RUBRIC — every post in this campaign must look like its own photograph, not a variation of the last one:
-1. MESSAGE → METAPHOR: turn this post's core idea into ONE concrete, photographable visual metaphor or situation that a viewer would connect to the message (e.g. "more leads into a broken pipe" → water escaping a cracked pipe joint; "five dashboards tell five stories" → five mismatched gauges or screens; "every handoff is where leads go quiet" → a dropped relay baton, an unplugged cable). Generic workspace props (desk, notebook, pen, laptop, mug) only if the message is literally about them.
+1. SUBJECT FIRST: use the concrete subject established by the asset title and content when it is clear. If that material is vague, abstract, contradictory or absent, use a hub-generic subject allowed by the saved image specification; never force an unrelated visual metaphor. Generic workspace props (desk, notebook, pen, laptop, mug) only if the asset is literally about them.
 2. NO REPEATS: ${car ? "(carousel slide — see the series rules above instead)" : recentScenes.length ? `this campaign's recent backgrounds were —\n${recentScenes.map(r => "   • " + r.scene).join("\n")}\n   Do NOT reuse any of their main subjects, settings/surfaces, or viewpoints.` : "(no recent backgrounds yet)"}
 3. VARY THE CAMERA: pick a viewpoint unlike the recent ones — macro close-up, overhead flat-lay, low angle, wide environmental, through a doorway, shallow-focus detail.
 4. STAY IN THE BRAND: the spec's palette hexes, light, mood and its "Never" list still apply. Its example subjects are a starting vocabulary, not a limit.
@@ -33192,6 +33225,18 @@ End the PROMPT with: "No text, no letters, no logos, no watermarks."`;
       // The Content Hubs card's copyable field calls this with { campaignId };
       // regenerated fresh each call (client caches per session). Same spec
       // generateOfferImage renders against.
+      if (body.action === "getHubImageExclusions" || body.action === "saveHubImageExclusions") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const cid = String(body.campaignId || "").replace(/[^a-z0-9]/gi, "").slice(0, 64);
+        if (!cid) return json({ error: "campaignId required" }, 400);
+        const key = "image:exclusions:" + cid;
+        if (body.action === "saveHubImageExclusions") {
+          const text = String(body.text || "").trim().slice(0, 4000);
+          if (text) await env.TRADES.put(key, text); else await env.TRADES.delete(key);
+          return json({ success: true, text });
+        }
+        return json({ success: true, text: await hubImageExclusions(env, cid) });
+      }
       if (body.action === "getImageBrief" || body.action === "previewImageSpec") {
         const { campaignId, assetId, hubSlug } = body;
         if (!campaignId && !assetId && !hubSlug) return json({ error: "campaignId, assetId or hubSlug required" }, 400);
