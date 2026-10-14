@@ -14894,6 +14894,7 @@ Return: {
           const p = t.properties || {};
           titleById[id] = {
             title: (p.Title?.title || []).map(x => x.plain_text).join("") || "Untitled",
+            notes: (p.Notes?.rich_text || []).map(x => x.plain_text).join("") || "",
             status: p.Status?.select?.name || "",
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
             productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
@@ -15001,6 +15002,7 @@ Return: {
             product: prod ? prod.name : "No Product",
             title: t.title,
             titleId,
+            titleNotes: t.notes || "",
             titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
             pillarStatus: t.pillarStatus || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
             ...scheduleFields(t.strategySlotId),

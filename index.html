@@ -11314,6 +11314,7 @@ function closeCareGapEditor() {
   // iframe, so refresh both when the editor closes.
   if (typeof hubTitlesLoad === 'function') hubTitlesLoad(h.slug, true).catch(() => {});
   if (typeof hubContentLoad === 'function') hubContentLoad(h.slug, true).catch(() => {});
+  if (typeof hub2ContentLoad === 'function') hub2ContentLoad(h.slug, true).catch(() => {});
   const preview = document.getElementById('hpiFrame-' + h.slug);
   if (preview) {
     const raw = String(preview.src || '').replace(/([?&])v=\d+(&|$)/, '$1').replace(/[?&]$/, '');
@@ -15320,7 +15321,7 @@ async function hub2ContentLoad(slug, force) {
     hubRows.forEach(r => {
       const common = { cluster: r.keywordCluster || '', topic: r.keywordTopic || '', group: r.group || '', stack: r.productStack || '' };
       if (r.productId && !byId.has('p:' + r.productId)) byId.set('p:' + r.productId, { ...common, id: r.productId, type: 'Product', name: r.product || 'Untitled product', section: '', status: r.productStatus || (r.kind === 'product' ? r.status : '') || '' });
-      if (r.titleId && !byId.has('t:' + r.titleId)) byId.set('t:' + r.titleId, { ...common, id: r.titleId, type: 'Title', name: r.title || 'Untitled title', section: '', status: r.titleStatus || (r.kind === 'title' ? r.status : '') || '' });
+      if (r.titleId && !byId.has('t:' + r.titleId)) byId.set('t:' + r.titleId, { ...common, id: r.titleId, type: 'Title', name: r.title || 'Untitled title', notes: r.titleNotes || '', section: '', status: r.titleStatus || (r.kind === 'title' ? r.status : '') || '' });
       if (r.assetId && !byId.has('a:' + r.assetId)) byId.set('a:' + r.assetId, { ...common, id: r.assetId, type: 'Asset', name: r.platformTitle || '', section: r.hubSection || r.hubSectionKey || '', status: r.assetStatus || r.status || '' });
     });
     const rows = [...byId.values()];
@@ -15342,6 +15343,11 @@ function hub2ContentToggleHeading(slug, key) { const s = _hub2ContentClosed[slug
 function hub2ContentFilterAdd(slug) { _hub2ContentFilterOpen[slug] = true; (_hub2ContentFilters[slug] ||= []).push({ col: '', op: 'is', val: '' }); hub2ContentPaint(slug); }
 function hub2ContentFilterSet(slug, i, key, value) { const f = (_hub2ContentFilters[slug] ||= [])[i]; if (!f) return; _hub2ContentFilterOpen[slug] = true; f[key] = value; if (key === 'col') f.val = ''; hub2ContentPaint(slug); }
 function hub2ContentFilterRemove(slug, i) { _hub2ContentFilterOpen[slug] = true; (_hub2ContentFilters[slug] ||= []).splice(i, 1); hub2ContentPaint(slug); }
+function hub2ContentOpenRecord(slug, type, id) {
+  const st = _hub2Content[slug], r = st && (st.rows || []).find(x => x.type === type && x.id === id), h = HUB_SITES.find(x => x.slug === slug); if (!r || !h) return;
+  if (type === 'Asset') return openCareGapEditor(h.campaignId, id, '');
+  if (type === 'Title') { _hubTitleIdx[id] = { id, title: r.name, notes: r.notes || '', status: r.status || 'Planning' }; hcTitleEdit(slug, '', id); }
+}
 function hub2ContentHtml(slug) {
   const st = _hub2Content[slug];
   if (!st || (st.loading && !st.rows)) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading content…</div>';
@@ -15355,7 +15361,7 @@ function hub2ContentHtml(slug) {
   rows = rows.slice().sort((a, b) => { for (const s of sort) { const n = raw(a, s.col).localeCompare(raw(b, s.col)); if (n) return s.asc ? n : -n; } return a.type.localeCompare(b.type) || a.name.localeCompare(b.name); });
   const TH = 'text-align:left;padding:5px 7px;border-bottom:1px solid var(--border2);font-size:9.5px;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);';
   const TD = 'padding:5px 7px;border-bottom:1px solid var(--border);font-size:10.5px;white-space:nowrap;vertical-align:top;';
-  const row = r => `<tr>${[r.cluster, r.topic, r.group, r.stack].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}width:170px;max-width:170px;"><span title="${esc(r.name)}" style="display:block;max-width:170px;overflow:hidden;white-space:nowrap;text-overflow:clip;color:${r.name ? 'var(--accent)' : 'var(--text3)'};cursor:${r.name ? 'help' : 'default'};${r.name ? 'text-decoration:underline dotted;text-underline-offset:2px;' : ''}">${r.short ? esc(r.short) : '—'}</span></td>${[r.type, r.section, r.status].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}</tr>`;
+  const row = r => { const clickable = r.name && (r.type === 'Asset' || r.type === 'Title'); return `<tr>${[r.cluster, r.topic, r.group, r.stack].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}width:170px;max-width:170px;"><span ${clickable ? `onclick="hub2ContentOpenRecord('${slug}','${r.type}','${r.id}')"` : ''} title="${esc(r.name)}" style="display:block;max-width:170px;overflow:hidden;white-space:nowrap;text-overflow:clip;color:${r.name ? 'var(--accent)' : 'var(--text3)'};cursor:${clickable ? 'pointer' : 'default'};${clickable ? 'text-decoration:underline dotted;text-underline-offset:2px;' : ''}">${r.short ? esc(r.short) : '—'}</span></td>${[r.type, r.section, r.status].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}</tr>`; };
   let body = '';
   if (!grouped || !sort.length) body = rows.map(row).join('');
   else {
@@ -16820,7 +16826,7 @@ function hubAssetTitleEdit(slug, stepId, aid) {
   hcTitleEdit(slug, '', t.id);
 }
 function hcTitleEdit(slug, sid, tid) {
-  const t = hubTitleFind(slug, sid, tid); if (!t) return;
+  const t = hubTitleFind(slug, sid, tid), h = HUB_SITES.find(x => x.slug === slug); if (!t || !h) return;
   const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
   hcModal(`<h3 style="margin:0 0 10px;">Edit title</h3>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>
@@ -16831,10 +16837,11 @@ function hcTitleEdit(slug, sid, tid) {
     <select id="hcEdStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
     <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>
     <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border2);">
-      <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">✍ Write pillar</label>
+      <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">✍ Rewrite pillar</label>
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
         <select id="hcPillarType" style="font-size:12px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
-        <button class="modal-btn" id="hcPillarGo" onclick="hcWritePillar('${slug}','${sid}','${tid}', this)" style="background:transparent;border:1px solid var(--accent);color:var(--accent);">✍ Write pillar</button>
+        <button class="modal-btn" id="hcPillarGo" onclick="hcWritePillar('${slug}','${sid}','${tid}', this)" style="background:transparent;border:1px solid var(--accent);color:var(--accent);">✍ Rewrite pillar</button>
+        <button class="modal-btn" onclick="document.getElementById('hcModal').classList.remove('open');openCareGapEditor('${h.campaignId}','','${tid}')" style="background:transparent;border:1px solid var(--border2);color:var(--text2);">＋ Create asset</button>
       </div>
       <div id="hcPillarMsg" style="font-size:11px;color:var(--text3);margin-top:6px;">Writes the pillar onto this title (1-2 min) and promotes it Planning → Development. Same writer as All Output's "generate pillar".</div>
     </div>`);
@@ -16860,7 +16867,9 @@ async function hcTitleSave(slug, sid, tid) {
     for (const f of ['title', 'titleNotes', 'status']) if (nv[f] !== cur[f]) {
       const r = await call('updateAllOutputField', { kind: 'title', field: f, value: nv[f], titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     }
-    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; hubContentRefresh(slug); hubBuildRefreshRows(slug); return true;
+    t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status;
+    const h2 = _hub2Content[slug] && (_hub2Content[slug].rows || []).find(x => x.type === 'Title' && x.id === tid); if (h2) { h2.name = nv.title; h2.notes = nv.titleNotes; h2.status = nv.status; }
+    hub2ContentPaint(slug); hubContentRefresh(slug); hubBuildRefreshRows(slug); return true;
   } catch (e) { return e.message; }
 }
 function renderHubContent(slug) {
