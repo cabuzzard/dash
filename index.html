@@ -15319,7 +15319,7 @@ async function hub2ContentLoad(slug, force) {
     if (force || !Array.isArray(source) || !source.length) { const r = await call('getDevAssetsTable'); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; }
     const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map(), hubRows = source.filter(r => String(r.campId || '').replace(/-/g, '') === cid);
     hubRows.forEach(r => {
-      const common = { cluster: r.keywordCluster || '', topic: r.keywordTopic || '', group: r.group || '', stack: r.productStack || '' };
+      const common = { cluster: r.keywordCluster || '', topic: r.keywordTopic || '', group: r.group || '', stack: r.productStack || '', productId: r.productId || '', product: r.product || '' };
       if (r.productId && !byId.has('p:' + r.productId)) byId.set('p:' + r.productId, { ...common, id: r.productId, type: 'Product', name: r.product || 'Untitled product', section: '', status: r.productStatus || (r.kind === 'product' ? r.status : '') || '' });
       if (r.titleId && !byId.has('t:' + r.titleId)) byId.set('t:' + r.titleId, { ...common, id: r.titleId, type: 'Title', name: r.title || 'Untitled title', notes: r.titleNotes || '', productId: r.productId || '', product: r.product || '', section: '', status: r.titleStatus || (r.kind === 'title' ? r.status : '') || '' });
       if (r.assetId && !byId.has('a:' + r.assetId)) byId.set('a:' + r.assetId, { ...common, id: r.assetId, type: 'Asset', name: r.platformTitle || '', assetType: r.rawAssetType || r.assetType || '', section: r.hubSection || r.hubSectionKey || '', status: r.assetStatus || r.status || '' });
@@ -15348,12 +15348,52 @@ function hub2ContentOpenRecord(slug, type, id) {
   if (type === 'Asset') return openCareGapEditor(h.campaignId, id, '');
   if (type === 'Title') { _hubTitleIdx[id] = { id, title: r.name, notes: r.notes || '', status: r.status || 'Planning', productId: r.productId || '', product: r.product || '' }; hcTitleEdit(slug, '', id); }
 }
+async function hub2ProductEdit(slug, pid) {
+  const st = _hub2Content[slug], h = HUB_SITES.find(x => x.slug === slug), rows = st && st.rows || [];
+  const p = rows.find(x => kwNid(x.productId) === kwNid(pid) && x.product); if (!p || !h) return;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  const L = x => '<label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">' + x + '</label>';
+  hcModal('<h3 style="margin:0 0 10px;">Edit product</h3>'
+    + L('Product name') + '<input id="h2pName" value="' + esc(p.product) + '" style="' + IN + '">'
+    + L('Keyword topic') + '<select id="h2pTopic" style="' + IN + '"><option value="">Loading topics…</option></select>'
+    + '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px;"><button class="modal-btn" onclick="hcModalRun(this,()=>hub2ProductSave(\'' + slug + '\',\'' + esc(kwNid(pid)) + '\'))">Save product</button><button class="modal-btn" style="background:transparent;border-color:var(--accent);color:var(--accent);" onclick="hub2ProductResearchAll(\'' + slug + '\',\'' + esc(kwNid(pid)) + '\',this)">Run all research + save</button></div>'
+    + '<div style="padding-top:12px;border-top:1px solid var(--border);">' + L('Add a simple title to this product')
+    + '<input id="h2pTitle" placeholder="New title" style="' + IN + '"><button class="modal-btn" onclick="hcModalRun(this,()=>hub2ProductAddTitle(\'' + slug + '\',\'' + esc(kwNid(pid)) + '\'))">＋ Add title</button></div>'
+    + '<div id="h2pMsg" style="font-size:11.5px;color:var(--text3);min-height:16px;margin-top:9px;"></div><div style="margin-top:8px;">' + HC_CANCEL + '</div>');
+  try { const d = await kwTopicsFor(h.campaignId), sel = document.getElementById('h2pTopic'); if (sel) { const hit = (d.topics || []).find(x => String(x.name || '').trim().toLowerCase() === String(p.topic || '').trim().toLowerCase()), cur = p.topic === '★ Main Keywords' ? '__main' : kwNid(hit && hit.id); sel.innerHTML = kwTopicOptions(d, cur); sel.dataset.cur = cur; } }
+  catch (e) { const sel = document.getElementById('h2pTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; }
+}
+async function hub2ProductSave(slug, pid, keepOpen) {
+  const st = _hub2Content[slug], h = HUB_SITES.find(x => x.slug === slug), rows = st && st.rows || [], p = rows.find(x => kwNid(x.productId) === kwNid(pid) && x.product);
+  if (!p || !h) return 'Product not found';
+  const name = (document.getElementById('h2pName')?.value || '').trim(), sel = document.getElementById('h2pTopic'), topic = sel && sel.value, cur = sel && sel.dataset.cur || '';
+  if (!name) return 'Product name can’t be empty';
+  try {
+    if (name !== p.product) { const r = await call('updateAllOutputField', { kind: 'product', field: 'product', productId: pid, value: name }); if (!r || r.error) throw new Error((r && r.error) || 'Name not saved'); rows.forEach(x => { if (kwNid(x.productId) === kwNid(pid)) { x.product = name; if (x.type === 'Product') x.name = name; } }); }
+    if (topic && topic !== cur) { const r = await call('attachProductToTopic', { productId: pid, topicId: topic, campaignId: h.campaignId, markOutOfSync: true }); if (!r || r.error) throw new Error((r && r.error) || 'Topic not saved'); }
+  } catch (e) { return e.message; }
+  if (keepOpen) { const m = document.getElementById('h2pMsg'); if (m) { m.style.color = '#4ade80'; m.textContent = '✓ Product saved.'; } }
+  else await hub2ContentLoad(slug, true);
+  return true;
+}
+async function hub2ProductAddTitle(slug, pid) {
+  const h = HUB_SITES.find(x => x.slug === slug), title = (document.getElementById('h2pTitle')?.value || '').trim(); if (!h) return 'Hub not found'; if (!title) return 'Enter a title';
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId: pid, status: 'Planning', skipPillar: true });
+  if (!r || r.error || !r.id) return (r && r.error) || 'Title not created';
+  await hub2ContentLoad(slug, true); return true;
+}
+async function hub2ProductResearchAll(slug, pid, btn) {
+  const saved = await hub2ProductSave(slug, pid, true); if (saved !== true) { const m = document.getElementById('h2pMsg'); if (m) { m.style.color = '#f87171'; m.textContent = saved; } return; }
+  const h = HUB_SITES.find(x => x.slug === slug), msg = document.getElementById('h2pMsg'), old = btn.textContent; btn.disabled = true;
+  const fails = []; for (let i = 0; i < HUB_STRATEGY_FIELDS.length; i++) { const f = HUB_STRATEGY_FIELDS[i]; btn.textContent = `Researching ${i + 1}/${HUB_STRATEGY_FIELDS.length}…`; if (msg) msg.textContent = 'Running ' + f + '…'; try { const r = await call('regenerateStrategyField', { productId: pid, campaignId: h && h.campaignId, field: f }); if (!r || r.error) throw new Error((r && r.error) || 'Generation failed'); const u = await call('updateProductStrategyField', { productId: pid, field: f, value: r.text }); if (!u || u.error) throw new Error((u && u.error) || 'Save failed'); } catch (e) { fails.push(f + ': ' + e.message); } }
+  btn.disabled = false; btn.textContent = old; if (msg) { msg.style.color = fails.length ? '#f6ad55' : '#4ade80'; msg.textContent = fails.length ? 'Finished with ' + fails.length + ' failure(s): ' + fails.join(' · ') : '✓ All research fields generated and saved.'; }
+}
 function hub2ContentHtml(slug) {
   const st = _hub2Content[slug];
   if (!st || (st.loading && !st.rows)) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading content…</div>';
   if (st.error) return `<div style="font-size:11px;color:#f87171;padding:6px;">${esc(st.error)}</div>`;
   let rows = st.rows || []; if (!rows.length) return '<div style="font-size:11px;color:var(--text3);padding:6px;">No products, titles or assets attached to this hub.</div>';
-  const cols = [{ key: 'cluster', label: 'Keyword cluster' }, { key: 'topic', label: 'Topic' }, { key: 'group', label: 'Group' }, { key: 'stack', label: 'Stack' }, { key: 'short', label: 'Title / platform title' }, { key: 'assetType', label: 'Asset type' }, { key: 'type', label: 'Type' }, { key: 'section', label: 'Hub section' }, { key: 'status', label: 'Status' }];
+  const cols = [{ key: 'cluster', label: 'Keyword cluster' }, { key: 'topic', label: 'Topic' }, { key: 'group', label: 'Group' }, { key: 'stack', label: 'Stack' }, { key: 'product', label: 'Product' }, { key: 'short', label: 'Title / platform title' }, { key: 'assetType', label: 'Asset type' }, { key: 'type', label: 'Type' }, { key: 'section', label: 'Hub section' }, { key: 'status', label: 'Status' }];
   const sort = _hub2ContentSort[slug] ||= [{ col: 'cluster', asc: true }, { col: 'topic', asc: true }], grouped = _hub2ContentGroup[slug] !== false, closed = _hub2ContentClosed[slug] ||= new Set();
   const raw = (r, col) => col === 'short' ? r.name : (r[col] || ''), shown = (r, col) => col === 'short' ? r.short : (r[col] || '');
   const filters = _hub2ContentFilters[slug] ||= [], active = filters.filter(f => f.col && f.val !== '');
@@ -15361,7 +15401,7 @@ function hub2ContentHtml(slug) {
   rows = rows.slice().sort((a, b) => { for (const s of sort) { const n = raw(a, s.col).localeCompare(raw(b, s.col)); if (n) return s.asc ? n : -n; } return a.type.localeCompare(b.type) || a.name.localeCompare(b.name); });
   const TH = 'text-align:left;padding:5px 7px;border-bottom:1px solid var(--border2);font-size:9.5px;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);';
   const TD = 'padding:5px 7px;border-bottom:1px solid var(--border);font-size:10.5px;white-space:nowrap;vertical-align:top;';
-  const row = r => { const clickable = (r.type === 'Asset' && !!r.id) || (r.type === 'Title' && !!r.name), blankAsset = r.type === 'Asset' && !r.name, published = /^published$/i.test(r.status || ''); return `<tr>${[r.cluster, r.topic, r.group, r.stack].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}width:170px;max-width:170px;"><span ${clickable ? `onclick="hub2ContentOpenRecord('${slug}','${r.type}','${r.id}')"` : ''} title="${esc(r.name || (blankAsset ? 'Open asset publish modal' : ''))}" style="display:block;max-width:170px;overflow:hidden;white-space:nowrap;text-overflow:clip;color:${r.name || blankAsset ? 'var(--accent)' : 'var(--text3)'};cursor:${clickable ? 'pointer' : 'default'};${clickable ? 'text-decoration:underline dotted;text-underline-offset:2px;' : ''}">${r.short ? esc(r.short) : (blankAsset ? '…' : '—')}</span></td>${[r.assetType, r.type, r.section].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}${published ? 'color:#4ade80;background:rgba(74,222,128,.1);font-weight:700;' : ''}">${r.status ? esc(r.status) : '<span style="color:var(--text3);">—</span>'}</td></tr>`; };
+  const row = r => { const clickable = (r.type === 'Asset' && !!r.id) || (r.type === 'Title' && !!r.name), blankAsset = r.type === 'Asset' && !r.name, published = /^published$/i.test(r.status || ''); return `<tr>${[r.cluster, r.topic, r.group, r.stack].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}width:150px;max-width:150px;"><span ${r.productId && r.product ? `onclick="hub2ProductEdit('${slug}','${esc(kwNid(r.productId))}')"` : ''} title="${esc(r.product || '')}" style="display:block;max-width:150px;overflow:hidden;white-space:nowrap;text-overflow:clip;color:${r.product ? 'var(--accent)' : 'var(--text3)'};cursor:${r.product ? 'pointer' : 'default'};${r.product ? 'text-decoration:underline dotted;text-underline-offset:2px;' : ''}">${r.product ? esc(r.product) : '—'}</span></td><td style="${TD}width:170px;max-width:170px;"><span ${clickable ? `onclick="hub2ContentOpenRecord('${slug}','${r.type}','${r.id}')"` : ''} title="${esc(r.name || (blankAsset ? 'Open asset publish modal' : ''))}" style="display:block;max-width:170px;overflow:hidden;white-space:nowrap;text-overflow:clip;color:${r.name || blankAsset ? 'var(--accent)' : 'var(--text3)'};cursor:${clickable ? 'pointer' : 'default'};${clickable ? 'text-decoration:underline dotted;text-underline-offset:2px;' : ''}">${r.short ? esc(r.short) : (blankAsset ? '…' : '—')}</span></td>${[r.assetType, r.type, r.section].map(v => `<td style="${TD}">${v ? esc(v) : '<span style="color:var(--text3);">—</span>'}</td>`).join('')}<td style="${TD}${published ? 'color:#4ade80;background:rgba(74,222,128,.1);font-weight:700;' : ''}">${r.status ? esc(r.status) : '<span style="color:var(--text3);">—</span>'}</td></tr>`; };
   let body = '';
   if (!grouped || !sort.length) body = rows.map(row).join('');
   else {
