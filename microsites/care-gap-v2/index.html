@@ -1032,7 +1032,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <button class="iconbtn" onclick="copyPublishField('pubPostImage', this)">📋</button>
           </div>
           <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center;">
-            <button class="btn" id="pubPostImageGenBtn" onclick="genSinglePostImage()">✨ Generate background (Grok)</button>
+            <button class="btn primary" id="pubPostImageGenBtn" onclick="genSinglePostImage()" title="Grok renders in this modal, guided by the committed Codex Design fields and hub Spec Images">✨ Generate background (Grok + Codex Design)</button>
+            <button class="btn" type="button" onclick="copyCodexImagePrompt('post-image', this)" title="Copy the Codex Design background prompt for use in ChatGPT">📋 Chat prompt</button>
             <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('post')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
             <button class="btn" id="pubPostImageTextBtn" onclick="compositeTextOnPostImage()" style="display:none;">🔤 Add headline text</button>
             <button class="btn" id="pubPostImageEditBtn" onclick="openTextEditor('postImage')" style="display:none;">🎯 Preview &amp; Edit</button>
@@ -1097,7 +1098,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="flex:1;min-width:0;">
               <div style="font-size:11px;font-weight:600;">📸 Instagram background <span style="font-weight:400;color:var(--ink3);">— vertical 3:4, spec's Instagram-background safe-area rules</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
-                <button class="btn" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')" title="Render on Grok Imagine">✨ Generate</button>
+                <button class="btn primary" id="pubIgBgGenBtn" onclick="genOfferImage('ig-background')" title="Grok renders here using the committed Codex Design system and hub Spec Images">✨ Generate (Grok + Codex Design)</button>
+                <button class="btn" type="button" onclick="copyCodexImagePrompt('ig-background', this)" title="Copy the Codex Design prompt for use in ChatGPT">📋 Chat prompt</button>
                 <button class="btn" type="button" onclick="copyImagePrompt('ig-background', this)" title="Copy the prompt (the same one ✨ Generate would use) — paste it into ChatGPT or Grok; nothing is rendered">📋 Prompt</button>
                 <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('ig')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
                 <button class="btn" id="pubIgBgRegenBtn" onclick="regenOfferImage('ig-background')" style="display:none;">🔄 Regenerate</button>
@@ -1136,7 +1138,8 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
             <div style="flex:1;min-width:0;">
               <div id="pubBlogThumbLabel" style="font-size:11px;font-weight:600;">🖼️ Blog thumbnail <span style="font-weight:400;color:var(--ink3);">— wide 16:9 banner, this method's actual thumbnail (not a social-media square)</span></div>
               <div style="display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;align-items:center;">
-                <button class="btn" id="pubBlogThumbGenBtn" onclick="genThumbnail()" title="Render on Grok Imagine">✨ Generate</button>
+                <button class="btn primary" id="pubBlogThumbGenBtn" onclick="genThumbnail()" title="Grok renders here using the committed Codex Design system and hub Spec Images">✨ Generate (Grok + Codex Design)</button>
+                <button class="btn" type="button" onclick="copyCodexImagePrompt('blog-thumbnail', this)" title="Copy the Codex Design prompt for use in ChatGPT">📋 Chat prompt</button>
                 <button class="btn" type="button" onclick="copyImagePrompt('blog-thumbnail', this)" title="Copy the prompt (the same one ✨ Generate would use) — paste it into ChatGPT or Grok; nothing is rendered">📋 Prompt</button>
                 <button class="btn imgDirBtn" type="button" onclick="openImgDirModal('thumb')" title="Your direction for this asset's background image: it overrides the hub design and the method/platform defaults">🧭 Direction</button>
                 <button class="btn" id="pubBlogThumbRegenBtn" onclick="regenThumbnail()" style="display:none;">🔄 Regenerate</button>
@@ -6466,7 +6469,7 @@ function openPublishAssetModal(assetId) {
     postTextBtn.style.display = data.postImage ? '' : 'none';
     postTextBtn.textContent = '🔤 Add headline text';
     document.getElementById('pubPostImageEditBtn').style.display = data.postImage ? '' : 'none';
-    document.getElementById('pubPostImageGenBtn').textContent = data.postImage ? '✨ Regenerate background (Grok)' : '✨ Generate background (Grok)';
+    document.getElementById('pubPostImageGenBtn').textContent = data.postImage ? '✨ Regenerate (Grok + Codex Design)' : '✨ Generate background (Grok + Codex Design)';
     document.getElementById('pubPostImageStatus').textContent = '';
     // No fallback to the main value here on purpose: if this asset predates
     // Source tracking (or Source was never stamped for some other reason),
@@ -8219,7 +8222,7 @@ async function copyImagePrompt(kind, btn) {
   } catch (e) { statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Could not write the prompt: ' + e.message; }
   btn.disabled = false; btn.textContent = o;
 }
-async function genOfferImage(kind) {
+async function genOfferImage(kind, codexDesign = true) {
   if (!pubAssetId) return;
   const c = OFFER_IMG[kind];
   const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
@@ -8228,7 +8231,7 @@ async function genOfferImage(kind) {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateOfferImage', { assetId: myAsset, kind });
+    const r = await w('generateOfferImage', { assetId: myAsset, kind, codexDesign: !!codexDesign });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow(kind, null, r.prompt);
     await _offerImgFinish(kind, myAsset, r.imageUrl, r.prompt, genBtn, statusEl);
@@ -8255,9 +8258,9 @@ let PUB_BLOG_THUMB_LABEL = null;
 const isYtAsset = id => /\byoutube\b/i.test((PUB_ASSET_CACHE[id] || {}).type || '');
 // YouTube thumbnail text for the editor/compositor: the outline's first thumbnail-text option.
 function ytThumbText(data) { return String((data && data.thumbnailText) || '').split('|')[0].trim(); }
-function genThumbnail() {
+function genThumbnail(codexDesign = true) {
   const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
-  return isOffer ? genOfferImage('blog-thumbnail') : genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail');
+  return isOffer ? genOfferImage('blog-thumbnail', codexDesign) : genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail', codexDesign);
 }
 async function regenThumbnail() {
   const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
@@ -8268,7 +8271,7 @@ async function regenThumbnail() {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = p ? 'Prompt copied to clipboard — regenerating…' : 'Regenerating…';
   genBlogThumbnail(isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail');
 }
-async function genBlogThumbnail(action) {
+async function genBlogThumbnail(action, codexDesign = true) {
   if (!pubAssetId) return;
   const c = OFFER_IMG['blog-thumbnail'];
   const genBtn = document.getElementById(c.btn), statusEl = document.getElementById(c.status);
@@ -8284,7 +8287,7 @@ async function genBlogThumbnail(action) {
     // every other image kind here uses. Skipping this step is the bug to
     // watch for: the field would show a url that 404s once xAI's temp CDN
     // link expires, and nothing would actually be saved to Notion.
-    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset });
+    const r = await w(action || 'generateBlogPostThumbnail', { assetId: myAsset, codexDesign: !!codexDesign });
     if (r.thumbText && PUB_ASSET_CACHE[myAsset] && !PUB_ASSET_CACHE[myAsset].thumbnailText) PUB_ASSET_CACHE[myAsset].thumbnailText = r.thumbText;
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     _offerImgShow('blog-thumbnail', null, r.prompt);
@@ -8542,7 +8545,7 @@ async function saveImgDir(regen, clear) {
     }
   } catch (e) { st.style.color = 'var(--stale)'; st.textContent = 'Not saved: ' + e.message; }
 }
-async function genSinglePostImage() {
+async function genSinglePostImage(codexDesign = true) {
   if (!pubAssetId) return;
   const btn = document.getElementById('pubPostImageGenBtn');
   const statusEl = document.getElementById('pubPostImageStatus');
@@ -8550,7 +8553,7 @@ async function genSinglePostImage() {
   statusEl.style.color = 'var(--ink3)'; statusEl.textContent = 'Assembling the hub image spec + writing the prompt…';
   const myAsset = pubAssetId;
   try {
-    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset });
+    const r = await w('generateSocialBackgroundForAsset', { assetId: myAsset, codexDesign: !!codexDesign });
     if (!r.imageUrl) throw new Error(r.error || 'No image returned');
     statusEl.textContent = 'Saving to Notion…';
     const s = await w('saveOfferImage', { assetId: myAsset, kind: 'post-image', imageUrl: r.imageUrl, background: true });
@@ -8561,12 +8564,30 @@ async function genSinglePostImage() {
     document.getElementById('pubPostImageTextBtn').style.display = '';
     document.getElementById('pubPostImageEditBtn').style.display = '';
     if (PUB_ASSET_CACHE[myAsset]) { PUB_ASSET_CACHE[myAsset].postImage = s.url; PUB_ASSET_CACHE[myAsset].postImageSource = s.url; }
-    btn.disabled = false; btn.textContent = '✨ Regenerate background (Grok)';
+    btn.disabled = false; btn.textContent = '✨ Regenerate (Grok + Codex Design)';
     statusEl.style.color = 'var(--fresh)'; statusEl.textContent = 'Background saved ✓ — now add the headline text below.';
   } catch (e) {
-    btn.disabled = false; btn.textContent = '✨ Generate background (Grok)';
+    btn.disabled = false; btn.textContent = '✨ Generate background (Grok + Codex Design)';
     statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Error: ' + e.message;
   }
+}
+
+// Alternate no-render route: have the worker assemble the same Codex Design
+// prompt, then copy it for a ChatGPT image conversation. Direct generation
+// above still uses Grok and stays entirely inside this modal.
+async function copyCodexImagePrompt(kind, btn) {
+  if (!pubAssetId) return;
+  const isOffer = /\boffer\b/i.test((PUB_ASSET_CACHE[pubAssetId] || {}).type || '');
+  const statusEl = document.getElementById(kind === 'post-image' ? 'pubPostImageStatus' : OFFER_IMG[kind].status);
+  const old = btn.textContent; btn.disabled = true; btn.textContent = '⏳ Writing…';
+  try {
+    let action = kind === 'post-image' ? 'generateSocialBackgroundForAsset' : (kind === 'ig-background' || isOffer ? 'generateOfferImage' : (isYtAsset(pubAssetId) ? 'generateYouTubeThumbnail' : 'generateBlogPostThumbnail'));
+    const r = await w(action, { assetId: pubAssetId, kind, promptOnly: true, codexDesign: true });
+    if (!r || !r.prompt) throw new Error((r && r.error) || 'No prompt returned');
+    await navigator.clipboard.writeText(r.prompt + '\n\nGenerate this as a wordless image in the specified aspect ratio. Return the image, not an explanation.');
+    statusEl.style.color = 'var(--fresh)'; statusEl.textContent = '✓ Codex Design prompt copied — paste into ChatGPT image generation.';
+    btn.textContent = '✓ Copied'; setTimeout(() => { btn.disabled = false; btn.textContent = old; }, 1800);
+  } catch (e) { btn.disabled = false; btn.textContent = old; statusEl.style.color = 'var(--stale)'; statusEl.textContent = 'Could not write the Chat prompt: ' + e.message; }
 }
 
 // ── Image picker — reuse an image already sitting on this asset's OTHER

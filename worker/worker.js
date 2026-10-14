@@ -364,12 +364,20 @@ function approvedPlateBlock(brief) {
 // Claude message content: the approved plate image (when attachable) + text.
 function plateContent(text, brief) {
   const p = brief && brief.approvedPlate;
-  return (p && p.attach && /^https:\/\//.test(p.imageUrl || ""))
-    ? [{ type: "image", source: { type: "url", url: p.imageUrl } }, { type: "text", text }]
-    : text;
+  const refs = ((brief && brief.mediaLibrary) || []).filter(x => x && /^https:\/\//.test(x.url || ""));
+  const images = [];
+  if (p && p.attach && /^https:\/\//.test(p.imageUrl || "")) images.push({ url: p.imageUrl, label: "approved campaign plate" });
+  // Keep the multimodal request bounded, but always favor the references the
+  // operator has explicitly marked as approved or as a brand authority.
+  const rank = { "approved-example": 0, "brand-guide": 1, "motif-reference": 2, "site-image": 3, logo: 4 };
+  refs.slice().sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9)).slice(0, 5).forEach(x => {
+    if (!images.some(i => i.url === x.url)) images.push({ url: x.url, label: `${x.role || "reference"}: ${x.name || "untitled"}` });
+  });
+  if (!images.length) return text;
+  return [...images.map(i => ({ type: "image", source: { type: "url", url: i.url } })), { type: "text", text: text + `\n\nATTACHED VISUAL AUTHORITIES (in attachment order): ${images.map(i => i.label).join("; ")}. Use them to reproduce the campaign's palette, light, medium, motif and finish. Never copy an example's exact scene, embedded text or layout unless the asset specification explicitly calls for it.` }];
 }
 
-async function assembleImageBrief(env, { campaignId, assetId, override }) {
+async function assembleImageBrief(env, { campaignId, assetId, override, codexDesign }) {
   // `override` = a STAGED (unsaved) brief from the Content Hubs card:
   // { register, photography, avoid, notes, palette, fonts }. When present its
   // values replace what's read from the Research record, so the operator can
@@ -379,7 +387,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
   const dash = id => { const s = String(id || "").replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const norm = s => String(s || "").replace(/-/g, "");
   const rtp = (p, k) => (p?.[k]?.rich_text || []).map(t => t.plain_text).join("").trim();
-  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null };
+  const out = { hubSlug: "", hub: null, guidance: "", product: null, facts: [], storedSpec: "", approvedPlate: null, mediaLibrary: [] };
 
   let cid = norm(campaignId || "");
   let contentHubSel = "", titleId = "", assetProductId = "";
@@ -392,6 +400,21 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
   }
 
   out.hubSlug = contentHubSel || (HUB_SITES.find(h => norm(h.campaignId) === cid) || {}).slug || "";
+
+  // Codex Design is now the shared image engine for every asset modal. Its
+  // committed spec takes precedence over the legacy Research copy, and its
+  // saved hub library is passed to Claude as visual reference material.
+  if (cid && codexDesign) {
+    try {
+      const [dsSaved, dsInputs] = await Promise.all([
+        env.TRADES.get("design:spec:" + cid, "json"),
+        env.TRADES.get("design:inputs:" + cid, "json"),
+      ]);
+      if (dsSaved && dsSaved.spec) out.storedSpec = `# Codex Design — committed campaign specification\n\n${dsSpecText(dsSaved.spec, true)}`;
+      out.mediaLibrary = Array.isArray(dsInputs && dsInputs.mediaLibrary) ? dsInputs.mediaLibrary.filter(x => x && /^https:\/\//.test(x.url || "")) : [];
+      if (out.mediaLibrary.length) out.facts.push(`SAVED HUB SPEC-IMAGE LIBRARY (attached where supported): ${out.mediaLibrary.map(x => `${x.role || "reference"}: ${x.name || "untitled"}${x.notes ? " — " + x.notes : ""}`).join("; ").slice(0, 4000)}`);
+    } catch (e) { /* Codex Design data is optional for older hubs */ }
+  }
 
   // ── Campaign Research first — its "Design section" is the authoritative
   //    visual direction (a Stage-1 artifact). hubs.design.json's design.*
@@ -413,7 +436,7 @@ async function assembleImageBrief(env, { campaignId, assetId, override }) {
         notes:       (ov.notes       != null ? String(ov.notes)       : rtp(rp, "Design Notes")),
       };
       out.guidance = rDesign.notes;
-      out.storedSpec = rtp(rp, "Image Spec");   // frozen spec, written by publishHubDesign
+      if (!out.storedSpec) out.storedSpec = rtp(rp, "Image Spec");   // legacy/fallback frozen spec
       out.approvedPlate = parseApprovedPlate(rtp(rp, "Approved Plate"));
       if (rDesign.register)    out.facts.push(`VISUAL REGISTER (from research): ${rDesign.register}`);
       if (rDesign.photography) out.facts.push(`PHOTOGRAPHY DIRECTION (from research — the images that belong): ${rDesign.photography}`);
@@ -31779,7 +31802,7 @@ Rules:
         // The shared, customer-grounded art-direction spec for this hub — the
         // frozen "Image Spec" written by publishHubDesign if there is one,
         // otherwise derived on the fly.
-        const brief = await assembleImageBrief(env, { assetId });
+        const brief = await assembleImageBrief(env, { assetId, codexDesign: !!body.codexDesign });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -31882,7 +31905,7 @@ ${spec.slice(0, 6000)}`;
         if (typeof body.direction === "string") await env.TRADES.put("lfthumb:dir:" + campaignId, thumbDir).catch(() => {});
         const outline = (blocksResp.results || []).slice(0, 12).map(b => ((b[b.type] || {}).rich_text || []).map(x => x.plain_text).join("")).filter(Boolean).join("\n").slice(0, 1500);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -31948,7 +31971,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const campaignId    = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -32017,7 +32040,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
 
-        const brief = await assembleImageBrief(env, { campaignId: cid });
+        const brief = await assembleImageBrief(env, { campaignId: cid, codexDesign: !!body.codexDesign });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -32214,7 +32237,7 @@ End the prompt with: "No text, no letters, no logos, no watermarks."`;
         { const { card: spc } = await spLoadCard(hdr, assetId); if (spc) fields = spc.fields || null; }
         if (!fields) return json({ error: "Couldn't find this asset's single-post fields (Headline Primary/Accent/Body) in its page body" }, 400);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { /* best-effort — still usable without it */ } }
@@ -32499,7 +32522,7 @@ Return ONLY JSON: {"caption":"...","hashtags":"#a #b #c"}`;
         const campaignId = ap["Campaign"]?.relation?.[0]?.id?.replace(/-/g,"") || null;
         if (!campaignId) return json({ error: "Asset has no Campaign relation" }, 400);
 
-        const brief = await assembleImageBrief(env, { campaignId, assetId });
+        const brief = await assembleImageBrief(env, { campaignId, assetId, codexDesign: !!body.codexDesign });
         let spec = "";
         if (brief.storedSpec && brief.storedSpec.length > 200) spec = brief.storedSpec;
         else { try { spec = await writeImageSpec(env, brief); } catch (e) { return json({ error: "Couldn't assemble the image spec: " + e.message }, 502); } }
@@ -50856,13 +50879,16 @@ async function handleDesignSpec(body, env, ctx) {
       await put(K.inputs, inputs); return out({ mediaLibrary: inputs.mediaLibrary });
     }
     const m = /^data:(image\/(png|jpe?g|webp));base64,(.+)$/i.exec(String(body.data || ""));
-    if (!m) return { error: "send a png, jpg or webp image" };
-    if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
-    const bytes = Uint8Array.from(atob(m[3]), c => c.charCodeAt(0)); if (bytes.length > 8e6) return { error: "keep each library image under 8 MB" };
-    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7), ext = m[2].toLowerCase().replace("jpeg", "jpg");
-    const key = `design/${cid}/library-${id}.${ext}`;
-    await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: "public, max-age=31536000, immutable" } });
-    const item = { id, url: String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key,
+    let url = String(body.url || "").trim();
+    const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+    if (m) {
+      if (!env.MEDIA) return { error: "R2 bucket MEDIA not bound" };
+      const bytes = Uint8Array.from(atob(m[3]), c => c.charCodeAt(0)); if (bytes.length > 8e6) return { error: "keep each library image under 8 MB" };
+      const ext = m[2].toLowerCase().replace("jpeg", "jpg"), key = `design/${cid}/library-${id}.${ext}`;
+      await env.MEDIA.put(key, bytes, { httpMetadata: { contentType: m[1], cacheControl: "public, max-age=31536000, immutable" } });
+      url = String(env.MEDIA_PUBLIC_BASE || "").replace(/\/$/, "") + "/" + key;
+    } else if (!/^https:\/\//i.test(url)) return { error: "send a png, jpg or webp image, or a generated HTTPS image URL" };
+    const item = { id, url,
       name: String(body.name || "Reference image").trim().slice(0, 120),
       role: ["brand-guide", "site-image", "motif-reference", "approved-example", "logo"].includes(body.role) ? body.role : "site-image",
       notes: String(body.notes || "").trim().slice(0, 500), at: new Date().toISOString() };
