@@ -11286,9 +11286,11 @@ function careGapModalUrl(campId, assetId, titleId) {
   if (titleId) u.searchParams.set('createAssetFor', titleId);
   return u.toString();
 }
+let CARE_GAP_EDITOR_CAMPAIGN = '';
 function openCareGapEditor(campId, assetId, titleId) {
   const modal = document.getElementById('careGapEditorModal');
   const frame = document.getElementById('careGapEditorFrame');
+  CARE_GAP_EDITOR_CAMPAIGN = String(campId || '').replace(/-/g, '');
   document.getElementById('careGapEditorTitle').textContent = assetId ? 'Publish asset' : 'Create asset';
   frame.src = careGapModalUrl(campId, assetId, titleId);
   modal.classList.add('open');
@@ -11297,6 +11299,19 @@ function closeCareGapEditor() {
   const modal = document.getElementById('careGapEditorModal');
   modal.classList.remove('open');
   document.getElementById('careGapEditorFrame').src = 'about:blank';
+  const h = (typeof HUB_SITES === 'undefined' ? [] : HUB_SITES).find(x => String(x.campaignId || '').replace(/-/g, '') === CARE_GAP_EDITOR_CAMPAIGN);
+  CARE_GAP_EDITOR_CAMPAIGN = '';
+  if (!h) return;
+  // The editor writes through to Notion and, for blog thumbnails, republishes
+  // the live article. Index still owns separate caches and a long-lived site
+  // iframe, so refresh both when the editor closes.
+  if (typeof hubTitlesLoad === 'function') hubTitlesLoad(h.slug, true).catch(() => {});
+  if (typeof hubContentLoad === 'function') hubContentLoad(h.slug, true).catch(() => {});
+  const preview = document.getElementById('hpiFrame-' + h.slug);
+  if (preview) {
+    const raw = String(preview.src || '').replace(/([?&])v=\d+(&|$)/, '$1').replace(/[?&]$/, '');
+    preview.src = raw + (raw.includes('?') ? '&' : '?') + 'v=' + Date.now();
+  }
 }
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
