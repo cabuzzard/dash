@@ -11885,6 +11885,16 @@ function renderDev2() {
 
   const fmtDate = iso => iso ? new Date(iso).toLocaleDateString() : '';
   const allChecked = visibleRows.length > 0 && visibleRows.every(r => DEV2_SELECTED.has(dev2RowKey(r)));
+  // Compact labels match Content Hubs → Production → Output. Number titles
+  // within their product and assets within their title; the real editable
+  // names live in the click-through row modal instead of stretching the table.
+  const titleOrdinal = {}, assetOrdinal = {}, titleBuckets = {}, assetBuckets = {};
+  DEV2_ROWS.forEach(r => {
+    if (r.titleId) (titleBuckets[(r.campId || '') + '|' + (r.productId || '')] ||= new Map()).set(r.titleId, r.title || '');
+    if (r.assetId) (assetBuckets[(r.titleId || '') + '|' + (r.productId || '') + '|' + (r.campId || '')] ||= new Map()).set(r.assetId, r.assetName || '');
+  });
+  Object.values(titleBuckets).forEach(m => [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0])).forEach(([id], i) => { titleOrdinal[id] = i + 1; }));
+  Object.values(assetBuckets).forEach(m => [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]) || a[0].localeCompare(b[0])).forEach(([id], i) => { assetOrdinal[id] = i + 1; }));
   const thead = `<tr>
     <th style="padding:6px 8px;border-bottom:1px solid var(--border2);"><input type="checkbox" id="dev2SelectAll" ${allChecked ? 'checked' : ''} onclick="dev2ToggleAll(this.checked)"></th>
     ${DEV2_COLS.map(c => {
@@ -11901,8 +11911,9 @@ function renderDev2() {
   const rowHtml = r => {
     const key = dev2RowKey(r);
     const dash = '<span style="color:var(--text3);">—</span>';
-    const titleCell = r.titleId ? `<a href="https://www.notion.so/${esc(r.titleId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.title)}</a>` : dash;
-    const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? `<a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.assetName || '(untitled asset)')}</a>` : dash;
+    const compactBtn = (label, tip) => `<button type="button" onclick="dev2EditOpen('${esc(key)}')" title="${esc(tip)}" style="padding:0;border:0;background:transparent;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;">${esc(label)}</button>`;
+    const titleCell = r.titleId ? compactBtn('Title ' + (titleOrdinal[r.titleId] || 1), 'Open title') : dash;
+    const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? compactBtn('Asset ' + (assetOrdinal[r.assetId] || 1), 'Open asset name') : dash;
     const assetTypeCell = r.assetId ? esc(r.assetType || '?') + (/^Out of Sync/.test(r.ivSync || '') ? ivSyncBadge(/Regenerate/.test(r.ivSync) ? 'regenerate' : 'review') : '') : dash;
     const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
     // Hub → the care-gap-v2 microsite template, the campaign-agnostic
