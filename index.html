@@ -15292,7 +15292,7 @@ function renderHubs2() {
     </div>
     <div class="hub-layout">
       <div class="hub-left">
-        <details class="hub-sec" open ontoggle="if(this.open)hub2ChecklistLoad('${slug}')">
+        <details class="hub-sec" ontoggle="if(this.open)hub2ChecklistLoad('${slug}')">
           <summary title="Checklist"><span title="Checklist">Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">published · unpublished · goals · cadence</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Checklist-${slug}" style="padding:8px 12px;">${hub2ChecklistHtml(slug)}</div>
         </details>
