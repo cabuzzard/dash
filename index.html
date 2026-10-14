@@ -577,7 +577,6 @@
 </style>
 </head>
 <body>
-<button id="bulkBackdatePublishedOnce" aria-label="maintenance" style="position:fixed;left:0;top:0;width:2px;height:2px;padding:0;border:0;opacity:.01;z-index:99999" onclick="call('backdatePublishedAssets',{publishingDate:'2026-09-14'}).then(r=>this.dataset.result=JSON.stringify(r)).catch(e=>this.dataset.result=JSON.stringify({error:e.message}))">.</button>
 
 <!-- METHOD BODY MODAL -->
 <div class="modal-overlay" id="methodBodyModal" style="display:none;" onclick="if(event.target===this)closeMethodBodyModal()">

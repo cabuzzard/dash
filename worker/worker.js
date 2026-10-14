@@ -36481,29 +36481,6 @@ ${field === "statement" ? "Write the positioning statement — 2-3 sentences nam
       // right here once the copied fields have actually gone out, instead
       // of leaving the modal to use the main dashboard's status badge —
       // same "Asset Status" select property, same allowed values.
-      if (body.action === "backdatePublishedAssets") {
-        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        const publishingDate = String(body.publishingDate || "").trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(publishingDate)) return json({ error: "publishingDate must be YYYY-MM-DD" }, 400);
-        const assets = await notionQuery(ASSETS_DB, { filter: { property: "Asset Status", select: { equals: "Published" } } });
-        const failures = [];
-        let updated = 0;
-        for (let i = 0; i < assets.length; i += 10) {
-          await Promise.all(assets.slice(i, i + 10).map(async asset => {
-            const resp = await fetch(`https://api.notion.com/v1/pages/${asset.id}`, {
-              method: "PATCH",
-              headers: { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-              body: JSON.stringify({ properties: { "Publishing Date": { date: { start: publishingDate } } } }),
-            });
-            if (resp.ok) updated++;
-            else {
-              const err = await resp.json().catch(() => ({}));
-              failures.push({ id: String(asset.id || "").replace(/-/g, ""), error: err.message || `HTTP ${resp.status}` });
-            }
-          }));
-        }
-        return json({ success: failures.length === 0, publishingDate, matched: assets.length, updated, failed: failures.length, failures });
-      }
       if (body.action === "updatePublishFields") {
         const { videoUrl } = body;
         let stampAfter = false;
