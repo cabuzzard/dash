@@ -14868,8 +14868,8 @@ Return: {
           const id = dropDash(c.id);
           campById[id] = { name: (c.properties?.Name?.title || []).map(t => t.plain_text).join("") || "?" };
         });
-        const hubByCampId = {};
-        HUB_SITES.forEach(h => { hubByCampId[dropDash(h.campaignId)] = h.name; });
+        const hubByCampId = {}, hubSlugByCampId = {};
+        HUB_SITES.forEach(h => { const id = dropDash(h.campaignId); hubByCampId[id] = h.name; hubSlugByCampId[id] = h.slug; });
 
         const productById = {};
         productRows.forEach(p => {
@@ -14934,6 +14934,9 @@ Return: {
             assetType: p["Asset Type"]?.select?.name || "",
             status: p["Asset Status"]?.select?.name || "",
             hubSection: p["Hub Section"]?.select?.name || "",
+            hubSectionKey: hubSectionOf(p) || "",
+            contentHub: p["Content Hub"]?.select?.name || "",
+            liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
             ivSync: p["Interview Sync"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash(p.Campaign.relation[0].id) : null,
@@ -14958,11 +14961,23 @@ Return: {
         const rows = [];
         const usedProducts = new Set();
         const scheduleFields = slotId => { const m = slotMeta[dropDash(slotId || "")]; return m ? { schedule: m.schedule, scheduleGroup: m.grouping, cadence: m.cadence, progress: m.progress, nextDue: m.nextDue, scheduleStatus: m.status } : { schedule: "", scheduleGroup: "", cadence: "", progress: "", nextDue: "", scheduleStatus: "" }; };
-        const assetFields = a => ({
+        const hubPublishFields = (a, campId) => {
+          if (!a) return { hubPublish: "", hubLive: false };
+          const expectedSlug = hubSlugByCampId[campId] || "", st = a.status || "", sec = a.hubSectionKey || "";
+          if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return { hubPublish: "⚠ Different hub", hubLive: false };
+          if (st !== "Published") return { hubPublish: st === "Publish" ? "Queued — not live" : st === "Review" ? "Review — not live" : "Not published", hubLive: false };
+          if (!sec) return { hubPublish: /^unlisted$/i.test(a.hubSection || "") ? "Published · unlisted" : "⚠ Published · no section", hubLive: false };
+          if (sec === "email") return { hubPublish: "Published · email only", hubLive: false };
+          if (["offers", "news", "articles"].includes(sec) && !a.liveUrl) return { hubPublish: "⚠ Published · missing page", hubLive: false };
+          const hubLiveUrl = /^\.\//.test(a.liveUrl || "") && expectedSlug ? `https://cabuzzard.github.io/dash/web/hub/${expectedSlug}/${a.liveUrl.slice(2)}` : (a.liveUrl || `https://cabuzzard.github.io/dash/web/hub/${expectedSlug}/`);
+          return { hubPublish: "✓ Published to section", hubLive: true, hubLiveUrl };
+        };
+        const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name,
           assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
-          rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "",
+          rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "",
           datePublished: a.status === "Published" ? a.lastEditedTime : null,
+          ...hubPublishFields(a, campId),
           ...scheduleFields(a.strategySlotId),
         });
         Object.entries(titleById).forEach(([titleId, t]) => {
@@ -15000,8 +15015,9 @@ Return: {
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
               assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
               rawAssetType: a.assetType || "",
-              assetStatus: a.status || "", hubSection: a.hubSection || "", ivSync: a.ivSync || "",
+              assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", ivSync: a.ivSync || "",
               datePublished: a.status === "Published" ? a.lastEditedTime : null,
+              ...hubPublishFields(a, t.campId),
               ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
           });
@@ -15022,7 +15038,7 @@ Return: {
           const campId = a.campId || (prod && prod.campId) || null, camp = campId ? campById[campId] : null;
           rows.push({ kind: "asset", campaign: camp ? camp.name : "?", campId, hub: campId ? (hubByCampId[campId] || "") : "",
             productStack: prod ? (prod.stack || "No Stack") : "No Product", product: prod ? prod.name : "No Product", productId: a.productId || null,
-            title: "", titleId: null, ...assetFields(a) });
+            title: "", titleId: null, ...assetFields(a, campId) });
         });
         // products with no titles and no assets
         Object.entries(productById).forEach(([pid, prod]) => {
@@ -15035,10 +15051,19 @@ Return: {
         // Group = the campaign's product group for this stack (KV stackgroups:<campaignId>, Group → Stack → Product)
         const campIds = [...new Set(rows.map(r => r.campId).filter(Boolean))];
         const groupMaps = {};
-        await Promise.all(campIds.map(async cid => { try { const g = await env.TRADES.get("stackgroups:" + cid, "json"); groupMaps[cid] = (g && g.map) || {}; } catch (e) { groupMaps[cid] = {}; } }));
+        const sectionHeadings = {};
+        await Promise.all(campIds.map(async cid => {
+          try { const g = await env.TRADES.get("stackgroups:" + cid, "json"); groupMaps[cid] = (g && g.map) || {}; } catch (e) { groupMaps[cid] = {}; }
+          const slug = hubSlugByCampId[cid]; if (!slug) return;
+          try {
+            const c = await fetch(`https://cabuzzard.github.io/dash/web/hub/${slug}/content.json?v=${Date.now()}`).then(r => r.ok ? r.json() : null);
+            sectionHeadings[cid] = { main: c?.hero?.headline || "Main offering", offers: c?.trips?.title || "Products", news: c?.journal?.title || "News", articles: c?.articles?.title || "Articles", interactive: c?.interactive?.title || "Interactive", cta: c?.report?.title || "CTA", email: c?.email?.title || "Email" };
+          } catch (e) { sectionHeadings[cid] = {}; }
+        }));
         rows.forEach(r => {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
           r.status = r.kind === "interview" ? r.ivStatus : r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
+          r.hubSectionHeading = r.hubSectionKey ? ((sectionHeadings[r.campId] || {})[r.hubSectionKey] || "") : "";
         });
         // ── STATUS TABLE (2026-10-10): every update vector as its own column, + one derived Next step (upstream first).
         // Research ↔ keywords = product research Keywords Version vs its campaign's (same rule as care-gap's ✓/✗).

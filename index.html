@@ -11268,14 +11268,15 @@ function dev2RowKey(r) { return r.interviewId ? ('i:' + r.interviewId) : r.asset
 const DEV2_COLS = [
   { key: 'campaign',     label: 'Campaign' },
   { key: 'hub',          label: 'Hub' },
-  { key: 'hubSection',   label: 'Hub section' },
+  { key: 'hubSection',   label: 'Section assignment' },
   { key: 'group',        label: 'Group' },
   { key: 'productStack', label: 'Stack' },
   { key: 'product',      label: 'Product' },
   { key: 'title',        label: 'Title' },
   { key: 'assetName',    label: 'Asset name' },
   { key: 'assetType',    label: 'Asset type' },
-  { key: 'status',       label: 'Status' },
+  { key: 'status',       label: 'Record status' },
+  { key: 'hubPublish',   label: 'Hub publish' },
   // STATUS TABLE (2026-10-10): the update vectors, each its own column — none of them is Status, so visibility is unchanged
   { key: 'research',     label: 'Research' },
   { key: 'interviews',   label: 'Interviews' },
@@ -11289,6 +11290,14 @@ function dev2VecCell(v) {
   if (!v) return '<span style="color:var(--text3);">—</span>';
   const c = /^✓|^Written$|^In Sync$/.test(v) ? '#4ade80' : /Regenerate|^Rewrite|✗|^Refresh/.test(v) ? '#e5534b' : /⚑|Out of Sync|^Not Written$|^Do |^Write|^Review|^Run/.test(v) ? '#ff7a00' : 'var(--text3)';
   return `<span style="font-size:11px;color:${c};font-weight:${c === 'var(--text3)' ? 400 : 600};white-space:nowrap;">${esc(v)}</span>`;
+}
+function dev2HubPublishCell(r) {
+  if (!r.assetId) return '<span style="color:var(--text3);">—</span>';
+  const v = r.hubPublish || 'Not published', good = !!r.hubLive;
+  const warn = /^⚠/.test(v), queued = /Queued|Review/.test(v);
+  const c = good ? '#4ade80' : warn ? '#ff7a00' : queued ? '#f6ad55' : 'var(--text3)';
+  const inner = `<span style="font-size:11px;color:${c};font-weight:${good || warn ? 700 : 500};white-space:nowrap;">${esc(v)}</span>`;
+  return good && r.hubLiveUrl ? `<a href="${esc(r.hubLiveUrl)}" target="_blank" rel="noopener" title="Open the published page" style="text-decoration:none;">${inner}</a>` : inner;
 }
 // two-layer filter: [{col, val}] — val '' = any, '__blank__' = empty
 let DEV2_F = (() => { try { const v = JSON.parse(localStorage.getItem('dev2Filters') || 'null'); if (Array.isArray(v) && v.length === 2) return v.map(f => ({ col: String((f && f.col) || ''), val: String((f && f.val) || ''), neg: !!(f && f.neg) })); } catch (e) {} return [{ col: '', val: '' }, { col: '', val: '' }]; })();
@@ -11857,7 +11866,7 @@ function renderDev2() {
       <td style="padding:6px 8px;white-space:nowrap;"><input type="checkbox" class="dev2-row-cb" ${isSel ? 'checked' : ''} onclick="dev2ToggleRow('${esc(key)}', this.checked, this)">${r.assetId && /^topical post$/i.test(r.rawAssetType || '') ? `<button title="Write this topical SEO post (its 5-question interview first)" onclick="topicalWrite('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍</button><button title="Queue it for the 30-minute cron" onclick="topicalQueue('${esc(r.assetId)}', this)" style="margin-left:2px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">⏱</button>` : ''}${r.assetId ? `<button title="Request this asset's OWN interview" onclick="dev2RequestInterview('${esc(r.assetId)}', this)" style="margin-left:4px;font-size:11px;padding:0 4px;border:1px solid var(--border2);border-radius:4px;background:transparent;cursor:pointer;">🎤</button>` : ''}<button title="Edit this row's fields" onclick="${r.interviewId ? `dev2OpenInterview('${esc(r.interviewId)}')` : `dev2EditOpen('${esc(key)}')`}" style="margin-left:4px;font-size:11px;padding:0 5px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">✎</button></td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.campaign)}</td>
       <td style="padding:6px 10px;font-size:12px;">${hubCell}</td>
-      <td style="padding:6px 10px;font-size:12px;">${esc(r.hubSection || '')}</td>
+      <td style="padding:6px 10px;font-size:12px;min-width:150px;">${r.hubSection || r.hubSectionKey ? `<div>${esc(r.hubSection || r.hubSectionKey)}</div>${r.hubSectionHeading && r.hubSectionHeading.toLowerCase() !== String(r.hubSection || '').toLowerCase() ? `<div title="Heading shown on the live hub" style="font-size:10px;color:var(--text3);">shown as “${esc(r.hubSectionHeading)}”</div>` : ''}` : '<span style="color:var(--text3);">—</span>'}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.group || '')}</td>
       <td style="padding:6px 10px;font-size:12px;">${esc(r.productStack)}</td>
       <td style="padding:6px 10px;font-size:12px;">${r.productId ? `<input type="checkbox" title="Select this product for bulk actions" ${DEV2_SEL_P.has(r.productId) ? 'checked' : ''} onclick="dev2ToggleRec('p','${esc(r.productId)}',this.checked)" style="margin-right:5px;vertical-align:middle;">` : ''}${productCell}</td>
@@ -11865,6 +11874,7 @@ function renderDev2() {
       <td style="padding:6px 10px;font-size:12px;">${assetNameCell}</td>
       <td style="padding:6px 10px;font-size:12px;">${assetTypeCell}</td>
       <td style="padding:6px 10px;font-size:12px;white-space:nowrap;">${r.status ? `<span title="${esc(r.kind)} status" style="padding:1px 7px;border-radius:9px;font-size:11px;background:${r.status === 'Published' ? 'rgba(74,222,128,.18)' : (r.status === 'Review' || r.status === 'Flagged') ? '#ff7a00;color:#111;font-weight:700' : r.status === 'Finished' ? 'rgba(58,154,91,.22)' : r.status === 'Publish' ? 'rgba(246,173,85,.20)' : 'rgba(127,127,127,.15)'};">${esc(r.status)}</span>` : '<span style="color:var(--text3);">—</span>'}</td>
+      <td style="padding:6px 10px;">${dev2HubPublishCell(r)}</td>
       ${['research', 'interviews', 'pillarStatus', 'ivTier', 'assetSync', 'nextStep'].map(k => `<td style="padding:6px 10px;">${dev2VecCell(r[k])}</td>`).join('')}
     </tr>`;
   };
