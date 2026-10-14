@@ -14970,6 +14970,13 @@ Return: {
             contentHub: p["Content Hub"]?.select?.name || "",
             liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
             ivSync: p["Interview Sync"]?.select?.name || "",
+            assetClass: p["Asset Class"]?.select?.name || "Publishable",
+            pillarType: p["Pillar Type"]?.select?.name || "",
+            pillarReadiness: p["Pillar Readiness"]?.select?.name || "",
+            pillarSync: p["Pillar Sync"]?.select?.name || "",
+            interviewRequired: !!p["Interview Required"]?.checkbox,
+            parentAssetId: (p["Parent Asset"]?.relation || [])[0]?.id ? dropDash(p["Parent Asset"].relation[0].id) : null,
+            deploymentStatus: p["Deployment Status"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
             publishingDate: p["Publishing Date"]?.date?.start || null,
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash(p.Campaign.relation[0].id) : null,
@@ -14999,6 +15006,7 @@ Return: {
           const expectedSlug = hubSlugByCampId[campId] || "", st = a.status || "", sec = a.hubSectionKey || "";
           if (a.contentHub && expectedSlug && a.contentHub !== expectedSlug) return { hubPublish: "⚠ Different hub", hubLive: false };
           if (st !== "Published") return { hubPublish: st === "Publish" ? "Queued — not live" : st === "Review" ? "Review — not live" : "Not published", hubLive: false };
+          if (a.deploymentStatus && a.deploymentStatus !== "Deployed") return { hubPublish: a.deploymentStatus === "Scheduled" ? "Published · deployment scheduled" : a.deploymentStatus === "Not Applicable" ? "Published · no deployment" : "Published · not deployed", hubLive: false };
           if (!sec) return { hubPublish: /^unlisted$/i.test(a.hubSection || "") ? "Published · unlisted" : "⚠ Published · no section", hubLive: false };
           if (sec === "email") return { hubPublish: "Published · email only", hubLive: false };
           if (["offers", "news", "articles"].includes(sec) && !a.liveUrl) return { hubPublish: "⚠ Published · missing page", hubLive: false };
@@ -15014,6 +15022,9 @@ Return: {
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
+          assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
+          interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
+          deploymentStatus: a.deploymentStatus || "",
           ...hubPublishFields(a, campId),
           ...scheduleFields(a.strategySlotId),
         });
@@ -15056,7 +15067,10 @@ Return: {
               assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", ivSync: a.ivSync || "",
-              datePublished: a.status === "Published" ? a.lastEditedTime : null,
+              assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
+              interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
+              deploymentStatus: a.deploymentStatus || "",
+              datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
               ...hubPublishFields(a, t.campId),
               ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
@@ -19365,6 +19379,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         if (!slug || !assetType) return json({ error: "slug and assetType required" }, 400);
         let goals = {}; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
         const key = slug + "|" + assetType.toLowerCase();
+        const previous = goals[key] || null;
         if (body.remove) delete goals[key];
         else goals[key] = {
           slug, assetType, tracked: !!body.tracked,
@@ -19376,6 +19391,8 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           cadence: ["Weekly", "Twice monthly", "Monthly", "Quarterly", "Once", "On demand", "Inherited", "Milestone"].includes(body.cadence) ? body.cadence : "Weekly",
           weekday: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].includes(body.weekday) ? body.weekday : "Friday",
           strategy: String(body.strategy || "").trim().slice(0, 2000),
+          baselinePeriodStart: String(body.baselinePeriodStart || previous?.baselinePeriodStart || "").slice(0, 10),
+          baselinePublished: Math.max(0, Number(body.baselinePublished ?? previous?.baselinePublished) || 0),
           updatedAt: new Date().toISOString(),
         };
         await env.TRADES.put("hub2:checklist:v1", JSON.stringify(goals));
@@ -24881,13 +24898,14 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (!cid) return json({ error: "campaignId required" }, 400);
         const dashed = s => String(s || "").replace(/-/g, "").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        const [products, titles, productResearch, campaignResearch, methods, methodAssetTypes] = await Promise.all([
+        const [products, titles, productResearch, campaignResearch, methods, methodAssetTypes, assets] = await Promise.all([
           notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dashed(cid) } } }).catch(() => []),
           notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dashed(cid) } } }).catch(() => []),
           notionQuery(PRODUCT_RESEARCH_DB, {}).catch(() => []),
           notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dashed(cid) } } }).catch(() => []),
           notionQuery(METHODS_DB, {}).catch(() => []),
           notionQuery(MAT_TYPES_DB, {}).catch(() => []),
+          notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: dashed(cid) } } }).catch(() => []),
         ]);
         const txt = (p, k, type) => ((p?.[k]?.[type || "rich_text"] || []).map(x => x.plain_text).join(""));
         const campaignVersion = campaignResearch.reduce((n, r) => Math.max(n, Number(r.properties?.["Keywords Version"]?.number || 0)), 0);
@@ -24902,13 +24920,15 @@ Return ONLY a JSON array — no other text, no markdown fences:
         const allowed = new Set(productRows.map(p => p.id));
         const titleRows = titles.map(t => { const p = t.properties || {}, productId = String((p.product?.relation || [])[0]?.id || "").replace(/-/g, ""), pillarStatus = p["Pillar Status"]?.select?.name || ""; return {
           id: String(t.id).replace(/-/g, ""), title: txt(p, "Title", "title") || "Untitled", productId, stage: p.Status?.select?.name || "", pillarStatus,
-        }; }).filter(t => allowed.has(t.productId) && /^written$/i.test(t.pillarStatus));
+        }; }).filter(t => allowed.has(t.productId));
         const byName = new Map();
         methods.forEach(m => { const name = txt(m.properties, "Name", "title").trim(); if (name) byName.set(name.toLowerCase(), { id: String(m.id).replace(/-/g, ""), name }); });
         methodAssetTypes.forEach(m => { const name = txt(m.properties, "Name", "title").trim(); if (name && !byName.has(name.toLowerCase())) byName.set(name.toLowerCase(), { id: "", name }); });
         const methodRows = [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
         const used = new Set(titleRows.map(t => t.productId));
-        return json({ products: productRows.filter(p => used.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)), titles: titleRows, methods: methodRows });
+        const pillars = assets.map(a => ({ id: String(a.id).replace(/-/g, ""), name: txt(a.properties, "Asset Title", "title") || "Untitled pillar",
+          pillarType: a.properties?.["Pillar Type"]?.select?.name || "" })).filter(a => a.pillarType).sort((a,b) => a.name.localeCompare(b.name));
+        return json({ products: productRows.filter(p => used.has(p.id)).sort((a, b) => a.name.localeCompare(b.name)), titles: titleRows, methods: methodRows, pillars });
       }
 
       if (body.action === "getTitles") {
@@ -31767,16 +31787,43 @@ Rules:
 
       // ── createAsset ──────────────────────────────────────────────────
       if (body.action === "createAsset") {
-        const { titleId, campId, productId, assetTitle, platformName, assetType, assetStatus, content } = body;
+        const { titleId, campId, productId, assetTitle, platformName, assetType, assetStatus, content,
+          assetClass, pillarType, pillarReadiness, pillarSync, interviewRequired, parentAssetId, deploymentStatus } = body;
         if (!titleId || !assetTitle) return json({ error: "titleId and assetTitle required" }, 400);
         const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
+        const klass = assetClass === "Pillar" ? "Pillar" : "Publishable";
+        if (klass === "Pillar" && !String(pillarType || "").trim()) return json({ error: "Pillar Type is required for a pillar asset" }, 400);
+        const hdr = { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        await ensureAssetsDbProperties(hdr, {
+          "Asset Class": { type: "select", options: ["Publishable", "Pillar"] },
+          "Pillar Type": { type: "select", options: ["Digest", "Long Form Topical", "Long Form Sales", "Product", "Interactivity", "Job Application", "Marketplace Listing", "Generic"] },
+          "Pillar Readiness": { type: "select", options: ["Unwritten", "Writing", "Review", "Ready"] },
+          "Pillar Sync": { type: "select", options: ["In Sync", "Out of Sync"] },
+          "Interview Required": { type: "checkbox" },
+          "Deployment Status": { type: "select", options: ["Not Deployed", "Scheduled", "Deployed", "Not Applicable"] },
+        });
+        if (parentAssetId) {
+          const pr = await fetch(`https://api.notion.com/v1/pages/${dash(parentAssetId)}`, { headers: hdr });
+          const parent = await pr.json().catch(() => ({}));
+          if (!pr.ok) return json({ error: parent.message || "Parent pillar could not be loaded" }, pr.status);
+          if ((parent.properties?.["Asset Class"]?.select?.name || "") !== "Pillar") return json({ error: "The selected parent must be a Pillar asset" }, 400);
+        }
 
         const properties = {
           "Asset Title": { title: [{ text: { content: assetTitle } }] },
           "Asset Status": { select: { name: assetStatus || "Publish" } },
           "Body": { rich_text: [{ text: { content: (content || "").slice(0, 2000) } }] },
           "Content Strategy": { relation: [{ id: dash(titleId) }] },
+          "Asset Class": { select: { name: klass } },
+          "Deployment Status": { select: { name: klass === "Pillar" ? "Not Applicable" : (deploymentStatus || "Not Deployed") } },
         };
+        if (klass === "Pillar") {
+          properties["Pillar Type"] = { select: { name: String(pillarType).trim().slice(0, 100) } };
+          properties["Pillar Readiness"] = { select: { name: pillarReadiness || "Unwritten" } };
+          properties["Pillar Sync"] = { select: { name: pillarSync || "In Sync" } };
+          properties["Interview Required"] = { checkbox: !!interviewRequired };
+        }
+        if (parentAssetId) properties["Parent Asset"] = { relation: [{ id: dash(parentAssetId) }] };
         if (platformName) properties["Platform Name"] = { select: { name: platformName } };
         if (assetType)    properties["Asset Type"]    = { select: { name: assetType } };
         if (campId)       properties["Campaign"]      = { relation: [{ id: dash(campId) }] };
@@ -31785,7 +31832,7 @@ Rules:
 
         const resp = await fetch("https://api.notion.com/v1/pages", {
           method: "POST",
-          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+          headers: hdr,
           body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties })
         });
         const result = await resp.json();
@@ -41915,6 +41962,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
           else if (def.type === 'date') toAdd[name] = { date: {} };
           else if (def.type === 'number') toAdd[name] = { number: { format: "number" } };
           else if (def.type === 'select') toAdd[name] = { select: { options: (def.options || []).map(o => ({ name: o })) } };
+          else if (def.type === 'checkbox') toAdd[name] = { checkbox: {} };
         }
         if (Object.keys(toAdd).length) {
           const patchResp = await fetch(`https://api.notion.com/v1/databases/${ASSETS_DB}`, {

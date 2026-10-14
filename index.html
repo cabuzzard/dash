@@ -3656,6 +3656,19 @@
 <div class="modal-bg" id="newAssetModal" onclick="if(event.target===this)closeNewAssetModal()">
   <div class="modal">
     <div class="modal-title" id="newAssetModalTitle">New Asset</div>
+    <div class="modal-field">
+      <label class="modal-label">Asset Class</label>
+      <select class="modal-select" id="newAssetClass" onchange="newAssetClassChanged()"><option value="Publishable">Publishable asset</option><option value="Pillar">Pillar asset</option></select>
+    </div>
+    <div class="modal-field" id="newAssetPillarTypeField" style="display:none;">
+      <label class="modal-label">Pillar Type</label>
+      <select class="modal-select" id="newAssetPillarType"><option value="">Choose pillar type…</option><option>Digest</option><option>Long Form Topical</option><option>Long Form Sales</option><option>Product</option><option>Interactivity</option><option>Job Application</option><option>Marketplace Listing</option><option>Generic</option></select>
+      <label style="display:flex;align-items:center;gap:7px;margin-top:8px;font-size:11px;color:var(--text2);"><input type="checkbox" id="newAssetInterviewRequired"> Interview dependent</label>
+    </div>
+    <div class="modal-field" id="newAssetParentField">
+      <label class="modal-label">Parent Pillar <span style="font-weight:400;text-transform:none;color:var(--text3);">— optional</span></label>
+      <select class="modal-select" id="newAssetParent"><option value="">No parent pillar</option></select>
+    </div>
     <div class="modal-field" id="newAssetProductField">
       <label class="modal-label">Product</label>
       <select class="modal-select" id="newAssetProduct" onchange="newAssetProductChanged()"></select>
@@ -15320,7 +15333,7 @@ function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Chec
 const HUB2_METHOD_DEFAULTS = [
   ['Workflow','','Hub Production Run','Runs the hub build sequence from keywords through products, pillars, assets and publication.','Milestone','At hub creation; quarterly review',1,false,['Hub production run']],
   ['Pillar','','Digest','Researches, ranks and synthesizes timely sources into the weekly canonical digest pillar.','Weekly','Monday research · Thursday publish',1,true,['digest']],
-  ['Asset','Digest','Blog News SEO','Turns selected digest sources into timely SEO-first news articles.','Weekly','Within 48 hours of source selection',3,true,['Blog - SEO - News','blog news SEO']],
+  ['Asset','Digest','Blog - SEO - News','Turns selected digest sources into timely SEO-first news articles.','Weekly','Within 48 hours of source selection',3,true,['Blog News SEO','blog news SEO']],
   ['Asset','Digest','Podcast','Turns the approved digest into a segmented, voiced podcast episode and reusable clips.','Weekly','Friday',1,true,['podcast']],
   ['Asset','Digest','Newsletter Paid','Creates the premium synthesis, commentary and What Changed edition from the digest research.','Weekly','Friday after digest approval',1,true,['Newsletter paid']],
   ['Asset','Digest','Newsletter Free','Creates a concise free issue with one featured item and premium teasers.','Weekly','Wednesday or Thursday',1,true,['Newsletter free']],
@@ -15342,10 +15355,10 @@ const HUB2_METHOD_DEFAULTS = [
   ['Asset','Job Application','Resume + Cover Letter','Produces a tailored resume and cover letter package without inventing experience.','On demand','48 hours before application deadline',1,false,['Resume + Cover Letter']],
   ['Asset','Any Pillar','Pinterest Pin','Extends an approved pillar or single post into a 2:3 search-optimized Pinterest pin.','Weekly','Weekdays',5,true,['Pinterest','Pinterest Pin']],
   ['Pillar','','Marketplace Listing','Writes the canonical offer/listing package and its Etsy, Craigslist and Marketplace variants.','Monthly','At launch; refresh active listings monthly',1,false,['Marketplace Listing']],
-].map((x,i) => ({ id:'builtin-'+i, className:x[0], parent:x[1], name:x[2], description:x[3], cadence:x[4], schedule:x[5], target:x[6], tracked:false, aliases:x[8] }));
+].map((x,i) => ({ id:'builtin-'+i, className:x[0], parent:x[1], name:x[2], description:x[3], cadence:x[0]==='Pillar'?'On demand':x[4], schedule:x[0]==='Pillar'?'Write once · update when title or product changes':x[5], target:x[6], tracked:false, aliases:x[8] }));
 const HUB2_CHECKLIST_COLS = [
   {key:'parent',label:'Parent'}, {key:'name',label:'Name'}, {key:'className',label:'Class'},
-  {key:'published',label:'Published',num:true}, {key:'unpublished',label:'Unpublished',num:true}, {key:'missing',label:'Missing',num:true},
+  {key:'ready',label:'Ready',num:true}, {key:'sync',label:'Sync'}, {key:'interview',label:'Interview'}, {key:'published',label:'Published',num:true}, {key:'unpublished',label:'Unpublished',num:true}, {key:'missing',label:'Missing',num:true},
   {key:'target',label:'Goal',num:true}, {key:'progress',label:'Progress',num:true}, {key:'schedule',label:'Schedule'},
   {key:'cadence',label:'Cadence'}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}
 ];
@@ -15361,11 +15374,11 @@ async function hub2ChecklistLoad(slug, force) {
     const [worksheet, goals, dev, catalog] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), call('getDevAssetsTable'), call('getOutputOverview')]);
     if (worksheet.error || goals.error || dev.error || catalog.error) throw new Error(worksheet.error || goals.error || dev.error || catalog.error);
     DEV2_ROWS = dev.rows || []; const cid = String(h.campaignId || '').replace(/-/g, ''), hubRows = DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid), available = hub2ChecklistCatalog(catalog.methods || []), saved = Object.values(goals.goals || {}).filter(g => g && g.slug === slug && g.assetType), rows = available.filter(x => /^builtin-/.test(x.id));
-    saved.forEach(g => { if (!rows.some(x => hub2Norm(x.name) === hub2Norm(g.assetType))) rows.push({ id:'saved-'+hub2Norm(g.assetType), className:g.className || 'Asset', parent:g.parent || 'Any Pillar', name:g.assetType, description:g.description || g.strategy || '', cadence:g.cadence || 'On demand', schedule:g.schedule || '', target:+g.target || 1, tracked:!!g.tracked, aliases:[g.assetType] }); });
+    saved.forEach(g => { if (!rows.some(x => [x.name,...(x.aliases||[])].some(n => hub2Norm(n) === hub2Norm(g.assetType)))) rows.push({ id:'saved-'+hub2Norm(g.assetType), className:g.className || 'Asset', parent:g.parent || 'Any Pillar', name:g.assetType, description:g.description || g.strategy || '', cadence:g.cadence || 'On demand', schedule:g.schedule || '', target:+g.target || 1, tracked:!!g.tracked, aliases:[g.assetType] }); });
     _hub2Checklist[slug] = { loading: false, rows, goals: goals.goals || {}, available, hubRows }; hub2ChecklistPaint(slug);
   } catch (e) { _hub2Checklist[slug] = { loading: false, error: e.message }; hub2ChecklistPaint(slug); }
 }
-function hub2GoalFor(slug, type) { return ((_hub2Checklist[slug] || {}).goals || {})[slug + '|' + String(type).toLowerCase()] || null; }
+function hub2GoalFor(slug, type, aliases) { const goals=((_hub2Checklist[slug]||{}).goals||{}),exact=goals[slug+'|'+String(type).toLowerCase()];if(exact)return exact;const names=new Set([type,...(aliases||[])].map(hub2Norm));return Object.values(goals).find(g=>g&&g.slug===slug&&names.has(hub2Norm(g.assetType)))||null; }
 function hub2ChecklistCacheGoal(slug,p){const st=_hub2Checklist[slug];if(!st)return;(st.goals||={})[slug+'|'+String(p.assetType||'').toLowerCase()]={slug,...p};if(!(st.rows||[]).some(r=>hub2Norm(r.name)===hub2Norm(p.assetType)))(st.rows||=[]).push({id:'saved-'+hub2Norm(p.assetType),name:p.assetType,className:p.className||'Asset',parent:p.parent||'Any Pillar',description:p.description||p.strategy||'',cadence:p.cadence||'On demand',schedule:p.schedule||'',target:+p.target||1,tracked:!!p.tracked,aliases:[p.assetType]});hub2ChecklistPaint(slug);}
 function hub2PeriodStart(cadence) { const d = new Date(); d.setHours(0,0,0,0); if (cadence === 'Monthly') d.setDate(1); else if (cadence === 'Quarterly') d.setMonth(Math.floor(d.getMonth()/3)*3,1); else if (cadence === 'Weekly') { const n = (d.getDay() + 1) % 7; d.setDate(d.getDate() - n); } else if (cadence === 'Twice monthly') d.setDate(d.getDate() < 16 ? 1 : 16); else d.setFullYear(2000,0,1); return d; }
 function hub2NextDue(goal, complete) { if (!goal || !goal.tracked || ['On demand','Inherited','Milestone'].includes(goal.cadence)) return ''; const d = new Date(); d.setHours(0,0,0,0); if (goal.cadence === 'Monthly') { d.setMonth(d.getMonth() + (complete ? 2 : 1), 0); } else if (goal.cadence === 'Quarterly') { d.setMonth(Math.floor(d.getMonth()/3)*3 + (complete ? 6 : 3), 0); } else if (goal.cadence === 'Twice monthly') { if (d.getDate() <= 15 && !complete) d.setDate(15); else { d.setMonth(d.getMonth()+1,0); } } else if (goal.cadence === 'Once') { if (complete) return ''; } else { const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'], want = Math.max(0, days.indexOf(goal.weekday || 'Friday')), delta = (want - d.getDay() + 7) % 7; d.setDate(d.getDate() + delta + (complete ? 7 : 0)); } return d.toISOString().slice(0,10); }
@@ -15376,13 +15389,13 @@ function hub2ChecklistFilterRemove(slug,i){ _hub2ChecklistFilterOpen[slug]=true;
 function hub2ChecklistHtml(slug) {
   const st = _hub2Checklist[slug]; if (!st || st.loading) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading checklist…</div>'; if (st.error) return `<div style="font-size:11px;color:#f87171;padding:6px;">${esc(st.error)}</div>`;
   const TD = 'padding:5px 7px;border-bottom:1px solid var(--border);font-size:10.5px;white-space:nowrap;', TH = 'text-align:left;padding:5px 7px;border-bottom:1px solid var(--border2);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);white-space:nowrap;';
-  let rows = (st.rows || []).map(r => { const base = { tracked:r.tracked, target:r.target, cadence:r.cadence, schedule:r.schedule, strategy:r.description }, goal = {...base,...(hub2GoalFor(slug,r.name)||{})}, tracked=!!goal.tracked, aliases=[r.name,...(r.aliases||[])].map(hub2Norm), match=x=>aliases.includes(hub2Norm(x)); let items=[];
-    if(r.className==='Pillar') { const m=new Map(); (st.hubRows||[]).filter(x=>x.titleId&&match(x.methodName)).forEach(x=>m.set(x.titleId,x)); items=[...m.values()].map(x=>({...x,assetId:x.titleId,assetStatus:x.pillarStatus&& !/unwritten|missing/i.test(x.pillarStatus)?'Published':'Development',datePublished:x.datePublished||null})); }
-    else if(r.className==='Asset') items=(st.hubRows||[]).filter(x=>x.assetId&&(match(x.assetType)||match(x.rawAssetType)));
-    const uniq=[...new Map(items.map(x=>[x.assetId,x])).values()], pub=uniq.filter(x=>/^published$/i.test(x.assetStatus||x.status||'')), unpub=uniq.length-pub.length, start=hub2PeriodStart(goal.cadence), period=tracked?pub.filter(x=>x.datePublished&&(!start||new Date(x.datePublished)>=start)).length:null, target=tracked?(+goal.target||1):null, complete=tracked&&period>=target, due=tracked?hub2NextDue(goal,complete):'', today=new Date().toISOString().slice(0,10), status=!tracked?'':complete?'On track':due&&due<today?'Behind':due===today?'Due':'Scheduled'; return {...r,...goal,className:goal.className||r.className,parent:goal.parent!=null?goal.parent:r.parent,name:r.name,description:goal.description||goal.strategy||r.description,schedule:goal.schedule||r.schedule,cadence:goal.cadence||r.cadence,tracked,published:pub.length,unpublished:unpub,missing:tracked?Math.max(0,target-period):null,progress:period,target,complete,due,status}; });
+  let rows = (st.rows || []).map(r => { const base = { tracked:r.tracked, target:r.target, cadence:r.cadence, schedule:r.schedule, strategy:r.description }, goal = {...base,...(hub2GoalFor(slug,r.name,r.aliases)||{})}, tracked=!!goal.tracked, aliases=[r.name,...(r.aliases||[])].map(hub2Norm), match=x=>aliases.includes(hub2Norm(x)); let items=[];
+    if(r.className==='Pillar') items=(st.hubRows||[]).filter(x=>x.assetId&&x.assetClass==='Pillar'&&match(x.pillarType||x.assetType||x.rawAssetType));
+    else if(r.className==='Asset') items=(st.hubRows||[]).filter(x=>x.assetId&&x.assetClass!=='Pillar'&&(match(x.assetType)||match(x.rawAssetType)));
+    const uniq=[...new Map(items.map(x=>[x.assetId,x])).values()], pub=uniq.filter(x=>/^published$/i.test(x.assetStatus||x.status||'')), unpub=uniq.length-pub.length, isPillar=r.className==='Pillar', ready=uniq.filter(x=>/^ready$/i.test(x.pillarReadiness||'')||/^published$/i.test(x.assetStatus||'')).length, outSync=uniq.filter(x=>/^out of sync$/i.test(x.pillarSync||'')).length, interviewNeeded=uniq.filter(x=>x.interviewRequired&&!/^in sync$/i.test(x.ivSync||'')).length, start=hub2PeriodStart(goal.cadence), periodKey=start.toISOString().slice(0,10), rawPeriod=isPillar?ready:pub.filter(x=>x.datePublished&&(!start||new Date(x.datePublished)>=start)).length;let baseline=!isPillar&&goal.baselinePeriodStart===periodKey?(+goal.baselinePublished||0):0;if(tracked&&!isPillar&&!goal.baselinePeriodStart&&goal.updatedAt&&new Date(goal.updatedAt)>=start){baseline=rawPeriod;const saved=hub2GoalFor(slug,r.name,r.aliases);if(saved){saved.baselinePeriodStart=periodKey;saved.baselinePublished=baseline;setTimeout(()=>call('saveHub2ChecklistGoal',{...saved,slug,assetType:saved.assetType||r.name,baselinePeriodStart:periodKey,baselinePublished:baseline}).catch(()=>{}),0);}}const period=tracked?(isPillar?rawPeriod:Math.max(0,rawPeriod-baseline)):null,target=tracked?(+goal.target||1):null,complete=tracked&&period>=target,due=tracked&&!isPillar?hub2NextDue(goal,complete):'',today=new Date().toISOString().slice(0,10),status=!tracked?'':isPillar?(outSync?'Out of sync':interviewNeeded?'Interview needed':complete?'Pillar ready':'Needs pillar'):complete?'On track':due&&due<today?'Behind':due===today?'Due':'Scheduled'; return {...r,...goal,className:goal.className||r.className,parent:goal.parent!=null?goal.parent:r.parent,name:r.name,description:goal.description||goal.strategy||r.description,schedule:goal.schedule||r.schedule,cadence:goal.cadence||r.cadence,tracked,ready:isPillar?ready:null,sync:isPillar?(outSync?outSync+' out':'In sync'):'',interview:isPillar?(interviewNeeded?interviewNeeded+' needed':uniq.some(x=>x.interviewRequired)?'Complete':'Not required'):'',published:pub.length,unpublished:unpub,missing:tracked?Math.max(0,target-period):null,progress:period,target,complete,due,status}; });
   const raw=(r,k)=>r[k]==null?'':String(r[k]), allRows=rows.slice(), filters=_hub2ChecklistFilters[slug]||=[], active=filters.filter(f=>f.col&&f.val!=='' ); rows=rows.filter(r=>active.every(f=>{const v=raw(r,f.col),hit=f.val==='__blank__'?!v:v===f.val;return f.op==='not'?!hit:hit;}));
   const sort=_hub2ChecklistSort[slug]||=[{col:'className',asc:true},{col:'parent',asc:true},{col:'name',asc:true}]; rows=rows.slice().sort((a,b)=>{for(const s of sort){const c=HUB2_CHECKLIST_COLS.find(x=>x.key===s.col),n=c&&c.num?(+a[s.col]||0)-(+b[s.col]||0):raw(a,s.col).localeCompare(raw(b,s.col));if(n)return s.asc?n:-n;}return a.name.localeCompare(b.name);});
-  const body=rows.map(r=>{const orangeZero=r.tracked&&r.published===0,pub=r.published?String(r.published):(orangeZero?'0':'');return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.t)" data-t="${esc(r.name)}" title="${esc(r.description||'')}" style="cursor:pointer;"><td style="${TD}">${r.parent?esc(r.parent):'<span style="color:var(--text3);">—</span>'}</td><td style="${TD}color:var(--accent);text-decoration:underline dotted;text-underline-offset:2px;max-width:190px;overflow:hidden;text-overflow:ellipsis;">${esc(r.name)}</td><td style="${TD}">${esc(r.className)}</td><td style="${TD}text-align:center;color:${orangeZero?'#ff7a00':'#4ade80'};font-weight:${orangeZero?700:500};">${pub}</td><td style="${TD}text-align:center;color:${r.unpublished?'#f6ad55':'var(--text3)'};">${r.unpublished||''}</td><td style="${TD}text-align:center;color:${r.missing&&r.tracked?'#ff7a00':'var(--text3)'};">${r.tracked?r.missing:''}</td><td style="${TD}text-align:center;">${r.tracked?r.target:''}</td><td style="${TD}color:${r.tracked&&!r.complete?'#ff7a00':'var(--text2)'};">${r.tracked?r.progress+' / '+r.target:''}</td><td style="${TD}max-width:180px;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.schedule||'')}">${r.schedule?esc(r.schedule):'—'}</td><td style="${TD}">${esc(r.cadence||'—')}</td><td style="${TD}">${r.due||''}</td><td style="${TD}color:${r.status==='Behind'||r.status==='Due'?'#ff7a00':r.status==='On track'?'#4ade80':'var(--text3)'};font-weight:${r.tracked?600:400};">${r.status}</td></tr>`;}).join('');
+  const body=rows.map(r=>{const isPillar=r.className==='Pillar',orangeZero=!isPillar&&r.tracked&&r.published===0,pub=r.published?String(r.published):(orangeZero?'0':'');return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.t)" data-t="${esc(r.name)}" title="${esc(r.description||'')}" style="cursor:pointer;${isPillar?'background:rgba(255,255,255,.035);font-weight:600;':''}"><td style="${TD}">${r.parent?esc(r.parent):'<span style="color:var(--text3);">Pillar group</span>'}</td><td style="${TD}color:var(--accent);text-decoration:underline dotted;text-underline-offset:2px;max-width:190px;overflow:hidden;text-overflow:ellipsis;">${isPillar?'◆ ':'↳ '}${esc(r.name)}</td><td style="${TD}color:${isPillar?'#c4b5fd':'var(--text2)'};">${esc(r.className)}</td><td style="${TD}text-align:center;">${isPillar?(r.ready||''):''}</td><td style="${TD}color:${r.sync&&r.sync!=='In sync'?'#ff7a00':'var(--text3)'};">${esc(r.sync||'')}</td><td style="${TD}color:${/needed/.test(r.interview||'')?'#ff7a00':'var(--text3)'};">${esc(r.interview||'')}</td><td style="${TD}text-align:center;color:${orangeZero?'#ff7a00':'#4ade80'};font-weight:${orangeZero?700:500};">${pub}</td><td style="${TD}text-align:center;color:${r.unpublished?'#f6ad55':'var(--text3)'};">${r.unpublished||''}</td><td style="${TD}text-align:center;color:${r.missing&&r.tracked?'#ff7a00':'var(--text3)'};">${r.tracked?r.missing:''}</td><td style="${TD}text-align:center;">${r.tracked?r.target:''}</td><td style="${TD}color:${r.tracked&&!r.complete?'#ff7a00':'var(--text2)'};">${r.tracked?r.progress+' / '+r.target:''}</td><td style="${TD}max-width:180px;overflow:hidden;text-overflow:ellipsis;" title="${esc(r.schedule||'')}">${r.schedule?esc(r.schedule):'—'}</td><td style="${TD}">${esc(r.cadence||'—')}</td><td style="${TD}">${r.due||''}</td><td style="${TD}color:${r.status==='Behind'||r.status==='Due'||r.status==='Needs pillar'||r.status==='Out of sync'||r.status==='Interview needed'?'#ff7a00':r.status==='On track'||r.status==='Pillar ready'?'#4ade80':'var(--text3)'};font-weight:${r.tracked?600:400};">${r.status}</td></tr>`;}).join('');
   const panel=`<details ${_hub2ChecklistFilterOpen[slug]?'open':''} ontoggle="if(this.isConnected)_hub2ChecklistFilterOpen['${slug}']=this.open" style="margin-bottom:7px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><summary style="cursor:pointer;font-size:9.5px;color:${active.length?'var(--accent)':'var(--text3)'};">⚲ Filters${active.length?' ('+active.length+' active)':''}</summary><div style="padding-top:7px;display:flex;flex-direction:column;gap:6px;">${filters.map((f,i)=>{const vals=f.col?[...new Set(allRows.map(r=>raw(r,f.col)).filter(Boolean))].sort((a,b)=>a.localeCompare(b)):[];return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><select onchange="hub2ChecklistFilterSet('${slug}',${i},'col',this.value)" style="font-size:10px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">Choose column…</option>${HUB2_CHECKLIST_COLS.map(c=>`<option value="${c.key}" ${f.col===c.key?'selected':''}>${esc(c.label)}</option>`).join('')}</select><select onchange="hub2ChecklistFilterSet('${slug}',${i},'op',this.value)" style="font-size:10px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="is" ${f.op!=='not'?'selected':''}>is</option><option value="not" ${f.op==='not'?'selected':''}>is not</option></select><select onchange="hub2ChecklistFilterSet('${slug}',${i},'val',this.value)" style="font-size:10px;padding:3px 6px;min-width:170px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">Any value</option><option value="__blank__" ${f.val==='__blank__'?'selected':''}>(blank)</option>${vals.map(v=>`<option value="${esc(v)}" ${f.val===v?'selected':''}>${esc(v)}</option>`).join('')}</select><button onclick="hub2ChecklistFilterRemove('${slug}',${i})" style="border:0;background:transparent;color:var(--text3);cursor:pointer;">✕</button></div>`;}).join('')}<button onclick="hub2ChecklistFilterAdd('${slug}')" style="align-self:flex-start;font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Add filter</button></div></details>`;
   return panel+`<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;"><button onclick="hub2ChecklistAdd('${slug}')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Add method</button><span style="font-size:9.5px;color:var(--text3);">${rows.length} methods</span></div><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${HUB2_CHECKLIST_COLS.map(c=>{const i=sort.findIndex(x=>x.col===c.key),mark=i<0?'':' '+(sort[i].asc?'▲':'▼')+(sort.length>1?i+1:'');return `<th onclick="hub2ChecklistSetSort('${slug}','${c.key}',event)" style="${TH}cursor:pointer;user-select:none;">${esc(c.label)}${mark}</th>`;}).join('')}</tr></thead><tbody>${body||`<tr><td colspan="${HUB2_CHECKLIST_COLS.length}" style="${TD}color:var(--text3);">No methods match these filters.</td></tr>`}</tbody></table></div>`;
 }
@@ -24509,13 +24522,14 @@ function _renderMorningTasks(theme, briefing) {
 let _newAssetTitles = [];
 let _newAssetTypes  = [];
 let _newAssetMethods = [];
+let _newAssetPillars = [];
 let _newAssetHubSlug = '';
 let _newAssetPresetType = '';
 
 async function openNewAssetModal(slug, presetType) {
   _newAssetHubSlug = slug || '';
   _newAssetPresetType = presetType || '';
-  _newAssetTitles = []; _newAssetTypes = []; _newAssetMethods = [];
+  _newAssetTitles = []; _newAssetTypes = []; _newAssetMethods = []; _newAssetPillars = [];
   document.getElementById('newAssetModalTitle').textContent = _newAssetHubSlug ? 'Create hub asset' : 'New Asset';
   document.getElementById('newAssetProductField').style.display = _newAssetHubSlug ? '' : 'none';
   document.getElementById('newAssetTitleInput').value = '';
@@ -24523,6 +24537,11 @@ async function openNewAssetModal(slug, presetType) {
   document.getElementById('newAssetAssetTitle').value = '';
   document.getElementById('newAssetTypeInput').value = _newAssetPresetType;
   document.getElementById('newAssetPlatform').value = '';
+  document.getElementById('newAssetClass').value = 'Publishable';
+  document.getElementById('newAssetPillarType').value = '';
+  document.getElementById('newAssetInterviewRequired').checked = false;
+  document.getElementById('newAssetParent').innerHTML = '<option value="">No parent pillar</option>';
+  newAssetClassChanged();
   document.getElementById('newAssetTitleDropdown').style.display = 'none';
   document.getElementById('newAssetTypeDropdown').style.display = 'none';
   document.getElementById('newAssetSubmitBtn').disabled = false;
@@ -24538,9 +24557,11 @@ async function openNewAssetModal(slug, presetType) {
       const data = await call('getHubAssetCreationOptions', { campaignId: h.campaignId });
       _newAssetTitles = data.titles || [];
       _newAssetMethods = data.methods || [];
+      _newAssetPillars = data.pillars || [];
       _newAssetTypes = _newAssetMethods.map(m => m.name);
       const ps = document.getElementById('newAssetProduct');
       ps.innerHTML = (data.products || []).length ? (data.products || []).map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('') : '<option value="">No eligible products</option>';
+      document.getElementById('newAssetParent').innerHTML = '<option value="">No parent pillar</option>' + _newAssetPillars.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.pillarType)}</option>`).join('');
       newAssetProductChanged();
       const msg = document.getElementById('newAssetEligibility');
       msg.textContent = _newAssetTitles.length ? `${(data.products || []).length} researched product${(data.products || []).length === 1 ? '' : 's'} · ${_newAssetTitles.length} synchronized title${_newAssetTitles.length === 1 ? '' : 's'} available` : 'No eligible title yet. Finish product research and write/synchronize its pillar first.';
@@ -24554,6 +24575,15 @@ async function openNewAssetModal(slug, presetType) {
     _newAssetTitles = []; _newAssetTypes = []; _newAssetMethods = [];
     if (_newAssetHubSlug) document.getElementById('newAssetEligibility').textContent = 'Could not load eligible products and titles: ' + e.message;
   }
+}
+
+function newAssetClassChanged() {
+  const pillar = document.getElementById('newAssetClass').value === 'Pillar';
+  document.getElementById('newAssetPillarTypeField').style.display = pillar ? '' : 'none';
+  document.getElementById('newAssetParentField').style.display = pillar ? 'none' : '';
+  document.getElementById('newAssetPlatform').disabled = pillar;
+  if (pillar) { document.getElementById('newAssetPlatform').value = ''; document.getElementById('newAssetParent').value = ''; }
+  filterNewAssetTitles();
 }
 
 function newAssetProductChanged() {
@@ -24572,7 +24602,8 @@ function filterNewAssetTitles() {
   const q = document.getElementById('newAssetTitleInput').value.toLowerCase();
   const dd = document.getElementById('newAssetTitleDropdown');
   const pid = _newAssetHubSlug ? document.getElementById('newAssetProduct').value : '';
-  const matches = _newAssetTitles.filter(t => (!pid || t.productId === pid) && (!q || t.title.toLowerCase().includes(q)));
+  const pillar = document.getElementById('newAssetClass').value === 'Pillar';
+  const matches = _newAssetTitles.filter(t => (!pid || t.productId === pid) && (pillar || !_newAssetHubSlug || /^written$/i.test(t.pillarStatus || '')) && (!q || t.title.toLowerCase().includes(q)));
   if (!matches.length) { dd.style.display = 'none'; return; }
   dd.innerHTML = matches.slice(0, 30).map(t =>
     '<div style="padding:8px 12px;font-size:13px;cursor:pointer;color:var(--text);border-bottom:1px solid var(--border);" ' +
@@ -24614,9 +24645,12 @@ async function submitNewAsset() {
   const assetTitle  = document.getElementById('newAssetAssetTitle').value.trim();
   const assetType   = document.getElementById('newAssetTypeInput').value.trim();
   const platform    = document.getElementById('newAssetPlatform').value.trim();
+  const assetClass  = document.getElementById('newAssetClass').value;
+  const pillarType  = document.getElementById('newAssetPillarType').value;
 
   if (!titleInput) { showToast('Select a content strategy title', 'error'); return; }
   if (!assetTitle) { showToast('Asset title is required', 'error'); return; }
+  if (assetClass === 'Pillar' && !pillarType) { showToast('Choose a pillar type', 'error'); return; }
 
   const btn = document.getElementById('newAssetSubmitBtn');
   btn.disabled = true;
@@ -24640,6 +24674,12 @@ async function submitNewAsset() {
       methodId: ((_newAssetMethods.find(m => m.name.toLowerCase() === assetType.toLowerCase()) || {}).id || undefined),
       productId: _newAssetHubSlug ? (document.getElementById('newAssetProduct').value || undefined) : undefined,
       assetStatus: _newAssetHubSlug ? 'Planning' : undefined,
+      assetClass,
+      pillarType: assetClass === 'Pillar' ? pillarType : undefined,
+      pillarReadiness: assetClass === 'Pillar' ? 'Unwritten' : undefined,
+      pillarSync: assetClass === 'Pillar' ? 'In Sync' : undefined,
+      interviewRequired: assetClass === 'Pillar' ? document.getElementById('newAssetInterviewRequired').checked : false,
+      parentAssetId: assetClass === 'Publishable' ? (document.getElementById('newAssetParent').value || undefined) : undefined,
     });
     showToast('Asset created ✓', 'success');
     closeNewAssetModal();
