@@ -33610,14 +33610,22 @@ Call submit_keyword_cluster with your result.`;
           ...staged.map(c => ({ id: String(c.id), name: c.name || "", keywords: c.keywords || "" })),
         ].filter(t => t.id && t.name);
         if (topics.length < 2) return json({ error: "Need at least 2 topics to cluster." }, 400);
+        let mainKeywords = "";
+        try {
+          const researchRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(cid) } } });
+          mainKeywords = researchRows.map(r => (r.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").trim()).find(Boolean) || "";
+        } catch (e) {}
         const demand = await kwDemandBlock(env, topics.map(t => t.name).join(", "), { related: 15 }).catch(() => "");
         const prompt = `${researchGuidelinesBlock(body.researchGuidelines)}You are organising a campaign's SEO TOPICS into CLUSTERS — a layer above them. Each cluster is itself a real search KEYWORD (a broader head term) that groups related topics; a cluster keyword may be the same as one of its own topics.
+
+MAIN KEYWORD GROUP (use this as the campaign's semantic center and prefer cluster names that closely match it):
+${mainKeywords || "(none saved — infer from the topics)"}
 
 TOPICS (id · topic keyword · its keywords):
 ${topics.map(t => `- ${t.id} · ${t.name} · ${String(t.keywords).slice(0, 300)}`).join("\n")}
 ${demand}
 ${body.guidance ? `OPERATOR GUIDANCE (follow): ${String(body.guidance).slice(0, 600)}\n` : ""}
-Make 2-6 clusters (fewer if the topics are tight). Name each with a real searched keyword — prefer the broader, higher-volume term that the topics sit under; reuse a topic's own keyword when it IS the natural head term. Put EVERY topic in exactly one cluster; no empty clusters. Return via the submit_clusters tool.`;
+Make 2-6 BROAD clusters (fewer is better; it is acceptable to put many topics into one broad cluster). Name each with a real searched keyword — first prefer a close match from the MAIN KEYWORD GROUP, otherwise use the broader, higher-volume term that the topics sit under; reuse a topic's own keyword when it IS the natural head term. Put EVERY topic in exactly one cluster; no empty clusters. Return via the submit_clusters tool.`;
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
           headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
           body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 2000, messages: [{ role: "user", content: prompt }],

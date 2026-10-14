@@ -6766,6 +6766,16 @@ function kwHubClusterRename(name) {
 }
 function kwHubUndoOp() { KW.hubOps.pop(); KW._hubDraft = null; kwLoadResults(KW.offset); }
 function kwHubDiscard() { if (confirm('Discard all unsaved hub changes?')) { KW.hubOps = []; KW._hubDraft = null; kwLoadResults(KW.offset); } }
+async function kwHubAutoCluster() {
+  if (!KW.hub || KW.hubOps.length) return alert(KW.hubOps.length ? 'Apply or discard the staged hub changes first.' : 'Load a hub first.');
+  const msg = document.getElementById('kwHubMsg'); if (msg) msg.textContent = '⏳ Grouping every topic into a few broad clusters from the Main Keywords…';
+  try {
+    const r = await call('generateTopicClusters', { campaignId: KW.hub.cid, guidance: 'Use a small number of broad, durable categories. It is fine to place many topics together. Prefer cluster names that match the campaign Main Keywords.' });
+    if (r.error) throw new Error(r.error);
+    await kwHubLoadUI(KW.hub.cid, KW.hub.name);
+    const m = document.getElementById('kwHubMsg'); if (m) m.textContent = `✓ Grouped every topic into ${r.clusters.length} broad cluster${r.clusters.length === 1 ? '' : 's'}`;
+  } catch (e) { if (msg) msg.textContent = 'Could not group topics: ' + e.message; }
+}
 async function kwHubApply() {
   const d = kwHubDraft(); if (!d) return;
   const lines = KwHubOps.describe(KW.hub.model, d.model, d.fx);
@@ -6808,6 +6818,7 @@ function kwHubRender() {
       <span style="color:var(--text3);">${m.topics.length} topics · ${m.clusters.length} clusters · ${m.main.length} main · ${H.products.length} products${oos ? ` · <span style="color:#f6ad55;">⚠ ${oos} out of sync</span>` : ''} · ${H.titles.length} titles</span>
       <span style="margin-left:auto;display:flex;gap:6px;">
         ${H.undo && !KW.hubOps.length ? `<button class="kw-btn" onclick="kwHubUndoApply()" title="${esc((H.undo.lines || []).join('\n'))}">↶ Undo last apply</button>` : ''}
+        <button class="kw-btn" onclick="kwHubAutoCluster()" title="Use Main Keywords plus every topic's keywords to replace the current grouping with a few broad clusters">✨ Broad-cluster topics</button>
         <button class="kw-btn" onclick="kwHubLoadUI('${H.cid}', ${esc(JSON.stringify(H.name))})" title="Re-read the hub (picks up changes made elsewhere)">↻ Reload hub</button>
         <button class="kw-btn" onclick="kwHubClose()">✕ Close hub</button>
       </span>
