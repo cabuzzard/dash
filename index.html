@@ -11912,7 +11912,7 @@ function renderDev2() {
     const key = dev2RowKey(r);
     const dash = '<span style="color:var(--text3);">—</span>';
     const compactBtn = (label, tip) => `<button type="button" onclick="dev2EditOpen('${esc(key)}')" title="${esc(tip)}" style="padding:0;border:0;background:transparent;color:var(--accent);font:inherit;cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;">${esc(label)}</button>`;
-    const titleCell = r.titleId ? compactBtn('Title ' + (titleOrdinal[r.titleId] || 1), 'Open title') : dash;
+    const titleCell = r.titleId ? `<span title="${esc(r.title || 'Untitled')}" style="color:var(--accent);cursor:help;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:2px;">Title ${titleOrdinal[r.titleId] || 1}</span>` : dash;
     const assetNameCell = r.interviewId ? `<a href="#" onclick="dev2OpenInterview('${esc(r.interviewId)}');return false;" title="Answer / view this interview" style="color:var(--text);text-decoration:none;">${esc(r.assetName)}</a>` : r.assetId ? compactBtn('Asset ' + (assetOrdinal[r.assetId] || 1), 'Open asset name') : dash;
     const assetTypeCell = r.assetId ? esc(r.assetType || '?') + (/^Out of Sync/.test(r.ivSync || '') ? ivSyncBadge(/Regenerate/.test(r.ivSync) ? 'regenerate' : 'review') : '') : dash;
     const productCell = r.productId ? `<a href="https://www.notion.so/${esc(r.productId)}" target="_blank" rel="noopener" style="color:var(--text);text-decoration:none;">${esc(r.product)}</a>` : esc(r.product);
