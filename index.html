@@ -15317,10 +15317,11 @@ function renderHubs2() {
 }
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
-function hub2ChecklistTypes(table, assets) {
+function hub2ChecklistTypes(table, assets, methods) {
   const cols = (table && table.columns) || [], rows = (table && table.rows) || [], byName = n => cols.find(c => hub2Norm(c.name) === n), assetCol = byName('asset type') || byName('asset') || cols.find(c => /asset.*type|output.*type/i.test(c.name || '')), statusCol = cols.find(c => /^(status|active)$/i.test(c.name || ''));
   const out = new Map(), add = name => { name = String(name || '').trim(); if (name && !/^notes\b/i.test(name)) out.set(hub2Norm(name), name); };
   rows.forEach(r => { const c = r.cells || {}, status = statusCol ? String(c[statusCol.id] || '') : ''; if (/inactive|archived|retired|no$/i.test(status)) return; const isAssetRow = !!String(c.cmuzq36hb77sq || '').trim() || !!assetCol; if (isAssetRow) add((assetCol && c[assetCol.id]) || c.cname01 || c.cmuzq36hb77sq); });
+  (methods || []).filter(m => m && m.name && !/^delete$/i.test(m.status || '')).forEach(m => add(m.name));
   (assets || []).filter(r => r.assetId).forEach(r => add(r.assetType || r.rawAssetType));
   return [...out.values()].sort((a, b) => a.localeCompare(b));
 }
@@ -15328,9 +15329,9 @@ async function hub2ChecklistLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Checklist[slug]; if (!h || (st && st.loading) || (st && st.rows && !force)) return hub2ChecklistPaint(slug);
   _hub2Checklist[slug] = { loading: true, rows: st && st.rows || null }; hub2ChecklistPaint(slug);
   try {
-    const needAssets = force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length, [methods, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), needAssets ? call('getDevAssetsTable') : Promise.resolve({ rows: DEV2_ROWS })]);
-    if (methods.error || goals.error || dev.error) throw new Error(methods.error || goals.error || dev.error);
-    DEV2_ROWS = dev.rows || []; const cid = String(h.campaignId || '').replace(/-/g, ''), hubRows = DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid), types = hub2ChecklistTypes(methods.table, hubRows);
+    const needAssets = force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length, [worksheet, goals, dev, catalog] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), needAssets ? call('getDevAssetsTable') : Promise.resolve({ rows: DEV2_ROWS }), call('getOutputOverview')]);
+    if (worksheet.error || goals.error || dev.error || catalog.error) throw new Error(worksheet.error || goals.error || dev.error || catalog.error);
+    DEV2_ROWS = dev.rows || []; const cid = String(h.campaignId || '').replace(/-/g, ''), hubRows = DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid), types = hub2ChecklistTypes(worksheet.table, hubRows, catalog.methods || []);
     _hub2Checklist[slug] = { loading: false, rows: types.map(type => ({ type, assets: hubRows.filter(r => r.assetId && (hub2Norm(r.assetType) === hub2Norm(type) || hub2Norm(r.rawAssetType) === hub2Norm(type))) })), goals: goals.goals || {} }; hub2ChecklistPaint(slug);
   } catch (e) { _hub2Checklist[slug] = { loading: false, error: e.message }; hub2ChecklistPaint(slug); }
 }
