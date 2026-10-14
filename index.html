@@ -15276,6 +15276,7 @@ function renderHubsTab() {
 // preview, and an independent Codex Design panel (collapsed on every render).
 let HUB2_IDX = 0;
 const _hub2CodexPanels = {}, _hub2Preview = {};
+const _hub2Content = {};
 function hub2Jump(i) { HUB2_IDX = Math.max(0, Math.min(HUB_SITES.length - 1, i)); renderHubs2(); }
 function hub2Go(d) { if (!HUB_SITES.length) return; HUB2_IDX = (HUB2_IDX + d + HUB_SITES.length) % HUB_SITES.length; renderHubs2(); }
 function renderHubs2() {
@@ -15292,10 +15293,40 @@ function renderHubs2() {
       <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--border);"><b style="font-size:12px;">${esc(h.name)} preview</b><span style="font-size:10px;color:var(--text3);">live hub</span><a href="${url}" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;color:var(--accent);text-decoration:none;">open ↗</a></div>
       <iframe id="hub2Frame-${slug}" src="${url}?v=${Date.now()}" title="${esc(h.name)} preview" onload="hub2PreviewPaint('${slug}')" style="display:block;width:100%;height:70vh;min-height:520px;border:0;background:#fff;"></iframe>
     </section>
+    <details class="hub-sec" open ontoggle="if(this.open)hub2ContentLoad('${slug}')">
+      <summary><span>Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+      <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
+    </details>
     <details class="hub-sec" ontoggle="if(this.open)hub2CodexAttach('${slug}')">
       <summary><span>Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
       <div style="padding:10px 12px;"><div id="hub2CdpHost-${slug}"></div></div>
     </details>`;
+  hub2ContentLoad(slug);
+}
+async function hub2ContentLoad(slug, force) {
+  const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Content[slug]; if (!h || (st && st.loading) || (st && st.rows && !force)) return hub2ContentPaint(slug);
+  _hub2Content[slug] = { loading: true, rows: st && st.rows || null }; hub2ContentPaint(slug);
+  try {
+    let source = DEV2_ROWS;
+    if (force || !Array.isArray(source) || !source.length) { const r = await call('getDevAssetsTable'); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; }
+    const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map();
+    source.filter(r => String(r.campId || '').replace(/-/g, '') === cid && r.titleId).forEach(r => {
+      if (!byId.has(r.titleId)) byId.set(r.titleId, { id: r.titleId, cluster: r.keywordCluster || '', topic: r.keywordTopic || '', title: r.title || 'Untitled' });
+    });
+    const rows = [...byId.values()].sort((a, b) => a.cluster.localeCompare(b.cluster) || a.topic.localeCompare(b.topic) || a.title.localeCompare(b.title));
+    _hub2Content[slug] = { loading: false, rows };
+  } catch (e) { _hub2Content[slug] = { loading: false, rows: null, error: e.message }; }
+  hub2ContentPaint(slug);
+}
+function hub2ContentPaint(slug) { const el = document.getElementById('hub2Content-' + slug); if (el) el.innerHTML = hub2ContentHtml(slug); }
+function hub2ContentHtml(slug) {
+  const st = _hub2Content[slug];
+  if (!st || (st.loading && !st.rows)) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading content…</div>';
+  if (st.error) return `<div style="font-size:11px;color:#f87171;padding:6px;">${esc(st.error)}</div>`;
+  const rows = st.rows || []; if (!rows.length) return '<div style="font-size:11px;color:var(--text3);padding:6px;">No titles attached to this hub.</div>';
+  const TH = 'text-align:left;padding:6px 9px;border-bottom:1px solid var(--border2);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);';
+  const TD = 'padding:6px 9px;border-bottom:1px solid var(--border);font-size:11.5px;vertical-align:top;';
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Keyword cluster</th><th style="${TH}">Topic</th><th style="${TH}">Short title</th></tr></thead><tbody>${rows.map((r, i) => `<tr><td style="${TD}">${r.cluster ? esc(r.cluster) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}">${r.topic ? esc(r.topic) : '<span style="color:var(--text3);">—</span>'}</td><td style="${TD}"><span title="${esc(r.title)}" style="color:var(--accent);cursor:help;text-decoration:underline dotted;text-underline-offset:2px;">Title ${i + 1}</span></td></tr>`).join('')}</tbody></table></div>`;
 }
 function hub2CodexAttach(slug) {
   const host = document.getElementById('hub2CdpHost-' + slug), h = HUB_SITES.find(x => x.slug === slug); if (!host || !h || !h.campaignId || !window.CodexDesignPanel) return;
