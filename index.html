@@ -15289,18 +15289,25 @@ function renderHubs2() {
       <div style="display:flex;gap:5px;flex-wrap:wrap;">${HUB_SITES.map((x, i) => `<button onclick="hub2Jump(${i})" style="${B}border-color:${i === HUB2_IDX ? 'var(--accent)' : 'var(--border2)'};color:${i === HUB2_IDX ? 'var(--text)' : 'var(--text3)'};background:${i === HUB2_IDX ? 'var(--surface2)' : 'transparent'};">${esc(x.name)}</button>`).join('')}</div>
       <div style="display:flex;gap:7px;align-items:center;"><span style="font-size:11px;color:var(--text3);">${HUB2_IDX + 1} / ${HUB_SITES.length}</span><button onclick="hub2Go(-1)" style="${B}">‹</button><button onclick="hub2Go(1)" style="${B}">›</button></div>
     </div>
-    <section style="border:1px solid var(--border);border-radius:10px;background:var(--surface);overflow:hidden;margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 11px;border-bottom:1px solid var(--border);"><b style="font-size:12px;">${esc(h.name)} preview</b><span style="font-size:10px;color:var(--text3);">live hub</span><a href="${url}" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;color:var(--accent);text-decoration:none;">open ↗</a></div>
-      <iframe id="hub2Frame-${slug}" src="${url}?v=${Date.now()}" title="${esc(h.name)} preview" onload="hub2PreviewPaint('${slug}')" style="display:block;width:100%;height:70vh;min-height:520px;border:0;background:#fff;"></iframe>
-    </section>
-    <details class="hub-sec" open ontoggle="if(this.open)hub2ContentLoad('${slug}')">
-      <summary><span>Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
-      <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
-    </details>
-    <details class="hub-sec" ontoggle="if(this.open)hub2CodexAttach('${slug}')">
-      <summary><span>Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
-      <div style="padding:10px 12px;"><div id="hub2CdpHost-${slug}"></div></div>
-    </details>`;
+    <div class="hub-layout">
+      <div class="hub-left">
+        <details class="hub-sec" open ontoggle="if(this.open)hub2ContentLoad('${slug}')">
+          <summary><span>Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
+        </details>
+        <details class="hub-sec" ontoggle="if(this.open)hub2CodexAttach('${slug}')">
+          <summary><span>Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
+          <div style="padding:10px 12px;"><div id="hub2CdpHost-${slug}"></div></div>
+        </details>
+      </div>
+      <div class="hub-rail">
+        <div class="hub-rail-head"><b style="font-size:12px;">${esc(h.name)} preview</b><span style="font-size:10px;color:var(--text3);">live hub</span><a href="${url}" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;color:var(--accent);text-decoration:none;">open ↗</a></div>
+        <div class="hub-rail-frame" id="hub2Wrap-${slug}" style="height:600px;">
+          <iframe id="hub2Frame-${slug}" src="${url}?v=${Date.now()}" title="${esc(h.name)} preview" onload="hub2PreviewLoaded('${slug}')" style="width:1280px;height:600px;"></iframe>
+        </div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the preview column.</div>
+      </div>
+    </div>`;
   hub2ContentLoad(slug);
 }
 async function hub2ContentLoad(slug, force) {
@@ -15375,6 +15382,20 @@ function hub2CodexAttach(slug) {
     preview: d => { _hub2Preview[slug] = d; hub2PreviewPaint(slug); }, onSaved: () => {} }) }; }
   host.appendChild(p.el);
 }
+function hub2PreviewLoaded(slug) {
+  hub2PreviewPaint(slug);
+  hub2PreviewFit(slug);
+  [300, 900, 2200].forEach(ms => setTimeout(() => hub2PreviewFit(slug), ms));
+}
+function hub2PreviewFit(slug) {
+  const f = document.getElementById('hub2Frame-' + slug), wrap = document.getElementById('hub2Wrap-' + slug); if (!f || !wrap) return;
+  const w = wrap.clientWidth || 0; if (w < 40) return;
+  let h = 0; try { const d = f.contentDocument; if (d && d.body) h = Math.max(d.body.scrollHeight, d.documentElement.scrollHeight, d.body.offsetHeight); } catch (e) {}
+  if (!h) h = 2400;
+  const scale = w / 1280; f.style.width = '1280px'; f.style.height = h + 'px'; f.style.transform = 'scale(' + scale + ')';
+  wrap.style.height = Math.max(120, Math.round(h * scale)) + 'px';
+}
+window.addEventListener('resize', () => { try { const h = HUB_SITES[HUB2_IDX]; if (h) hub2PreviewFit(h.slug); } catch (e) {} });
 function hub2PreviewPaint(slug) {
   const f = document.getElementById('hub2Frame-' + slug); let doc; try { doc = f && f.contentDocument; } catch (e) { return; } if (!doc || !doc.documentElement) return;
   const d = _hub2Preview[slug]; let st = doc.getElementById('hub2PreviewStyle'), ln = doc.getElementById('hub2PreviewFonts');
