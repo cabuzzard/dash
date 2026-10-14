@@ -14938,6 +14938,7 @@ Return: {
             id: dropDash(a.id),
             methodId,
             name: (p["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "",
+            platformTitle: (p["Platform Title"]?.rich_text || []).map(x => x.plain_text).join("") || "",
             assetType: p["Asset Type"]?.select?.name || "",
             status: p["Asset Status"]?.select?.name || "",
             hubSection: p["Hub Section"]?.select?.name || "",
@@ -14981,6 +14982,7 @@ Return: {
         };
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name,
+          platformTitle: a.platformTitle || "",
           assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "",
           datePublished: a.status === "Published" ? a.lastEditedTime : null,
@@ -15014,6 +15016,7 @@ Return: {
             rows.push({
               ...base,
               kind: "asset", assetName: a.name,
+              platformTitle: a.platformTitle || "",
               assetId: a.id,
               // assetType is the display value (Method name, when stamped
               // — that's what the column header promises); rawAssetType is
