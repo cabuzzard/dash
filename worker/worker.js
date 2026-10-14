@@ -19343,7 +19343,11 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         else goals[key] = {
           slug, assetType, tracked: !!body.tracked,
           target: Math.max(1, Math.min(99, Number(body.target) || 1)),
-          cadence: ["Weekly", "Monthly", "Once"].includes(body.cadence) ? body.cadence : "Weekly",
+          className: ["Pillar", "Asset", "Workflow"].includes(body.className) ? body.className : "Asset",
+          parent: String(body.parent || "").trim().slice(0, 160),
+          description: String(body.description || body.strategy || "").trim().slice(0, 4000),
+          schedule: String(body.schedule || "").trim().slice(0, 240),
+          cadence: ["Weekly", "Twice monthly", "Monthly", "Quarterly", "Once", "On demand", "Inherited", "Milestone"].includes(body.cadence) ? body.cadence : "Weekly",
           weekday: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].includes(body.weekday) ? body.weekday : "Friday",
           strategy: String(body.strategy || "").trim().slice(0, 2000),
           updatedAt: new Date().toISOString(),
