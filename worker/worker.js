@@ -19324,6 +19324,34 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         return json({ success: true, saved: rows.length });
       }
 
+      // Content Hubs 2 production checklist. Methods define which asset
+      // types are available; this small KV record only stores the operator's
+      // per-hub decision to track a type and its cadence/goal.
+      if (body.action === "getHub2ChecklistGoals") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let goals = {}; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
+        return json({ success: true, goals });
+      }
+      if (body.action === "saveHub2ChecklistGoal") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const slug = String(body.slug || "").replace(/[^a-z0-9-]/gi, "").slice(0, 80);
+        const assetType = String(body.assetType || "").trim().slice(0, 160);
+        if (!slug || !assetType) return json({ error: "slug and assetType required" }, 400);
+        let goals = {}; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
+        const key = slug + "|" + assetType.toLowerCase();
+        if (body.remove) delete goals[key];
+        else goals[key] = {
+          slug, assetType, tracked: !!body.tracked,
+          target: Math.max(1, Math.min(99, Number(body.target) || 1)),
+          cadence: ["Weekly", "Monthly", "Once"].includes(body.cadence) ? body.cadence : "Weekly",
+          weekday: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].includes(body.weekday) ? body.weekday : "Friday",
+          strategy: String(body.strategy || "").trim().slice(0, 2000),
+          updatedAt: new Date().toISOString(),
+        };
+        await env.TRADES.put("hub2:checklist:v1", JSON.stringify(goals));
+        return json({ success: true, goal: goals[key] || null });
+      }
+
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
       // rows = the same hubs/landing pages (and order) as the Hub Method
       // Matrix above, columns fully operator-defined (add/rename/delete/

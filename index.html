@@ -15277,7 +15277,7 @@ function renderHubsTab() {
 // preview, and an independent Codex Design panel (collapsed on every render).
 let HUB2_IDX = 0;
 const _hub2CodexPanels = {}, _hub2Preview = {};
-const _hub2Content = {}, _hub2ContentSort = {}, _hub2ContentGroup = {}, _hub2ContentClosed = {}, _hub2ContentFilters = {}, _hub2ContentFilterOpen = {}, _hub2Selected = {}, _hub2BulkMsg = {};
+const _hub2Content = {}, _hub2ContentSort = {}, _hub2ContentGroup = {}, _hub2ContentClosed = {}, _hub2ContentFilters = {}, _hub2ContentFilterOpen = {}, _hub2Selected = {}, _hub2BulkMsg = {}, _hub2Checklist = {};
 function hub2Jump(i) { HUB2_IDX = Math.max(0, Math.min(HUB_SITES.length - 1, i)); renderHubs2(); }
 function hub2Go(d) { if (!HUB_SITES.length) return; HUB2_IDX = (HUB2_IDX + d + HUB_SITES.length) % HUB_SITES.length; renderHubs2(); }
 function renderHubs2() {
@@ -15292,7 +15292,11 @@ function renderHubs2() {
     </div>
     <div class="hub-layout">
       <div class="hub-left">
-        <details class="hub-sec" open ontoggle="if(this.open)hub2ContentLoad('${slug}')">
+        <details class="hub-sec" open ontoggle="if(this.open)hub2ChecklistLoad('${slug}')">
+          <summary><span>Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">published · unpublished · goals · cadence</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hub2Checklist-${slug}" style="padding:8px 12px;">${hub2ChecklistHtml(slug)}</div>
+        </details>
+        <details class="hub-sec" ontoggle="if(this.open)hub2ContentLoad('${slug}')">
           <summary><span>Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
         </details>
@@ -15309,8 +15313,42 @@ function renderHubs2() {
         <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the preview column.</div>
       </div>
     </div>`;
-  hub2ContentLoad(slug);
+  hub2ChecklistLoad(slug);
 }
+const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
+function hub2ChecklistTypes(table, assets) {
+  const cols = (table && table.columns) || [], rows = (table && table.rows) || [], byName = n => cols.find(c => hub2Norm(c.name) === n), assetCol = byName('asset type') || byName('asset') || cols.find(c => /asset.*type|output.*type/i.test(c.name || '')), statusCol = cols.find(c => /^(status|active)$/i.test(c.name || ''));
+  const out = new Map(), add = name => { name = String(name || '').trim(); if (name && !/^notes\b/i.test(name)) out.set(hub2Norm(name), name); };
+  rows.forEach(r => { const c = r.cells || {}, status = statusCol ? String(c[statusCol.id] || '') : ''; if (/inactive|archived|retired|no$/i.test(status)) return; const isAssetRow = !!String(c.cmuzq36hb77sq || '').trim() || !!assetCol; if (isAssetRow) add((assetCol && c[assetCol.id]) || c.cname01 || c.cmuzq36hb77sq); });
+  (assets || []).filter(r => r.assetId).forEach(r => add(r.assetType || r.rawAssetType));
+  return [...out.values()].sort((a, b) => a.localeCompare(b));
+}
+async function hub2ChecklistLoad(slug, force) {
+  const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Checklist[slug]; if (!h || (st && st.loading) || (st && st.rows && !force)) return hub2ChecklistPaint(slug);
+  _hub2Checklist[slug] = { loading: true, rows: st && st.rows || null }; hub2ChecklistPaint(slug);
+  try {
+    const needAssets = force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length, [methods, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), needAssets ? call('getDevAssetsTable') : Promise.resolve({ rows: DEV2_ROWS })]);
+    if (methods.error || goals.error || dev.error) throw new Error(methods.error || goals.error || dev.error);
+    DEV2_ROWS = dev.rows || []; const cid = String(h.campaignId || '').replace(/-/g, ''), hubRows = DEV2_ROWS.filter(r => String(r.campId || '').replace(/-/g, '') === cid), types = hub2ChecklistTypes(methods.table, hubRows);
+    _hub2Checklist[slug] = { loading: false, rows: types.map(type => ({ type, assets: hubRows.filter(r => r.assetId && (hub2Norm(r.assetType) === hub2Norm(type) || hub2Norm(r.rawAssetType) === hub2Norm(type))) })), goals: goals.goals || {} }; hub2ChecklistPaint(slug);
+  } catch (e) { _hub2Checklist[slug] = { loading: false, error: e.message }; hub2ChecklistPaint(slug); }
+}
+function hub2GoalFor(slug, type) { return ((_hub2Checklist[slug] || {}).goals || {})[slug + '|' + String(type).toLowerCase()] || null; }
+function hub2PeriodStart(cadence) { const d = new Date(); d.setHours(0,0,0,0); if (cadence === 'Monthly') d.setDate(1); else if (cadence === 'Weekly') { const n = (d.getDay() + 6) % 7; d.setDate(d.getDate() - n); } else d.setFullYear(2000,0,1); return d; }
+function hub2NextDue(goal, complete) { if (!goal || !goal.tracked) return ''; const d = new Date(); d.setHours(0,0,0,0); if (goal.cadence === 'Monthly') { d.setMonth(d.getMonth() + (complete ? 1 : 0), 1); d.setMonth(d.getMonth() + 1); d.setDate(0); } else if (goal.cadence === 'Once') { if (complete) return ''; } else { const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'], want = Math.max(0, days.indexOf(goal.weekday || 'Friday')), delta = (want - d.getDay() + 7) % 7; d.setDate(d.getDate() + delta + (complete ? 7 : 0)); } return d.toISOString().slice(0,10); }
+function hub2ChecklistHtml(slug) {
+  const st = _hub2Checklist[slug]; if (!st || st.loading) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading checklist…</div>'; if (st.error) return `<div style="font-size:11px;color:#f87171;padding:6px;">${esc(st.error)}</div>`;
+  const rows = st.rows || [], TD = 'padding:5px 7px;border-bottom:1px solid var(--border);font-size:10.5px;white-space:nowrap;', TH = 'text-align:left;padding:5px 7px;border-bottom:1px solid var(--border2);font-size:9.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text3);white-space:nowrap;';
+  const body = rows.map(r => { const goal = hub2GoalFor(slug, r.type), tracked = !!(goal && goal.tracked), uniq = [...new Map(r.assets.map(a => [a.assetId, a])).values()], pub = uniq.filter(a => /^published$/i.test(a.assetStatus || a.status || '')), unpub = uniq.length - pub.length, start = goal ? hub2PeriodStart(goal.cadence) : null, period = tracked ? pub.filter(a => !start || !a.datePublished || new Date(a.datePublished) >= start).length : 0, target = tracked ? (+goal.target || 1) : 0, complete = tracked && period >= target, due = hub2NextDue(goal, complete), today = new Date().toISOString().slice(0,10), status = !tracked ? 'Not tracked' : complete ? 'On track' : due && due < today ? 'Behind' : due === today ? 'Due' : 'Scheduled', orangeZero = tracked && pub.length === 0, missing = uniq.length === 0; return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.t)" data-t="${esc(r.type)}" style="cursor:pointer;"><td style="${TD}color:var(--accent);text-decoration:underline dotted;text-underline-offset:2px;max-width:210px;overflow:hidden;text-overflow:ellipsis;">${esc(r.type)}</td><td style="${TD}text-align:center;color:${orangeZero ? '#ff7a00' : '#4ade80'};font-weight:${orangeZero ? 700 : 500};">${pub.length}</td><td style="${TD}text-align:center;color:${unpub ? '#f6ad55' : 'var(--text3)'};">${unpub}</td><td style="${TD}color:${missing && tracked ? '#ff7a00' : 'var(--text3)'};">${missing ? (tracked ? 'No asset' : '—') : '—'}</td><td style="${TD}">${tracked ? target + ' / ' + goal.cadence.toLowerCase() : '—'}</td><td style="${TD}color:${tracked && !complete ? '#ff7a00' : 'var(--text2)'};">${tracked ? period + ' / ' + target : '—'}</td><td style="${TD}">${tracked ? esc(goal.cadence + (goal.cadence === 'Weekly' ? ' · ' + goal.weekday : '')) : '—'}</td><td style="${TD}">${due || '—'}</td><td style="${TD}color:${status === 'Behind' || status === 'Due' ? '#ff7a00' : status === 'On track' ? '#4ade80' : 'var(--text3)'};font-weight:${tracked ? 600 : 400};">${status}</td></tr>`; }).join('');
+  return `<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr><th style="${TH}">Content type</th><th style="${TH}">Published</th><th style="${TH}">Unpublished</th><th style="${TH}">Missing</th><th style="${TH}">Goal</th><th style="${TH}">Progress</th><th style="${TH}">Cadence</th><th style="${TH}">Next due</th><th style="${TH}">Status</th></tr></thead><tbody>${body || `<tr><td colspan="9" style="${TD}color:var(--text3);">No active content types found.</td></tr>`}</tbody></table></div>`;
+}
+function hub2ChecklistEdit(slug, type) {
+  const g = hub2GoalFor(slug, type) || { tracked:false, target:1, cadence:'Weekly', weekday:'Friday', strategy:'' }, IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 10px;';
+  hcModal(`<h3 style="margin:0 0 3px;">${esc(type)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:12px;">Production goal for this hub</div><label style="display:flex;gap:7px;align-items:center;font-size:12px;margin-bottom:12px;"><input id="h2gTrack" type="checkbox" ${g.tracked ? 'checked' : ''}> Track this content type</label><label class="modal-label">Goal quantity</label><input id="h2gTarget" type="number" min="1" max="99" value="${+g.target || 1}" style="${IN}"><label class="modal-label">Cadence</label><select id="h2gCadence" style="${IN}" onchange="document.getElementById('h2gDayWrap').style.display=this.value==='Weekly'?'block':'none'">${['Weekly','Monthly','Once'].map(x => `<option ${g.cadence === x ? 'selected' : ''}>${x}</option>`).join('')}</select><div id="h2gDayWrap" style="display:${g.cadence === 'Weekly' ? 'block' : 'none'}"><label class="modal-label">Schedule day</label><select id="h2gDay" style="${IN}">${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map(x => `<option ${g.weekday === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div><label class="modal-label">Strategy notes</label><textarea id="h2gStrategy" rows="4" style="${IN}resize:vertical;" placeholder="What this content should accomplish or how it should be produced">${esc(g.strategy || '')}</textarea><div style="display:flex;gap:7px;"><button class="modal-btn" onclick="hcModalRun(this,()=>hub2ChecklistSave('${slug}',this.dataset.t))" data-t="${esc(type)}">Save</button>${g.tracked ? `<button class="modal-btn" style="background:transparent;border-color:var(--border2);color:var(--text3);" onclick="hcModalRun(this,()=>hub2ChecklistRemove('${slug}',this.dataset.t))" data-t="${esc(type)}">Stop tracking</button>` : ''}${HC_CANCEL}</div>`);
+}
+async function hub2ChecklistSave(slug, type) { const r = await call('saveHub2ChecklistGoal', { slug, assetType:type, tracked:!!document.getElementById('h2gTrack').checked, target:+document.getElementById('h2gTarget').value || 1, cadence:document.getElementById('h2gCadence').value, weekday:document.getElementById('h2gDay').value, strategy:document.getElementById('h2gStrategy').value }); if (!r || r.error) return (r && r.error) || 'Not saved'; await hub2ChecklistLoad(slug, true); return true; }
+async function hub2ChecklistRemove(slug, type) { const r = await call('saveHub2ChecklistGoal', { slug, assetType:type, remove:true }); if (!r || r.error) return (r && r.error) || 'Not saved'; await hub2ChecklistLoad(slug, true); return true; }
 async function hub2ContentLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Content[slug]; if (!h || (st && st.loading) || (st && st.rows && !force)) return hub2ContentPaint(slug);
   _hub2Content[slug] = { loading: true, rows: st && st.rows || null }; hub2ContentPaint(slug);
