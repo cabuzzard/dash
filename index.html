@@ -15332,8 +15332,7 @@ async function hub2ContentLoad(slug, force) {
 function hub2ContentPaint(slug) { const el = document.getElementById('hub2Content-' + slug); if (el) el.innerHTML = hub2ContentHtml(slug); }
 function hub2ContentSetSort(slug, col, ev) {
   const s = _hub2ContentSort[slug] ||= [{ col: 'cluster', asc: true }, { col: 'topic', asc: true }], i = s.findIndex(x => x.col === col), multi = ev && (ev.ctrlKey || ev.metaKey || ev.shiftKey);
-  if (ev && ev.altKey) { if (i >= 0) s.splice(i, 1); }
-  else if (!multi) _hub2ContentSort[slug] = i === 0 && s.length === 1 ? [{ col, asc: !s[0].asc }] : [{ col, asc: true }];
+  if (!multi) _hub2ContentSort[slug] = i === 0 && s.length === 1 ? [{ col, asc: !s[0].asc }] : [{ col, asc: true }];
   else if (i < 0) s.push({ col, asc: true }); else if (s[i].asc) s[i].asc = false; else s.splice(i, 1);
   hub2ContentPaint(slug);
 }
