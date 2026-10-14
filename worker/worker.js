@@ -15010,7 +15010,10 @@ Return: {
           platformTitle: a.platformTitle || "",
           assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "",
-          datePublished: a.status === "Published" ? (a.publishingDate || a.lastEditedTime) : null,
+          // Cadence progress must use the explicit publication event only.
+          // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
+          // etc. and would falsely make old work look newly published.
+          datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
           ...hubPublishFields(a, campId),
           ...scheduleFields(a.strategySlotId),
         });
