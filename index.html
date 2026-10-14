@@ -4241,6 +4241,7 @@
 </div>
 
 <script src="shared/design-panel.js?v=2026101301"></script>
+<script src="shared/codex-design-panel.js?v=2026101301"></script>
 <script src="shared/interview-panel.js?v=2026101101"></script>
 <script src="worker/kw-hub-ops.mjs?v=2026101202"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
@@ -15065,6 +15066,12 @@ function renderHubsTab() {
         </details>
       </div>
     </details>
+    <details class="hub-sec" ${hubSecOpen('codexdesign') ? 'open' : ''} ontoggle="hubSecToggle('codexdesign', this.open);if(this.open)hubCodexDesignAttach('${slug}')">
+      <summary><span>Codex Design</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">prompt · structured return · stage · approve</span></summary>
+      <div style="padding:10px 12px;">
+        <div id="cdpHost-${slug}"></div>
+      </div>
+    </details>
     <details class="hub-sec" id="hubClientSec-${slug}" ${hubSecOpen('clients') ? 'open' : ''} ontoggle="hubSecToggle('clients', this.open);if(this.open)hubClientLoad('${slug}')">
       <summary><span>Client artifacts</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${_hubClients[slug] ? _hubClients[slug].links.filter(l => !l.revoked).length + ' client link' + (_hubClients[slug].links.filter(l => !l.revoked).length === 1 ? '' : 's') + ' · ' + _hubClients[slug].links.reduce((n, l) => n + (l.items || []).filter(x => x.assetId).length, 0) + ' scripts' : 'Client Studio links + the scripts clients made'}</span>
         <button onclick="event.preventDefault();event.stopPropagation();hubClientLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
@@ -15125,6 +15132,7 @@ function renderHubsTab() {
   </div>`;
   setTimeout(() => { hubRailFit(slug); hubRailObserve(slug); }, 80);
   if (hubSecOpen('design') || _hubDesignPanels[slug]) hubDesignAttach(slug);   // lazy: mounts on first open of Design, then stays
+  if (hubSecOpen('codexdesign') || _hubCodexDesignPanels[slug]) hubCodexDesignAttach(slug);
 }
 
 // ── ⟲ Re-run from keywords: the shared rebuild modal (shared/hub-rerun.js) for one hub
@@ -15183,6 +15191,19 @@ function hubDesignAttach(slug) {
       if (had !== has) renderHubsTab(); hubPreviewPaint(slug); },
     onBuilt: url => { if (url) { _hubRailMock[slug] = url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(); renderHubsTab(); } },
     beforeBuild: () => hubFlowPreflight(slug), onSaved: () => { _hubBuildFetched[slug] = false; } }) }; }
+  host.appendChild(p.el);
+}
+// Independent Codex Design workspace. It shares only the designSpec data contract;
+// the original Design panel above is not replaced or modified.
+const _hubCodexDesignPanels = {};
+function hubCodexDesignAttach(slug) {
+  const host = document.getElementById('cdpHost-' + slug); if (!host) return;
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || !window.CodexDesignPanel) return;
+  let p = _hubCodexDesignPanels[slug];
+  if (!p) { const el = document.createElement('div'); p = _hubCodexDesignPanels[slug] = { el, api: window.CodexDesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
+    preview: d => { _hubDesignPreview[slug] = d; hubPreviewPaint(slug); },
+    onSaved: () => { _hubBuildFetched[slug] = false; }
+  }) }; }
   host.appendChild(p.el);
 }
 // ── Left-column collapsible sections (open/closed remembered per section) ──
