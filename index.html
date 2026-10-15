@@ -15450,7 +15450,7 @@ async function hub2KsRepropose(slug, btn) {
   catch (e) { st.busy = ''; hub2KsPaint(slug); showToast('Not proposed: ' + e.message, 'error'); }
 }
 const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // shown grayed out, no ＋ (operator 2026-10-15)
-const HUB2_CRON_ROWS = /^digest - news seo$/i;   // automated: the hub news cron writes one per digest period (status "Cron")
+const HUB2_CRON_ROWS = /^digest - (news seo|free newsletter)$/i;   // automated: the hub news cron writes one article + one newsletter issue (AC draft) per digest period (status "Cron")
 const HUB2_PARENT_DRIVEN = /^digest$/i;   // children are due per published parent in the parent's period (operator 2026-10-15)
 // last day of the current period (week ends Friday night, month on its last day) as YYYY-MM-DD
 function hub2PeriodEndISO(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); else return ''; return d.toISOString().slice(0, 10); }
@@ -15516,7 +15516,10 @@ function hub2ChecklistRows(slug) {
     const pStart = pRow ? hub2PeriodStart(pRow.cadence) : null;
     const parents = pRow ? hub2RowItems(st, pRow).filter(x => /^published$/i.test(x.assetStatus || x.status || '') && x.datePublished && new Date(x.datePublished) >= pStart).length : 0;
     const start = pStart || hub2PeriodStart(m.cadence), periodKey = start.toISOString().slice(0, 10);
-    const raw = pub.filter(x => x.datePublished && new Date(x.datePublished) >= start).length;
+    // cron rows count what the cron delivers in the period — a newsletter issue is an ActiveCampaign DRAFT (Review), dated by creation
+    const isCron = HUB2_CRON_ROWS.test(m.name);
+    const raw = isCron ? items.filter(x => /^(review|publish|published)$/i.test(x.assetStatus || x.status || '') && (x.datePublished || x.dateCreated) && new Date(x.datePublished || x.dateCreated) >= start).length
+      : pub.filter(x => x.datePublished && new Date(x.datePublished) >= start).length;
     let baseline = t && t.baselinePeriodStart === periodKey ? (+t.baselinePublished || 0) : 0;
     // tracking switched on mid-period: what was already published this period doesn't count toward the goal
     if (tracked && !t.baselinePeriodStart && t.updatedAt && new Date(t.updatedAt) >= start) { baseline = raw; t.baselinePeriodStart = periodKey; t.baselinePublished = raw;
