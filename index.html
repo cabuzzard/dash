@@ -15951,9 +15951,61 @@ async function hub2FreeNlWrite(btn) {
     btn.textContent = '✓ Done'; hub2ChecklistLoad(H2F.slug, true);
   } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '📧 Create email draft'; }
 }
+// ── ＋ Topical - SEO Post (checklist) — hand-initiated only (operator 2026-10-15; never queued to a cron). 💡 Generate ideas
+// (worker buildHubTopicIdeas: the hub's keyword topics + real Google long-tail searches + audience → 10 evergreen SEO post ideas,
+// saved per hub; getHubTopicIdeas reads them back) → tick → Create (createTopicalAssets, synced main products only: a title +
+// a Topical Post asset on the best-fit main offering) → ✍ Write each (writeTopicalPost: its 5-question SEO interview first).
+const H2T = { slug: '', ideas: [], picked: {}, made: {} };
+async function hub2TopicalModal(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  Object.assign(H2T, { slug, ideas: [], picked: {}, made: {} });
+  kwWideModal(`<h3 style="margin:0 0 4px;">＋ Topical - SEO Post</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Evergreen SEO articles, each targeting one real long-tail search inside one of this hub's keyword topics. Generate ideas, tick the ones you want, create them, then ✍ Write — each asks a short 5-question interview first.</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2TopicalGenerate(this)">💡 Generate 10 ideas</button><span id="h2tMsg" style="font-size:11px;color:var(--text3);">Loading saved ideas…</span></div>
+    <div id="h2tList" style="max-height:46vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button class="modal-btn" id="h2tCreate" onclick="hub2TopicalCreate(this)">Create ticked posts</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2tCreateMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`);
+  try { const r = await call('getHubTopicIdeas', { campaignId: h.campaignId }); if (r.error) throw new Error(r.error);
+    H2T.ideas = r.ideas || []; const m = document.getElementById('h2tMsg');
+    if (m) m.textContent = H2T.ideas.length ? `${H2T.ideas.length} saved ideas from ${r.at ? new Date(r.at).toLocaleDateString() : 'earlier'} — or generate a fresh 10` : 'No saved ideas yet — generate 10.'; }
+  catch (e) { const m = document.getElementById('h2tMsg'); if (m) m.textContent = 'Could not load saved ideas: ' + e.message; }
+  hub2TopicalRender();
+}
+async function hub2TopicalGenerate(btn) {
+  const h = HUB_SITES.find(x => x.slug === H2T.slug), m = document.getElementById('h2tMsg'); if (!h) return;
+  btn.disabled = true; m.textContent = '⏳ Reading the hub\'s topics + real long-tail searches (~1 min)…';
+  try { const r = await call('buildHubTopicIdeas', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no ideas');
+    H2T.ideas = r.ideas || []; H2T.picked = {}; m.textContent = `✓ ${H2T.ideas.length} new ideas`; hub2TopicalRender(); }
+  catch (e) { m.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
+}
+function hub2TopicalRender() {
+  const box = document.getElementById('h2tList'); if (!box) return;
+  if (!H2T.ideas.length) { box.innerHTML = ''; return; }
+  const byTopic = {}; H2T.ideas.forEach((x, i) => (byTopic[x.topic || '—'] ||= []).push([x, i]));
+  box.innerHTML = Object.entries(byTopic).map(([topic, list]) => `<div style="margin:6px 0 2px;font-size:11px;font-weight:700;color:var(--text2);text-transform:uppercase;letter-spacing:.04em;">${esc(topic)}</div>`
+    + list.map(([x, i]) => { const made = H2T.made[i];
+      return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);font-size:11.5px;">
+        ${made ? '<span style="width:13px;color:#4ade80;">✓</span>' : `<input type="checkbox" ${H2T.picked[i] ? 'checked' : ''} onchange="H2T.picked[${i}]=this.checked" style="margin-top:2px;">`}
+        <span style="flex:1;"><b>${esc(x.headline)}</b><br><span style="color:var(--text3);">🔎 ${esc(x.keyword)}${x.intent ? ' · ' + esc(x.intent) : ''}</span>${x.angle ? `<br><span style="color:var(--text2);">${esc(x.angle)}</span>` : ''}</span>
+        ${made && made.assetId ? `<span style="display:flex;flex-direction:column;gap:3px;align-items:flex-end;"><button class="kw-btn" onclick="topicalWrite('${esc(made.assetId)}', this)">✍ Write</button><span style="font-size:10px;color:var(--text3);">${esc(made.offering || '')}</span></span>`
+          : made && made.error ? `<span style="color:#f87171;font-size:10.5px;max-width:180px;">${esc(made.error)}</span>` : ''}</div>`; }).join('')).join('');
+}
+async function hub2TopicalCreate(btn) {
+  const msg = document.getElementById('h2tCreateMsg'), picked = H2T.ideas.map((x, i) => [x, i]).filter(([x, i]) => H2T.picked[i] && !H2T.made[i]);
+  if (!picked.length) { msg.style.color = '#f87171'; msg.textContent = 'Tick at least one idea.'; return; }
+  btn.disabled = true; msg.style.color = 'var(--text2)'; msg.textContent = `⏳ Creating ${picked.length} title${picked.length === 1 ? '' : 's'} + asset${picked.length === 1 ? '' : 's'}…`;
+  try {
+    const r = await call('createTopicalAssets', { syncedOnly: true, ideas: picked.map(([x]) => ({ ...x, slug: H2T.slug })) }); if (!r || r.error) throw new Error((r && r.error) || 'not created');
+    (r.results || []).forEach(res => { const hit = picked.find(([x]) => x.id === res.id); if (hit) { H2T.made[hit[1]] = res; delete H2T.picked[hit[1]]; } });
+    const ok = (r.results || []).filter(x => x.assetId).length, bad = (r.results || []).filter(x => x.error).length;
+    msg.style.color = bad ? '#ff9a3d' : '#4ade80'; msg.textContent = `✓ ${ok} created${bad ? ` · ${bad} failed (see the list)` : ''} — press ✍ Write on each; it asks its 5 questions first.`;
+    hub2TopicalRender(); hub2ChecklistLoad(H2T.slug, true);
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
+}
 async function hub2CreateModal(slug, id) {
   const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
-  if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);   // a digest makes its own dated title
+  if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);
+  if (!m.isPillar && /^topical$/i.test(m.parent) && /seo post/i.test(m.asset)) return hub2TopicalModal(slug);   // hand-initiated topical SEO posts (idea generator)   // a digest makes its own dated title
   if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);
   if (!m.isPillar && /^digest$/i.test(m.parent) && /free/i.test(m.asset) && /newsletter/i.test(m.asset)) return hub2FreeNlModal(slug);   // news = a digest's ticked items
   const titles = hub2ReadyTitles(slug);
