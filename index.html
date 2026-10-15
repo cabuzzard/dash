@@ -15334,7 +15334,7 @@ function renderHubs2() {
 // Goal / cadence / day / schedule are the METHOD's (worksheet columns); per hub only the Track toggle + its baseline are
 // stored (KV hub2:checklist:v1, key "<slug>|row:<worksheet row id>"). Every row — parent or child — is a standalone
 // asset tracked the same way: published per cadence period vs goal. "counts asset types" lists the real Asset Type /
-// method names a row counts. Interview tier (worksheet) decides the orange ● (see hub2IvIssues).
+// method names a row counts. Interview tier stays on the worksheet (the worker reads it at asset creation) — not shown here.
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const hub2Id = s => String(s || '').replace(/-/g, '');
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
@@ -15343,7 +15343,7 @@ const HUB2_CADENCES = ['Weekly', 'Twice monthly', 'Monthly', 'Quarterly', 'Once'
 const HUB2_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const HUB2_UNIT = { 'Weekly': 'week', 'Twice monthly': 'half-month', 'Monthly': 'month', 'Quarterly': 'quarter' };
 const HUB2_CHECKLIST_COLS = [
-  {key:'name',label:'Method'}, {key:'tier',label:'Interview'}, {key:'published',label:'Published',num:true}, {key:'inProgress',label:'In progress',num:true},
+  {key:'name',label:'Method'}, {key:'published',label:'Published',num:true}, {key:'inProgress',label:'In progress',num:true},
   {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}
 ];
 const HUB2_WS = { parent: 'cmuzq03ywty8b', asset: 'cmuzq36hb77sq', name: 'cname01', pillar: 'c1', tier: 'civtier01', match: 'cmatch01', goal: 'cgoal01', cadence: 'ccad01', day: 'cday01', schedule: 'csched01', notes: 'c2' };
@@ -15361,10 +15361,10 @@ async function hub2ChecklistLoad(slug, force) {
   _hub2Checklist[slug] = { ...(st || {}), loading: true, error: '' }; hub2ChecklistPaint(slug);
   try {
     const cid = hub2Id(h.campaignId);
-    const [worksheet, goals, dev, ivs] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), call('getDevAssetsTable'), cid ? call('getInterviews', { campaignId: cid }) : { interviews: [] }]);
-    const err = worksheet.error || goals.error || dev.error || ivs.error; if (err) throw new Error(err);
+    const [worksheet, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), call('getDevAssetsTable')]);
+    const err = worksheet.error || goals.error || dev.error; if (err) throw new Error(err);
     DEV2_ROWS = dev.rows || []; const hubRows = DEV2_ROWS.filter(r => hub2Id(r.campId) === cid);
-    _hub2Checklist[slug] = { loading: false, table: worksheet.table, methods: hub2MethodsFrom(worksheet.table), goals: goals.goals || {}, hubRows, interviews: ivs.interviews || [] };
+    _hub2Checklist[slug] = { loading: false, table: worksheet.table, methods: hub2MethodsFrom(worksheet.table), goals: goals.goals || {}, hubRows };
     hub2ChecklistPaint(slug); hub2SaveWeeklyMetrics(slug, hubRows);
   } catch (e) { _hub2Checklist[slug] = { loading: false, error: e.message }; hub2ChecklistPaint(slug); }
 }
@@ -15387,35 +15387,11 @@ function hub2RowItems(st, m) {
     : x.assetClass !== 'Pillar' && (names.has(hub2Norm(x.assetType)) || names.has(hub2Norm(x.rawAssetType)))));
   return [...new Map(items.map(x => [x.assetId, x])).values()];
 }
-// Interview deployment (worker iv*): Own interview = the asset is BUILT from its own Asset-scope interview (generation
-// waits for it) · Short interview = 5-question Asset-scope interview, answers rewritten for SEO (also waits) · From
-// product = draws on the product's one interview (never waits) · None. Out of sync = Interview Sync on the asset /
-// Pillar Status on a pillar, set when an interview changes after the content was written.
-function hub2IvIssues(st, m, items) {
-  const out = [], tier = m.tier; if (/^none$/i.test(tier)) return out;
-  const ivs = st.interviews || [], own = /^(own|short)/i.test(tier), short = /^short/i.test(tier);
-  const typeHit = iv => { const f = hub2Norm(iv.forType); return !!f && m.aliases.some(a => { const n = hub2Norm(a); return n && (f === n || f.includes(n) || n.includes(f)); }); };
-  items.forEach(x => {
-    const name = x.platformTitle || x.assetName || x.title || 'Untitled asset', sync = String(x.ivSync || ''), aid = hub2Id(x.assetId), base = { assetId: aid, titleId: hub2Id(x.titleId), type: x.assetType || x.rawAssetType || m.name, name };
-    if (own) {
-      const mine = ivs.filter(iv => iv.scope === 'Asset' && ((iv.assetIds || []).map(hub2Id).includes(aid) || (hub2Id(iv.titleId) === base.titleId && typeHit(iv))));
-      const done = mine.find(iv => iv.status === 'Finished'), open = mine.find(iv => iv.status !== 'Finished');
-      if (!mine.length) out.push({ ...base, blocking: true, action: 'create', state: 'No interview yet', need: short ? 'This asset needs its short 5-question interview before it can be written — your answers get rewritten for SEO. Create it, answer it, then write the asset.' : 'This asset is built from its own interview, so it can\'t be generated until the interview exists and is answered. Create it, answer it, then generate the asset.' });
-      else if (!done) out.push({ ...base, blocking: true, action: 'open', ivId: open.id, state: 'Waiting for your answers', need: 'The interview exists but isn\'t finished. Answer it and press Finish — the asset is written from those answers.' });
-      else if (/^out of sync/i.test(sync)) out.push({ ...base, action: 'sync', ivId: done.id, state: 'Interview changed', need: 'This asset was written from its interview, and the answers changed afterwards. Regenerate the asset from the updated interview, then mark it in sync.' });
-    } else if (/^out of sync/i.test(sync)) {
-      const prod = x.productId ? ivs.filter(iv => iv.scope === 'Product' && hub2Id(iv.productId) === hub2Id(x.productId)) : [];
-      out.push({ ...base, action: 'sync', ivId: ((prod.find(iv => iv.status === 'Finished') || prod[0]) || {}).id || '', state: 'Product interview changed', need: 'This asset draws on the product\'s interview, which changed after it was written. Review it against the updated answers (edit if needed), then mark it in sync.' });
-    }
-    if (m.isPillar && /^out of sync$/i.test(x.pillarSync || '') && base.titleId) out.push({ ...base, action: 'pillar', state: 'Pillar out of sync', need: 'An interview changed after this pillar was written. Rewrite the pillar so everything downstream draws on the current answers.' });
-  });
-  return out;
-}
 function hub2ChecklistRows(slug) {
   const st = _hub2Checklist[slug] || {}, today = new Date().toISOString().slice(0, 10);
   return (st.methods || []).map(m => {
     const items = hub2RowItems(st, m), pub = items.filter(x => /^published$/i.test(x.assetStatus || x.status || '')), t = hub2TrackOf(slug, m.id), tracked = !!(t && t.tracked);
-    const issues = hub2IvIssues(st, m, items), start = hub2PeriodStart(m.cadence), periodKey = start.toISOString().slice(0, 10);
+    const start = hub2PeriodStart(m.cadence), periodKey = start.toISOString().slice(0, 10);
     const raw = pub.filter(x => x.datePublished && new Date(x.datePublished) >= start).length;
     let baseline = t && t.baselinePeriodStart === periodKey ? (+t.baselinePublished || 0) : 0;
     // tracking switched on mid-period: what was already published this period doesn't count toward the goal
@@ -15423,8 +15399,8 @@ function hub2ChecklistRows(slug) {
       setTimeout(() => call('saveHub2ChecklistGoal', { slug, assetType: 'row:' + m.id, tracked: true, baselinePeriodStart: periodKey, baselinePublished: raw }).catch(() => {}), 0); }
     const progress = Math.max(0, raw - baseline), complete = progress >= m.target, periodic = !!HUB2_UNIT[m.cadence];
     const due = tracked ? hub2NextDue({ tracked, cadence: m.cadence, weekday: m.weekday }, complete) : '';
-    const status = !tracked ? '' : issues.some(x => x.blocking) ? 'Needs interview' : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
-    return { ...m, creatable: !/^hub$/i.test(m.parent), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status, issues,
+    const status = !tracked ? '' : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
+    return { ...m, creatable: !/^hub$/i.test(m.parent), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
       periodLabel: m.cadence };
   });
 }
@@ -15438,13 +15414,11 @@ function hub2ChecklistHtml(slug) {
   let rows = hub2ChecklistRows(slug);
   const raw=(r,k)=>r[k]==null?'':String(r[k]), allRows=rows.slice(), filters=_hub2ChecklistFilters[slug]||=[], active=filters.filter(f=>f.col&&f.val!==''); rows=rows.filter(r=>active.every(f=>{const v=raw(r,f.col),hit=f.val==='__blank__'?!v:v===f.val;return f.op==='not'?!hit:hit;}));
   const sort=_hub2ChecklistSort[slug]||=[{col:'name',asc:true}]; rows=rows.slice().sort((a,b)=>{for(const s of sort){const c=HUB2_CHECKLIST_COLS.find(x=>x.key===s.col),n=c&&c.num?(+a[s.col]||0)-(+b[s.col]||0):raw(a,s.col).localeCompare(raw(b,s.col));if(n)return s.asc?n:-n;}return a.name.localeCompare(b.name);});
-  const TIER = { 'Own interview': 'Own', 'Short interview': 'Short', 'From product': 'Product', 'From title': 'Title' }, warn = '#ff7a00', ok = '#4ade80';
+  const warn = '#ff7a00', ok = '#4ade80';
   const body = rows.map(r => { const name = r.asset ? `<span style="color:var(--text3);">${esc(r.parent)} - </span>${esc(r.asset)}` : esc(r.name);
-    const dot = r.issues.length ? `<span onclick="event.stopPropagation();hub2IvModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${r.issues.length} need attention — click" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${warn};margin-left:6px;cursor:pointer;vertical-align:middle;"></span>` : '';
-    const sc = /^(Behind|Due|Needs interview)$/.test(r.status) ? warn : /^(On track|Done)$/.test(r.status) ? ok : 'var(--text3)';
+    const sc = /^(Behind|Due)$/.test(r.status) ? warn : /^(On track|Done)$/.test(r.status) ? ok : 'var(--text3)';
     return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${esc(r.description || r.name)}" style="cursor:pointer;">
       <td style="${TD}max-width:250px;overflow:hidden;text-overflow:ellipsis;${r.isPillar ? 'font-weight:700;' : ''}">${r.creatable ? `<button onclick="event.stopPropagation();hub2CreateModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Create a ${esc(r.name)} asset under a title" style="font-size:10px;line-height:1;padding:1px 5px;margin-right:6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋</button>` : ''}${name}</td>
-      <td style="${TD}color:var(--text3);">${esc(TIER[r.tier] || '—')}${dot}</td>
       <td style="${TD}text-align:center;color:${r.published ? ok : 'var(--text3)'};">${r.published || ''}</td>
       <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};">${r.inProgress || ''}</td>
       <td style="${TD}text-align:center;color:var(--text2);">${r.target}</td>
@@ -15513,33 +15487,6 @@ async function hub2ChecklistSave(slug, id) {
     slugs.forEach(s => { const g = _hub2Checklist[s]; if (g && g.goals) g.goals[hub2TrackKey(s, row.id)] = { slug: s, assetType: 'row:' + row.id, tracked: track, updatedAt: new Date().toISOString() }; }); }
   Object.keys(_hub2Checklist).forEach(s => { const g = _hub2Checklist[s]; if (g && g.methods) { g.table = table; g.methods = hub2MethodsFrom(table); } });
   hub2ChecklistPaint(slug); return true;
-}
-// the orange ● — what needs attention on this row, what state it's in, what to do
-function hub2IvModal(slug, id) {
-  const r = hub2ChecklistRows(slug).find(x => x.id === id); if (!r) return;
-  const B = 'font-size:10.5px;padding:3px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;';
-  const act = (x, i) => x.action === 'create' ? `<button style="${B}border-color:#ff7a00;color:#ff7a00;" onclick="hub2IvAct('${slug}','${esc(id)}',${i},this)">🎤 Create interview</button>`
-    : x.action === 'open' ? `<button style="${B}border-color:#ff7a00;color:#ff7a00;" onclick="hub2IvAct('${slug}','${esc(id)}',${i},this)">Answer →</button>`
-    : x.action === 'pillar' ? `<button style="${B}border-color:#ff7a00;color:#ff7a00;" onclick="hub2IvAct('${slug}','${esc(id)}',${i},this)">↻ Rewrite pillar</button>`
-    : `${x.ivId ? `<button style="${B}" onclick="ivFlagOpen('${esc(x.ivId)}')">View interview</button>` : ''}<button style="${B}border-color:#4ade80;color:#4ade80;" onclick="hub2IvAct('${slug}','${esc(id)}',${i},this)">✓ Mark in sync</button>`;
-  hcModal(`<h3 style="margin:0 0 2px;">${esc(r.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Interview: ${esc(r.tier)} · ${r.issues.length} need${r.issues.length === 1 ? 's' : ''} attention</div>
-    ${r.issues.map((x, i) => `<div style="border-top:1px solid var(--border);padding:8px 0;">
-      <div style="display:flex;gap:8px;align-items:center;"><span style="width:8px;height:8px;border-radius:50%;background:#ff7a00;flex:none;"></span><b style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(x.name)}</b><span style="font-size:11px;color:#ff9a3d;white-space:nowrap;">${esc(x.state)}</span></div>
-      <div style="font-size:11.5px;color:var(--text2);margin:5px 0 7px 16px;line-height:1.45;">${esc(x.need)}</div>
-      <div style="display:flex;gap:6px;margin-left:16px;flex-wrap:wrap;">${act(x, i)}${x.assetId ? `<a href="https://www.notion.so/${esc(x.assetId)}" target="_blank" rel="noopener" style="${B}text-decoration:none;">Notion ↗</a>` : ''}</div></div>`).join('')}
-    <div style="display:flex;gap:7px;margin-top:8px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`);
-}
-async function hub2IvAct(slug, id, i, btn) {
-  const r = hub2ChecklistRows(slug).find(x => x.id === id), x = r && r.issues[i]; if (!x) return;
-  const done = () => { document.getElementById('hcModal')?.classList.remove('open'); hub2ChecklistLoad(slug, true); };
-  btn.disabled = true; const o = btn.textContent;
-  try {
-    if (x.action === 'open') { document.getElementById('hcModal')?.classList.remove('open'); window.InterviewPanel ? window.InterviewPanel.open({ call, interviewId: x.ivId, onDone: () => hub2ChecklistLoad(slug, true) }) : ivFlagOpen(x.ivId); return; }
-    if (x.action === 'create') { btn.textContent = '⏳ writing questions…'; const res = await call('createInterviews', { titleId: x.titleId, own: x.type, assetId: x.assetId }); if (!res || res.error) throw new Error((res && res.error) || 'Interview not created');
-      const iv = (res.interviews || [])[0]; document.getElementById('hcModal')?.classList.remove('open'); if (iv && window.InterviewPanel) window.InterviewPanel.open({ call, interviewId: iv.id, onDone: () => hub2ChecklistLoad(slug, true) }); hub2ChecklistLoad(slug, true); return; }
-    if (x.action === 'pillar') { btn.textContent = '⏳ rewriting…'; const res = await call('writeTitlePillar', { titleId: x.titleId }); if (!res || res.error) throw new Error((res && res.error) || 'Not rewritten'); return done(); }
-    if (x.action === 'sync') { btn.textContent = '…'; const res = await call('markInterviewSync', { assetId: x.assetId }); if (!res || res.error) throw new Error((res && res.error) || 'Not saved'); return done(); }
-  } catch (e) { btn.disabled = false; btn.textContent = o; showToast(e.message, 'error'); }
 }
 // ＋ on a checklist row → create an asset of that method under a title. Only titles that are ready: a product attached,
 // that product's research up to date ("✓ up to date"), and the title's pillar written (Pillar Status "Written").
