@@ -16811,8 +16811,9 @@ function hubKwStageBackfill(slug) {
 function hubKwExpandAll(slug, open, existingOnly) {
   const K = _hubKw[slug]; if (!K || K.loading || K.error) return;
   const keys = ['master', 'unclustered', 'ex:__main'].concat(existingOnly ? [] : ['pr:__main']).concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
-  [...(K.staged || []), ...(K.committed || [])].forEach(t => { keys.push('t:' + t.id, 'ex:' + t.id); if (existingOnly) delete _hubKwOpen[slug + '|pr:' + t.id]; else keys.push('pr:' + t.id); });
-  if (existingOnly) delete _hubKwOpen[slug + '|pr:__main'];
+  // Expand existing = products only: keyword lists and Proposed stay closed
+  [...(K.staged || []), ...(K.committed || [])].forEach(t => { keys.push('t:' + t.id, 'ex:' + t.id); if (existingOnly) { delete _hubKwOpen[slug + '|pr:' + t.id]; delete _hubKwOpen[slug + '|kw:' + t.id]; } else keys.push('pr:' + t.id, 'kw:' + t.id); });
+  if (existingOnly) { delete _hubKwOpen[slug + '|pr:__main']; delete _hubKwOpen[slug + '|kw:__master']; } else keys.push('kw:__master');
   keys.forEach(k => { if (open) _hubKwOpen[slug + '|' + k] = true; else delete _hubKwOpen[slug + '|' + k]; });
   hubKwRefresh(slug);
 }
@@ -16851,7 +16852,7 @@ function renderHubKw(slug) {
     const sub = `— ${t.staged ? 'staged' : 'committed'} · ${kws.length} keyword${kws.length === 1 ? '' : 's'}${ps.length ? ' · ' + ps.length + ' product' + (ps.length === 1 ? '' : 's') : ''}${t.searchIntent ? ' · ' + esc(t.searchIntent) : ''}`;
     // keyword pills only when they add something — a topic whose only keyword is its own name shows no pill line
     const extraKws = kws.filter(k => k.trim().toLowerCase() !== String(t.name || '').trim().toLowerCase());
-    const inner = (extraKws.length ? pills(kws) : '')
+    const inner = (extraKws.length ? sec('kw:' + t.id, 'Keywords', kws.length, '', pills(kws)) : '')   // collapsed by default
       + prods;   // the topic's stored rationale note is not shown (operator 2026-10-15)
     return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), sub, inner, { topicId: t.id, tools: moveSel + addBtn });
   };
@@ -16861,7 +16862,7 @@ function renderHubKw(slug) {
   const master = split(K.master);
   let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><span style="font-size:10.5px;color:var(--text3);">Drag a topic onto a cluster to move it · 🗑 deletes a cluster (its topics become unclustered)</span>${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
   const mainPs = (K.products || []).filter(p => p.topicId === '__main'), mainIdeas = hubKwMainIdeas(slug);
-  const mainInner = (master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>')
+  const mainInner = sec('kw:__master', 'Keywords', master.length, '', master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>')
     + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.map(exRow).join('') || '<span style="font-size:11px;color:var(--text3);">No ★ Main products yet.</span>')
     + sec('pr:__main', 'Proposed products', mainIdeas.length, `<button style="${btn}" title="Research product ideas off the Master keywords (replaces this list — care-gap's Main Stack ideas)" onclick="hubKwMainPropose('${slug}',this)">💡 propose</button>`,
         mainIdeas.map((x, i) => `<div style="padding:3px 0;border-bottom:1px dashed var(--border);font-size:11px;"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-weight:600;color:var(--text);">💡 ${esc(x.name)}</span><span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}border-color:var(--accent);color:var(--accent);" title="Create this as a real product in the ★ Main group — it moves up into Existing products" onclick="hubKwMainIdeaCreate('${slug}',${i},false)">＋ add to topic</button><button style="${btn}" title="Add to ★ Main AND to this hub's main offerings" onclick="hubKwMainIdeaCreate('${slug}',${i},true)">★</button><button style="${btn}" title="View sources" onclick="hubKwMainIdeaSources('${slug}',${i})">🔗</button><button style="${btn}" title="Dismiss this idea" onclick="hubKwMainIdeaDismiss('${slug}',${i},this)">✕</button></span></div>${x.desc ? `<div style="color:var(--text3);margin-top:1px;">${esc(x.desc)}</div>` : ''}</div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No proposals yet — 💡 propose.</span>');
