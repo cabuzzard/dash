@@ -731,6 +731,7 @@
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
     <div class="tab" onclick="switchTab('domains')">Domains</div>
     <div class="tab" onclick="switchTab('trades')">Trades</div>
+    <div class="tab" onclick="switchTab('landre')">land RE</div>
     <div class="tab" onclick="switchTab('links')">Links</div>
     <div class="tab" onclick="switchTab('keywords')">Keywords</div>
     <div class="tab" onclick="switchTab('globals')">Globals</div>
@@ -1812,6 +1813,11 @@
   </div>
 
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
+  <!-- land-re-integration-20261015: isolated analytical workbench -->
+  <div class="tab-panel" id="tabLandre">
+    <iframe id="landREFrame" title="Land Appreciation Intelligence" style="width:100%;height:calc(100vh - 180px);min-height:700px;border:0;border-radius:10px;background:#101713;"></iframe>
+  </div>
+
   <div class="tab-panel" id="tabTrades">
     <!-- Since last update: each source's results now vs. the saved baseline (worker tradeBaseline) -->
     <div id="tbSection" style="margin-bottom:16px;border:1px solid var(--border);border-radius:var(--radius-sm);">
@@ -5742,6 +5748,7 @@ function jumpToDev(campId) {
 // when a session expired reloads itself the instant you're re-authenticated
 // instead of sitting on a stale error until you click away and back.
 function loadTabContent(name) {
+  if (name === 'landre') { const frame = document.getElementById('landREFrame'); if (!frame.getAttribute('src')) frame.src = 'land-re/?v=2026101501'; }
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   // 'development' deliberately NOT auto-loaded here — every widget in this
   // tab (NEXT, Last 30 Published, Development Titles) is default-collapsed
