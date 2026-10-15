@@ -15563,7 +15563,7 @@ function hub2ChecklistHtml(slug) {
       <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};" ${r.inProgress ? `onclick="event.stopPropagation();hub2InProgressModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Pick one of these ${r.inProgress} unpublished assets to review and publish"` : ''}>${r.inProgress ? `<span style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;font-weight:700;">${r.inProgress}</span>` : ''}</td>
       <td style="${TD}text-align:center;color:var(--text2);" title="${esc(r.goalTip || '')}">${r.target}${r.parents > 1 ? '<span style="font-size:9px;color:var(--text3);"> (' + (r.target / r.parents) + '×' + r.parents + ')</span>' : ''}</td>
       <td style="${TD}color:var(--text2);" title="${esc(r.schedule || '')}">${esc(r.periodLabel)}</td>
-      <td style="${TD}text-align:center;color:${r.tracked && !r.complete ? warn : 'var(--text2)'};">${r.tracked ? r.progress + ' / ' + r.target : ''}</td>
+      <td style="${TD}text-align:center;color:${!r.tracked ? 'var(--text2)' : r.complete ? ok : warn};${r.tracked && r.complete ? 'font-weight:700;' : ''}">${r.tracked ? r.progress + ' / ' + r.target : ''}</td>
       <td style="${TD}">${r.due || ''}</td>
       <td style="${TD}color:${sc};font-weight:${r.tracked ? 600 : 400};">${r.status}</td>
       <td style="${TD}text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" ${r.tracked ? 'checked' : ''} title="Track for this hub" onchange="hub2TrackToggle('${slug}','${esc(r.id)}',this)" style="cursor:pointer;"></td>
