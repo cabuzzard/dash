@@ -6830,6 +6830,65 @@ async function kwHubUndoApply() {
   } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
 }
 function kwHubClose() { if (KW.hubOps.length && !confirm('Discard the unsaved hub changes?')) return; KW.hub = null; KW.hubOps = []; KW._hubDraft = null; KW.hubF = { topic: '', cluster: '', src: '' }; KW.view = []; kwViewChanged(); }
+// ── 🧭 3×3 structure + 🧹 record cleanup (worker kwHubPropose / kwHubCleanPlan / kwHubCleanApply / kwHubCleanUndo) ──
+// Structure per hub: ★ Main → 3 clusters → up to 3 topics each (Google volume decides) → Unclassified. The proposal
+// lands in the hub DRAFT (same preview / 💾 Apply / ↶ Undo as every other change). The cleanup then files the hub's
+// products + titles into those topics: real products keep a topic (≤4 products per topic), the rest become titles
+// under bridge products ("… — Introductory Call", orange = out of sync, no research). Reviewed before anything is written.
+function kwWideModal(html) { hcModal(html); const b = document.querySelector('#hcModal .modal'); if (b) b.style.maxWidth = '860px'; }
+async function kwHubPropose3() {
+  if (!KW.hub) return alert('Load a hub first.');
+  if (KW.hubOps.length && !confirm('Replace the unsaved hub changes with the 3×3 proposal?')) return;
+  const msg = document.getElementById('kwHubMsg'); if (msg) msg.textContent = '⏳ Reading the hub\'s products + titles, pricing keywords and proposing Main → 3 clusters → up to 3 topics (1-3 min)…';
+  try {
+    const r = await call('kwHubPropose', { campaignId: KW.hub.cid }); if (r.error) throw new Error(r.error);
+    KW.hubOps = r.ops || []; KW._hubDraft = null; KW.selected.clear(); kwLoadResults(KW.offset);
+    setTimeout(() => { const m = document.getElementById('kwHubMsg'); if (m) m.textContent = '✓ 3×3 proposal loaded as a draft — review the topics, then 💾 Apply' + (r.warn ? ' · ⚠ ' + r.warn : ''); }, 50);
+    kwWideModal(`<h3 style="margin:0 0 4px;">🧭 Proposed structure — ${esc(KW.hub.name)}</h3>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">From ${r.records} products + titles (${r.phrases} search phrases suggested) and ${r.pool} priced keywords. Loaded into the draft — nothing is saved until 💾 Apply.</div>
+      <div style="font-size:12px;margin-bottom:8px;">★ Main: <span style="color:var(--text2);">${esc((r.main || []).join(', ') || '—')}</span></div>
+      ${(r.clusters || []).map(c => `<div style="border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:7px;"><div style="font-weight:700;font-size:12px;margin-bottom:4px;">🧩 ${esc(c.name)}</div>
+        ${c.topics.map(t => `<div style="font-size:11.5px;padding:2px 0 2px 12px;"><b>${esc(t.name)}</b> <span style="color:var(--text3);">· ${t.count} kw · ${Number(t.volume || 0).toLocaleString()}/mo · ${esc(t.top.join(', '))}</span></div>`).join('')}</div>`).join('')}
+      <div style="font-size:11.5px;color:var(--text2);margin:6px 0 10px;">Unclassified: ${r.unclassified} leftover keyword${r.unclassified === 1 ? '' : 's'} (kept, not lost).</div>
+      <div style="display:flex;gap:8px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`);
+  } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
+}
+async function kwHubCleanOpen() {
+  if (!KW.hub) return alert('Load a hub first.');
+  if (KW.hubOps.length) return alert('Apply or discard the staged keyword changes first — the cleanup files records into the SAVED topics.');
+  kwWideModal(`<h3 style="margin:0 0 4px;">🧹 Clean up records — ${esc(KW.hub.name)}</h3><div id="kwCleanBody" style="font-size:12px;color:var(--text3);">⏳ Classifying the hub's products + titles into its topics (1-3 min)…</div>`);
+  try { const r = await call('kwHubCleanPlan', { campaignId: KW.hub.cid }); if (r.error) throw new Error(r.error); kwHubCleanRender(r); }
+  catch (e) { const b = document.getElementById('kwCleanBody'); if (b) b.innerHTML = `<div style="color:#f87171;">✗ ${esc(e.message)}</div><div style="margin-top:10px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`; }
+}
+function kwHubCleanRender(r) {
+  const b = document.getElementById('kwCleanBody'); if (!b) return; const c = r.counts || {};
+  const list = (label, arr, color) => arr && arr.length ? `<details style="margin:2px 0 2px 12px;"><summary style="cursor:pointer;font-size:11.5px;color:${color || 'var(--text2)'};">${label} (${arr.length})</summary><div style="font-size:11px;color:var(--text3);padding:3px 0 3px 14px;line-height:1.5;">${arr.map(esc).join('<br>')}</div></details>` : '';
+  b.innerHTML = `<div style="font-size:12px;color:var(--text2);margin-bottom:8px;line-height:1.6;">
+      <b>${c.keep}</b> real products keep a topic · <b>${c.convert}</b> products become titles (${c.affiliates} affiliates) · <b>${c.bridges}</b> bridge products to create · <b>${c.moves}</b> titles move · <b>${c.topicSets}</b> products get a new topic${c.flags ? ` · <span style="color:#ff9a3d;">${c.flags} titles with assets don't match their product's topic (left alone)</span>` : ''}</div>
+    <div style="max-height:52vh;overflow-y:auto;">${(r.topics || []).map(t => `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:6px;">
+      <div style="font-weight:700;font-size:12px;">${esc(t.name)}${t.cluster ? ` <span style="font-weight:400;color:var(--text3);">· ${esc(t.cluster)}</span>` : ''}</div>
+      ${list('Products kept', t.keep)}${list('New bridge products', t.newBridges, '#ff9a3d')}${list('Products → titles', t.convert)}${list('Titles moving in', t.moveIn)}</div>`).join('')}
+      ${(r.flags || []).length ? `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:11.5px;color:#ff9a3d;">Mismatched titles with assets (not moved)</summary><div style="font-size:11px;color:var(--text3);padding:4px 14px;line-height:1.5;">${r.flags.map(f => esc(f.title) + ' — on ' + esc(f.product || '?')).join('<br>')}</div></details>` : ''}</div>
+    <div id="kwCleanProg" style="font-size:11.5px;color:var(--text2);margin:8px 0;min-height:16px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;"><button class="modal-btn" ${r.total ? '' : 'disabled'} onclick="kwHubCleanRun(this, ${r.total})">Apply cleanup (${r.total} changes)</button>
+      <button class="modal-btn" style="background:transparent;border-color:var(--border2);color:var(--text2);" onclick="kwHubCleanUndoUI(this)">↶ Undo last cleanup</button>${HC_CANCEL.replace('Cancel', 'Close')}</div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:6px;">Converted products are archived (Archived + Status Archived — recoverable), never deleted. New bridge products are orange (out of sync) — no research is run.</div>`;
+}
+async function kwHubCleanLoop(action, btn, verb) {
+  const prog = document.getElementById('kwCleanProg'); btn.disabled = true; const errors = [];
+  try {
+    for (let n = 0; n < 200; n++) {
+      const r = await call(action, { campaignId: KW.hub.cid }); if (r.error) throw new Error(r.error);
+      errors.push(...(r.errors || []));
+      if (prog) prog.textContent = `⏳ ${verb}… ${r.i} / ${r.total}${errors.length ? ` · ${errors.length} problem${errors.length === 1 ? '' : 's'}` : ''}`;
+      if (r.done) break;
+    }
+    if (prog) prog.innerHTML = `✓ ${verb} finished${errors.length ? ` · <span style="color:#ff9a3d;" title="${esc(errors.join('\n'))}">${errors.length} problem${errors.length === 1 ? '' : 's'} (hover)</span>` : ''}`;
+    kwHubLoadUI(KW.hub.cid, KW.hub.name);
+  } catch (e) { if (prog) prog.textContent = '✗ ' + e.message; btn.disabled = false; }
+}
+function kwHubCleanRun(btn, total) { if (confirm(`Apply the cleanup to ${KW.hub.name}? (${total} changes in Notion — ↶ Undo last cleanup reverses it)`)) kwHubCleanLoop('kwHubCleanApply', btn, 'Applying'); }
+function kwHubCleanUndoUI(btn) { if (confirm(`Undo the last cleanup on ${KW.hub.name}? Moved titles go back, archived products return, created titles and bridge products are removed.`)) kwHubCleanLoop('kwHubCleanUndo', btn, 'Undoing'); }
 let _kwHubOpenTopics = false;
 function kwHubRender() {
   const el = document.getElementById('kwHubPanel'); if (!el) return;
@@ -6853,6 +6912,8 @@ function kwHubRender() {
       <span style="color:var(--text3);">${m.topics.length} topics · ${m.clusters.length} clusters · ${m.main.length} main · ${H.products.length} products${oos ? ` · <span style="color:#f6ad55;">⚠ ${oos} out of sync</span>` : ''} · ${H.titles.length} titles</span>
       <span style="margin-left:auto;display:flex;gap:6px;">
         ${H.undo && !KW.hubOps.length ? `<button class="kw-btn" onclick="kwHubUndoApply()" title="${esc((H.undo.lines || []).join('\n'))}">↶ Undo last apply</button>` : ''}
+        <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwHubPropose3()" title="Propose Main → 3 clusters → up to 3 topics (volume decides) → Unclassified, read from the hub's records + Google numbers — loads as a draft">🧭 Propose 3×3</button>
+        <button class="kw-btn" onclick="kwHubCleanOpen()" title="File the hub's products + titles into its saved topics: real products keep a topic, the rest become titles under bridge products — reviewed first">🧹 Clean up records</button>
         <button class="kw-btn" onclick="kwHubAutoCluster()" title="Use Main Keywords plus every topic's keywords to replace the current grouping with a few broad clusters">✨ Broad-cluster topics</button>
         <button class="kw-btn" onclick="kwHubLoadUI('${H.cid}', ${esc(JSON.stringify(H.name))})" title="Re-read the hub (picks up changes made elsewhere)">↻ Reload hub</button>
         <button class="kw-btn" onclick="kwHubClose()">✕ Close hub</button>
@@ -19782,9 +19843,11 @@ function affRow(r) {
     + '<td style="padding:6px 8px;white-space:nowrap;" title="Applicability to generalist SEO traffic"><span style="color:' + trafficFitColor + ';">●</span> ' + esc(r.trafficFit || 'General SEO') + '</td>'
     + '<td style="padding:6px 8px;" onclick="event.stopPropagation()">' + statusSel + '</td>'
     + '<td style="padding:6px 8px;text-align:right;white-space:nowrap;" onclick="event.stopPropagation()">'
-      + (r.productId
+      + (r.titleId
+          ? '<a href="https://www.notion.so/' + r.titleId + '" target="_blank" rel="noopener" title="Open the title made from this program" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);text-decoration:none;">📝 Title ↗</a>'
+          : r.productId
           ? '<a href="https://www.notion.so/' + r.productId + '" target="_blank" rel="noopener" title="Open the Product record — run keyword/strategy research on it there" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);text-decoration:none;">📦 Product ↗</a>'
-          : '<button onclick="affMakeProduct(\'' + r.id + '\')" title="Create a Product record from this affiliate program — seeded with its commission/audience-fit/strategy so keyword search and Product Research run grounded in the program itself" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">📦 + Product</button>')
+          : '<button onclick="affMakeProduct(\'' + r.id + '\')" title="Make a TITLE from this affiliate program (affiliates are titles, not products — its commission / fit / strategy / link go in the title Notes). Filed under the hub Unclassified bridge product until the next 🧹 cleanup" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">📝 + Title</button>')
       + '<button onclick="affResearchSetup(\'' + r.id + '\')" title="Web-search this program’s signup process" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;margin-left:4px;">🔍 Setup</button>'
       + '<button onclick="affDelete(\'' + r.id + '\')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;margin-left:4px;">✕</button></td>'
     + '</tr>'
@@ -19915,13 +19978,13 @@ async function affResearchSetup(id) {
 async function affMakeProduct(id) {
   const st = document.getElementById('glAffStatus');
   const row = AFF_DATA.find(x => x.id === id);
-  st.textContent = 'Creating product for ' + (row ? row.name : 'program') + '…';
+  st.textContent = 'Making a title for ' + (row ? row.name : 'program') + '…';
   try {
     const r = await call('createProductFromAffiliate', { id });
     if (r.error) throw new Error(r.error);
-    if (row) row.productId = r.productId;
+    if (row) row.titleId = r.titleId;
     renderAffList();
-    st.textContent = (r.created ? 'Product created for ' : 'Already linked to a product for ') + (row ? row.name : 'program') + '.';
+    st.textContent = (r.created ? 'Title made for ' : 'Already made a title for ') + (row ? row.name : 'program') + '.';
   } catch (e) { st.textContent = 'Error: ' + e.message; }
 }
 async function affSetStatus(id, status) {
