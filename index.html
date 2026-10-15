@@ -16778,13 +16778,18 @@ function hubKwEditProduct(slug, pid) {
   hcModal(`<h3 style="margin:0 0 4px;">Edit product</h3><div style="font-size:12px;color:var(--text2);margin-bottom:12px;">📦 ${esc(p.name)} · <a href="https://www.notion.so/${esc(nidE(p.id))}" target="_blank" rel="noopener" style="color:var(--accent);">Notion ↗</a></div>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Stage</label>
     <select id="hkEditStage" style="${IN}">${p.stage ? '' : '<option value="" selected>— no stage —</option>'}${HUB_STAGES.map(([s]) => `<option value="${s}" ${s === p.stage ? 'selected' : ''}>${s}</option>`).join('')}</select>
+    <label style="display:flex;align-items:center;gap:8px;font-size:12px;margin:0 0 12px;cursor:pointer;"><input type="checkbox" id="hkEditMain" ${((_hubKw[slug] || {}).mainIds || []).includes(nidE(p.id)) ? 'checked' : ''}><span style="color:#f5c542;">★</span> Main offering of this hub</label>
     <div style="font-size:11px;color:var(--text3);line-height:1.5;margin:-4px 0 12px;"><b>Raw</b> — just an idea · <b>Keyword Research</b> — flagged: work on its keyword topics · <b>Development</b> — research + titles; shows ⚠ out of sync when something upstream changed</div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwEditProductSave('${slug}','${esc(nidE(p.id))}'))">Save</button>${HC_CANCEL}</div>`);
 }
 async function hubKwEditProductSave(slug, pid) {
-  const stage = (document.getElementById('hkEditStage') || {}).value; if (!stage) return 'Pick a stage';
-  const r = await call('setProductStage', { productId: pid, stage }); if (!r || r.error) return (r && r.error) || 'Not saved';
-  const p = ((_hubKw[slug] || {}).products || []).find(x => String(x.id).replace(/-/g, '') === pid); if (p) p.stage = stage;
+  const K = _hubKw[slug] || {}, h = HUB_SITES.find(x => x.slug === slug), p = (K.products || []).find(x => String(x.id).replace(/-/g, '') === pid);
+  const stage = (document.getElementById('hkEditStage') || {}).value, main = !!(document.getElementById('hkEditMain') || {}).checked, wasMain = (K.mainIds || []).includes(pid);
+  if (stage && (!p || stage !== p.stage)) { const r = await call('setProductStage', { productId: pid, stage }); if (!r || r.error) return (r && r.error) || 'Stage not saved'; if (p) p.stage = stage; }
+  if (h && main !== wasMain) {   // ★ set / remove as a main offering of this hub (others stay)
+    const m = await call('setHubMainOffering', { campaignId: h.campaignId, productId: pid, op: main ? 'add' : 'remove' }); if (!m || m.error) return (m && m.error) || 'Main not saved';
+    K.mainIds = (m.mainIds || []).map(x => String(x).replace(/-/g, ''));
+  }
   hubKwRefresh(slug); return true;
 }
 function hubKwStagePicker(slug, p) {
