@@ -15383,7 +15383,7 @@ const hub2TrackOf = (slug, id) => (((_hub2Checklist[slug] || {}).goals) || {})[h
 function hub2RowItems(st, m) {
   const names = new Set(m.aliases.map(hub2Norm));
   const items = (st.hubRows || []).filter(x => x.assetId && (m.isPillar
-    ? x.assetClass === 'Pillar' && names.has(hub2Norm(x.pillarType || x.assetType || x.rawAssetType))
+    ? x.assetClass === 'Pillar' && [x.pillarType, x.assetType, x.rawAssetType].some(v => names.has(hub2Norm(v)))
     : x.assetClass !== 'Pillar' && (names.has(hub2Norm(x.assetType)) || names.has(hub2Norm(x.rawAssetType)))));
   return [...new Map(items.map(x => [x.assetId, x])).values()];
 }
@@ -15424,7 +15424,7 @@ function hub2ChecklistRows(slug) {
     const progress = Math.max(0, raw - baseline), complete = progress >= m.target, periodic = !!HUB2_UNIT[m.cadence];
     const due = tracked ? hub2NextDue({ tracked, cadence: m.cadence, weekday: m.weekday }, complete) : '';
     const status = !tracked ? '' : issues.some(x => x.blocking) ? 'Needs interview' : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
-    return { ...m, tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status, issues,
+    return { ...m, creatable: !/^hub$/i.test(m.parent), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status, issues,
       goalLabel: periodic ? `${m.target} / ${HUB2_UNIT[m.cadence]}` : `${m.target} · ${m.cadence.toLowerCase()}` };
   });
 }
@@ -15443,7 +15443,7 @@ function hub2ChecklistHtml(slug) {
     const dot = r.issues.length ? `<span onclick="event.stopPropagation();hub2IvModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${r.issues.length} need attention — click" style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${warn};margin-left:6px;cursor:pointer;vertical-align:middle;"></span>` : '';
     const sc = /^(Behind|Due|Needs interview)$/.test(r.status) ? warn : /^(On track|Done)$/.test(r.status) ? ok : 'var(--text3)';
     return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${esc(r.description || r.name)}" style="cursor:pointer;">
-      <td style="${TD}max-width:230px;overflow:hidden;text-overflow:ellipsis;${r.isPillar ? 'font-weight:700;' : ''}">${name}</td>
+      <td style="${TD}max-width:250px;overflow:hidden;text-overflow:ellipsis;${r.isPillar ? 'font-weight:700;' : ''}">${r.creatable ? `<button onclick="event.stopPropagation();hub2CreateModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Create a ${esc(r.name)} asset under a title" style="font-size:10px;line-height:1;padding:1px 5px;margin-right:6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋</button>` : ''}${name}</td>
       <td style="${TD}color:var(--text3);">${esc(TIER[r.tier] || '—')}${dot}</td>
       <td style="${TD}text-align:center;color:${r.published ? ok : 'var(--text3)'};">${r.published || ''}</td>
       <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};">${r.inProgress || ''}</td>
@@ -15539,6 +15539,59 @@ async function hub2IvAct(slug, id, i, btn) {
     if (x.action === 'pillar') { btn.textContent = '⏳ rewriting…'; const res = await call('writeTitlePillar', { titleId: x.titleId }); if (!res || res.error) throw new Error((res && res.error) || 'Not rewritten'); return done(); }
     if (x.action === 'sync') { btn.textContent = '…'; const res = await call('markInterviewSync', { assetId: x.assetId }); if (!res || res.error) throw new Error((res && res.error) || 'Not saved'); return done(); }
   } catch (e) { btn.disabled = false; btn.textContent = o; showToast(e.message, 'error'); }
+}
+// ＋ on a checklist row → create an asset of that method under a title. Only titles that are ready: a product attached,
+// that product's research up to date ("✓ up to date"), and the title's pillar written (Pillar Status "Written").
+// Child rows → generateTitleAssets with the row's Notion method (matched by the row's names; same generator as
+// care-gap / Titles ＋ Asset). Parent rows → the parent asset record (Asset Class Pillar, Unwritten) — no parent writer yet.
+const HUB2_PILLAR_TYPE = { Digest: 'Digest', Topical: 'Long Form Topical', Sales: 'Long Form Sales', Product: 'Product', Interactive: 'Interactivity', Job: 'Job Application', Marketplace: 'Marketplace Listing', Pillar: 'Generic' };
+function hub2ReadyTitles(slug) {
+  const st = _hub2Checklist[slug] || {}, by = new Map();
+  (st.hubRows || []).forEach(r => { if (r.titleId && r.productId && r.research === '✓ up to date' && r.pillarStatus === 'Written' && !by.has(r.titleId)) by.set(r.titleId, { id: r.titleId, title: r.title || '(untitled)', productId: r.productId, product: r.product || '' }); });
+  return [...by.values()].sort((a, b) => a.product.localeCompare(b.product) || a.title.localeCompare(b.title));
+}
+async function hub2CreateModal(slug, id) {
+  const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
+  const titles = hub2ReadyTitles(slug);
+  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'Creates the parent asset under the title — unwritten, ready to write.' : 'Generates the asset from the title\'s pillar, product and research. Can take a minute or two.'}</div><div id="h2cForm" style="font-size:12px;color:var(--text3);">Loading…</div>`);
+  const form = document.getElementById('h2cForm');
+  if (!titles.length) { form.innerHTML = 'No ready titles on this hub — a title needs a product with up-to-date research and a written pillar.'; return; }
+  const titleSel = `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select>`;
+  if (m.isPillar) { form.innerHTML = `${titleSel}<div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hub2CreateGo('${slug}', this.dataset.id))" data-id="${esc(id)}">Create ${esc(m.name)}</button>${HC_CANCEL}</div>`; return; }
+  try {
+    if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(x => x.status === 'Live').sort((a, b) => a.name.localeCompare(b.name));
+    if (!_htPlatforms) _htPlatforms = ((await call('getPlatforms').catch(() => ({}))).platforms || []).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (e) { form.textContent = 'Could not load methods: ' + e.message; return; }
+  const names = new Set(m.aliases.map(hub2Norm)), match = _htMethods.find(x => names.has(hub2Norm(x.name)));
+  form.innerHTML = `${titleSel}
+    ${HT_LBL('Method')}<select id="h2cMethod" style="${HT_IN}" onchange="document.getElementById('h2cCT').style.display=/single post/i.test(this.options[this.selectedIndex].text)?'':'none'">${match ? '' : '<option value="">— no Live method matches this row; choose one —</option>'}${_htMethods.map(x => `<option value="${esc(x.id)}" ${match && x.id === match.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+    <div id="h2cCT" style="display:${match && /single post/i.test(match.name) ? '' : 'none'};">${HT_LBL('Content type')}<select id="h2cCTv" style="${HT_IN}">${['Hook', 'Pain Point', 'Benefit', 'Informational', 'Customer Focus', 'Proof', 'Objection', 'Contrarian'].map(x => `<option>${x}</option>`).join('')}</select></div>
+    ${_htPlatforms.length ? HT_LBL('Platform (optional)') + `<select id="h2cPlat" style="${HT_IN}"><option value="">— method default —</option>${_htPlatforms.map(p => `<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
+    ${HT_LBL('How many')}<input id="h2cCount" type="number" min="1" max="10" value="1" style="${HT_IN}width:90px;">
+    ${HT_LBL('Guidance (optional)')}<textarea id="h2cGuide" rows="3" style="${HT_IN}resize:vertical;"></textarea>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="this.textContent='⏳ generating…';hcModalRun(this, () => hub2CreateGo('${slug}', this.dataset.id))" data-id="${esc(id)}">Create asset</button>${HC_CANCEL}</div>`;
+}
+async function hub2CreateGo(slug, id) {
+  const h = HUB_SITES.find(x => x.slug === slug), m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id), t = hub2ReadyTitles(slug).find(x => x.id === document.getElementById('h2cTitle')?.value);
+  if (!h || !m || !t) return 'Choose a title';
+  let r;
+  if (m.isPillar) r = await call('createAsset', { titleId: t.id, campId: h.campaignId, productId: t.productId, assetTitle: `${t.title} — ${m.name}`, assetType: m.name, assetStatus: 'Development',
+    assetClass: 'Pillar', pillarType: HUB2_PILLAR_TYPE[m.parent] || m.parent, pillarReadiness: 'Unwritten', interviewRequired: /^(own|short)/i.test(m.tier) }).catch(e => ({ error: e.message }));
+  else {
+    const ms = document.getElementById('h2cMethod'); if (!ms || !ms.value) return 'Choose a method';
+    const methodName = ms.options[ms.selectedIndex].text, ps = document.getElementById('h2cPlat');
+    const payload = { titleId: t.id, campaignId: h.campaignId, productId: t.productId, methodId: ms.value, assetType: methodName, title: t.title,
+      count: Math.max(1, Math.min(10, parseInt(document.getElementById('h2cCount').value) || 1)), researchInstructions: document.getElementById('h2cGuide').value.trim() || undefined };
+    if (ps && ps.value) { payload.platformId = ps.value; payload.platformName = ps.options[ps.selectedIndex].dataset.name; }
+    if (/single post/i.test(methodName)) payload.contentType = document.getElementById('h2cCTv').value;
+    r = await call('generateTitleAssets', payload).catch(e => ({ error: e.message }));
+    // Own / Short interview types wait for their interview — the worker writes it; open it to answer, then ＋ again
+    if (r && r.needsInterview) { const iv = (r.interviews || [])[0]; hub2ChecklistLoad(slug, true);
+      if (iv && window.InterviewPanel) setTimeout(() => window.InterviewPanel.open({ call, interviewId: iv.id, onDone: () => hub2ChecklistLoad(slug, true) }), 50);
+      showToast(`${m.name} is written from its interview — answer it, then ＋ again`, 'info'); return true; }
+  }
+  if (!r || r.error) return 'Asset not created: ' + ((r && r.error) || 'no response');
+  showToast(`${m.name} created under "${t.title}" ✓`, 'success'); hub2ChecklistLoad(slug, true); return true;
 }
 async function hub2ContentLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Content[slug]; if (!h || (st && st.loading) || (st && st.rows && !force)) return hub2ContentPaint(slug);
