@@ -939,7 +939,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;
   } else thumbError = (im && im.error) || "no image";
-  const issue = await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "" }).catch(e => ({ error: e.message }));
+  const issue = await writeHubNewsletterIssue(env, { cid, titleId: t.titleId, headline: t.headline, liveUrl: g.liveUrl || "", digest: digestBlock }).catch(e => ({ error: e.message }));
   return { ok: true, hub: hub.name, product: product.name, headline: t.headline, titleId: t.titleId, assetId, liveUrl, siteError: g.siteError || "", thumb, thumbError, had: have, issue: issue.ok ? issue.subject : ("ERR " + issue.error) };
 }
 // rewriteHubNewsPost {assetId} — fix a published hub news post IN PLACE (same blog URL): a new dated, no-invention headline
@@ -1512,7 +1512,7 @@ ${ideas.map(x => "- " + x).join("\n") || "(none yet)"}`;
 // writeHubNewsletterIssue — the regular newsletter: ONE ready-to-send email per hub news post (subject, preview, the
 // article's key points rewritten for email, link to the full post). Saved as a "Newsletter Issue" asset on the news title,
 // capture form "<slug>/main" (the hub's ActiveCampaign list). Called by writeHubNewsPost after each post publishes.
-async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl }) {
+async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl, digest }) {
   await hubSitesMerge(env).catch(() => {});   // registry hubs (Medicare, CPM…) must be in HUB_SITES on every path
   cid = String(cid || "").replace(/-/g, "");
   const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
@@ -1533,7 +1533,7 @@ async function writeHubNewsletterIssue(env, { cid, titleId, headline, liveUrl })
 ${audience}
 ARTICLE: ${headline}
 LINK (end the email with: [Read the full article](${url})):
-${article.slice(0, 7000)}
+${article.slice(0, 7000)}${digest ? `\n\nTHIS PERIOD'S PREMIUM DIGEST (a source for this FREE issue — at most one item from it as a teaser, name the publisher, and one line inviting readers to the premium edition; never give away its analysis):\n${String(digest).replace(/^\s*THIS PERIOD'S PREMIUM DIGEST[^\n]*\n/, "").slice(0, 3000)}` : ""}
 Sign off as "${hub.name}". Call submit_issue.` }] }) }).then(r => r.json()).catch(e => ({ error: { message: e.message } }));
   const it = ((ar.content || []).find(b => b.type === "tool_use") || {}).input;
   if (!it || !it.body) return { error: "issue: " + ((ar.error && ar.error.message) || "none") };
