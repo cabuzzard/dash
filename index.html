@@ -15645,6 +15645,11 @@ async function hub2DigestModal(slug) {
     ${HT_LBL('Keywords (one per line or comma-separated)')}<textarea id="h2dKw" rows="3" style="${IN}resize:vertical;"></textarea>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-4px 0 6px;"><input id="h2dSugQ" placeholder="suggest from a phrase…" style="${HT_IN}flex:1;min-width:160px;" onkeydown="if(event.key==='Enter'){event.preventDefault();hub2DigestSuggest();}"><button class="kw-btn" onclick="hub2DigestSuggest()">💡 YouTube + Google</button></div>
     <div id="h2dSug" style="font-size:11px;margin-bottom:6px;"></div>
+    <details id="h2dTopicBox" ontoggle="if(this.open)hub2DigestTopicOpen()" style="font-size:11.5px;margin:-2px 0 8px;"><summary style="cursor:pointer;color:var(--accent);">＋ Add these keywords to the hub as a topic</summary>
+      <div style="padding:6px 0 0 12px;"><div style="font-size:11px;color:var(--text3);margin-bottom:5px;">The keywords in the box above become one grouped topic in the hub's keyword structure (taken out of any other topic; ★ Main is never touched). Undo: Keywords tab → 🌐 Hub → ↶ Undo last apply.</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:180px;">${HT_LBL('Topic name')}<input id="h2dTopicName" style="${IN}" placeholder="its main keyword"></div>
+          <div style="flex:1;min-width:180px;">${HT_LBL('Cluster')}<select id="h2dTopicCluster" style="${IN}"><option value="">Loading clusters…</option></select></div></div>
+        <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2DigestAddTopic(this)">＋ Add topic to the hub</button> <span id="h2dTopicMsg" style="font-size:11px;color:var(--text2);"></span></div></details>
     <div id="h2dAssoc" style="font-size:11px;color:var(--text3);margin-bottom:6px;">Saved industry associations: loading… · creators ticked "Digest Source" in Notion are included automatically.</div>
     ${HT_LBL('Extra pages to check (optional URLs, one per line)')}<textarea id="h2dUrls" rows="2" style="${IN}resize:vertical;"></textarea>
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><button class="kw-btn" id="h2dRunBtn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2DigestStart()">🔎 Run research</button><span id="h2dStatus" style="font-size:11px;color:var(--text3);"></span></div>
@@ -15663,6 +15668,35 @@ async function hub2DigestModal(slug) {
     if (el) el.textContent = `Saved industry associations: ${n}${n ? ' (' + r.list.slice(0, 4).map(a => a.name).join(', ') + (n > 4 ? '…' : '') + ')' : ' — add them in care-gap\'s digest research'} · creators ticked "Digest Source" in Notion are included automatically.`; }).catch(() => {});
   const jid = h2dLS('dr:job:' + H2D.cid);
   if (jid) { try { const r = await call('digestResearch', { op: 'status', jobId: jid }); if (r.job) { H2D.job = r.job; if (h2dEl('h2dNotes')) h2dEl('h2dNotes').value = r.job.notes || ''; hub2DigestRender(); hub2DigestPoll(); } } catch (e) { h2dLS('dr:job:' + H2D.cid, null); } }
+}
+// ＋ Add these keywords to the hub as a topic (operator 2026-10-15) — kwHubApply (same save + backup as the Keywords tab):
+// unassign them from every topic (Main untouched), then one new topic holding them, under the chosen cluster
+async function hub2DigestTopicOpen() {
+  const sel = h2dEl('h2dTopicCluster'), nm = h2dEl('h2dTopicName'); if (!sel) return;
+  if (nm && !nm.value) nm.value = h2dKeywords()[0] || '';
+  try { const r = await call('getKeywordClusters', { campaignId: H2D.cid }); if (r.error) throw new Error(r.error);
+    const split = k => String(k || '').split(/[,;\n]/).map(x => x.toLowerCase().replace(/\s+/g, ' ').trim()).filter(Boolean);
+    H2D.topics = [...(r.committed || []), ...(r.staged || [])].filter(t => t && t.id).map(t => ({ id: String(t.id), keywords: split(t.keywords) }));
+    const tc = r.topicClusters || { clusters: [], assign: {} }, count = {}; Object.values(tc.assign || {}).forEach(c => { if (c) count[c] = (count[c] || 0) + 1; });
+    sel.innerHTML = (tc.clusters || []).map(c => `<option value="${esc(c)}">${esc(c)} (${count[c] || 0}/3 topics${(count[c] || 0) >= 3 ? ' — full' : ''})</option>`).join('') + '<option value="">— no cluster —</option>';
+  } catch (e) { sel.innerHTML = '<option value="">— no cluster —</option>'; const m = h2dEl('h2dTopicMsg'); if (m) m.textContent = 'Clusters not loaded: ' + e.message; }
+}
+async function hub2DigestAddTopic(btn) {
+  const kws = [...new Set(h2dKeywords().map(k => k.toLowerCase().replace(/\s+/g, ' ').trim()).filter(Boolean))], name = (h2dEl('h2dTopicName')?.value || '').trim() || kws[0], cluster = h2dEl('h2dTopicCluster')?.value || '', msg = h2dEl('h2dTopicMsg');
+  if (!kws.length) { msg.style.color = '#f87171'; msg.textContent = 'Add keywords to the box first.'; return; }
+  if (!confirm(`Add a topic "${name}" with ${kws.length} keyword${kws.length === 1 ? '' : 's'} to ${H2D.name}${cluster ? ' under "' + cluster + '"' : ''}?
+
+${kws.join(', ')}`)) return;
+  btn.disabled = true; msg.style.color = 'var(--text2)'; msg.textContent = '⏳ Saving to the hub…';
+  try {
+    // out of the topics that hold them — topic by topic, so ★ Main is never touched
+    const out = (H2D.topics || []).filter(t => t.keywords.some(k => kws.includes(k))).map(t => ({ op: 'unassign', keywords: kws, from: t.id }));
+    const r = await call('kwHubApply', { campaignId: H2D.cid, name: H2D.name, ops: [...out, { op: 'newTopics', keywords: kws, mode: 'one', ids: ['dt' + Date.now().toString(36)], name, cluster, move: false }] });
+    if (!r || r.error) throw new Error((r && r.error) || 'not saved');
+    msg.style.color = '#4ade80'; msg.textContent = `✓ Topic "${name}" added${(r.errors || []).length ? ' · ' + r.errors.length + ' problem(s)' : ''}`;
+    if (_hub2Checklist[H2D.slug]) hub2ChecklistLoad(H2D.slug, true);
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; }
+  btn.disabled = false;
 }
 async function hub2DigestSuggest() {
   const q = (h2dEl('h2dSugQ')?.value || '').trim() || h2dKeywords()[0] || '', out = h2dEl('h2dSug'); if (!out) return;
