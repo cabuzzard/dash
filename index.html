@@ -25592,8 +25592,12 @@ async function loadMorningTodos() {
       if (!isNaN(lm) && !isNaN(mine) && lm - mine > 1000) { const b = document.getElementById('verNew'); if (b) { b.style.display = 'block'; b.textContent = '⬆ A newer version (' + fmt(lm) + ') is out — tap to update'; } }
     } catch (e) {}
   }
-  setTimeout(check, 4000); setInterval(check, 10 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  // checks every minute AND whenever you come back to this window (focus: switching from another app/window
+  // doesn't fire visibilitychange on desktop, so the banner used to wait up to 10 min)
+  let last = 0; const soon = () => { if (Date.now() - last > 15000) { last = Date.now(); check(); } };
+  setTimeout(check, 4000); setInterval(check, 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') soon(); });
+  window.addEventListener('focus', soon);
 })();
 function verUpdate() {
   const u = new URL(location.href); u.searchParams.set('v', Date.now().toString(36)); u.searchParams.delete('vcheck');
