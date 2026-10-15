@@ -20,7 +20,7 @@ hasn't loaded yet.
    - 🔗 Link copies the full address and opens a prompt to edit it, for shortcuts that have no address bar.
 3. **Newer-version banner.** The page sends a `HEAD` request for its own URL (`cache: 'no-store'` plus a throwaway
    query param). If the server's `Last-Modified` is newer than the page's own, it shows an orange "A newer version is
-   out — tap to update" banner. The check runs 4 s after load, every 10 min, and whenever the tab becomes visible again.
+   out — tap to update" banner. The check runs 4 s after load, every minute, whenever the tab becomes visible again, and whenever the window gets focus.
 
 Live examples: `index.html` (search `verBar`) and `microsites/care-gap-v2/index.html`.
 
@@ -54,8 +54,9 @@ Put the bar in the page header and the banner just under it:
       }
     } catch (e) {}
   }
-  setTimeout(check, 4000); setInterval(check, 10 * 60 * 1000);
+  setTimeout(check, 4000); setInterval(check, 60 * 1000);   // every minute + on window focus (below)
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  window.addEventListener('focus', check);   // switching back from another app doesn't fire visibilitychange on desktop
 })();
 function verUpdate() {
   const u = new URL(location.href); u.searchParams.set('v', Date.now().toString(36)); u.searchParams.delete('vcheck');
