@@ -15477,7 +15477,7 @@ const hub2StratKey = slug => 'hs_' + slug.replace(/[^a-z0-9]/gi, '_');
 function hub2StrategiesShell(slug) { const k = hub2StratKey(slug);
   return `<div id="fv${k}Bar"></div><div id="fv${k}Panel" style="display:none;"></div><div id="${k}Body"></div><div id="${k}Msg" style="font-size:10px;color:var(--text3);margin-top:4px;"></div>`; }
 function hub2StrategiesLoad(slug) { const k = hub2StratKey(slug);
-  FLOWS[k] = FLOWS[k] || { name: ('hubstrat-' + slug).slice(0, 40), body: k + 'Body', msg: k + 'Msg', data: null, t: null, view: true, seed: ['Strategy', 'Goal', 'Status', 'Notes'] };
+  FLOWS[k] = FLOWS[k] || { name: ('hubstrat-' + slug).slice(0, 40), body: k + 'Body', msg: k + 'Msg', data: null, t: null, view: true, seed: ['Strategy', 'Goal', 'Status', 'Post Ideas'] };
   loadFlowTable(k); }
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
 const HUB2_TIERS = ['Interview', 'Own interview', 'Short interview', 'From parent', 'None'];   // parents: Interview / None · children: From parent / Own / Short / None
