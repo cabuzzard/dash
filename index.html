@@ -6258,9 +6258,10 @@ function kwLoadResults(offset) {
   KW.offset = offset || 0;
   const el = document.getElementById('kwResults');
   if (KW.selOnly && !KW.selected.size) KW.selOnly = false;
-  // a new list = a fresh selection (operator 2026-10-15): changing filters / search / group / run clears the ticks;
-  // paging and sorting keep them
-  { const sig = JSON.stringify([kwFilters(), KW.group || null, KW.view || null, KW.runId || null]);
+  // a new list = a fresh selection (operator 2026-10-15): another run / group / filter clears the ticks; paging,
+  // sorting and the search box keep them. Keywords already sent somewhere (main / cluster / campaign) are saved there.
+  { const f = kwFilters(); delete f.q;   // typing in the search box is still the same list — keeps the ticks
+    const sig = JSON.stringify([f, KW.group || null, KW.view || null, KW.runId || null]);
     if (KW._fsig !== undefined && KW._fsig !== sig && !KW.selOnly && KW.selected.size) KW.selected.clear();
     KW._fsig = sig; }
   const grp = KW.group && kwGroupById(KW.group), gset = grp && new Set(grp.keywords);
