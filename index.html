@@ -16873,6 +16873,13 @@ function hubKwFilterToggle(slug, s) { const F = hubKwFilterOf(slug); F.states = 
 // ▾ Expand all / ▸ Collapse all — every node of the Keywords tree: Master, clusters, Unclustered, topics, Existing + Proposed
 function hubKwExpandAll(slug, open, existingOnly) {
   const K = _hubKw[slug]; if (!K || K.loading || K.error) return;
+  if (existingOnly === 'topics') {   // ▾ Expand topics: headings only — every Keywords / Existing / Proposed list closed
+    const ks = ['master', 'unclustered'].concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
+    [...(K.staged || []), ...(K.committed || [])].forEach(t => ks.push('t:' + t.id));
+    Object.keys(_hubKwOpen).forEach(k => { if (k.startsWith(slug + '|') && /\|(ex|pr|kw):/.test(k)) delete _hubKwOpen[k]; });
+    ks.forEach(k => { _hubKwOpen[slug + '|' + k] = true; });
+    return hubKwRefresh(slug);
+  }
   const keys = ['master', 'unclustered', 'ex:__main'].concat(existingOnly ? [] : ['pr:__main']).concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
   // Expand existing = products only: keyword lists and Proposed stay closed
   [...(K.staged || []), ...(K.committed || [])].forEach(t => { keys.push('t:' + t.id, 'ex:' + t.id); if (existingOnly) { delete _hubKwOpen[slug + '|pr:' + t.id]; delete _hubKwOpen[slug + '|kw:' + t.id]; } else keys.push('pr:' + t.id, 'kw:' + t.id); });
@@ -16931,7 +16938,7 @@ function renderHubKw(slug) {
   const by = {}, un = [];
   topics.forEach(t => { const c = K.tc.assign && K.tc.assign[t.id]; if (c && clusters.includes(c)) (by[c] = by[c] || []).push(t); else un.push(t); });
   const master = split(K.master);
-  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
+  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
   const mainPs = (K.products || []).filter(p => p.topicId === '__main' && (!fOn || keep(p))), mainIdeas = hubKwMainIdeas(slug);
   const mainInner = sec('kw:__master', 'Keywords', master.length, '', master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>')
     + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.map(exRow).join('') || '<span style="font-size:11px;color:var(--text3);">No ★ Main products yet.</span>')
