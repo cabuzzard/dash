@@ -16922,8 +16922,10 @@ function renderHubKw(slug) {
       + prods;   // the topic's stored rationale note is not shown (operator 2026-10-15)
     // green = Development products in sync · orange = Development products out of sync (incl. no research yet)
     const nIn = ps.filter(p => hubKwSyncState(slug, p) === 'in').length, nOut = ps.filter(p => hubKwOutOfSync(slug, p)).length;
-    const counts = (nIn ? ` <span title="${nIn} Development product${nIn === 1 ? '' : 's'} in sync" style="color:#4ade80;font-weight:700;">${nIn}</span>` : '') + (nOut ? ` <span title="${nOut} Development product${nOut === 1 ? '' : 's'} out of sync (or no research yet)" style="color:#ff7a00;font-weight:700;">${nOut}</span>` : '');
-    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name) + counts, sub, inner, { topicId: t.id, tools: moveSel + addBtn });
+    // fixed-width cells so the counts line up in a straight column (left of 'move to…'); zero = blank
+    const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
+    const counts = cell(nIn, '#4ade80', `${nIn} Development product${nIn === 1 ? '' : 's'} in sync`) + cell(nOut, '#ff7a00', `${nOut} Development product${nOut === 1 ? '' : 's'} out of sync (or no research yet)`);
+    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: t.id, tools: counts + moveSel + addBtn });
   };
   const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
   const by = {}, un = [];
