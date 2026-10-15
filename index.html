@@ -16585,7 +16585,7 @@ async function hubKwLoad(slug) {
     _hubKw[slug] = { master: String((res && res.research && res.research.keywords) || ''), researchId: (res && res.research && res.research.id) || '', mainIdeasText: String((res && res.research && res.research.productIdeas) || ''), staged: (cl && cl.staged) || [], committed: (cl && cl.committed) || [],
       tc: (cl && cl.topicClusters) || { clusters: [], assign: {} }, products: (pr && pr.products) || [] };
   } catch (e) { _hubKw[slug] = { error: e.message }; }
-  hubKwRefresh(slug); if (document.getElementById('hubBuildBody-' + slug)) hubBuildRefreshRows(slug); hubResLoad(slug);
+  hubKwRefresh(slug); if (document.getElementById('hubBuildBody-' + slug)) hubBuildRefreshRows(slug); hubResLoad(slug); hubKwStageBackfill(slug);
 }
 // every copy repaints: the Build checklist's Keywords phase (Content Hubs) and the Keywords section (Content Hubs 2)
 function hubKwRefresh(slug) { document.querySelectorAll('[id="hubKwBody-' + slug + '"]').forEach(el => { el.innerHTML = renderHubKw(slug); }); document.querySelectorAll('[id="hubKwW-' + slug + '"]').forEach(w => { w.innerHTML = hubKwWork(slug); }); hub2KwCount(slug);
@@ -16754,6 +16754,34 @@ async function hubKwMainIdeaSources(slug, i) {
     if (el) el.innerHTML = s.length ? s.map(v => `<div style="margin-bottom:8px;"><a href="${esc(v.url)}" target="_blank" rel="noopener" style="color:var(--accent);">${esc(v.title || v.url)}</a></div>`).join('') : 'No sources found.'; }
   catch (e) { const el = document.getElementById('hkSrcBody'); if (el) el.textContent = 'Search failed: ' + e.message; }
 }
+// ── Product Stage: Raw (just an idea) → Keyword Research (flagged: work on its keyword topics) → Development (final:
+// research + titles). Sync shows on Development only — out of sync = orange flag, in sync = nothing. Labels only for now.
+const HUB_STAGES = [['Raw', 'var(--text3)'], ['Keyword Research', '#f6ad55'], ['Development', '#4ade80']];
+function hubKwStagePicker(slug, p) {
+  const st = p.stage || '', col = (HUB_STAGES.find(x => x[0] === st) || [, 'var(--text3)'])[1];
+  return `<select title="Product stage — Raw: just an idea · Keyword Research: flagged to work on its keyword topics · Development: research + titles" onchange="hubKwSetStage('${slug}','${esc(p.id)}',this)" style="font-size:10px;padding:1px 3px;border:1px solid ${col};border-radius:4px;background:var(--surface2);color:${col};font-weight:600;max-width:128px;">${st ? '' : '<option value="" selected>— stage —</option>'}${HUB_STAGES.map(([s]) => `<option value="${s}" ${s === st ? 'selected' : ''}>${s}</option>`).join('')}</select>`;
+}
+function hubKwOutOfSync(slug, p) {
+  if (p.stage !== 'Development') return false;
+  return !!p.outOfSync || (_hubResState[slug] || {})[String(p.id).replace(/-/g, '')] === 'off-main';
+}
+async function hubKwSetStage(slug, pid, sel) {
+  const stage = sel.value; if (!stage) return; sel.disabled = true;
+  try { const r = await call('setProductStage', { productId: pid, stage }); if (!r || r.error) throw new Error((r && r.error) || 'Not saved');
+    const pr = ((_hubKw[slug] || {}).products || []).find(x => String(x.id).replace(/-/g, '') === String(pid).replace(/-/g, '')); if (pr) pr.stage = stage;
+    hubKwRefresh(slug); }
+  catch (e) { sel.disabled = false; showToast('Stage not saved: ' + e.message, 'error'); hubKwRefresh(slug); }
+}
+// first labels: if any product still has no stage, ask the worker to run its one-time labeling (no-op once done)
+let _hubStageBackfill = null;
+function hubKwStageBackfill(slug) {
+  const K = _hubKw[slug]; if (!K || !(K.products || []).some(p => !p.stage) || _hubStageBackfill) return;
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  _hubStageBackfill = call('productStageBackfill', {}).then(async r => {
+    if (r && (r.raw || r.development)) showToast(`Product stages set — ${r.raw} Raw · ${r.development} Development`, 'success');
+    const pr = await call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => null); if (pr && pr.products && _hubKw[slug]) { _hubKw[slug].products = pr.products; hubKwRefresh(slug); }
+  }).catch(() => {});
+}
 // ▾ Expand all / ▸ Collapse all — every node of the Keywords tree: Master, clusters, Unclustered, topics, Existing + Proposed
 function hubKwExpandAll(slug, open) {
   const K = _hubKw[slug]; if (!K || K.loading || K.error) return;
@@ -16784,7 +16812,7 @@ function renderHubKw(slug) {
   const sec = (k, label, n, tools, body) => { const open = !!_hubKwOpen[slug + '|' + k];
     return `<div style="margin-top:4px;border-left:2px solid var(--border2);padding-left:7px;"><div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none;font-size:11px;font-weight:600;"><span style="font-size:9px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>${label}<span style="font-weight:400;color:var(--text3);">(${n})</span>${tools ? `<span style="margin-left:auto;display:flex;gap:4px;" onclick="event.stopPropagation()">${tools}</span>` : ''}</div>${open ? `<div style="padding:2px 0 3px 16px;">${body}</div>` : ''}</div>`; };
   // one Existing-product row (＋ title · 🔬 research) — shared by Master and every topic
-  const exRow = p => `<div style="display:flex;align-items:center;gap:5px;padding:2px 0;font-size:11px;flex-wrap:wrap;">${hubResMark(slug, String(p.id).replace(/-/g, ''))}📦 ${esc(p.name)} <span style="color:var(--text3);">· ${esc(p.status || '')}${p.outOfSync ? ' · <span style="color:#f6ad55;">⚠ keywords out of sync</span>' : ''}</span><span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
+  const exRow = p => `<div style="display:flex;align-items:center;gap:5px;padding:2px 0;font-size:11px;flex-wrap:wrap;">${hubKwStagePicker(slug, p)}📦 ${esc(p.name)}${hubKwOutOfSync(slug, p) ? ' <span style="color:#ff7a00;font-weight:700;" title="Something upstream changed (keywords or research) — re-sync before creating titles">⚠ out of sync</span>' : ''}<span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
   const topic = (t, depth) => {
     const kws = split(t.keywords), ps = prodsOf(t), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
     const moveSel = clusters.length ? `<select title="Move this topic to a cluster" style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);max-width:130px;" onchange="hubKwMoveTopic('${slug}','${esc(t.id)}',this.value)"><option value="__">🧩 move to…</option>${cur ? '<option value="">— unclustered —</option>' : ''}${clusters.filter(c => c !== cur).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : '';

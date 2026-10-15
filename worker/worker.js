@@ -20625,6 +20625,20 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         return json({ success: true });
       }
 
+      // Product Stage (2026-10-15): Raw (just an idea) → Keyword Research (flagged to work on its keyword topics) →
+      // Development (final: research + titles; sync / out of sync shown on it). Set from Content Hubs 2 → Keywords.
+      if (body.action === "setProductStage") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const pid = String(body.productId || "").replace(/-/g, ""), stage = String(body.stage || "");
+        if (!pid || !PRODUCT_STAGES.includes(stage)) return json({ error: "productId and a stage (" + PRODUCT_STAGES.join(" / ") + ") required" }, 400);
+        try { await productStageEnsureProp(env); await kwNotionPatch(env, pid, { "Product Stage": { select: { name: stage } } }); }
+        catch (e) { return json({ error: e.message }, 502); }
+        return json({ success: true, productId: pid, stage });
+      }
+      if (body.action === "productStageBackfill") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        try { return json({ success: true, ...(await productStageBackfill(env, !!body.force)) }); } catch (e) { return json({ error: e.message }, 502); }
+      }
       if (body.action === "getCampaignProducts") {
         const { campaignId } = body;
         if (!campaignId) return json({ error: "campaignId required" }, 400);
@@ -20671,6 +20685,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           marketingPhase: (p.properties?.["Marketing Phase"]?.rich_text || []).map(t => t.plain_text).join("") || null,
           topicId: (p.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").replace(/-/g, "") || null,
           outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
+          stage: p.properties?.["Product Stage"]?.select?.name || null,   // Raw / Keyword Research / Development (productStage*)
         }));
         // Group → Stack → Product: the campaign's product groups (stack → group name, + the saved group order)
         let sg = null; try { sg = await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json"); } catch (e) {}
@@ -49352,6 +49367,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "*/30 * * * *") {
+      cw("productStageBackfill", productStageBackfill(env).catch(e => console.error("productStageBackfill failed:", e.message)));
       cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
       cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
@@ -50390,6 +50406,51 @@ async function kwNotionPatch(env, pageId, properties) {
     headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
     body: JSON.stringify({ properties }) });
   if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion " + r.status); }
+}
+const PRODUCT_STAGES = ["Raw", "Keyword Research", "Development"];
+async function productStageEnsureProp(env) {
+  if (await env.TRADES.get("prodstage:prop")) return;
+  const r = await fetch("https://api.notion.com/v1/databases/" + PRODUCTS_DB, { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Product Stage": { select: { options: [{ name: "Raw", color: "gray" }, { name: "Keyword Research", color: "yellow" }, { name: "Development", color: "green" }] } } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Product Stage to Products: " + (d.message || r.status)); }
+  await env.TRADES.put("prodstage:prop", "1");
+}
+// One-time first labels: every product with NO Product Stage yet → Development when a Published asset sits anywhere
+// downstream (asset's Product, or its title's product), else Raw. Never touches a product that already has a stage.
+// Runs once (KV prodstage:backfill:v1), from the */30 cron or the productStageBackfill action; a 20-min lock stops overlaps.
+async function productStageBackfill(env, force) {
+  const done = await env.TRADES.get("prodstage:backfill:v1", "json");
+  if (done && !force) return { skipped: true, ...done };
+  if (await env.TRADES.get("prodstage:backfill:lock")) return { running: true };
+  await env.TRADES.put("prodstage:backfill:lock", "1", { expirationTtl: 1200 });
+  try {
+    await productStageEnsureProp(env);
+    const nid = x => String(x || "").replace(/-/g, "");
+    const [prods, titles, assets] = await Promise.all([
+      notionQuery(PRODUCTS_DB, {}),
+      notionQuery(CONTENT_STRATEGY_DB, {}),
+      notionQuery(ASSETS_DB, { filter: { property: "Asset Status", select: { equals: "Published" } } }),
+    ]);
+    const titleProduct = {}; titles.forEach(t => { const pr = (t.properties?.product?.relation || [])[0]; if (pr) titleProduct[nid(t.id)] = nid(pr.id); });
+    const live = new Set();
+    assets.forEach(a => { const p = a.properties || {};
+      (p.Product?.relation || []).forEach(r => live.add(nid(r.id)));
+      (p["Content Strategy"]?.relation || []).forEach(r => { const pid = titleProduct[nid(r.id)]; if (pid) live.add(pid); }); });
+    let raw = 0, dev = 0, kept = 0, failed = 0;
+    for (const p of prods) {
+      const pp = p.properties || {};
+      if (pp["Product Stage"]?.select?.name) { kept++; continue; }
+      if ((pp.Status?.select?.name || "") === "Archived" || pp.Archived?.checkbox) continue;
+      const stage = live.has(nid(p.id)) ? "Development" : "Raw";
+      try { await kwNotionPatch(env, p.id, { "Product Stage": { select: { name: stage } } }); stage === "Raw" ? raw++ : dev++; }
+      catch (e) { failed++; console.error("productStageBackfill " + nid(p.id) + ": " + e.message); }
+      await new Promise(r => setTimeout(r, 340));   // Notion ~3 writes/s
+    }
+    const out = { raw, development: dev, alreadySet: kept, failed, at: new Date().toISOString() };
+    if (!failed) await env.TRADES.put("prodstage:backfill:v1", JSON.stringify(out));
+    return out;
+  } finally { await env.TRADES.delete("prodstage:backfill:lock"); }
 }
 async function kwEnsureProductProps(env) {
   if (await env.TRADES.get("kwhub:props2")) return;
