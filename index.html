@@ -15449,6 +15449,7 @@ async function hub2KsRepropose(slug, btn) {
     st.busy = ''; st.note = ''; await hub2KsLoad(slug, true); showToast('New proposal ready for ' + h.name, 'success'); }
   catch (e) { st.busy = ''; hub2KsPaint(slug); showToast('Not proposed: ' + e.message, 'error'); }
 }
+const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // shown grayed out, no ＋ (operator 2026-10-15)
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const hub2Id = s => String(s || '').replace(/-/g, '');
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
@@ -15514,7 +15515,7 @@ function hub2ChecklistRows(slug) {
     const progress = Math.max(0, raw - baseline), complete = progress >= m.target, periodic = !!HUB2_UNIT[m.cadence];
     const due = tracked ? hub2NextDue({ tracked, cadence: m.cadence, weekday: m.weekday }, complete) : '';
     const status = !tracked ? '' : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
-    return { ...m, creatable: !/^hub$/i.test(m.parent), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
+    return { ...m, notBuilt: HUB2_NOT_BUILT.test(m.name), creatable: !/^hub$/i.test(m.parent) && !HUB2_NOT_BUILT.test(m.name), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
       periodLabel: m.cadence };
   });
 }
@@ -15531,7 +15532,7 @@ function hub2ChecklistHtml(slug) {
   const warn = '#ff7a00', ok = '#4ade80';
   const body = rows.map(r => { const name = r.asset ? `<span style="color:var(--text3);">${esc(r.parent)} - </span>${esc(r.asset)}` : esc(r.name);
     const sc = /^(Behind|Due)$/.test(r.status) ? warn : /^(On track|Done)$/.test(r.status) ? ok : 'var(--text3)';
-    return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${esc(r.description || r.name)}" style="cursor:pointer;">
+    return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${esc(r.notBuilt ? 'Not built yet — ' + (r.description || r.name) : (r.description || r.name))}" style="cursor:pointer;${r.notBuilt ? 'background:rgba(128,128,128,.22);opacity:.6;' : ''}">
       <td style="${TD}max-width:250px;overflow:hidden;text-overflow:ellipsis;${r.isPillar ? 'font-weight:700;' : ''}">${r.creatable ? `<button onclick="event.stopPropagation();hub2CreateModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Create a ${esc(r.name)} asset under a title" style="font-size:10px;line-height:1;padding:1px 5px;margin-right:6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋</button>` : ''}${name}</td>
       <td style="${TD}text-align:center;color:${r.published ? ok : 'var(--text3)'};">${r.published || ''}</td>
       <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};">${r.inProgress || ''}</td>
@@ -15830,10 +15831,71 @@ async function hub2NewsWrite(btn) {
     hub2ChecklistLoad(H2N.slug, true);
   } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '📝 Write news article'; }
 }
+// ── ＋ Digest - Free Newsletter (checklist) — a free email issue from a written digest (port of care-gap's 📰 Free newsletter
+// picks + 📧 Publish digest email). Pick the digest → 📰 Propose picks (worker digestPicks: latest ideas / news / new products /
+// benefits not pushed lately, from the digest's sources) → tick the featured items (the first ticked leads) → ActiveCampaign list +
+// sender → 📧 Create email draft (publishDigestEmail with picks + the Digest parent: written from the parent, recorded as a
+// "Newsletter Free" asset under it). NOTHING is sent — review and send it in ActiveCampaign.
+const H2F = { slug: '', items: [], picked: {} };
+const h2fPools = { idea: '💡 Latest ideas', news: '📰 News', product: '🆕 New products', benefit: '⭐ Benefits not pushed lately' };
+function hub2FreeNlModal(slug) {
+  const ds = hub2NewsDigests(slug).filter(d => d.ready); Object.assign(H2F, { slug, items: [], picked: {} });
+  const ls = k => { try { return localStorage.getItem('h2f:' + k) || ''; } catch (e) { return ''; } };
+  kwWideModal(`<h3 style="margin:0 0 4px;">＋ Digest - Free Newsletter</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">A free email issue from one of your digests: one lead item, short teasers, and a pitch for the premium edition. It's created as an ActiveCampaign <b>draft</b> — nothing is sent until you send it there.</div>
+    ${ds.length ? `${HT_LBL('From which digest')}<select id="h2fDigest" style="${HT_IN}" onchange="H2F.items=[];H2F.picked={};document.getElementById('h2fPicks').innerHTML=''">${ds.map(d => `<option value="${esc(d.titleId)}">${esc(d.title)}</option>`).join('')}</select>
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;"><button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2FreeNlPicks(this)">📰 Propose picks</button><span style="font-size:11px;color:var(--text3);">optional — without picks the issue leads with the digest's top item</span></div>
+      <div id="h2fPicks" style="max-height:30vh;overflow-y:auto;font-size:11.5px;margin-bottom:8px;"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:200px;">${HT_LBL('ActiveCampaign list')}<select id="h2fList" style="${HT_IN}"><option value="">Loading…</option></select></div>
+        <div style="flex:1;min-width:200px;">${HT_LBL('Sender address')}<select id="h2fAddr" style="${HT_IN}"><option value="">Loading…</option></select></div></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:150px;">${HT_LBL('From name')}<input id="h2fFromName" style="${HT_IN}" value="${esc(ls('fromName'))}"></div>
+        <div style="flex:1;min-width:150px;">${HT_LBL('From email')}<input id="h2fFromEmail" style="${HT_IN}" value="${esc(ls('fromEmail'))}"></div>
+        <div style="flex:1;min-width:150px;">${HT_LBL('Reply-to (optional)')}<input id="h2fReply" style="${HT_IN}" value="${esc(ls('replyTo'))}"></div></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="modal-btn" onclick="hub2FreeNlWrite(this)">📧 Create email draft</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2fMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`
+      : `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">This hub has no written digest yet — the free newsletter is made from one.</div><div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hub2DigestModal('${slug}')">＋ Write a digest first</button>${HC_CANCEL.replace('Cancel', 'Close')}</div>`}`);
+  if (!ds.length) return;
+  Promise.all([call('getActiveCampaignLists', {}), call('getActiveCampaignAddresses', {})]).then(([l, a]) => {
+    const ls2 = document.getElementById('h2fList'), as = document.getElementById('h2fAddr'); if (!ls2 || !as) return;
+    if (l.error || a.error) throw new Error(l.error || a.error);
+    ls2.innerHTML = '<option value="">— choose a list —</option>' + (l.lists || []).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('');
+    as.innerHTML = '<option value="">— choose an address —</option>' + (a.addresses || []).map(x => `<option value="${esc(x.id)}">${esc(x.name || x.address || ('Address ' + x.id))}</option>`).join('');
+    const h = HUB_SITES.find(x => x.slug === slug), lastList = ls('list:' + (h ? h.slug : '')); if (lastList) ls2.value = lastList;
+    if ((a.addresses || []).length === 1) as.value = a.addresses[0].id; else if (ls('addr')) as.value = ls('addr');
+  }).catch(e => { const m = document.getElementById('h2fMsg'); if (m) { m.style.color = '#f87171'; m.textContent = 'Could not load ActiveCampaign lists / addresses: ' + e.message; } });
+}
+async function hub2FreeNlPicks(btn) {
+  const h = HUB_SITES.find(x => x.slug === H2F.slug), tid = document.getElementById('h2fDigest')?.value, d = hub2NewsDigests(H2F.slug).find(x => x.titleId === tid), box = document.getElementById('h2fPicks');
+  if (!h || !d || !box) return; btn.disabled = true; box.textContent = '⏳ Proposing picks…';
+  try {
+    const src = await call('getDigestSources', { titleId: tid });
+    const r = await call('digestPicks', { campaignId: h.campaignId, productId: d.productId || undefined, sources: ((src && src.sources) || []).slice(0, 15) }); if (r.error) throw new Error(r.error);
+    H2F.items = r.items || []; H2F.picked = {}; H2F.items.forEach((x, i) => { if (x.suggested) H2F.picked[i] = true; });
+    box.innerHTML = Object.keys(h2fPools).map(k => { const list = H2F.items.map((x, i) => [x, i]).filter(([x]) => x.pool === k);
+      return list.length ? `<div style="margin:6px 0 2px;font-weight:700;color:var(--text2);">${h2fPools[k]}</div>` + list.map(([x, i]) => `<label style="display:flex;gap:6px;align-items:flex-start;margin:3px 0;cursor:pointer;color:var(--text);"><input type="checkbox" onchange="H2F.picked[${i}]=this.checked" ${H2F.picked[i] ? 'checked' : ''}><span><b>${esc(x.headline || '')}</b>${x.detail ? ` <span style="color:var(--text3);">— ${esc(x.detail)}</span>` : ''}</span></label>`).join('') : ''; }).join('')
+      || '<div style="color:var(--text3);">No picks came back — the issue will lead with the digest\'s top item.</div>';
+  } catch (e) { box.innerHTML = `<div style="color:#f87171;">Picks failed: ${esc(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = '↻ Propose again';
+}
+async function hub2FreeNlWrite(btn) {
+  const h = HUB_SITES.find(x => x.slug === H2F.slug), tid = document.getElementById('h2fDigest')?.value, msg = document.getElementById('h2fMsg');
+  const v = id => (document.getElementById(id)?.value || '').trim(), listId = v('h2fList'), addressId = v('h2fAddr'), fromName = v('h2fFromName'), fromEmail = v('h2fFromEmail'), replyTo = v('h2fReply');
+  if (!h || !tid) return; msg.style.color = '#f87171';
+  if (!listId) return msg.textContent = 'Pick a list.'; if (!addressId) return msg.textContent = 'Pick a sender address.'; if (!fromName || !fromEmail) return msg.textContent = 'From name and From email are required.';
+  try { localStorage.setItem('h2f:fromName', fromName); localStorage.setItem('h2f:fromEmail', fromEmail); localStorage.setItem('h2f:replyTo', replyTo); localStorage.setItem('h2f:addr', addressId); localStorage.setItem('h2f:list:' + h.slug, listId); } catch (e) {}
+  const pa = (_hub2Checklist[H2F.slug]?.hubRows || []).find(x => x.assetClass === 'Pillar' && hub2Id(x.titleId) === hub2Id(tid) && /digest/i.test([x.pillarType, x.assetType].join(' ')));
+  const picked = H2F.items.filter((x, i) => H2F.picked[i]), picks = picked.map(x => `- [${x.pool}] ${x.headline}${x.detail ? ' — ' + x.detail : ''}`).join('\n');
+  btn.disabled = true; btn.textContent = '⏳ Writing…'; msg.style.color = 'var(--text2)'; msg.textContent = '⏳ Writing the issue and creating the ActiveCampaign draft (~1 min)…';
+  try {
+    const r = await call('publishDigestEmail', { titleId: tid, campaignId: h.campaignId, listId, addressId, fromName, fromEmail, replyTo: replyTo || undefined, picks: picks || undefined, parentAssetId: pa ? pa.assetId : undefined });
+    if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    msg.style.color = '#4ade80'; msg.innerHTML = `✓ Draft created in ActiveCampaign — "${esc(r.subject)}". Nothing sent yet: review it and press Send in ActiveCampaign.${r.assetId ? ` · <a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--accent);">asset ↗</a>` : ''}`;
+    btn.textContent = '✓ Done'; hub2ChecklistLoad(H2F.slug, true);
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '📧 Create email draft'; }
+}
 async function hub2CreateModal(slug, id) {
   const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
   if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);   // a digest makes its own dated title
-  if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);   // news = a digest's ticked items
+  if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);
+  if (!m.isPillar && /^digest$/i.test(m.parent) && /free/i.test(m.asset) && /newsletter/i.test(m.asset)) return hub2FreeNlModal(slug);   // news = a digest's ticked items
   const titles = hub2ReadyTitles(slug);
   hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(m.parent === 'Pillar' ? 'parent' : m.parent) + ' parent.'}</div>
     ${titles.length ? `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}" onchange="hub2CreateStep('${slug}','${esc(id)}')">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select><div id="h2cStep" style="font-size:12px;color:var(--text3);">Loading…</div>`
