@@ -15374,6 +15374,10 @@ function renderHubs2() {
           <summary title="Keywords"><span title="Keywords">Keywords</span><span id="hub2KwN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2KwCountText(slug)}</span><span id="hubKwW-${slug}">${hubKwWork(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();delete _hubKw['${slug}'];hubKwLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hubKwBody-${slug}" style="padding:8px 12px;">${renderHubKw(slug)}</div>
         </details>
+        <details class="hub-sec" ontoggle="if(this.open)hub2ProductsOpen('${slug}')">
+          <summary title="Products"><span title="Products">Products</span><span id="hub2ProdN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2ProductsCount(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();delete _hubKw['${slug}'];hubKwLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hub2Prod-${slug}" style="padding:8px 12px;">${hub2ProductsHtml(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2StrategiesLoad('${slug}')">
           <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
@@ -15471,6 +15475,43 @@ const hub2Id = s => String(s || '').replace(/-/g, '');
 // Keywords: the same section as Content Hubs → Build checklist → Keywords (renderHubKw / hubKwLoad, shared _hubKw state)
 function hub2KwCountText(slug) { const K = _hubKw[slug]; return K && !K.loading && !K.error ? (K.tc.clusters || []).length + ' clusters · ' + (K.staged.length + K.committed.length) + ' topics' : 'clusters · topics · products'; }
 function hub2KwCount(slug) { const el = document.getElementById('hub2KwN-' + slug); if (el) el.textContent = hub2KwCountText(slug); }
+// Products: the hub's existing products by keyword placement — ★ Main, each cluster → its topics, unclustered topics, no topic.
+// Same data as Keywords (_hubKw: getCampaignProducts + topics + clusters); a product sits on its Topic ID (__main = ★ Main),
+// else on the topic named like its Product Stack (same rule as the Keywords tree). Everything collapsed by default.
+const _hub2ProdOpen = {};
+function hub2ProductsOpen(slug) { if (_hubKw[slug]) hub2ProductsPaint(slug); else hubKwLoad(slug); }
+function hub2ProductsPaint(slug) { const el = document.getElementById('hub2Prod-' + slug); if (el) el.innerHTML = hub2ProductsHtml(slug); const n = document.getElementById('hub2ProdN-' + slug); if (n) n.textContent = hub2ProductsCount(slug); }
+function hub2ProductsCount(slug) { const K = _hubKw[slug]; return K && K.products ? K.products.length + ' products · by cluster › topic' : 'existing products · by cluster › topic'; }
+function hub2ProdToggle(slug, k) { _hub2ProdOpen[slug + '|' + k] = !_hub2ProdOpen[slug + '|' + k]; hub2ProductsPaint(slug); }
+function hub2ProductsHtml(slug) {
+  const K = _hubKw[slug];
+  if (!K || K.loading) return '<div style="font-size:11px;color:var(--text3);">' + (K ? 'Loading products…' : 'Open to load.') + '</div>';
+  if (K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load products: ${esc(K.error)}</div>`;
+  const nid = x => String(x || '').replace(/-/g, '').toLowerCase(), norm = x => String(x || '').trim().toLowerCase();
+  const clusters = (K.tc && K.tc.clusters) || [], assign = (K.tc && K.tc.assign) || {};
+  const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
+  const placed = new Set(), main = [], byTopic = {};
+  (K.products || []).forEach(p => { if (p.topicId === '__main') { main.push(p); placed.add(p.id); } });
+  topics.forEach(t => { byTopic[t.id] = (K.products || []).filter(p => !placed.has(p.id) && (p.topicId ? nid(p.topicId) === nid(t.id) : norm(p.stack) && norm(p.stack) === norm(t.name))); byTopic[t.id].forEach(p => placed.add(p.id)); });
+  const loose = (K.products || []).filter(p => !placed.has(p.id));
+  const prodRow = p => `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:11px;flex-wrap:wrap;">📦 <span style="color:var(--text);">${esc(p.name)}</span><span style="color:var(--text3);">· ${esc(p.status || '')}${p.type ? ' · ' + esc(p.type) : ''}</span>${p.outOfSync ? '<span style="color:#f6ad55;">⚠ keywords out of sync</span>' : ''}<a href="https://www.notion.so/${esc(p.id)}" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;color:var(--text3);text-decoration:none;">Notion ↗</a></div>`;
+  const node = (k, depth, color, label, sub, inner) => { const open = !!_hub2ProdOpen[slug + '|' + k];
+    return `<div style="margin-left:${depth * 14}px;border-left:3px solid ${color};padding-left:8px;margin-bottom:4px;">
+      <div onclick="hub2ProdToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;user-select:none;font-size:11.5px;"><span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span></div>
+      ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
+  const pn = n => n + ' product' + (n === 1 ? '' : 's');
+  const topicNode = (t, depth) => { const ps = byTopic[t.id] || [];
+    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '— ' + pn(ps.length), ps.length ? ps.map(prodRow).join('') : '<span style="font-size:11px;color:var(--text3);">No products on this topic.</span>'); };
+  const inCl = c => topics.filter(t => assign[t.id] === c), un = topics.filter(t => !clusters.includes(assign[t.id]));
+  const sum = ts => ts.reduce((n, t) => n + (byTopic[t.id] || []).length, 0);
+  let out = '';
+  if (main.length) out += node('main', 0, '#4ade80', '★ Main', '— ' + pn(main.length), main.map(prodRow).join(''));
+  clusters.forEach(c => { const ts = inCl(c);
+    out += node('c:' + c, 0, '#8ab4f8', '🧩 ' + esc(c), `— ${ts.length} topic${ts.length === 1 ? '' : 's'} · ${pn(sum(ts))}`, ts.length ? ts.map(t => topicNode(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster.</span>'); });
+  if (un.length) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length} topic${un.length === 1 ? '' : 's'} · ${pn(sum(un))}`, un.map(t => topicNode(t, 0)).join(''));
+  if (loose.length) out += node('none', 0, '#f87171', 'No topic', '— ' + pn(loose.length), loose.map(prodRow).join(''));
+  return out || '<div style="font-size:11px;color:var(--text3);">No products in this hub&#39;s campaign yet.</div>';
+}
 // Strategies: a free-form table per hub — the same Flow-table editor (sort / filter / add row + column / rename headings),
 // one FLOWS entry per hub, saved via saveInfoFlowTable as KV infoflow:table:hubstrat-<slug>
 const hub2StratKey = slug => 'hs_' + slug.replace(/[^a-z0-9]/gi, '_');
@@ -16523,7 +16564,7 @@ async function hubKwLoad(slug) {
   hubKwRefresh(slug); if (document.getElementById('hubBuildBody-' + slug)) hubBuildRefreshRows(slug);
 }
 // every copy repaints: the Build checklist's Keywords phase (Content Hubs) and the Keywords section (Content Hubs 2)
-function hubKwRefresh(slug) { document.querySelectorAll('[id="hubKwBody-' + slug + '"]').forEach(el => { el.innerHTML = renderHubKw(slug); }); document.querySelectorAll('[id="hubKwW-' + slug + '"]').forEach(w => { w.innerHTML = hubKwWork(slug); }); hub2KwCount(slug);
+function hubKwRefresh(slug) { document.querySelectorAll('[id="hubKwBody-' + slug + '"]').forEach(el => { el.innerHTML = renderHubKw(slug); }); document.querySelectorAll('[id="hubKwW-' + slug + '"]').forEach(w => { w.innerHTML = hubKwWork(slug); }); hub2KwCount(slug); hub2ProductsPaint(slug);
   if (typeof hubTitlesRefresh === 'function' && _hubTitles[slug] && _hubTitles[slug].rows) hubTitlesRefresh(slug); }
 const hubKwWork = slug => { const K = _hubKw[slug]; return K && K.products ? hubWorkTag(K.products.filter(p => p.outOfSync).length, 'product') : ''; };
 const hubProdWork = slug => { const rs = _hubResState[slug]; if (!rs) return ''; const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering);
