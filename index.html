@@ -1242,7 +1242,7 @@
         </div>
       </div>
       <div id="kwSendBar" style="display:none;gap:6px;align-items:center;flex-wrap:wrap;font-size:12px;margin-bottom:8px;padding:8px;border:1px solid #2a5a2a;border-radius:4px;background:var(--surface2);">
-        <b id="kwSelCount"></b>
+        <b id="kwSelCount" onclick="kwSelList()" title="Click to see every selected keyword — some may be on other pages, filtered out or in collapsed groups" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;"></b>
         <select id="kwSendCampaign" class="kw-sel" style="max-width:240px;" onchange="kwLoadTopicClusters()"><option value="">choose campaign…</option></select>
         <button class="kw-btn" onclick="kwSend('main')" title="Append to the campaign's Main Keywords (Research Keywords) — existing keywords kept, duplicates skipped">+ Main Keywords</button>
         <span style="color:var(--text3);">|</span>
@@ -6397,6 +6397,13 @@ function kwSelCsv() {
   msg.textContent = `✓ Downloaded ${rows.length} keywords as CSV`;
 }
 function kwClearSel() { KW.selected.clear(); kwLoadResults(KW.offset); }
+// every selected keyword, wherever it is — ✕ removes one, Clear all empties the selection
+function kwSelList() {
+  const all = [...KW.selected].sort((a, b) => String(a).localeCompare(String(b))), onPage = new Set(KW.pageRows || []);
+  hcModal(`<h3 style="margin:0 0 4px;">${all.length} selected keyword${all.length === 1 ? '' : 's'}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Selection stays across pages, filters, runs and collapsed groups — dimmed ones aren't on screen right now.</div>
+    <div style="max-height:55vh;overflow:auto;border:1px solid var(--border);border-radius:6px;">${all.map((k, i) => `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-bottom:1px solid var(--border);font-size:12px;${onPage.has(k) ? '' : 'opacity:.55;'}"><span style="flex:1;">${esc(k)}</span>${onPage.has(k) ? '' : '<span style="font-size:10px;color:var(--text3);">not shown</span>'}<button onclick="KW.selected.delete(this.dataset.k);kwLoadResults(KW.offset);kwSelList()" data-k="${esc(k)}" style="border:0;background:transparent;color:var(--text3);cursor:pointer;">✕</button></div>`).join('') || '<div style="padding:8px;font-size:12px;color:var(--text3);">Nothing selected.</div>'}</div>
+    <div style="display:flex;gap:8px;margin-top:12px;"><button class="modal-btn" onclick="kwClearSel();document.getElementById('hcModal').classList.remove('open')" style="background:transparent;border-color:#f87171;color:#f87171;">Clear all</button>${HC_CANCEL.replace('>Cancel<', '>Close<')}</div>`);
+}
 // Keyword-tool campaign pickers: every campaign, with the ones that ARE a hub (HUB_SITES + KV-registered extras) flagged
 // hub:true — shown first, as "🌐 <name> · <domain>", under a "Hubs" group; the rest under "Other campaigns".
 async function kwHubCampaigns() {
@@ -6416,8 +6423,10 @@ function kwCampaignOptions(list, selected) {
 async function kwRenderSendBar() {
   const bar = document.getElementById('kwSendBar');
   bar.style.display = KW.selected.size ? 'flex' : 'none';
-  document.getElementById('kwSelCount').textContent = `${KW.selected.size} selected →`;
-  { const hs = document.getElementById('kwHubSelN'); if (hs) hs.textContent = KW.selected.size ? KW.selected.size + ' selected →' : 'tick keywords, then →'; }
+  // selection survives paging / filters / collapsed groups — say how many of them are actually on screen
+  const shown = (KW.pageRows || []).filter(k => KW.selected.has(k)).length, selTxt = KW.selected.size + ' selected' + (shown < KW.selected.size ? ` (${shown} shown)` : '') + ' →';
+  document.getElementById('kwSelCount').textContent = selTxt;
+  { const hs = document.getElementById('kwHubSelN'); if (hs) { hs.textContent = KW.selected.size ? selTxt : 'tick keywords, then →'; hs.style.cursor = 'pointer'; hs.onclick = () => KW.selected.size && kwSelList(); } }
   const sel = document.getElementById('kwSendCampaign');
   // fill whenever this select hasn't got the current list (the 🌐 hub picker may have loaded KW.campaigns first)
   if (KW.selected.size && (!KW.campaigns || sel._list !== KW.campaigns)) {
