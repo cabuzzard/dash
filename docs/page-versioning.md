@@ -99,6 +99,11 @@ curl -s "https://cabuzzard.github.io/dash/index.html?cb=$(date +%s)" | grep -c "
 
 Then tell the operator to tap **↻ Update**, or the orange banner, to load it. Don't tell them it's live until check 2 finds your change.
 
+**Check 2 must use a marker only THIS commit adds** (a new function name, a new string) — not a name an earlier commit
+already shipped, or you'll "confirm" the previous build. Check 1's Last-Modified must be later than your commit time.
+Only after both pass, give the operator a fresh link `…/?v=<Date.now() base36>` plus the stamp they should see on the
+version bar (e.g. `v Oct 15, 7:51 AM`). A `?v=` link made before the rebuild lands just caches the old build under a new URL.
+
 The **Cloudflare Worker** (`worker/worker.js`) has no version bar. A worker change is live as soon as `wrangler deploy`
 finishes, and that output prints the version ID. Front-end and worker changes ship separately: a new button that calls a
 new worker action needs **both** the deploy and the Pages publish.
