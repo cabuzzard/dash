@@ -711,6 +711,12 @@
   <div class="lock-btn" onclick="lockApp()" title="Lock">🔒</div>
 </div>
 <div id="spendWarn" style="display:none;margin:6px 16px 0;padding:6px 10px;border-radius:8px;font-size:12px;"></div>
+<!-- always-visible version chip (same stamp + actions as #verBar) -->
+<div id="verChip" style="position:fixed;right:10px;bottom:10px;z-index:9000;display:flex;align-items:center;gap:6px;padding:4px 8px;border:1px solid var(--accent);border-radius:8px;background:var(--surface);box-shadow:0 2px 10px rgba(0,0,0,.35);font-size:11px;color:var(--text2);">
+  <span id="verChipText" title="When this version of the page was published">v …</span>
+  <button onclick="verUpdate()" title="Load the newest version (skips the cached copy)" style="font-size:11px;padding:1px 7px;border:1px solid var(--accent);border-radius:5px;background:transparent;color:var(--accent);cursor:pointer;">↻ Update</button>
+  <button onclick="verLink()" title="See / copy / edit this page's address" style="font-size:11px;padding:1px 7px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text2);cursor:pointer;">🔗 Link</button>
+</div>
 <div id="verNew" style="display:none;margin:6px 16px 0;padding:6px 10px;border-radius:8px;background:#f6ad55;color:#1a1a1a;font-size:12px;cursor:pointer;" onclick="verUpdate()">⬆ A newer version of this page is out — tap to update</div>
 
 <!-- Main -->
@@ -25585,6 +25591,7 @@ async function loadMorningTodos() {
   const fmt = d => d.toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   const mine = new Date(document.lastModified);
   const vt = document.getElementById('verText'); if (vt) vt.textContent = 'v ' + (isNaN(mine) ? '?' : fmt(mine));
+  const vc = document.getElementById('verChipText'); if (vc) vc.textContent = 'v ' + (isNaN(mine) ? '?' : fmt(mine));
   async function check() {
     try {
       const r = await fetch(location.pathname + '?vcheck=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
