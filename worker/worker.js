@@ -906,10 +906,19 @@ async function writeHubNewsPost(env, cid, opts = {}) {
   }
   if (!mains.length) return { error: "no main products", hub: hub.name };
   const audienceN = await hubAudienceBlock(env, cid);
+  // 2026-10-15 (operator): consult the hub's latest written Digest as a source — it's premium-level, so the SEO article may use
+  // a fact or two (publisher named) but never reproduces the premium analysis
+  let digestBlock = "";
+  try {
+    const ds = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: kwDashId(cid) } }, { property: "Asset Class", select: { equals: "Pillar" } },
+      { property: "Pillar Type", select: { equals: "Digest" } }, { property: "Pillar Readiness", select: { equals: "Ready" } }] }, sorts: [{ timestamp: "created_time", direction: "descending" }] });
+    if (ds[0]) { const txt = await extractPillarContent(hdrN, ds[0].id).catch(() => "");
+      if (txt) digestBlock = `\n\nTHIS PERIOD'S PREMIUM DIGEST (one source among others — it is premium content: you may use at most one or two of its facts, naming the publisher; never reproduce or summarise its analysis; the article stays an original SEO piece):\n${txt.slice(0, 3500)}`; }
+  } catch (e) {}
   let t = null, product = null;
   for (let k = 0; k < mains.length && !t; k++) {
     product = mains[(have + k) % mains.length];
-    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.`;
+    const lead = `Today's date: ${new Date().toISOString().slice(0, 10)}.\n${audienceN}Write for that audience only.\nMain offering: ${product.name}.${product.desc ? " " + product.desc : ""}\n\nIf there is one, use a CURRENT, real, already-public development (never an invented or unannounced one; if none is certain, make it a practical explainer instead) this product's audience is searching about right now (a rule or price change, a deadline, a new study, a shift in the market) and build the article around what it means for them and what to do about it. The product is context for the audience, not the subject of a sales pitch.${digestBlock}`;
     const r = await selfAction(env, "createNewsBlogTitle", { campaignId: cid, productId: product.id, newsTitle: product.name, newsBody: lead, allowDuplicate: k === mains.length - 1 });
     if (r && r.success && r.titleId) t = r;
     else if (!(r && r.duplicate)) return { error: "title: " + ((r && r.error) || "no response"), hub: hub.name };
@@ -1590,7 +1599,39 @@ async function addReviewFlag(env, flag) {
   list.push({ id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6), status: "open", at: new Date().toISOString(), ...flag });
   await env.TRADES.put("review:flags", JSON.stringify(list.slice(-300)));
 }
+// the current period's key in Pacific time for a cadence (Weekly = Saturday 00:00 → Friday night)
+function hubNewsPeriodKey(cadence) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
+  if (cadence === "Monthly") d.setUTCDate(1);
+  else if (cadence === "Twice monthly") d.setUTCDate(d.getUTCDate() < 16 ? 1 : 16);
+  else if (cadence === "Quarterly") { d.setUTCMonth(Math.floor(d.getUTCMonth() / 3) * 3); d.setUTCDate(1); }
+  else d.setUTCDate(d.getUTCDate() - ((wd + 1) % 7));
+  return { key: d.toISOString().slice(0, 10), hour: +p.hour };
+}
 async function hubNewsCronTick(env) {
+  if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
+  // once per digest period per hub (operator 2026-10-15)
+  let cadence = "Weekly";
+  try { const t = await env.TRADES.get("infoflow:table:currentmethods", "json"); const row = ((t && t.rows) || []).find(r => /^digest$/i.test(((r.cells || {}).cname01 || "").trim()));
+    if (row && (row.cells.ccad01 || "").trim()) cadence = row.cells.ccad01.trim(); } catch (e) {}
+  const per = hubNewsPeriodKey(cadence);
+  if (per.hour < 7 || per.hour >= 21) return { idle: true, why: "outside 07:00-21:00 Pacific" };
+  const done = (await env.TRADES.get("hubnews:period", "json").catch(() => null)) || {}, retry = (await env.TRADES.get("hubnews:retry", "json").catch(() => null)) || {};
+  const pc = HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(Boolean).find(c => done[c] !== per.key && !(retry[c] > Date.now()));
+  if (!pc) return { idle: true };
+  await env.TRADES.put("hubnews:busy", pc, { expirationTtl: 1800 });
+  let r;
+  try { r = await writeHubNewsPost(env, pc, { force: true }); } catch (e) { r = { error: e.message }; }
+  if (r && r.ok) { const d2 = (await env.TRADES.get("hubnews:period", "json").catch(() => null)) || {}; d2[pc] = per.key; await env.TRADES.put("hubnews:period", JSON.stringify(d2)); }
+  else { retry[pc] = Date.now() + Math.round((2 + Math.random() * 2) * H); await env.TRADES.put("hubnews:retry", JSON.stringify(retry)); }
+  const log = (await env.TRADES.get("hubnews:log", "json").catch(() => null)) || [];
+  log.push({ cid: pc, hub: (r && r.hub) || "", ok: !!(r && r.ok), headline: (r && r.headline) || "", error: (r && r.error) || "", period: per.key, at: new Date().toISOString() });
+  await env.TRADES.put("hubnews:log", JSON.stringify(log.slice(-40)));
+  await env.TRADES.delete("hubnews:busy").catch(() => {});
+  return r;
+}
+async function hubNewsCronTickOld(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
   const sched = (await env.TRADES.get("hubnews:sched", "json").catch(() => null)) || {};
   const cids = HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(Boolean);
