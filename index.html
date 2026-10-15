@@ -15370,6 +15370,10 @@ function renderHubs2() {
     </div>
     <div class="hub-layout">
       <div class="hub-left">
+        <details class="hub-sec" ontoggle="if(this.open)hubKwLoad('${slug}')">
+          <summary title="Keywords"><span title="Keywords">Keywords</span><span id="hub2KwN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2KwCountText(slug)}</span><span id="hubKwW-${slug}">${hubKwWork(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();delete _hubKw['${slug}'];hubKwLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hubKwBody-${slug}" style="padding:8px 12px;">${renderHubKw(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2StrategiesLoad('${slug}')">
           <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
@@ -15464,6 +15468,9 @@ const HUB2_SOURCE_ROW = { 'topical - article': 'Topical - SEO Post' };   // chil
 function hub2PeriodEndISO(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); else return ''; return d.toISOString().slice(0, 10); }
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const hub2Id = s => String(s || '').replace(/-/g, '');
+// Keywords: the same section as Content Hubs → Build checklist → Keywords (renderHubKw / hubKwLoad, shared _hubKw state)
+function hub2KwCountText(slug) { const K = _hubKw[slug]; return K && !K.loading && !K.error ? (K.tc.clusters || []).length + ' clusters · ' + (K.staged.length + K.committed.length) + ' topics' : 'clusters · topics · products'; }
+function hub2KwCount(slug) { const el = document.getElementById('hub2KwN-' + slug); if (el) el.textContent = hub2KwCountText(slug); }
 // Strategies: a free-form table per hub — the same Flow-table editor (sort / filter / add row + column / rename headings),
 // one FLOWS entry per hub, saved via saveInfoFlowTable as KV infoflow:table:hubstrat-<slug>
 const hub2StratKey = slug => 'hs_' + slug.replace(/[^a-z0-9]/gi, '_');
@@ -16515,7 +16522,8 @@ async function hubKwLoad(slug) {
   } catch (e) { _hubKw[slug] = { error: e.message }; }
   hubKwRefresh(slug); if (document.getElementById('hubBuildBody-' + slug)) hubBuildRefreshRows(slug);
 }
-function hubKwRefresh(slug) { const el = document.getElementById('hubKwBody-' + slug); if (el) el.innerHTML = renderHubKw(slug); const w = document.getElementById('hubKwW-' + slug); if (w) w.innerHTML = hubKwWork(slug);
+// every copy repaints: the Build checklist's Keywords phase (Content Hubs) and the Keywords section (Content Hubs 2)
+function hubKwRefresh(slug) { document.querySelectorAll('[id="hubKwBody-' + slug + '"]').forEach(el => { el.innerHTML = renderHubKw(slug); }); document.querySelectorAll('[id="hubKwW-' + slug + '"]').forEach(w => { w.innerHTML = hubKwWork(slug); }); hub2KwCount(slug);
   if (typeof hubTitlesRefresh === 'function' && _hubTitles[slug] && _hubTitles[slug].rows) hubTitlesRefresh(slug); }
 const hubKwWork = slug => { const K = _hubKw[slug]; return K && K.products ? hubWorkTag(K.products.filter(p => p.outOfSync).length, 'product') : ''; };
 const hubProdWork = slug => { const rs = _hubResState[slug]; if (!rs) return ''; const mo = ((_hubBuild[slug] || {}).steps || []).find(x => x.mainOffering);
