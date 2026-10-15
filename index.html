@@ -6853,11 +6853,14 @@ async function kwHubPropose3() {
       <div style="display:flex;gap:8px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`);
   } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
 }
-async function kwHubCleanOpen() {
-  if (!KW.hub) return alert('Load a hub first.');
-  if (KW.hubOps.length) return alert('Apply or discard the staged keyword changes first — the cleanup files records into the SAVED topics.');
-  kwWideModal(`<h3 style="margin:0 0 4px;">🧹 Clean up records — ${esc(KW.hub.name)}</h3><div id="kwCleanBody" style="font-size:12px;color:var(--text3);">⏳ Classifying the hub's products + titles into its topics (1-3 min)…</div>`);
-  try { const r = await call('kwHubCleanPlan', { campaignId: KW.hub.cid }); if (r.error) throw new Error(r.error); kwHubCleanRender(r); }
+let _kwCleanCtx = null;   // { cid, name } of the hub the cleanup window is for
+async function kwHubCleanOpen(cid, name) {
+  if (cid) _kwCleanCtx = { cid: String(cid).replace(/-/g, ''), name: name || '' };
+  else { if (!KW.hub) return alert('Load a hub first.');
+    if (KW.hubOps.length) return alert('Apply or discard the staged keyword changes first — the cleanup files records into the SAVED topics.');
+    _kwCleanCtx = { cid: KW.hub.cid, name: KW.hub.name }; }
+  kwWideModal(`<h3 style="margin:0 0 4px;">🧹 Clean up records — ${esc(_kwCleanCtx.name)}</h3><div id="kwCleanBody" style="font-size:12px;color:var(--text3);">⏳ Classifying the hub's products + titles into its topics (1-3 min)…</div>`);
+  try { const r = await call('kwHubCleanPlan', { campaignId: _kwCleanCtx.cid }); if (r.error) throw new Error(r.error); kwHubCleanRender(r); }
   catch (e) { const b = document.getElementById('kwCleanBody'); if (b) b.innerHTML = `<div style="color:#f87171;">✗ ${esc(e.message)}</div><div style="margin-top:10px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`; }
 }
 function kwHubCleanRender(r) {
@@ -6878,17 +6881,18 @@ async function kwHubCleanLoop(action, btn, verb) {
   const prog = document.getElementById('kwCleanProg'); btn.disabled = true; const errors = [];
   try {
     for (let n = 0; n < 200; n++) {
-      const r = await call(action, { campaignId: KW.hub.cid }); if (r.error) throw new Error(r.error);
+      const r = await call(action, { campaignId: _kwCleanCtx.cid }); if (r.error) throw new Error(r.error);
       errors.push(...(r.errors || []));
       if (prog) prog.textContent = `⏳ ${verb}… ${r.i} / ${r.total}${errors.length ? ` · ${errors.length} problem${errors.length === 1 ? '' : 's'}` : ''}`;
       if (r.done) break;
     }
     if (prog) prog.innerHTML = `✓ ${verb} finished${errors.length ? ` · <span style="color:#ff9a3d;" title="${esc(errors.join('\n'))}">${errors.length} problem${errors.length === 1 ? '' : 's'} (hover)</span>` : ''}`;
-    kwHubLoadUI(KW.hub.cid, KW.hub.name);
+    if (KW.hub && KW.hub.cid === _kwCleanCtx.cid) kwHubLoadUI(KW.hub.cid, KW.hub.name);
+    const hs = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === _kwCleanCtx.cid); if (hs && _hub2Checklist[hs.slug]) hub2ChecklistLoad(hs.slug, true);
   } catch (e) { if (prog) prog.textContent = '✗ ' + e.message; btn.disabled = false; }
 }
-function kwHubCleanRun(btn, total) { if (confirm(`Apply the cleanup to ${KW.hub.name}? (${total} changes in Notion — ↶ Undo last cleanup reverses it)`)) kwHubCleanLoop('kwHubCleanApply', btn, 'Applying'); }
-function kwHubCleanUndoUI(btn) { if (confirm(`Undo the last cleanup on ${KW.hub.name}? Moved titles go back, archived products return, created titles and bridge products are removed.`)) kwHubCleanLoop('kwHubCleanUndo', btn, 'Undoing'); }
+function kwHubCleanRun(btn, total) { if (confirm(`Apply the cleanup to ${_kwCleanCtx.name}? (${total} changes in Notion — ↶ Undo last cleanup reverses it)`)) kwHubCleanLoop('kwHubCleanApply', btn, 'Applying'); }
+function kwHubCleanUndoUI(btn) { if (confirm(`Undo the last cleanup on ${_kwCleanCtx.name}? Moved titles go back, archived products return, created titles and bridge products are removed.`)) kwHubCleanLoop('kwHubCleanUndo', btn, 'Undoing'); }
 let _kwHubOpenTopics = false;
 function kwHubRender() {
   const el = document.getElementById('kwHubPanel'); if (!el) return;
@@ -15370,6 +15374,10 @@ function renderHubs2() {
           <summary title="Checklist"><span title="Checklist">Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">methods worksheet · published vs goal · interviews</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Checklist-${slug}" style="padding:8px 12px;">${hub2ChecklistHtml(slug)}</div>
         </details>
+        <details class="hub-sec" ontoggle="if(this.open)hub2KsLoad('${slug}')">
+          <summary title="Keyword structure"><span title="Keyword structure">Keyword structure</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">main → 3 clusters → up to 3 topics · proposal · apply</span><button onclick="event.preventDefault();event.stopPropagation();hub2KsLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hub2Ks-${slug}" style="padding:8px 12px;">${hub2KsHtml(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2ContentLoad('${slug}')">
           <summary title="Content"><span title="Content">Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
@@ -15396,6 +15404,55 @@ function renderHubs2() {
 // stored (KV hub2:checklist:v1, key "<slug>|row:<worksheet row id>"). Every row — parent or child — is a standalone
 // asset tracked the same way: published per cadence period vs goal. "counts asset types" lists the real Asset Type /
 // method names a row counts. Interview tier stays on the worksheet (the worker reads it at asset creation) — not shown here.
+// ── Keyword structure (Content Hubs 2): the hub's stored 3×3 proposal (worker kwHubPropose — made by the background queue
+// on the */4 cron, or on request) → 💾 Apply (kwHubProposalApply = the Keywords tab's kwHubApply; its ↶ Undo last apply in the
+// Keywords tab 🌐 Hub mode reverses it) or ↻ Request update (your note steers a fresh proposal). Applied → 🧹 Clean up records.
+const _hub2Ks = {};
+function hub2KsPaint(slug) { const el = document.getElementById('hub2Ks-' + slug); if (el) el.innerHTML = hub2KsHtml(slug); }
+async function hub2KsLoad(slug, force) {
+  const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Ks[slug]; if (!h || (st && st.loading) || (st && st.loaded && !force)) return hub2KsPaint(slug);
+  _hub2Ks[slug] = { ...(st || {}), loading: true }; hub2KsPaint(slug);
+  try { const r = await call('kwHubProposalGet', { campaignId: h.campaignId }); if (r.error) throw new Error(r.error);
+    _hub2Ks[slug] = { loaded: true, p: r.proposal, queued: r.queued, busy: (st || {}).busy || '', note: (st || {}).note || '' }; }
+  catch (e) { _hub2Ks[slug] = { loaded: true, err: e.message, note: (st || {}).note || '' }; }
+  hub2KsPaint(slug);
+}
+function hub2KsHtml(slug) {
+  const st = _hub2Ks[slug], h = HUB_SITES.find(x => x.slug === slug); if (!st || (st.loading && !st.loaded)) return '<div style="font-size:11px;color:var(--text3);padding:6px;">Loading…</div>';
+  if (st.err) return `<div style="font-size:11px;color:#f87171;padding:6px;">${esc(st.err)}</div>`;
+  const p = st.p, B = 'font-size:11px;padding:4px 11px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;';
+  const when = t => t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+  let body = '';
+  if (!p) body = st.queued ? `<div style="font-size:12px;color:var(--text2);">⏳ Queued (#${st.queued}) — the background job proposes one hub about every 4 minutes. ⟳ to check.</div>` : '<div style="font-size:12px;color:var(--text3);">No proposal yet — write a note below (optional) and press ↻ Propose.</div>';
+  else if (p.status === 'error') body = `<div style="font-size:12px;color:#f87171;">✗ The last proposal failed: ${esc(p.error || '')}</div>`;
+  else body = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${p.status === 'applied' ? '<span style="color:#4ade80;font-weight:700;">✓ Applied ' + when(p.appliedAt) + '</span>' : 'Proposed ' + when(p.at)} · from ${p.records} products + titles and ${p.pool} priced keywords${p.guidance ? ' · following your note' : ''}${st.queued ? ' · re-proposal queued' : ''}${p.warn ? ' · ⚠ ' + esc(p.warn) : ''}</div>
+    <div style="font-size:12px;margin-bottom:6px;">★ Main: <span style="color:var(--text2);">${esc((p.main || []).join(', ') || '—')}</span></div>
+    ${(p.clusters || []).map(c => `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:6px;"><div style="font-weight:700;font-size:12px;margin-bottom:3px;">🧩 ${esc(c.name)}</div>
+      ${c.topics.map(t => `<div style="font-size:11.5px;padding:2px 0 2px 12px;"><b>${esc(t.name)}</b> <span style="color:var(--text3);">· ${t.count} kw · ${Number(t.volume || 0).toLocaleString()}/mo · ${esc((t.top || []).join(', '))}</span></div>`).join('')}</div>`).join('')}
+    <div style="font-size:11.5px;color:var(--text2);margin:4px 0 8px;">Unclassified: ${p.unclassified} leftover keyword${p.unclassified === 1 ? '' : 's'} (kept).</div>
+    ${p.status === 'applied' ? `<button style="${B}" onclick="kwHubCleanOpen('${esc(h.campaignId)}', this.dataset.n)" data-n="${esc(h.name)}">🧹 Clean up records</button> <span style="font-size:10.5px;color:var(--text3);">files the hub's products + titles into these topics — you review it first</span>`
+      : `<button style="${B}border-color:#4ade80;color:#4ade80;font-weight:700;" onclick="hub2KsApply('${slug}', this)">💾 Apply structure</button> <span style="font-size:10.5px;color:var(--text3);">${p.opCount || 0} changes · undo in the Keywords tab (🌐 Hub → ↶ Undo last apply)</span>`}`;
+  return body + `<div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;">
+      <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Request an update</label>
+      <textarea id="hub2KsNote-${slug}" rows="2" oninput="(_hub2Ks['${slug}']||{}).note=this.value" placeholder="e.g. make 'near me' searches their own topic · drop the quotes keywords · use 'business coach' as a cluster" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 6px;resize:vertical;">${esc(st.note || '')}</textarea>
+      <button style="${B}" ${st.busy ? 'disabled' : ''} onclick="hub2KsRepropose('${slug}', this)">↻ ${p ? 'Request update' : 'Propose'}</button> <span style="font-size:11px;color:var(--text2);">${esc(st.busy || '')}</span></div>`;
+}
+async function hub2KsApply(slug, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !confirm(`Apply this keyword structure to ${h.name}?\n\nTopics are renamed / merged / re-clustered as shown; attached products follow and are marked out of sync (orange). A backup is saved — Keywords tab → 🌐 Hub → ↶ Undo last apply puts it back.`)) return;
+  btn.disabled = true; btn.textContent = '⏳ Applying…';
+  try { const r = await call('kwHubProposalApply', { campaignId: h.campaignId, name: h.name }); if (r.error) throw new Error(r.error);
+    showToast(`✓ Applied — ${(r.lines || []).length} changes${(r.errors || []).length ? ' · ' + r.errors.length + ' problem(s): ' + r.errors.join('; ').slice(0, 200) : ''}`, (r.errors || []).length ? 'info' : 'success');
+    await hub2KsLoad(slug, true); }
+  catch (e) { showToast(e.message, 'error'); btn.disabled = false; btn.textContent = '💾 Apply structure'; }
+}
+async function hub2KsRepropose(slug, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Ks[slug] || (_hub2Ks[slug] = {}); if (!h) return;
+  const note = (document.getElementById('hub2KsNote-' + slug)?.value || '').trim();
+  st.busy = '⏳ Proposing (1-3 min) — reading the hub\'s records and pricing keywords…'; hub2KsPaint(slug);
+  try { const r = await call('kwHubPropose', { campaignId: h.campaignId, guidance: note }); if (r.error) throw new Error(r.error);
+    st.busy = ''; st.note = ''; await hub2KsLoad(slug, true); showToast('New proposal ready for ' + h.name, 'success'); }
+  catch (e) { st.busy = ''; hub2KsPaint(slug); showToast('Not proposed: ' + e.message, 'error'); }
+}
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const hub2Id = s => String(s || '').replace(/-/g, '');
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
