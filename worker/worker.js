@@ -934,7 +934,7 @@ async function writeHubNewsPost(env, cid, opts = {}) {
     liveUrl = liveUrl || (bf && !bf.error ? "(republished via backfill)" : "");
   }
   let thumb = false, thumbError = "";
-  const im = await selfAction(env, "generateBlogPostThumbnail", { assetId });
+  const im = await selfAction(env, "generateBlogPostThumbnail", { assetId, codexDesign: true });   // same engine as the Publish modal button (Codex Design spec + approved recipe)
   if (im && im.imageUrl) {
     const sv = await selfAction(env, "saveOfferImage", { assetId, kind: "blog-thumbnail", imageUrl: im.imageUrl, prompt: im.prompt, background: true });
     thumb = !(sv && sv.error); if (sv && sv.error) thumbError = sv.error;

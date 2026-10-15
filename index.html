@@ -15877,7 +15877,7 @@ async function hub2NewsWrite(btn) {
     // the blog thumbnail — same Grok step as the hub's automatic news posts (generateBlogPostThumbnail → saveOfferImage)
     msg.textContent = '⏳ Making the blog thumbnail (Grok, ~30s)…';
     let thumb = '';
-    try { const im = await call('generateBlogPostThumbnail', { assetId });
+    try { const im = await call('generateBlogPostThumbnail', { assetId, codexDesign: true });
       if (!im || !im.imageUrl) throw new Error((im && im.error) || 'no image');
       const sv = await call('saveOfferImage', { assetId, kind: 'blog-thumbnail', imageUrl: im.imageUrl, prompt: im.prompt, background: true });
       if (sv && sv.error) throw new Error(sv.error); thumb = ' · 🖼 thumbnail added'; }
