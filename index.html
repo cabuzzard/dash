@@ -15612,9 +15612,11 @@ async function hub2ChecklistSave(slug, id) {
 // instead of the title pillar and stamps "Parent Asset"). "Pillar - …" children can come from any written parent.
 const HUB2_PILLAR_TYPE = { Digest: 'Digest', Topical: 'Long Form Topical', Sales: 'Long Form Sales', Product: 'Product', Interactive: 'Interactivity', Job: 'Job Application', Marketplace: 'Marketplace Listing', Pillar: 'Generic' };
 const _hub2Writing = {};   // parent assetId → true while writeParentAsset runs
+// products the checklist modals must never offer (operator 2026-10-15): Keywords Out of Sync (orange) or research out of sync
+function hub2OutOfSyncProducts(slug) { const set = new Set(); ((_hub2Checklist[slug] || {}).hubRows || []).forEach(r => { if (r.productId && (r.keywordOutOfSync || r.research === '✗ out of sync')) set.add(hub2Id(r.productId)); }); return set; }
 function hub2ReadyTitles(slug) {
-  const st = _hub2Checklist[slug] || {}, by = new Map();
-  (st.hubRows || []).forEach(r => { if (r.titleId && r.productId && r.research === '✓ up to date' && r.pillarStatus === 'Written' && !by.has(r.titleId)) by.set(r.titleId, { id: r.titleId, title: r.title || '(untitled)', productId: r.productId, product: r.product || '' }); });
+  const st = _hub2Checklist[slug] || {}, by = new Map(), oos = hub2OutOfSyncProducts(slug);
+  (st.hubRows || []).forEach(r => { if (r.titleId && r.productId && !oos.has(hub2Id(r.productId)) && r.research === '✓ up to date' && r.pillarStatus === 'Written' && !by.has(r.titleId)) by.set(r.titleId, { id: r.titleId, title: r.title || '(untitled)', productId: r.productId, product: r.product || '' }); });
   return [...by.values()].sort((a, b) => a.product.localeCompare(b.product) || a.title.localeCompare(b.title));
 }
 const hub2TitleParents = (st, tid) => [...new Map((st.hubRows || []).filter(x => x.assetId && x.assetClass === 'Pillar' && hub2Id(x.titleId) === hub2Id(tid)).map(x => [x.assetId, x])).values()];
@@ -15651,9 +15653,11 @@ async function hub2DigestModal(slug) {
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:8px;padding-top:8px;"><button class="modal-btn" id="h2dWriteBtn" onclick="hub2DigestWrite(this)">▶ Write digest</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2dWriteMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`);
   const kw = h2dLS('dr:kw:' + H2D.cid); if (kw) h2dEl('h2dKw').value = kw;
   call('getCampaignProducts', { campaignId: H2D.cid }).then(r => {
-    const list = (r.products || []).filter(p => !/^(archived|retired)$/i.test(p.status || '') && !p.archived).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const oos = hub2OutOfSyncProducts(slug), live = (r.products || []).filter(p => !/^(archived|retired)$/i.test(p.status || '') && !p.archived);
+    const list = live.filter(p => !p.outOfSync && !oos.has(hub2Id(p.id))).sort((a, b) => String(a.name).localeCompare(String(b.name))), hidden = live.length - list.length;
     const sel = h2dEl('h2dProd'); if (!sel) return;
-    sel.innerHTML = '<option value="">— choose a product —</option>' + list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    sel.innerHTML = '<option value="">— choose a product —</option>' + list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')
+      + (hidden ? `<option value="" disabled>(${hidden} out-of-sync product${hidden === 1 ? '' : 's'} hidden — run their research first)</option>` : '');
     const last = h2dLS('dr:prod:' + H2D.cid); if (last && list.some(p => p.id === last)) sel.value = last;
   }).catch(e => { const sel = h2dEl('h2dProd'); if (sel) sel.innerHTML = '<option value="">Could not load products: ' + esc(e.message) + '</option>'; });
   call('digestResearch', { op: 'assoc', campaignId: H2D.cid }).then(r => { const el = h2dEl('h2dAssoc'), n = (r.list || []).length;
@@ -15899,7 +15903,7 @@ async function hub2CreateModal(slug, id) {
   const titles = hub2ReadyTitles(slug);
   hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(m.parent === 'Pillar' ? 'parent' : m.parent) + ' parent.'}</div>
     ${titles.length ? `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}" onchange="hub2CreateStep('${slug}','${esc(id)}')">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select><div id="h2cStep" style="font-size:12px;color:var(--text3);">Loading…</div>`
-      : '<div style="font-size:12px;color:var(--text3);">No ready titles on this hub — a title needs a product with up-to-date research and a written pillar.</div>'}
+      : '<div style="font-size:12px;color:var(--text3);">No ready titles on this hub — a title needs an in-sync product (up-to-date research, not flagged out of sync) and a written pillar.</div>'}
     <div style="display:flex;gap:8px;margin-top:4px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`);
   if (titles.length) hub2CreateStep(slug, id);
 }
