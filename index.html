@@ -15523,7 +15523,7 @@ const HUB2_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const HUB2_UNIT = { 'Weekly': 'week', 'Twice monthly': 'half-month', 'Monthly': 'month', 'Quarterly': 'quarter' };
 const HUB2_CHECKLIST_COLS = [
   {key:'name',label:'Method'}, {key:'published',label:'Published',num:true}, {key:'inProgress',label:'In progress',num:true},
-  {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}, {key:'grayLabel',label:'Gray'}
+  {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'dev',label:'Dev',num:true}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}, {key:'grayLabel',label:'Gray'}
 ];
 const HUB2_WS = { parent: 'cmuzq03ywty8b', asset: 'cmuzq36hb77sq', name: 'cname01', pillar: 'c1', tier: 'civtier01', match: 'cmatch01', goal: 'cgoal01', cadence: 'ccad01', day: 'cday01', schedule: 'csched01', notes: 'c2' };
 function hub2MethodsFrom(table) {
@@ -15596,7 +15596,7 @@ function hub2ChecklistRows(slug) {
       : pRow ? (!parents ? 'Waiting for ' + pRow.name.toLowerCase() : complete ? 'On track' : 'Due')
       : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
     const grayed = hub2IsGrayed(m);
-    return { ...m, notBuilt: grayed, grayLabel: grayed ? 'on' : '', creatable: !/^hub$/i.test(m.parent) && !grayed, tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
+    return { ...m, notBuilt: grayed, grayLabel: grayed ? 'on' : '', creatable: !/^hub$/i.test(m.parent) && !grayed, tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, dev: items.filter(x => /^development$/i.test(x.assetStatus || x.status || '')).length, progress, complete, due, status,
       target, parents: pRow ? parents : 0, goalTip: pRow ? `${m.target} per ${pRow.name.toLowerCase()} × ${parents} ${pRow.name.toLowerCase()}${parents === 1 ? '' : 's'} this ${HUB2_UNIT[pRow.cadence] || 'period'}` : '', periodLabel: pRow ? pRow.cadence : m.cadence };
   });
 }
@@ -15619,6 +15619,7 @@ function hub2ChecklistHtml(slug) {
       <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};" ${r.inProgress ? `onclick="event.stopPropagation();hub2InProgressModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Pick one of these ${r.inProgress} unpublished assets to review and publish"` : ''}>${r.inProgress ? `<span style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;font-weight:700;">${r.inProgress}</span>` : ''}</td>
       <td style="${TD}text-align:center;color:var(--text2);" title="${esc(r.goalTip || '')}">${r.target}${r.parents > 1 ? '<span style="font-size:9px;color:var(--text3);"> (' + (r.target / r.parents) + '×' + r.parents + ')</span>' : ''}</td>
       <td style="${TD}color:var(--text2);" title="${esc(r.schedule || '')}">${esc(r.periodLabel)}</td>
+      <td style="${TD}text-align:center;color:#60a5fa;font-weight:700;" title="Assets of this method at Asset Status Development (staged, not written yet)">${r.dev || ''}</td>
       <td style="${TD}text-align:center;color:${!r.tracked ? 'var(--text2)' : r.complete ? ok : warn};${r.tracked && r.complete ? 'font-weight:700;' : ''}">${r.tracked ? r.progress + ' / ' + r.target : ''}</td>
       <td style="${TD}">${r.due || ''}</td>
       <td style="${TD}color:${sc};font-weight:${r.tracked ? 600 : 400};">${r.status}</td>
