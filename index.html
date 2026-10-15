@@ -15451,7 +15451,8 @@ async function hub2KsRepropose(slug, btn) {
 }
 const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // shown grayed out, no ＋ (operator 2026-10-15)
 const HUB2_CRON_ROWS = /^digest - (news seo|free newsletter)$/i;   // automated: the hub news cron writes one article + one newsletter issue (AC draft) per digest period (status "Cron")
-const HUB2_PARENT_DRIVEN = /^digest$/i;   // children are due per published parent in the parent's period (operator 2026-10-15)
+const HUB2_PARENT_DRIVEN = /^digest$/i;
+const HUB2_SOURCE_ROW = { 'topical - article': 'Topical - SEO Post' };   // child → the row it's written from (its "parent")   // children are due per published parent in the parent's period (operator 2026-10-15)
 // last day of the current period (week ends Friday night, month on its last day) as YYYY-MM-DD
 function hub2PeriodEndISO(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); else return ''; return d.toISOString().slice(0, 10); }
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
@@ -15512,9 +15513,14 @@ function hub2ChecklistRows(slug) {
     const items = hub2RowItems(st, m), pub = items.filter(x => /^published$/i.test(x.assetStatus || x.status || '')), t = hub2TrackOf(slug, m.id), tracked = !!(t && t.tracked);
     // children of a parent-driven parent (Digest — operator 2026-10-15): DUE only once a parent was published in the PARENT's
     // period; the goal scales with the parents published (per-parent goal × parents); progress counts over that same period
-    const pRow = !m.isPillar && HUB2_PARENT_DRIVEN.test(m.parent) ? (st.methods || []).find(x => x.isPillar && x.parent === m.parent) : null;
-    const pStart = pRow ? hub2PeriodStart(pRow.cadence) : null;
-    const parents = pRow ? hub2RowItems(st, pRow).filter(x => /^published$/i.test(x.assetStatus || x.status || '') && x.datePublished && new Date(x.datePublished) >= pStart).length : 0;
+    const srcName = HUB2_SOURCE_ROW[String(m.name).toLowerCase()];
+    const pRow = srcName ? (st.methods || []).find(x => x.name === srcName) || null
+      : !m.isPillar && HUB2_PARENT_DRIVEN.test(m.parent) ? (st.methods || []).find(x => x.isPillar && x.parent === m.parent) : null;
+    const pStart = pRow ? hub2PeriodStart(HUB2_UNIT[pRow.cadence] ? pRow.cadence : m.cadence) : null;
+    // a source row's piece counts once written (an SEO post sits at Review until you publish it); a parent once Published
+    const parents = !pRow ? 0 : srcName
+      ? hub2RowItems(st, pRow).filter(x => /^(review|publish|published)$/i.test(x.assetStatus || x.status || '') && (x.datePublished || x.dateCreated) && new Date(x.datePublished || x.dateCreated) >= pStart).length
+      : hub2RowItems(st, pRow).filter(x => /^published$/i.test(x.assetStatus || x.status || '') && x.datePublished && new Date(x.datePublished) >= pStart).length;
     const start = pStart || hub2PeriodStart(m.cadence), periodKey = start.toISOString().slice(0, 10);
     // cron rows count what the cron delivers in the period — a newsletter issue is an ActiveCampaign DRAFT (Review), dated by creation
     const isCron = HUB2_CRON_ROWS.test(m.name);
@@ -16002,10 +16008,35 @@ async function hub2TopicalCreate(btn) {
   } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; }
   btn.disabled = false;
 }
+// ── ＋ Topical - Article (checklist) — an off-site article (Substack / LinkedIn / Medium) from one of the hub's written Topical
+// SEO Posts, its parent (worker writeOffsiteArticle). Saved as an "Off-site Article" asset under the post's title, status Review.
+function hub2SeoPosts(slug) {
+  const st = _hub2Checklist[slug] || {}, row = (st.methods || []).find(x => /^topical - seo post$/i.test(x.name)), names = new Set(((row && row.aliases) || ['Topical Post']).map(hub2Norm));
+  return [...new Map((st.hubRows || []).filter(x => x.assetId && x.assetClass !== 'Pillar' && (names.has(hub2Norm(x.rawAssetType)) || names.has(hub2Norm(x.assetType))) && /^(review|publish|published)$/i.test(x.assetStatus || ''))
+    .map(x => [x.assetId, { id: x.assetId, name: x.platformTitle || x.assetName || x.title || 'SEO post', status: x.assetStatus, date: x.datePublished || x.dateCreated || '' }])).values()]
+    .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+}
+function hub2OffsiteModal(slug) {
+  const posts = hub2SeoPosts(slug);
+  kwWideModal(`<h3 style="margin:0 0 4px;">＋ Topical - Article</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">An off-site long-form article rewritten from one of your Topical SEO Posts — its own headline, voice and structure (not duplicate content), linking back to the full post on the hub. Saved for review; posting it is your step.</div>
+    ${posts.length ? `${HT_LBL('From which SEO post')}<select id="h2oPost" style="${HT_IN}">${posts.map(p => `<option value="${esc(p.id)}">${esc(p.name)} · ${esc(p.status)}</option>`).join('')}</select>
+      ${HT_LBL('Where it will be posted')}<select id="h2oPlat" style="${HT_IN}"><option>Substack</option><option>LinkedIn</option><option>Medium</option></select>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="modal-btn" onclick="hub2OffsiteWrite('${slug}', this)">✍ Write off-site article</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2oMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`
+      : `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">No written Topical SEO Post on this hub yet — the off-site article is made from one.</div><div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hub2TopicalModal('${slug}')">＋ Make an SEO post first</button>${HC_CANCEL.replace('Cancel', 'Close')}</div>`}`);
+}
+async function hub2OffsiteWrite(slug, btn) {
+  const seoPostId = document.getElementById('h2oPost')?.value, platform = document.getElementById('h2oPlat')?.value, msg = document.getElementById('h2oMsg'); if (!seoPostId) return;
+  btn.disabled = true; msg.style.color = 'var(--text2)'; msg.textContent = `⏳ Writing the ${platform} article (~1 min)…`;
+  try { const r = await call('writeOffsiteArticle', { seoPostId, platform }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    msg.style.color = '#4ade80'; msg.innerHTML = `✓ "${esc(r.headline)}" — ${r.words} words for ${esc(r.platform)} · <a href="https://www.notion.so/${esc(r.assetId)}" target="_blank" rel="noopener" style="color:var(--accent);">open ↗</a>`;
+    btn.textContent = '✍ Write another'; btn.disabled = false; hub2ChecklistLoad(slug, true); }
+  catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; }
+}
 async function hub2CreateModal(slug, id) {
   const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
   if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);
-  if (!m.isPillar && /^topical$/i.test(m.parent) && /seo post/i.test(m.asset)) return hub2TopicalModal(slug);   // hand-initiated topical SEO posts (idea generator)   // a digest makes its own dated title
+  if (!m.isPillar && /^topical$/i.test(m.parent) && /seo post/i.test(m.asset)) return hub2TopicalModal(slug);
+  if (/^topical - article$/i.test(m.name)) return hub2OffsiteModal(slug);   // off-site, from a Topical SEO Post   // hand-initiated topical SEO posts (idea generator)   // a digest makes its own dated title
   if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);
   if (!m.isPillar && /^digest$/i.test(m.parent) && /free/i.test(m.asset) && /newsletter/i.test(m.asset)) return hub2FreeNlModal(slug);   // news = a digest's ticked items
   const titles = hub2ReadyTitles(slug);
