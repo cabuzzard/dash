@@ -17101,6 +17101,9 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
       // delivery has been manual copy/paste via the Publish modal until now.
       if (body.action === "publishDigestEmail") {
         const { titleId, campaignId, listId, addressId, fromName, fromEmail, replyTo } = body;
+        // 2026-10-15 (Content Hubs 2 checklist › Digest - Free Newsletter): picks = the operator's chosen featured items;
+        // parentAssetId = the Digest parent — the issue is written from it, and a "Newsletter Free" asset is recorded under it
+        const picks = String(body.picks || "").trim().slice(0, 4000), parentAssetId = String(body.parentAssetId || "").replace(/-/g, "");
         if (!titleId) return json({ error: "titleId required" }, 400);
         if (!listId) return json({ error: "listId required — pick a list" }, 400);
         if (!addressId) return json({ error: "addressId required — pick a sender address" }, 400);
@@ -17112,10 +17115,12 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
         const dash = raw => { const s = String(raw).replace(/-/g,""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
 
-        const [titlePage, pillar] = await Promise.all([
+        const [titlePage, titlePillar, parentPillar] = await Promise.all([
           fetch(`https://api.notion.com/v1/pages/${dash(titleId)}`, { headers: hdr }).then(r => r.json()).catch(() => null),
           extractPillarContent(hdr, dash(titleId)).catch(() => ""),
+          parentAssetId ? extractPillarContent(hdr, dash(parentAssetId)).catch(() => "") : "",
         ]);
+        const pillar = parentPillar || titlePillar;
         const titleName = (titlePage?.properties?.Title?.title || []).map(t => t.plain_text).join("") || "Digest";
         if (!pillar) return json({ error: "This title has no Pillar Content yet — write/generate its pillar first" }, 400);
         const resolvedCampaignId = campaignId || (titlePage?.properties?.Campaign?.relation || [])[0]?.id?.replace(/-/g, "") || null;
@@ -17140,7 +17145,10 @@ Begin directly with "### Email 1". No preamble, no trailing notes.`;
         const emailPrompt = `You are formatting a weekly hub digest's FREE tier into a real, sendable HTML email. Reshape the pillar content below into a scannable digest issue — lead item first, then 3-6 short "why it matters" items, one soft closing line. Pure value, no pitch.
 
 PILLAR CONTENT (source — reshape, do not invent new claims):
-${pillar.slice(0, 4000)}
+${pillar.slice(0, 6000)}${picks ? `
+
+THE OPERATOR'S PICKS FOR THIS FREE ISSUE — feature these (the first is the lead item), keep the rest as short teasers, and pitch the premium edition with benefit language:
+${picks}` : ""}
 
 HUB: ${hubName || "the hub"}${palette ? `\nBRAND PALETTE (use these hex colors for accents/links, keep body text a safe dark neutral for readability): ${palette}` : ""}${fonts ? `\nBRAND FONTS (reference only — use web-safe fallbacks, a real font stack, since custom fonts are unreliable in email clients): ${fonts}` : ""}
 
@@ -17203,7 +17211,21 @@ Return via the submit_digest_email tool ONLY. The "html" field MUST be real HTML
         const campData = await campResp.json().catch(() => ({}));
         if (!campResp.ok || !campData.campaign?.id) return json({ error: "ActiveCampaign campaign create failed (message was created, id " + messageId + "): " + (campData.message || JSON.stringify(campData)).toString().slice(0, 400) }, 502);
 
-        return json({ success: true, messageId, campaignId: campData.campaign.id, subject: email.subject, draft: true });
+        let assetId = "";
+        if (parentAssetId) {   // record the issue as a child asset of the Digest parent (best effort — the draft already exists)
+          try {
+            const pp = await fetch(`https://api.notion.com/v1/pages/${dash(parentAssetId)}`, { headers: hdr }).then(r => r.json()).catch(() => null);
+            const rel = k => (pp?.properties?.[k]?.relation || []).map(r => ({ id: r.id }));
+            const props = { "Asset Title": { title: [{ type: "text", text: { content: String(email.subject).slice(0, 200) } }] }, "Asset Type": { select: { name: "Newsletter Free" } },
+              "Asset Status": { select: { name: "Review" } }, "Content Strategy": { relation: [{ id: dash(titleId) }] }, "Parent Asset": { relation: [{ id: dash(parentAssetId) }] },
+              "Body": { rich_text: [{ type: "text", text: { content: `${email.subject}\n${email.preheader || ""}\n\nActiveCampaign draft — campaign ${campData.campaign.id}, message ${messageId}. Review and send it in ActiveCampaign.`.slice(0, 1990) } }] },
+              ...(rel("Campaign").length ? { "Campaign": { relation: rel("Campaign") } } : resolvedCampaignId ? { "Campaign": { relation: [{ id: dash(resolvedCampaignId) }] } } : {}),
+              ...(rel("Product").length ? { "Product": { relation: rel("Product") } } : {}), ...(await assetMethodProp(null, "Newsletter Free")) };
+            const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) }).then(r => r.json());
+            assetId = (cr.id || "").replace(/-/g, "");
+          } catch (e) { console.error("publishDigestEmail asset:", e.message); }
+        }
+        return json({ success: true, messageId, campaignId: campData.campaign.id, subject: email.subject, draft: true, assetId });
       }
 
       // ── updateProductTitleDescription ──
