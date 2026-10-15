@@ -15556,7 +15556,7 @@ function hub2ChecklistHtml(slug) {
     return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${esc(r.notBuilt ? 'Not built yet — ' + (r.description || r.name) : (r.description || r.name))}" style="cursor:pointer;${r.notBuilt ? 'background:rgba(128,128,128,.22);opacity:.6;' : ''}">
       <td style="${TD}max-width:250px;overflow:hidden;text-overflow:ellipsis;${r.isPillar ? 'font-weight:700;' : ''}">${r.creatable ? `<button onclick="event.stopPropagation();hub2CreateModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Create a ${esc(r.name)} asset under a title" style="font-size:10px;line-height:1;padding:1px 5px;margin-right:6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋</button>` : ''}${name}</td>
       <td style="${TD}text-align:center;color:${r.published ? ok : 'var(--text3)'};">${r.published || ''}</td>
-      <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};">${r.inProgress || ''}</td>
+      <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};" ${r.inProgress ? `onclick="event.stopPropagation();hub2InProgressModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Pick one of these ${r.inProgress} unpublished assets to review and publish"` : ''}>${r.inProgress ? `<span style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;font-weight:700;">${r.inProgress}</span>` : ''}</td>
       <td style="${TD}text-align:center;color:var(--text2);" title="${esc(r.goalTip || '')}">${r.target}${r.parents > 1 ? '<span style="font-size:9px;color:var(--text3);"> (' + (r.target / r.parents) + '×' + r.parents + ')</span>' : ''}</td>
       <td style="${TD}color:var(--text2);" title="${esc(r.schedule || '')}">${esc(r.periodLabel)}</td>
       <td style="${TD}text-align:center;color:${r.tracked && !r.complete ? warn : 'var(--text2)'};">${r.tracked ? r.progress + ' / ' + r.target : ''}</td>
@@ -15975,6 +15975,25 @@ async function hub2TopicalModal(slug) {
     if (m) m.textContent = H2T.ideas.length ? `${H2T.ideas.length} saved ideas from ${r.at ? new Date(r.at).toLocaleDateString() : 'earlier'} — or generate a fresh 10` : 'No saved ideas yet — generate 10.'; }
   catch (e) { const m = document.getElementById('h2tMsg'); if (m) m.textContent = 'Could not load saved ideas: ' + e.message; }
   hub2TopicalRender();
+}
+// the "In progress" count on any checklist row → a picker of those unpublished assets → 📤 Publish (the Publish modal) — so
+// whatever the crons or you generate can be pulled up and published from the checklist (operator 2026-10-15)
+function hub2InProgressModal(slug, id) {
+  const st = _hub2Checklist[slug] || {}, m = (st.methods || []).find(x => x.id === id), h = HUB_SITES.find(x => x.slug === slug); if (!m || !h) return;
+  const list = hub2RowItems(st, m).filter(x => !/^published$/i.test(x.assetStatus || x.status || '')).sort((a, b) => String(b.dateCreated || '').localeCompare(String(a.dateCreated || '')));
+  const topical = /^topical - seo post$/i.test(m.name);
+  const stage = x => { const s = x.assetStatus || x.status || '—';
+    if (/^review$/i.test(s)) return [s + ' — written, review it then publish', '#4ade80'];
+    if (/flagged/i.test(x.interviews || '') && topical) return [s + ' — interview waiting for your answers', '#ff9a3d'];
+    if (/^out of sync/i.test(x.ivSync || x.assetSync || '')) return [s + ' — out of sync with its interview', '#ff9a3d'];
+    return [s, 'var(--text3)']; };
+  kwWideModal(`<h3 style="margin:0 0 4px;">${esc(m.name)} — in progress (${list.length})</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Unpublished on this hub, newest first. 📤 Publish opens the asset's Publish modal${topical ? '; ✍ Write runs its interview, then writes it' : ''}.</div>
+    <div style="max-height:56vh;overflow-y:auto;">${list.map(x => { const [label, col] = stage(x); return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:6px 0;border-top:1px solid var(--border);font-size:12px;">
+      <span style="flex:1;min-width:220px;color:var(--text);">${esc(x.platformTitle || x.assetName || x.title || '(untitled asset)')}<br><span style="font-size:10.5px;color:${col};">${esc(label)}</span>${x.dateCreated ? `<span style="font-size:10.5px;color:var(--text3);"> · ${esc(String(x.dateCreated).slice(0, 10))}</span>` : ''}</span>
+      ${topical ? `<button class="kw-btn" onclick="topicalWrite('${esc(x.assetId)}', this)">✍ Write</button>` : ''}
+      <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="document.getElementById('hcModal')?.classList.remove('open');openCareGapEditor('${esc(h.campaignId)}', '${esc(x.assetId)}', '')">📤 Publish</button>
+      <a href="https://www.notion.so/${esc(hub2Id(x.assetId))}" target="_blank" rel="noopener" style="font-size:10.5px;color:var(--accent);">Notion ↗</a></div>`; }).join('') || '<div style="font-size:12px;color:var(--text3);">Nothing unpublished.</div>'}</div>
+    <div style="display:flex;gap:8px;margin-top:8px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`);
 }
 function hub2TopicalWaitingHtml(slug) {
   const st = _hub2Checklist[slug] || {}, h = HUB_SITES.find(x => x.slug === slug), row = (st.methods || []).find(x => /^topical - seo post$/i.test(x.name)), names = new Set(((row && row.aliases) || ['Topical Post']).map(hub2Norm));
