@@ -16852,7 +16852,7 @@ function renderHubKw(slug) {
     const sub = `— ${t.staged ? 'staged' : 'committed'} · ${kws.length} keyword${kws.length === 1 ? '' : 's'}${ps.length ? ' · ' + ps.length + ' product' + (ps.length === 1 ? '' : 's') : ''}${t.searchIntent ? ' · ' + esc(t.searchIntent) : ''}`;
     // keyword pills only when they add something — a topic whose only keyword is its own name shows no pill line
     const extraKws = kws.filter(k => k.trim().toLowerCase() !== String(t.name || '').trim().toLowerCase());
-    const inner = (extraKws.length ? sec('kw:' + t.id, 'Keywords', kws.length, '', pills(kws)) : '')   // collapsed by default
+    const inner = sec('kw:' + t.id, 'Keywords', kws.length, '', kws.length ? pills(kws) : '<span style="font-size:11px;color:var(--text3);">No keywords.</span>')   // collapsed; same level as Existing / Proposed
       + prods;   // the topic's stored rationale note is not shown (operator 2026-10-15)
     return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), sub, inner, { topicId: t.id, tools: moveSel + addBtn });
   };
