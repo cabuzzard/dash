@@ -1,40 +1,57 @@
-# land RE — initial release
+# land RE — Nationwide appreciation-cycle research
 
-Integrated in dash/index.html as land RE. Open the dashboard and select that tab. Static application follows the existing GitHub Pages architecture; no separate web framework or paid service is needed. Python standard-library SQLite is used for bulk analytical storage rather than DuckDB to avoid dependency/setup requirements at this scale.
+The starting workflow is now National Overview → Cycle Scanner → Market Research → Compare Markets → Research Notebook. Counties, comparable sales and land underwriting remain later drill-downs. Open the land RE tab in dash/index.html or visit /dash/land-re/.
 
-## Local launch
-From the dash repository: `python -m http.server 8766 --bind 127.0.0.1` then open http://127.0.0.1:8766/land-re/. On this computer Python is available at C:/Users/flipo/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe.
+## Real nationwide coverage
+Snapshot observed October 15, 2026: 894 metros, 50 states plus DC, 3,152 county geography records and a national benchmark (4,098 records total). Census population/migration vintage 2024 is available at state/county level; metro demographics are not imputed. Some county geographies differ between source vintages; no county counts are summed to derive national demographics. National demographics use state totals. Zillow home-value series run up to August 2026 with history as far back as 2000 depending on geography. Full histories are loaded on demand from history/*.json; the scanner uses the latest 73 monthly points plus the full-series peak.
 
-## Data refresh
-`python land-re/refresh.py` downloads Census county estimates vintage 2024 and the live Zillow county ZHVI CSV. It preserves dated raw files in land-re/data/raw and UPSERTs observations in land-re/data/land.sqlite3 by FIPS, metric, period, source. markets.json is the publishable aggregate snapshot. Private/local data is excluded from Git. Commit only the aggregate snapshot to update GitHub Pages. Reload published snapshot reloads the existing published JSON; it does not initiate a remote ingestion job. Errors are recorded in SQLite sources and exposed in the JSON health report; historical observations are retained. A refreshed provider series may revise prior observations in SQLite, with raw vintages preserved.
+Sources:
+- Census: https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv
+- Zillow metro/national ZHVI: https://files.zillowstatic.com/research/public_csvs/zhvi/Metro_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv
+- Zillow state ZHVI: https://files.zillowstatic.com/research/public_csvs/zhvi/State_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv
+- Zillow county ZHVI: https://files.zillowstatic.com/research/public_csvs/zhvi/County_zhvi_uc_sfrcondo_tier_0.33_0.67_sm_sa_month.csv
+- Zillow inventory: https://files.zillowstatic.com/research/public_csvs/invt_fs/Metro_invt_fs_uc_sfrcondo_sm_month.csv
+- Zillow sales: https://files.zillowstatic.com/research/public_csvs/sales_count_now/Metro_sales_count_now_uc_sfrcondo_month.csv
+- Zillow days to pending: https://files.zillowstatic.com/research/public_csvs/mean_doz_pending/Metro_mean_doz_pending_uc_sfrcondo_sm_month.csv
 
-## Closed sales
-Comparable Sales → Download CSV header template. Required fields: property_id, geoid (five-digit county FIPS), lot_acres, sale_price, closed_date (YYYY-MM-DD), property_type, source. Recommended: address, sqft, bedrooms, bathrooms, year_built, condition, quality, listing_price, days_on_market, verification_status. Types: single_family, finished_lot, raw_land. Provider-neutral CSV boundary accepts licensed exports; no scraping or MLS access is assumed. Invalid files leave the previous dataset intact. Imports replace browser-local sales; export a backup first. Duplicates: county + property_id + closed_date. Large datasets beyond browser storage need a future local server connector; this release handles modest review CSVs, with explicit import errors on quota failure.
+Provider overview and methodology: https://www.zillow.com/research/data/. Retain source attribution. ZHVI is modeled home values, not land transactions or individual comps. Inventory is unique active listings during the month. Latest sales estimates are nowcasts and can revise. Days to pending are not days to close. Public Census government data is freely available; Zillow Research use remains subject to provider terms. No paid access was used.
 
-Default target is 1.5 acres; ±15% widens to ±25%, then ±40% only if fewer than eight transactions. Type never mixes. Optional sqft tolerance ±20%, year ±10, exact condition and quality. County geography is coarse; distance/neighborhood/construction-type and sale-date price adjustments are not implemented. Matched sets are descriptive, not adjusted appraisals. Lot values are not inferred from house values.
+## Finding cycles
+National Overview shows the US backdrop and how regional markets distribute across observed phases. Cycle Scanner filters geography scale, state, Census region, phase, evidence coverage and market name. Sort by turning-point research score, acceleration, appreciation, sales growth or inventory contraction. Scores are compared within scale/coverage, not as a nationwide investment league table across unlike geographies. Metros use the provider's primary-state label; cross-state influence must be investigated separately. County view is optional and is no longer the starting point.
 
-## Sources and limitations
-Census: https://www2.census.gov/programs-surveys/popest/datasets/2020-2024/counties/totals/co-est2024-alldata.csv — 2020–2024 population and net migration, annual, national raw coverage; 254 Texas counties normalized. Public government dataset. Housing: https://www.zillow.com/research/data/ — county ZHVI monthly; Texas coverage varies and latest observation is August 2026 at initial ingestion. Cite Zillow Research; this index models typical home values, not completed transactions or land. Download availability does not establish rights to reuse unrelated Zillow property data.
+Monthly calculations align to exact calendar months. Price pace annualizes the most recent three-month change. Pace acceleration compares that pace against the preceding three-month period. Inventory and days-to-pending changes compare the same month year over year; sales demand compares the sum of the latest three months with those same months a year earlier. Missing exact-month inputs remain unavailable, including stale auxiliary observations. Drawdown uses the observed historical peak, not a guessed intrinsic value.
 
-Census ACS API currently returns Missing Key without a key. No ACS key, MLS, Redfin, BPS, BLS, BEA, county deed/GIS, FEMA, boundary/ETJ or listing provider is configured. Provider-specific integrations remain future work; supported fallback is licensed CSV import. No fabricated observations are supplied. Market Explorer defaults to population ≥10,000 and all four implemented indicator components, avoiding ranking tiny or sparsely covered counties ahead of comparable markets by default. Filters are adjustable.
+Descriptive rules, evaluated in order:
+1. Correction: annual price decline worse than 2% and recent pace nonpositive.
+2. Recovery: more than 3% below the prior observed peak, positive recent pace and positive pace acceleration.
+3. Emerging upswing: 0–6% annual appreciation, positive recent pace, acceleration above 1 percentage point, and at least one firming signal (falling inventory, sales growth above 3%, or days to pending falling more than 5%).
+4. Cooling: recent pace more than 2 points below annual pace, or inventory growth above 15% with falling sales.
+5. Expansion: annual appreciation above 6% and positive recent pace.
+6. Otherwise stabilizing/mixed. At least two-year price endpoints plus the quarterly windows are needed; gaps in required endpoint months withhold classification.
 
-The model uses population growth/acceleration, migration and moderated home-price growth. Weights are configurable. It does not claim land price lag, income/jobs/permits/inventory coverage, calibrated probabilities or prospective predictive performance. One/three-year population growth is available; five-year population growth requires an older comparable population series. Housing outlook scenarios are user assumptions, not estimates fitted to these signals. No point-in-time historical backtest exists; using current-vintage series for such a claim would introduce revision/look-ahead bias. The original Tyler case has unknown acquisition date/location/returns. Smith County FIPS 48423 is the reference, not Tyler County.
+Research score weights default to acceleration 30%, sales demand 25%, inventory 25%, moderate current appreciation 20%. Components clip to 0–100: acceleration 50+3*pace_change_pp; demand 50+2*sales_growth%; supply 50-1.5*inventory_growth%; runway 75-5*abs(annual_appreciation%-3). Weights are editable and stored locally. Missing components renormalize available weights and reduce displayed input coverage. No score is a calibrated probability or return forecast. Emerging housing signals do not prove land-price lag or an attractive parcel.
 
-Valuation includes all cost categories as explicit inputs. Finance is entered as a total holding-period cost. Gross exits, profit, profit margin, return on cost, simplified annualized return, break-even exit and 3×3 sensitivity are computed. Annualized return is not staged cash-flow IRR. Default numbers are labeled illustrative, never market-supported evidence. Legally feasible lot count is supplied and must be verified; acreage checks do not establish subdivision feasibility.
+## Historical research and comparison
+Market Research provides full price history, annual appreciation history, inventory and sales charts, inspection of historical phase by month, 1/3/5-year cumulative price changes, reasons, risks and direct dataset citations. Historical inspection uses today's revised series with future dates excluded; it is not a point-in-time predictive backtest.
 
-Parcel screening is a manual diligence checklist with ask-versus-saved-maximum comparison. No listings, GIS checks or acquisition ranking are fabricated. Product analysis reports observed shares, house sizes, prices and DOM; longitudinal growth/appreciation and supported product recommendations are withheld pending sufficient controlled samples. Custom acreage bands, regression/repeat-sales modeling, active-inventory absorption and nationwide ingestion are not implemented.
+Compare Markets accepts up to six markets from the current market and watchlist. Prices are rebased to 100 at the first common calendar month, using shared observation dates. Compare 5 years, 10 years or all common history. Scores have different evidence completeness where source coverage differs.
 
-## Notion
-Connected MCP discovery succeeded. Existing dash index/deployment references were inspected, not changed. Created a private project draft: https://app.notion.com/p/3fa1f7d3a4bb81f9bc86d5ff9c96430f. It contains overview, source attribution, dated Smith County results, confidence, progress and roadmap. Stable identifier land-re-v1. Future sync should update this exact page through Notion MCP, keyed by county FIPS and observation period, rather than create duplicate project pages. Automatic sync and relational review databases are not implemented. No existing content was restructured or deleted.
+## General research and notebook
+The national theme field builds external news and official BLS/BEA/Census search links for arbitrary research questions. Market Research supplies market-specific links. These are research starting points, not automatically verified news, synthesized AI research or an ingested employment dataset.
 
-## Validation
-`node land-re/test-engine.cjs` — 12 tests for residual reconciliation, break-even, invalid assumptions, CSV quoting/dedup/date validation, type/date matching, adaptive tolerances, missing observations, median, acreage boundaries and scenario compounding. Tests use explicitly synthetic fixtures; the app contains no fixture sales. Browser checks cover rendered data, sections and valuation. Source ingestion: 2,540 Census plus 44,566 Zillow observations on 2026-10-15.
+Save a thesis, observed data, announced/completed catalyst or contradicting evidence in Research Notebook, with source URL, source date, confidence and next verification step. Notes and watchlists are browser-local and exportable as JSON. They do not automatically synchronize to Notion. The existing private Notion project remains the project repository: https://app.notion.com/p/3fa1f7d3a4bb81f9bc86d5ff9c96430f. Its latest section records this nationwide scope change; no unrelated Notion content was modified.
 
-## Next priorities
-1. Import actual licensed single-family and finished-lot sales around Tyler and surrounding counties.
-2. Add permit, employment and active-inventory series with release timestamps.
-3. Implement local bulk sales storage/API and idempotent summarized Notion sync.
-4. Add parcel, road, utility, flood and legal-boundary evidence.
-5. Backtest on frozen information vintages and negative-control markets before predictive claims.
+## Existing property analysis
+Select a county from Research market before Comparable Sales or Product-Market Analysis. Import licensed closed-sales CSV using the header template: required property_id, geoid (county FIPS), lot_acres, sale_price, closed_date, property_type, source. Additional house attributes, condition, quality and verification fields support matching. Default target 1.5 acres with visible adaptive tolerances 15%, 25%, 40% and minimum eight observations. Imports replace the browser dataset only after successful validation; export backups first. Bulk sales beyond browser quota require a future local API. No property listings or individual sales are fabricated.
 
-This is a working initial research tab, not completion of every requirement in the supplied full-system brief.
+Residual valuation, sensitivity, manual parcel diligence and assumption-driven outlook remain available. Default underwriting numbers are illustrative. Feasible lot counts and finished-lot exits require independent evidence. Simplified annualized return is not staged cash-flow IRR. No automated parcel GIS, MLS or finished-lot feed is connected.
+
+## Launch, refresh and validation
+From the dash repository, run `python -m http.server 8766 --bind 127.0.0.1` and visit http://127.0.0.1:8766/land-re/. This computer's Python is C:/Users/flipo/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe.
+
+Refresh: `python land-re/refresh.py`. It preserves dated raw CSVs, UPSERTs local SQLite observations and geographic metadata, writes the compact markets.json and full history shards, and records per-source success/failure. SQLite uses source-specific savepoints so ingestion errors do not leave partially imported providers. Prior observations may be revised by new source vintages; raw downloads preserve the originals. `--use-cache` is a development-only option for already-downloaded files; ordinary refresh should omit it. Raw files, SQLite and Python cache stay ignored; publish only aggregate JSON and app source through the normal GitHub Pages push. Reload published snapshot refreshes already-published JSON, not an ingestion job.
+
+Tests: `node land-re/test-engine.cjs` (12 original financial/import tests), `node land-re/test-cycle.cjs` (11 nationwide cycle/data-integrity tests). Constructed test series are labeled synthetic fixtures. Browser QA covered national overview, NC metro filters, Charlotte full history/historical inspection, normalized US comparison, local note save and retained comp/valuation modules. No predictive-performance claim is made.
+
+## Remaining limitations
+This is general nationwide housing-cycle research with land underwriting drill-down. Permits, jobs, household formation, affordability, infrastructure, metro population crosswalks and actual land-price series are still needed to investigate land-specific early cycles. Future priorities: verified employment/permit connectors, source-vintage backtesting, spatial spillover analysis, cited automated research, bulk closed-sale/land data and idempotent summarized Notion sync.

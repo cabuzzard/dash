@@ -1813,7 +1813,7 @@
   </div>
 
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
-  <!-- land-re-integration-20261015: isolated analytical workbench -->
+  <!-- nationwide-land-re-20261015: national cycle research workbench -->
   <div class="tab-panel" id="tabLandre">
     <iframe id="landREFrame" title="Land Appreciation Intelligence" style="width:100%;height:calc(100vh - 180px);min-height:700px;border:0;border-radius:10px;background:#101713;"></iframe>
   </div>
@@ -5748,7 +5748,7 @@ function jumpToDev(campId) {
 // when a session expired reloads itself the instant you're re-authenticated
 // instead of sitting on a stale error until you click away and back.
 function loadTabContent(name) {
-  if (name === 'landre') { const frame = document.getElementById('landREFrame'); if (!frame.getAttribute('src')) frame.src = 'land-re/?v=2026101501'; }
+  if (name === 'landre') { const frame = document.getElementById('landREFrame'); if (!frame.getAttribute('src')) frame.src = 'land-re/?v=2026101502'; }
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   // 'development' deliberately NOT auto-loaded here — every widget in this
   // tab (NEXT, Last 30 Published, Development Titles) is default-collapsed
