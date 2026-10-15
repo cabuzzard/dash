@@ -15344,7 +15344,7 @@ const HUB2_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const HUB2_UNIT = { 'Weekly': 'week', 'Twice monthly': 'half-month', 'Monthly': 'month', 'Quarterly': 'quarter' };
 const HUB2_CHECKLIST_COLS = [
   {key:'name',label:'Method'}, {key:'tier',label:'Interview'}, {key:'published',label:'Published',num:true}, {key:'inProgress',label:'In progress',num:true},
-  {key:'goalLabel',label:'Goal'}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}
+  {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}
 ];
 const HUB2_WS = { parent: 'cmuzq03ywty8b', asset: 'cmuzq36hb77sq', name: 'cname01', pillar: 'c1', tier: 'civtier01', match: 'cmatch01', goal: 'cgoal01', cadence: 'ccad01', day: 'cday01', schedule: 'csched01', notes: 'c2' };
 function hub2MethodsFrom(table) {
@@ -15377,6 +15377,8 @@ function hub2SaveWeeklyMetrics(slug, source) {
 }
 function hub2PeriodStart(cadence) { const d = new Date(); d.setHours(0,0,0,0); if (cadence === 'Monthly') d.setDate(1); else if (cadence === 'Quarterly') d.setMonth(Math.floor(d.getMonth()/3)*3,1); else if (cadence === 'Weekly') { const n = (d.getDay() + 1) % 7; d.setDate(d.getDate() - n); } else if (cadence === 'Twice monthly') d.setDate(d.getDate() < 16 ? 1 : 16); else d.setFullYear(2000,0,1); return d; }
 function hub2NextDue(goal, complete) { if (!goal || !goal.tracked || ['On demand','Inherited','Milestone'].includes(goal.cadence)) return ''; const d = new Date(); d.setHours(0,0,0,0); if (goal.cadence === 'Monthly') { d.setMonth(d.getMonth() + (complete ? 2 : 1), 0); } else if (goal.cadence === 'Quarterly') { d.setMonth(Math.floor(d.getMonth()/3)*3 + (complete ? 6 : 3), 0); } else if (goal.cadence === 'Twice monthly') { if (d.getDate() <= 15 && !complete) d.setDate(15); else { d.setMonth(d.getMonth()+1,0); } } else if (goal.cadence === 'Once') { if (complete) return ''; } else { const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'], want = Math.max(0, days.indexOf(goal.weekday || 'Friday')), delta = (want - d.getDay() + 7) % 7; d.setDate(d.getDate() + delta + (complete ? 7 : 0)); } return d.toISOString().slice(0,10); }
+// end of the current period (periods: week = Sat 00:00 → Fri 23:59 · half-month = 1-15 / 16-end · month → its last minute · quarter)
+function hub2PeriodEnd(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); d.setHours(23, 59, 0, 0); return d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) + ' 11:59pm'; }
 const hub2TrackKey = (slug, id) => slug + '|row:' + String(id).toLowerCase();
 const hub2TrackOf = (slug, id) => (((_hub2Checklist[slug] || {}).goals) || {})[hub2TrackKey(slug, id)] || null;
 // the hub's assets a method row counts: its aliases vs Asset Type (pillar rows: pillar-class assets by pillar type)
@@ -15425,7 +15427,7 @@ function hub2ChecklistRows(slug) {
     const due = tracked ? hub2NextDue({ tracked, cadence: m.cadence, weekday: m.weekday }, complete) : '';
     const status = !tracked ? '' : issues.some(x => x.blocking) ? 'Needs interview' : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
     return { ...m, creatable: !/^hub$/i.test(m.parent), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status, issues,
-      goalLabel: periodic ? `${m.target} / ${HUB2_UNIT[m.cadence]}` : `${m.target} · ${m.cadence.toLowerCase()}` };
+      periodLabel: periodic ? `${HUB2_UNIT[m.cadence]} · ends ${hub2PeriodEnd(m.cadence)}` : m.cadence.toLowerCase() };
   });
 }
 function hub2ChecklistSetSort(slug, key, ev) { const s = _hub2ChecklistSort[slug] ||= [{col:'name',asc:true}], i=s.findIndex(x=>x.col===key), multi=ev&&(ev.ctrlKey||ev.metaKey||ev.shiftKey); if(!multi) _hub2ChecklistSort[slug]=i===0&&s.length===1?[{col:key,asc:!s[0].asc}]:[{col:key,asc:true}]; else if(i<0)s.push({col:key,asc:true}); else if(s[i].asc)s[i].asc=false; else s.splice(i,1); hub2ChecklistPaint(slug); }
@@ -15447,7 +15449,8 @@ function hub2ChecklistHtml(slug) {
       <td style="${TD}color:var(--text3);">${esc(TIER[r.tier] || '—')}${dot}</td>
       <td style="${TD}text-align:center;color:${r.published ? ok : 'var(--text3)'};">${r.published || ''}</td>
       <td style="${TD}text-align:center;color:${r.inProgress ? '#f6ad55' : 'var(--text3)'};">${r.inProgress || ''}</td>
-      <td style="${TD}color:var(--text2);" title="${esc(r.schedule || '')}">${esc(r.goalLabel)}</td>
+      <td style="${TD}text-align:center;color:var(--text2);">${r.target}</td>
+      <td style="${TD}color:var(--text2);" title="${esc(r.schedule || '')}">${esc(r.periodLabel)}</td>
       <td style="${TD}text-align:center;color:${r.tracked && !r.complete ? warn : 'var(--text2)'};">${r.tracked ? r.progress + ' / ' + r.target : ''}</td>
       <td style="${TD}">${r.due || ''}</td>
       <td style="${TD}color:${sc};font-weight:${r.tracked ? 600 : 400};">${r.status}</td>
