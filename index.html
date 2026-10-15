@@ -15966,6 +15966,7 @@ async function hub2TopicalModal(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   Object.assign(H2T, { slug, ideas: [], picked: {}, made: {} });
   kwWideModal(`<h3 style="margin:0 0 4px;">＋ Topical - SEO Post</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Evergreen SEO articles, each targeting one real long-tail search inside one of this hub's keyword topics. Generate ideas, tick the ones you want, create them, then ✍ Write — each asks a short 5-question interview first.</div>
+    ${hub2TopicalWaitingHtml(slug)}
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2TopicalGenerate(this)">💡 Generate 10 ideas</button><span id="h2tMsg" style="font-size:11px;color:var(--text3);">Loading saved ideas…</span></div>
     <div id="h2tList" style="max-height:46vh;overflow-y:auto;"></div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button class="modal-btn" id="h2tCreate" onclick="hub2TopicalCreate(this)">Create ticked posts</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2tCreateMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`);
@@ -15974,6 +15975,17 @@ async function hub2TopicalModal(slug) {
     if (m) m.textContent = H2T.ideas.length ? `${H2T.ideas.length} saved ideas from ${r.at ? new Date(r.at).toLocaleDateString() : 'earlier'} — or generate a fresh 10` : 'No saved ideas yet — generate 10.'; }
   catch (e) { const m = document.getElementById('h2tMsg'); if (m) m.textContent = 'Could not load saved ideas: ' + e.message; }
   hub2TopicalRender();
+}
+function hub2TopicalWaitingHtml(slug) {
+  const st = _hub2Checklist[slug] || {}, h = HUB_SITES.find(x => x.slug === slug), row = (st.methods || []).find(x => /^topical - seo post$/i.test(x.name)), names = new Set(((row && row.aliases) || ['Topical Post']).map(hub2Norm));
+  const list = [...new Map((st.hubRows || []).filter(x => x.assetId && x.assetClass !== 'Pillar' && (names.has(hub2Norm(x.rawAssetType)) || names.has(hub2Norm(x.assetType))) && !/^published$/i.test(x.assetStatus || '')).map(x => [x.assetId, x])).values()];
+  if (!list.length || !h) return '';
+  const stage = x => /^review$/i.test(x.assetStatus || '') ? ['written — review it, then publish', '#4ade80'] : /flagged/i.test(x.interviews || '') ? ['interview waiting for your answers', '#ff9a3d'] : ['not written yet — ✍ starts its interview', 'var(--text3)'];
+  return `<div style="border:1px solid rgba(255,154,61,.45);border-radius:6px;padding:6px 10px;margin-bottom:10px;"><div style="font-size:11px;font-weight:700;color:#ff9a3d;margin-bottom:4px;">Waiting on you (${list.length}) — unpublished SEO posts</div>
+    ${list.map(x => { const [label, col] = stage(x); return `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:4px 0;border-top:1px solid var(--border);font-size:11.5px;">
+      <span style="flex:1;min-width:200px;color:var(--text);">${esc(x.platformTitle || x.assetName || x.title || 'SEO post')}<br><span style="font-size:10.5px;color:${col};">${label}</span></span>
+      <button class="kw-btn" onclick="topicalWrite('${esc(x.assetId)}', this)" title="Not written: writes + opens its 5-question interview. Interview finished: writes the article.">✍ Write</button>
+      <button class="kw-btn" onclick="openCareGapEditor('${esc(h.campaignId)}', '${esc(x.assetId)}', '')" title="Open the Publish modal — review and publish it to the hub blog">📤 Publish</button></div>`; }).join('')}</div>`;
 }
 async function hub2TopicalGenerate(btn) {
   const h = HUB_SITES.find(x => x.slug === H2T.slug), m = document.getElementById('h2tMsg'); if (!h) return;
