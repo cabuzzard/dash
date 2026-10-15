@@ -1258,7 +1258,7 @@ async function ivCronTick(env) {
 // once it's Finished, the article is written from the idea + the offering's interview + the short interview (rewritten
 // for SEO) + hub audience + voice, saved to the asset body, Asset Status → Review. Publishing stays the operator's call.
 const TOPICAL_TYPE = "Topical Post";
-async function createTopicalAssets(env, ideas) {
+async function createTopicalAssets(env, ideas, opts = {}) {
   await hubSitesMerge(env);
   const out = [], hdr = ivHdr();
   const bySlug = {}; (ideas || []).forEach(x => { if (x && x.slug && x.headline) (bySlug[x.slug] = bySlug[x.slug] || []).push(x); });
@@ -1268,7 +1268,9 @@ async function createTopicalAssets(env, ideas) {
     // main offerings of the hub, with a line of research each, so every idea lands on the best-fit offering
     const mains = [];
     for (const pid of await hubMainList(env, cid)) { const pg = await ivPage(pid).catch(() => null); const name = pg ? (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim() : "";
+      if (opts.syncedOnly && pg && pg.properties?.["Keywords Out of Sync"]?.checkbox) continue;   // checklist: never an out-of-sync product
       if (name && !/ - Main Offering$/.test(name)) mains.push({ id: String(pid).replace(/-/g, ""), name, res: (await ivProdResearch(pid).catch(() => "")).slice(0, 400) }); }
+    if (opts.syncedOnly && !mains.length) { list.forEach(x => out.push({ id: x.id, error: "no synced main product on " + hub.name + " — sync one first" })); continue; }
     let pick = {};
     if (mains.length > 1 && env.ANTHROPIC_API_KEY) {
       const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -1407,10 +1409,12 @@ async function buildHubTopicIdeas(env, cid) {
   const research = resRows.slice().sort((a, b) => rtx(b, "Keywords").length - rtx(a, "Keywords").length)[0];
   const mainKw = rtx(research, "Keywords").split(/[,\n]+/).map(x => x.trim()).filter(Boolean);
   const audience = await hubAudienceBlock(env, cid);
-  let topics = await hubTopicsOf(env, cid);
+  // 2026-10-15: the hub's keyword structure (Main → 3 clusters → topics) is the source — this never creates topics anymore,
+  // and the Unclassified bucket is not a search topic
+  let topics = (await hubTopicsOf(env, cid)).filter(t => !/^unclassified$/i.test(String(t.name).trim()));
   const topicsBefore = topics.length;
   let longtails = [], created = 0, topicError = "";
-  if (topics.length < 3) {
+  if (false && topics.length < 3) {
     longtails = await longTailSuggest(mainKw.length ? mainKw : [hub.name]);
     const g = await selfAction(env, "generateKeywordClusters", { campaignId: cid, guidance: `Build these topics from REAL long-tail searches people type (Google autocomplete off the Main Keywords) — but ONLY searches the hub's audience below would make; drop searches from other audiences (job seekers, students, practitioners in the trade, competitors) even when they contain the keyword. Name each topic with one of the kept long-tail phrases where one fits, and put the related long-tails in its keywords.\n${audience}\nLONG-TAIL SEARCHES:\n${longtails.slice(0, 100).join("\n")}` });
     if (g && g.error) topicError = g.error;
@@ -18311,7 +18315,9 @@ Give a YouTube title in that format. Call submit_questions.`;
       // campaign (voice:samples:<cid>: answers less than 90 min apart, latest answer per question).
       // ── Topical posts ── createTopicalAssets {ideas:[{id, slug, headline, keyword, topic, intent, angle}]} (from the
       // Worksheet's "Create assets in dash →") · writeTopicalPost {assetId} · queueTopicalPost {assetId, remove?} · getTopicalQueue
-      if (body.action === "createTopicalAssets") return json({ ok: true, results: await createTopicalAssets(env, (body.ideas || []).slice(0, 60)) });
+      if (body.action === "createTopicalAssets") return json({ ok: true, results: await createTopicalAssets(env, (body.ideas || []).slice(0, 60), { syncedOnly: !!body.syncedOnly }) });
+      if (body.action === "getHubTopicIdeas") { let v = null; try { v = await env.TRADES.get("hubideas:" + String(body.campaignId || "").replace(/-/g, ""), "json"); } catch (e) {}
+        return json({ ok: true, at: (v && v.at) || null, ideas: (v && v.ideas) || [] }); }
       if (body.action === "writeTopicalPost") return json(await writeTopicalPost(env, body.assetId));
       if (body.action === "queueTopicalPost" || body.action === "getTopicalQueue") {
         let q = []; try { q = (await env.TRADES.get("topical:queue", "json")) || []; } catch (e) {}
