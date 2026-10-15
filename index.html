@@ -15872,8 +15872,16 @@ async function hub2NewsWrite(btn) {
     const g = await call('generateTitleAssets', { titleId: t.titleId, campaignId: h.campaignId, productId: d.productId || undefined, methodId: t.methodId, title: t.headline, assetType: 'Blog - SEO - News', count: 1 });
     const assetId = g && ((g.assets || [])[0] || {}).id; if (!assetId) throw new Error('article: ' + ((g && g.error) || 'no asset'));
     await call('updatePublishFields', { assetId, status: 'Published', hubSection: 'news' }).catch(() => {});
+    // the blog thumbnail — same Grok step as the hub's automatic news posts (generateBlogPostThumbnail → saveOfferImage)
+    msg.textContent = '⏳ Making the blog thumbnail (Grok, ~30s)…';
+    let thumb = '';
+    try { const im = await call('generateBlogPostThumbnail', { assetId });
+      if (!im || !im.imageUrl) throw new Error((im && im.error) || 'no image');
+      const sv = await call('saveOfferImage', { assetId, kind: 'blog-thumbnail', imageUrl: im.imageUrl, prompt: im.prompt, background: true });
+      if (sv && sv.error) throw new Error(sv.error); thumb = ' · 🖼 thumbnail added'; }
+    catch (e) { thumb = ` · <span style="color:#ff9a3d;">thumbnail not made: ${esc(e.message)}</span>`; }
     msg.style.color = '#4ade80';
-    msg.innerHTML = `✓ "${esc(t.headline || 'News article')}" published${g.liveUrl ? ` — <a href="${esc(g.liveUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''} · <a href="https://www.notion.so/${esc(String(assetId).replace(/-/g, ''))}" target="_blank" rel="noopener" style="color:var(--accent);">asset ↗</a>`;
+    msg.innerHTML = `✓ "${esc(t.headline || 'News article')}" published${g.liveUrl ? ` — <a href="${esc(g.liveUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''} · <a href="https://www.notion.so/${esc(String(assetId).replace(/-/g, ''))}" target="_blank" rel="noopener" style="color:var(--accent);">asset ↗</a>${thumb}`;
     btn.disabled = false; btn.textContent = '📝 Write another';
     hub2ChecklistLoad(H2N.slug, true);
   } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '📝 Write news article'; }
