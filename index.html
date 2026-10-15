@@ -14577,10 +14577,10 @@ async function hubTextSave(){
 let HIM = { slug:'', content:{} };
 function himUrlFor(kind){ const c = HIM.content || {}; return kind === 'signup' ? (c.report && c.report.image) : (c.hero && c.hero.image); }
 function himResolve(u){ if(!u) return ''; if(/^https?:/i.test(u)) return u; return 'https://cabuzzard.github.io/dash/web/hub/'+HIM.slug+'/'+String(u).replace(/^\.\//,''); }
-async function openHubImageModal(slug){
+async function openHubImageModal(slug, codex){
   const h = HUB_SITES.find(x=>x.slug===slug); if(!h) return;
-  HIM = { slug, content:{} };
-  document.getElementById('himTitle').textContent = 'Section images — ' + h.name;
+  HIM = { slug, content:{}, codex: !!codex, cand: codex ? Object.assign({}, _hub2HeroCand[slug] || {}) : {} };
+  document.getElementById('himTitle').textContent = (codex ? 'Hero images (Codex design) — ' : 'Section images — ') + h.name;
   document.getElementById('himMsg').textContent = '';
   document.getElementById('himRows').innerHTML = '<div style="font-size:12px;color:var(--text3);">Loading…</div>';
   document.getElementById('hubImgModal').classList.add('open');
@@ -14598,9 +14598,10 @@ function himRender(){
         <div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap;">
           <label style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;cursor:pointer;color:var(--text3);">⬆ file<input type="file" accept="image/*" onchange="himUpload('${kind}',this)" style="display:none;"></label>
           <button onclick="himUrl('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">🔗 URL</button>
-          <button onclick="himGptPrompt('${kind}', this)" title="Copy a ChatGPT image prompt built from the SAVED image spec — make the image in ChatGPT, then ⬆ file it here" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">📋 ChatGPT prompt</button>
+          ${HIM.codex ? `<button onclick="himBusyBtn(this);himGrok('${kind}')" title="Render a candidate from the Codex Design spec (staged values over saved: colors, type, imagery, references, avoid + this slot's asset.${kind}.* fields). Nothing changes on the hub until ✓ Use this." style="font-size:10px;padding:2px 7px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;font-weight:600;">✨ Generate from Codex design</button>` : ''}
+          ${HIM.codex ? '' : `<button onclick="himGptPrompt('${kind}', this)" title="Copy a ChatGPT image prompt built from the SAVED image spec — make the image in ChatGPT, then ⬆ file it here" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">📋 ChatGPT prompt</button>
           <button onclick="himBusyBtn(this);himGrok('${kind}')" title="Grok Imagine from the SAVED image spec (+ approved plate). You see a candidate first — nothing changes until Use this." style="font-size:10px;padding:2px 7px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--text);cursor:pointer;">✨ Grok (saved spec)</button>
-          <button onclick="himGen('${kind}', this)" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>
+          <button onclick="himGen('${kind}', this)" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✨ generate</button>`}
           ${u?`<button onclick="himClear('${kind}')" style="font-size:10px;padding:2px 7px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">✕ clear</button>`:''}
         </div>
         ${(HIM.cand || {})[kind] ? (c => `<div style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;padding:8px;border:1px dashed var(--border2);border-radius:6px;">
@@ -14637,6 +14638,7 @@ ${(r.text || '').trim()}`;
 }
 function himBusyBtn(b) { if (!b) return; b.disabled = true; b.dataset.label = b.textContent; b.textContent = '⏳ Working…'; b.style.opacity = '.8'; }
 async function himGrok(kind, withNote) {
+  if (HIM.codex) return hub2CodexHero(kind, withNote);
   const msg = document.getElementById('himMsg'); msg.style.color = 'var(--text3)'; msg.textContent = 'Grok is rendering the ' + kind + ' image from the saved spec (~25s)…';
   const note = withNote ? ((document.getElementById('himNote-' + kind) || {}).value || '').trim() : '';
   const prev = ((HIM.cand || {})[kind] || {}).prompt;
@@ -14647,8 +14649,8 @@ async function himGrok(kind, withNote) {
 async function himAdopt(kind) {
   const c = (HIM.cand || {})[kind]; if (!c) return;
   await himCall({ kind, op: 'adopt', imageUrl: c.imageUrl }, 'Putting it on the hub…');
-  delete HIM.cand[kind]; himRender();
-  const f = document.getElementById('hpiFrame-' + HIM.slug); if (f) setTimeout(() => { try { f.contentWindow.location.reload(); } catch (e) {} }, 70000);
+  delete HIM.cand[kind]; if (_hub2HeroCand[HIM.slug]) delete _hub2HeroCand[HIM.slug][kind]; himRender();
+  { const sl = HIM.slug; setTimeout(() => hpiReload(sl), 70000); }
 }
 async function himCall(payload, working){
   const msg = document.getElementById('himMsg');
@@ -14657,7 +14659,7 @@ async function himCall(payload, working){
     const r = await call('hubImage', { slug: HIM.slug, ...payload });
     HIM.content = r.content || HIM.content;
     himRender();
-    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min. The preview on the right reloads by itself when it is.'; { const sl = HIM.slug; setTimeout(() => { const f = document.getElementById('hpiFrame-' + sl); if (f) try { f.contentWindow.location.reload(); } catch (e) {} }, 75000); }
+    msg.style.color = '#4cff4c'; msg.textContent = 'Saved — live on the hub in ~1 min. The preview on the right reloads by itself when it is.'; { const sl = HIM.slug; setTimeout(() => hpiReload(sl), 75000); }
   } catch(e){ msg.style.color = '#ff6b6b'; msg.textContent = e.message; himRender(); }
 }
 async function himUpload(kind, input){
@@ -14705,7 +14707,10 @@ const HPI_MAP = [
 const HPI_ON = {}; let _hpiTry = {}; let HPI_CTX = null;
 let _hpiFitTry = {}, _hpiRO = {};
 const HUB_RAIL_BASE_W = 1280;   // the desktop width the roll is rendered at, then scaled to the column
-function hpiDoc(slug){ try { const f = document.getElementById('hpiFrame-'+slug); return f ? f.contentDocument : null; } catch(e){ return null; } }
+function hpiFrame(slug){ const a = document.getElementById('hpiFrame-'+slug), b = document.getElementById('hub2Frame-'+slug); if (b && b.offsetParent) return b; if (a && a.offsetParent) return a; return a || b; }
+const hpiIsHub2 = slug => { const f = hpiFrame(slug); return !!(f && f.id.startsWith('hub2')); };
+function hpiReload(slug){ const f = hpiFrame(slug); if (f) { try { f.contentWindow.location.reload(); } catch(e){ f.src = f.src; } } }
+function hpiDoc(slug){ try { const f = hpiFrame(slug); return f ? f.contentDocument : null; } catch(e){ return null; } }
 function hubPreviewLoaded(slug){
   try { hubPreviewPaint(slug); } catch (e) {}
   _hpiTry[slug] = 0; _hpiFitTry[slug] = 0;
@@ -14756,6 +14761,11 @@ function wireHubPreview(slug){
   if (!d){ const b = document.getElementById('hpiEdit-'+slug); if (b) b.textContent = '✎ preview not reachable'; return; }
   const hh = d.getElementById('heroHeadline');
   if (!hh || !hh.textContent.trim()){ _hpiTry[slug] = (_hpiTry[slug]||0)+1; if (_hpiTry[slug] < 30) setTimeout(()=>wireHubPreview(slug), 300); return; }
+  if (!d.getElementById('hpi-style') && hpiIsHub2(slug)){
+    const st = d.createElement('style'); st.id = 'hpi-style';   // Content Hubs 2: nothing outlined until you hover it
+    st.textContent = '.hpi-hot{cursor:pointer;border-radius:2px;transition:outline-color .1s,background .1s;outline:2px solid transparent;outline-offset:1px;} .hpi-hot:hover{outline:2px solid #3b82f6;background:rgba(80,140,255,.14);}';
+    d.head.appendChild(st);
+  }
   if (!d.getElementById('hpi-style')){
     const st = d.createElement('style'); st.id = 'hpi-style';
     st.textContent = '.hpi-hot{outline:2px dashed rgba(80,140,255,.7);outline-offset:1px;cursor:pointer;border-radius:2px;} .hpi-hot:hover,.hpi-hot:active{outline:2px solid #3b82f6;background:rgba(80,140,255,.16);}';
@@ -14764,7 +14774,7 @@ function wireHubPreview(slug){
   [['#heroAside', 'hero'], ['#reportAside', 'signup']].forEach(([sel, kind]) => {
     const el = d.querySelector(sel); if (!el) return; el.classList.add('hpi-hot');
     if (el._hpiImg) return; el._hpiImg = true;
-    el.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); openHubImageModal(slug); }, true);
+    el.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); openHubImageModal(slug, hpiIsHub2(slug)); }, true);
   });
   HPI_MAP.forEach(([sel, path, label, big])=>{
     const el = d.querySelector(sel); if (!el) return;
@@ -14829,7 +14839,7 @@ async function hpiSave(){
       const h = document.getElementById('hpiV1').value.trim(), b = document.getElementById('hpiV2').value.trim();
       el.innerHTML = '<strong>'+esc(h)+'</strong>'+esc(b);
     } else if (listKind){
-      const f = document.getElementById('hpiFrame-'+slug); if (f) { try { f.contentWindow.location.reload(); } catch(e){ f.src = f.src; } }   // list rebuilds on reload
+      hpiReload(slug);   // list rebuilds on reload
     } else {
       const v = document.getElementById('hpiV').value.trim();
       if (el.tagName === 'A') el.textContent = v + ' →'; else el.textContent = v;
@@ -15392,11 +15402,11 @@ function renderHubs2() {
         </details>
       </div>
       <div class="hub-rail">
-        <div class="hub-rail-head"><b style="font-size:12px;">${esc(h.name)} preview</b><span style="font-size:10px;color:var(--text3);">live hub</span><a href="${url}" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;color:var(--accent);text-decoration:none;">open ↗</a></div>
+        <div class="hub-rail-head" id="hub2RailHead-${slug}">${hub2RailHeadHtml(slug)}</div>
         <div class="hub-rail-frame" id="hub2Wrap-${slug}" style="height:600px;">
           <iframe id="hub2Frame-${slug}" src="${url}?v=${Date.now()}" title="${esc(h.name)} preview" onload="hub2PreviewLoaded('${slug}')" style="width:1280px;height:600px;"></iframe>
         </div>
-        <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the preview column.</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5;">Whole page, scaled to the preview column. ✎ on: hover a heading / blurb and click it to edit that field; click the hero or signup image for Hero images. Preview staged paints the Codex Design panel's staged colors, fonts and image candidates — nothing is saved.</div>
       </div>
     </div>`;
   hub2ChecklistLoad(slug);
@@ -16355,11 +16365,61 @@ function hub2CodexAttach(slug) {
   const host = document.getElementById('hub2CdpHost-' + slug), h = HUB_SITES.find(x => x.slug === slug); if (!host || !h || !h.campaignId || !window.CodexDesignPanel) return;
   let p = _hub2CodexPanels[slug];
   if (!p) { const el = document.createElement('div'); p = _hub2CodexPanels[slug] = { el, api: window.CodexDesignPanel.mount(el, { call, campaignId: h.campaignId, slug,
-    preview: d => { _hub2Preview[slug] = d; hub2PreviewPaint(slug); }, onSaved: () => {} }) }; }
+    preview: d => { _hub2Preview[slug] = d; _hub2Mode[slug] = 'staged'; hub2RailHeadPaint(slug); hub2PreviewPaint(slug); }, onSaved: () => {} }) }; }
   host.appendChild(p.el);
+}
+// ── Content Hubs 2 preview rail: Live / Preview staged (Codex Design staged palette + fonts + hero candidates),
+// ✎ hover-to-edit (the old tap-to-edit fields, outlined only on hover), 🖼 Hero images (Codex design) ──
+const _hub2Mode = {}, _hub2HeroCand = {}, HUB2_EDIT = {};
+function hub2RailHeadHtml(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug) || {}, url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/', st = _hub2Mode[slug] === 'staged', ed = HUB2_EDIT[slug] !== false;
+  const seg = (on, mode, label) => `<button onclick="hub2RailMode('${slug}','${mode}')" style="font-size:10px;padding:3px 8px;border:none;background:${on ? 'var(--accent)' : 'transparent'};color:${on ? 'var(--bg)' : 'var(--text2)'};cursor:pointer;">${label}</button>`;
+  const B = 'font-size:10px;padding:3px 9px;border-radius:5px;background:transparent;cursor:pointer;';
+  return `<b style="font-size:12px;">${esc(h.name || slug)} preview</b>
+    <span style="display:inline-flex;border:1px solid var(--border2);border-radius:5px;overflow:hidden;" title="Live = the hub as it is · Preview staged = the same page painted with the Codex Design panel's staged colors, fonts and image candidates">${seg(!st, 'live', 'Live')}${seg(st, 'staged', 'Preview staged')}</span>
+    <button onclick="hub2EditToggle('${slug}')" style="${B}border:1px solid ${ed ? 'var(--accent)' : 'var(--border2)'};color:${ed ? 'var(--accent)' : 'var(--text3)'};" title="Hover a heading or blurb on the preview and click it to edit that field">✎ Hover-to-edit: ${ed ? 'on' : 'off'}</button>
+    <button onclick="openHubImageModal('${slug}', true)" style="${B}border:1px solid var(--border2);color:var(--text2);" title="Hero + signup images — generate from the Codex design, upload, link or clear">🖼 Hero images</button>
+    <a href="${url}" target="_blank" rel="noopener" style="margin-left:auto;font-size:10px;color:var(--accent);text-decoration:none;">open ↗</a>`;
+}
+function hub2RailHeadPaint(slug) { const el = document.getElementById('hub2RailHead-' + slug); if (el) el.innerHTML = hub2RailHeadHtml(slug); }
+async function hub2RailMode(slug, mode) {
+  if (mode === 'staged') {
+    hub2CodexAttach(slug); const p = _hub2CodexPanels[slug], api = p && p.api;
+    if (!api) return showToast('The Codex Design panel could not load for this hub', 'error');
+    for (let i = 0; i < 60 && !((api.state || {}).schema || []).length; i++) await new Promise(r => setTimeout(r, 150));   // first load of the spec
+    _hub2Mode[slug] = 'staged'; api.previewStaged(); hub2RailHeadPaint(slug); hub2PreviewPaint(slug);
+  } else { const was = _hub2Mode[slug] === 'staged'; _hub2Mode[slug] = 'live'; _hub2Preview[slug] = null; hub2RailHeadPaint(slug); hub2PreviewPaint(slug); if (was) hpiReload(slug); }   // reload drops swapped-in candidate images
+}
+function hub2EditToggle(slug) {
+  HUB2_EDIT[slug] = HUB2_EDIT[slug] === false; hub2RailHeadPaint(slug);
+  if (HUB2_EDIT[slug] !== false) { _hpiTry[slug] = 0; wireHubPreview(slug); } else hpiReload(slug);   // reload strips the handlers
+}
+// ✨ hero / signup candidate from the Codex Design spec: staged values over saved — colors, type, imagery, references,
+// avoid, overlay rules + this slot's asset.<kind>.* fields → renderSpecTest (Grok). A candidate only; ✓ Use this adopts it.
+async function hub2CodexHero(kind, withNote) {
+  const slug = HIM.slug, h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  const msg = document.getElementById('himMsg'); msg.style.color = 'var(--text3)'; msg.textContent = 'Rendering the ' + kind + ' image from the Codex design (~30s)…';
+  const note = withNote ? ((document.getElementById('himNote-' + kind) || {}).value || '').trim() : '';
+  try {
+    const ds = await call('designSpec', { campaignId: h.campaignId, op: 'get' }); if (ds && ds.error) throw new Error(ds.error);
+    const v = Object.assign({}, (ds && ds.saved) || {}, (ds && ds.staged) || {});
+    const lines = Object.entries(v).filter(([k, f]) => f && f.v && (/^(color|type|img|ref|ovl|avoid)\./.test(k) || k.startsWith('asset.' + kind + '.'))).map(([k, f]) => `${k}: ${f.v}${f.why ? ' — ' + f.why : ''}`);
+    if (!lines.length) throw new Error('The Codex design has no imagery fields yet — fill them in the Codex Design section first.');
+    const aspect = ((String((v['asset.' + kind + '.aspect'] || {}).v || '').match(/16:9|1:1|3:4/) || [])[0]) || '3:4';
+    const role = kind === 'signup' ? 'the supporting image beside the email-signup section — calm, inviting, room around the subject' : 'the HERO image at the top of the home page — the strongest, most iconic picture of what this hub is about';
+    const prev = ((HIM.cand || {})[kind] || {}).prompt;
+    const r = await call('renderSpecTest', { campaignId: h.campaignId, spec: lines.join('\n'), aspect,
+      guidance: `Create ${role} for the website "${h.name}". Obey the Codex design: its colors, imagery motif, references, avoid list and every asset.${kind}.* field (subject, composition, background, safe area, text zone). Wordless — no letters, logos or numbers.${note ? ' Operator note for this try: ' + note + (prev ? ' (previous prompt: ' + prev.slice(0, 400) + ')' : '') : ''}` });
+    if (!r || r.error || !r.imageUrl) throw new Error((r && r.error) || 'No image came back');
+    (HIM.cand = HIM.cand || {})[kind] = { imageUrl: r.imageUrl, prompt: r.prompt || '' };
+    (_hub2HeroCand[slug] = _hub2HeroCand[slug] || {})[kind] = HIM.cand[kind];
+    himRender(); msg.textContent = 'Candidate ready — ✓ Use this to put it on the hub, or try again. Preview staged shows it on the page.';
+    if (_hub2Mode[slug] === 'staged') hub2PreviewPaint(slug);
+  } catch (e) { msg.style.color = '#ff6b6b'; msg.textContent = e.message; himRender(); }
 }
 function hub2PreviewLoaded(slug) {
   hub2PreviewPaint(slug);
+  if (HUB2_EDIT[slug] !== false) { _hpiTry[slug] = 0; setTimeout(() => wireHubPreview(slug), 350); }
   hub2PreviewSectionLabels(slug);
   hub2PreviewFit(slug);
   [300, 900, 2200].forEach(ms => setTimeout(() => { hub2PreviewSectionLabels(slug); hub2PreviewFit(slug); }, ms));
@@ -16384,6 +16444,7 @@ function hub2PreviewFit(slug) {
 window.addEventListener('resize', () => { try { const h = HUB_SITES[HUB2_IDX]; if (h) hub2PreviewFit(h.slug); } catch (e) {} });
 function hub2PreviewPaint(slug) {
   const f = document.getElementById('hub2Frame-' + slug); let doc; try { doc = f && f.contentDocument; } catch (e) { return; } if (!doc || !doc.documentElement) return;
+  setTimeout(() => hub2PreviewImages(slug), 0);
   const d = _hub2Preview[slug]; let st = doc.getElementById('hub2PreviewStyle'), ln = doc.getElementById('hub2PreviewFonts');
   if (!d || (!d.palette && !(d.fonts && d.fonts.display) && !d.css)) { if (st) st.remove(); if (ln) ln.remove(); return; }
   const p = d.palette || {}, ft = d.fonts || {}, vars = [];
@@ -16391,6 +16452,10 @@ function hub2PreviewPaint(slug) {
   if (ft.display) vars.push(`--font-display:"${ft.display}",Georgia,serif !important;`); if (ft.body) vars.push(`--font-body:"${ft.body}",system-ui,sans-serif !important;`);
   if (!st) { st = doc.createElement('style'); st.id = 'hub2PreviewStyle'; doc.head.appendChild(st); } st.textContent = `:root{${vars.join('')}}${d.css ? '\n' + d.css : ''}`;
   if (d.fontsLink) { if (!ln) { ln = doc.createElement('link'); ln.id = 'hub2PreviewFonts'; ln.rel = 'stylesheet'; doc.head.appendChild(ln); } ln.href = d.fontsLink; }
+}
+function hub2PreviewImages(slug) {   // Preview staged: the Codex hero / signup candidates in the page's own image slots
+  if (_hub2Mode[slug] !== 'staged') return; const doc = hpiDoc(slug), im = _hub2HeroCand[slug] || {}; if (!doc) return;
+  [['heroAside', im.hero], ['reportAside', im.signup]].forEach(([id, c]) => { if (!c || !c.imageUrl) return; const el = doc.getElementById(id); if (!el) return; el.hidden = false; el.className = 'hub-aside hpi-hot'; el.innerHTML = '<img src="' + c.imageUrl + '" alt="" style="width:100%;height:auto;display:block;">'; });
 }
 
 // ── ⟲ Re-run from keywords: the shared rebuild modal (shared/hub-rerun.js) for one hub
