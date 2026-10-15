@@ -11347,7 +11347,11 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
     if (!w.ok) { const e = await w.json().catch(() => ({})); throw new Error(e.message || "could not save the parent"); }
   }
   await fetch(`https://api.notion.com/v1/pages/${ivDash(assetId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
-    "Pillar Readiness": { select: { name: "Ready" } }, "Pillar Sync": { select: { name: "In Sync" } }, "Interview Sync": { select: { name: "In Sync" } }, "Asset Status": { select: { name: "Review" } } } }) }).catch(() => {});
+    // a parent is an internal piece: written = done (operator 2026-10-15) → Published + Publishing Date, so the checklist
+    // counts it; Hub Section Unlisted so it can never show on the live hub
+    "Pillar Readiness": { select: { name: "Ready" } }, "Pillar Sync": { select: { name: "In Sync" } }, "Interview Sync": { select: { name: "In Sync" } },
+    "Asset Status": { select: { name: "Published" } }, "Hub Section": { select: { name: "Unlisted" } } } }) }).catch(() => {});
+  await stampPublishingDate(ivDash(assetId)).catch(() => {});
   return { success: true, words: text.split(/\s+/).length };
 }
 
