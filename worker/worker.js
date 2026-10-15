@@ -11351,6 +11351,269 @@ CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain
   return { success: true, words: text.split(/\s+/).length };
 }
 
+// ══ HUB KEYWORD STRUCTURE + RECORD CLEANUP (2026-10-15, operator) ══════════════════════════════════════════════
+// Structure per hub: ★ Main (Main Keywords, unchanged) → 3 clusters → up to 3 topics each (max 9, fewer where Google
+// volume is thin) → "Unclassified" (leftover keywords + records that fit nowhere).
+// kwHubPropose: reads the hub's products + titles "through a keyword lens" (Claude suggests search phrases per record),
+//   prices those + every topic keyword (Google historical metrics), proposes the 3×3 and returns it as KwHubOps ops —
+//   the Keywords tab loads them into the hub DRAFT (preview → 💾 Apply → ↶ Undo, all existing).
+// kwHubCleanPlan: classifies the hub's records into the applied topics. REAL products (main record, filled Product
+//   Research, assets, a published title, a price or URL — affiliates never count) keep/get a topic. Each topic holds up
+//   to 4 products: real ones first, the rest of the slots become BRIDGE products ("<label> — Introductory Call",
+//   Type "Topic bridge", Keywords Out of Sync = orange, no research run). Every other product (placeholders, micro
+//   niches, affiliates) becomes a TITLE (its details saved to Notes) and the product is archived (Archived + Status
+//   Archived — recoverable). Titles with no product, no assets, or under a converted product move to their topic's
+//   product; titles with assets stay (mismatches are only reported). Staged in KV hubclean:plan:<cid>.
+// kwHubCleanApply / kwHubCleanUndo: run / reverse the plan in chunks (KV hubclean:run:<cid> holds progress + undo).
+const HC_BRIDGE_SUFFIX = " — Introductory Call", HC_BRIDGE_TYPE = "Topic bridge", HC_UNCL = "Unclassified";
+async function hcClaude(env, prompt, name, schema, maxTokens = 8000) {
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: maxTokens, tools: [{ name, description: "Return the result.", input_schema: schema }], tool_choice: { type: "tool", name },
+      messages: [{ role: "user", content: prompt }] }) });
+  const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+  return (((d.content || []).find(b => b.type === "tool_use") || {}).input) || {};
+}
+async function kwVolumes(env, keywords, market) {
+  const out = new Map(), geo = kwGeoKey(market.geoIds);
+  for (let i = 0; i < keywords.length; i += 2000) {
+    (await env.KWDB.prepare("SELECT k.text, m.avg_monthly_searches v FROM json_each(?1) j JOIN kw_keywords k ON k.text = j.value JOIN kw_metrics m ON m.keyword_id = k.id "
+      + "AND m.provider = 'google_ads' AND m.language_id = ?2 AND m.geo_key = ?3 AND m.network = ?4").bind(JSON.stringify(keywords.slice(i, i + 2000)), market.languageId, geo, market.network).all())
+      .results.forEach(r => out.set(r.text, Math.max(out.get(r.text) || 0, Number(r.v) || 0)));
+  }
+  return out;
+}
+const hcUniq = a => [...new Set(a.filter(Boolean))];
+const hcIsUncl = t => kwNorm(t && t.name) === kwNorm(HC_UNCL);
+
+async function kwHubPropose(env, campaignId) {
+  if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  const st = await kwHubState(env, campaignId), main = new Set(st.model.main), market = await kwMarket(env, {});
+  // 1 · records through a keyword lens
+  const recs = [...st.products.map(p => p.name + (p.keywords.length ? " (" + p.keywords.slice(0, 3).join(", ") + ")" : "")), ...st.titles.map(t => t.name)].map(s => String(s || "").trim()).filter(Boolean);
+  const hits = new Map();
+  for (let i = 0; i < recs.length; i += 150) {
+    const chunk = recs.slice(i, i + 150);
+    const r = await hcClaude(env, `These are product and content-title records from one website hub. For EACH record give 1-2 Google search phrases (2-5 words, lowercase, how a real person searches) that this record's content or offer would answer. Real searches only — no brand-new jargon.\n\nRECORDS:\n${chunk.map((x, j) => `${j}. ${x.slice(0, 160)}`).join("\n")}`,
+      "phrases", { type: "object", required: ["r"], properties: { r: { type: "array", items: { type: "object", required: ["i", "p"], properties: { i: { type: "integer" }, p: { type: "array", items: { type: "string" }, maxItems: 2 } } } } } }).catch(() => ({ r: [] }));
+    (r.r || []).forEach(x => (x.p || []).map(kwNorm).filter(k => k && k.split(" ").length <= 6).forEach(k => hits.set(k, (hits.get(k) || 0) + 1)));
+  }
+  // 2 · price existing topic keywords + record phrases
+  const existing = hcUniq(st.model.topics.flatMap(t => t.keywords)).filter(k => !main.has(k));
+  const cand = hcUniq([...existing, ...hits.keys()]).filter(k => !main.has(k)).slice(0, 4000);
+  let warn = ""; try { await kwHistMetrics(env, cand, market); } catch (e) { warn = "Google numbers not fetched: " + (e.message || e); }
+  const vol = await kwVolumes(env, cand, market);
+  const pool = cand.filter(k => existing.includes(k) || (vol.get(k) || 0) > 0)
+    .sort((a, b) => (vol.get(b) || 0) - (vol.get(a) || 0) || (hits.get(b) || 0) - (hits.get(a) || 0)).slice(0, 700);
+  const poolSet = new Set(pool);
+  // 3 · the 3 × 3
+  const s = await hcClaude(env, `You are structuring the SEO keywords of one website hub into a strict pillar/cluster model.
+
+HUB MAIN KEYWORDS (the head terms — fixed, do NOT use them below): ${[...main].join(", ") || "(none)"}
+
+KEYWORD POOL — keyword | Google monthly searches | how many of the hub's records point at it:
+${pool.map(k => `${k} | ${vol.get(k) || 0} | ${hits.get(k) || 0}`).join("\n")}
+
+Build EXACTLY 3 clusters (each a broad theme under the main keywords, named with its strongest keyword from the pool), each with 1-3 TOPICS. A topic = ONE search intent = one page that can rank: 3-15 close-variant keywords, never mixing local ("near me"), commercial (hire/buy/cost/best) and informational (how/what/why) intent. Only make a topic where the monthly searches justify a page — fewer topics is better than thin ones (max 9 in total). Every keyword appears in at most one topic. Use keywords exactly as written in the pool. Leave out anything that doesn't fit cleanly — it goes to an "Unclassified" bucket automatically. Prefer keywords the records point at when volumes are similar.`,
+    "structure", { type: "object", required: ["clusters"], properties: { clusters: { type: "array", maxItems: 3, items: { type: "object", required: ["name", "topics"], properties: { name: { type: "string" },
+      topics: { type: "array", maxItems: 3, items: { type: "object", required: ["keywords"], properties: { keywords: { type: "array", items: { type: "string" } } } } } } } } } }, 8000);
+  // enforce: 3 × ≤3, pool keywords only, each once, topic name = its highest-volume keyword
+  const used = new Set(), clusters = [];
+  for (const c of (s.clusters || []).slice(0, 3)) {
+    const topics = [];
+    for (const t of (c.topics || [])) {
+      if (topics.length >= 3) break;
+      const kws = hcUniq((t.keywords || []).map(kwNorm)).filter(k => poolSet.has(k) && !used.has(k));
+      if (!kws.length) continue; kws.forEach(k => used.add(k));
+      kws.sort((a, b) => (vol.get(b) || 0) - (vol.get(a) || 0));
+      topics.push({ name: kws[0], keywords: kws, volume: kws.reduce((n, k) => n + (vol.get(k) || 0), 0) });
+    }
+    if (topics.length) clusters.push({ name: kwNorm(c.name) || topics[0].name, topics });
+  }
+  if (!clusters.length) throw new Error("No structure came back — try again");
+  const leftovers = existing.filter(k => !used.has(k));
+  // 4 · as hub ops: reuse the existing topic ids with the most overlap (products stay attached), merge the rest
+  const old = st.model.topics.filter(t => !hcIsUncl(t)), oldUncl = st.model.topics.find(hcIsUncl), taken = new Set(), stamp = Date.now().toString(36);
+  const finals = clusters.flatMap(c => c.topics.map(t => ({ ...t, cluster: c.name })));
+  finals.forEach((f, i) => { const set = new Set(f.keywords); let best = null, n = 0;
+    old.forEach(o => { if (taken.has(o.id)) return; const k = o.keywords.filter(x => set.has(x)).length; if (k > n) { n = k; best = o; } });
+    if (best) { taken.add(best.id); f.id = best.id; f.reused = true; } else f.id = "hp" + stamp + i; });
+  const unclId = leftovers.length ? (oldUncl ? oldUncl.id : "hp" + stamp + "u") : "";
+  const ops = [];
+  finals.filter(f => !f.reused).forEach(f => ops.push({ op: "newTopics", keywords: f.keywords, mode: "one", ids: [f.id], name: f.name, cluster: f.cluster, move: true }));
+  if (unclId && !oldUncl) ops.push({ op: "newTopics", keywords: leftovers, mode: "one", ids: [unclId], name: HC_UNCL, cluster: "", move: true });
+  finals.filter(f => f.reused).forEach(f => ops.push({ op: "rename", id: f.id, name: f.name }));
+  for (const o of old) { if (taken.has(o.id)) continue; let into = unclId, n = 0;
+    finals.forEach(f => { const k = o.keywords.filter(x => f.keywords.includes(x)).length; if (k > n) { n = k; into = f.id; } });
+    ops.push({ op: "merge", from: o.id, into: into || finals[0].id }); }
+  if (oldUncl && !unclId) ops.push({ op: "merge", from: oldUncl.id, into: finals[0].id });
+  finals.forEach(f => ops.push({ op: "assign", keywords: f.keywords, to: f.id, move: true }));
+  if (unclId) ops.push({ op: "assign", keywords: leftovers, to: unclId, move: true });
+  finals.forEach(f => ops.push({ op: "setCluster", ids: [f.id], cluster: f.cluster }));
+  if (unclId) ops.push({ op: "setCluster", ids: [unclId], cluster: "" });
+  return { ok: true, ops, warn, records: recs.length, phrases: hits.size, pool: pool.length,
+    clusters: clusters.map(c => ({ name: c.name, topics: c.topics.map(t => ({ name: t.name, count: t.keywords.length, volume: t.volume, top: t.keywords.slice(0, 6) })) })),
+    unclassified: leftovers.length, main: [...main].slice(0, 12) };
+}
+
+// ── records → topics ──
+const hcRt = (p, k) => ((p?.properties?.[k]?.rich_text) || []).map(t => t.plain_text).join("").trim();
+const hcSel = (p, k) => p?.properties?.[k]?.select?.name || "";
+const hcRel = (p, k) => ((p?.properties?.[k]?.relation) || []).map(r => r.id.replace(/-/g, ""));
+const hcNotionHdr = env => ({ Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" });
+async function hcCreate(env, db, properties) {
+  const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hcNotionHdr(env), body: JSON.stringify({ parent: { database_id: db }, properties }) });
+  const d = await r.json(); if (!r.ok || !d.id) throw new Error(d.message || "Notion create failed"); return d.id.replace(/-/g, "");
+}
+const hcText = s => ({ rich_text: [{ type: "text", text: { content: String(s || "").slice(0, 1990) } }] });
+function hcIsAffiliate(p) { return /affiliate/i.test([hcRt(p, "Product Stack"), hcRt(p, "Type"), hcRt(p, "Product Tier"), hcSel(p, "Site"), kwTitleOf(p)].join(" ")); }
+function hcBridgeProps(cid, name, topicId) {
+  return { Name: { title: [{ type: "text", text: { content: name.slice(0, 200) } }] }, Campaigns: { relation: [{ id: kwDashId(cid) }] }, Status: { select: { name: "Planning" } },
+    Type: hcText(HC_BRIDGE_TYPE), "Topic ID": hcText(topicId || ""), "Keywords Out of Sync": { checkbox: true },
+    Description: hcText("Bridge product (hub cleanup): routes this topic's titles into the keyword flow. The offer is an introductory call. No research run yet.") };
+}
+function hcConvertNotes(p, affiliate) {
+  const L = [`Converted from ${affiliate ? "an affiliate" : "a placeholder"} product on ${new Date().toISOString().slice(0, 10)} (hub cleanup).`,
+    hcRt(p, "Description") && "Description: " + hcRt(p, "Description"), hcRt(p, "Notes") && "Notes: " + hcRt(p, "Notes"),
+    hcRt(p, "Keywords") && "Keywords: " + hcRt(p, "Keywords"), p.properties?.URL?.url && "Link: " + p.properties.URL.url,
+    hcRt(p, "Price") && "Price: " + hcRt(p, "Price"), hcRt(p, "Product Stack") && "Product stack: " + hcRt(p, "Product Stack"),
+    hcRt(p, "Type") && "Type: " + hcRt(p, "Type"), hcRt(p, "Product Tier") && "Tier: " + hcRt(p, "Product Tier"), hcSel(p, "Site") && "Site: " + hcSel(p, "Site")];
+  return L.filter(Boolean).join("\n");
+}
+async function kwHubCleanPlan(env, campaignId) {
+  if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  const st = await kwHubState(env, campaignId), cid = st.cid, dc = kwDashId(cid);
+  const topics = st.model.topics; if (!topics.length) throw new Error("This hub has no topics yet — apply the 3×3 structure first");
+  const uncl = topics.find(hcIsUncl), real = topics.filter(t => !hcIsUncl(t));
+  const [prods, titles, assets, research, mains] = await Promise.all([
+    notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dc } } }),
+    notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dc } } }),
+    notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),
+    notionQuery(PRODUCT_RESEARCH_DB, { filter: { property: "Product", relation: { is_not_empty: true } } }).catch(() => []),
+    hubMainList(env, cid)]);
+  const live = prods.filter(p => !p.properties?.Archived?.checkbox && !/^(archived|retired)$/i.test(hcSel(p, "Status")));
+  const mainSet = new Set(mains.map(x => String(x).replace(/-/g, "")));
+  const filled = new Set(research.filter(r => STRATEGY_FIELDS.reduce((n, f) => n + hcRt(r, f).length, 0) > 200).flatMap(r => hcRel(r, "Product")));
+  const prodAssets = new Set(assets.flatMap(a => hcRel(a, "Product")));
+  const T = titles.map(t => ({ id: t.id.replace(/-/g, ""), name: ((t.properties?.Title?.title) || []).map(x => x.plain_text).join("").trim() || "(untitled)", productId: hcRel(t, "product")[0] || "",
+    hasAssets: hcRel(t, "Assets").length > 0, status: hcSel(t, "Status") }));
+  T.filter(t => t.hasAssets && t.productId).forEach(t => prodAssets.add(t.productId));
+  const pubProd = new Set(T.filter(t => /^(publish|published)$/i.test(t.status)).map(t => t.productId));
+  const P = live.map(p => { const id = p.id.replace(/-/g, ""), aff = hcIsAffiliate(p), bridge = hcRt(p, "Type") === HC_BRIDGE_TYPE;
+    const isReal = !aff && (mainSet.has(id) || filled.has(id) || prodAssets.has(id) || pubProd.has(id) || !!hcRt(p, "Price") || !!p.properties?.URL?.url);
+    return { id, page: p, name: kwTitleOf(p) || "(unnamed)", aff, bridge, kind: bridge ? "bridge" : isReal ? (mainSet.has(id) ? "main" : "real") : aff ? "affiliate" : "placeholder",
+      topicIdProp: hcRt(p, "Topic ID").replace(/-/g, ""), desc: hcRt(p, "Description").slice(0, 160) }; });
+  const keep = P.filter(p => p.kind === "real" || p.kind === "main" || p.kind === "bridge"), convert = P.filter(p => p.kind === "affiliate" || p.kind === "placeholder");
+  const convertIds = new Set(convert.map(p => p.id)), liveIds = new Set(live.map(p => p.id.replace(/-/g, "")));
+  const movable = T.filter(t => !t.productId || !liveIds.has(t.productId) || convertIds.has(t.productId) || !t.hasAssets);
+  // 1 · classify every record into a topic (index) or -1 = Unclassified
+  const tlist = real.map((t, n) => `${n}. ${t.name} — ${t.keywords.slice(0, 12).join(", ")}${t.cluster ? " [cluster: " + t.cluster + "]" : ""}`).join("\n");
+  const recs = [...keep.map(p => ({ k: "p", ref: p, text: p.name + (p.desc ? " — " + p.desc : "") })), ...convert.map(p => ({ k: "c", ref: p, text: p.name + (p.desc ? " — " + p.desc : "") })), ...T.map(t => ({ k: "t", ref: t, text: t.name }))];
+  for (let i = 0; i < recs.length; i += 120) {
+    const chunk = recs.slice(i, i + 120);
+    const r = await hcClaude(env, `Classify each record of a website hub into the ONE keyword topic its content or offer best serves (a searcher of that topic would want it). Use -1 when it doesn't clearly fit any topic.\n\nTOPICS:\n${tlist}\n\nRECORDS:\n${chunk.map((x, j) => `${j}. ${x.text.slice(0, 200)}`).join("\n")}`,
+      "classify", { type: "object", required: ["r"], properties: { r: { type: "array", items: { type: "object", required: ["i", "t"], properties: { i: { type: "integer" }, t: { type: "integer" } } } } } }).catch(() => ({ r: [] }));
+    (r.r || []).forEach(x => { const rec = chunk[x.i]; if (rec) rec.topic = real[x.t] ? real[x.t].id : ""; });
+  }
+  // 2 · per topic: up to 4 products — real/bridge first, then bridge groups for the title items
+  const plan = { cid, at: Date.now(), ops: [], topics: [], flags: [] }, key = (tid, g) => "b:" + tid + ":" + g;
+  const groups = [...real.map(t => ({ t, id: t.id })), { t: uncl || { id: "", name: HC_UNCL, keywords: [] }, id: uncl ? uncl.id : "", uncl: true }];
+  for (const g of groups) {
+    const here = r => (r.topic || "") === g.id || (g.uncl && !r.topic);
+    const prodsHere = recs.filter(r => r.k === "p" && here(r)).map(r => r.ref);
+    const items = recs.filter(r => (r.k === "c" || (r.k === "t" && movable.includes(r.ref))) && here(r));
+    const view = { id: g.id, name: g.t.name, cluster: g.t.cluster || "", keep: prodsHere.map(p => p.name + (p.kind === "main" ? " ★" : p.kind === "bridge" ? " (bridge)" : "")), newBridges: [], convert: [], moveIn: [] };
+    prodsHere.forEach(p => { if (p.kind !== "bridge" && g.id && p.topicIdProp !== g.id) plan.ops.push({ t: "topic", productId: p.id, name: p.name, topicId: g.id, from: p.topicIdProp, fromSync: !!p.page.properties?.["Keywords Out of Sync"]?.checkbox }); });
+    if (items.length) {
+      let targets = prodsHere.map(p => ({ productId: p.id, name: p.name }));
+      if (g.uncl) { const ex = prodsHere.find(p => p.kind === "bridge"); if (!ex) { const k = key(g.id || "none", 0), nm = HC_UNCL + HC_BRIDGE_SUFFIX; plan.ops.push({ t: "bridge", key: k, name: nm, topicId: g.id }); view.newBridges.push(nm); targets = [{ key: k, name: nm }]; } else targets = [{ productId: ex.id, name: ex.name }];
+        items.forEach(r => r.target = targets[0]); }
+      else {
+        const slots = Math.max(0, 4 - prodsHere.length);
+        const r = await hcClaude(env, `Topic "${g.t.name}" (keywords: ${g.t.keywords.slice(0, 15).join(", ")}). Its records must each sit under ONE product. Existing products:\n${targets.map((x, j) => `p${j}. ${x.name}`).join("\n") || "(none)"}\n\nYou may define up to ${slots} NEW product groups (a short 2-5 word keyword-style label each; the offer behind every new group is an introductory call). Use as few groups as make sense; assign each record to an existing product (p#) or a new group (g#).\n\nRECORDS:\n${items.map((x, j) => `${j}. ${x.text.slice(0, 160)}`).join("\n")}`,
+          "group", { type: "object", required: ["groups", "assign"], properties: { groups: { type: "array", maxItems: Math.max(slots, 0), items: { type: "string" } },
+            assign: { type: "array", items: { type: "object", required: ["i", "to"], properties: { i: { type: "integer" }, to: { type: "string" } } } } } }).catch(() => ({ groups: [], assign: [] }));
+        const made = (r.groups || []).slice(0, slots).map((label, j) => { let nm = (String(label || "").trim() || g.t.name).replace(/\s+/g, " ").slice(0, 80) + HC_BRIDGE_SUFFIX, k = key(g.id, j);
+          if (plan.ops.some(o => o.t === "bridge" && o.name === nm)) nm = nm.replace(HC_BRIDGE_SUFFIX, " (" + g.t.name + ")" + HC_BRIDGE_SUFFIX);
+          plan.ops.push({ t: "bridge", key: k, name: nm, topicId: g.id }); view.newBridges.push(nm); return { key: k, name: nm }; });
+        if (!targets.length && !made.length) { const nm = g.t.name + HC_BRIDGE_SUFFIX, k = key(g.id, 0); plan.ops.push({ t: "bridge", key: k, name: nm, topicId: g.id }); view.newBridges.push(nm); made.push({ key: k, name: nm }); }
+        const pick = s => { const m = /^([pg])(\d+)$/i.exec(String(s || "").trim()); if (m && m[1].toLowerCase() === "p" && targets[+m[2]]) return targets[+m[2]]; if (m && m[1].toLowerCase() === "g" && made[+m[2]]) return made[+m[2]]; return made[0] || targets[0]; };
+        (r.assign || []).forEach(a => { if (items[a.i]) items[a.i].target = pick(a.to); });
+        items.forEach(x => { if (!x.target) x.target = made[0] || targets[0]; });
+      }
+      for (const x of items) {
+        const tgt = x.target.key ? { key: x.target.key } : { productId: x.target.productId };
+        if (x.k === "c") { plan.ops.push({ t: "convert", productId: x.ref.id, prevStatus: hcSel(x.ref.page, "Status"), name: x.ref.name.replace(/\s*\(affiliate\)\s*$/i, ""), notes: hcConvertNotes(x.ref.page, x.ref.aff), seed: hcRt(x.ref.page, "Keywords"), target: tgt, targetName: x.target.name }); view.convert.push(x.ref.name); }
+        else if (x.ref.productId !== x.target.productId) { plan.ops.push({ t: "move", titleId: x.ref.id, name: x.ref.name, from: x.ref.productId, target: tgt, targetName: x.target.name }); view.moveIn.push(x.ref.name); }
+      }
+    }
+    plan.topics.push(view);
+  }
+  // titles with assets that stay: report when their product sits in a different topic
+  const topicOfProd = new Map(keep.map(p => { const r = recs.find(x => x.ref === p); return [p.id, r ? r.topic || "" : ""]; }));
+  recs.filter(r => r.k === "t" && !movable.includes(r.ref) && (r.topic || "") !== (topicOfProd.get(r.ref.productId) || "")).forEach(r => plan.flags.push({ title: r.ref.name, product: (P.find(p => p.id === r.ref.productId) || {}).name || "" }));
+  const order = { bridge: 0, topic: 1, convert: 2, move: 3 }; plan.ops.sort((a, b) => order[a.t] - order[b.t]);
+  plan.counts = { keep: keep.length, convert: convert.length, affiliates: convert.filter(p => p.aff).length, bridges: plan.ops.filter(o => o.t === "bridge").length,
+    moves: plan.ops.filter(o => o.t === "move").length, topicSets: plan.ops.filter(o => o.t === "topic").length, flags: plan.flags.length, titles: T.length };
+  await env.TRADES.put("hubclean:plan:" + cid, JSON.stringify(plan));
+  return { ok: true, ...plan, ops: undefined, total: plan.ops.length };
+}
+async function kwHubCleanApply(env, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, ""), plan = await env.TRADES.get("hubclean:plan:" + cid, "json"); if (!plan) throw new Error("No cleanup plan — run the plan first");
+  const run = (await env.TRADES.get("hubclean:run:" + cid, "json")) || {};
+  if (run.planAt !== plan.at) Object.assign(run, { planAt: plan.at, i: 0, made: {}, errors: [], undo: { created: [], moves: [], topics: [], archived: [] }, undoI: null });
+  const errs = [], t0 = Date.now();
+  while (run.i < plan.ops.length && Date.now() - t0 < 22000) {
+    const o = plan.ops[run.i];
+    const tgt = o.target ? (o.target.key ? run.made[o.target.key] : o.target.productId) : "";
+    try {
+      if (o.t === "bridge") { run.made[o.key] = await hcCreate(env, PRODUCTS_DB, hcBridgeProps(cid, o.name, o.topicId)); run.undo.created.push(run.made[o.key]); }
+      else if (o.t === "topic") { await kwNotionPatch(env, o.productId, { "Topic ID": hcText(o.topicId), "Keywords Out of Sync": { checkbox: true } }); run.undo.topics.push({ id: o.productId, from: o.from || "", fromSync: !!o.fromSync }); }
+      else if (o.t === "convert") {
+        if (!tgt) throw new Error("its target product wasn't created");
+        const tid = await hcCreate(env, CONTENT_STRATEGY_DB, { Title: { title: [{ type: "text", text: { content: o.name.slice(0, 200) } }] }, Campaign: { relation: [{ id: kwDashId(cid) }] },
+          product: { relation: [{ id: kwDashId(tgt) }] }, Status: { select: { name: "Planning" } }, Notes: hcText(o.notes), ...(o.seed ? { "seed idea": hcText(o.seed) } : {}) });
+        run.undo.created.push(tid);
+        await kwNotionPatch(env, o.productId, { Archived: { checkbox: true }, Status: { select: { name: "Archived" } } }); run.undo.archived.push({ id: o.productId, status: o.prevStatus || "" });
+      } else if (o.t === "move") {
+        if (!tgt) throw new Error("its target product wasn't created");
+        await kwNotionPatch(env, o.titleId, { product: { relation: [{ id: kwDashId(tgt) }] } }); run.undo.moves.push({ id: o.titleId, from: o.from || "" });
+      }
+    } catch (e) { errs.push(`${o.t} "${o.name}": ${e.message || e}`); }
+    run.i++;
+  }
+  run.errors = [...(run.errors || []), ...errs].slice(-200);
+  await env.TRADES.put("hubclean:run:" + cid, JSON.stringify(run));
+  return { ok: true, done: run.i >= plan.ops.length, i: run.i, total: plan.ops.length, errors: errs };
+}
+async function kwHubCleanUndo(env, campaignId) {
+  const cid = String(campaignId || "").replace(/-/g, ""), run = await env.TRADES.get("hubclean:run:" + cid, "json"); if (!run || !run.undo) throw new Error("Nothing to undo");
+    const steps = [...run.undo.moves.map(x => ({ k: "move", ...x })), ...run.undo.archived.map(x => ({ k: "unarchive", ...x })), ...run.undo.topics.map(x => ({ k: "topic", ...x })), ...run.undo.created.map(id => ({ k: "trash", id }))];
+  if (run.undoI == null) run.undoI = 0;
+  const errs = [], t0 = Date.now();
+  while (run.undoI < steps.length && Date.now() - t0 < 22000) {
+    const s = steps[run.undoI];
+    try {
+      if (s.k === "move") await kwNotionPatch(env, s.id, { product: { relation: s.from ? [{ id: kwDashId(s.from) }] : [] } });
+      else if (s.k === "unarchive") await kwNotionPatch(env, s.id, { Archived: { checkbox: false }, Status: { select: { name: s.status || "Planning" } } });
+      else if (s.k === "topic") await kwNotionPatch(env, s.id, { "Topic ID": hcText(s.from), "Keywords Out of Sync": { checkbox: !!s.fromSync } });
+      else if (s.k === "trash") { const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(s.id), { method: "PATCH", headers: hcNotionHdr(env), body: JSON.stringify({ archived: true }) }); if (!r.ok) throw new Error("Notion " + r.status); }
+    } catch (e) { errs.push(`${s.k} ${s.id}: ${e.message || e}`); }
+    run.undoI++;
+  }
+  const done = run.undoI >= steps.length;
+  if (done) await env.TRADES.delete("hubclean:run:" + cid); else await env.TRADES.put("hubclean:run:" + cid, JSON.stringify(run));
+  return { ok: true, done, i: run.undoI, total: steps.length, errors: errs };
+}
+// a hub's Unclassified bridge product — where a title lands before it's classified (affiliate finder → title)
+async function hcUnclassifiedBridge(env, cid) {
+  cid = String(cid).replace(/-/g, "");
+  const nm = HC_UNCL + HC_BRIDGE_SUFFIX;
+  const hit = await notionQuery(PRODUCTS_DB, { filter: { and: [{ property: "Campaigns", relation: { contains: kwDashId(cid) } }, { property: "Name", title: { equals: nm } }, { property: "Archived", checkbox: { equals: false } }] } }).catch(() => []);
+  if (hit.length) return hit[0].id.replace(/-/g, "");
+  let topicId = ""; try { const st = await kwHubState(env, cid); topicId = (st.model.topics.find(hcIsUncl) || {}).id || ""; } catch (e) {}
+  return hcCreate(env, PRODUCTS_DB, hcBridgeProps(cid, nm, topicId));
+}
+
 export default {
   // Child generation (generateTitleAssets + parentAssetId): for this one request the title's pillar reads come from the
   // parent asset (PILLAR_SOURCE), then every asset it created under the title gets "Parent Asset" = that parent.
@@ -45839,8 +46102,8 @@ ${assemblyManifest}`;
           const page = await fetch(`https://api.notion.com/v1/pages/${dash(id)}`, { headers: hdr }).then(r => r.json());
           const pr = page.properties || {};
           if (!pr.Name) return json({ error: "affiliate program not found" }, 404);
-          const existingProductId = (pr.Product?.relation || [])[0]?.id;
-          if (existingProductId) return json({ success: true, productId: existingProductId.replace(/-/g,""), created: false, url: `https://www.notion.so/${existingProductId.replace(/-/g,"")}` });
+          const madeTitle = await env.TRADES.get("aff:title:" + String(id).replace(/-/g, ""));
+          if (madeTitle) return json({ success: true, titleId: madeTitle, created: false, url: `https://www.notion.so/${madeTitle}` });
 
           const name = (pr.Name?.title || []).map(t => t.plain_text).join("").trim();
           const hubSlug = pr.Hub?.select?.name || "";
@@ -45864,6 +46127,14 @@ ${assemblyManifest}`;
           ].filter(Boolean);
           const description = descLines.join("\n\n").slice(0, 1990);
 
+          // 2026-10-15: affiliates become TITLES (their details in Notes), never products
+          const bridgeId = await hcUnclassifiedBridge(env, hub.campaignId);
+          const titleId = await hcCreate(env, CONTENT_STRATEGY_DB, { Title: { title: [{ type: "text", text: { content: name.slice(0, 200) } }] },
+            Campaign: { relation: [{ id: dash(hub.campaignId) }] }, product: { relation: [{ id: dash(bridgeId) }] }, Status: { select: { name: "Planning" } },
+            Notes: hcText([`Affiliate (found by the affiliate finder).`, description, signupUrl && "Signup link: " + signupUrl, keyword && "Keyword: " + keyword].filter(Boolean).join("\n")),
+            ...(keyword ? { "seed idea": hcText(keyword) } : {}) });
+          await env.TRADES.put("aff:title:" + String(id).replace(/-/g, ""), titleId);
+          return json({ success: true, titleId, created: true, url: `https://www.notion.so/${titleId}` });
           const createProps = {
             "Name": { title: [{ type: "text", text: { content: `${name} (Affiliate)`.slice(0, 200) } }] },
             "Description": { rich_text: [{ type: "text", text: { content: description } }] },
@@ -49792,7 +50063,7 @@ async function kwHubState(env, campaignId) {
     notionQuery(SEO_KEYWORD_CLUSTERS_DB, { filter: { and: [{ property: "Campaign", relation: { contains: dc } }, { property: "Status", select: { equals: "Active" } }] } }),
     env.TRADES.get("seoclusters:staged:" + cid, "json"),
     env.TRADES.get("seotopicclusters:" + cid, "json"),
-    notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: dc } } }),
+    notionQuery(PRODUCTS_DB, { filter: { and: [{ property: "Campaigns", relation: { contains: dc } }, { property: "Archived", checkbox: { equals: false } }] } }),
     notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: dc } } }).catch(() => []),   // view only
   ]);
   const score = r => ["Statement", "Unique Opportunity", "Content Topics", "Trend Intelligence", "Keywords"].reduce((n, k) => n + kwRt(r, k).length, 0);
@@ -49812,7 +50083,7 @@ async function kwHubState(env, campaignId) {
       topicIdProp: prop, topicId, linkedBy: byId ? "id" : topicId ? "name" : "", keywords: kwSplit(kwRt(p, "Keywords")),
       outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox };
   });
-  const titles = titleRows.map(t => ({ id: t.id.replace(/-/g, ""), name: kwTitleOf(t), productId: (((t.properties?.Product?.relation) || [])[0]?.id || "").replace(/-/g, ""),
+  const titles = titleRows.map(t => ({ id: t.id.replace(/-/g, ""), name: kwTitleOf(t), productId: (((t.properties?.product?.relation || t.properties?.Product?.relation) || [])[0]?.id || "").replace(/-/g, ""),
     status: ((t.properties?.Status?.select || t.properties?.Status?.status) || {}).name || "", keywords: kwSplit(kwRt(t, "seed idea")) }));
   const model = { main: research ? kwSplit(kwRt(research, "Keywords")) : [], topics,
     clusters: [...new Set([...(Array.isArray(tc && tc.clusters) ? tc.clusters : []), ...topics.map(t => t.cluster).filter(Boolean)])],
@@ -50175,6 +50446,10 @@ async function handleKeywordAction(body, env) {
 
   // 🌐 hub keywords: load into the tool / apply a reorganize / undo the last apply
   if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubPropose") { try { return json(await kwHubPropose(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubCleanPlan") { try { return json(await kwHubCleanPlan(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubCleanApply") { try { return json(await kwHubCleanApply(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubCleanUndo") { try { return json(await kwHubCleanUndo(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubApply") { try { return json(await kwHubApply(env, body.campaignId, Array.isArray(body.ops) ? body.ops : [], body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubUndo") { try { const u = await kwHubUndo(env, body.campaignId); return json({ ...(await kwHubLoad(env, body.campaignId, body.name)), ...u }); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
 
