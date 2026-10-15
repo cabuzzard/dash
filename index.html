@@ -4564,7 +4564,7 @@ async function loadFlowTable(k = 'main') {
   const T = FLOWS[k], el = document.getElementById(T.body); if (!el) return;
   el.innerHTML = '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   try { const r = await call('getInfoFlowTable', T.name ? { name: T.name } : {}); if (r.error) throw new Error(r.error);
-    T.data = r.table; if (k !== 'main' && !r.table.at && !(r.table.rows || []).some(x => Object.keys(x.cells || {}).length)) T.data = { columns: [{ id: 'c1', name: 'Column 1' }, { id: 'c2', name: 'Column 2' }], rows: [{ id: 'r1', cells: {} }] };
+    T.data = r.table; if (k !== 'main' && !r.table.at && !(r.table.rows || []).some(x => Object.keys(x.cells || {}).length)) T.data = { columns: T.seed ? T.seed.map((n, i) => ({ id: 'c' + (i + 1), name: n })) : [{ id: 'c1', name: 'Column 1' }, { id: 'c2', name: 'Column 2' }], rows: [{ id: 'r1', cells: {} }] };
     if (T.syncFrom) flowSyncRows(k);
     renderFlowTable(k); }
   catch (e) { el.innerHTML = `<div style="color:var(--danger);font-size:12px;">Load failed: ${esc(e.message)}</div>`; }
@@ -15370,6 +15370,10 @@ function renderHubs2() {
     </div>
     <div class="hub-layout">
       <div class="hub-left">
+        <details class="hub-sec" ontoggle="if(this.open)hub2StrategiesLoad('${slug}')">
+          <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2ChecklistLoad('${slug}')">
           <summary title="Checklist"><span title="Checklist">Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">methods worksheet · published vs goal · interviews</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Checklist-${slug}" style="padding:8px 12px;">${hub2ChecklistHtml(slug)}</div>
@@ -15460,6 +15464,14 @@ const HUB2_SOURCE_ROW = { 'topical - article': 'Topical - SEO Post' };   // chil
 function hub2PeriodEndISO(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); else return ''; return d.toISOString().slice(0, 10); }
 const hub2Norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const hub2Id = s => String(s || '').replace(/-/g, '');
+// Strategies: a free-form table per hub — the same Flow-table editor (sort / filter / add row + column / rename headings),
+// one FLOWS entry per hub, saved via saveInfoFlowTable as KV infoflow:table:hubstrat-<slug>
+const hub2StratKey = slug => 'hs_' + slug.replace(/[^a-z0-9]/gi, '_');
+function hub2StrategiesShell(slug) { const k = hub2StratKey(slug);
+  return `<div id="fv${k}Bar"></div><div id="fv${k}Panel" style="display:none;"></div><div id="${k}Body"></div><div id="${k}Msg" style="font-size:10px;color:var(--text3);margin-top:4px;"></div>`; }
+function hub2StrategiesLoad(slug) { const k = hub2StratKey(slug);
+  FLOWS[k] = FLOWS[k] || { name: ('hubstrat-' + slug).slice(0, 40), body: k + 'Body', msg: k + 'Msg', data: null, t: null, view: true, seed: ['Strategy', 'Goal', 'Status', 'Notes'] };
+  loadFlowTable(k); }
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
 const HUB2_TIERS = ['Interview', 'Own interview', 'Short interview', 'From parent', 'None'];   // parents: Interview / None · children: From parent / Own / Short / None
 const HUB2_CADENCES = ['Weekly', 'Twice monthly', 'Monthly', 'Quarterly', 'Once', 'On demand', 'Inherited', 'Milestone'];
