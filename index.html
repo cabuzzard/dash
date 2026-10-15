@@ -16761,11 +16761,15 @@ async function hubKwMainIdeaSources(slug, i) {
 }
 // ── Product Stage: Raw (just an idea) → Keyword Research (flagged: work on its keyword topics) → Development (final:
 // research + titles). Sync shows on Development only — out of sync = orange flag, in sync = nothing. Labels only for now.
-const HUB_STAGES = [['Raw', 'var(--text3)'], ['Keyword Research', '#f6ad55'], ['Development', '#4ade80']];
+const HUB_STAGES = [['Raw', 'var(--text3)'], ['Keyword Research', '#3b82f6'], ['Development', '#4ade80']];
 const HUB_STAGE_TIP = { 'Raw': 'Raw — just an idea', 'Keyword Research': 'Keyword Research — flagged: work on its keyword topics', 'Development': 'Development — research + titles' };
-function hubKwStageTag(p) {   // just a dot; hover says the stage
-  const st = p.stage || '', col = (HUB_STAGES.find(x => x[0] === st) || [, 'var(--text3)'])[1];
-  return `<span title="${esc(st ? HUB_STAGE_TIP[st] || st : 'No stage yet')}" style="font-size:13px;line-height:1;color:${col};cursor:help;padding:0 2px;">${st ? '●' : '○'}</span>`;
+// the dot (operator 2026-10-15): Raw / no stage = nothing · Keyword Research = blue · Development in sync = green ·
+// Development out of sync = orange. Hover says which.
+function hubKwStageTag(slug, p) {
+  const st = p.stage || ''; if (!st || st === 'Raw') return '';
+  const [col, tip] = st === 'Keyword Research' ? ['#3b82f6', 'Keyword Research — flagged: work on its keyword topics']
+    : hubKwOutOfSync(slug, p) ? ['#ff7a00', 'Development — out of sync: something upstream changed (keywords or research)'] : ['#4ade80', 'Development — in sync: ready for titles'];
+  return `<span title="${tip}" style="font-size:13px;line-height:1;color:${col};cursor:help;padding:0 2px;">●</span>`;
 }
 // ✎ edit product modal (stage for now; standard hcModal)
 function hubKwEditProduct(slug, pid) {
@@ -16840,7 +16844,7 @@ function renderHubKw(slug) {
   const sec = (k, label, n, tools, body) => { const open = !!_hubKwOpen[slug + '|' + k];
     return `<div style="margin-top:4px;border-left:2px solid var(--border2);padding-left:7px;"><div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none;font-size:11px;font-weight:600;"><span style="font-size:9px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>${label}<span style="font-weight:400;color:var(--text3);">(${n})</span>${tools ? `<span style="margin-left:auto;display:flex;gap:4px;" onclick="event.stopPropagation()">${tools}</span>` : ''}</div>${open ? `<div style="padding:2px 0 3px 16px;">${body}</div>` : ''}</div>`; };
   // one Existing-product row (＋ title · 🔬 research) — shared by Master and every topic
-  const exRow = p => `<div class="hkw-row hkw-ex" style="display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">📦 ${esc(p.name)}${hubKwOutOfSync(slug, p) ? ' <span style="color:#ff7a00;font-weight:700;" title="Something upstream changed (keywords or research) — re-sync before creating titles">⚠ out of sync</span>' : ''}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${hubKwStageTag(p)}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
+  const exRow = p => `<div class="hkw-row hkw-ex" style="display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">📦 ${esc(p.name)}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${hubKwStageTag(slug, p)}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
   const topic = (t, depth) => {
     const kws = split(t.keywords), ps = prodsOf(t), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
     const moveSel = clusters.length ? `<select title="Move this topic to a cluster" style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);max-width:130px;" onchange="hubKwMoveTopic('${slug}','${esc(t.id)}',this.value)"><option value="__">🧩 move to…</option>${cur ? '<option value="">— unclustered —</option>' : ''}${clusters.filter(c => c !== cur).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : '';
