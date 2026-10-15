@@ -6258,6 +6258,11 @@ function kwLoadResults(offset) {
   KW.offset = offset || 0;
   const el = document.getElementById('kwResults');
   if (KW.selOnly && !KW.selected.size) KW.selOnly = false;
+  // a new list = a fresh selection (operator 2026-10-15): changing filters / search / group / run clears the ticks;
+  // paging and sorting keep them
+  { const sig = JSON.stringify([kwFilters(), KW.group || null, KW.view || null, KW.runId || null]);
+    if (KW._fsig !== undefined && KW._fsig !== sig && !KW.selOnly && KW.selected.size) KW.selected.clear();
+    KW._fsig = sig; }
   const grp = KW.group && kwGroupById(KW.group), gset = grp && new Set(grp.keywords);
   const base = gset ? (KW.rows || []).filter(r => gset.has(r.keyword)) : KW.rows;
   const hubOn = kwHubActive(); if (hubOn) kwHubDecorate(KW.rows || []);
