@@ -16584,11 +16584,11 @@ async function hubKwLoad(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h || !h.campaignId || _hubKw[slug]) return;
   _hubKw[slug] = { loading: true }; hubKwRefresh(slug);
   try {
-    const [res, cl, pr] = await Promise.all([call('getResearch', { campaignId: h.campaignId }), call('getKeywordClusters', { campaignId: h.campaignId }),
-      call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({ products: [] }))]);
+    const [res, cl, pr, mo] = await Promise.all([call('getResearch', { campaignId: h.campaignId }), call('getKeywordClusters', { campaignId: h.campaignId }),
+      call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({ products: [] })), call('getHubMainOfferings', { campaignId: h.campaignId }).catch(() => ({}))]);
     if (cl && cl.error) throw new Error(cl.error);
     _hubKw[slug] = { master: String((res && res.research && res.research.keywords) || ''), researchId: (res && res.research && res.research.id) || '', mainIdeasText: String((res && res.research && res.research.productIdeas) || ''), staged: (cl && cl.staged) || [], committed: (cl && cl.committed) || [],
-      tc: (cl && cl.topicClusters) || { clusters: [], assign: {} }, products: (pr && pr.products) || [] };
+      tc: (cl && cl.topicClusters) || { clusters: [], assign: {} }, products: (pr && pr.products) || [], mainIds: ((mo && mo.mainIds) || []).map(x => String(x).replace(/-/g, '')) };
   } catch (e) { _hubKw[slug] = { error: e.message }; }
   hubKwRefresh(slug); if (document.getElementById('hubBuildBody-' + slug)) hubBuildRefreshRows(slug); hubResLoad(slug); hubKwStageBackfill(slug);
 }
@@ -16708,7 +16708,7 @@ async function hubKwIdeaCreate(slug, tid, iid, asMain) {
     const r = await call('createProduct', { title: x.name, description: x.angle || '', stack: t.name, topicId: String(tid).replace(/-/g, ''), campaignId: h.campaignId, status: 'Development' });
     if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
     let note = '';
-    if (asMain) { const m = await call('setHubMainOffering', { campaignId: h.campaignId, productId: r.id, op: 'add' }).catch(e => ({ error: e.message })); note = m && !m.error ? ' · ★ added to main offerings' : ' · ★ main failed: ' + ((m && m.error) || '?'); }
+    if (asMain) { const m = await call('setHubMainOffering', { campaignId: h.campaignId, productId: r.id, op: 'add' }).catch(e => ({ error: e.message })); note = m && !m.error ? ' · ★ added to main offerings' : ' · ★ main failed: ' + ((m && m.error) || '?'); if (m && m.mainIds && _hubKw[slug]) _hubKw[slug].mainIds = m.mainIds.map(x => String(x).replace(/-/g, '')); }
     const rr = await call('removeClusterProductStack', { campaignId: h.campaignId, clusterId: tid, productId: iid }).catch(() => null); hubKwTakeClusters(slug, rr);
     const pr = await call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => null); if (pr && pr.products && _hubKw[slug]) _hubKw[slug].products = pr.products;
     _hubKwOpen[slug + '|ex:' + tid] = true; hubResLoad(slug, true); hubKwRefresh(slug); showToast('Added to topic — ' + (r.name || x.name) + note, 'success');
@@ -16746,7 +16746,7 @@ async function hubKwMainIdeaCreate(slug, i, asMain) {
     const r = await call('createProduct', { title: x.name, description: x.desc || '', topicId: '__main', campaignId: h.campaignId, status: 'Development' });
     if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
     let note = '';
-    if (asMain) { const m = await call('setHubMainOffering', { campaignId: h.campaignId, productId: r.id, op: 'add' }).catch(e => ({ error: e.message })); note = m && !m.error ? ' · ★ added to main offerings' : ' · ★ main failed: ' + ((m && m.error) || '?'); }
+    if (asMain) { const m = await call('setHubMainOffering', { campaignId: h.campaignId, productId: r.id, op: 'add' }).catch(e => ({ error: e.message })); note = m && !m.error ? ' · ★ added to main offerings' : ' · ★ main failed: ' + ((m && m.error) || '?'); if (m && m.mainIds && _hubKw[slug]) _hubKw[slug].mainIds = m.mainIds.map(x => String(x).replace(/-/g, '')); }
     await hubKwMainSaveIdeas(slug, ideas.filter((y, j) => j !== i).map(y => y.line)).catch(() => {});
     const pr = await call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => null); if (pr && pr.products && _hubKw[slug]) _hubKw[slug].products = pr.products;
     _hubKwOpen[slug + '|ex:__main'] = true; hubResLoad(slug, true); hubKwRefresh(slug); showToast('Added to ★ Main — ' + (r.name || x.name) + note, 'success');
@@ -16844,7 +16844,7 @@ function renderHubKw(slug) {
   const sec = (k, label, n, tools, body) => { const open = !!_hubKwOpen[slug + '|' + k];
     return `<div style="margin-top:4px;border-left:2px solid var(--border2);padding-left:7px;"><div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none;font-size:11px;font-weight:600;"><span style="font-size:9px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>${label}<span style="font-weight:400;color:var(--text3);">(${n})</span>${tools ? `<span style="margin-left:auto;display:flex;gap:4px;" onclick="event.stopPropagation()">${tools}</span>` : ''}</div>${open ? `<div style="padding:2px 0 3px 16px;">${body}</div>` : ''}</div>`; };
   // one Existing-product row (＋ title · 🔬 research) — shared by Master and every topic
-  const exRow = p => `<div class="hkw-row hkw-ex" style="display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">📦 ${esc(p.name)}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${hubKwStageTag(slug, p)}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
+  const exRow = p => `<div class="hkw-row hkw-ex" style="display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">📦 ${esc(p.name)}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${(K.mainIds || []).includes(String(p.id).replace(/-/g, '')) ? '<span title="Main offering of this hub" style="color:#f5c542;font-size:12px;line-height:1;cursor:help;">★</span>' : ''}${hubKwStageTag(slug, p)}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
   const topic = (t, depth) => {
     const kws = split(t.keywords), ps = prodsOf(t), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
     const moveSel = clusters.length ? `<select title="Move this topic to a cluster" style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);max-width:130px;" onchange="hubKwMoveTopic('${slug}','${esc(t.id)}',this.value)"><option value="__">🧩 move to…</option>${cur ? '<option value="">— unclustered —</option>' : ''}${clusters.filter(c => c !== cur).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : '';
