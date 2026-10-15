@@ -1032,7 +1032,10 @@ async function ivTierFn(env) {
     let t = null; try { t = await env.TRADES.get("infoflow:table:currentmethods", "json"); } catch (e) {}
     _ivTierCache = { at: Date.now(), rows: ((t && t.rows) || []).map(r => { const c = r.cells || {};
       const tier = /^own/i.test(c.civtier01 || "") ? "depends" : /^short/i.test(c.civtier01 || "") ? "short" : /^from/i.test(c.civtier01 || "") ? "borrow" : /^none/i.test(c.civtier01 || "") ? "none" : "";
-      return { tier, names: [c.cmuzq36hb77sq, c.cname01, (c.cname01 || "").split(" - ").pop(), c.c1].map(ivNorm).filter(n => n.length >= 4) }; }).filter(r => r.tier && r.names.length) };
+      // "counts asset types" (cmatch01) = the real Asset Type / method names a row covers; with it, only those + the
+      // "Parent - Asset" name match (bare child words like "News" / "Page" would fuzzy-hit unrelated types)
+      const names = c.cmatch01 ? [c.cname01, ...String(c.cmatch01).split(";")] : [c.cmuzq36hb77sq, c.cname01, (c.cname01 || "").split(" - ").pop(), c.c1];
+      return { tier, names: names.map(ivNorm).filter(n => n.length >= 4) }; }).filter(r => r.tier && r.names.length) };
   }
   const rows = _ivTierCache.rows;
   return t => { const n = ivNorm(t); if (!n) return "borrow";
