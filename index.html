@@ -15640,6 +15640,7 @@ async function hub2DigestModal(slug) {
   kwWideModal(`<h3 style="margin:0 0 4px;">＋ Digest — ${esc(h.name)}</h3>
     <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">This period's most useful developments for this hub's audience. The digest makes its own dated title, so there's nothing to pick — choose the product it leads toward, research, tick the sources, write.</div>
     ${HT_LBL('Product it leads toward')}<select id="h2dProd" style="${IN}"><option value="">Loading products…</option></select>
+    <div id="h2dOos" style="margin:-6px 0 8px;"></div>
     ${HT_LBL('Guidance (optional)')}<textarea id="h2dGuide" rows="2" style="${IN}resize:vertical;" placeholder="e.g. focus on state funding changes and new grants"></textarea>
     <div style="border-top:1px solid var(--border);margin:6px 0 8px;padding-top:8px;font-size:12px;font-weight:700;">🔬 Research <span style="font-weight:400;color:var(--text3);">— optional, but the digest is written from the sources you keep</span></div>
     ${HT_LBL('Keywords (one per line or comma-separated)')}<textarea id="h2dKw" rows="3" style="${IN}resize:vertical;"></textarea>
@@ -15654,6 +15655,7 @@ async function hub2DigestModal(slug) {
   const kw = h2dLS('dr:kw:' + H2D.cid); if (kw) h2dEl('h2dKw').value = kw;
   call('getCampaignProducts', { campaignId: H2D.cid }).then(r => {
     const oos = hub2OutOfSyncProducts(slug), live = (r.products || []).filter(p => !/^(archived|retired)$/i.test(p.status || '') && !p.archived);
+    hub2DigestOos(slug, live.filter(p => p.outOfSync || oos.has(hub2Id(p.id))));
     const list = live.filter(p => !p.outOfSync && !oos.has(hub2Id(p.id))).sort((a, b) => String(a.name).localeCompare(String(b.name))), hidden = live.length - list.length;
     const sel = h2dEl('h2dProd'); if (!sel) return;
     sel.innerHTML = '<option value="">— choose a product —</option>' + list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')
@@ -15664,6 +15666,25 @@ async function hub2DigestModal(slug) {
     if (el) el.textContent = `Saved industry associations: ${n}${n ? ' (' + r.list.slice(0, 4).map(a => a.name).join(', ') + (n > 4 ? '…' : '') + ')' : ' — add them in care-gap\'s digest research'} · creators ticked "Digest Source" in Notion are included automatically.`; }).catch(() => {});
   const jid = h2dLS('dr:job:' + H2D.cid);
   if (jid) { try { const r = await call('digestResearch', { op: 'status', jobId: jid }); if (r.job) { H2D.job = r.job; if (h2dEl('h2dNotes')) h2dEl('h2dNotes').value = r.job.notes || ''; hub2DigestRender(); hub2DigestPoll(); } } catch (e) { h2dLS('dr:job:' + H2D.cid, null); } }
+}
+// out-of-sync products stay out of the picker (operator rule) — listed here with ↻ Sync (generateProductKeywords re-derives the
+// product's keywords from its current topic and clears the flag), main products first; a synced product joins the picker
+async function hub2DigestOos(slug, list) {
+  const el = h2dEl('h2dOos'); if (!el || !list.length) { if (el) el.innerHTML = ''; return; }
+  const h = HUB_SITES.find(x => x.slug === slug); let main = new Set();
+  try { const r = await call('getHubMainOfferings', { campaignId: h.campaignId }); main = new Set(((r && r.mainIds) || []).map(hub2Id)); } catch (e) {}
+  list = list.slice().sort((a, b) => (main.has(hub2Id(b.id)) - main.has(hub2Id(a.id))) || String(a.name).localeCompare(String(b.name)));
+  el.innerHTML = `<details ${list.some(p => main.has(hub2Id(p.id))) ? 'open' : ''}><summary style="cursor:pointer;font-size:11px;color:#ff9a3d;">${list.length} out-of-sync product${list.length === 1 ? '' : 's'} hidden — ↻ Sync one to use it</summary>
+    <div style="max-height:22vh;overflow-y:auto;padding:4px 0 0 10px;">${list.map(p => `<div style="display:flex;gap:8px;align-items:center;font-size:11.5px;padding:2px 0;"><span style="flex:1;color:var(--text);">${main.has(hub2Id(p.id)) ? '<span style="color:#facc15;">★</span> ' : ''}${esc(p.name)}</span>
+      <button class="kw-btn" onclick="hub2DigestSync('${esc(p.id)}', this.dataset.n, this)" data-n="${esc(p.name)}" title="Re-derive this product's keywords from its current topic (one quick AI call) — clears the out-of-sync flag">↻ Sync</button></div>`).join('')}</div></details>`;
+}
+async function hub2DigestSync(productId, name, btn) {
+  btn.disabled = true; btn.textContent = '⏳ syncing…';
+  try { const r = await call('generateProductKeywords', { productId }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    ((_hub2Checklist[H2D.slug] || {}).hubRows || []).forEach(x => { if (hub2Id(x.productId) === hub2Id(productId)) { x.keywordOutOfSync = false; if (x.research === '✗ out of sync') x.research = '✓ up to date'; } });
+    const sel = h2dEl('h2dProd'); if (sel && !sel.querySelector(`option[value="${productId}"]`)) { const o = document.createElement('option'); o.value = productId; o.textContent = name; sel.insertBefore(o, sel.options[1] || null); }
+    if (sel) sel.value = productId; btn.textContent = '✓ synced'; btn.closest('div').style.opacity = .5;
+  } catch (e) { btn.disabled = false; btn.textContent = '↻ Sync'; showToast('Not synced: ' + e.message, 'error'); }
 }
 async function hub2DigestSuggest() {
   const q = (h2dEl('h2dSugQ')?.value || '').trim() || h2dKeywords()[0] || '', out = h2dEl('h2dSug'); if (!out) return;
