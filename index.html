@@ -16090,7 +16090,8 @@ async function hub2CreateStep(slug, id) {
   const prow = (st.methods || []).find(x => x.isPillar && x.parent === m.parent);
   let parents = m.parent === 'Pillar' ? hub2TitleParents(st, tid).filter(hub2ParentReady) : [];
   if (m.parent !== 'Pillar') { const pa = prow && hub2ParentAssetFor(st, tid, prow); if (hub2ParentReady(pa)) parents = [pa]; }
-  if (!parents.length) { el.innerHTML = prow ? parentStep(prow, `<div style="margin-bottom:8px;color:var(--text2);">${esc(m.name)} is written from this title's ${esc(prow.name)} parent — that comes first.</div>`) : `No "${esc(m.parent)}" parent row in the worksheet.`; return; }
+  // no parent row for this group (e.g. Topical — removed 2026-10-15): the child is written straight from the title's pillar
+  if (!parents.length && prow) { el.innerHTML = parentStep(prow, `<div style="margin-bottom:8px;color:var(--text2);">${esc(m.name)} is written from this title's ${esc(prow.name)} parent — that comes first.</div>`); return; }
   el.innerHTML = '<div style="color:var(--text3);">Loading methods…</div>';
   try {
     if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(x => x.status === 'Live').sort((a, b) => a.name.localeCompare(b.name));
@@ -16098,7 +16099,7 @@ async function hub2CreateStep(slug, id) {
   } catch (e) { el.textContent = 'Could not load methods: ' + e.message; return; }
   if (document.getElementById('h2cTitle')?.value !== tid) return;
   const names = new Set(m.aliases.map(hub2Norm)), match = _htMethods.find(x => names.has(hub2Norm(x.name)));
-  el.innerHTML = `${parents.length > 1 ? HT_LBL('Written from') + `<select id="h2cParent" style="${HT_IN}">${parents.map(p => `<option value="${esc(p.assetId)}">${esc(p.pillarType || p.assetType || 'parent')}</option>`).join('')}</select>` : `<input type="hidden" id="h2cParent" value="${esc(parents[0].assetId)}"><div style="color:#4ade80;margin-bottom:8px;">✓ From the ${esc(parents[0].pillarType || parents[0].assetType || '')} parent${nlink(parents[0].assetId)}</div>`}
+  el.innerHTML = `${!parents.length ? `<input type="hidden" id="h2cParent" value=""><div style="color:var(--text2);margin-bottom:8px;">Written from the title's pillar.</div>` : parents.length > 1 ? HT_LBL('Written from') + `<select id="h2cParent" style="${HT_IN}">${parents.map(p => `<option value="${esc(p.assetId)}">${esc(p.pillarType || p.assetType || 'parent')}</option>`).join('')}</select>` : `<input type="hidden" id="h2cParent" value="${esc(parents[0].assetId)}"><div style="color:#4ade80;margin-bottom:8px;">✓ From the ${esc(parents[0].pillarType || parents[0].assetType || '')} parent${nlink(parents[0].assetId)}</div>`}
     ${HT_LBL('Method')}<select id="h2cMethod" style="${HT_IN}" onchange="document.getElementById('h2cCT').style.display=/single post/i.test(this.options[this.selectedIndex].text)?'':'none'">${match ? '' : '<option value="">— no Live method matches this row; choose one —</option>'}${_htMethods.map(x => `<option value="${esc(x.id)}" ${match && x.id === match.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
     <div id="h2cCT" style="display:${match && /single post/i.test(match.name) ? '' : 'none'};">${HT_LBL('Content type')}<select id="h2cCTv" style="${HT_IN}">${['Hook', 'Pain Point', 'Benefit', 'Informational', 'Customer Focus', 'Proof', 'Objection', 'Contrarian'].map(x => `<option>${x}</option>`).join('')}</select></div>
     ${_htPlatforms.length ? HT_LBL('Platform (optional)') + `<select id="h2cPlat" style="${HT_IN}"><option value="">— method default —</option>${_htPlatforms.map(p => `<option value="${esc(p.id)}" data-name="${esc(p.name)}">${esc(p.name)}</option>`).join('')}</select>` : ''}
@@ -16136,9 +16137,10 @@ async function hub2ParentWrite(slug, id, assetId, name, btn) {
 async function hub2CreateGo(slug, id) {
   const h = HUB_SITES.find(x => x.slug === slug), m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id), t = hub2ReadyTitles(slug).find(x => x.id === document.getElementById('h2cTitle')?.value);
   const parentAssetId = document.getElementById('h2cParent')?.value, ms = document.getElementById('h2cMethod');
-  if (!h || !m || !t) return 'Choose a title'; if (!parentAssetId) return 'Its parent has to be written first'; if (!ms || !ms.value) return 'Choose a method';
+  const hasParentRow = (_hub2Checklist[slug]?.methods || []).some(x => x.isPillar && x.parent === m.parent) || m.parent === 'Pillar';
+  if (!h || !m || !t) return 'Choose a title'; if (!parentAssetId && hasParentRow) return 'Its parent has to be written first'; if (!ms || !ms.value) return 'Choose a method';
   const methodName = ms.options[ms.selectedIndex].text, ps = document.getElementById('h2cPlat');
-  const payload = { titleId: t.id, campaignId: h.campaignId, productId: t.productId, parentAssetId, methodId: ms.value, assetType: methodName, title: t.title,
+  const payload = { titleId: t.id, campaignId: h.campaignId, productId: t.productId, parentAssetId: parentAssetId || undefined, methodId: ms.value, assetType: methodName, title: t.title,
     count: Math.max(1, Math.min(10, parseInt(document.getElementById('h2cCount').value) || 1)), researchInstructions: document.getElementById('h2cGuide').value.trim() || undefined };
   if (ps && ps.value) { payload.platformId = ps.value; payload.platformName = ps.options[ps.selectedIndex].dataset.name; }
   if (/single post/i.test(methodName)) payload.contentType = document.getElementById('h2cCTv').value;
