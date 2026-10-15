@@ -17996,7 +17996,8 @@ const HC_IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 9px;b
 const HC_CANCEL = `<button class="modal-btn" onclick="document.getElementById('hcModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Cancel</button>`;
 async function hcModalRun(btn, fn) {
   btn.disabled = true; const o = btn.textContent; btn.textContent = 'Saving…';
-  const r = await fn();
+  // a thrown error (call() throws on any worker error) used to leave the button disabled with no message
+  let r; try { r = await fn(); } catch (e) { r = (e && e.message) || 'Not saved'; console.error('hcModalRun:', e); }
   if (r === true) document.getElementById('hcModal').classList.remove('open');
   else { btn.disabled = false; btn.textContent = o; document.getElementById('hcModalErr').textContent = typeof r === 'string' ? r : 'Not saved'; }
 }
