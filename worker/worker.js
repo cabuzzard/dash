@@ -11470,6 +11470,39 @@ async function kwHubProposalApply(env, campaignId, name) {
   await env.TRADES.put("kwhub:proposal:" + cid, JSON.stringify({ ...p, status: "applied", appliedAt: Date.now(), lines: r.lines || [], errors: r.errors || [] }));
   return { ok: true, applied: r.applied !== false, lines: r.lines || [], errors: r.errors || [] };
 }
+// 🤖 AUTOPILOT (operator 2026-10-15: "run all of them"): per queued hub (KV kwhub:auto:queue = [cid]) — propose (or use the
+// stored proposal) → apply it → cleanup plan → cleanup apply in chunks → done. State per hub in KV kwhub:auto:state:<cid>
+// (shown on the Content Hubs 2 card). Every step keeps its own undo. ~2½ min of work per */4 tick, never overlapping.
+async function kwHubAutoTick(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const q0 = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q0.length) return;
+  if (await env.TRADES.get("kwhub:auto:lock")) return;
+  await env.TRADES.put("kwhub:auto:lock", "1", { expirationTtl: 600 });
+  await hubSitesMerge(env);
+  const t0 = Date.now(), drop = async cid => { const q = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; await env.TRADES.put("kwhub:auto:queue", JSON.stringify(q.filter(x => x !== cid))); };
+  try {
+    while (Date.now() - t0 < 150000) {
+      const q = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q.length) break;
+      const cid = String(q[0]).replace(/-/g, ""), hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid), name = hub ? hub.name : "Hub";
+      const st = (await env.TRADES.get("kwhub:auto:state:" + cid, "json")) || { step: "propose", startedAt: Date.now() };
+      try {
+        if (st.step === "propose") { const p = await env.TRADES.get("kwhub:proposal:" + cid, "json"); if (!p || p.status === "error") await kwHubPropose(env, cid, ""); st.step = "apply"; }
+        else if (st.step === "apply") {
+          const p = await env.TRADES.get("kwhub:proposal:" + cid, "json");
+          if (p && p.status !== "applied") {
+            try { const r = await kwHubProposalApply(env, cid, name); st.applyLines = (r.lines || []).length; st.applyErrors = r.errors || []; }
+            catch (e) { if (!/changed since/i.test(e.message || "")) throw e; await kwHubPropose(env, cid, ""); const r = await kwHubProposalApply(env, cid, name); st.applyLines = (r.lines || []).length; st.applyErrors = r.errors || []; }
+          }
+          st.step = "plan";
+        }
+        else if (st.step === "plan") { const r = await kwHubCleanPlan(env, cid); st.counts = r.counts; st.total = r.total; st.step = r.total ? "clean" : "done"; st.i = 0; }
+        else if (st.step === "clean") { const r = await kwHubCleanApply(env, cid); st.i = r.i; st.total = r.total; st.cleanErrors = (st.cleanErrors || 0) + (r.errors || []).length; if (r.done) st.step = "done"; }
+        if (st.step === "done") { st.finishedAt = Date.now(); await drop(cid); console.log("kwHubAutoTick: " + name + " done"); }
+      } catch (e) { st.step = "error"; st.error = e.message || String(e); await drop(cid); console.error("kwHubAutoTick failed " + name + ": " + st.error); }
+      await env.TRADES.put("kwhub:auto:state:" + cid, JSON.stringify(st));
+    }
+  } finally { await env.TRADES.delete("kwhub:auto:lock"); }
+}
 // background: one queued hub per */4 tick (KV kwhub:propose:queue = [{cid, guidance}]); lock so ticks never overlap
 async function kwHubProposeTick(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
@@ -49195,6 +49228,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if (event.cron === "*/4 * * * *") {
       cw("kwHubProposeTick", kwHubProposeTick(env));
+      cw("kwHubAutoTick", kwHubAutoTick(env));
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
@@ -50486,7 +50520,8 @@ async function handleKeywordAction(body, env) {
   if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubProposalGet") { const cid = String(body.campaignId || "").replace(/-/g, ""); const p = await env.TRADES.get("kwhub:proposal:" + cid, "json");
     const q = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; const at = q.findIndex(x => String(x.cid).replace(/-/g, "") === cid);
-    return json({ ok: true, proposal: p ? { ...p, ops: undefined, opCount: (p.ops || []).length } : null, queued: at >= 0 ? at + 1 : 0 }); }
+    const auto = await env.TRADES.get("kwhub:auto:state:" + cid, "json");
+    return json({ ok: true, proposal: p ? { ...p, ops: undefined, opCount: (p.ops || []).length } : null, queued: at >= 0 ? at + 1 : 0, auto }); }
   if (a === "kwHubProposalApply") { try { return json(await kwHubProposalApply(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubPropose") { try { return json(await kwHubPropose(env, body.campaignId, body.guidance)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanPlan") { try { return json(await kwHubCleanPlan(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }

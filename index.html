@@ -15374,10 +15374,6 @@ function renderHubs2() {
           <summary title="Checklist"><span title="Checklist">Checklist</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">methods worksheet · published vs goal · interviews</span><button onclick="event.preventDefault();event.stopPropagation();hub2ChecklistLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Checklist-${slug}" style="padding:8px 12px;">${hub2ChecklistHtml(slug)}</div>
         </details>
-        <details class="hub-sec" ontoggle="if(this.open)hub2KsLoad('${slug}')">
-          <summary title="Keyword structure"><span title="Keyword structure">Keyword structure</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">main → 3 clusters → up to 3 topics · proposal · apply</span><button onclick="event.preventDefault();event.stopPropagation();hub2KsLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
-          <div id="hub2Ks-${slug}" style="padding:8px 12px;">${hub2KsHtml(slug)}</div>
-        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2ContentLoad('${slug}')">
           <summary title="Content"><span title="Content">Content</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">keyword cluster · topic · title</span><button onclick="event.preventDefault();event.stopPropagation();hub2ContentLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Content-${slug}" style="padding:8px 12px;">${hub2ContentHtml(slug)}</div>
