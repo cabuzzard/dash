@@ -1031,7 +1031,7 @@ async function ivTierFn(env) {
   if (Date.now() - _ivTierCache.at > 60000) {
     let t = null; try { t = await env.TRADES.get("infoflow:table:currentmethods", "json"); } catch (e) {}
     _ivTierCache = { at: Date.now(), rows: ((t && t.rows) || []).map(r => { const c = r.cells || {};
-      const tier = /^own/i.test(c.civtier01 || "") ? "depends" : /^short/i.test(c.civtier01 || "") ? "short" : /^from/i.test(c.civtier01 || "") ? "borrow" : /^none/i.test(c.civtier01 || "") ? "none" : "";
+      const tier = /^(own|interview)/i.test(c.civtier01 || "") ? "depends" : /^short/i.test(c.civtier01 || "") ? "short" : /^from/i.test(c.civtier01 || "") ? "borrow" : /^none/i.test(c.civtier01 || "") ? "none" : "";
       // "counts asset types" (cmatch01) = the real Asset Type / method names a row covers; with it, only those + the
       // "Parent - Asset" name match (bare child words like "News" / "Page" would fuzzy-hit unrelated types)
       const names = c.cmatch01 ? [c.cname01, ...String(c.cmatch01).split(";")] : [c.cmuzq36hb77sq, c.cname01, (c.cname01 || "").split(" - ").pop(), c.c1];
@@ -1042,7 +1042,7 @@ async function ivTierFn(env) {
     const hit = rows.find(r => r.names.includes(n)) || rows.find(r => r.names.some(x => n.includes(x) || x.includes(n)));
     return hit ? hit.tier : ivImportance(t); };
 }
-const IV_TIER_LABEL = { depends: "Own interview", short: "Short interview (SEO)", borrow: "From product", none: "None" };   // short: 5-question asset interview, answers REWRITTEN for SEO (topical posts)
+const IV_TIER_LABEL = { depends: "Own interview", short: "Short interview (SEO)", borrow: "From parent", none: "None" };   // short: 5-question asset interview, answers REWRITTEN for SEO (topical posts)
 const ivOwnTier = t => t === "depends" || t === "short";
 const ivTypeMatch = (a, b) => { const x = ivNorm(a), y = ivNorm(b); return !!x && !!y && (x === y || x.includes(y) || y.includes(x)); };
 const ivRt = t => { const x = String(t || ""), out = []; for (let i = 0; i < x.length && out.length < 100; i += 1900) out.push({ type: "text", text: { content: x.slice(i, i + 1900) } }); return out; };
@@ -1078,16 +1078,19 @@ async function ivPage(id) {   // Notion rate limits come back as an error object
   throw new Error("Notion rate limited — retry");
 }
 // The writer-side block: the FINISHED interviews that reach this title (its product's) + this asset's own.
+// 2026-10-14 (operator): interviews are a content-writing input downstream of product research — product interviews no
+// longer feed writers. A parent asset is written from its own interview; a child written from its parent (PILLAR_SOURCE,
+// set per request by the fetch wrapper) also gets the parent's interview; an Own-tier child adds its own.
 async function ivBlock(env, titleId, assetType, assetId) {
   if (!titleId) return { text: "", cid: "" };
-  const tp = await ivPage(titleId).catch(() => null), pid = tp ? ivRid(tp.properties, "product") : "";
-  const [prod, ttl] = await Promise.all([pid ? ivForProduct(pid).catch(() => []) : [], ivForTitle(titleId).catch(() => [])]);
-  const done = [...prod, ...ttl].filter((x, i, a) => a.findIndex(y => y.id === x.id) === i)
-    .filter(x => x.status === "Finished" && x.answers.some(a => a.trim())
-      && (x.scope !== "Asset" || (assetId && x.assetIds.includes(String(assetId).replace(/-/g, ""))) || (assetType && ivTypeMatch(x.forType, assetType))));
+  const parentId = PILLAR_SOURCE.get(String(titleId).replace(/-/g, "")) || "";
+  const ttl = await ivForTitle(titleId).catch(() => []);
+  const done = ttl.filter((x, i, a) => a.findIndex(y => y.id === x.id) === i)
+    .filter(x => x.status === "Finished" && x.answers.some(a => a.trim()) && x.scope !== "Product"
+      && (x.scope !== "Asset" || (assetId && x.assetIds.includes(String(assetId).replace(/-/g, ""))) || (parentId && x.assetIds.includes(parentId)) || (assetType && ivTypeMatch(x.forType, assetType))));
   if (!done.length) return { text: "", cid: "" };
   const tierOf = await ivTierFn(env);
-  const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? (tierOf(x.forType) === "short" ? "this article's SHORT SEO interview — REWRITE these answers for SEO: keep every fact, opinion and example, restructure them under keyword-targeted headings in search-friendly prose; never quote them verbatim" : "this asset's own interview") : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
+  const body = done.map(x => `[${x.scope === "Product" ? "product interview" : x.scope === "Asset" ? (tierOf(x.forType) === "short" ? "this article's SHORT SEO interview — REWRITE these answers for SEO: keep every fact, opinion and example, restructure them under keyword-targeted headings in search-friendly prose; never quote them verbatim" : (parentId && x.assetIds.includes(parentId) ? "the parent piece's interview" : "this asset's own interview")) : "interview"}${x.angle ? " · " + x.angle : ""}]\n`
     + x.qs.map((q, i) => x.answers[i] ? `Q: ${q}\nTHEIR ANSWER: ${x.answers[i]}` : "").filter(Boolean).join("\n")).join("\n\n").slice(0, 7000);
   return { cid: done[0].cid, text: `\nTHE OPERATOR'S OWN INTERVIEW ANSWERS — first-hand material about this product (and, if marked, this specific asset): their experience, stories, opinions, numbers. Use it wherever it fits this format; their specifics, examples and phrasing beat generic claims. Never invent experiences beyond what they said, and never contradict it:\n${body}\n\n` };
 }
@@ -1135,8 +1138,9 @@ Write exactly 1 interview of 7-10 short, specific questions a busy owner can ans
 }
 // An asset's OWN interview: {assetId} (requested from inside the asset) or {titleId, own: assetType} before the asset exists.
 async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
-  let atype = own || "", aname = "";
+  let atype = own || "", aname = "", parentType = "";
   if (assetId) { const ap = await ivPage(assetId); const A = ap.properties;
+    if (A["Asset Class"]?.select?.name === "Pillar") parentType = A["Pillar Type"]?.select?.name || "long-form";
     titleId = titleId || ivRid(A, "Content Strategy"); atype = atype || A["Asset Type"]?.select?.name || "asset";
     aname = (A["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim(); }
   if (!titleId) throw new Error("this asset has no title — attach one first");
@@ -1149,7 +1153,8 @@ async function ivCreateForAsset(env, { assetId, titleId, own, direction }) {
 PIECE: ${aname || tname} (${atype})
 TITLE IT BELONGS TO: ${tname}
 ${audience}${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}${pillar ? `\nTHE TITLE'S PILLAR (excerpt):\n${String(pillar).slice(0, 2500)}\n` : ""}${direction ? `\nOPERATOR'S DIRECTION: ${direction}\n` : ""}
-${short ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video): ask EXACTLY 5 short questions whose answers give the article real substance — the direct answer they'd give to the searcher's question, an example from their own work, the mistake people make, a specific number or detail they know, and what they'd tell a friend. The writer will REWRITE the answers for SEO, so ask for substance, not polished prose.`
+${parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentType}" piece for this title, written from the title's pillar plus these answers; every asset for this title is then cut from that parent. Ask 6-10 questions specific to THIS title that only the owner can answer: a real client story on this exact topic, how they actually do it, what most advice gets wrong, a mistake and what it taught them, numbers they know, the questions clients ask them about it. Order them the way the piece should flow.`
+      : short ? `THIS IS A SHORT INTERVIEW FOR AN SEO ARTICLE (not a video): ask EXACTLY 5 short questions whose answers give the article real substance — the direct answer they'd give to the searcher's question, an example from their own work, the mistake people make, a specific number or detail they know, and what they'd tell a friend. The writer will REWRITE the answers for SEO, so ask for substance, not polished prose.`
       : dep ? `THIS INTERVIEW BECOMES THE PIECE: the "${atype}" is built from the owner's answers, lightly edited. Ask 6-10 questions in the order the piece should flow (opening hook → story / substance → takeaway), each answerable out loud in their own words.`
       : `Ask 5-8 questions that draw out what THIS piece specifically needs from them (stories, specifics, opinions, numbers) beyond the product's general interview.`} No generic questions, no yes/no questions. Call submit_interviews.`;
   const made = await ivSavePages(await ivClaudeInterviews(env, prompt, 1, 5, short ? 5 : 10), {
@@ -1189,6 +1194,10 @@ async function ivMarkDownstream(env, iv) {
       n++;
     }
   }
+  if (own) for (const pid of iv.assetIds || []) {   // children written from this parent → review
+    const kids = await notionQuery(ASSETS_DB, { filter: { property: "Parent Asset", relation: { contains: ivDash(pid) } } }).catch(() => []);
+    for (const k of kids) { await fetch(`https://api.notion.com/v1/pages/${k.id}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: { "Interview Sync": { select: { name: "Out of Sync · Review" } } } }) }).catch(() => {}); n++; }
+  }
   return n;
 }
 async function ivSyncFlags(cid) {
@@ -1223,6 +1232,7 @@ async function ivProductsNeeding(env) {
 }
 // */30: hub main offerings without an interview get theirs — a few per tick.
 async function ivCronTick(env) {
+  if (env) return { idle: true };   // 2026-10-14: product interviews retired — interviews happen at asset creation (parents + Own children)
   if (!env.ANTHROPIC_API_KEY) return { idle: true };
   const todo = await ivProductsNeeding(env).catch(() => []), out = [];
   for (const p of todo) {
@@ -4030,7 +4040,12 @@ async function extractPillarContent(hdr, titleId, opts) {
   if (opts && opts.keepClips) return raw;
   return raw.split(/\n{2,}/).filter(p => !PILLAR_CLIP_RX.test(p.trim())).join("\n\n");
 }
+// PILLAR_SOURCE: titleId → parent asset id, set by the fetch wrapper for the length of ONE generateTitleAssets request that
+// carries parentAssetId — every pillar read for that title then reads the parent asset's "Pillar Content" instead (the
+// parent writer stores its piece in the same format). Child assets are written from their parent.
+const PILLAR_SOURCE = new Map();
 async function extractPillarContentRaw(hdr, titleId) {
+  const src = PILLAR_SOURCE.get(String(titleId).replace(/-/g, "")); if (src) titleId = src;
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const blocksResp = await fetch(`https://api.notion.com/v1/blocks/${dash(titleId)}/children?page_size=100`, { headers: hdr }).then(r => r.json());
   const blocks = blocksResp.results || [];
@@ -11269,8 +11284,88 @@ async function productDirectStep(env, job) {
   };
 }
 
+async function stampParentAsset(titleId, parentId, sinceMs) {
+  const assets = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: ivDash(titleId) } },
+    { timestamp: "created_time", created_time: { on_or_after: new Date(sinceMs).toISOString() } }] } }).catch(() => []);
+  for (const a of assets) {
+    const p = a.properties || {}; if (a.id.replace(/-/g, "") === parentId || p["Asset Class"]?.select?.name === "Pillar" || (p["Parent Asset"]?.relation || []).length) continue;
+    await fetch(`https://api.notion.com/v1/pages/${a.id}`, { method: "PATCH", headers: ivHdr(), body: JSON.stringify({ properties: { "Parent Asset": { relation: [{ id: ivDash(parentId) }] } } }) }).catch(() => {});
+  }
+}
+// ══ PARENT ASSETS (2026-10-14) ══ Title → pillar (from research) → PARENT asset per type (Asset Class Pillar: Digest,
+// Long Form Topical, Long Form Sales…) written from the title's pillar + its own interview (tier "Interview") → child
+// assets written from the parent. Stored as a "Pillar Content" section on the parent asset page so extractPillarContent
+// reads it (children via PILLAR_SOURCE). Asset Status → Review, Pillar Readiness → Ready.
+const PARENT_BRIEFS = {
+  "Long Form Topical": "an informational long-form piece on this title's sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people ask; teach, don't sell.",
+  "Long Form Sales": "the sales piece for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader's awareness level; never hype.",
+  "Digest": "this period's most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).",
+  "Product": "the canonical source material for the product itself: what it is, who it's for, what it contains, how it's used, and the rules for writing about it.",
+  "Interactivity": "the specification for an interactive tool (calculator, estimator, checker) on this topic: the question it answers, inputs, the logic, outputs, and the SEO copy around it.",
+  "Job Application": "the verified opportunity source: the role's real requirements matched to the owner's actual experience — never invent experience.",
+  "Marketplace Listing": "the canonical offer/listing package: what's offered, for whom, price logic, proof, and the details every marketplace variant needs.",
+  "Generic": "a complete long-form piece on this title that every short asset can be cut from.",
+};
+async function writeParentAsset(env, assetId) {
+  const hdr = ivHdr(), ap = await ivPage(assetId), A = ap.properties || {};
+  if (A["Asset Class"]?.select?.name !== "Pillar") throw new Error("not a parent asset (Asset Class Pillar)");
+  const titleId = ivRid(A, "Content Strategy"); if (!titleId) throw new Error("this parent has no title");
+  const type = A["Asset Type"]?.select?.name || "", ptype = A["Pillar Type"]?.select?.name || "Generic";
+  const tier = (await ivTierFn(env))(type);
+  if (ivOwnTier(tier)) {
+    let ivs = ((await ivForTitle(titleId).catch(() => [])) || []).filter(x => x.scope === "Asset" && x.assetIds.includes(String(assetId).replace(/-/g, "")));
+    if (!ivs.length) ivs = ((await ivCreateForAsset(env, { assetId })) || {}).interviews || [];
+    if (!ivs.some(x => x.status === "Finished" && x.answers.some(a => a.trim()))) return { needsInterview: true, interviews: ivs.map(x => ({ id: x.id, angle: x.angle, status: x.status })) };
+  }
+  const tp = await ivPage(titleId), T = tp.properties || {}, titleText = (T.Title?.title || []).map(t => t.plain_text).join("").trim();
+  const cid = ivRid(T, "Campaign") || ivRid(A, "Campaign"), pid = ivRid(T, "product") || ivRid(A, "Product");
+  const pillar = await extractPillarContent(hdr, ivDash(titleId), { keepClips: false }).catch(() => "");
+  if (!pillar) throw new Error("the title's pillar isn't written yet — write it first");
+  const [voice, ib, prodRes] = await Promise.all([cid ? voiceBlock(env, cid).catch(() => "") : "", ivBlock(env, titleId, type, assetId).catch(() => ({ text: "" })), pid ? ivProdResearch(pid).catch(() => "") : ""]);
+  const prompt = `${voice}${ib.text || ""}You are writing a PARENT piece: the long-form "${ptype}" piece for one content title. Every downstream asset of this class (articles, videos, posts) is cut from it, so it must be complete and specific.
+
+TITLE: ${titleText}
+WHAT THIS PIECE IS: ${PARENT_BRIEFS[ptype] || PARENT_BRIEFS.Generic}
+${prodRes ? `\nPRODUCT RESEARCH:\n${prodRes}\n` : ""}
+THE TITLE'S PILLAR (the researched source — build on it, don't repeat it verbatim):
+${String(pillar).slice(0, 9000)}
+
+Write 1200-2500 words. Where the owner's interview answers are given above, they are the backbone: their stories, method, numbers and opinions beat anything generic; never invent experiences beyond what they said. Plain paragraphs, no headers, no meta-commentary. Return ONLY the piece.
+
+CLIP SECTIONS: mark 2-4 self-contained passages (60-150 words, strongest on pain points and benefits) that can be cut into short videos or single posts. Put a marker line on its own paragraph directly before each one, exactly:
+[CLIP 1 — hook: <a 6-12 word spoken hook>]`;
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }) });
+  const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error writing the parent");
+  const text = (d.content?.[0]?.text || "").trim(); if (!text) throw new Error("the parent came back empty");
+  await clearExistingPillarSection(hdr, assetId);
+  const blk = (type, t) => ({ object: "block", type, [type]: { rich_text: [{ type: "text", text: { content: t } }] } });
+  const children = [blk("heading_3", "Pillar Content")];
+  text.split(/\n{2,}/).map(p => p.trim()).filter(Boolean).forEach(p => { for (let i = 0; i < p.length; i += 1900) children.push(blk("paragraph", p.slice(i, i + 1900))); });
+  for (let i = 0; i < children.length; i += 90) {
+    const w = await fetch(`https://api.notion.com/v1/blocks/${ivDash(assetId)}/children`, { method: "PATCH", headers: hdr, body: JSON.stringify({ children: children.slice(i, i + 90) }) });
+    if (!w.ok) { const e = await w.json().catch(() => ({})); throw new Error(e.message || "could not save the parent"); }
+  }
+  await fetch(`https://api.notion.com/v1/pages/${ivDash(assetId)}`, { method: "PATCH", headers: hdr, body: JSON.stringify({ properties: {
+    "Pillar Readiness": { select: { name: "Ready" } }, "Pillar Sync": { select: { name: "In Sync" } }, "Interview Sync": { select: { name: "In Sync" } }, "Asset Status": { select: { name: "Review" } } } }) }).catch(() => {});
+  return { success: true, words: text.split(/\s+/).length };
+}
+
 export default {
+  // Child generation (generateTitleAssets + parentAssetId): for this one request the title's pillar reads come from the
+  // parent asset (PILLAR_SOURCE), then every asset it created under the title gets "Parent Asset" = that parent.
   async fetch(request, env, ctx) {
+    let key = "", parent = "", started = 0;
+    if (request.method === "POST" && /json/i.test(request.headers.get("content-type") || "") && +(request.headers.get("content-length") || 1e9) < 300000) {
+      try { const pk = await request.clone().json();
+        if (pk && pk.action === "generateTitleAssets" && pk.parentAssetId && pk.titleId) { key = String(pk.titleId).replace(/-/g, ""); parent = String(pk.parentAssetId).replace(/-/g, ""); started = Date.now() - 5000; PILLAR_SOURCE.set(key, parent); } } catch (e) {}
+    }
+    try { return await this.handle(request, env, ctx); }
+    finally {
+      if (key) { if (PILLAR_SOURCE.get(key) === parent) PILLAR_SOURCE.delete(key); ctx.waitUntil(stampParentAsset(key, parent, started).catch(e => console.error("stampParentAsset", e.message))); }
+    }
+  },
+  async handle(request, env, ctx) {
     await hubSitesMerge(env);
     // Load secrets from environment on every request (.trim() guards against
     // trailing newlines that piped input (e.g. PowerShell) can introduce)
@@ -28391,6 +28486,11 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // and the campaign/product design spec) and creates each as a REAL
       // record in the Assets DB linked to the title via its Content Strategy
       // relation — so they render as rows under the publish title.
+      if (body.action === "writeParentAsset") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        if (!body.assetId) return json({ error: "assetId required" }, 400);
+        try { return json(await writeParentAsset(env, body.assetId)); } catch (e) { return json({ error: e.message }, 500); }
+      }
       if (body.action === "generateTitleAssets") {
         const { titleId, campaignId, methodId, subMethodId, title, description, seedKeywords, researchInstructions, assetType, platformName, platformId, loginId } = body;
         const count = Math.min(Math.max(parseInt(body.count) || 4, 1), 8);
