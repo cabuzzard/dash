@@ -15619,8 +15619,163 @@ function hub2ReadyTitles(slug) {
 const hub2TitleParents = (st, tid) => [...new Map((st.hubRows || []).filter(x => x.assetId && x.assetClass === 'Pillar' && hub2Id(x.titleId) === hub2Id(tid)).map(x => [x.assetId, x])).values()];
 function hub2ParentAssetFor(st, tid, prow) { const names = new Set(prow.aliases.map(hub2Norm)); return hub2TitleParents(st, tid).find(x => [x.pillarType, x.assetType, x.rawAssetType].some(v => names.has(hub2Norm(v)))) || null; }
 const hub2ParentReady = x => !!x && /^ready$/i.test(x.pillarReadiness || '');
+// ── ＋ Digest (checklist Digest row) — port of care-gap's ▶ Run Digest (worker digestResearch / createDevTitle /
+// writeTitlePillar / generateDigestIdeas). A digest makes its OWN dated title — "Weekly Digest — <date> (<product>)" —
+// so no title is picked. Flow: product + guidance → 🔬 research (keywords · YouTube/Google suggestions · saved associations +
+// "Digest Source" creators · extra URLs → Gemini Deep Research ∥ Perplexity → Claude ranks + splits Free / Premium · editor
+// notes → re-rank) → tick sources → ▶ Write digest = title (Development, method Digest) → pillar from the ticked sources
+// (Digest pillar type) → the Digest PARENT asset (Asset Class Pillar, Pillar Type Digest) written by writeParentAsset →
+// idea backlog. Research runs are kept per campaign in localStorage (same keys as care-gap), so closing loses nothing.
+const H2D = { slug: '', cid: '', name: '', job: null, picked: {}, timer: null, ranking: false, busy: '' };
+const h2dLS = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); if (v === null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { return null; } };
+const h2dEl = id => document.getElementById(id);
+function h2dKeywords() { return (h2dEl('h2dKw')?.value || '').split(/[,\n]/).map(s => s.trim()).filter(Boolean); }
+async function hub2DigestModal(slug) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  clearTimeout(H2D.timer); Object.assign(H2D, { slug, cid: String(h.campaignId).replace(/-/g, ''), name: h.name, job: null, picked: {}, ranking: false, busy: '' });
+  const IN = HT_IN;
+  kwWideModal(`<h3 style="margin:0 0 4px;">＋ Digest — ${esc(h.name)}</h3>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">This period's most useful developments for this hub's audience. The digest makes its own dated title, so there's nothing to pick — choose the product it leads toward, research, tick the sources, write.</div>
+    ${HT_LBL('Product it leads toward')}<select id="h2dProd" style="${IN}"><option value="">Loading products…</option></select>
+    ${HT_LBL('Guidance (optional)')}<textarea id="h2dGuide" rows="2" style="${IN}resize:vertical;" placeholder="e.g. focus on state funding changes and new grants"></textarea>
+    <div style="border-top:1px solid var(--border);margin:6px 0 8px;padding-top:8px;font-size:12px;font-weight:700;">🔬 Research <span style="font-weight:400;color:var(--text3);">— optional, but the digest is written from the sources you keep</span></div>
+    ${HT_LBL('Keywords (one per line or comma-separated)')}<textarea id="h2dKw" rows="3" style="${IN}resize:vertical;"></textarea>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-4px 0 6px;"><input id="h2dSugQ" placeholder="suggest from a phrase…" style="${HT_IN}flex:1;min-width:160px;" onkeydown="if(event.key==='Enter'){event.preventDefault();hub2DigestSuggest();}"><button class="kw-btn" onclick="hub2DigestSuggest()">💡 YouTube + Google</button></div>
+    <div id="h2dSug" style="font-size:11px;margin-bottom:6px;"></div>
+    <div id="h2dAssoc" style="font-size:11px;color:var(--text3);margin-bottom:6px;">Saved industry associations: loading… · creators ticked "Digest Source" in Notion are included automatically.</div>
+    ${HT_LBL('Extra pages to check (optional URLs, one per line)')}<textarea id="h2dUrls" rows="2" style="${IN}resize:vertical;"></textarea>
+    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;"><button class="kw-btn" id="h2dRunBtn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2DigestStart()">🔎 Run research</button><span id="h2dStatus" style="font-size:11px;color:var(--text3);"></span></div>
+    ${HT_LBL('Editor notes — your NotebookLM notes count as top-tier sources (then ↻ Re-rank)')}<textarea id="h2dNotes" rows="2" style="${IN}resize:vertical;"></textarea>
+    <div id="h2dRanked" style="max-height:38vh;overflow-y:auto;"></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--border);margin-top:8px;padding-top:8px;"><button class="modal-btn" id="h2dWriteBtn" onclick="hub2DigestWrite(this)">▶ Write digest</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2dWriteMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`);
+  const kw = h2dLS('dr:kw:' + H2D.cid); if (kw) h2dEl('h2dKw').value = kw;
+  call('getCampaignProducts', { campaignId: H2D.cid }).then(r => {
+    const list = (r.products || []).filter(p => !/^(archived|retired)$/i.test(p.status || '') && !p.archived).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const sel = h2dEl('h2dProd'); if (!sel) return;
+    sel.innerHTML = '<option value="">— choose a product —</option>' + list.map(p => `<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('');
+    const last = h2dLS('dr:prod:' + H2D.cid); if (last && list.some(p => p.id === last)) sel.value = last;
+  }).catch(e => { const sel = h2dEl('h2dProd'); if (sel) sel.innerHTML = '<option value="">Could not load products: ' + esc(e.message) + '</option>'; });
+  call('digestResearch', { op: 'assoc', campaignId: H2D.cid }).then(r => { const el = h2dEl('h2dAssoc'), n = (r.list || []).length;
+    if (el) el.textContent = `Saved industry associations: ${n}${n ? ' (' + r.list.slice(0, 4).map(a => a.name).join(', ') + (n > 4 ? '…' : '') + ')' : ' — add them in care-gap\'s digest research'} · creators ticked "Digest Source" in Notion are included automatically.`; }).catch(() => {});
+  const jid = h2dLS('dr:job:' + H2D.cid);
+  if (jid) { try { const r = await call('digestResearch', { op: 'status', jobId: jid }); if (r.job) { H2D.job = r.job; if (h2dEl('h2dNotes')) h2dEl('h2dNotes').value = r.job.notes || ''; hub2DigestRender(); hub2DigestPoll(); } } catch (e) { h2dLS('dr:job:' + H2D.cid, null); } }
+}
+async function hub2DigestSuggest() {
+  const q = (h2dEl('h2dSugQ')?.value || '').trim() || h2dKeywords()[0] || '', out = h2dEl('h2dSug'); if (!out) return;
+  if (!q) { out.textContent = 'Type a phrase first.'; return; }
+  out.textContent = 'Loading suggestions…';
+  try { const r = await call('digestResearch', { op: 'suggest', q });
+    const chips = (list, label) => list.length ? `<div style="margin:3px 0;"><b style="color:var(--text2);">${label}</b> ${list.map(s => `<button class="kw-btn" style="margin:2px;" onclick="hub2DigestAddKw(this.dataset.k, this)" data-k="${esc(s)}">＋ ${esc(s)}</button>`).join('')}</div>` : '';
+    out.innerHTML = (chips(r.youtube || [], '▶ YouTube') + chips(r.google || [], '🔍 Google')) || 'No suggestions for that phrase.'; }
+  catch (e) { out.textContent = 'Suggestions failed: ' + e.message; }
+}
+function hub2DigestAddKw(k, btn) { const cur = h2dKeywords(); if (!cur.map(x => x.toLowerCase()).includes(k.toLowerCase())) cur.push(k); h2dEl('h2dKw').value = cur.join('\n'); if (btn) { btn.disabled = true; btn.textContent = '✓ ' + k; } }
+async function hub2DigestStart() {
+  const keywords = h2dKeywords(), st = h2dEl('h2dStatus'), btn = h2dEl('h2dRunBtn');
+  if (!keywords.length) { st.textContent = 'Enter at least one keyword.'; return; }
+  h2dLS('dr:kw:' + H2D.cid, keywords.join('\n')); btn.disabled = true; btn.textContent = '⏳ Starting…';
+  try {
+    const r = await call('digestResearch', { op: 'start', campaignId: H2D.cid, hubName: H2D.name, keywords, guidance: (h2dEl('h2dGuide')?.value || '').trim(),
+      notes: (h2dEl('h2dNotes')?.value || '').trim(), urls: (h2dEl('h2dUrls')?.value || '').split(/\s+/).filter(Boolean) });
+    if (r.error) throw new Error(r.error);
+    H2D.job = r.job; H2D.picked = {}; h2dLS('dr:job:' + H2D.cid, H2D.job.id); hub2DigestRender();
+    if (H2D.job.perplexity && H2D.job.perplexity.status === 'pending')
+      call('digestResearch', { op: 'perplexity', jobId: H2D.job.id }).then(x => { if (H2D.job && x.job && x.job.id === H2D.job.id) { H2D.job = x.job; hub2DigestRender(); hub2DigestMaybeRank(); } })
+        .catch(e => { if (H2D.job) { H2D.job.perplexity = { status: 'failed', error: e.message }; hub2DigestRender(); hub2DigestMaybeRank(); } });
+    hub2DigestPoll();
+  } catch (e) { st.textContent = 'Error: ' + e.message; }
+  btn.disabled = false; btn.textContent = '🔎 Run research';
+}
+const h2dDone = x => !x || ['done', 'failed', 'skipped'].includes(x.status);
+function hub2DigestPoll() {
+  clearTimeout(H2D.timer); if (!H2D.job || H2D.job.ranked) return;
+  if (H2D.job.gemini && H2D.job.gemini.status === 'running') H2D.timer = setTimeout(async () => {
+    if (!H2D.job || !h2dEl('h2dRanked')) return;
+    try { const r = await call('digestResearch', { op: 'status', jobId: H2D.job.id }); const keepP = H2D.job.perplexity; H2D.job = r.job;
+      if (keepP && keepP.status !== 'pending' && r.job.perplexity && r.job.perplexity.status === 'pending') H2D.job.perplexity = keepP; hub2DigestRender(); } catch (e) {}
+    hub2DigestPoll(); }, 15000);
+  else hub2DigestMaybeRank();
+}
+async function hub2DigestMaybeRank(force) {
+  const j = H2D.job; if (!j || H2D.ranking) return;
+  if (!force && (j.ranked || !h2dDone(j.gemini) || !h2dDone(j.perplexity))) return;
+  H2D.ranking = true; hub2DigestRender();
+  try { const r = await call('digestResearch', { op: 'rank', jobId: j.id, notes: (h2dEl('h2dNotes')?.value || '').trim() }); if (r.error) throw new Error(r.error); H2D.job = r.job; H2D.picked = {}; }
+  catch (e) { const st = h2dEl('h2dStatus'); if (st) st.textContent = 'Ranking failed: ' + e.message; }
+  H2D.ranking = false; hub2DigestRender();
+}
+function hub2DigestRender() {
+  const j = H2D.job, st = h2dEl('h2dStatus'), box = h2dEl('h2dRanked'); if (!box) return;
+  if (!j) { box.innerHTML = ''; return; }
+  if (st) st.textContent = H2D.ranking ? '⏳ Ranking sources…' : j.ranked ? `Ranked ${new Date(j.rankedAt).toLocaleString()}` : `Researching ${j.keywords.length} keyword${j.keywords.length === 1 ? '' : 's'} · ${j.standing.creators} creators · ${j.standing.associations} associations`;
+  const state = (x, label) => { if (!x) return ''; const m = { running: '⏳ researching (a few minutes)…', pending: '⏳ researching…', done: `✓ done${x.results ? ' · ' + x.results + ' results' : ''}`, failed: '✗ ' + (x.error || 'failed'), skipped: '– skipped: ' + (x.error || '') };
+    return `<div><b>${label}</b> ${esc(m[x.status] || x.status)}</div>`; };
+  let h = `<div style="font-size:11px;background:var(--surface2);border-radius:6px;padding:6px 8px;">${state(j.gemini, 'Gemini Deep Research:')}${state(j.perplexity, 'Perplexity:')}
+    <div style="margin-top:4px;display:flex;gap:6px;flex-wrap:wrap;">${!j.ranked && !H2D.ranking ? '<button class="kw-btn" onclick="hub2DigestMaybeRank(true)">Rank now with what has finished</button>' : ''}${j.ranked ? '<button class="kw-btn" onclick="hub2DigestMaybeRank(true)">↻ Re-rank (uses editor notes)</button>' : ''}<button class="kw-btn" onclick="hub2DigestForget()">Start a fresh run</button></div></div>`;
+  if (j.ranked) {
+    const R = j.ranked, srcs = R.sources || [];
+    if (R.whatChanged) h += `<div style="font-size:11.5px;margin:8px 0 2px;"><b>What changed:</b> ${esc(R.whatChanged)}</div>`;
+    const group = (split, title, angle) => { const list = srcs.filter(s => s.split === split);
+      return `<div style="margin-top:8px;"><div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text2);">${title} (${list.length})</div>${angle ? `<div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">${esc(angle)}</div>` : ''}
+        ${list.map(s => { const i = srcs.indexOf(s), on = H2D.picked[i] !== false; return `<label style="display:flex;gap:7px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:11.5px;">
+          <input type="checkbox" ${on ? 'checked' : ''} onchange="H2D.picked[${i}]=this.checked">
+          <span style="flex:1;"><span style="font-size:10px;color:var(--text3);">${s.score} · T${s.tier}${s.date ? ' · ' + esc(s.date) : ''}${s.isNew === false ? '' : ' · 🆕'}</span>
+          <b>${esc(s.title || s.url)}</b> <span style="color:var(--text3);">${esc(s.publisher || '')}</span> ${/^https?:/.test(s.url) ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">↗</a>` : ''}<br>${esc(s.claim || '')}</span></label>`; }).join('') || '<div style="font-size:11px;color:var(--text3);">none</div>'}</div>`; };
+    h += group('premium', '💎 Premium', R.premiumAngle) + group('free', '📰 Free', R.freeAngle)
+      + '<div style="font-size:11px;color:var(--text3);margin-top:6px;">Ticked sources go into the digest when you press ▶ Write digest.</div>';
+  }
+  box.innerHTML = h;
+}
+function hub2DigestForget() { if (!confirm('Start a fresh research run? (the current one is only forgotten here)')) return; clearTimeout(H2D.timer); h2dLS('dr:job:' + H2D.cid, null); H2D.job = null; H2D.picked = {}; hub2DigestRender(); const st = h2dEl('h2dStatus'); if (st) st.textContent = ''; }
+function hub2DigestPicked() { const s = (H2D.job && H2D.job.ranked && H2D.job.ranked.sources) || []; return s.filter((x, i) => H2D.picked[i] !== false); }
+function hub2DigestSourcesBlock(list) {
+  if (!list.length) return '';
+  const line = s => `- [T${s.tier}, ${s.date || 'undated'}] ${s.claim} — ${s.publisher || ''} ${/^https?:/.test(s.url) ? s.url : ''}`.trim();
+  const prem = list.filter(s => s.split === 'premium'), free = list.filter(s => s.split !== 'premium'), R = H2D.job.ranked || {};
+  return `RESEARCHED SOURCES (ranked; write ONLY from these facts and cite the publisher by name):
+${R.whatChanged ? 'What changed this week: ' + R.whatChanged + '\n' : ''}FREE-TIER ITEMS${R.freeAngle ? ' (angle: ' + R.freeAngle + ')' : ''}:
+${free.map(line).join('\n') || '- none'}
+PREMIUM ITEMS — tease these in the free issue, do not give them away${R.premiumAngle ? ' (angle: ' + R.premiumAngle + ')' : ''}:
+${prem.map(line).join('\n') || '- none'}`;
+}
+async function hub2DigestWrite(btn) {
+  const msg = h2dEl('h2dWriteMsg'), productId = h2dEl('h2dProd')?.value, guidance = (h2dEl('h2dGuide')?.value || '').trim();
+  if (!productId) { msg.style.color = '#f87171'; msg.textContent = 'Pick a product.'; return; }
+  const picked = hub2DigestPicked();
+  if (!picked.length && !guidance && !confirm('No researched sources are ticked — write the digest from the product and campaign research only?')) return;
+  h2dLS('dr:prod:' + H2D.cid, productId); btn.disabled = true; msg.style.color = 'var(--text2)';
+  const step = t => { msg.textContent = '⏳ ' + t; btn.textContent = '⏳ Writing…'; };
+  try {
+    const prodName = h2dEl('h2dProd').selectedOptions[0]?.textContent || '';
+    const titleName = `Weekly Digest — ${new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${prodName ? ` (${prodName})` : ''}`;
+    step('Creating the dated title…');
+    if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(x => x.status === 'Live').sort((a, b) => a.name.localeCompare(b.name));
+    const digestMethod = (_htMethods || []).find(m => /^digest$/i.test(m.name || ''));
+    const created = await call('createDevTitle', { title: titleName, campaignId: H2D.cid, productId, methodId: digestMethod ? digestMethod.id : undefined, status: 'Development' });
+    if (!created || created.error || !created.id) throw new Error((created && created.error) || 'title not created');
+    if (H2D.job && picked.length) call('digestResearch', { op: 'attach', jobId: H2D.job.id, titleId: created.id, sources: picked }).catch(() => {});
+    step('Writing the digest from your sources (1-2 min)…');
+    const pillar = await call('writeTitlePillar', { titleId: created.id, styleGuidance: DEV2_PILLAR_TYPES['Digest'], researchOverride: [guidance, hub2DigestSourcesBlock(picked)].filter(Boolean).join('\n\n') || undefined });
+    if (!pillar || pillar.error) throw new Error('digest not written: ' + ((pillar && pillar.error) || 'no response'));
+    step('Creating the Digest parent…');
+    const pa = await call('createAsset', { titleId: created.id, campId: H2D.cid, productId, assetTitle: `${titleName} — Digest`, assetType: 'Digest', assetStatus: 'Development',
+      assetClass: 'Pillar', pillarType: 'Digest', pillarReadiness: 'Unwritten', interviewRequired: false });
+    if (!pa || pa.error || !pa.id) throw new Error('parent not created: ' + ((pa && pa.error) || 'no id'));
+    step('Writing the Digest parent (1-2 min)…');
+    const wp = await call('writeParentAsset', { assetId: pa.id });
+    if (!wp || wp.error) throw new Error('parent not written: ' + ((wp && wp.error) || 'no response'));
+    step('Building the idea backlog…');
+    const prem = picked.filter(s => s.split === 'premium');
+    await call('generateDigestIdeas', { campaignId: H2D.cid, productId, guidance: [guidance, prem.length ? 'Premium-tier sources this week:\n' + prem.map(s => '- ' + s.claim + ' (' + (s.publisher || s.url) + ')').join('\n') : ''].filter(Boolean).join('\n\n') || undefined }).catch(() => ({}));
+    msg.style.color = '#4ade80';
+    msg.innerHTML = `✓ Digest written — <a href="https://www.notion.so/${esc(created.id)}" target="_blank" rel="noopener" style="color:var(--accent);">title ↗</a> · <a href="https://www.notion.so/${esc(pa.id)}" target="_blank" rel="noopener" style="color:var(--accent);">Digest parent ↗</a> (${wp.words || '?'} words). Its children (News, newsletters) are ＋ on their rows.`;
+    btn.textContent = '✓ Done';
+    hub2ChecklistLoad(H2D.slug, true);
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '▶ Write digest'; }
+}
 async function hub2CreateModal(slug, id) {
   const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
+  if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);   // a digest makes its own dated title
   const titles = hub2ReadyTitles(slug);
   hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(m.parent === 'Pillar' ? 'parent' : m.parent) + ' parent.'}</div>
     ${titles.length ? `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}" onchange="hub2CreateStep('${slug}','${esc(id)}')">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select><div id="h2cStep" style="font-size:12px;color:var(--text3);">Loading…</div>`
