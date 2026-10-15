@@ -11385,8 +11385,12 @@ async function kwVolumes(env, keywords, market) {
 const hcUniq = a => [...new Set(a.filter(Boolean))];
 const hcIsUncl = t => kwNorm(t && t.name) === kwNorm(HC_UNCL);
 
-async function kwHubPropose(env, campaignId) {
+// the hub's keyword state at proposal time — an Apply on a hub whose topics changed since would mis-place keywords
+const kwHubSig = model => { const x = JSON.stringify([model.main.slice().sort(), model.topics.map(t => [t.id, t.keywords.slice().sort()]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))]);
+  let h = 5381; for (let i = 0; i < x.length; i++) h = ((h << 5) + h + x.charCodeAt(i)) | 0; return String(h >>> 0); };
+async function kwHubPropose(env, campaignId, guidance) {
   if (!env.ANTHROPIC_API_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+  guidance = String(guidance || "").trim().slice(0, 2000);
   const st = await kwHubState(env, campaignId), main = new Set(st.model.main), market = await kwMarket(env, {});
   // 1 · records through a keyword lens
   const recs = [...st.products.map(p => p.name + (p.keywords.length ? " (" + p.keywords.slice(0, 3).join(", ") + ")" : "")), ...st.titles.map(t => t.name)].map(s => String(s || "").trim()).filter(Boolean);
@@ -11413,7 +11417,7 @@ HUB MAIN KEYWORDS (the head terms — fixed, do NOT use them below): ${[...main]
 KEYWORD POOL — keyword | Google monthly searches | how many of the hub's records point at it:
 ${pool.map(k => `${k} | ${vol.get(k) || 0} | ${hits.get(k) || 0}`).join("\n")}
 
-Build EXACTLY 3 clusters (each a broad theme under the main keywords, named with its strongest keyword from the pool), each with 1-3 TOPICS. A topic = ONE search intent = one page that can rank: 3-15 close-variant keywords, never mixing local ("near me"), commercial (hire/buy/cost/best) and informational (how/what/why) intent. Only make a topic where the monthly searches justify a page — fewer topics is better than thin ones (max 9 in total). Every keyword appears in at most one topic. Use keywords exactly as written in the pool. Leave out anything that doesn't fit cleanly — it goes to an "Unclassified" bucket automatically. Prefer keywords the records point at when volumes are similar.`,
+Build EXACTLY 3 clusters (each a broad theme under the main keywords, named with its strongest keyword from the pool), each with 1-3 TOPICS. A topic = ONE search intent = one page that can rank: 3-15 close-variant keywords, never mixing local ("near me"), commercial (hire/buy/cost/best) and informational (how/what/why) intent. Only make a topic where the monthly searches justify a page — fewer topics is better than thin ones (max 9 in total). Every keyword appears in at most one topic. Use keywords exactly as written in the pool. Leave out anything that doesn't fit cleanly — it goes to an "Unclassified" bucket automatically. Prefer keywords the records point at when volumes are similar.${guidance ? `\n\nTHE OPERATOR'S REQUEST FOR THIS PROPOSAL (follow it, within the rules above): ${guidance}` : ""}`,
     "structure", { type: "object", required: ["clusters"], properties: { clusters: { type: "array", maxItems: 3, items: { type: "object", required: ["name", "topics"], properties: { name: { type: "string" },
       topics: { type: "array", maxItems: 3, items: { type: "object", required: ["keywords"], properties: { keywords: { type: "array", items: { type: "string" } } } } } } } } } }, 8000);
   // enforce: 3 × ≤3, pool keywords only, each once, topic name = its highest-volume keyword
@@ -11450,9 +11454,34 @@ Build EXACTLY 3 clusters (each a broad theme under the main keywords, named with
   if (unclId) ops.push({ op: "assign", keywords: leftovers, to: unclId, move: true });
   finals.forEach(f => ops.push({ op: "setCluster", ids: [f.id], cluster: f.cluster }));
   if (unclId) ops.push({ op: "setCluster", ids: [unclId], cluster: "" });
-  return { ok: true, ops, warn, records: recs.length, phrases: hits.size, pool: pool.length,
+  const out = { ok: true, ops, warn, records: recs.length, phrases: hits.size, pool: pool.length,
     clusters: clusters.map(c => ({ name: c.name, topics: c.topics.map(t => ({ name: t.name, count: t.keywords.length, volume: t.volume, top: t.keywords.slice(0, 6) })) })),
     unclassified: leftovers.length, main: [...main].slice(0, 12) };
+  await env.TRADES.put("kwhub:proposal:" + st.cid, JSON.stringify({ ...out, at: Date.now(), guidance, status: "proposed", sig: kwHubSig(st.model) }));
+  return out;
+}
+async function kwHubProposalApply(env, campaignId, name) {
+  const cid = String(campaignId || "").replace(/-/g, ""), p = await env.TRADES.get("kwhub:proposal:" + cid, "json");
+  if (!p || !p.ops) throw new Error("No proposal for this hub yet");
+  if (p.status === "applied") throw new Error("This proposal is already applied");
+  const st = await kwHubState(env, cid);
+  if (p.sig && p.sig !== kwHubSig(st.model)) throw new Error("The hub's keywords changed since this proposal was made — request an update to re-propose");
+  const r = await kwHubApply(env, cid, p.ops, name);
+  await env.TRADES.put("kwhub:proposal:" + cid, JSON.stringify({ ...p, status: "applied", appliedAt: Date.now(), lines: r.lines || [], errors: r.errors || [] }));
+  return { ok: true, applied: r.applied !== false, lines: r.lines || [], errors: r.errors || [] };
+}
+// background: one queued hub per */4 tick (KV kwhub:propose:queue = [{cid, guidance}]); lock so ticks never overlap
+async function kwHubProposeTick(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const q = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; if (!q.length) return;
+  if (await env.TRADES.get("kwhub:propose:lock")) return;
+  await env.TRADES.put("kwhub:propose:lock", "1", { expirationTtl: 600 });
+  const job = q.shift(); await env.TRADES.put("kwhub:propose:queue", JSON.stringify(q));
+  const cid = String((job && job.cid) || "").replace(/-/g, "");
+  try { await kwHubPropose(env, cid, job.guidance || ""); console.log("kwHubProposeTick: proposed " + cid + " · " + q.length + " left"); }
+  catch (e) { console.error("kwHubProposeTick failed " + cid + ": " + (e.message || e));
+    await env.TRADES.put("kwhub:proposal:" + cid, JSON.stringify({ ok: false, error: e.message || String(e), at: Date.now(), guidance: job.guidance || "", status: "error" })); }
+  finally { await env.TRADES.delete("kwhub:propose:lock"); }
 }
 
 // ── records → topics ──
@@ -49157,6 +49186,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       return;
     }
     if (event.cron === "*/4 * * * *") {
+      cw("kwHubProposeTick", kwHubProposeTick(env));
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
@@ -50446,7 +50476,11 @@ async function handleKeywordAction(body, env) {
 
   // 🌐 hub keywords: load into the tool / apply a reorganize / undo the last apply
   if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
-  if (a === "kwHubPropose") { try { return json(await kwHubPropose(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubProposalGet") { const cid = String(body.campaignId || "").replace(/-/g, ""); const p = await env.TRADES.get("kwhub:proposal:" + cid, "json");
+    const q = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; const at = q.findIndex(x => String(x.cid).replace(/-/g, "") === cid);
+    return json({ ok: true, proposal: p ? { ...p, ops: undefined, opCount: (p.ops || []).length } : null, queued: at >= 0 ? at + 1 : 0 }); }
+  if (a === "kwHubProposalApply") { try { return json(await kwHubProposalApply(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubPropose") { try { return json(await kwHubPropose(env, body.campaignId, body.guidance)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanPlan") { try { return json(await kwHubCleanPlan(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanApply") { try { return json(await kwHubCleanApply(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubCleanUndo") { try { return json(await kwHubCleanUndo(env, body.campaignId)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
