@@ -11476,12 +11476,20 @@ async function kwHubProposeTick(env) {
   const q = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; if (!q.length) return;
   if (await env.TRADES.get("kwhub:propose:lock")) return;
   await env.TRADES.put("kwhub:propose:lock", "1", { expirationTtl: 600 });
-  const job = q.shift(); await env.TRADES.put("kwhub:propose:queue", JSON.stringify(q));
-  const cid = String((job && job.cid) || "").replace(/-/g, "");
-  try { await kwHubPropose(env, cid, job.guidance || ""); console.log("kwHubProposeTick: proposed " + cid + " · " + q.length + " left"); }
-  catch (e) { console.error("kwHubProposeTick failed " + cid + ": " + (e.message || e));
-    await env.TRADES.put("kwhub:proposal:" + cid, JSON.stringify({ ok: false, error: e.message || String(e), at: Date.now(), guidance: job.guidance || "", status: "error" })); }
-  finally { await env.TRADES.delete("kwhub:propose:lock"); }
+  // keep going for ~2½ min per tick; a job leaves the queue only once its proposal is saved (a cut-off tick retries it)
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < 150000) {
+      const cur = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; if (!cur.length) break;
+      const job = cur[0], cid = String((job && job.cid) || "").replace(/-/g, "");
+      try { await kwHubPropose(env, cid, job.guidance || ""); console.log("kwHubProposeTick: proposed " + cid); }
+      catch (e) { console.error("kwHubProposeTick failed " + cid + ": " + (e.message || e));
+        await env.TRADES.put("kwhub:proposal:" + cid, JSON.stringify({ ok: false, error: e.message || String(e), at: Date.now(), guidance: job.guidance || "", status: "error" })); }
+      const after = (await env.TRADES.get("kwhub:propose:queue", "json")) || [];
+      const i = after.findIndex(x => String(x.cid).replace(/-/g, "") === cid && (x.guidance || "") === (job.guidance || ""));
+      if (i >= 0) after.splice(i, 1); await env.TRADES.put("kwhub:propose:queue", JSON.stringify(after));
+    }
+  } finally { await env.TRADES.delete("kwhub:propose:lock"); }
 }
 
 // ── records → topics ──
