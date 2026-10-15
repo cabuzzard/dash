@@ -19429,6 +19429,35 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         await env.TRADES.put("hub2:checklist:v1", JSON.stringify(goals));
         return json({ success: true, goal: goals[key] || null });
       }
+      if (body.action === "saveHub2ChecklistGoals") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const slugs = [...new Set((Array.isArray(body.slugs) ? body.slugs : []).map(x => String(x || "").replace(/[^a-z0-9-]/gi, "").slice(0, 80)).filter(Boolean))].slice(0, 250);
+        const assetType = String(body.assetType || "").trim().slice(0, 160);
+        if (!slugs.length || !assetType) return json({ error: "slugs and assetType required" }, 400);
+        let goals = {}; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
+        const now = new Date().toISOString(), saved = [];
+        for (const slug of slugs) {
+          const key = slug + "|" + assetType.toLowerCase(), previous = goals[key] || null;
+          if (body.remove) delete goals[key];
+          else goals[key] = {
+            slug, assetType, tracked: !!body.tracked,
+            target: Math.max(1, Math.min(99, Number(body.target) || 1)),
+            className: ["Pillar", "Asset", "Workflow"].includes(body.className) ? body.className : "Asset",
+            parent: String(body.parent || "").trim().slice(0, 160),
+            description: String(body.description || body.strategy || "").trim().slice(0, 4000),
+            schedule: String(body.schedule || "").trim().slice(0, 240),
+            cadence: ["Weekly", "Twice monthly", "Monthly", "Quarterly", "Once", "On demand", "Inherited", "Milestone"].includes(body.cadence) ? body.cadence : "Weekly",
+            weekday: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].includes(body.weekday) ? body.weekday : "Friday",
+            strategy: String(body.strategy || "").trim().slice(0, 2000),
+            baselinePeriodStart: String(body.baselinePeriodStart || previous?.baselinePeriodStart || "").slice(0, 10),
+            baselinePublished: Math.max(0, Number(body.baselinePublished ?? previous?.baselinePublished) || 0),
+            updatedAt: now,
+          };
+          saved.push(key);
+        }
+        await env.TRADES.put("hub2:checklist:v1", JSON.stringify(goals));
+        return json({ success: true, saved: saved.length, keys: saved });
+      }
 
       // ── Hub Asset Grid ── a free-text operator worksheet on the TD tab,
       // rows = the same hubs/landing pages (and order) as the Hub Method
