@@ -11329,6 +11329,47 @@ async function productDirectStep(env, job) {
   };
 }
 
+// ══ OFF-SITE ARTICLE (2026-10-15, operator) ══ "Topical - Article" = an off-site long-form piece (Substack / LinkedIn / Medium)
+// generated FROM a Topical SEO Post, which acts as its parent. An original rewrite — own headline, personal voice, different
+// structure, so it isn't duplicate content — ending with a link to the full post on the hub. Saved as an "Off-site Article"
+// asset (Parent Asset = the SEO post, same title / campaign / product), status Review: posting it off-site is the operator's step.
+async function writeOffsiteArticle(env, seoPostId, platform) {
+  const hdr = ivHdr(), ap = await ivPage(seoPostId), A = ap.properties || {};
+  const rt = k => (A[k]?.rich_text || []).map(t => t.plain_text).join("");
+  const postTitle = (A["Asset Title"]?.title || []).map(t => t.plain_text).join("").trim();
+  let text = ""; try { text = await extractBlocksTextRecursive(hdr, String(seoPostId).replace(/-/g, "")); } catch (e) {}
+  text = (text || rt("Body")).trim(); if (text.length < 300) throw new Error("that SEO post isn't written yet — ✍ Write it first");
+  const titleId = ivRid(A, "Content Strategy"), cid = ivRid(A, "Campaign"), pid = ivRid(A, "Product");
+  const hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);
+  const link = A["Content URL"]?.url || (hub ? (hub.domain ? "https://" + hub.domain + "/blog/" : `https://cabuzzard.github.io/dash/web/hub/${hub.slug}/blog/`) : "");
+  const plat = /linkedin/i.test(platform) ? "LinkedIn" : /medium/i.test(platform) ? "Medium" : "Substack";
+  const voice = cid ? await voiceBlock(env, cid).catch(() => "") : "";
+  const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST", headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 5000, tools: [{ name: "submit_article", description: "The off-site article.", input_schema: { type: "object", required: ["headline", "body"], properties: {
+      headline: { type: "string", description: "a new headline for " + plat + " — not the SEO post's title" }, subtitle: { type: "string" }, body: { type: "string", description: "the article in Markdown" } } } }],
+      tool_choice: { type: "tool", name: "submit_article" },
+      messages: [{ role: "user", content: `${voice}TODAY: ${new Date().toISOString().slice(0, 10)}. Write an ORIGINAL long-form article for ${plat}${hub ? " by the people behind " + hub.name : ""}, built from the SEO blog post below (its facts and substance only — invent nothing).
+
+It must NOT duplicate the post: a different headline, a different structure, a first-person or point-of-view opening, the story / opinion / "what most people get wrong" angle a ${plat} reader follows, 700-1100 words, short paragraphs, a few subheads. No keyword stuffing, no SEO phrasing. End with one line pointing to the full guide: [Read the full guide](${link || "the hub"}).
+
+SEO POST: ${postTitle}
+${text.slice(0, 9000)}` }] }) });
+  const d = await r.json(); if (!r.ok) throw new Error(d.error?.message || "Claude error");
+  const out = ((d.content || []).find(b => b.type === "tool_use") || {}).input; if (!out || !out.body) throw new Error("no article came back");
+  const props = { "Asset Title": { title: ivRt(String(out.headline).slice(0, 200)) }, "Asset Type": { select: { name: "Off-site Article" } }, "Asset Status": { select: { name: "Review" } },
+    "Asset Class": { select: { name: "Publishable" } }, "Platform Name": { select: { name: plat === "Medium" ? "Other" : plat } }, "Parent Asset": { relation: [{ id: ivDash(seoPostId) }] },
+    "Body": { rich_text: ivRt(String(out.body).slice(0, 1990)) }, ...(out.subtitle ? { "Platform Title": { rich_text: ivRt(String(out.subtitle).slice(0, 300)) } } : {}),
+    ...(titleId ? { "Content Strategy": { relation: [{ id: ivDash(titleId) }] } } : {}), ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}), ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}),
+    ...(await assetMethodProp(null, "Off-site Article")) };
+  const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdr, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) }).then(x => x.json());
+  if (!cr.id) throw new Error("asset: " + (cr.message || "create failed"));
+  const blk = (type, t) => ({ object: "block", type, [type]: { rich_text: [{ type: "text", text: { content: t } }] } }), kids = [];
+  String(out.body).split(/\n{2,}/).map(p => p.trim()).filter(Boolean).forEach(p => { const h = /^#{1,3}\s+(.*)$/.exec(p);
+    if (h) kids.push(blk("heading_2", h[1].slice(0, 1900))); else for (let i = 0; i < p.length; i += 1900) kids.push(blk("paragraph", p.slice(i, i + 1900))); });
+  for (let i = 0; i < kids.length; i += 90) await fetch(`https://api.notion.com/v1/blocks/${cr.id}/children`, { method: "PATCH", headers: hdr, body: JSON.stringify({ children: kids.slice(i, i + 90) }) }).catch(() => {});
+  return { success: true, assetId: cr.id.replace(/-/g, ""), headline: out.headline, platform: plat, words: String(out.body).split(/\s+/).length };
+}
+
 async function stampParentAsset(titleId, parentId, sinceMs) {
   const assets = await notionQuery(ASSETS_DB, { filter: { and: [{ property: "Content Strategy", relation: { contains: ivDash(titleId) } },
     { timestamp: "created_time", created_time: { on_or_after: new Date(sinceMs).toISOString() } }] } }).catch(() => []);
@@ -28897,6 +28938,10 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (!body.titleId) return json({ error: "titleId required" }, 400);
         let d = null; try { d = await env.TRADES.get("digest:sources:" + String(body.titleId).replace(/-/g, ""), "json"); } catch (e) {}
         return json({ success: true, sources: (d && d.sources) || [], keywords: (d && d.keywords) || [], at: (d && d.at) || null });
+      }
+      if (body.action === "writeOffsiteArticle") {
+        if (!body.seoPostId) return json({ error: "seoPostId required" }, 400);
+        try { return json(await writeOffsiteArticle(env, body.seoPostId, body.platform)); } catch (e) { return json({ error: e.message }, 500); }
       }
       if (body.action === "writeParentAsset") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
