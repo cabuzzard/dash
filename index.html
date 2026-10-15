@@ -723,8 +723,8 @@
     <div class="tab"        onclick="switchTab('overview')">Overview</div>
     <div class="tab"        onclick="switchTab('products')">Products</div>
     <div class="tab"        onclick="switchTab('development')">Development</div>
-    <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
     <div class="tab"        onclick="switchTab('contenthubs2')">Content Hubs 2</div>
+    <div class="tab"        onclick="switchTab('contenthubs')">Content Hubs</div>
     <div class="tab"        onclick="switchTab('landingpages')">Landing Pages</div>
     <div class="tab" id="tabBtnPublishing" onclick="switchTab('publishing')">Publishing</div>
     <div class="tab" onclick="switchTab('platforms')">Platforms</div>
@@ -5953,6 +5953,10 @@ function tabKey(t) { const m = (t.getAttribute('onclick') || '').match(/switchTa
 (function tabDragInit() {
   const bar = document.querySelector('.tabs'); if (!bar) return;
   const tabs = () => [...bar.querySelectorAll('.tab')].filter(tabKey);
+  // one-time (operator 2026-10-15): Content Hubs 2 sits just left of Content Hubs — also in a saved drag order
+  try { if (!localStorage.getItem('tabOrderMig:ch2')) { const o = JSON.parse(localStorage.getItem('tabOrder') || '[]');
+    if (o.includes('contenthubs') && o.includes('contenthubs2')) { const r = o.filter(k => k !== 'contenthubs2'); r.splice(r.indexOf('contenthubs'), 0, 'contenthubs2'); localStorage.setItem('tabOrder', JSON.stringify(r)); }
+    localStorage.setItem('tabOrderMig:ch2', '1'); } } catch (e) {}
   try { const order = JSON.parse(localStorage.getItem('tabOrder') || '[]');
     if (order.length) { const byKey = {}; tabs().forEach(t => { byKey[tabKey(t)] = t; });
       order.forEach(k => { if (byKey[k]) bar.appendChild(byKey[k]); });   // tabs not in the saved order keep their place after
