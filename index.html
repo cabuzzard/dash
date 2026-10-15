@@ -15773,9 +15773,67 @@ async function hub2DigestWrite(btn) {
     hub2ChecklistLoad(H2D.slug, true);
   } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '▶ Write digest'; }
 }
+// ── ＋ Digest - News (checklist) — SEO news articles from a written digest's sources (port of care-gap's "📝 Blog News SEO
+// from ticked sources"). Pick one of the hub's written digests → its researched sources (worker getDigestSources) → tick
+// the items → createNewsBlogTitle (a news title written FROM those items, the digest's product as the second intent) →
+// generateTitleAssets "Blog - SEO - News" (the SEO-post branch formats it and publishes it to the hub blog immediately) →
+// Hub Section News. Same path the hub's automatic news posts use.
+const H2N = { slug: '', sources: [], picked: {} };
+function hub2NewsDigests(slug) {
+  const st = _hub2Checklist[slug] || {}, by = new Map();
+  (st.hubRows || []).filter(x => x.assetId && x.assetClass === 'Pillar' && /digest/i.test([x.pillarType, x.assetType, x.rawAssetType].join(' ')) && x.titleId)
+    .forEach(x => { if (!by.has(x.titleId)) by.set(x.titleId, { titleId: x.titleId, title: x.title || 'Digest', productId: x.productId || '', product: x.product || '', ready: /^ready$/i.test(x.pillarReadiness || ''), created: x.dateCreated || '' }); });
+  return [...by.values()].sort((a, b) => String(b.created).localeCompare(String(a.created)) || b.title.localeCompare(a.title));
+}
+function hub2NewsModal(slug) {
+  const ds = hub2NewsDigests(slug); Object.assign(H2N, { slug, sources: [], picked: {} });
+  kwWideModal(`<h3 style="margin:0 0 4px;">＋ Digest - News</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">A timely SEO news article for the hub blog, written from items in one of your digests. It publishes to the hub's News section as soon as it's written.</div>
+    ${ds.length ? `${HT_LBL('From which digest')}<select id="h2nDigest" style="${HT_IN}" onchange="hub2NewsLoadSources()">${ds.map(d => `<option value="${esc(d.titleId)}">${esc(d.title)}${d.ready ? '' : ' (parent not written)'}</option>`).join('')}</select>
+      <div id="h2nSources" style="max-height:40vh;overflow-y:auto;font-size:12px;color:var(--text3);">Loading its sources…</div>
+      ${HT_LBL('Headline angle (optional)')}<input id="h2nAngle" style="${HT_IN}" placeholder="leave blank to use the first ticked item">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;"><button class="modal-btn" id="h2nGo" onclick="hub2NewsWrite(this)">📝 Write news article</button>${HC_CANCEL.replace('Cancel', 'Close')}<span id="h2nMsg" style="font-size:11.5px;color:var(--text2);"></span></div>`
+      : `<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">This hub has no digest yet — news articles are written from a digest's researched items.</div><div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hub2DigestModal('${slug}')">＋ Write a digest first</button>${HC_CANCEL.replace('Cancel', 'Close')}</div>`}`);
+  if (ds.length) hub2NewsLoadSources();
+}
+async function hub2NewsLoadSources() {
+  const tid = document.getElementById('h2nDigest')?.value, box = document.getElementById('h2nSources'); if (!tid || !box) return;
+  box.textContent = 'Loading its sources…'; H2N.sources = []; H2N.picked = {};
+  try { const r = await call('getDigestSources', { titleId: tid }); if (r.error) throw new Error(r.error);
+    if (document.getElementById('h2nDigest')?.value !== tid) return;
+    H2N.sources = r.sources || []; H2N.sources.forEach((s, i) => { H2N.picked[i] = i < 3; });
+    box.innerHTML = H2N.sources.length ? `<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Tick the items this article should cover (1-6 works best — one story, or a few related ones).</div>` + H2N.sources.map((s, i) => `<label style="display:flex;gap:7px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border);cursor:pointer;font-size:11.5px;color:var(--text);">
+        <input type="checkbox" ${H2N.picked[i] ? 'checked' : ''} onchange="H2N.picked[${i}]=this.checked"><span style="flex:1;"><span style="font-size:10px;color:var(--text3);">${s.split === 'premium' ? '💎 premium' : '📰 free'} · T${s.tier}${s.date ? ' · ' + esc(s.date) : ''}</span>
+        <b>${esc(s.title || s.url || '')}</b> <span style="color:var(--text3);">${esc(s.publisher || '')}</span> ${/^https?:/.test(s.url || '') ? `<a href="${esc(s.url)}" target="_blank" rel="noopener">↗</a>` : ''}<br>${esc(s.claim || '')}</span></label>`).join('')
+      : '<div style="color:var(--text2);">This digest was written without saved research sources. Write a new digest with 🔬 research to make news articles from its items.</div>';
+  } catch (e) { box.innerHTML = `<div style="color:#f87171;">Could not load sources: ${esc(e.message)}</div>`; }
+}
+async function hub2NewsWrite(btn) {
+  const h = HUB_SITES.find(x => x.slug === H2N.slug), tid = document.getElementById('h2nDigest')?.value, d = hub2NewsDigests(H2N.slug).find(x => x.titleId === tid), msg = document.getElementById('h2nMsg');
+  const picked = H2N.sources.filter((s, i) => H2N.picked[i]).slice(0, 6);
+  if (!h || !d) return; if (!picked.length) { msg.style.color = '#f87171'; msg.textContent = 'Tick at least one item.'; return; }
+  btn.disabled = true; msg.style.color = 'var(--text2)';
+  const angle = (document.getElementById('h2nAngle')?.value || '').trim();
+  const payload = { campaignId: h.campaignId, productId: d.productId || undefined, newsTitle: (angle || picked[0].title || picked[0].claim || '').slice(0, 300),
+    newsBody: picked.map(s => `${s.title || ''}: ${s.claim || ''}`).join('\n\n'), newsSource: picked.map(s => /^https?:/.test(s.url || '') ? s.url : (s.publisher || '')).filter(Boolean).join(' '), newsDate: picked[0].date || undefined };
+  try {
+    msg.textContent = '⏳ Writing the news title from those items (~1 min)…'; btn.textContent = '⏳ Writing…';
+    let t = await call('createNewsBlogTitle', payload);
+    if (t && t.duplicate) t = await call('createNewsBlogTitle', { ...payload, allowDuplicate: true });
+    if (!t || t.error || !t.titleId) throw new Error('title: ' + ((t && t.error) || 'not created'));
+    msg.textContent = '⏳ Writing and publishing the article (~1-2 min)…';
+    const g = await call('generateTitleAssets', { titleId: t.titleId, campaignId: h.campaignId, productId: d.productId || undefined, methodId: t.methodId, title: t.headline, assetType: 'Blog - SEO - News', count: 1 });
+    const assetId = g && ((g.assets || [])[0] || {}).id; if (!assetId) throw new Error('article: ' + ((g && g.error) || 'no asset'));
+    await call('updatePublishFields', { assetId, status: 'Published', hubSection: 'news' }).catch(() => {});
+    msg.style.color = '#4ade80';
+    msg.innerHTML = `✓ "${esc(t.headline || 'News article')}" published${g.liveUrl ? ` — <a href="${esc(g.liveUrl)}" target="_blank" rel="noopener" style="color:var(--accent);">live ↗</a>` : ''} · <a href="https://www.notion.so/${esc(String(assetId).replace(/-/g, ''))}" target="_blank" rel="noopener" style="color:var(--accent);">asset ↗</a>`;
+    btn.disabled = false; btn.textContent = '📝 Write another';
+    hub2ChecklistLoad(H2N.slug, true);
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ ' + e.message; btn.disabled = false; btn.textContent = '📝 Write news article'; }
+}
 async function hub2CreateModal(slug, id) {
   const m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id); if (!m) return;
   if (m.isPillar && /^digest$/i.test(m.parent)) return hub2DigestModal(slug);   // a digest makes its own dated title
+  if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);   // news = a digest's ticked items
   const titles = hub2ReadyTitles(slug);
   hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(m.parent === 'Pillar' ? 'parent' : m.parent) + ' parent.'}</div>
     ${titles.length ? `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}" onchange="hub2CreateStep('${slug}','${esc(id)}')">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select><div id="h2cStep" style="font-size:12px;color:var(--text3);">Loading…</div>`
