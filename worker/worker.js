@@ -14978,6 +14978,7 @@ Return: {
             parentAssetId: (p["Parent Asset"]?.relation || [])[0]?.id ? dropDash(p["Parent Asset"].relation[0].id) : null,
             deploymentStatus: p["Deployment Status"]?.select?.name || "",
             lastEditedTime: a.last_edited_time || null,
+            createdTime: a.created_time || null,
             publishingDate: p["Publishing Date"]?.date?.start || null,
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash(p.Campaign.relation[0].id) : null,
             productId: (p.Product?.relation || [])[0]?.id ? dropDash(p.Product.relation[0].id) : null,
@@ -15022,6 +15023,7 @@ Return: {
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
+          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null,
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
           interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
           deploymentStatus: a.deploymentStatus || "",
@@ -15071,6 +15073,7 @@ Return: {
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
+              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null,
               ...hubPublishFields(a, t.campId),
               ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
@@ -19371,6 +19374,34 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         let goals = {}; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
         return json({ success: true, goals });
+      }
+      if (body.action === "getHub2WeeklyMetrics") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let history = {}; try { history = await env.TRADES.get("hub2:weekly-metrics:v1", "json") || {}; } catch (e) {}
+        const slug = String(body.slug || "").replace(/[^a-z0-9-]/gi, "");
+        const rows = Object.values(history).filter(r => !slug || r.slug === slug).sort((a,b) => String(b.weekStart).localeCompare(String(a.weekStart)) || String(a.assetType).localeCompare(String(b.assetType)));
+        return json({ success: true, rows, capturedAt: rows.reduce((x,r) => r.capturedAt > x ? r.capturedAt : x, "") });
+      }
+      if (body.action === "saveHub2WeeklyMetrics") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const slug = String(body.slug || "").replace(/[^a-z0-9-]/gi, "").slice(0, 80);
+        if (!slug) return json({ error: "slug required" }, 400);
+        let history = {}; try { history = await env.TRADES.get("hub2:weekly-metrics:v1", "json") || {}; } catch (e) {}
+        const incoming = (Array.isArray(body.rows) ? body.rows : []).slice(0, 1000), now = new Date().toISOString();
+        const supplied = new Set();
+        incoming.forEach(r => {
+          const weekStart = /^\d{4}-\d{2}-\d{2}$/.test(String(r.weekStart || "")) ? String(r.weekStart) : "";
+          const assetType = String(r.assetType || "Unspecified").trim().slice(0, 160) || "Unspecified";
+          const assetClass = r.assetClass === "Pillar" ? "Pillar" : "Publishable";
+          if (!weekStart) return;
+          const key = [slug, weekStart, assetClass, assetType.toLowerCase()].join("|"); supplied.add(key);
+          history[key] = { slug, weekStart, weekEnd: String(r.weekEnd || "").slice(0,10), assetType, assetClass,
+            created: Math.max(0, Number(r.created) || 0), published: Math.max(0, Number(r.published) || 0),
+            ready: Math.max(0, Number(r.ready) || 0), outOfSync: Math.max(0, Number(r.outOfSync) || 0),
+            interviewNeeded: Math.max(0, Number(r.interviewNeeded) || 0), capturedAt: now };
+        });
+        await env.TRADES.put("hub2:weekly-metrics:v1", JSON.stringify(history));
+        return json({ success: true, saved: supplied.size, capturedAt: now });
       }
       if (body.action === "saveHub2ChecklistGoal") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
