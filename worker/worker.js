@@ -28819,6 +28819,12 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
       // and the campaign/product design spec) and creates each as a REAL
       // record in the Assets DB linked to the title via its Content Strategy
       // relation — so they render as rows under the publish title.
+      // the research sources a written digest title used (saved by digestResearch op attach) — for Digest - News
+      if (body.action === "getDigestSources") {
+        if (!body.titleId) return json({ error: "titleId required" }, 400);
+        let d = null; try { d = await env.TRADES.get("digest:sources:" + String(body.titleId).replace(/-/g, ""), "json"); } catch (e) {}
+        return json({ success: true, sources: (d && d.sources) || [], keywords: (d && d.keywords) || [], at: (d && d.at) || null });
+      }
       if (body.action === "writeParentAsset") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         if (!body.assetId) return json({ error: "assetId required" }, 400);
