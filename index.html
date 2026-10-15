@@ -15450,6 +15450,7 @@ async function hub2KsRepropose(slug, btn) {
   catch (e) { st.busy = ''; hub2KsPaint(slug); showToast('Not proposed: ' + e.message, 'error'); }
 }
 const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // shown grayed out, no ＋ (operator 2026-10-15)
+const HUB2_CRON_ROWS = /^digest - news seo$/i;   // automated: the hub news cron writes one per digest period (status "Cron")
 const HUB2_PARENT_DRIVEN = /^digest$/i;   // children are due per published parent in the parent's period (operator 2026-10-15)
 // last day of the current period (week ends Friday night, month on its last day) as YYYY-MM-DD
 function hub2PeriodEndISO(cadence) { const d = hub2PeriodStart(cadence); if (cadence === 'Weekly') d.setDate(d.getDate() + 6); else if (cadence === 'Twice monthly') { if (d.getDate() === 1) d.setDate(15); else d.setMonth(d.getMonth() + 1, 0); } else if (cadence === 'Monthly') d.setMonth(d.getMonth() + 1, 0); else if (cadence === 'Quarterly') d.setMonth(d.getMonth() + 3, 0); else return ''; return d.toISOString().slice(0, 10); }
@@ -15523,7 +15524,8 @@ function hub2ChecklistRows(slug) {
     const target = pRow ? m.target * Math.max(1, parents) : m.target;
     const progress = Math.max(0, raw - baseline), complete = progress >= target, periodic = !!HUB2_UNIT[m.cadence];
     const due = !tracked ? '' : pRow ? (parents && !complete ? hub2PeriodEndISO(pRow.cadence) : '') : hub2NextDue({ tracked, cadence: m.cadence, weekday: m.weekday }, complete);
-    const status = !tracked ? '' : pRow ? (!parents ? 'Waiting for ' + pRow.name.toLowerCase() : complete ? 'On track' : 'Due')
+    const status = !tracked ? '' : HUB2_CRON_ROWS.test(m.name) ? (complete ? 'Cron · on track' : 'Cron')   // written by the hub news cron each period
+      : pRow ? (!parents ? 'Waiting for ' + pRow.name.toLowerCase() : complete ? 'On track' : 'Due')
       : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
     return { ...m, notBuilt: HUB2_NOT_BUILT.test(m.name), creatable: !/^hub$/i.test(m.parent) && !HUB2_NOT_BUILT.test(m.name), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
       target, parents: pRow ? parents : 0, goalTip: pRow ? `${m.target} per ${pRow.name.toLowerCase()} × ${parents} ${pRow.name.toLowerCase()}${parents === 1 ? '' : 's'} this ${HUB2_UNIT[pRow.cadence] || 'period'}` : '', periodLabel: pRow ? pRow.cadence : m.cadence };
@@ -15541,7 +15543,7 @@ function hub2ChecklistHtml(slug) {
   const sort=_hub2ChecklistSort[slug]||=[{col:'name',asc:true}]; rows=rows.slice().sort((a,b)=>{for(const s of sort){const c=HUB2_CHECKLIST_COLS.find(x=>x.key===s.col),n=c&&c.num?(+a[s.col]||0)-(+b[s.col]||0):raw(a,s.col).localeCompare(raw(b,s.col));if(n)return s.asc?n:-n;}return a.name.localeCompare(b.name);});
   const warn = '#ff7a00', ok = '#4ade80';
   const body = rows.map(r => { const name = r.asset ? `<span style="color:var(--text3);">${esc(r.parent)} - </span>${esc(r.asset)}` : esc(r.name);
-    const sc = /^(Behind|Due)$/.test(r.status) ? warn : /^(On track|Done)$/.test(r.status) ? ok : 'var(--text3)';
+    const sc = /^Cron/.test(r.status) ? '#60a5fa' : /^(Behind|Due)$/.test(r.status) ? warn : /^(On track|Done)$/.test(r.status) ? ok : 'var(--text3)';
     return `<tr onclick="hub2ChecklistEdit('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="${esc(r.notBuilt ? 'Not built yet — ' + (r.description || r.name) : (r.description || r.name))}" style="cursor:pointer;${r.notBuilt ? 'background:rgba(128,128,128,.22);opacity:.6;' : ''}">
       <td style="${TD}max-width:250px;overflow:hidden;text-overflow:ellipsis;${r.isPillar ? 'font-weight:700;' : ''}">${r.creatable ? `<button onclick="event.stopPropagation();hub2CreateModal('${slug}',this.dataset.id)" data-id="${esc(r.id)}" title="Create a ${esc(r.name)} asset under a title" style="font-size:10px;line-height:1;padding:1px 5px;margin-right:6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋</button>` : ''}${name}</td>
       <td style="${TD}text-align:center;color:${r.published ? ok : 'var(--text3)'};">${r.published || ''}</td>
