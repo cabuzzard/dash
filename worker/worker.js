@@ -19917,8 +19917,17 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
       // per-hub decision to track a type and its cadence/goal.
       if (body.action === "getHub2ChecklistGoals") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        let goals = {}; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
-        return json({ success: true, goals });
+        let goals = {}, grayed = null; try { goals = await env.TRADES.get("hub2:checklist:v1", "json") || {}; } catch (e) {}
+        try { grayed = await env.TRADES.get("hub2:grayed:v1", "json"); } catch (e) {}
+        return json({ success: true, goals, grayed });
+      }
+      // grayed-out checklist rows — one map for ALL hubs (row id → true)
+      if (body.action === "saveHub2Grayed") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const grayed = {}; Object.entries(body.grayed && typeof body.grayed === "object" ? body.grayed : {}).slice(0, 500)
+          .forEach(([k, v]) => { const id = String(k).toLowerCase().slice(0, 120); if (id && v) grayed[id] = true; });
+        await env.TRADES.put("hub2:grayed:v1", JSON.stringify(grayed));
+        return json({ success: true, grayed });
       }
       if (body.action === "getHub2WeeklyMetrics") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);

@@ -15449,7 +15449,10 @@ async function hub2KsRepropose(slug, btn) {
     st.busy = ''; st.note = ''; await hub2KsLoad(slug, true); showToast('New proposal ready for ' + h.name, 'success'); }
   catch (e) { st.busy = ''; hub2KsPaint(slug); showToast('Not proposed: ' + e.message, 'error'); }
 }
-const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // shown grayed out, no ＋ (operator 2026-10-15)
+const HUB2_NOT_BUILT = /^digest - (paid newsletter|podcast)$/i;   // default grayed rows until the operator first toggles one (operator 2026-10-15)
+// grayed-out rows are a toggle per method row, shared by ALL hubs (KV hub2:grayed:v1, row id → true); null = never set → the default above
+let _hub2Grayed = null;
+const hub2IsGrayed = m => _hub2Grayed ? !!_hub2Grayed[String(m.id).toLowerCase()] : HUB2_NOT_BUILT.test(m.name);
 const HUB2_CRON_ROWS = /^digest - (news seo|free newsletter)$/i;   // automated: the hub news cron writes one article + one newsletter issue (AC draft) per digest period (status "Cron")
 const HUB2_PARENT_DRIVEN = /^digest$/i;
 const HUB2_SOURCE_ROW = { 'topical - article': 'Topical - SEO Post' };   // child → the row it's written from (its "parent")   // children are due per published parent in the parent's period (operator 2026-10-15)
@@ -15464,7 +15467,7 @@ const HUB2_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Satu
 const HUB2_UNIT = { 'Weekly': 'week', 'Twice monthly': 'half-month', 'Monthly': 'month', 'Quarterly': 'quarter' };
 const HUB2_CHECKLIST_COLS = [
   {key:'name',label:'Method'}, {key:'published',label:'Published',num:true}, {key:'inProgress',label:'In progress',num:true},
-  {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}
+  {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}, {key:'grayLabel',label:'Gray'}
 ];
 const HUB2_WS = { parent: 'cmuzq03ywty8b', asset: 'cmuzq36hb77sq', name: 'cname01', pillar: 'c1', tier: 'civtier01', match: 'cmatch01', goal: 'cgoal01', cadence: 'ccad01', day: 'cday01', schedule: 'csched01', notes: 'c2' };
 function hub2MethodsFrom(table) {
@@ -15484,7 +15487,7 @@ async function hub2ChecklistLoad(slug, force) {
     const [worksheet, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), call('getDevAssetsTable')]);
     const err = worksheet.error || goals.error || dev.error; if (err) throw new Error(err);
     DEV2_ROWS = dev.rows || []; const hubRows = DEV2_ROWS.filter(r => hub2Id(r.campId) === cid);
-    _hub2Checklist[slug] = { loading: false, table: worksheet.table, methods: hub2MethodsFrom(worksheet.table), goals: goals.goals || {}, hubRows };
+    _hub2Checklist[slug] = { loading: false, table: worksheet.table, methods: hub2MethodsFrom(worksheet.table), goals: goals.goals || {}, hubRows }; _hub2Grayed = goals.grayed || null;
     hub2ChecklistPaint(slug); hub2SaveWeeklyMetrics(slug, hubRows);
   } catch (e) { _hub2Checklist[slug] = { loading: false, error: e.message }; hub2ChecklistPaint(slug); }
 }
@@ -15536,7 +15539,8 @@ function hub2ChecklistRows(slug) {
     const status = !tracked ? '' : HUB2_CRON_ROWS.test(m.name) ? (complete ? 'Cron · on track' : 'Cron')   // written by the hub news cron each period
       : pRow ? (!parents ? 'Waiting for ' + pRow.name.toLowerCase() : complete ? 'On track' : 'Due')
       : complete ? (periodic ? 'On track' : 'Done') : due && due < today ? 'Behind' : due === today ? 'Due' : periodic ? 'Scheduled' : 'Open';
-    return { ...m, notBuilt: HUB2_NOT_BUILT.test(m.name), creatable: !/^hub$/i.test(m.parent) && !HUB2_NOT_BUILT.test(m.name), tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
+    const grayed = hub2IsGrayed(m);
+    return { ...m, notBuilt: grayed, grayLabel: grayed ? 'on' : '', creatable: !/^hub$/i.test(m.parent) && !grayed, tracked, trackedLabel: tracked ? 'on' : '', published: pub.length, inProgress: items.length - pub.length, progress, complete, due, status,
       target, parents: pRow ? parents : 0, goalTip: pRow ? `${m.target} per ${pRow.name.toLowerCase()} × ${parents} ${pRow.name.toLowerCase()}${parents === 1 ? '' : 's'} this ${HUB2_UNIT[pRow.cadence] || 'period'}` : '', periodLabel: pRow ? pRow.cadence : m.cadence };
   });
 }
@@ -15562,9 +15566,19 @@ function hub2ChecklistHtml(slug) {
       <td style="${TD}text-align:center;color:${r.tracked && !r.complete ? warn : 'var(--text2)'};">${r.tracked ? r.progress + ' / ' + r.target : ''}</td>
       <td style="${TD}">${r.due || ''}</td>
       <td style="${TD}color:${sc};font-weight:${r.tracked ? 600 : 400};">${r.status}</td>
-      <td style="${TD}text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" ${r.tracked ? 'checked' : ''} title="Track for this hub" onchange="hub2TrackToggle('${slug}','${esc(r.id)}',this)" style="cursor:pointer;"></td></tr>`; }).join('');
+      <td style="${TD}text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" ${r.tracked ? 'checked' : ''} title="Track for this hub" onchange="hub2TrackToggle('${slug}','${esc(r.id)}',this)" style="cursor:pointer;"></td>
+      <td style="${TD}text-align:center;" onclick="event.stopPropagation()"><input type="checkbox" ${r.notBuilt ? 'checked' : ''} title="Gray out this row on every hub (not built yet — hides ＋)" onchange="hub2GrayToggle('${esc(r.id)}',this)" style="cursor:pointer;"></td></tr>`; }).join('');
   const panel=`<details ${_hub2ChecklistFilterOpen[slug]?'open':''} ontoggle="if(this.isConnected)_hub2ChecklistFilterOpen['${slug}']=this.open" style="margin-bottom:7px;border:1px solid var(--border);border-radius:6px;padding:5px 8px;"><summary style="cursor:pointer;font-size:9.5px;color:${active.length?'var(--accent)':'var(--text3)'};">⚲ Filters${active.length?' ('+active.length+' active)':''}</summary><div style="padding-top:7px;display:flex;flex-direction:column;gap:6px;">${filters.map((f,i)=>{const vals=f.col?[...new Set(allRows.map(r=>raw(r,f.col)).filter(Boolean))].sort((a,b)=>a.localeCompare(b)):[];return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;"><select onchange="hub2ChecklistFilterSet('${slug}',${i},'col',this.value)" style="font-size:10px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">Choose column…</option>${HUB2_CHECKLIST_COLS.map(c=>`<option value="${c.key}" ${f.col===c.key?'selected':''}>${esc(c.label)}</option>`).join('')}</select><select onchange="hub2ChecklistFilterSet('${slug}',${i},'op',this.value)" style="font-size:10px;padding:3px 6px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="is" ${f.op!=='not'?'selected':''}>is</option><option value="not" ${f.op==='not'?'selected':''}>is not</option></select><select onchange="hub2ChecklistFilterSet('${slug}',${i},'val',this.value)" style="font-size:10px;padding:3px 6px;min-width:170px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:4px;"><option value="">Any value</option><option value="__blank__" ${f.val==='__blank__'?'selected':''}>(blank)</option>${vals.map(v=>`<option value="${esc(v)}" ${f.val===v?'selected':''}>${esc(v)}</option>`).join('')}</select><button onclick="hub2ChecklistFilterRemove('${slug}',${i})" style="border:0;background:transparent;color:var(--text3);cursor:pointer;">✕</button></div>`;}).join('')}<button onclick="hub2ChecklistFilterAdd('${slug}')" style="align-self:flex-start;font-size:9.5px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Add filter</button></div></details>`;
   return panel + `<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;"><button onclick="hub2ChecklistEdit('${slug}','')" style="font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">＋ Add method</button><span style="font-size:9.5px;color:var(--text3);">${rows.length} methods · synced with the Current Methods worksheet${st.loading ? ' · refreshing…' : ''}</span></div><div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;"><thead><tr>${HUB2_CHECKLIST_COLS.map(c=>{const i=sort.findIndex(x=>x.col===c.key),mark=i<0?'':' '+(sort[i].asc?'▲':'▼')+(sort.length>1?i+1:'');return `<th onclick="hub2ChecklistSetSort('${slug}','${c.key}',event)" style="${TH}cursor:pointer;user-select:none;">${esc(c.label)}${mark}</th>`;}).join('')}</tr></thead><tbody>${body||`<tr><td colspan="${HUB2_CHECKLIST_COLS.length}" style="${TD}color:var(--text3);">No methods match these filters.</td></tr>`}</tbody></table></div>`;
+}
+// gray a row out on every hub: the whole map is saved (the first toggle also persists the default rows)
+async function hub2GrayToggle(id, box) {
+  const any = Object.values(_hub2Checklist).find(x => x && x.methods), next = {};
+  if (_hub2Grayed) Object.assign(next, _hub2Grayed); else ((any && any.methods) || []).forEach(m => { if (HUB2_NOT_BUILT.test(m.name)) next[String(m.id).toLowerCase()] = true; });
+  const k = String(id).toLowerCase(); if (box.checked) next[k] = true; else delete next[k];
+  box.disabled = true; const r = await call('saveHub2Grayed', { grayed: next }).catch(e => ({ error: e.message })); box.disabled = false;
+  if (!r || r.error) { box.checked = !box.checked; return showToast((r && r.error) || 'Not saved', 'error'); }
+  _hub2Grayed = r.grayed || next; Object.keys(_hub2Checklist).forEach(s => { if (_hub2Checklist[s] && _hub2Checklist[s].methods) hub2ChecklistPaint(s); });
 }
 async function hub2TrackToggle(slug, id, box) {
   box.disabled = true; const on = box.checked;
