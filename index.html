@@ -16901,7 +16901,7 @@ function renderHubKw(slug) {
     const dragAttr = opt.topicId ? ` draggable="true" ondragstart="hubKwDragStart(event,'${esc(opt.topicId)}')"` : '';
     const tools = opt.tools ? `<span style="margin-left:auto;display:flex;gap:4px;align-items:center;" onclick="event.stopPropagation()">${opt.tools}</span>` : '';
     return `<div${dropAttr}${dragAttr} style="margin-left:${depth * 14}px;border-left:3px solid ${color};padding-left:8px;margin-bottom:4px;">
-      <div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:${opt.topicId ? 'grab' : 'pointer'};user-select:none;font-size:11.5px;flex-wrap:wrap;">
+      <div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px ${opt.topicId ? '4px' : '0'};cursor:${opt.topicId ? 'grab' : 'pointer'};user-select:none;font-size:11.5px;flex-wrap:wrap;${opt.topicId ? 'background:color-mix(in srgb, var(--text) 2.5%, transparent);border-radius:4px;' : ''}">
         <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span>${tools}</div>
       ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
   const clusters = K.tc.clusters || [];
