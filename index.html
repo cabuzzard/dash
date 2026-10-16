@@ -3666,7 +3666,7 @@
     <div class="modal-title" id="newAssetModalTitle">New Asset</div>
     <div class="modal-field">
       <label class="modal-label">Asset Class</label>
-      <select class="modal-select" id="newAssetClass" onchange="newAssetClassChanged()"><option value="Publishable">Publishable asset</option><option value="Pillar">Pillar asset</option></select>
+      <select class="modal-select" id="newAssetClass" onchange="newAssetClassChanged()"><option value="Publishable">Publishable asset</option><option value="Pillar">Parent asset</option></select>
     </div>
     <div class="modal-field" id="newAssetPillarTypeField" style="display:none;">
       <label class="modal-label">Pillar Type</label>
@@ -15702,8 +15702,10 @@ async function hub2ChecklistSave(slug, id) {
 // Parent row ＋ → create the parent (createAsset, Asset Class Pillar) → writeParentAsset (worker asks for / waits on its
 // interview — the interview opens here, finishing it writes the parent). Child row ＋ → needs this title's parent of its
 // type written first (offered in the modal), then generateTitleAssets with parentAssetId (the worker reads the parent
-// instead of the title pillar and stamps "Parent Asset"). "Pillar - …" children can come from any written parent.
-const HUB2_PILLAR_TYPE = { Digest: 'Digest', Topical: 'Long Form Topical', Sales: 'Long Form Sales', Product: 'Product', Interactive: 'Interactivity', Job: 'Job Application', Marketplace: 'Marketplace Listing', Pillar: 'Generic' };
+// instead of the title pillar and stamps "Parent Asset"). "Parent - …" (formerly "Pillar - …") children can come from any written parent.
+const HUB2_PILLAR_TYPE = { Digest: 'Digest', Topical: 'Long Form Topical', Sales: 'Long Form Sales', Product: 'Product', Interactive: 'Interactivity', Job: 'Job Application', Marketplace: 'Marketplace Listing', Pillar: 'Generic', Parent: 'Generic' };
+// the generic group (worksheet "Parent" / "Parent - X", formerly "Pillar"): its children can come from ANY written parent of the title
+const hub2GenericGroup = p => /^(parent|pillar)$/i.test(String(p || '').trim());
 const _hub2Writing = {};   // parent assetId → true while writeParentAsset runs
 // products the checklist modals must never offer (operator 2026-10-15): Keywords Out of Sync (orange) or research out of sync
 function hub2OutOfSyncProducts(slug) { const set = new Set(); ((_hub2Checklist[slug] || {}).hubRows || []).forEach(r => { if (r.productId && r.keywordOutOfSync) set.add(hub2Id(r.productId)); }); return set; }
@@ -16143,7 +16145,7 @@ async function hub2CreateModal(slug, id) {
   if (!m.isPillar && /^digest$/i.test(m.parent) && /news/i.test(m.asset)) return hub2NewsModal(slug);
   if (!m.isPillar && /^digest$/i.test(m.parent) && /free/i.test(m.asset) && /newsletter/i.test(m.asset)) return hub2FreeNlModal(slug);   // news = a digest's ticked items
   const titles = hub2ReadyTitles(slug);
-  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(m.parent === 'Pillar' ? 'parent' : m.parent) + ' parent.'}</div>
+  hcModal(`<h3 style="margin:0 0 4px;">＋ ${esc(m.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${m.isPillar ? 'A parent piece for one title — written from the title\'s pillar' + (/^interview/i.test(m.tier) ? ' plus your interview.' : '.') : 'Written from this title\'s ' + esc(hub2GenericGroup(m.parent) ? 'own' : m.parent) + ' parent.'}</div>
     ${titles.length ? `${HT_LBL('Title')}<select id="h2cTitle" style="${HT_IN}" onchange="hub2CreateStep('${slug}','${esc(id)}')">${titles.map(t => `<option value="${esc(t.id)}">${esc(t.title)} · 📦 ${esc(t.product)}</option>`).join('')}</select><div id="h2cStep" style="font-size:12px;color:var(--text3);">Loading…</div>`
       : '<div style="font-size:12px;color:var(--text3);">No ready titles on this hub — a title needs an in-sync product (up-to-date research, not flagged out of sync) and a written pillar.</div>'}
     <div style="display:flex;gap:8px;margin-top:4px;">${HC_CANCEL.replace('Cancel', 'Close')}</div>`);
@@ -16160,8 +16162,8 @@ async function hub2CreateStep(slug, id) {
     return `${why}<div style="margin-bottom:6px;color:var(--text2);">The ${esc(prow.name)} parent exists but isn't written yet${iv ? ' — it needs your interview first' : ''}.${nlink(pa.assetId)}</div><button style="${B}" onclick="hub2ParentWrite('${slug}','${esc(id)}','${esc(pa.assetId)}','${esc(prow.name)}',this)">${iv ? '🎤 Interview → write' : '✍ Write'} ${esc(prow.name)} parent</button>`; };
   if (m.isPillar) { el.innerHTML = parentStep(m, ''); return; }
   const prow = (st.methods || []).find(x => x.isPillar && x.parent === m.parent);
-  let parents = m.parent === 'Pillar' ? hub2TitleParents(st, tid).filter(hub2ParentReady) : [];
-  if (m.parent !== 'Pillar') { const pa = prow && hub2ParentAssetFor(st, tid, prow); if (hub2ParentReady(pa)) parents = [pa]; }
+  let parents = hub2GenericGroup(m.parent) ? hub2TitleParents(st, tid).filter(hub2ParentReady) : [];
+  if (!hub2GenericGroup(m.parent)) { const pa = prow && hub2ParentAssetFor(st, tid, prow); if (hub2ParentReady(pa)) parents = [pa]; }
   // no parent row for this group (e.g. Topical — removed 2026-10-15): the child is written straight from the title's pillar
   if (!parents.length && prow) { el.innerHTML = parentStep(prow, `<div style="margin-bottom:8px;color:var(--text2);">${esc(m.name)} is written from this title's ${esc(prow.name)} parent — that comes first.</div>`); return; }
   el.innerHTML = '<div style="color:var(--text3);">Loading methods…</div>';
@@ -16209,7 +16211,7 @@ async function hub2ParentWrite(slug, id, assetId, name, btn) {
 async function hub2CreateGo(slug, id) {
   const h = HUB_SITES.find(x => x.slug === slug), m = ((_hub2Checklist[slug] || {}).methods || []).find(x => x.id === id), t = hub2ReadyTitles(slug).find(x => x.id === document.getElementById('h2cTitle')?.value);
   const parentAssetId = document.getElementById('h2cParent')?.value, ms = document.getElementById('h2cMethod');
-  const hasParentRow = (_hub2Checklist[slug]?.methods || []).some(x => x.isPillar && x.parent === m.parent) || m.parent === 'Pillar';
+  const hasParentRow = (_hub2Checklist[slug]?.methods || []).some(x => x.isPillar && x.parent === m.parent) || hub2GenericGroup(m.parent);
   if (!h || !m || !t) return 'Choose a title'; if (!parentAssetId && hasParentRow) return 'Its parent has to be written first'; if (!ms || !ms.value) return 'Choose a method';
   const methodName = ms.options[ms.selectedIndex].text, ps = document.getElementById('h2cPlat');
   const payload = { titleId: t.id, campaignId: h.campaignId, productId: t.productId, parentAssetId: parentAssetId || undefined, methodId: ms.value, assetType: methodName, title: t.title,
