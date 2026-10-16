@@ -16283,11 +16283,12 @@ async function hub2BulkKeywords(slug, btn, withResearch) {
   _hub2BulkMsg[slug] = `${label}: 0/${ids.length} products…`; hub2ContentPaint(slug);
   const worker = async () => { while (queue.length) { const pid = queue.shift();
     try { const k = await call('generateProductKeywords', { productId: pid }); if (!k || k.error) throw new Error('keywords: ' + ((k && k.error) || 'failed'));
-      if (withResearch) { const r = await call('regenerateAllStrategyFields', { productId: pid, campaignId: h.campaignId }); if (!r || r.error) throw new Error('research: ' + ((r && r.error) || 'failed')); } }
+      if (withResearch) { const r = await call('regenerateAllStrategyFields', { productId: pid, campaignId: h.campaignId }); if (!r || r.error) throw new Error('research: ' + ((r && r.error) || 'failed'));
+        const s = await call('setProductStage', { productId: pid, stage: 'Development' }); if (!s || s.error) throw new Error('stage: ' + ((s && s.error) || 'failed')); } }   // researched → Development
     catch (e) { failures.push(pid + ' — ' + e.message); }
     done++; _hub2BulkMsg[slug] = `${label}: ${done}/${ids.length} products…`; hub2ContentPaint(slug); } };
   await Promise.all([worker(), worker(), worker()]);
-  _hub2BulkMsg[slug] = failures.length ? `${label} finished · ${failures.length} failed: ${failures.slice(0, 3).join(' · ')}` : `✓ ${label} done and saved for all ${ids.length} product${ids.length === 1 ? '' : 's'}`;
+  _hub2BulkMsg[slug] = failures.length ? `${label} finished · ${failures.length} failed: ${failures.slice(0, 3).join(' · ')}` : `✓ ${label} done and saved for all ${ids.length} product${ids.length === 1 ? '' : 's'}${withResearch ? ' · set to Development' : ''}`;
   if (failures.length) console.error(label + ' failures:', failures);
   hubResLoad(slug, true); delete _hubKw[slug]; hubKwLoad(slug);   // Keywords section picks up the new keywords + research / sync state
   await hub2ContentLoad(slug, true);
@@ -16295,8 +16296,10 @@ async function hub2BulkKeywords(slug, btn, withResearch) {
 async function hub2BulkResearch(slug, btn) {
   const ids = [...(_hub2Selected[slug] || [])].filter(x => x.startsWith('p:')).map(x => x.slice(2)), h = HUB_SITES.find(x => x.slug === slug); if (!ids.length || !h) return;
   btn.disabled = true; const failures = []; let done = 0; _hub2BulkMsg[slug] = `Running ${ids.length} product${ids.length === 1 ? '' : 's'} simultaneously…`; hub2ContentPaint(slug);
-  await Promise.all(ids.map(async pid => { try { const r = await call('regenerateAllStrategyFields', { productId: pid, campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'Research failed'); } catch (e) { failures.push(pid + ': ' + e.message); } done++; _hub2BulkMsg[slug] = `Research ${done}/${ids.length} products finished…`; hub2ContentPaint(slug); }));
-  _hub2BulkMsg[slug] = failures.length ? `Research finished · ${failures.length} product${failures.length === 1 ? '' : 's'} failed` : `✓ All ${ids.length} product${ids.length === 1 ? '' : 's'} researched and saved`; await hub2ContentLoad(slug, true);
+  await Promise.all(ids.map(async pid => { try { const r = await call('regenerateAllStrategyFields', { productId: pid, campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'Research failed');
+    const s = await call('setProductStage', { productId: pid, stage: 'Development' }); if (!s || s.error) throw new Error('stage: ' + ((s && s.error) || 'failed')); } catch (e) { failures.push(pid + ': ' + e.message); } done++; _hub2BulkMsg[slug] = `Research ${done}/${ids.length} products finished…`; hub2ContentPaint(slug); }));
+  _hub2BulkMsg[slug] = failures.length ? `Research finished · ${failures.length} product${failures.length === 1 ? '' : 's'} failed` : `✓ All ${ids.length} product${ids.length === 1 ? '' : 's'} researched, saved and set to Development`;
+  hubResLoad(slug, true); delete _hubKw[slug]; hubKwLoad(slug); await hub2ContentLoad(slug, true);
 }
 async function hub2BulkThumbnailPrompts(slug, btn) {
   const st = _hub2Content[slug], sel = _hub2Selected[slug] || new Set(), rows = (st && st.rows || []).filter(r => r.type === 'Asset' && sel.has('a:' + r.id)); if (!rows.length) return;
