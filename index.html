@@ -6815,9 +6815,10 @@ function kwHubSelAct(kind) {
   const move = kind === 'move';
   if (!target) return alert('Choose a topic (or a new-topic option) first.');
   if (target === '__one') {
-    const byVol = (KW.rows || []).filter(r => KW.selected.has(r.keyword)).sort((a, b) => (b.vol || 0) - (a.vol || 0));
-    const name = prompt('Name for the new topic (default: the highest-volume keyword):', (byVol[0] || {}).keyword || kws[0]); if (name == null || !name.trim()) return;
-    return kwHubOp({ op: 'newTopics', mode: 'one', keywords: kws, ids: [kwHubNewId(0)], name: name.trim(), cluster, move });
+    // the topic is named after the selection's highest average-monthly-searches keyword (rename later with ✎)
+    const byVol = (KW.rows || []).filter(r => KW.selected.has(r.keyword)).sort((a, b) => (Number(b.vol) || 0) - (Number(a.vol) || 0));
+    const name = String((byVol[0] || {}).keyword || kws[0]).trim();
+    return kwHubOp({ op: 'newTopics', mode: 'one', keywords: kws, ids: [kwHubNewId(0)], name, cluster, move });
   }
   if (target === '__each') return kwHubOp({ op: 'newTopics', mode: 'each', keywords: kws, ids: kws.map((_, i) => kwHubNewId(i)), cluster, move });
   return kwHubOp({ op: 'assign', keywords: kws, to: target, move });
