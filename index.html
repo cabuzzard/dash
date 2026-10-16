@@ -16332,11 +16332,11 @@ async function hub2IdleSweep(slug, btn) {
 // no assets. A type the title already has is skipped (worker).
 async function hub2DevAssetsModal(slug) {
   if (!(_hub2Checklist[slug] && _hub2Checklist[slug].methods)) { await hub2ChecklistLoad(slug); }
-  const methods = ((_hub2Checklist[slug] || {}).methods || []).filter(m => !hub2IsGrayed(m) && !/^hub$/i.test(m.parent)).sort((a, b) => a.name.localeCompare(b.name));
+  const methods = ((_hub2Checklist[slug] || {}).methods || []).slice().sort((a, b) => a.name.localeCompare(b.name));   // every checklist row; grayed ones dimmed + tagged
   const sel = hub2PillarBulkTitles(slug), tc = sel.length, written = sel.filter(t => /^written$/i.test(t.pillarStatus || '')).length;
   if (!tc) return showToast('Select titles first', 'error');
   const kids = methods.filter(m => !m.isPillar), parents = methods.filter(m => m.isPillar);
-  const cb = (m, cls) => `<label style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12px;cursor:pointer;"><input type="checkbox" class="${cls}" data-id="${esc(m.id)}">${esc(m.name)}</label>`;
+  const cb = (m, cls) => { const g = hub2IsGrayed(m); return `<label style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12px;cursor:pointer;${g ? 'opacity:.55;' : ''}"><input type="checkbox" class="${cls}" data-id="${esc(m.id)}">${esc(m.name)}${g ? ' <span style="font-size:10px;color:var(--text3);">grayed</span>' : ''}</label>`; };
   hcModal(`<h3 style="margin:0 0 4px;">✍ Pillar + Dev assets</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">For each of the <b>${tc}</b> selected title${tc === 1 ? '' : 's'}: <b>1.</b> writes the pillar — the long-form SEO post from its research and keywords (1-2 min; skipped if already written${written ? ` — <b>${written}</b> are` : ''}), then <b>2.</b> adds an empty <b>Development</b> asset record of each type you tick. They count in the checklist's blue Dev column and stay unwritten until you fill them from the asset modal; types a title already has are skipped. A title whose pillar fails gets no assets.</div>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:10px;"><input type="checkbox" id="h2daPillar" checked>Write pillar first</label>
     <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;"><span style="color:var(--text3);">Dev asset types:</span><a href="#" onclick="event.preventDefault();document.querySelectorAll('.h2da-cb').forEach(c=>c.checked=true)">all</a><a href="#" onclick="event.preventDefault();document.querySelectorAll('.h2da-cb,.h2da-pcb').forEach(c=>c.checked=false)">none</a></div>
