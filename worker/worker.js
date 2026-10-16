@@ -20647,6 +20647,44 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         try { await kwNotionPatch(env, pid, props); } catch (e) { return json({ error: e.message }, 502); }
         return json({ success: true });
       }
+      // createDevAssets {titleId, title, productId?, campaignId, slug, types:[{assetType, label, pillar}]} — Content Hubs 2
+      // bulk "＋ Dev assets": one EMPTY asset record per checklist type (Asset Status Development, nothing written), linked to
+      // the title / product / campaign / hub and its Method. A type the title already has an asset of is skipped.
+      if (body.action === "createDevAssets") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const nidC = x => String(x || "").replace(/-/g, ""), dashC = s => { s = nidC(s); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+        const titleId = nidC(body.titleId), types = Array.isArray(body.types) ? body.types.slice(0, 40) : [];
+        if (!titleId || !types.length) return json({ error: "titleId and types required" }, 400);
+        const hdrC = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const existing = await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: dashC(titleId) } } }).catch(() => []);
+        const have = new Set(); existing.forEach(a => { const p = a.properties || {};
+          [p["Asset Type"]?.select?.name, p["Pillar Type"]?.select?.name].filter(Boolean).forEach(v => have.add(String(v).toLowerCase())); });
+        const created = [], skipped = [], failed = [];
+        for (const t of types) {
+          const assetType = String(t.assetType || "").trim().slice(0, 100), label = String(t.label || assetType).trim().slice(0, 120), pillar = !!t.pillar;
+          if (!assetType) continue;
+          if (have.has(assetType.toLowerCase())) { skipped.push(label); continue; }
+          const props = {
+            "Asset Title": { title: [{ type: "text", text: { content: `${String(body.title || "Untitled").slice(0, 150)} — ${label}` } }] },
+            "Asset Status": { select: { name: "Development" } },
+            "Asset Class": { select: { name: pillar ? "Pillar" : "Publishable" } },
+            "Asset Type": { select: { name: pillar ? "Pillar" : assetType } },
+            "Content Strategy": { relation: [{ id: dashC(titleId) }] },
+            ...(pillar ? { "Pillar Type": { select: { name: assetType } } } : {}),
+            ...(body.productId ? { Product: { relation: [{ id: dashC(body.productId) }] } } : {}),
+            ...(body.campaignId ? { Campaign: { relation: [{ id: dashC(body.campaignId) }] } } : {}),
+            ...(body.slug ? { "Content Hub": { select: { name: String(body.slug).slice(0, 100) } } } : {}),
+            ...(await assetMethodProp(null, assetType).catch(() => ({}))),
+          };
+          try {
+            const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdrC, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+            const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || "Notion " + r.status);
+            created.push({ id: nidC(j.id), label }); have.add(assetType.toLowerCase());
+          } catch (e) { failed.push(label + ": " + e.message); }
+          await new Promise(r => setTimeout(r, 340));
+        }
+        return json({ success: true, created, skipped, failed });
+      }
       if (body.action === "titleIdleSweep") {   // {dryRun?} — same rule as the weekly cron
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         try { return json({ success: true, ...(await runTitleIdleSweep(env, { dryRun: !!body.dryRun })) }); } catch (e) { return json({ error: e.message }, 502); }
