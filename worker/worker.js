@@ -50130,7 +50130,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       // nightly batch) so it gets a fresh subrequest budget. Transcribes /
       // mines / one-pass re-mines a capped batch of the 🔗 Saved Posts
       // backlog; drains over a few nights. See runBulkLinksNightly.
-      cw("runBulkLinksNightly", runBulkLinksNightly(env)
+      // OFF (operator 2026-10-16, API cost) — re-enable with KV cron:on:linkmining = 1
+      if (await env.TRADES.get("cron:on:linkmining")) cw("runBulkLinksNightly", runBulkLinksNightly(env)
           .then(r => console.log(r.ran
             ? `bulkLinksNightly: +${r.txDid} transcribed, +${r.mnDid} mined, +${r.rmDid} re-mined · ${r.txLeft}/${r.mnLeft}/${r.rmLeft} left${r.complete ? ' · backlog clear' : ''}`
             : `bulkLinksNightly skipped: ${r.reason}`))
@@ -50168,7 +50169,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
     // Full mining chain for links ticked "Mine" — transcribe → mine into
     // usefulness-scored Link Mining rows. Does nothing (no AI, no Apify)
     // when no link is tagged.
-    cw("runLinkMiningPipeline", runLinkMiningPipeline(env, { limit: 5 })
+    // OFF (operator 2026-10-16, API cost) — re-enable with KV cron:on:linkmining = 1
+    if (await env.TRADES.get("cron:on:linkmining")) cw("runLinkMiningPipeline", runLinkMiningPipeline(env, { limit: 5 })
         .then(r => r.ran
           ? console.log(`link mining ran: ${r.transcribed} transcribed, ${r.mined} mined, ${r.bits} bit(s)`)
           : console.log(`link mining skipped: ${r.reason}`))
@@ -50181,7 +50183,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
     cw("runListingRepostReminders", runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
     cw("runHubFrontReminders", runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
     cw("runStrategySequenceReminders", runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
-    cw("runAffiliateScan", runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
+    // OFF (operator 2026-10-16, API cost: a web-search agent daily) — re-enable with KV cron:on:affiliatescan = 1
+    if (await env.TRADES.get("cron:on:affiliatescan")) cw("runAffiliateScan", runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
     // Lead sourcing — OPT-IN: no-ops unless a vertical key is in KV `leadsrc:auto`
     // (toggled from the 🧲 Lead Sourcing panel). Pulls listings via Apify, so it
     // stays off by default to avoid a standing scrape bill.
