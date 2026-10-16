@@ -17252,6 +17252,12 @@ function hubKwFilterToggle(slug, s) { const F = hubKwFilterOf(slug); F.states = 
 // ▾ Expand all / ▸ Collapse all — every node of the Keywords tree: Master, clusters, Unclustered, topics, Existing + Proposed
 function hubKwExpandAll(slug, open, existingOnly) {
   const K = _hubKw[slug]; if (!K || K.loading || K.error) return;
+  if (existingOnly === 'clusters') {   // ▾ Expand clusters: Master + every cluster + Unclustered open, every topic closed
+    const ks = ['master', 'unclustered'].concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
+    Object.keys(_hubKwOpen).forEach(k => { if (k.startsWith(slug + '|') && /\|(t|ex|pr|kw|ti):/.test(k)) delete _hubKwOpen[k]; });
+    ks.forEach(k => { _hubKwOpen[slug + '|' + k] = true; });
+    return hubKwRefresh(slug);
+  }
   if (existingOnly === 'topics') {   // ▾ Expand topics: headings only — every Keywords / Existing / Proposed list closed
     const ks = ['master', 'unclustered'].concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
     [...(K.staged || []), ...(K.committed || [])].forEach(t => ks.push('t:' + t.id));
@@ -17329,7 +17335,7 @@ function renderHubKw(slug) {
   const by = {}, un = [], mainCl = K.tc.mainCluster || '';
   topics.forEach(t => { const c = K.tc.assign && K.tc.assign[t.id]; if (c && clusters.includes(c)) (by[c] = by[c] || []).push(t); else un.push(t); });
   const master = split(K.master);
-  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Add a topic (name + starting keywords) — then 🔬 it to research in the Keywords tab" onclick="hubKwAddTopic('${slug}')">＋ Topic</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
+  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Add a topic (name + starting keywords) — then 🔬 it to research in the Keywords tab" onclick="hubKwAddTopic('${slug}')">＋ Topic</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Open every cluster to show its topic headings — topics stay closed" onclick="hubKwExpandAll('${slug}',true,'clusters')">▾ Expand clusters</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
   // Main = products still placed on Main + every ★ main offering, shown here too while it lives in its topic (one record —
   // counted in both headers here, once on the checklist)
   const mainSet = new Set((K.mainIds || []).map(x => String(x).replace(/-/g, '')));
