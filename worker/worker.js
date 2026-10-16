@@ -11981,17 +11981,64 @@ async function titleJobsRun(env, invoke) {
   } finally { await env.TRADES.delete("titlejob:lock"); }
   return { ok: true, ran };
 }
-// ══ AUTO DIGEST (operator 2026-10-16) ══ every hub, twice a week (Tuesday + Friday, Pacific): ONE digest covering all of
+// ══ AUTO DIGEST (operator 2026-10-16) ══ every hub, ONCE A WEEK (Sunday night Pacific, for Monday): ONE digest covering all of
 // the hub's ★ main offerings — "a true digest of everything that is important". Same pipeline as the Digest modal:
 // research (Gemini + Perplexity → rank) → a dated title in Main, product = the first main offering → the Digest pillar
 // from the ranked sources → a Digest PARENT asset, written and left UNPUBLISHED (Review) so it shows in the checklist
 // counts. Topical material is the operator's. KV digest:auto:state:<cid> (resumable), digest:auto:done = {cid: period}.
 const AD_DIGEST_STYLE = "PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).";
-function adPeriod() {   // the current half-week in Pacific time: from the latest Tuesday or Friday (key) + the hour
+function adPeriod() {   // WEEKLY (operator 2026-10-16): the week keyed by its Sunday; runs start Sunday 20:00 → Monday 06:00 Pacific
   const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
-  const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
-  d.setUTCDate(d.getUTCDate() - (wd >= 5 ? wd - 5 : wd >= 2 ? wd - 2 : wd + 2));   // Fri–Mon → Friday · Tue–Thu → Tuesday
-  return { key: d.toISOString().slice(0, 10), hour: +p.hour, label: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) };
+  const dd = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday), hour = +p.hour;
+  dd.setUTCDate(dd.getUTCDate() - wd);   // this week's Sunday
+  const mon = new Date(dd.getTime() + 864e5);
+  return { key: dd.toISOString().slice(0, 10), hour, open: (wd === 0 && hour >= 20) || (wd === 1 && hour < 6),
+    label: mon.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) };   // titled for the Monday it's read
+}
+// Perplexity writes the digest (operator 2026-10-16, API cost — no Claude): from the week's Gemini + Perplexity research it
+// ranks the items (the hub's Digest pool) AND writes the digest, in one call. Returns { sources, digest }.
+async function adPerplexityDigest(env, job, names) {
+  if (!env.PERPLEXITY_API_KEY) throw new Error("PERPLEXITY_API_KEY not set");
+  const capMsg = await spendCheck(env, "perplexity"); if (capMsg) throw new Error(capMsg);
+  const today = new Date().toISOString().slice(0, 10);
+  const input = `You are the editor of a weekly industry digest for one website hub. Its main offerings: ${names.join("; ")}.
+TODAY: ${today}. Use the research below (search more only if it is thin).
+
+=== GEMINI DEEP RESEARCH ===
+${(job.gemini?.text || "(not available)").slice(0, 25000)}
+
+=== PERPLEXITY RESEARCH ===
+${(job.perplexity?.text || "(not available)").slice(0, 12000)}
+${(job.perplexity?.results || []).map(x => `- ${x.title} | ${x.url} | ${x.date}`).join("\n").slice(0, 6000)}
+
+Do two things:
+1. A ranked list of this week's most important items (8-20): each with url (only real URLs from the research), publisher, date, claim (one sentence: what happened), tier (1 primary/regulator/original data · 2 trade press/named expert · 3 general), split ("premium" if it needs synthesis, real numbers, rule or price changes, or a how-to; otherwise "free").
+2. The digest itself, in markdown: a short intro, then ## sections; each item = what happened, why it matters to this audience, what to do. Cite publishers by name. Premium items are only teased (no full analysis). 600-1200 words.
+
+Return ONLY a fenced \`\`\`json block: {"sources":[{"url","publisher","date","claim","tier","split"}],"whatChanged":"one line","digest":"<markdown>"}`;
+  const r = await fetch("https://api.perplexity.ai/v1/agent", { method: "POST",
+    headers: { "Authorization": `Bearer ${env.PERPLEXITY_API_KEY.trim()}`, "Content-Type": "application/json" }, body: JSON.stringify({ preset: "medium", input }) });
+  const t = await r.text(); let dd = null; try { dd = JSON.parse(t); } catch (e) {}
+  if (!r.ok || !dd) throw new Error(`Perplexity HTTP ${r.status}: ${(dd?.error?.message || t).slice(0, 300)}`);
+  { const pc = pplxCost(dd.usage); await spendAdd(env, "perplexity", pc.cost, pc.estimated, dd.usage).catch(() => {}); }
+  const text = dd.output_text || (dd.output || []).filter(o => o && o.type !== "search_results").map(o => drAllText(o, []).join("\n")).join("\n");
+  const out = drJson(text);
+  if (!out || !String(out.digest || "").trim()) throw new Error("Perplexity returned no digest");
+  return { sources: Array.isArray(out.sources) ? out.sources : [], whatChanged: out.whatChanged || "", digest: String(out.digest) };
+}
+// put already-written text on a title as its pillar (same "Pillar Content" section the Claude writer makes)
+async function adSavePillar(env, titleId, text) {
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
+  await clearExistingPillarSection(hdr, titleId);
+  const h3 = x => ({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: x } }] } });
+  const para = x => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: x } }] } });
+  const children = [h3("Pillar Content")];
+  text.split(/\n{2,}/).map(x => x.trim()).filter(Boolean).forEach(x => { for (let i = 0; i < x.length; i += 1900) children.push(para(x.slice(i, i + 1900))); });
+  for (let i = 0; i < children.length; i += 90) {
+    const rr = await fetch(`https://api.notion.com/v1/blocks/${kwDashId(titleId)}/children`, { method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" }, body: JSON.stringify({ children: children.slice(i, i + 90) }) });
+    if (!rr.ok) { const x = await rr.json().catch(() => ({})); throw new Error(x.message || "could not write the pillar"); }
+  }
+  await kwNotionPatch(env, titleId, { "Pillar Status": { select: { name: "Written" } } }).catch(() => {});
 }
 function adSourcesBlock(R) {
   const list = (R && R.sources) || []; if (!list.length) return "";
@@ -12020,7 +12067,7 @@ async function adStep(env, cid, S, invoke) {
     if (g === "running" && Date.now() - S.waitFrom < 25 * 60000) return;
     S.step = "rank"; return;
   }
-  if (S.step === "rank") { const r = await invoke({ action: "digestResearch", op: "rank", jobId: S.jobId }); S.ranked = r && r.job && r.job.ranked ? r.job.ranked : null; S.rankNote = r && r.error ? r.error : ""; S.step = "title"; return; }
+  if (S.step === "rank") { S.step = "title"; return; }   // (older runs) ranking now happens in the Perplexity write
   if (S.step === "title") {
     const ms = ok(await invoke({ action: "searchMethods", query: "" }), "methods"), dm = (ms.methods || []).find(m => /^digest$/i.test(m.name || "") && m.status === "Live");
     S.titleName = `Digest — ${adPeriod().label} (${S.name})`;
@@ -12028,23 +12075,20 @@ async function adStep(env, cid, S, invoke) {
       researchInstructions: "Hub digest covering all main offerings: " + S.names.join("; ") }), "title");
     S.titleId = String(c.id).replace(/-/g, "");
     await invoke({ action: "setTitleTopic", titleId: S.titleId, topicId: "__main" }).catch(() => {});
-    if (S.ranked) await invoke({ action: "digestResearch", op: "attach", jobId: S.jobId, titleId: S.titleId, sources: S.ranked.sources || [] }).catch(() => {});
     S.step = "pillar"; return;
   }
-  if (S.step === "pillar") {
-    ok(await invoke({ action: "writeTitlePillar", titleId: S.titleId, styleGuidance: AD_DIGEST_STYLE, researchOverride: [S.ranked ? adSourcesBlock(S.ranked) : "", "Cover ALL of these main offerings of the hub: " + S.names.join("; ")].filter(Boolean).join("\n\n") }), "pillar");
-    S.step = "parent"; return;
+  if (S.step === "pillar") {   // Perplexity ranks + writes (no Claude); its items feed the hub's Digest pool
+    const job = await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
+    const w = await adPerplexityDigest(env, job, S.names);
+    await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
+    await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
+    await adSavePillar(env, S.titleId, w.digest);
+    S.items = w.sources.length; S.step = "parent"; return;
   }
-  if (S.step === "parent") {
+  if (S.step === "parent") {   // the Digest parent — created UNWRITTEN (Development), so it counts on the checklist
     const pa = ok(await invoke({ action: "createAsset", titleId: S.titleId, campId: cid, productId: S.mainIds[0], assetTitle: S.titleName + " — Digest", assetType: "Digest", assetStatus: "Development",
       assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Unwritten", interviewRequired: false }), "parent");
-    S.parentId = String(pa.id).replace(/-/g, ""); S.step = "parentWrite"; return;
-  }
-  if (S.step === "parentWrite") {
-    ok(await invoke({ action: "writeParentAsset", assetId: S.parentId }), "parent write");
-    // written but NOT published: back to Review so it counts as an unpublished parent on the checklist
-    await kwNotionPatch(env, S.parentId, { "Asset Status": { select: { name: "Review" } } }).catch(e => { S.note = "status: " + e.message; });
-    S.step = "done"; return;
+    S.parentId = String(pa.id).replace(/-/g, ""); S.step = "done"; return;
   }
 }
 async function autoDigestRun(env, invoke) {
@@ -12058,7 +12102,7 @@ async function autoDigestRun(env, invoke) {
       if (Date.now() - t0 > 120000) break;
       const key = "digest:auto:state:" + cid; let S = await env.TRADES.get(key, "json");
       const fresh = !S || S.period !== per.key;
-      if (fresh) { if (done[cid] === per.key) continue; if (per.hour < 6 || per.hour >= 21) continue;   // new runs start 06:00-21:00 Pacific
+      if (fresh) { if (done[cid] === per.key) continue; if (!per.open) continue;   // new runs start Sunday 20:00 → Monday 06:00 Pacific
         const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid); S = { period: per.key, name: (h && (h.campaign || h.name)) || "Hub", step: "start", startedAt: Date.now(), tries: 0 }; }
       if (S.step === "done" || S.step === "skip" || S.step === "error") { done[cid] = per.key; continue; }
       while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
@@ -17396,7 +17440,7 @@ ${JSON.stringify(products)}`;
         }
         { const per = adPeriod(), states = {}, queue = [];
           for (const key of (await env.TRADES.list({ prefix: "digest:auto:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s || s.period !== per.key) continue;
-            const cid = key.slice(18), steps = ["start", "perplexity", "wait", "rank", "title", "pillar", "parent", "parentWrite", "done"], fin = ["done", "skip", "error"].includes(s.step);
+            const cid = key.slice(18), steps = ["start", "perplexity", "wait", "title", "pillar", "parent", "done"], fin = ["done", "skip", "error"].includes(s.step);
             if (!fin) queue.push(cid);
             states[cid] = { name: s.name, done: fin, error: s.error || "", i: Math.max(0, steps.indexOf(s.step)), total: steps.length - 1, running: fin ? "" : (s.step === "wait" ? "waiting on research" : s.step), at: s.finishedAt || s.startedAt || 0 }; }
           out.digest = { queue, states }; }
@@ -51679,8 +51723,8 @@ async function drSuggest(q) {
   return { youtube, google };
 }
 
-async function drClaude(env, prompt, maxTokens) {
-  const r = await claudeStream(env, { model: "claude-sonnet-4-6", max_tokens: maxTokens || 8000, messages: [{ role: "user", content: prompt }] });
+async function drClaude(env, prompt, maxTokens, model) {
+  const r = await claudeStream(env, { model: model || "claude-sonnet-4-6", max_tokens: maxTokens || 8000, messages: [{ role: "user", content: prompt }] });
   const d = await r.json();
   if (!r.ok) throw new Error(d?.error?.message || `Claude HTTP ${r.status}`);
   return (d.content || []).map(c => c.text || "").join("");
@@ -51804,7 +51848,7 @@ Rules:
 - Never invent a URL — only use URLs that appear above.
 
 Return ONLY a fenced \`\`\`json block: {"sources":[{"url","title","publisher","date","claim","tier","freshnessDays","corroboration","fit","split","isNew","why":"max 20 words"}],"freeAngle":"one-line hook for the free issue","premiumAngle":"one-line hook for the premium issue","whatChanged":"one or two sentences on what is new versus last week"}`;
-  const out = drJson(await drClaude(env, prompt, 12000));
+  const out = drJson(await drClaude(env, prompt, 12000, "claude-haiku-4-5-20251001"));   // ranking on Haiku (API cost)
   if (!out || !Array.isArray(out.sources)) throw new Error("Ranking step returned no source list");
   const tierW = { 1: 40, 2: 25, 3: 10 };
   out.sources.forEach(s => {

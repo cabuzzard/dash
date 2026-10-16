@@ -15195,7 +15195,7 @@ document.addEventListener('visibilitychange', () => {
 setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 // ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
 // job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
-const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Twice-weekly hub digests' };
+const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Weekly hub digests (Sunday night)' };
 let _hubJobs = { hidden: false, open: true, last: null, t: null };
 function hubJobsName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === cid); return h ? (h.name || h.slug) : cid.slice(0, 8); }
 async function hubJobsPoll() {
@@ -15984,7 +15984,7 @@ function hub2PoolHtml(slug) {
   if (!P) return '<div style="font-size:11px;color:var(--text3);">Open to load.</div>';
   if (P.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   if (P.error) return `<div style="font-size:11px;color:#f87171;">${esc(P.error)}</div>`;
-  if (!P.items.length) return '<div style="font-size:11px;color:var(--text3);">No digest items yet — they arrive with the next digest run (Tuesday / Friday, or the Digest modal).</div>';
+  if (!P.items.length) return '<div style="font-size:11px;color:var(--text3);">No digest items yet — they arrive with the next digest run (Sunday night, or the Digest modal).</div>';
   const B = (on, col) => `font-size:10px;padding:1px 7px;border:1px solid ${on ? col : 'var(--border2)'};border-radius:4px;background:${on ? col + '22' : 'transparent'};color:${on ? col : 'var(--text2)'};cursor:pointer;`;
   const row = x => { const lock = x.status && x.status !== 'error';
     const st = x.status === 'queued' ? '<span style="font-size:10px;color:#f6ad55;">⏳ building</span>' : x.status === 'done' ? `<span style="font-size:10px;color:#4ade80;">✓ built</span>${x.assetId || x.titleId ? ` <a href="https://www.notion.so/${esc(x.assetId || x.titleId)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">↗</a>` : ''}` : x.status === 'error' ? `<span title="${esc(x.error || '')}" style="font-size:10px;color:#f87171;cursor:help;">✗ failed — tag again to retry</span>` : '';
