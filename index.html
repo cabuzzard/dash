@@ -15195,7 +15195,7 @@ document.addEventListener('visibilitychange', () => {
 setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 // ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
 // job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
-const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars' };
+const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Twice-weekly hub digests' };
 let _hubJobs = { hidden: false, open: true, last: null, t: null };
 function hubJobsName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === cid); return h ? (h.name || h.slug) : cid.slice(0, 8); }
 async function hubJobsPoll() {

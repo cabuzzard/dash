@@ -1615,6 +1615,7 @@ function hubNewsPeriodKey(cadence) {
 }
 async function hubNewsCronTick(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
+  await hubSitesMerge(env);   // include the hubs registered in KV (Construction, Medicare…)
   // once per digest period per hub (operator 2026-10-15)
   let cadence = "Weekly";
   try { const t = await env.TRADES.get("infoflow:table:currentmethods", "json"); const row = ((t && t.rows) || []).find(r => { const c = r.cells || {}; return /^digest$/i.test((c.cmuzq03ywty8b || c.cname01 || "").trim()) && !(c.cmuzq36hb77sq || "").trim(); });   // the Digest parent row (named "Digest - parent")
@@ -11945,6 +11946,100 @@ async function titleJobsRun(env, invoke) {
   } finally { await env.TRADES.delete("titlejob:lock"); }
   return { ok: true, ran };
 }
+// ══ AUTO DIGEST (operator 2026-10-16) ══ every hub, twice a week (Tuesday + Friday, Pacific): ONE digest covering all of
+// the hub's ★ main offerings — "a true digest of everything that is important". Same pipeline as the Digest modal:
+// research (Gemini + Perplexity → rank) → a dated title in Main, product = the first main offering → the Digest pillar
+// from the ranked sources → a Digest PARENT asset, written and left UNPUBLISHED (Review) so it shows in the checklist
+// counts. Topical material is the operator's. KV digest:auto:state:<cid> (resumable), digest:auto:done = {cid: period}.
+const AD_DIGEST_STYLE = "PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).";
+function adPeriod() {   // the current half-week in Pacific time: from the latest Tuesday or Friday (key) + the hour
+  const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date()).map(x => [x.type, x.value]));
+  const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day)), wd = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(p.weekday);
+  d.setUTCDate(d.getUTCDate() - (wd >= 5 ? wd - 5 : wd >= 2 ? wd - 2 : wd + 2));   // Fri–Mon → Friday · Tue–Thu → Tuesday
+  return { key: d.toISOString().slice(0, 10), hour: +p.hour, label: d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }) };
+}
+function adSourcesBlock(R) {
+  const list = (R && R.sources) || []; if (!list.length) return "";
+  const line = s => `- [T${s.tier}, ${s.date || "undated"}] ${s.claim} — ${s.publisher || ""} ${/^https?:/.test(s.url || "") ? s.url : ""}`.trim();
+  const prem = list.filter(s => s.split === "premium"), free = list.filter(s => s.split !== "premium");
+  return `RESEARCHED SOURCES (ranked; write ONLY from these facts and cite the publisher by name):\n${R.whatChanged ? "What changed this week: " + R.whatChanged + "\n" : ""}FREE-TIER ITEMS${R.freeAngle ? " (angle: " + R.freeAngle + ")" : ""}:\n${free.map(line).join("\n") || "- none"}\nPREMIUM ITEMS — tease these in the free issue, do not give them away${R.premiumAngle ? " (angle: " + R.premiumAngle + ")" : ""}:\n${prem.map(line).join("\n") || "- none"}`;
+}
+async function adStep(env, cid, S, invoke) {
+  const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
+  if (S.step === "start") {
+    const mains = await hubMainList(env, cid); if (!mains.length) { S.step = "skip"; S.note = "no ★ main offerings"; return; }
+    const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
+    const prods = []; for (const id of mains.slice(0, 15)) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: hdr }).then(r => r.json()).catch(() => null);
+      if (pg && pg.object !== "error" && !pg.archived) prods.push({ id, name: kwTitleOf(pg), keywords: kwSplit(kwRt(pg, "Keywords")).slice(0, 4) }); }
+    if (!prods.length) { S.step = "skip"; S.note = "main offerings not found"; return; }
+    const kws = hcUniq([...prods.flatMap(p => [kwNorm(p.name), ...p.keywords])]).slice(0, 30);
+    S.mainIds = prods.map(p => p.id); S.names = prods.map(p => p.name);
+    const r = ok(await invoke({ action: "digestResearch", op: "start", campaignId: cid, hubName: S.name, keywords: kws,
+      guidance: "One digest for the whole hub, covering everything important this period across all of these main offerings: " + S.names.join("; ") }), "research start");
+    S.jobId = r.job && r.job.id; if (!S.jobId) throw new Error("research job id missing");
+    S.step = "perplexity"; return;
+  }
+  if (S.step === "perplexity") { await invoke({ action: "digestResearch", op: "perplexity", jobId: S.jobId }).catch(() => {}); S.step = "wait"; S.waitFrom = Date.now(); return; }
+  if (S.step === "wait") {   // Gemini deep research runs on Google's side — poll until done (or 25 min, then use what finished)
+    const r = await invoke({ action: "digestResearch", op: "status", jobId: S.jobId }); const g = r && r.job && r.job.gemini && r.job.gemini.status;
+    if (g === "running" && Date.now() - S.waitFrom < 25 * 60000) return;
+    S.step = "rank"; return;
+  }
+  if (S.step === "rank") { const r = await invoke({ action: "digestResearch", op: "rank", jobId: S.jobId }); S.ranked = r && r.job && r.job.ranked ? r.job.ranked : null; S.rankNote = r && r.error ? r.error : ""; S.step = "title"; return; }
+  if (S.step === "title") {
+    const ms = ok(await invoke({ action: "searchMethods", query: "" }), "methods"), dm = (ms.methods || []).find(m => /^digest$/i.test(m.name || "") && m.status === "Live");
+    S.titleName = `Digest — ${adPeriod().label} (${S.name})`;
+    const c = ok(await invoke({ action: "createDevTitle", title: S.titleName, campaignId: cid, productId: S.mainIds[0], methodId: dm ? dm.id : undefined, status: "Development", skipPillar: true,
+      researchInstructions: "Hub digest covering all main offerings: " + S.names.join("; ") }), "title");
+    S.titleId = String(c.id).replace(/-/g, "");
+    await invoke({ action: "setTitleTopic", titleId: S.titleId, topicId: "__main" }).catch(() => {});
+    if (S.ranked) await invoke({ action: "digestResearch", op: "attach", jobId: S.jobId, titleId: S.titleId, sources: S.ranked.sources || [] }).catch(() => {});
+    S.step = "pillar"; return;
+  }
+  if (S.step === "pillar") {
+    ok(await invoke({ action: "writeTitlePillar", titleId: S.titleId, styleGuidance: AD_DIGEST_STYLE, researchOverride: [S.ranked ? adSourcesBlock(S.ranked) : "", "Cover ALL of these main offerings of the hub: " + S.names.join("; ")].filter(Boolean).join("\n\n") }), "pillar");
+    S.step = "parent"; return;
+  }
+  if (S.step === "parent") {
+    const pa = ok(await invoke({ action: "createAsset", titleId: S.titleId, campId: cid, productId: S.mainIds[0], assetTitle: S.titleName + " — Digest", assetType: "Digest", assetStatus: "Development",
+      assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Unwritten", interviewRequired: false }), "parent");
+    S.parentId = String(pa.id).replace(/-/g, ""); S.step = "parentWrite"; return;
+  }
+  if (S.step === "parentWrite") {
+    ok(await invoke({ action: "writeParentAsset", assetId: S.parentId }), "parent write");
+    // written but NOT published: back to Review so it counts as an unpublished parent on the checklist
+    await kwNotionPatch(env, S.parentId, { "Asset Status": { select: { name: "Review" } } }).catch(e => { S.note = "status: " + e.message; });
+    S.step = "done"; return;
+  }
+}
+async function autoDigestRun(env, invoke) {
+  if (await env.TRADES.get("digest:auto:lock")) return { busy: true };
+  await env.TRADES.put("digest:auto:lock", "1", { expirationTtl: 300 });
+  await hubSitesMerge(env);
+  const t0 = Date.now(), per = adPeriod(), done = (await env.TRADES.get("digest:auto:done", "json")) || {}, out = [];
+  try {
+    const cids = [...new Set(HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(c => c.length === 32))];
+    for (const cid of cids) {
+      if (Date.now() - t0 > 120000) break;
+      const key = "digest:auto:state:" + cid; let S = await env.TRADES.get(key, "json");
+      const fresh = !S || S.period !== per.key;
+      if (fresh) { if (done[cid] === per.key) continue; if (per.hour < 6 || per.hour >= 21) continue;   // new runs start 06:00-21:00 Pacific
+        const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid); S = { period: per.key, name: (h && (h.campaign || h.name)) || "Hub", step: "start", startedAt: Date.now(), tries: 0 }; }
+      if (S.step === "done" || S.step === "skip" || S.step === "error") { done[cid] = per.key; continue; }
+      while (!["done", "skip", "error"].includes(S.step) && Date.now() - t0 < 120000) {
+        const before = S.step;
+        try { await adStep(env, cid, S, invoke); S.tries = 0; } catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } break; }
+        await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
+        if (S.step === before) break;   // still waiting on research — next tick
+      }
+      await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });
+      if (["done", "skip", "error"].includes(S.step)) { done[cid] = per.key; S.finishedAt = Date.now(); await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 }); }
+      out.push({ cid, step: S.step });
+    }
+    await env.TRADES.put("digest:auto:done", JSON.stringify(done));
+  } finally { await env.TRADES.delete("digest:auto:lock"); }
+  return { ok: true, period: per.key, out };
+}
 async function kwHubAutoTick(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   const q0 = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q0.length) return;
@@ -17242,6 +17337,12 @@ ${JSON.stringify(products)}`;
               placed: s.placed, marked: s.marked, at: s.finishedAt || s.at || s.startedAt || 0 }; }
           out[k] = { queue, states };
         }
+        { const per = adPeriod(), states = {}, queue = [];
+          for (const key of (await env.TRADES.list({ prefix: "digest:auto:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s || s.period !== per.key) continue;
+            const cid = key.slice(18), steps = ["start", "perplexity", "wait", "rank", "title", "pillar", "parent", "parentWrite", "done"], fin = ["done", "skip", "error"].includes(s.step);
+            if (!fin) queue.push(cid);
+            states[cid] = { name: s.name, done: fin, error: s.error || "", i: Math.max(0, steps.indexOf(s.step)), total: steps.length - 1, running: fin ? "" : (s.step === "wait" ? "waiting on research" : s.step), at: s.finishedAt || s.startedAt || 0 }; }
+          out.digest = { queue, states }; }
         { const queue = (await env.TRADES.get("titlejob:queue", "json")) || [], states = {};
           for (const key of (await env.TRADES.list({ prefix: "titlejob:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s) continue;
             states[key.slice(15)] = { name: s.name, slug: s.slug, titleId: s.titleId, kind: s.kind || "title", productId: s.productId || "", done: !!s.done, error: (s.errors || []).join(" · "), i: s.i || 0, total: (s.steps || []).length, running: s.running || "", at: s.finishedAt || s.at || 0 }; }
@@ -49940,7 +50041,11 @@ Produce all of this by calling the submit_listing tool — do not include any of
         const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
-        await titleJobsRun(env, invoke); })());   // ＋ title research / pillar jobs left by a closed tab   // one-time: titles → their product's topic, everything out of sync   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
+        await titleJobsRun(env, invoke); })());   // ＋ title research / pillar jobs left by a closed tab
+      cw("autoDigestRun", (async () => { const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const r = await autoDigestRun(env, invoke); if (r && r.out && r.out.length) console.log("autoDigest:", JSON.stringify(r).slice(0, 300)); })());   // twice-weekly hub digest   // one-time: titles → their product's topic, everything out of sync   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
