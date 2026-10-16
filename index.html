@@ -6042,8 +6042,16 @@ function kwCoreMerge(snaps) {
   }
   return [...by.values()];
 }
+// filter-box terms: commas or spaces separate them; "-word" or "- word" excludes; punctuation around a term is ignored
+function kwQueryTerms(q) {
+  const out = []; let neg = false;
+  for (let w of String(q || '').toLowerCase().split(/[\s,;]+/)) { if (w === '-') { neg = true; continue; }
+    if (w.startsWith('-')) { neg = true; w = w.slice(1); } w = w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    if (w) out.push(neg ? '-' + w : w); neg = false; }
+  return out.slice(0, 20);
+}
 function kwCoreFilter(rows, f, skipIntent) {
-  const words = String(f.q || '').toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5);
+  const words = kwQueryTerms(f.q);
   const minV = Number(f.minVolume) || 0, minB = Number(f.minBid) || 0;
   const comps = f.competition || [], intents = skipIntent ? [] : (f.intent || []);
   return rows.filter(r => {

@@ -49944,7 +49944,10 @@ function kwResultsSql(body, runs, forExport) {
       + "LEFT JOIN (SELECT * FROM (SELECT x.*, ROW_NUMBER() OVER (PARTITION BY x.keyword_id ORDER BY x.run_id DESC) rn FROM kw_frontier x) WHERE rn = 1) f ON f.keyword_id = m.keyword_id "
       + "LEFT JOIN kw_keywords pk ON pk.id = f.parent_keyword_id LEFT JOIN kw_keywords rk ON rk.id = f.root_seed_id";
   }
-  if (body.q) for (const w of String(body.q).toLowerCase().split(/\s+/).filter(Boolean).slice(0, 5)) {
+  // commas or spaces separate terms; "-word" / "- word" excludes; punctuation around a term is ignored (same as the page's kwQueryTerms)
+  const qTerms = []; { let neg = false; for (let w of String(body.q || "").toLowerCase().split(/[\s,;]+/)) { if (w === "-") { neg = true; continue; }
+    if (w.startsWith("-")) { neg = true; w = w.slice(1); } w = w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""); if (w) qTerms.push(neg ? "-" + w : w); neg = false; } }
+  for (const w of qTerms.slice(0, 20)) {
     if (w.startsWith("-") && w.length > 1) { where.push("k.text NOT LIKE ?"); binds.push("%" + w.slice(1) + "%"); }
     else { where.push("k.text LIKE ?"); binds.push("%" + w + "%"); }
   }
