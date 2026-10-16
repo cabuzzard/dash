@@ -17302,8 +17302,9 @@ function renderHubKw(slug) {
   const kwCounts = (ps, ts) => { ts = ts || []; const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
     const nKw = ps.filter(p => p.stage === 'Keyword Research').length, pIn = ps.filter(p => hubKwSyncState(slug, p) === 'in').length, pOut = ps.filter(p => hubKwOutOfSync(slug, p)).length;
     const tIn = ts.filter(x => !x.oos && x.res).length, tOut = ts.filter(x => x.oos || !x.res).length, nIn = pIn + tIn, nOut = pOut + tOut;
-    const box = (n, ico, tip) => `<span title="${tip}" style="display:inline-block;width:38px;text-align:right;color:var(--text2);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;">${n ? '<span style="font-weight:400;font-size:10px;opacity:.75;">' + ico + '</span> ' + n : ''}</span>`;
-    return box(ps.length, '📦', `${ps.length} product${ps.length === 1 ? '' : 's'} — ${pIn} in sync · ${pOut} out of sync / no research${nKw ? ' · ' + nKw + ' flagged for keyword research' : ''}`) + box(ts.length, '✍', `${ts.length} title${ts.length === 1 ? '' : 's'} — ${tIn} in sync · ${tOut} out of sync / no research`); };
+    // two slots, products then titles: an orange number = how many are out of sync (or have no research); blank = none
+    const box = (n, tip) => `<span title="${tip}" style="display:inline-block;width:26px;text-align:right;color:#ff7a00;font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
+    return box(pOut, `products: ${pOut} of ${ps.length} out of sync / no research`) + box(tOut, `titles: ${tOut} of ${ts.length} out of sync / no research`); };
   const topic = (t, depth) => {
     const kws = split(t.keywords), ps = prodsOf(t).filter(p => !fOn || keep(p)), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
     if (fOn && !ps.length) return '';
