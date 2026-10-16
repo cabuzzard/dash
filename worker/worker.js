@@ -4180,7 +4180,7 @@ async function clearExistingPillarSection(hdr, titleId) {
     }
   } catch (e) { /* best-effort — worst case the new section appends after a stale one */ }
 }
-async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext, addKeywords, omitKeywords }) {
+async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext, addKeywords, omitKeywords, targetKeywords }) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no ANTHROPIC_API_KEY" };
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
   const rt = (props, key) => (props?.[key]?.rich_text || []).map(t => t.plain_text).join("");
@@ -4262,20 +4262,28 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
   if (extraContext) parts.push(String(extraContext).slice(0, 4000));
   if (guidance) parts.push(`OPERATOR GUIDANCE (follow this): ${guidance}`);
   if (styleGuidance) parts.push(`WRITING STYLE (match this tone/voice/structure): ${styleGuidance}`);
+  if (targetKeywords) parts.push(`TARGET SEARCH KEYWORDS FOR THIS TITLE (the primary keyword goes in the opening paragraph and at least one subheading; the rest spread naturally through subheadings and body): ${String(targetKeywords).slice(0, 1500)}`);
   if (addKeywords) parts.push(`WORK THESE KEYWORDS IN NATURALLY (don't force or list them, weave them into real sentences): ${addKeywords}`);
   if (omitKeywords) parts.push(`DO NOT USE these words/phrases anywhere in the piece: ${omitKeywords}`);
 
   const groundingBlock = parts.join("\n\n");
   if (!groundingBlock.trim()) return { skipped: true, reason: "no grounding available yet for this title" };
 
-  const pillarVoice = (campaignId ? await voiceBlock(env, campaignId).catch(() => "") : "") + ((await ivBlock(env, titleId).catch(() => ({ text: "" }))).text || "");
-  const prompt = `${pillarVoice}You are writing the PILLAR piece for a content title — a full-length, complete piece of writing that captures everything worth saying on this topic, grounded strictly in the research/positioning below. This is the raw source material a later step will reshape into platform-specific assets (a carousel, a video script, a post) — it is not itself a finished social post, so don't write it as one: no hashtags, no CTA button copy, no slide-numbered structure.
+  // 2026-10-15 operator rule: the title's PILLAR is the best first-run long-form SEO post, written to the title from
+  // research — no pillar "style", and NO interview layer (interviews live on parent assets; children are written off parents).
+  const pillarVoice = campaignId ? await voiceBlock(env, campaignId).catch(() => "") : "";
+  const prompt = `${pillarVoice}You are writing the PILLAR for a content title: the best possible first-run, long-form SEO blog post on this title — complete, publish-ready, grounded strictly in the research/positioning below. It is the source every downstream asset is built from (parent assets, then their children), so it must capture everything worth saying on the topic.
 
 TITLE: ${titleText}
 
 ${groundingBlock}
 
-Write 800-1500 words of substantive, specific, well-organized prose — real claims and examples grounded in the material above, not generic filler. Plain paragraphs, no headers, no meta-commentary ("in this piece we will..."). Return ONLY the piece itself, nothing else.
+Write 1500-2500 words. Structure it as a real SEO article:
+- Open with a short paragraph that answers the searcher's intent directly and uses the primary keyword.
+- Then 4-8 sections, each starting with a subheading on its own line written as "## Subheading" (use "### " for a sub-point if needed). Subheadings should be specific and keyword-aware, not cute.
+- Substantive, specific prose — real claims, numbers and examples from the material above, no generic filler, no meta-commentary ("in this post we will..."). Short paragraphs; a bulleted list only where it genuinely helps.
+- End with a "## FAQ" section of 3-5 real searcher questions (each as "### Question?" then a 2-4 sentence answer), then a brief closing paragraph.
+- No title line at the top (the title is already set), no hashtags, no meta description, no notes to the editor. Return ONLY the post.
 
 INTENT ORDER (2026-10-08 operator rule): first engage the reader, then hold attention and work the keywords in; ${productId ? "only AFTER those two, bring in the product as a natural next step — never open with it" : "there is no product attached, so do not sell anything"}.
 
@@ -4286,7 +4294,7 @@ The passage after a marker must make sense without the rest of the piece. Do not
   const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 4000, messages: [{ role: "user", content: prompt }] }),
+    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 8000, messages: [{ role: "user", content: prompt }] }),
   });
   const aiData = await aiResp.json();
   if (!aiResp.ok) throw new Error(aiData.error?.message || "Claude API error writing pillar content");
@@ -16183,6 +16191,7 @@ Return ONLY this JSON, no other text, no markdown fences:
         const productId  = (p.product?.relation  || [])[0]?.id?.replace(/-/g,"") || undefined;
         const methodId   = (p.method?.relation   || [])[0]?.id?.replace(/-/g,"") || undefined;
         const notes = p.Notes?.rich_text?.map(t => t.plain_text).join("") || "";
+        const titleKeywords = (p["seed idea"]?.rich_text || []).map(t => t.plain_text).join("").trim();   // the title's own SEO keywords
 
         // researchOverride comes from the Write Pillar modal's prompt box —
         // it wins over the title's saved Notes so the operator can type a
@@ -16197,6 +16206,7 @@ Return ONLY this JSON, no other text, no markdown fences:
           useGrounding: grounded,
           addKeywords: addKeywords || undefined,
           omitKeywords: omitKeywords || undefined,
+          targetKeywords: titleKeywords || undefined,
         }).catch(e => ({ error: e.message }));
         if (result?.error) return json({ error: result.error }, 502);
         if (result?.skipped) return json({ error: result.reason || "Skipped — no grounding available yet for this title" }, 400);
