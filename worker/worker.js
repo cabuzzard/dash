@@ -20647,6 +20647,10 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         try { await kwNotionPatch(env, pid, props); } catch (e) { return json({ error: e.message }, 502); }
         return json({ success: true });
       }
+      if (body.action === "titleIdleSweep") {   // {dryRun?} — same rule as the weekly cron
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        try { return json({ success: true, ...(await runTitleIdleSweep(env, { dryRun: !!body.dryRun })) }); } catch (e) { return json({ error: e.message }, 502); }
+      }
       if (body.action === "productStageBackfill") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         try { return json({ success: true, ...(await productStageBackfill(env, !!body.force)) }); } catch (e) { return json({ error: e.message }, 502); }
@@ -49381,6 +49385,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
     }
     if (event.cron === "*/30 * * * *") {
       cw("productStageBackfill", productStageBackfill(env).catch(e => console.error("productStageBackfill failed:", e.message)));
+      if (await env.TRADES.get("titleidle:runnow")) { await env.TRADES.delete("titleidle:runnow");
+        cw("runTitleIdleSweep", runTitleIdleSweep(env).then(r => console.log(`titleIdleSweep: ${r.moved || 0} → Idea${r.left ? ', ' + r.left + ' left' : ''}`)).catch(e => console.error("runTitleIdleSweep failed:", e.message))); }
       cw("enrichUnprocessedSavedPosts", enrichUnprocessedSavedPosts(env, { limit: 50 }).catch(e => console.error('enrichUnprocessedSavedPosts failed:', e.message)));
       // Hub news: per-hub randomised schedule — every 3-10 h until a hub has 3, then twice a week (hubNewsCronTick).
       cw("topicalCronTick", topicalCronTick(env).then(r => { if (r && !r.idle) console.log("topical:", JSON.stringify(r).slice(0, 300)); }).catch(e => console.error('topicalCronTick failed:', e.message)));   // ⏱ queued topical posts
@@ -49409,6 +49415,9 @@ Produce all of this by calling the submit_listing tool — do not include any of
         } catch (e) { console.error('bulkHubStrategy cron failed:', e.message); }
       })());
       return;
+    }
+    if (event.cron === "15 0 * * *" && new Date().getUTCDay() === 1) {
+      cw("runTitleIdleSweep", runTitleIdleSweep(env).then(r => console.log(`titleIdleSweep: ${r.moved || 0} → Idea${r.left ? ', ' + r.left + ' left' : ''}`)).catch(e => console.error("runTitleIdleSweep failed:", e.message)));
     }
     if (event.cron === "15 0 * * *") {
       // Nightly bulk link sweep — its own cron (15 min after the main
@@ -50464,6 +50473,45 @@ async function productStageBackfill(env, force) {
     if (!failed) await env.TRADES.put("prodstage:backfill:v1", JSON.stringify(out));
     return out;
   } finally { await env.TRADES.delete("prodstage:backfill:lock"); }
+}
+// ── Title idle sweep (operator 2026-10-15): any hub title at Status Development with NO work on it for 7 days
+// (the title and every asset linked to it untouched — Notion last_edited_time) moves to Status "Idea" (pre-Planning
+// parking; promote it back by hand). Weekly (Mondays, 15 0 cron) + on demand (titleIdleSweep action, or KV
+// titleidle:runnow picked up by the */30 cron). Max 150 moves per run; a run that hits the cap re-arms runnow.
+async function runTitleIdleSweep(env, opts) {
+  opts = opts || {}; const days = 7, cap = opts.max || 150;
+  if (await env.TRADES.get("titleidle:lock")) return { running: true };
+  await env.TRADES.put("titleidle:lock", "1", { expirationTtl: 1800 });
+  try {
+    await hubSitesMerge(env);
+    const nid = x => String(x || "").replace(/-/g, "");
+    const hubOf = {}; HUB_SITES.forEach(h => { if (h.campaignId) hubOf[nid(h.campaignId)] = h.slug; });
+    const cutoff = Date.now() - days * 864e5, cutIso = new Date(cutoff).toISOString();
+    const [titles, recent] = await Promise.all([
+      notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Status", select: { equals: "Development" } } }),
+      notionQuery(ASSETS_DB, { filter: { timestamp: "last_edited_time", last_edited_time: { on_or_after: cutIso } } }).catch(() => []),
+    ]);
+    const recentAsset = new Set(recent.map(a => nid(a.id)));
+    const perHub = {}, moved = []; let left = 0;
+    for (const t of titles) {
+      const slug = hubOf[nid(((t.properties?.Campaign?.relation) || [])[0]?.id)]; if (!slug) continue;
+      const ph = perHub[slug] || (perHub[slug] = { kept: 0, idea: 0 });
+      const assets = (t.properties?.Assets?.relation || []).map(a => nid(a.id));
+      const worked = Date.parse(t.last_edited_time) >= cutoff || assets.some(a => recentAsset.has(a));
+      if (worked) { ph.kept++; continue; }
+      if (opts.dryRun) { ph.idea++; continue; }
+      if (moved.length >= cap) { left++; continue; }
+      try { await kwNotionPatch(env, t.id, { Status: { select: { name: "Idea" } } }); ph.idea++;
+        moved.push({ id: nid(t.id), slug, title: (t.properties?.Title?.title || []).map(x => x.plain_text).join("") }); }
+      catch (e) { console.error("titleIdleSweep " + nid(t.id) + ": " + e.message); }
+      await new Promise(r => setTimeout(r, 340));
+    }
+    if (left && !opts.dryRun) await env.TRADES.put("titleidle:runnow", "1");   // finish on the next */30 tick
+    const out = { at: new Date().toISOString(), days, dryRun: !!opts.dryRun, moved: moved.length, left, perHub };
+    if (!opts.dryRun) { await env.TRADES.put("titleidle:last", JSON.stringify({ ...out, sample: moved.slice(0, 40) }));
+      if (moved.length) await env.TRADES.put("titleidle:moved:" + out.at, JSON.stringify(moved), { expirationTtl: 90 * 86400 }); }   // full list → undo-able
+    return out;
+  } finally { await env.TRADES.delete("titleidle:lock"); }
 }
 async function kwEnsureProductProps(env) {
   if (await env.TRADES.get("kwhub:props2")) return;

@@ -19991,6 +19991,9 @@ async function glHubFormsPullLists() {
 // job is added, removed, or re-timed there, update this array to match.
 // `cron` is the raw 5-field expression; `when` is the human reading (UTC).
 const CRON_REGISTRY = [
+  { fn: 'runTitleIdleSweep', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC (also on demand: titleIdleSweep action / KV titleidle:runnow via the */30 cron)', group: 'Content',
+    what: 'Any hub title at Status Development with no work for 7 days — the title and all its assets untouched (Notion last edited) — moves to Status Idea (pre-Planning parking). Max 150 moves per run; a capped run finishes on the next */30 tick.',
+    io: 'Notion: Content Strategy Status → Idea · KV: titleidle:last, titleidle:lock, titleidle:runnow' },
   { fn: 'runSwingStrategies', cron: '*/5 12-16 * * MON-FRI', when: 'Once per session ~09:45 ET (self-gated on the ORB cron)', group: 'Trading',
     what: 'ETF_MOMENTUM_V1 (top 3 of 10 asset ETFs by 3-mo return, re-picked every 20 sessions) + FEAR_DIP_V1 (RSI(2)<10 above SMA200, only when VIX>20; exit signal close>SMA5 or 20 sessions, recorded on the trade meta). Rules as backtested in tools/backtest. Picks written as swing calls via the ORB contract picker; tracked by runTradePoll.',
     io: 'KV: swing:* · writes trades:* paper signals' },
