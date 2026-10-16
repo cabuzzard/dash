@@ -6640,7 +6640,7 @@ function kwHubDecorate(rows) {
   KW.hub.products.forEach(p => p.keywords.forEach(k => { prod.set(k, (prod.get(k) || 0) + 1); if (!prodNames.has(k)) prodNames.set(k, []); prodNames.get(k).push(p.name || 'product'); }));
   KW.hub.titles.forEach(t => t.keywords.forEach(k => tit.set(k, (tit.get(k) || 0) + 1)));
   for (const r of rows) {
-    const ts = [...(main.has(r.keyword) ? [{ id: KwHubOps.MAIN, name: 'Main', cluster: 'Main' }] : []), ...(topicsOf.get(r.keyword) || [])];
+    const ts = [...(main.has(r.keyword) ? [{ id: KwHubOps.MAIN, name: '★ Main', cluster: '★ Main' }] : []), ...(topicsOf.get(r.keyword) || [])];
     r.topicIds = ts.map(t => t.id); r.topic = ts.length ? ts.map(t => t.name).join(' · ') : null;
     r.cluster = ts.length ? [...new Set(ts.map(t => t.cluster).filter(Boolean))].join(' · ') || null : null;
     r.hubIn = { main: main.has(r.keyword), topic: ts.some(t => t.id !== KwHubOps.MAIN), product: prod.get(r.keyword) || 0, title: tit.get(r.keyword) || 0, cluster: cl.has(r.keyword) };
@@ -6680,7 +6680,7 @@ function kwHubDragStart(e) {
 }
 function kwHubDragOver(e) {
   if (!_kwDrag) return; const k = e.currentTarget.dataset.drop || '';
-  const ok = _kwDrag.kws ? (k.startsWith('t:') || k === 'x:none') : (_kwDrag.topic !== KwHubOps.MAIN && ((k.startsWith('c:') && k !== 'c:Main' && k !== 'c:__prod') || (k.startsWith('t:') && k.slice(2) !== _kwDrag.topic && k.slice(2) !== KwHubOps.MAIN)));
+  const ok = _kwDrag.kws ? (k.startsWith('t:') || k === 'x:none') : (_kwDrag.topic !== KwHubOps.MAIN && ((k.startsWith('c:') && k !== 'c:★ Main' && k !== 'c:__prod') || (k.startsWith('t:') && k.slice(2) !== _kwDrag.topic && k.slice(2) !== KwHubOps.MAIN)));
   if (!ok) return; e.preventDefault(); e.currentTarget.style.outline = '2px dashed #4cff4c';
 }
 function kwHubDrop(e) {
@@ -6719,10 +6719,10 @@ function kwDecorateRun(rows) {
 function kwColVals(r, col, ctx) {
   ctx = ctx || {};
   const none = l => [{ v: l, none: true }];
-  const clusterOf = id => id === KwHubOps.MAIN ? 'Main' : ((kwHubDraft().model.topics.find(x => x.id === id) || {}).cluster || '');
-  if (col === 'topic') { const d = kwHubDraft(); const ts = (r.topicIds || []).filter(id => !('cluster' in ctx) || clusterOf(id) === ctx.cluster).map(id => id === KwHubOps.MAIN ? { v: 'Main', drop: 't:' + id } : (() => { const t = d && d.model.topics.find(x => x.id === id); return t ? { v: t.name, drop: 't:' + id, id } : null; })()).filter(Boolean);
+  const clusterOf = id => id === KwHubOps.MAIN ? '★ Main' : ((kwHubDraft().model.topics.find(x => x.id === id) || {}).cluster || '');
+  if (col === 'topic') { const d = kwHubDraft(); const ts = (r.topicIds || []).filter(id => !('cluster' in ctx) || clusterOf(id) === ctx.cluster).map(id => id === KwHubOps.MAIN ? { v: '★ Main Keywords', drop: 't:' + id } : (() => { const t = d && d.model.topics.find(x => x.id === id); return t ? { v: t.name, drop: 't:' + id, id } : null; })()).filter(Boolean);
     return ts.length ? ts : [{ v: '— in no topic —', none: true, drop: 'x:none' }]; }
-  if (col === 'cluster') { const cs = 'topicId' in ctx ? (ctx.topicId ? [clusterOf(ctx.topicId)].filter(Boolean) : []) : String(r.cluster || '').split(' · ').filter(Boolean); return cs.length ? cs.map(c => ({ v: c, drop: c === 'Main' ? '' : 'c:' + c })) : [{ v: '— no cluster —', none: true, drop: 'c:' }]; }
+  if (col === 'cluster') { const cs = 'topicId' in ctx ? (ctx.topicId ? [clusterOf(ctx.topicId)].filter(Boolean) : []) : String(r.cluster || '').split(' · ').filter(Boolean); return cs.length ? cs.map(c => ({ v: c, drop: c === '★ Main' ? '' : 'c:' + c })) : [{ v: '— no cluster —', none: true, drop: 'c:' }]; }
   if (col === 'product') return (r.productList || []).length ? r.productList.map(p => ({ v: '📦 ' + p })) : none('— on no product —');
   if (col === 'src') return r.src == null ? none('— not in the hub —') : [{ v: r.src || 'in a topic' }];
   if (col === 'intent') return [{ v: kwIntentLabel(r.intent || 'general') }];
@@ -6834,7 +6834,6 @@ function kwHubTopicAct(id, kind, val) {
 }
 function kwHubClusterRename(name) {
   const n = prompt('Rename cluster (renaming onto an existing cluster merges them):', name);
-  if (n && /^main$/i.test(n.trim())) return alert('"Main" is the hub’s own Main cluster — pick another name.');
   if (n && n.trim() && n.trim() !== name) kwHubOp({ op: 'renameCluster', from: name, to: n.trim() });
 }
 function kwHubUndoOp() { KW.hubOps.pop(); KW._hubDraft = null; kwLoadResults(KW.offset); }
@@ -6884,7 +6883,7 @@ async function kwHubPropose3() {
     setTimeout(() => { const m = document.getElementById('kwHubMsg'); if (m) m.textContent = '✓ 3×3 proposal loaded as a draft — review the topics, then 💾 Apply' + (r.warn ? ' · ⚠ ' + r.warn : ''); }, 50);
     kwWideModal(`<h3 style="margin:0 0 4px;">🧭 Proposed structure — ${esc(KW.hub.name)}</h3>
       <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">From ${r.records} products + titles (${r.phrases} search phrases suggested) and ${r.pool} priced keywords. Loaded into the draft — nothing is saved until 💾 Apply.</div>
-      <div style="font-size:12px;margin-bottom:8px;">🧩 Main → Main topic: <span style="color:var(--text2);">${esc((r.main || []).join(', ') || '—')}</span></div>
+      <div style="font-size:12px;margin-bottom:8px;">★ Main: <span style="color:var(--text2);">${esc((r.main || []).join(', ') || '—')}</span></div>
       ${(r.clusters || []).map(c => `<div style="border:1px solid var(--border);border-radius:6px;padding:7px 10px;margin-bottom:7px;"><div style="font-weight:700;font-size:12px;margin-bottom:4px;">🧩 ${esc(c.name)}</div>
         ${c.topics.map(t => `<div style="font-size:11.5px;padding:2px 0 2px 12px;"><b>${esc(t.name)}</b> <span style="color:var(--text3);">· ${t.count} kw · ${Number(t.volume || 0).toLocaleString()}/mo · ${esc(t.top.join(', '))}</span></div>`).join('')}</div>`).join('')}
       <div style="font-size:11.5px;color:var(--text2);margin:6px 0 10px;">Unclassified: ${r.unclassified} leftover keyword${r.unclassified === 1 ? '' : 's'} (kept, not lost).</div>
@@ -6940,7 +6939,7 @@ function kwHubRender() {
   const oos = H.products.filter(p => p.outOfSync).length, willOos = d.fx.outOfSync.filter(id => !(H.products.find(p => p.id === id) || {}).outOfSync).length;
   const topicOpts = (sel, skip) => {
     const by = {}; m.topics.forEach(t => { if (t.id === skip) return; (by[t.cluster || ''] = by[t.cluster || ''] || []).push(t); });
-    return (skip === KwHubOps.MAIN ? '' : `<optgroup label="🧩 Main"><option value="${KwHubOps.MAIN}" ${sel === KwHubOps.MAIN ? 'selected' : ''}>Main (${m.main.length})</option></optgroup>`) + Object.keys(by).sort((a, b) => (!a) - (!b) || a.localeCompare(b)).map(c => `<optgroup label="${esc(c ? '🧩 ' + c : 'no cluster')}">${by[c].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${esc(t.name)} (${t.keywords.length})</option>`).join('')}</optgroup>`).join('');
+    return (skip === KwHubOps.MAIN ? '' : `<option value="${KwHubOps.MAIN}" ${sel === KwHubOps.MAIN ? 'selected' : ''}>★ Main Keywords (${m.main.length})</option>`) + Object.keys(by).sort((a, b) => (!a) - (!b) || a.localeCompare(b)).map(c => `<optgroup label="${esc(c ? '🧩 ' + c : 'no cluster')}">${by[c].sort((a, b) => a.name.localeCompare(b.name)).map(t => `<option value="${t.id}" ${t.id === sel ? 'selected' : ''}>${esc(t.name)} (${t.keywords.length})</option>`).join('')}</optgroup>`).join('');
   };
   const S = 'font-size:11px;padding:2px 6px;border:1px solid var(--border2);border-radius:4px;background:var(--surface);color:var(--text);';
   const lines = KW.hubOps.length ? KwHubOps.describe(H.model, m, d.fx) : [];
@@ -6965,7 +6964,7 @@ function kwHubRender() {
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">
       <span style="color:var(--text3);">Show:</span>
       <select class="kw-sel" style="max-width:240px;${f.topic ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('topic', this.value)"><option value="">any topic</option><option value="__none" ${f.topic === '__none' ? 'selected' : ''}>— in no topic —</option>${topicOpts(f.topic)}</select>
-      <select class="kw-sel" style="max-width:200px;${f.cluster ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('cluster', this.value)"><option value="">any cluster</option><option value="__none" ${f.cluster === '__none' ? 'selected' : ''}>— no cluster —</option><option ${f.cluster === 'Main' ? 'selected' : ''}>Main</option>${m.clusters.map(c => `<option ${c === f.cluster ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
+      <select class="kw-sel" style="max-width:200px;${f.cluster ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('cluster', this.value)"><option value="">any cluster</option><option value="__none" ${f.cluster === '__none' ? 'selected' : ''}>— no cluster —</option><option ${f.cluster === '★ Main' ? 'selected' : ''}>★ Main</option>${m.clusters.map(c => `<option ${c === f.cluster ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
       <select class="kw-sel" style="${f.src ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('src', this.value)">${[['', 'anywhere'], ['topic', 'in a topic'], ['main', 'in Main Keywords'], ['product', 'on a product'], ['title', 'on a title'], ['cluster', 'a cluster name'], ['none', 'not in the hub (other runs)']].map(([v, l]) => `<option value="${v}" ${v === f.src ? 'selected' : ''}>${l}</option>`).join('')}</select>
       ${f.topic || f.cluster || f.src ? `<span class="kw-x" onclick="KW.hubF={topic:'',cluster:'',src:''};kwLoadResults(0)">✕ clear</span>` : ''}
       <span style="color:var(--text3);">Tick another run too to compare (“not in the hub” = gaps).</span>
@@ -10614,7 +10613,7 @@ function kwTopicOptions(d, sel) {
   const o = (v, l) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${l}</option>`;
   const cl = d.tc.clusters || [], as = d.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
   const by = (list) => list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => o(kwNid(t.id), esc(t.name) + (t.staged ? ' · proposed' : ''))).join('');
-  return o('', '— pick a keyword topic —') + `<optgroup label="🧩 Main">${o('__main', "Main (the hub's main keywords)")}</optgroup>`
+  return o('', '— pick a keyword topic —') + o('__main', "★ Main (the hub's main keywords)")
     + cl.map(c => { const ts = d.topics.filter(t => cOf(t) === c); return ts.length ? `<optgroup label="🧩 ${esc(c)}">${by(ts)}</optgroup>` : ''; }).join('')
     + (() => { const ts = d.topics.filter(t => !cOf(t)); return ts.length ? `<optgroup label="Topics with no cluster (isolated)">${by(ts)}</optgroup>` : ''; })();
 }
@@ -15478,7 +15477,7 @@ function hub2KsHtml(slug) {
   if (!p) body = st.queued ? `<div style="font-size:12px;color:var(--text2);">⏳ Queued (#${st.queued}) — the background job proposes one hub about every 4 minutes. ⟳ to check.</div>` : '<div style="font-size:12px;color:var(--text3);">No proposal yet — write a note below (optional) and press ↻ Propose.</div>';
   else if (p.status === 'error') body = `<div style="font-size:12px;color:#f87171;">✗ The last proposal failed: ${esc(p.error || '')}</div>`;
   else body = `<div style="font-size:11px;color:var(--text3);margin-bottom:6px;">${p.status === 'applied' ? '<span style="color:#4ade80;font-weight:700;">✓ Applied ' + when(p.appliedAt) + '</span>' : 'Proposed ' + when(p.at)} · from ${p.records} products + titles and ${p.pool} priced keywords${p.guidance ? ' · following your note' : ''}${st.queued ? ' · re-proposal queued' : ''}${p.warn ? ' · ⚠ ' + esc(p.warn) : ''}</div>
-    <div style="font-size:12px;margin-bottom:6px;">🧩 Main → Main topic: <span style="color:var(--text2);">${esc((p.main || []).join(', ') || '—')}</span></div>
+    <div style="font-size:12px;margin-bottom:6px;">★ Main: <span style="color:var(--text2);">${esc((p.main || []).join(', ') || '—')}</span></div>
     ${(p.clusters || []).map(c => `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 10px;margin-bottom:6px;"><div style="font-weight:700;font-size:12px;margin-bottom:3px;">🧩 ${esc(c.name)}</div>
       ${c.topics.map(t => `<div style="font-size:11.5px;padding:2px 0 2px 12px;"><b>${esc(t.name)}</b> <span style="color:var(--text3);">· ${t.count} kw · ${Number(t.volume || 0).toLocaleString()}/mo · ${esc((t.top || []).join(', '))}</span></div>`).join('')}</div>`).join('')}
     <div style="font-size:11.5px;color:var(--text2);margin:4px 0 8px;">Unclassified: ${p.unclassified} leftover keyword${p.unclassified === 1 ? '' : 's'} (kept).</div>
@@ -15761,7 +15760,7 @@ async function hub2DigestModal(slug) {
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:-4px 0 6px;"><input id="h2dSugQ" placeholder="suggest from a phrase…" style="${HT_IN}flex:1;min-width:160px;" onkeydown="if(event.key==='Enter'){event.preventDefault();hub2DigestSuggest();}"><button class="kw-btn" onclick="hub2DigestSuggest()">💡 YouTube + Google</button></div>
     <div id="h2dSug" style="font-size:11px;margin-bottom:6px;"></div>
     <details id="h2dTopicBox" ontoggle="if(this.open)hub2DigestTopicOpen()" style="font-size:11.5px;margin:-2px 0 8px;"><summary style="cursor:pointer;color:var(--accent);">＋ Add these keywords to the hub as a topic</summary>
-      <div style="padding:6px 0 0 12px;"><div style="font-size:11px;color:var(--text3);margin-bottom:5px;">The keywords in the box above become one grouped topic in the hub's keyword structure (taken out of any other topic; the Main topic is never touched). Undo: Keywords tab → 🌐 Hub → ↶ Undo last apply.</div>
+      <div style="padding:6px 0 0 12px;"><div style="font-size:11px;color:var(--text3);margin-bottom:5px;">The keywords in the box above become one grouped topic in the hub's keyword structure (taken out of any other topic; ★ Main is never touched). Undo: Keywords tab → 🌐 Hub → ↶ Undo last apply.</div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;"><div style="flex:1;min-width:180px;">${HT_LBL('Topic name')}<input id="h2dTopicName" style="${IN}" placeholder="its main keyword"></div>
           <div style="flex:1;min-width:180px;">${HT_LBL('Cluster')}<select id="h2dTopicCluster" style="${IN}"><option value="">Loading clusters…</option></select></div></div>
         <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="hub2DigestAddTopic(this)">＋ Add topic to the hub</button> <span id="h2dTopicMsg" style="font-size:11px;color:var(--text2);"></span></div></details>
@@ -16458,7 +16457,7 @@ async function hub2ProductEdit(slug, pid) {
     + '<div style="padding-top:12px;border-top:1px solid var(--border);">' + L('Add a simple title to this product')
     + '<input id="h2pTitle" placeholder="New title" style="' + IN + '"><button class="modal-btn" onclick="hcModalRun(this,()=>hub2ProductAddTitle(\'' + slug + '\',\'' + esc(kwNid(pid)) + '\'))">＋ Add title</button></div>'
     + '<div id="h2pMsg" style="font-size:11.5px;color:var(--text3);min-height:16px;margin-top:9px;"></div><div style="margin-top:8px;">' + HC_CANCEL + '</div>');
-  try { const d = await kwTopicsFor(h.campaignId), sel = document.getElementById('h2pTopic'); if (sel) { const hit = (d.topics || []).find(x => String(x.name || '').trim().toLowerCase() === String(p.topic || '').trim().toLowerCase()), cur = /^(★ )?Main( Keywords)?$/.test(p.topic || '') ? '__main' : kwNid(hit && hit.id); sel.innerHTML = kwTopicOptions(d, cur); sel.dataset.cur = cur; } }
+  try { const d = await kwTopicsFor(h.campaignId), sel = document.getElementById('h2pTopic'); if (sel) { const hit = (d.topics || []).find(x => String(x.name || '').trim().toLowerCase() === String(p.topic || '').trim().toLowerCase()), cur = p.topic === '★ Main Keywords' ? '__main' : kwNid(hit && hit.id); sel.innerHTML = kwTopicOptions(d, cur); sel.dataset.cur = cur; } }
   catch (e) { const sel = document.getElementById('h2pTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; }
 }
 async function hub2ProductSave(slug, pid, keepOpen) {
@@ -16776,7 +16775,6 @@ async function hubKwSaveClusters(slug, clusters, assign, msg) {
 function hubKwAddCluster(slug) {
   const K = _hubKw[slug]; if (!K) return;
   const n = (prompt('New cluster name (usually the keyword that groups its topics):') || '').trim(); if (!n) return;
-  if (/^main$/i.test(n)) return alert('"Main" is the hub’s own Main cluster — pick another name.');
   if ((K.tc.clusters || []).some(c => c.toLowerCase() === n.toLowerCase())) return alert('There is already a cluster called "' + n + '".');
   hubKwSaveClusters(slug, [...(K.tc.clusters || []), n], { ...(K.tc.assign || {}) }, 'Cluster "' + n + '" added');
 }
@@ -16811,7 +16809,7 @@ async function hubKwMoveProduct(slug, pid, to) {
   const nid = x => String(x || '').replace(/-/g, ''), p = (K.products || []).find(x => nid(x.id) === nid(pid)); if (!p) return;
   const t = [...K.staged, ...K.committed].find(x => nid(x.id) === nid(to)), cur = p.topicId || '';
   if (cur === (to === '__main' ? '__main' : nid(to))) return;
-  const tname = to === '__main' ? 'Main' : ((t || {}).name || 'topic');
+  const tname = to === '__main' ? '★ Main' : ((t || {}).name || 'topic');
   K.msg = '⏳ Moving "' + p.name + '" to ' + tname + '…'; hubKwRefresh(slug);
   const r = await call('attachProductToTopic', { productId: p.id, topicId: to, campaignId: h.campaignId, markOutOfSync: true }).catch(x => ({ error: x.message }));
   if (!r || r.error) { K.msg = '✗ Not moved: ' + ((r && r.error) || 'no response'); return hubKwRefresh(slug); }
@@ -16930,7 +16928,7 @@ async function hubKwMainIdeaDismiss(slug, i, btn) {
 }
 async function hubKwMainIdeaCreate(slug, i, asMain) {
   const h = HUB_SITES.find(x => x.slug === slug), ideas = hubKwMainIdeas(slug), x = ideas[i]; if (!h || !x) return;
-  if (!confirm(asMain ? '★ Add "' + x.name + '" to the Main topic AND to this hub\'s main offerings? (existing main offerings stay)' : 'Add "' + x.name + '" to the Main topic as a real product?')) return;
+  if (!confirm(asMain ? '★ Add "' + x.name + '" to ★ Main AND to this hub\'s main offerings? (existing main offerings stay)' : 'Add "' + x.name + '" to ★ Main as a real product?')) return;
   try {
     const r = await call('createProduct', { title: x.name, description: x.desc || '', topicId: '__main', campaignId: h.campaignId, status: 'Development' });
     if (!r || r.error || !r.id) throw new Error((r && r.error) || 'Create failed');
@@ -16938,7 +16936,7 @@ async function hubKwMainIdeaCreate(slug, i, asMain) {
     if (asMain) { const m = await call('setHubMainOffering', { campaignId: h.campaignId, productId: r.id, op: 'add' }).catch(e => ({ error: e.message })); note = m && !m.error ? ' · ★ added to main offerings' : ' · ★ main failed: ' + ((m && m.error) || '?'); if (m && m.mainIds && _hubKw[slug]) _hubKw[slug].mainIds = m.mainIds.map(x => String(x).replace(/-/g, '')); }
     await hubKwMainSaveIdeas(slug, ideas.filter((y, j) => j !== i).map(y => y.line)).catch(() => {});
     const pr = await call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => null); if (pr && pr.products && _hubKw[slug]) _hubKw[slug].products = pr.products;
-    _hubKwOpen[slug + '|ex:__main'] = true; hubResLoad(slug, true); hubKwRefresh(slug); showToast('Added to the Main topic — ' + (r.name || x.name) + note, 'success');
+    _hubKwOpen[slug + '|ex:__main'] = true; hubResLoad(slug, true); hubKwRefresh(slug); showToast('Added to ★ Main — ' + (r.name || x.name) + note, 'success');
   } catch (e) { showToast('Add failed: ' + e.message, 'error'); }
 }
 async function hubKwMainIdeaSources(slug, i) {
@@ -17051,13 +17049,13 @@ function hubKwFilterToggle(slug, s) { const F = hubKwFilterOf(slug); F.states = 
 function hubKwExpandAll(slug, open, existingOnly) {
   const K = _hubKw[slug]; if (!K || K.loading || K.error) return;
   if (existingOnly === 'topics') {   // ▾ Expand topics: headings only — every Keywords / Existing / Proposed list closed
-    const ks = ['c:__main', 'master', 'unclustered'].concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
+    const ks = ['master', 'unclustered'].concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
     [...(K.staged || []), ...(K.committed || [])].forEach(t => ks.push('t:' + t.id));
     Object.keys(_hubKwOpen).forEach(k => { if (k.startsWith(slug + '|') && /\|(ex|pr|kw):/.test(k)) delete _hubKwOpen[k]; });
     ks.forEach(k => { _hubKwOpen[slug + '|' + k] = true; });
     return hubKwRefresh(slug);
   }
-  const keys = ['c:__main', 'master', 'unclustered', 'ex:__main'].concat(existingOnly ? [] : ['pr:__main']).concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
+  const keys = ['master', 'unclustered', 'ex:__main'].concat(existingOnly ? [] : ['pr:__main']).concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
   // Expand existing = products only: keyword lists and Proposed stay closed
   [...(K.staged || []), ...(K.committed || [])].forEach(t => { keys.push('t:' + t.id, 'ex:' + t.id); if (existingOnly) { delete _hubKwOpen[slug + '|pr:' + t.id]; delete _hubKwOpen[slug + '|kw:' + t.id]; } else keys.push('pr:' + t.id, 'kw:' + t.id); });
   if (existingOnly) { delete _hubKwOpen[slug + '|pr:__main']; delete _hubKwOpen[slug + '|kw:__master']; } else keys.push('kw:__master');
@@ -17119,10 +17117,10 @@ function renderHubKw(slug) {
   let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
   const mainPs = (K.products || []).filter(p => p.topicId === '__main' && (!fOn || keep(p))), mainIdeas = hubKwMainIdeas(slug);
   const mainInner = sec('kw:__master', 'Keywords', master.length, '', master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>')
-    + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.map(exRow).join('') || '<span style="font-size:11px;color:var(--text3);">No Main products yet.</span>')
+    + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.map(exRow).join('') || '<span style="font-size:11px;color:var(--text3);">No ★ Main products yet.</span>')
     + sec('pr:__main', 'Proposed products', mainIdeas.length, `<button style="${btn}" title="Research product ideas off the Master keywords (replaces this list — care-gap's Main Stack ideas)" onclick="hubKwMainPropose('${slug}',this)">💡 propose</button>`,
-        mainIdeas.map((x, i) => `<div class="hkw-row" style="padding:3px 4px;border-bottom:1px dashed var(--border);font-size:11px;"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-weight:600;color:var(--text);">💡 ${esc(x.name)}</span><span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}border-color:var(--accent);color:var(--accent);" title="Create this as a real product in the Main topic — it moves up into Existing products" onclick="hubKwMainIdeaCreate('${slug}',${i},false)">＋ add to topic</button><button style="${btn}" title="Add to the Main topic AND to this hub's main offerings" onclick="hubKwMainIdeaCreate('${slug}',${i},true)">★</button><button style="${btn}" title="View sources" onclick="hubKwMainIdeaSources('${slug}',${i})">🔗</button><button style="${btn}" title="Dismiss this idea" onclick="hubKwMainIdeaDismiss('${slug}',${i},this)">✕</button></span></div>${x.desc ? `<div style="color:var(--text3);margin-top:1px;">${esc(x.desc)}</div>` : ''}</div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No proposals yet — 💡 propose.</span>');
-  if (!fOn || mainPs.length) out += node('c:__main', 0, '#8ab4f8', '🧩 Main', '— cluster · 1 topic', node('master', 0, '#4ade80', '🔑 Main', `— ${master.length} keyword${master.length === 1 ? '' : 's'}${mainPs.length ? ' · ' + mainPs.length + ' product' + (mainPs.length === 1 ? '' : 's') : ''}`, mainInner, { pdrop: '__main' }));   // Main = its own cluster holding the one Main topic
+        mainIdeas.map((x, i) => `<div class="hkw-row" style="padding:3px 4px;border-bottom:1px dashed var(--border);font-size:11px;"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-weight:600;color:var(--text);">💡 ${esc(x.name)}</span><span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}border-color:var(--accent);color:var(--accent);" title="Create this as a real product in the ★ Main group — it moves up into Existing products" onclick="hubKwMainIdeaCreate('${slug}',${i},false)">＋ add to topic</button><button style="${btn}" title="Add to ★ Main AND to this hub's main offerings" onclick="hubKwMainIdeaCreate('${slug}',${i},true)">★</button><button style="${btn}" title="View sources" onclick="hubKwMainIdeaSources('${slug}',${i})">🔗</button><button style="${btn}" title="Dismiss this idea" onclick="hubKwMainIdeaDismiss('${slug}',${i},this)">✕</button></span></div>${x.desc ? `<div style="color:var(--text3);margin-top:1px;">${esc(x.desc)}</div>` : ''}</div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No proposals yet — 💡 propose.</span>');
+  if (!fOn || mainPs.length) out += node('master', 0, '#4ade80', 'Master', `— ${master.length} keyword${master.length === 1 ? '' : 's'}${mainPs.length ? ' · ' + mainPs.length + ' product' + (mainPs.length === 1 ? '' : 's') : ''}`, mainInner, { pdrop: '__main' });
   clusters.forEach((c, ci) => { const ts = by[c] || [];
     if (fOn && !ts.some(t => topic(t, 0))) return;
     out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`,
@@ -17228,10 +17226,8 @@ function hubTitlesTopicTree(slug, prods, prodRow, prodWork, node, T) {
   const clusters = K.tc.clusters || [], assign = K.tc.assign || {}, cOf = t => { const c = assign[t.id]; return c && clusters.includes(c) ? c : ''; };
   let out = '';
   const main = sortP(byTopic.get('__main') || []);
-  // Main = its own cluster holding the one Main topic (the hub's main keywords)
-  out += node('ti:cl:__main', 0, '🧩 Main', `— 1 topic · ${plural(main.length, 'product')}`, hubWorkTag(work(main)),
-    `<div${drop('topic', '__main')}>` + node('ti:tp:__main', 0, '🔑 Main', `— ${plural(main.length, 'product')} · ${plural(titlesN(main), 'title')} · the hub's main keywords`, hubWorkTag(work(main)),
-    main.length ? main.map(prodHtml).join('') : '<div style="font-size:11px;color:var(--text3);">No products on Main — drag one here.</div>') + '</div>');
+  out += `<div${drop('topic', '__main')}>` + node('ti:tp:__main', 0, '★ Main', `— ${plural(main.length, 'product')} · ${plural(titlesN(main), 'title')} · the hub's main keywords`, hubWorkTag(work(main)),
+    main.length ? main.map(prodHtml).join('') : '<div style="font-size:11px;color:var(--text3);">No products on Main — drag one here.</div>') + '</div>';
   const clusterNode = (c, label, list) => { const prodsIn = list.flatMap(t => byTopic.get(t.id) || []);
     return `<div${drop('cluster', c)}>` + node('ti:cl:' + c, 0, label, `— ${plural(list.length, 'topic')} · ${plural(prodsIn.length, 'product')}`, hubWorkTag(work(prodsIn)),
       list.length ? list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(topicNode).join('') : '<div style="font-size:11px;color:var(--text3);">No topics — drag one here.</div>') + '</div>'; };
@@ -17256,7 +17252,7 @@ async function hubTiDrop(e, slug) {
   if (d.kind === 'p' && el.dataset.tiTopic != null) {
     const to = el.dataset.tiTopic, p = (T.products || []).find(x => String(x.id).replace(/-/g, '') === d.id); if (!p) return;
     if (hubTiTopicOf(slug, p) === to) return;
-    const tname = to === '__main' ? 'Main' : (([...K.staged, ...K.committed].find(t => t.id === to) || {}).name || 'topic');
+    const tname = to === '__main' ? '★ Main' : (([...K.staged, ...K.committed].find(t => t.id === to) || {}).name || 'topic');
     T.msg = '⏳ Moving "' + p.name + '" to ' + tname + '…'; hubTitlesRefresh(slug);
     const r = await call('attachProductToTopic', { productId: p.id, topicId: to, campaignId: h.campaignId, markOutOfSync: true }).catch(x => ({ error: x.message }));
     if (!r || r.error) { T.msg = '✗ Not moved: ' + ((r && r.error) || 'no response'); return hubTitlesRefresh(slug); }
@@ -17304,10 +17300,10 @@ function hubAssetsRows(slug) {
   const T = _hubTitles[slug]; if (!T || !T.rows) return null;
   const nid = x => String(x || '').replace(/-/g, ''), K = _hubKw[slug] || {}, topics = [...(K.staged || []), ...(K.committed || [])];
   const flagged = new Set(((_hubBuild[slug] || {}).flags || []).filter(f => f.assetId).map(f => nid(f.assetId)));
-  const tc = (K.tc || {}), clOf = tid => { if (tid === '__main') return 'Main'; const c = (tc.assign || {})[tid]; return c && (tc.clusters || []).includes(c) ? c : '— no cluster —'; };
+  const tc = (K.tc || {}), clOf = tid => { if (tid === '__main') return '★ Main'; const c = (tc.assign || {})[tid]; return c && (tc.clusters || []).includes(c) ? c : '— no cluster —'; };
   const clusterName = pid => { if (!pid) return '— no product —'; const p = (T.products || []).find(x => nid(x.id) === nid(pid)); if (!p) return '— no cluster —'; const tid = hubTiTopicOf(slug, p); return tid ? clOf(tid) : '— no topic —'; };
   const topicName = pid => { if (!pid) return '— no product —'; const p = (T.products || []).find(x => nid(x.id) === nid(pid)); if (!p) return '— no topic —';
-    const tid = hubTiTopicOf(slug, p); if (tid === '__main') return 'Main'; const t = topics.find(x => x.id === tid); return t ? t.name : '— no topic —'; };
+    const tid = hubTiTopicOf(slug, p); if (tid === '__main') return '★ Main'; const t = topics.find(x => x.id === tid); return t ? t.name : '— no topic —'; };
   return T.rows.filter(r => r.kind === 'asset' && r.assetStatus === 'Published').map(r => ({
     id: nid(r.assetId), asset: r.assetName || '(untitled asset)', type: r.assetType || '—', title: r.title || '—', product: r.productId ? (r.product || '—') : '— no product —',
     cluster: clusterName(r.productId), topic: topicName(r.productId), section: r.hubSection || '— not in a hub section —', date: String(r.datePublished || '').slice(0, 10),
@@ -17620,8 +17616,7 @@ function renderHubOutput(slug) {
     return { html: head('t:' + t.id, lvl, '🔑 ' + esc(t.name), `· ${pids.length} product${pids.length === 1 ? '' : 's'}`, r.html || `<tr><td colspan="${span}" style="${TD}color:var(--text3);padding-left:${6 + (lvl + 1) * 16}px;">no products on this topic</td></tr>`, r.res, r.iv, r.c), res: r.res, iv: r.iv, c: r.c }; };
   const topics = [...K.staged, ...K.committed], cl = K.tc.clusters || [], as = K.tc.assign || {}, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
   let body = '';
-  { const pids = byTopic.get('__main') || []; if (!filtering || pids.length) { const r = rowsFor(pids, 2); nRes += r.res; nIv += r.iv;   // Main cluster → Main topic
-    body += head('c:__main', 0, '🧩 Main <span style="font-weight:400;color:var(--text3);">· 1 topic</span>', '', head('t:__main', 1, '🔑 Main', '', r.html, r.res, r.iv, r.c), r.res, r.iv, r.c); } }
+  { const pids = byTopic.get('__main') || []; if (!filtering || pids.length) { const r = rowsFor(pids, 1); nRes += r.res; nIv += r.iv; body += head('m', 0, '★ Main', '', r.html, r.res, r.iv, r.c); } }
   const clusterBlock = (c, label, list) => { const parts = list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(t => topicBlock(t, 1)).filter(x => !filtering || x.html);
     if (filtering && !parts.length) return '';
     const res = parts.reduce((a, x) => a + x.res, 0), iv = parts.reduce((a, x) => a + x.iv, 0);

@@ -15662,14 +15662,14 @@ Return: {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
           const prod = r.productId ? productById[r.productId] : null, topics = keywordTopics[r.campId] || {}, assign = keywordTopicClusters[r.campId] || {};
           let topicId = prod && prod.topicId || "", topicName = "";
-          if (topicId === "__main") { topicName = "Main"; }   // Main cluster → Main topic
+          if (topicId === "__main") { topicName = "★ Main Keywords"; }
           else if (topicId && topics[topicId]) topicName = topics[topicId];
           else if (prod && prod.stack) {
             const hit = Object.entries(topics).find(([, name]) => String(name).trim().toLowerCase() === String(prod.stack).trim().toLowerCase());
             if (hit) { topicId = hit[0]; topicName = hit[1]; }
           }
           r.keywordTopic = topicName;
-          r.keywordCluster = topicId === "__main" ? "Main" : (topicId ? (assign[dropDash(topicId)] || "") : "");
+          r.keywordCluster = topicName === "★ Main Keywords" ? "★ Main" : (topicId ? (assign[dropDash(topicId)] || "") : "");
           r.status = r.kind === "interview" ? r.ivStatus : r.kind === "asset" ? (r.assetStatus || "") : r.kind === "title" ? ((titleById[r.titleId] || {}).status || "") : ((productById[r.productId] || {}).status || "");
           r.hubSectionHeading = r.hubSectionKey ? ((sectionHeadings[r.campId] || {})[r.hubSectionKey] || "") : "";
         });
