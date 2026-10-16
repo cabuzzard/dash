@@ -11571,6 +11571,197 @@ async function kwHubProposalApply(env, campaignId, name) {
 // 🤖 AUTOPILOT (operator 2026-10-15: "run all of them"): per queued hub (KV kwhub:auto:queue = [cid]) — propose (or use the
 // stored proposal) → apply it → cleanup plan → cleanup apply in chunks → done. State per hub in KV kwhub:auto:state:<cid>
 // (shown on the Content Hubs 2 card). Every step keeps its own undo. ~2½ min of work per */4 tick, never overlapping.
+// ══ HUB CLUSTER RESTRUCTURE (operator 2026-10-16) ═════════════════════════════════════════════════════════════
+// Per hub, in this order: 1 · research the Main keywords (Google ideas) → up to 5 NEW clusters, each named with a real
+// keyword that has volume (every old cluster is cleared) · 2 · research every new cluster name (Google ideas) ·
+// 3 · file each EXISTING topic into a new cluster only if it fits · 4 · topics that fit nowhere: research their
+// keywords and give them the best real cluster name(s) — added on top of the researched clusters · 5 · apply through
+// kwHubApply (backup + ↶ undo). Topics, their keywords, products and titles are never changed — only the cluster level.
+// Every researched keyword lands in one "🏗 Cluster research" run linked to the hub (Keywords tab → 🔬 Research runs).
+// Background: KV kwhub:restr:queue = [cid…], one resumable step at a time on the */4 cron; state in kwhub:restr:state:<cid>.
+const HR_MAX_CLUSTERS = 5;
+async function hrIdeas(env, seeds, market, limit) {
+  seeds = hcUniq(seeds.map(kwNorm)).filter(k => k && k.length <= 80 && k.split(" ").length <= 10).slice(0, 20);
+  if (!seeds.length) return [];
+  const out = await kwIdeasRequest(env, { keywords: seeds, url: null, site: null }, market, {});
+  const rows = (await env.KWDB.prepare("SELECT k.text t, MAX(m.avg_monthly_searches) v FROM kw_request_results r JOIN kw_keywords k ON k.id = r.keyword_id "
+    + "JOIN kw_metrics m ON m.keyword_id = k.id AND m.provider = 'google_ads' AND m.language_id = ?2 AND m.geo_key = ?3 AND m.network = ?4 "
+    + "WHERE r.request_id = ?1 GROUP BY k.id ORDER BY v DESC LIMIT ?5").bind(out.requestId, market.languageId, kwGeoKey(market.geoIds), market.network, limit || 300).all()).results;
+  return rows.map(r => ({ t: r.t, v: Number(r.v) || 0 })).filter(r => r.v > 0);
+}
+// one "🏗 Cluster research" run per hub (rebuilt in place) holding every keyword the restructure researched
+async function hrResearchRun(env, cid, name, keywords, market) {
+  const db = env.KWDB, label = "🏗 Cluster research · " + name;
+  const old = await db.prepare("SELECT id FROM kw_runs WHERE json_extract(params_json,'$.restructure') = ? ORDER BY id DESC LIMIT 1").bind(cid).first();
+  const params = JSON.stringify({ restructure: cid, hubLink: { cid, name }, keywords: [], market, config: KW_DEFAULT_CONFIG });
+  let id;
+  if (old) { id = old.id; await db.batch([db.prepare("DELETE FROM kw_frontier WHERE run_id = ?").bind(id),
+    db.prepare("UPDATE kw_runs SET name = ?, params_json = ?, status = 'done', finished_at = ?, notes = ? WHERE id = ?").bind(label, params, kwNow(), "cluster restructure research", id)]); }
+  else id = (await db.prepare("INSERT INTO kw_runs(name, params_json, status, started_at, finished_at, root_done, notes) VALUES (?,?,?,?,?,1,?) RETURNING id")
+    .bind(label, params, "done", kwNow(), kwNow(), "cluster restructure research").first()).id;
+  const stmts = [];
+  for (let i = 0; i < keywords.length; i += 500) {
+    const kj = JSON.stringify(keywords.slice(i, i + 500).map(t => ({ t })));
+    stmts.push(db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, root_seed_id, queued, expanded) "
+      + "SELECT ?1, k.id, 0, k.id, 0, 1 FROM json_each(?2) j JOIN kw_keywords k ON k.text = json_extract(j.value,'$.t')").bind(id, kj));
+  }
+  stmts.push(db.prepare("UPDATE kw_runs SET keywords = ? WHERE id = ?").bind(keywords.length, id));
+  await db.batch(stmts);
+  await kwDropSnapshots(env, [String(id)]); await kwBuildSnapshot(env, id); await env.TRADES.delete("kw:stats");
+  return id;
+}
+const hrLine = list => list.map(x => `${x.t} | ${x.v}`).join("\n");
+async function kwHubRestructureStep(env, cid, S) {
+  const market = await kwMarket(env, {});
+  const st = await kwHubState(env, cid);
+  const topics = st.model.topics.filter(t => !hcIsUncl(t));
+  if (S.step === "main") {
+    // 1 · Main → cluster candidates
+    let seeds = st.model.main.slice();
+    if (!seeds.length) seeds = topics.map(t => kwNorm(t.name));
+    try { await kwHistMetrics(env, seeds.slice(0, 1000), market); } catch (e) { S.warn = "Google numbers: " + (e.message || e); }
+    const vol = await kwVolumes(env, seeds, market);
+    const top = seeds.slice().sort((a, b) => (vol.get(b) || 0) - (vol.get(a) || 0)).slice(0, 20);
+    const ideas = await hrIdeas(env, top, market, 400);
+    const pool = hcUniq([...ideas.map(x => x.t), ...top.filter(k => (vol.get(k) || 0) > 0)]);
+    const pv = new Map([...ideas.map(x => [x.t, x.v]), ...top.map(k => [k, vol.get(k) || 0])]);
+    S.researched = hcUniq([...(S.researched || []), ...pool]);
+    const r = await hcClaude(env, `You are designing the SEO cluster level of one website hub (pillar model: Main → clusters → topics → articles).
+
+HUB: ${S.name}
+MAIN KEYWORDS (the hub's head terms — the home page; a cluster must NOT be one of these): ${st.model.main.join(", ") || "(none — use the topic names below as the hub's subject)"}
+EXISTING TOPIC NAMES (context only — what the hub already writes about; do not let them dictate the clusters): ${topics.map(t => t.name).join(", ") || "(none)"}
+
+GOOGLE KEYWORD RESEARCH off the main keywords — keyword | monthly searches (US):
+${hrLine(pool.map(t => ({ t, v: pv.get(t) || 0 })).slice(0, 400))}
+
+Choose UP TO ${HR_MAX_CLUSTERS} clusters. A cluster = one pillar page that groups several supporting articles.
+Each cluster name MUST be one keyword copied EXACTLY from the research list above, with real volume. Pick names that:
+- are broad sub-themes of the hub (each could hold 3-8 distinct articles), not single questions or long-tails;
+- do not overlap — a searcher for one would not be satisfied by another's pillar;
+- fit what this hub actually is (ignore off-topic, brand, competitor and job/salary keywords);
+- together cover the hub's real demand, strongest first. Fewer than ${HR_MAX_CLUSTERS} is fine if the data only supports fewer.
+For each: name, and one short line of why (the demand it covers).`, "clusters",
+      { type: "object", required: ["clusters"], properties: { clusters: { type: "array", maxItems: HR_MAX_CLUSTERS, items: { type: "object", required: ["name", "why"], properties: { name: { type: "string" }, why: { type: "string" } } } } } }, 3000);
+    const poolSet = new Set(pool), mainSet = new Set(st.model.main.map(kwNorm));
+    S.clusters = [];
+    for (const c of r.clusters || []) { const n = kwNorm(c.name); if (!n || !poolSet.has(n) || mainSet.has(n) || S.clusters.some(x => x.name === n)) continue; S.clusters.push({ name: n, why: String(c.why || "").slice(0, 300), volume: pv.get(n) || 0 }); }
+    if (!S.clusters.length) throw new Error("No usable cluster names came back from the research");
+    S.step = "research"; return;
+  }
+  if (S.step === "research") {
+    // 2 · research each cluster name (one Google request each)
+    const c = S.clusters.find(x => !x.pool); if (!c) { S.step = "fit"; return; }
+    const ideas = await hrIdeas(env, [c.name], market, 200);
+    c.pool = ideas.slice(0, 60); c.researched = ideas.length;
+    S.researched = hcUniq([...(S.researched || []), ...ideas.map(x => x.t)]);
+    return;
+  }
+  if (S.step === "fit") {
+    // 3 · existing topics into the new clusters — only where they fit
+    const poolSets = S.clusters.map(c => new Set([c.name, ...(c.pool || []).map(x => x.t)]));
+    const tl = topics.map((t, i) => { const kw = t.keywords.slice(0, 15), ov = S.clusters.map((c, j) => kw.filter(k => poolSets[j].has(k)).length);
+      return `T${i} | ${t.name} | ${kw.join(", ")} | overlap: ${S.clusters.map((c, j) => c.name + "=" + ov[j]).join("; ")}`; });
+    const r = topics.length ? await hcClaude(env, `File existing SEO topics into a hub's NEW researched clusters — only where a topic truly belongs.
+
+HUB: ${S.name} · MAIN: ${st.model.main.slice(0, 15).join(", ")}
+
+NEW CLUSTERS (each researched in Google — name, then its top related searches):
+${S.clusters.map(c => `- ${c.name}: ${(c.pool || []).slice(0, 30).map(x => x.t).join(", ")}`).join("\n")}
+
+TOPICS — id | name | keywords | how many of its keywords appear in each cluster's research:
+${tl.join("\n")}
+
+For each topic give the ONE cluster whose pillar page it would naturally support (same subject and searcher), or "none" if it does not fit any of them well. Do not force a fit — "none" topics get their own researched cluster later.`, "fit",
+      { type: "object", required: ["fit"], properties: { fit: { type: "array", items: { type: "object", required: ["id", "cluster"], properties: { id: { type: "string" }, cluster: { type: "string" } } } } } }, 4000) : { fit: [] };
+    S.fit = {}; S.nonfit = [];
+    const names = new Set(S.clusters.map(c => c.name));
+    topics.forEach((t, i) => { const f = (r.fit || []).find(x => String(x.id).replace(/^T/, "") === String(i)); const c = f && kwNorm(f.cluster);
+      if (c && names.has(c)) S.fit[t.id] = c; else S.nonfit.push(t.id); });
+    S.step = "nonfit"; S.nfPools = {}; return;
+  }
+  if (S.step === "nonfit") {
+    // 4a · research each non-fitting topic (one Google request each)
+    const todo = S.nonfit.filter(id => !S.nfPools[id]);
+    if (todo.length) { const t = topics.find(x => x.id === todo[0]);
+      const ideas = t ? await hrIdeas(env, [kwNorm(t.name), ...t.keywords], market, 150) : [];
+      S.nfPools[todo[0]] = ideas.slice(0, 50).length ? ideas.slice(0, 50) : [{ t: kwNorm(t ? t.name : ""), v: 0 }];
+      S.researched = hcUniq([...(S.researched || []), ...ideas.map(x => x.t)]);
+      return; }
+    // 4b · the best real cluster name(s) for them — additive to the researched clusters
+    S.extra = [];
+    const nts = S.nonfit.map(id => topics.find(x => x.id === id)).filter(Boolean);
+    if (nts.length) {
+      const r = await hcClaude(env, `Some SEO topics of a hub did not fit its researched clusters. Give them cluster(s) of their own.
+
+HUB: ${S.name} · MAIN: ${st.model.main.slice(0, 15).join(", ")}
+EXISTING CLUSTERS (already taken — do not reuse or duplicate): ${S.clusters.map(c => c.name).join(", ")}
+
+TOPICS WITHOUT A CLUSTER — each with its own Google research (keyword | monthly searches):
+${nts.map((t, i) => `N${i} · ${t.name} (keywords: ${t.keywords.slice(0, 10).join(", ")})\n${hrLine(S.nfPools[t.id] || []).split("\n").slice(0, 25).map(l => "   " + l).join("\n")}`).join("\n\n")}
+
+Group these topics into as FEW new clusters as makes sense (topics on the same subject share one). Each cluster name MUST be one keyword copied EXACTLY from the research lines above: the broadest real search with good volume that contains its topics' subject — a pillar its topics would support, not one topic's exact phrase unless nothing broader exists. Every topic must be in exactly one cluster.`, "extra",
+        { type: "object", required: ["clusters"], properties: { clusters: { type: "array", items: { type: "object", required: ["name", "topics"], properties: { name: { type: "string" }, why: { type: "string" }, topics: { type: "array", items: { type: "string" } } } } } } }, 4000);
+      const vol = new Map(); nts.forEach(t => (S.nfPools[t.id] || []).forEach(x => vol.set(x.t, Math.max(vol.get(x.t) || 0, x.v))));
+      const taken = new Set(S.clusters.map(c => c.name)), placed = new Set();
+      for (const c of r.clusters || []) {
+        let n = kwNorm(c.name); const ids = (c.topics || []).map(x => nts[Number(String(x).replace(/^N/, ""))]).filter(t => t && !placed.has(t.id)).map(t => t.id);
+        if (!ids.length) continue;
+        if (!vol.has(n)) n = ((S.nfPools[ids[0]] || [])[0] || {}).t || kwNorm(topics.find(x => x.id === ids[0]).name);
+        if (taken.has(n)) { const tc = S.clusters.find(x => x.name === n); if (tc) { ids.forEach(id => { S.fit[id] = n; placed.add(id); }); continue; } }
+        let e = S.extra.find(x => x.name === n); if (!e) { e = { name: n, why: String(c.why || "").slice(0, 300), volume: vol.get(n) || 0, topics: [] }; S.extra.push(e); taken.add(n); }
+        ids.forEach(id => { e.topics.push(id); placed.add(id); });
+      }
+      for (const t of nts) if (!placed.has(t.id)) {   // anything Claude skipped: its own top researched keyword
+        const n = ((S.nfPools[t.id] || [])[0] || {}).t || kwNorm(t.name);
+        let e = S.extra.find(x => x.name === n) || (S.clusters.find(x => x.name === n) ? null : (S.extra.push({ name: n, why: "top researched search for this topic", volume: vol.get(n) || 0, topics: [] }), S.extra[S.extra.length - 1]));
+        if (e) e.topics.push(t.id); else S.fit[t.id] = n;
+      }
+    }
+    S.step = "apply"; return;
+  }
+  if (S.step === "apply") {
+    // 5 · write it: empty-keyword topics get their own name as a keyword first (an apply archives keyword-less topics)
+    const ops = [];
+    st.model.topics.filter(t => !t.keywords.length && t.name).forEach(t => ops.push({ op: "assign", keywords: [kwNorm(t.name)], to: t.id, move: false }));
+    const target = {}; Object.assign(target, S.fit); (S.extra || []).forEach(e => e.topics.forEach(id => { target[id] = e.name; }));
+    const finalNames = [...S.clusters.map(c => c.name), ...(S.extra || []).map(e => e.name)];
+    st.model.clusters.filter(c => !finalNames.includes(c)).forEach(c => ops.push({ op: "removeCluster", name: c }));
+    st.model.topics.forEach(t => { const c = hcIsUncl(t) ? "" : (target[t.id] || ""); if (c || t.cluster) ops.push({ op: "setCluster", ids: [t.id], cluster: c }); });
+    finalNames.forEach(n => { if (!Object.values(target).includes(n)) ops.push({ op: "setCluster", ids: [], cluster: n }); });   // a researched cluster with no topic yet still exists
+    const r = await kwHubApply(env, cid, ops, S.name);
+    S.applied = { lines: (r.lines || []).length, errors: r.errors || [] };
+    try { S.runId = await hrResearchRun(env, cid, S.name, (S.researched || []).slice(0, 8000), market); } catch (e) { S.runError = e.message || String(e); }
+    S.report = { clusters: S.clusters.map(c => ({ name: c.name, volume: c.volume, why: c.why, researched: c.researched || 0, topics: topics.filter(t => target[t.id] === c.name).map(t => t.name) })),
+      added: (S.extra || []).map(e => ({ name: e.name, volume: e.volume, why: e.why, topics: e.topics.map(id => (topics.find(t => t.id === id) || {}).name).filter(Boolean) })),
+      unclustered: st.model.topics.filter(t => !target[t.id]).map(t => t.name), removed: st.model.clusters.filter(c => !finalNames.includes(c)) };
+    delete S.nfPools; S.clusters.forEach(c => { delete c.pool; });
+    S.step = "done"; S.finishedAt = Date.now(); return;
+  }
+}
+async function kwHubRestructureTick(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const q0 = (await env.TRADES.get("kwhub:restr:queue", "json")) || []; if (!q0.length) return;
+  if (await env.TRADES.get("kwhub:restr:lock")) return;
+  await env.TRADES.put("kwhub:restr:lock", "1", { expirationTtl: 600 });
+  await hubSitesMerge(env);
+  const t0 = Date.now(), drop = async cid => { const q = (await env.TRADES.get("kwhub:restr:queue", "json")) || []; await env.TRADES.put("kwhub:restr:queue", JSON.stringify(q.filter(x => String(x).split("|")[0].replace(/-/g, "") !== cid))); };
+  try {
+    while (Date.now() - t0 < 150000) {
+      const q = (await env.TRADES.get("kwhub:restr:queue", "json")) || []; if (!q.length) break;
+      const cid = String(q[0]).split("|")[0].replace(/-/g, ""), qName = String(q[0]).split("|").slice(1).join("|"), hub = HUB_SITES.find(h => String(h.campaignId || "").replace(/-/g, "") === cid);   // entry = "cid" or "cid|hub name"
+      const key = "kwhub:restr:state:" + cid;
+      let S = await env.TRADES.get(key, "json");
+      if (!S || S.step === "done" || S.step === "error") S = { step: "main", name: qName || (hub ? (hub.campaign || hub.name) : "Hub"), startedAt: Date.now(), tries: 0 };
+      try { await kwHubRestructureStep(env, cid, S); S.tries = 0; }
+      catch (e) { S.tries = (S.tries || 0) + 1; S.lastError = e.message || String(e); console.error("kwHubRestructure " + cid + " (" + S.step + "): " + S.lastError);
+        if (S.tries >= 3) { S.error = S.lastError; S.failedStep = S.step; S.step = "error"; } }
+      await env.TRADES.put(key, JSON.stringify(S));
+      if (S.step === "done" || S.step === "error") await drop(cid);
+      if (S.tries) break;   // a failed step waits for the next tick
+    }
+  } finally { await env.TRADES.delete("kwhub:restr:lock"); }
+}
 async function kwHubAutoTick(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   const q0 = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q0.length) return;
@@ -49447,6 +49638,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
     if (event.cron === "*/4 * * * *") {
       cw("kwHubProposeTick", kwHubProposeTick(env));
       cw("kwHubAutoTick", kwHubAutoTick(env));
+      cw("kwHubRestructureTick", kwHubRestructureTick(env));   // 🏗 cluster restructure queue (kwhub:restr:queue)
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));

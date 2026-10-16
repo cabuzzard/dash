@@ -26,6 +26,7 @@
 //                                                            `from` is left empty and is removed as an orphan
 //   { op: "setCluster", ids: [topicId…], cluster }           file topics under a cluster ("" = none; new name = new cluster)
 //   { op: "renameCluster", from, to }
+//   { op: "removeCluster", name }                            drop a cluster; its topics become unclustered
 //
 // After the ops: topics with no keywords, and clusters the ops left with no topics, are ORPHANS and are removed.
 // apply() returns { model, fx } — fx describes what changed (for the preview text and for the worker's writes).
@@ -43,7 +44,7 @@
   function apply(model, ops) {
     const before = clone(model), m = clone(model);
     const byId = id => m.topics.find(t => t.id === id);
-    const merged = [], repoint = {}, clusterRenamed = {};
+    const merged = [], repoint = {}, clusterRenamed = {}, dropped = [];
     for (const o of ops || []) {
       const kws = uniq((o.keywords || []).map(norm).filter(Boolean)), set = new Set(kws);
       const strip = (except) => { m.topics.forEach(t => { if (t.id !== except) t.keywords = t.keywords.filter(k => !set.has(k)); });
@@ -91,6 +92,10 @@
         else m.clusters = m.clusters.map(c => c === o.from ? to : c);
         m.topics.forEach(t => { if (t.cluster === o.from) t.cluster = to; });
         clusterRenamed[o.from] = to;
+      } else if (o.op === "removeCluster") {   // drop a cluster outright — its topics become unclustered (nothing else changes)
+        if (!m.clusters.includes(o.name)) continue;
+        m.clusters = m.clusters.filter(c => c !== o.name); dropped.push(o.name);
+        m.topics.forEach(t => { if (t.cluster === o.name) t.cluster = ""; });
       }
     }
     // orphans: empty topics, then clusters no topic uses
@@ -99,7 +104,7 @@
     // only a cluster THESE ops emptied is an orphan — a cluster that was already empty (just added, waiting for topics) stays
     const used = new Set(m.topics.map(t => t.cluster).filter(Boolean));
     const usedBefore = new Set(before.topics.map(t => t.cluster).filter(Boolean).map(c => clusterRenamed[c] || c));
-    const clustersRemoved = m.clusters.filter(c => !used.has(c) && usedBefore.has(c));
+    const clustersRemoved = [...dropped, ...m.clusters.filter(c => !used.has(c) && usedBefore.has(c))];
     m.clusters = m.clusters.filter(c => used.has(c) || !usedBefore.has(c));
     m.topics.forEach(t => { if (t.cluster && !m.clusters.includes(t.cluster)) t.cluster = ""; });
 
