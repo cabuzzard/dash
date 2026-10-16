@@ -17167,6 +17167,20 @@ ${JSON.stringify(products)}`;
       // ── setHubMainOffering ── the hub's main offering = one real Products record. Stores the choice (KV
       // hub:mainproduct:<campaignId>, read first by resolveHub + getHubMainProduct), links the product to the
       // campaign if it isn't yet, and mirrors it onto the Content Hub asset's Product + the hub-method title's product.
+      // getHubJobs — progress of the background hub jobs (dash flyout): per job, the queue + every hub's state
+      if (body.action === "getHubJobs") {
+        const jobs = { place: "kwhub:place", restr: "kwhub:restr", mainmig: "kwhub:mainmig" }, out = {};
+        for (const [k, pre] of Object.entries(jobs)) {
+          const queue = ((await env.TRADES.get(pre + ":queue", "json")) || []).map(x => String(x).split("|")[0].replace(/-/g, ""));
+          const keys = (await env.TRADES.list({ prefix: pre + ":state:" })).keys.map(x => x.name);
+          const states = {};
+          for (const key of keys) { const s = await env.TRADES.get(key, "json"); if (!s) continue; const cid = key.slice((pre + ":state:").length);
+            states[cid] = { step: s.step || "", done: !!(s.done || s.step === "done" || s.moved), error: s.error || "", i: s.i || 0, total: s.total || (s.plan ? s.plan.length : 0),
+              placed: s.placed, marked: s.marked, at: s.finishedAt || s.at || s.startedAt || 0 }; }
+          out[k] = { queue, states };
+        }
+        return json({ ok: true, jobs: out, at: Date.now() });
+      }
       if (body.action === "getHubMainOfferings") {   // the hub's main offerings (KV hub:mainproduct:<cid>) — for the ★ toggles
         const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return json({ error: "campaignId required" }, 400);
         return json({ mainIds: await hubMainList(env, cid) });

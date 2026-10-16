@@ -15189,6 +15189,41 @@ document.addEventListener('visibilitychange', () => {
 });
 // registry hubs merge as soon as the page is signed in — before Content Hubs is opened, so no extra re-render
 setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
+// ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
+// job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
+const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main' };
+let _hubJobs = { hidden: false, open: true, last: null, t: null };
+function hubJobsName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === cid); return h ? (h.name || h.slug) : cid.slice(0, 8); }
+async function hubJobsPoll() {
+  clearTimeout(_hubJobs.t);
+  if (!SESSION_TOKEN) { _hubJobs.t = setTimeout(hubJobsPoll, 30000); return; }
+  const wasBusy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
+  try { const r = await call('getHubJobs'); if (r && r.jobs) _hubJobs.last = r; } catch (e) {}
+  const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
+  if (wasBusy && !busy) _hubJobs.justDone = true;   // keep a ✓ finished line until ✕
+  hubJobsDraw();
+  _hubJobs.t = setTimeout(hubJobsPoll, busy ? 30000 : 300000);
+}
+function hubJobsDraw() {
+  let el = document.getElementById('hubJobsFly'); const R = _hubJobs.last;
+  const active = R ? Object.entries(R.jobs).filter(([, j]) => j.queue.length) : [];
+  if (!active.length && !_hubJobs.justDone) { if (el) el.remove(); if (R) _hubJobs.hidden = false; return; }
+  if (_hubJobs.hidden) { if (el) el.remove(); return; }
+  if (!el) { el = document.createElement('div'); el.id = 'hubJobsFly'; el.style.cssText = 'position:fixed;right:16px;bottom:16px;z-index:9000;width:320px;max-width:calc(100vw - 32px);background:var(--surface);border:1px solid var(--border2);border-radius:8px;box-shadow:0 6px 24px rgba(0,0,0,.35);font-size:11.5px;color:var(--text);'; document.body.appendChild(el); }
+  const body = active.map(([k, j]) => {
+    const all = [...new Set([...Object.keys(j.states).filter(c => j.queue.includes(c) || (j.states[c].at || 0) > Date.now() - 6 * 3600e3), ...j.queue])];
+    const done = all.filter(c => !j.queue.includes(c)).length, cur = j.queue[0], cs = j.states[cur] || {};
+    const pct = cs.total ? Math.round(cs.i / cs.total * 100) : 0;
+    return `<div style="padding:8px 10px;border-top:1px solid var(--border);"><div style="font-weight:600;margin-bottom:4px;">${esc(HUB_JOB_LABELS[k] || k)}</div>
+      <div style="color:var(--text2);margin-bottom:4px;">${done} of ${all.length} hubs done · ${j.queue.length} left</div>
+      ${cur ? `<div style="color:var(--text3);">now: ${esc(hubJobsName(cur))}${cs.total ? ` — ${cs.i} / ${cs.total} records` : ' — waiting for the next run (every 4 min)'}</div>
+        <div style="height:5px;background:var(--surface2);border-radius:3px;margin-top:4px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--accent);"></div></div>` : ''}
+      ${all.filter(c => j.states[c] && j.states[c].error).map(c => `<div style="color:#f87171;margin-top:3px;">✗ ${esc(hubJobsName(c))}: ${esc(j.states[c].error)}</div>`).join('')}</div>`; }).join('');
+  el.innerHTML = `<div style="display:flex;align-items:center;gap:6px;padding:7px 10px;cursor:pointer;" onclick="_hubJobs.open=!_hubJobs.open;hubJobsDraw()"><b>⚙ Background jobs</b><span style="color:var(--text3);">${active.length ? active.length + ' running' : '✓ finished'}</span>
+    <span style="margin-left:auto;display:flex;gap:6px;"><span title="Check now" onclick="event.stopPropagation();hubJobsPoll()" style="cursor:pointer;color:var(--text3);">⟳</span><span title="Hide until the next job" onclick="event.stopPropagation();_hubJobs.hidden=true;_hubJobs.justDone=false;hubJobsDraw()" style="cursor:pointer;color:var(--text3);">✕</span></span></div>
+    ${_hubJobs.open ? body : ''}`;
+}
+setTimeout(hubJobsPoll, 4000);
 // Temporary cross-hub focus worksheet: one row per hub, backed by the same
 // campaign Research keywords, Products records and main-offering KV used by
 // the build checklist. Kept deliberately separate from the dense Production
