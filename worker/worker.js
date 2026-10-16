@@ -51183,9 +51183,9 @@ async function productStageBackfill(env, force) {
     return out;
   } finally { await env.TRADES.delete("prodstage:backfill:lock"); }
 }
-// ── Title idle sweep (operator 2026-10-15): any hub title at Status Development with NO work on it for 7 days
-// (not created this week, and no linked asset created / edited this week) moves to Status "Idea" (pre-Planning
-// parking; promote it back by hand). Weekly (Mondays, 15 0 cron) + on demand (titleIdleSweep action, or KV
+// ── Title idle sweep (operator 2026-10-15; rule changed 2026-10-16): any hub title at Status Development with NO
+// PUBLISHED asset moves to Status "Idea" (pre-Planning parking; promote it back by hand) — however new it is, and even
+// when it has Development / Review assets. Weekly (Mondays, 15 0 cron) + on demand (titleIdleSweep action, or KV
 // titleidle:runnow picked up by the */30 cron). Max 150 moves per run; a run that hits the cap re-arms runnow.
 async function runTitleIdleSweep(env, opts) {
   opts = opts || {}; const days = 7, cap = opts.max || 150;
@@ -51196,19 +51196,17 @@ async function runTitleIdleSweep(env, opts) {
     const nid = x => String(x || "").replace(/-/g, "");
     const hubOf = {}; HUB_SITES.forEach(h => { if (h.campaignId) hubOf[nid(h.campaignId)] = h.slug; });
     const cutoff = Date.now() - days * 864e5, cutIso = new Date(cutoff).toISOString();
-    const [titles, recent] = await Promise.all([
+    const [titles, published] = await Promise.all([
       notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Status", select: { equals: "Development" } } }),
-      notionQuery(ASSETS_DB, { filter: { timestamp: "last_edited_time", last_edited_time: { on_or_after: cutIso } } }).catch(() => []),
+      notionQuery(ASSETS_DB, { filter: { property: "Asset Status", select: { equals: "Published" } } }),   // must load — a miss would demote everything
     ]);
-    const recentAsset = new Set(recent.map(a => nid(a.id)));
+    const pubAsset = new Set(published.map(a => nid(a.id)));
     const perHub = {}, moved = []; let left = 0;
     for (const t of titles) {
       const slug = hubOf[nid(((t.properties?.Campaign?.relation) || [])[0]?.id)]; if (!slug) continue;
       const ph = perHub[slug] || (perHub[slug] = { kept: 0, idea: 0 });
       const assets = (t.properties?.Assets?.relation || []).map(a => nid(a.id));
-      // "work" = the title was CREATED this week, or one of its assets was created / edited this week. The title's own
-      // last_edited_time is useless here: automated jobs (keyword cleanup, sync stamps) touch every title's properties.
-      const worked = Date.parse(t.created_time) >= cutoff || assets.some(a => recentAsset.has(a));
+      const worked = assets.some(a => pubAsset.has(a));   // kept only when at least one of its assets is Published
       if (worked) { ph.kept++; continue; }
       if (opts.dryRun) { ph.idea++; continue; }
       if (moved.length >= cap) { left++; continue; }
