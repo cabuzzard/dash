@@ -15559,6 +15559,10 @@ function renderHubs2() {
     </div>
     <div class="hub-layout">
       <div class="hub-left">
+        <details class="hub-sec" id="hub2IvSec-${slug}" ${(_hub2Iv[slug] && (_hub2Iv[slug].list || []).length) ? 'open' : ''} ontoggle="if(this.open)hub2IvLoad('${slug}')">
+          <summary title="Interviews to answer"><span title="Interviews">🎤 Interviews</span><span id="hub2IvN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2IvCount(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();hub2IvLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hub2Iv-${slug}" style="padding:8px 12px;">${hub2IvHtml(slug)}</div>
+        </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2StrategiesLoad('${slug}')">
           <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
@@ -15934,6 +15938,37 @@ async function hub2DigestModal(slug) {
 // ── Digest section: the hub's pool of researched digest items (every digest run — the twice-weekly cron or the Digest
 // modal — replaces the untagged ones). ★ Premium = keep + build an evergreen premium piece; 📰 News = keep + write a News
 // SEO post on it. Untagged = drops off at the next run. Tagging queues the build (server job, ⚙ panel). ──
+// ── 🎤 Interviews (top of every Content Hubs 2 card): the hub's FLAGGED interviews — questions waiting for the operator's
+// answers before their pillar / assets can use them (topical posts, parents, Own-tier children flag them). Loads with
+// the card; 🎤 Answer opens the interview panel. ──
+const _hub2Iv = {};
+function hub2IvCount(slug) { const I = _hub2Iv[slug]; if (!I) return 'flagged — to answer'; if (I.loading) return 'loading…'; if (I.error) return 'couldn’t load';
+  const n = (I.list || []).length; return n ? `<span style="color:#ff7a00;font-weight:700;">${n}</span> to answer` : 'none to answer'; }
+async function hub2IvLoad(slug, force) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h || !SESSION_TOKEN) return;
+  if (_hub2Iv[slug] && !force && (_hub2Iv[slug].list || _hub2Iv[slug].loading)) return hub2IvPaint(slug);
+  _hub2Iv[slug] = { loading: true }; hub2IvPaint(slug);
+  try { const r = await call('getInterviews', { campaignId: h.campaignId, status: 'Flagged' }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    _hub2Iv[slug] = { list: r.interviews || [] }; }
+  catch (e) { _hub2Iv[slug] = { error: e.message }; }
+  hub2IvPaint(slug);
+}
+function hub2IvPaint(slug) {
+  const el = document.getElementById('hub2Iv-' + slug); if (el) el.innerHTML = hub2IvHtml(slug);
+  const n = document.getElementById('hub2IvN-' + slug); if (n) n.innerHTML = hub2IvCount(slug);
+  const sec = document.getElementById('hub2IvSec-' + slug); if (sec && (_hub2Iv[slug] || {}).list && _hub2Iv[slug].list.length && !sec.dataset.auto) { sec.dataset.auto = '1'; sec.open = true; }
+}
+function hub2IvHtml(slug) {
+  const I = _hub2Iv[slug];
+  if (!I) { setTimeout(() => hub2IvLoad(slug), 0); return '<div style="font-size:11px;color:var(--text3);">Loading…</div>'; }
+  if (I.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
+  if (I.error) return `<div style="font-size:11px;color:#f87171;">${esc(I.error)}</div>`;
+  if (!I.list.length) return '<div style="font-size:11px;color:var(--text3);">Nothing to answer — interviews flagged by topical posts, parents and Own-tier assets show up here.</div>';
+  return I.list.map(x => { const done = (x.answers || []).filter(a => String(a || '').trim()).length, tot = (x.qs || []).length;
+    return `<div class="hkw-row" style="display:flex;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
+      <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.title || 'Interview')}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.scope || '')}${x.forType ? ' · ' + esc(x.forType) : ''}${x.angle ? ' · ' + esc(x.angle) : ''}${tot ? ' · ' + done + ' / ' + tot + ' answered' : ''}</div></div>
+      <button onclick="ivFlagOpen('${esc(x.id)}')" style="font-size:10.5px;padding:2px 9px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;white-space:nowrap;">🎤 Answer</button></div>`; }).join('');
+}
 const _hub2Pool = {};
 async function hub2PoolLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
@@ -18944,7 +18979,7 @@ function ivFlagRows(list, showHub) {
 }
 function ivFlagOpen(id) {
   if (!window.InterviewPanel) return alert('interview-panel.js did not load — reload the page.');
-  window.InterviewPanel.open({ call, interviewId: id, onDone: () => { ivFlagsLoad(); Object.values(_hubBuild || {}).forEach(b => { if (b && b.interviews) b.interviews = b.interviews.filter(x => x.id !== id); }); } });
+  window.InterviewPanel.open({ call, interviewId: id, onDone: () => { ivFlagsLoad(); Object.keys(_hub2Iv).forEach(s => hub2IvLoad(s, true)); Object.values(_hubBuild || {}).forEach(b => { if (b && b.interviews) b.interviews = b.interviews.filter(x => x.id !== id); }); } });
 }
 // ⟳ Interview sync — a SEPARATE status from Asset Status (so no display's visibility changes): when a title's
 // interviews change, its pillar + assets go Out of Sync (by asset type: Regenerate / Review). Worker ivMarkDownstream.
