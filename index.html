@@ -18079,9 +18079,26 @@ function hubResDraw() {
     </div>
     <div style="font-size:11.5px;color:var(--text3);min-height:16px;margin-bottom:8px;">${esc(R.busy || R.log || '')}</div>
     ${R.fields ? `<details ${R.open ? 'open' : ''} ontoggle="_hubRes.open=this.open"><summary style="cursor:pointer;font-size:12px;font-weight:600;">Research fields</summary>
-      ${HUB_STRATEGY_FIELDS.map(f => `<div style="margin:8px 0;"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${f}</div><div style="font-size:12px;white-space:pre-wrap;line-height:1.45;">${esc(R.fields[f] || '') || '<span style="color:var(--text3);">(empty)</span>'}</div></div>`).join('')}</details>` : ''}
-    <div style="margin-top:12px;"><button class="modal-btn" onclick="document.getElementById('hubResModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
+      ${HUB_STRATEGY_FIELDS.map((f, i) => `<div style="margin:8px 0;"><div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">${f}${(R.dirty || {})[f] ? ' <span style="color:#f6ad55;text-transform:none;letter-spacing:0;">· edited</span>' : ''}</div><textarea ${dis} rows="${Math.min(10, Math.max(2, Math.ceil(String(R.fields[f] || '').length / 80) + 1))}" oninput="hubResEdit(${i},this.value)" placeholder="(empty)" style="width:100%;box-sizing:border-box;font-size:12px;line-height:1.45;padding:6px 8px;margin-top:3px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;font-family:inherit;">${esc(R.fields[f] || '')}</textarea></div>`).join('')}
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px;"><button ${dis} onclick="hubResSave()" class="modal-btn">💾 Save research</button><span id="hubResDirtyN" style="font-size:11px;color:#f6ad55;">${Object.keys(R.dirty || {}).length ? Object.keys(R.dirty).length + ' unsaved field' + (Object.keys(R.dirty).length === 1 ? '' : 's') : ''}</span></div></details>` : ''}
+    <div style="margin-top:12px;"><button class="modal-btn" onclick="hubResClose()" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
+  m.onclick = e => { if (e.target === m) hubResClose(); };
   m.classList.add('open');
+}
+// typed edits to the research fields: kept in the modal until 💾 Save research (only the changed fields are written)
+function hubResEdit(i, v) { const R = _hubRes, f = HUB_STRATEGY_FIELDS[i]; if (!R || !R.fields || !f) return; R.fields[f] = v; (R.dirty = R.dirty || {})[f] = true;
+  const n = Object.keys(R.dirty).length, el = document.getElementById('hubResDirtyN'); if (el) el.textContent = n + ' unsaved field' + (n === 1 ? '' : 's'); }
+function hubResClose() { const R = _hubRes, n = Object.keys((R && R.dirty) || {}).length;
+  if (n && !confirm(n + ' research field' + (n === 1 ? ' has' : 's have') + ' unsaved edits. Close without saving?')) return;
+  if (R) R.dirty = {}; const m = document.getElementById('hubResModal'); if (m) m.classList.remove('open'); }
+async function hubResSave() {
+  const R = _hubRes, fields = Object.keys((R && R.dirty) || {}); if (!R) return;
+  if (!fields.length) { R.log = 'Nothing changed.'; return hubResDraw(); }
+  R.busy = 'Saving ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + '…'; hubResDraw();
+  const failed = [];
+  for (const f of fields) { try { const r = await call('updateProductStrategyField', { productId: R.pid, field: f, value: R.fields[f] || '' }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); delete R.dirty[f]; } catch (e) { failed.push(f + ' (' + e.message + ')'); } }
+  R.busy = ''; R.log = failed.length ? '✗ Not saved: ' + failed.join(' · ') : '✓ Saved ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + '.';
+  hubResDraw(); if (!failed.length) hubResLoad(R.slug, true);
 }
 async function hubResIsolate(on) {
   const R = _hubRes; R.busy = on ? 'Isolating…' : 'Un-isolating…'; hubResDraw();
