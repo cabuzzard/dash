@@ -6805,6 +6805,45 @@ function kwHubResearchRuns() {
 function kwHubToggleResearch(id) { KW.group = null; KW.view = KW.view.includes(id) ? KW.view.filter(x => x !== id) : [...new Set([KW.hub.runId, ...KW.view, id])]; kwViewChanged(); }
 
 function kwHubSetF(k, v) { KW.hubF[k] = v; kwLoadResults(0); }
+// 🎯 Pull a topic in (operator 2026-10-16): the loaded hub, filtered to ONE topic with its keywords ticked. 🔬 researches
+// them as a normal keyword-tool run (form settings, hub market) that opens next to the hub; tick what you want from the
+// results → ＋ Add to the topic → 💾 Apply saves it back to that same topic (id kept — products/titles stay attached).
+KW.hubFocus = null;
+const kwHubFocusTopic = () => KW.hub && KW.hubFocus ? kwHubDraft().model.topics.find(x => x.id === KW.hubFocus.id) : null;
+function kwHubFocusSet(id) {
+  if (!KW.hub) return;
+  const t = id && kwHubDraft().model.topics.find(x => x.id === id);
+  KW.selected.clear();
+  if (!t) { KW.hubFocus = null; KW.hubF.topic = ''; return kwLoadResults(0); }
+  KW.hubFocus = { id: t.id, name: t.name }; KW.hubF = { topic: t.id, cluster: '', src: '' };
+  t.keywords.forEach(k => KW.selected.add(k));
+  kwLoadResults(0);
+}
+function kwHubFocusResearch() {
+  const t = kwHubFocusTopic(); if (!t) return;
+  if (!t.keywords.length) return alert('This topic has no keywords yet — add some first.');
+  KW.selected.clear(); t.keywords.forEach(k => KW.selected.add(k));
+  KW.hubF.topic = '';   // the run's new keywords aren't in the topic yet — show everything
+  kwHubResearch();
+}
+function kwHubFocusAdd(move) {
+  const t = kwHubFocusTopic(); if (!t) return;
+  const kws = [...KW.selected]; if (!kws.length) return alert('Tick the keywords to put in "' + t.name + '" first.');
+  kwHubOp({ op: 'assign', keywords: kws, to: t.id, move: !!move });
+}
+// from Content Hubs 2 → Keywords (🔬 on a topic): open this tab, load the hub (unless it's already loaded), focus the topic
+async function kwOpenTopic(cid, name, topicId) {
+  const tab = document.querySelector(".tab[onclick=\"switchTab('keywords')\"]"); if (tab) tab.click();
+  if (!(KW.hub && kwNid(KW.hub.cid) === kwNid(cid))) { await kwHubLoadUI(cid, name); if (!(KW.hub && kwNid(KW.hub.cid) === kwNid(cid))) return; }
+  const t = kwHubDraft().model.topics.find(x => kwNid(x.id) === kwNid(topicId));
+  if (!t) return alert('That topic is not in the loaded hub — try ↻ Reload hub.');
+  kwHubFocusSet(t.id);
+  setTimeout(() => { const el = document.getElementById('kwHubPanel'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100);
+}
+// after an apply, Content Hubs 2 re-reads this hub's topics next time it's opened
+function kwHubDropCaches(cid) {
+  try { delete _kwTopicCache[kwNid(cid)]; HUB_SITES.forEach(h => { if (kwNid(h.campaignId) === kwNid(cid)) delete _hubKw[h.slug]; }); } catch (e) {}
+}
 const kwHubNewId = i => 's' + Date.now().toString(36) + (i || 0).toString(36) + Math.random().toString(36).slice(2, 5);
 function kwHubSelAct(kind) {
   const kws = [...KW.selected]; if (!kws.length) return;
@@ -6855,7 +6894,7 @@ async function kwHubApply() {
   const msg = document.getElementById('kwHubMsg'); if (msg) msg.textContent = '⏳ Applying…';
   try {
     const r = await call('kwHubApply', { campaignId: KW.hub.cid, name: KW.hub.name, ops: KW.hubOps }); if (r.error) throw new Error(r.error);
-    kwHubSet(r);
+    kwHubSet(r); kwHubDropCaches(KW.hub.cid);
     setTimeout(() => { const m = document.getElementById('kwHubMsg'); if (m) m.textContent = (r.errors && r.errors.length ? '⚠ Applied with problems: ' + r.errors.join(' · ') : '✓ Applied: ' + (r.lines || []).length + ' change' + ((r.lines || []).length === 1 ? '' : 's')); }, 50);
   } catch (e) { if (msg) msg.textContent = '✗ Not applied: ' + e.message; }
 }
@@ -6866,7 +6905,7 @@ async function kwHubUndoApply() {
     kwHubSet(r); setTimeout(() => { const m = document.getElementById('kwHubMsg'); if (m) m.textContent = (r.errors && r.errors.length ? '⚠ Undone with problems: ' + r.errors.join(' · ') : '✓ Last apply undone'); }, 50);
   } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
 }
-function kwHubClose() { if (KW.hubOps.length && !confirm('Discard the unsaved hub changes?')) return; KW.hub = null; KW.hubOps = []; KW._hubDraft = null; KW.hubF = { topic: '', cluster: '', src: '' }; KW.view = []; kwViewChanged(); }
+function kwHubClose() { if (KW.hubOps.length && !confirm('Discard the unsaved hub changes?')) return; KW.hub = null; KW.hubFocus = null; KW.hubOps = []; KW._hubDraft = null; KW.hubF = { topic: '', cluster: '', src: '' }; KW.view = []; kwViewChanged(); }
 // ── 🧭 3×3 structure + 🧹 record cleanup (worker kwHubPropose / kwHubCleanPlan / kwHubCleanApply / kwHubCleanUndo) ──
 // Structure per hub: ★ Main → 3 clusters → up to 3 topics each (Google volume decides) → Unclassified. The proposal
 // lands in the hub DRAFT (same preview / 💾 Apply / ↶ Undo as every other change). The cleanup then files the hub's
@@ -6961,6 +7000,15 @@ function kwHubRender() {
       </span>
     </div>
     ${H.warn ? `<div style="color:#f6ad55;margin-top:4px;">⚠ ${esc(H.warn)}</div>` : ''}
+    ${(() => { const ft = kwHubFocusTopic(); const pick = `<select class="kw-sel" style="max-width:260px;${ft ? 'outline:2px solid #f6c344;' : ''}" onchange="kwHubFocusSet(this.value)"><option value="">🎯 pull in a topic…</option>${topicOpts(ft ? ft.id : '', KwHubOps.MAIN)}</select>`;
+      if (!ft) return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">${pick}<span style="color:var(--text3);">work on one topic: research its keywords, then add the results back to it</span></div>`;
+      return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;padding:6px;border:1px solid #f6c344;border-radius:4px;">
+        ${pick}<b>🎯 ${esc(ft.name)}</b><span style="color:var(--text3);">${ft.keywords.length} keyword${ft.keywords.length === 1 ? '' : 's'}${ft.cluster ? ' · 🧩 ' + esc(ft.cluster) : ''}</span>
+        <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwHubFocusResearch()" title="Run the keyword tool on this topic's keywords (Quick / Discover = the search form's settings, the hub's market) — the run opens next to the hub">🔬 Research its keywords</button>
+        <button class="kw-btn" onclick="kwHubFocusAdd(false)" title="Put the ticked keywords into this topic (they keep any other topics) — then 💾 Apply">＋ Add ticked to topic</button>
+        <button class="kw-btn" onclick="kwHubFocusAdd(true)" title="Put the ticked keywords into this topic and take them out of every other topic — then 💾 Apply">⇢ Move ticked to topic</button>
+        <span class="kw-x" onclick="KW.hubF.topic=KW.hubF.topic?'':'${esc(ft.id)}';kwLoadResults(0)">${KW.hubF.topic === ft.id ? 'show all keywords' : 'show only this topic'}</span>
+        <span class="kw-x" onclick="kwHubFocusSet('')">✕ done</span></div>`; })()}
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">
       <span style="color:var(--text3);">Show:</span>
       <select class="kw-sel" style="max-width:240px;${f.topic ? 'outline:2px solid #4cff4c;' : ''}" onchange="kwHubSetF('topic', this.value)"><option value="">any topic</option><option value="__none" ${f.topic === '__none' ? 'selected' : ''}>— in no topic —</option>${topicOpts(f.topic)}</select>
@@ -16802,6 +16850,35 @@ function hubKwAddCluster(slug) {
 }
 // ✎ rename a topic / cluster — kwHubApply (same save + backup + ↶ undo as the Keywords tab's hub view). A topic keeps
 // its id, so its products and titles stay attached; renaming a cluster onto an existing cluster merges them.
+function hubKwOpenInTool(slug, tid) { const h = HUB_SITES.find(x => x.slug === slug); if (h) kwOpenTopic(h.campaignId, h.campaign || h.name, tid); }
+// ＋ Topic — a new proposed topic (no AI): name + starting keywords (the name alone if none), optional cluster.
+// kwHubApply newTopics (same save + backup + ↶ undo as the Keywords tab). Then 🔬 it to research in the Keywords tab.
+function hubKwAddTopic(slug) {
+  const K = _hubKw[slug]; if (!K) return;
+  const IN = 'width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);margin:3px 0 12px;';
+  hcModal(`<h3 style="margin:0 0 10px;">＋ Topic</h3>
+    <label style="font-size:11px;color:var(--text3);">Topic name</label><input id="hkwNtName" style="${IN}" placeholder="usually its main keyword">
+    <label style="font-size:11px;color:var(--text3);">Starting keywords (comma or one per line — blank = the name)</label><textarea id="hkwNtKw" rows="4" style="${IN}"></textarea>
+    <label style="font-size:11px;color:var(--text3);">Cluster</label><select id="hkwNtCl" style="${IN}"><option value="">— no cluster —</option>${(K.tc.clusters || []).map(c => `<option>${esc(c)}</option>`).join('')}</select>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="hkwNtOpen" checked>Open it in the Keywords tab afterwards</label>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwAddTopicGo('${slug}'))">Add topic</button>${HC_CANCEL}</div>`);
+  setTimeout(() => { const el = document.getElementById('hkwNtName'); if (el) el.focus(); }, 50);
+}
+async function hubKwAddTopicGo(slug) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return 'Hub not loaded';
+  const name = document.getElementById('hkwNtName').value.trim(); if (!name) return 'Type a topic name';
+  if ([...K.staged, ...K.committed].some(t => String(t.name || '').trim().toLowerCase() === name.toLowerCase())) return 'There is already a topic called "' + name + '"';
+  let kws = document.getElementById('hkwNtKw').value.split(/[,\n]/).map(x => x.trim().toLowerCase()).filter(Boolean); if (!kws.length) kws = [name.toLowerCase()];
+  const cluster = document.getElementById('hkwNtCl').value, open = document.getElementById('hkwNtOpen').checked, id = kwHubNewId(0);
+  const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name, ops: [{ op: 'newTopics', mode: 'one', keywords: [...new Set(kws)], ids: [id], name, cluster, move: false }] });
+  if (!r || r.error) return (r && r.error) || 'Not saved';
+  if (r.errors && r.errors.length) return r.errors.join(' · ');
+  document.getElementById('hcModal').classList.remove('open');
+  delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
+  if (_hubKw[slug]) _hubKw[slug].msg = '✓ Topic "' + name + '" added'; hubKwRefresh(slug);
+  if (open) kwOpenTopic(h.campaignId, h.campaign || h.name, id);
+  return true;
+}
 async function hubKwRename(slug, kind, key) {
   const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
   const t = kind === 'topic' ? [...K.staged, ...K.committed].find(x => x.id === key) : null, cur = kind === 'topic' ? (t || {}).name : (K.tc.clusters || [])[key];
@@ -16810,7 +16887,7 @@ async function hubKwRename(slug, kind, key) {
   if (!n || n === cur) return;
   const ops = kind === 'topic' ? [{ op: 'rename', id: K.staged.includes(t) ? String(t.id) : kwNid(t.id), name: n }]   /* hub model: committed ids dashless, proposed as stored */ : [{ op: 'renameCluster', from: cur, to: n }];
   K.msg = '⏳ Renaming "' + cur + '" → "' + n + '"…'; hubKwRefresh(slug);
-  try { const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.name || slug, ops }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+  try { const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.campaign || h.name || slug, ops }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     if (r.errors && r.errors.length) throw new Error(r.errors.join(' · '));
     delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
     if (_hubKw[slug]) _hubKw[slug].msg = '✓ Renamed "' + cur + '" → "' + n + '"'; hubKwRefresh(slug); if (typeof hubTitlesRefresh === 'function') hubTitlesRefresh(slug); }
@@ -17146,13 +17223,13 @@ function renderHubKw(slug) {
     const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
     const nKw = ps.filter(p => p.stage === 'Keyword Research').length;
     const counts = cell(nKw, '#3b82f6', `${nKw} product${nKw === 1 ? '' : 's'} flagged for keyword research`) + cell(nIn, '#4ade80', `${nIn} Development product${nIn === 1 ? '' : 's'} in sync`) + cell(nOut, '#ff7a00', `${nOut} Development product${nOut === 1 ? '' : 's'} out of sync (or no research yet)`);
-    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: t.id, pdrop: t.id, tools: counts + moveSel + `<button style="${btn}" title="Rename this topic (products and titles stay attached)" onclick="hubKwRename('${slug}','topic','${esc(t.id)}')">✎</button>` + addBtn });
+    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: t.id, pdrop: t.id, tools: counts + moveSel + `<button style="${btn}" title="Rename this topic (products and titles stay attached)" onclick="hubKwRename('${slug}','topic','${esc(t.id)}')">✎</button><button style="${btn}" title="Open this topic in the Keywords tab — research its keywords there and save the results back to it" onclick="hubKwOpenInTool('${slug}','${esc(t.id)}')">🔬</button>` + addBtn });
   };
   const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
   const by = {}, un = [];
   topics.forEach(t => { const c = K.tc.assign && K.tc.assign[t.id]; if (c && clusters.includes(c)) (by[c] = by[c] || []).push(t); else un.push(t); });
   const master = split(K.master);
-  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
+  let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Add a topic (name + starting keywords) — then 🔬 it to research in the Keywords tab" onclick="hubKwAddTopic('${slug}')">＋ Topic</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
   const mainPs = (K.products || []).filter(p => p.topicId === '__main' && (!fOn || keep(p))), mainIdeas = hubKwMainIdeas(slug);
   const mainInner = sec('kw:__master', 'Keywords', master.length, '', master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>')
     + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.map(exRow).join('') || '<span style="font-size:11px;color:var(--text3);">No ★ Main products yet.</span>')
