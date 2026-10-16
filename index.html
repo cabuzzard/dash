@@ -16800,6 +16800,22 @@ function hubKwAddCluster(slug) {
   if ((K.tc.clusters || []).some(c => c.toLowerCase() === n.toLowerCase())) return alert('There is already a cluster called "' + n + '".');
   hubKwSaveClusters(slug, [...(K.tc.clusters || []), n], { ...(K.tc.assign || {}) }, 'Cluster "' + n + '" added');
 }
+// ✎ rename a topic / cluster — kwHubApply (same save + backup + ↶ undo as the Keywords tab's hub view). A topic keeps
+// its id, so its products and titles stay attached; renaming a cluster onto an existing cluster merges them.
+async function hubKwRename(slug, kind, key) {
+  const K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!K || !h) return;
+  const t = kind === 'topic' ? [...K.staged, ...K.committed].find(x => x.id === key) : null, cur = kind === 'topic' ? (t || {}).name : (K.tc.clusters || [])[key];
+  if (!cur) return;
+  const n = (prompt(kind === 'topic' ? 'Rename topic (its products and titles stay attached):' : 'Rename cluster (renaming onto an existing cluster merges them):', cur) || '').trim();
+  if (!n || n === cur) return;
+  const ops = kind === 'topic' ? [{ op: 'rename', id: K.staged.includes(t) ? String(t.id) : kwNid(t.id), name: n }]   /* hub model: committed ids dashless, proposed as stored */ : [{ op: 'renameCluster', from: cur, to: n }];
+  K.msg = '⏳ Renaming "' + cur + '" → "' + n + '"…'; hubKwRefresh(slug);
+  try { const r = await call('kwHubApply', { campaignId: h.campaignId, name: h.name || slug, ops }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    if (r.errors && r.errors.length) throw new Error(r.errors.join(' · '));
+    delete _kwTopicCache[kwNid(h.campaignId)]; delete _hubKw[slug]; await hubKwLoad(slug);
+    if (_hubKw[slug]) _hubKw[slug].msg = '✓ Renamed "' + cur + '" → "' + n + '"'; hubKwRefresh(slug); if (typeof hubTitlesRefresh === 'function') hubTitlesRefresh(slug); }
+  catch (e) { K.msg = '✗ Not renamed: ' + e.message; hubKwRefresh(slug); }
+}
 function hubKwDeleteCluster(slug, ci) {
   const K = _hubKw[slug]; if (!K) return; const c = (K.tc.clusters || [])[ci]; if (c == null) return;
   const n = Object.values(K.tc.assign || {}).filter(v => v === c).length;
@@ -17130,7 +17146,7 @@ function renderHubKw(slug) {
     const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
     const nKw = ps.filter(p => p.stage === 'Keyword Research').length;
     const counts = cell(nKw, '#3b82f6', `${nKw} product${nKw === 1 ? '' : 's'} flagged for keyword research`) + cell(nIn, '#4ade80', `${nIn} Development product${nIn === 1 ? '' : 's'} in sync`) + cell(nOut, '#ff7a00', `${nOut} Development product${nOut === 1 ? '' : 's'} out of sync (or no research yet)`);
-    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: t.id, pdrop: t.id, tools: counts + moveSel + addBtn });
+    return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: t.id, pdrop: t.id, tools: counts + moveSel + `<button style="${btn}" title="Rename this topic (products and titles stay attached)" onclick="hubKwRename('${slug}','topic','${esc(t.id)}')">✎</button>` + addBtn });
   };
   const topics = K.staged.map(t => Object.assign({ staged: true }, t)).concat(K.committed.map(t => Object.assign({ staged: false }, t)));
   const by = {}, un = [];
@@ -17147,7 +17163,7 @@ function renderHubKw(slug) {
     if (fOn && !ts.some(t => topic(t, 0))) return;
     out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`,
       ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster — drag one here.</span>',
-      { drop: c, tools: `<button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
+      { drop: c, tools: `<button style="${btn}" title="Rename this cluster" onclick="hubKwRename('${slug}','cluster',${ci})">✎</button><button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
   if ((un.length || clusters.length) && (!fOn || un.some(t => topic(t, 0)))) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`,
     un.length ? un.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">None — drag a topic here to take it out of its cluster.</span>', { drop: '' });
   if (!topics.length && !clusters.length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
