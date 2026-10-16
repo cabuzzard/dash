@@ -11695,7 +11695,11 @@ function dev2ToggleRec(t, id, on) { const S = t === 't' ? DEV2_SEL_T : DEV2_SEL_
 function dev2BulkIds() {
   const a = new Set(), t = new Set(DEV2_SEL_T), p = new Set(DEV2_SEL_P);
   DEV2_SELECTED.forEach(k => { const id = k.slice(2); if (k.startsWith('a:')) a.add(id); else if (k.startsWith('t:')) t.add(id); else if (k.startsWith('p:')) p.add(id); });
-  return { a: [...a], t: [...t], p: [...p] };
+  // keyword topics = the Keyword topic of every ticked row (+ ticked titles / products), as "campId|topic name"; Main has its own propose, so it's left out
+  const k = new Set(), addTopic = r => { if (r && r.campId && r.keywordTopic && !/^(★ )?Main( Keywords)?$/.test(r.keywordTopic)) k.add(r.campId + '|' + r.keywordTopic); };
+  DEV2_SELECTED.forEach(key => addTopic(DEV2_ROWS.find(x => dev2RowKey(x) === key)));
+  t.forEach(id => addTopic(DEV2_ROWS.find(r => r.titleId === id && r.keywordTopic))); p.forEach(id => addTopic(DEV2_ROWS.find(r => r.productId === id && r.keywordTopic)));
+  return { a: [...a], t: [...t], p: [...p], k: [...k] };
 }
 function dev2PickFromRows(kind) {
   DEV2_SELECTED.forEach(k => { const r = DEV2_ROWS.find(x => dev2RowKey(x) === k); if (!r) return; if (kind === 't' && r.titleId) DEV2_SEL_T.add(r.titleId); if (kind === 'p' && r.productId) DEV2_SEL_P.add(r.productId); });
@@ -11710,6 +11714,7 @@ const DEV2_PILLAR_TYPES = {
 const DEV2_BULK = {
   a: { label: 'Assets', acts: { edit: { label: 'Edit in publish modal' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Review', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
   t: { label: 'Titles',   acts: { product: { label: 'Set product', opts: () => dev2ProductOpts() }, kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar', vals: Object.keys(DEV2_PILLAR_TYPES) }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
+  k: { label: 'Keyword topics', acts: { propose: { label: 'Propose products' } } },
   p: { label: 'Products', acts: { research: { label: 'Run all research' }, kw: { label: 'Examine / regen keywords' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
 };
 // every product the table knows (product rows + products on title / asset rows), as [{v: id, l: label}] —
@@ -11738,7 +11743,8 @@ async function dev2BulkApply(btn) {
   if (!ids.length) return;
   if (act === 'thumb') return dev2BulkGenerateThumbnails();
   const out = document.getElementById('dev2BkOut'), rowOf = (k, id) => DEV2_ROWS.find(r => (k === 'a' ? r.assetId : k === 't' ? r.titleId : r.productId) === id) || {};
-  const nameOf = id => { const r = rowOf(t, id); return t === 'a' ? (r.assetName || id) : t === 't' ? (r.title || id) : (r.product || id); };
+  const nameOf = id => { if (t === 'k') { const r = DEV2_ROWS.find(x => x.campId === id.split('|')[0]) || {}; return id.split('|').slice(1).join('|') + (r.campaign ? ' · ' + r.campaign : ''); }
+    const r = rowOf(t, id); return t === 'a' ? (r.assetName || id) : t === 't' ? (r.title || id) : (r.product || id); };
   if (act === 'edit') {   // the publish modal lives in care-gap: one link per asset (opens straight into its Publish modal)
     const links = ids.map(id => { const r = rowOf('a', id); return `<div><a href="https://cabuzzard.github.io/dash/microsites/care-gap-v2/?campaignId=${esc(r.campId || '')}&asset=${esc(id)}" target="_blank" rel="noopener" style="color:var(--accent);">✎ ${esc(nameOf(id))} ↗</a> <span style="color:var(--text3);">${esc(r.campaign || '')}</span></div>`; });
     out.style.display = ''; out.innerHTML = links.join('');
@@ -11747,7 +11753,7 @@ async function dev2BulkApply(btn) {
   }
   // ── queue it: snapshot the batch, clear the selection (pick the next set while this runs), return at once.
   // All batches share one pool of DEV2_BULK_CONC; each item has a live line in the jobs panel.
-  if (act === 'research' || act === 'pillar') { if (!confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one (up to ${DEV2_BULK_CONC} at a time across all batches).`)) return; }
+  if (act === 'research' || act === 'pillar' || act === 'propose') { if (!confirm(`${DEV2_BULK[t].acts[act].label}${act === 'pillar' ? ' (' + val + ')' : ''} for ${ids.length} ${label}? This runs Claude for each one (up to ${DEV2_BULK_CONC} at a time across all batches).`)) return; }
   if (act === 'del' && !confirm(`Delete (archive in Notion) ${ids.length} ${label}?`)) return;
   const b = ++DEV2_JOBS.n, jobs = document.getElementById('dev2BkJobs');
   const rows = ids.map(id => ({ id, row: rowOf(t, id), name: nameOf(id) }));
@@ -11782,9 +11788,25 @@ function dev2JobsPump() {
       .finally(() => { DEV2_JOBS.running--; dev2JobBatchStatus(it.batch); dev2JobsPump(); });
   }
 }
+// propose runs one topic at a time per campaign (staged topics share one KV record — parallel writes would drop ideas)
+const DEV2_TOPIC_LOCK = {};
 async function dev2JobRun(it) {
   const { t, act, val } = it.batch, id = it.id, row = it.row, step = txt => dev2JobLine(it, '⏳ working', txt, '#f6ad55');
   step(''); dev2JobBatchStatus(it.batch);
+  if (act === 'propose') {   // 💡 propose products on a keyword topic (same as the topic's 💡 propose in Content Hubs 2 Keywords)
+    const cid = id.split('|')[0], name = id.split('|').slice(1).join('|'), prev = DEV2_TOPIC_LOCK[cid] || Promise.resolve();
+    let done; DEV2_TOPIC_LOCK[cid] = prev.then(() => new Promise(r => { done = r; }));
+    step('waiting for the other topics in this campaign…'); await prev;
+    try {
+      const d = await kwTopicsFor(cid), tp = (d.topics || []).find(x => String(x.name || '').trim().toLowerCase() === name.trim().toLowerCase());
+      if (!tp) throw new Error('topic not found on the campaign');
+      step('researching and proposing…');
+      const r = await call('generateClusterProductStacks', { campaignId: cid, clusterId: tp.id }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+      delete _kwTopicCache[kwNid(cid)]; Object.keys(_hubKw).forEach(s => { const h = HUB_SITES.find(x => x.slug === s); if (h && kwNid(h.campaignId) === kwNid(cid)) delete _hubKw[s]; });
+      const after = [...(r.staged || []), ...(r.committed || [])].find(x => kwNid(x.id) === kwNid(tp.id));
+      return `${after && after.products ? after.products.length : '?'} proposed ideas on this topic — see its Proposed products in Content Hubs 2 → Keywords`;
+    } finally { done(); }
+  }
   if (act === 'product') { const r = await call('updateTitleStrategy', { titleId: id, productId: val }); if (r && r.error) throw new Error(r.error); return val === '__none__' ? 'product removed' : 'product → ' + it.batch.valLabel.replace(/ · .*$/, ''); }
   if (act === 'kw') { const r = await call(t === 'p' ? 'generateProductKeywords' : 'regenerateTitleKeywords', t === 'p' ? { productId: id } : { titleId: id }); if (r.error) throw new Error(r.error); return r.keywords || ''; }
   if (act === 'pillar') { step('writing ' + val + ' pillar…'); const r = await call('writeTitlePillar', { titleId: id, styleGuidance: DEV2_PILLAR_TYPES[val] }); if (r.error) throw new Error(r.error); return `${val} pillar written (${r.wordCount || '?'} words)`; }
@@ -11809,7 +11831,7 @@ function dev2UpdateBulkBar() {
   const ids = dev2BulkIds(), n = ids.a.length + ids.t.length + ids.p.length;
   bar.style.display = n ? 'flex' : 'none';
   const countEl = document.getElementById('dev2BulkCount');
-  if (countEl) countEl.textContent = `${ids.a.length} assets · ${ids.t.length} titles · ${ids.p.length} products selected`;
+  if (countEl) countEl.textContent = `${ids.a.length} assets · ${ids.t.length} titles · ${ids.p.length} products · ${ids.k.length} keyword topics selected`;
   if (n) dev2BulkForm();
 }
 // Bulk delete — an asset-backed row deletes the asset (deleteAsset); a
