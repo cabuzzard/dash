@@ -11611,6 +11611,15 @@ async function hrResearchRun(env, cid, name, keywords, market) {
   return id;
 }
 const hrLine = list => list.map(x => `${x.t} | ${x.v}`).join("\n");
+// fallback cluster name for one topic: its highest-volume researched search that shares every main word of the topic name
+// (stopwords aside), else one sharing any main word, else the topic's own name — never an unrelated high-volume search
+const HR_STOP = new Set("a an and the of for to in on with near me my your how what best top is are vs or by at from".split(" "));
+function hrHome(t, pool) {
+  const words = kwNorm(t && t.name).split(" ").filter(w => w.length > 2 && !HR_STOP.has(w)), list = (pool || []).slice().sort((a, b) => b.v - a.v);
+  const all = list.find(x => words.length && words.every(w => x.t.split(" ").some(y => y.startsWith(w.slice(0, Math.max(4, w.length - 2))))));
+  const any = list.find(x => words.some(w => x.t.split(" ").includes(w)) && x.t.split(" ").length <= 4);
+  return (all || any || {}).t || kwNorm(t && t.name);
+}
 async function kwHubRestructureStep(env, cid, S) {
   const market = await kwMarket(env, {});
   const st = await kwHubState(env, cid);
@@ -11672,11 +11681,11 @@ ${S.clusters.map(c => `- ${c.name}: ${(c.pool || []).slice(0, 30).map(x => x.t).
 TOPICS — id | name | keywords | how many of its keywords appear in each cluster's research:
 ${tl.join("\n")}
 
-For each topic give the ONE cluster whose pillar page it would naturally support (same subject and searcher), or "none" if it does not fit any of them well. Do not force a fit — "none" topics get their own researched cluster later.`, "fit",
+For each topic (id exactly as written: T0, T1, …) give the ONE cluster whose pillar page it would naturally support (same subject and searcher), or "none" if it does not fit any of them well. Do not force a fit — "none" topics get their own researched cluster later.`, "fit",
       { type: "object", required: ["fit"], properties: { fit: { type: "array", items: { type: "object", required: ["id", "cluster"], properties: { id: { type: "string" }, cluster: { type: "string" } } } } } }, 4000) : { fit: [] };
     S.fit = {}; S.nonfit = [];
     const names = new Set(S.clusters.map(c => c.name));
-    topics.forEach((t, i) => { const f = (r.fit || []).find(x => String(x.id).replace(/^T/, "") === String(i)); const c = f && kwNorm(f.cluster);
+    topics.forEach((t, i) => { const f = (r.fit || []).find(x => (String(x.id).match(/\d+/) || [])[0] === String(i)); const c = f && kwNorm(f.cluster);
       if (c && names.has(c)) S.fit[t.id] = c; else S.nonfit.push(t.id); });
     S.step = "nonfit"; S.nfPools = {}; return;
   }
@@ -11700,20 +11709,22 @@ EXISTING CLUSTERS (already taken — do not reuse or duplicate): ${S.clusters.ma
 TOPICS WITHOUT A CLUSTER — each with its own Google research (keyword | monthly searches):
 ${nts.map((t, i) => `N${i} · ${t.name} (keywords: ${t.keywords.slice(0, 10).join(", ")})\n${hrLine(S.nfPools[t.id] || []).split("\n").slice(0, 25).map(l => "   " + l).join("\n")}`).join("\n\n")}
 
-Group these topics into as FEW new clusters as makes sense (topics on the same subject share one). Each cluster name MUST be one keyword copied EXACTLY from the research lines above: the broadest real search with good volume that contains its topics' subject — a pillar its topics would support, not one topic's exact phrase unless nothing broader exists. Every topic must be in exactly one cluster.`, "extra",
+Group these topics into as FEW new clusters as makes sense (topics on the same subject share one). Each cluster name MUST be one keyword copied EXACTLY from the research lines above: the broadest real search with good volume that contains its topics' subject — a pillar its topics would support, not one topic's exact phrase unless nothing broader exists. Every topic must be in exactly one cluster. In "topics" give the topic ids exactly as written (N0, N1, …).`, "extra",
         { type: "object", required: ["clusters"], properties: { clusters: { type: "array", items: { type: "object", required: ["name", "topics"], properties: { name: { type: "string" }, why: { type: "string" }, topics: { type: "array", items: { type: "string" } } } } } } }, 4000);
       const vol = new Map(); nts.forEach(t => (S.nfPools[t.id] || []).forEach(x => vol.set(x.t, Math.max(vol.get(x.t) || 0, x.v))));
       const taken = new Set(S.clusters.map(c => c.name)), placed = new Set();
       for (const c of r.clusters || []) {
-        let n = kwNorm(c.name); const ids = (c.topics || []).map(x => nts[Number(String(x).replace(/^N/, ""))]).filter(t => t && !placed.has(t.id)).map(t => t.id);
+        let n = kwNorm(c.name); const ids = (c.topics || []).map(x => { const s = String(x), n = (s.match(/\d+/) || [])[0]; return (n != null && /^\s*N?\d/.test(s) ? nts[Number(n)] : null) || nts.find(t => kwNorm(t.name) === kwNorm(s.replace(/^N\d+\s*[·|:-]\s*/, ""))); })
+          .filter(t => t && !placed.has(t.id)).map(t => t.id);
         if (!ids.length) continue;
-        if (!vol.has(n)) n = ((S.nfPools[ids[0]] || [])[0] || {}).t || kwNorm(topics.find(x => x.id === ids[0]).name);
+        const shares = ids.some(id => { const tw = kwNorm((topics.find(x => x.id === id) || {}).name).split(" ").filter(w => w.length > 2 && !HR_STOP.has(w)); return tw.some(w => n.split(" ").some(y => y.startsWith(w.slice(0, Math.max(4, w.length - 2))))); });
+        if (!vol.has(n) || !shares) n = hrHome(topics.find(x => x.id === ids[0]), S.nfPools[ids[0]]);   // must be a researched search about its topics
         if (taken.has(n)) { const tc = S.clusters.find(x => x.name === n); if (tc) { ids.forEach(id => { S.fit[id] = n; placed.add(id); }); continue; } }
         let e = S.extra.find(x => x.name === n); if (!e) { e = { name: n, why: String(c.why || "").slice(0, 300), volume: vol.get(n) || 0, topics: [] }; S.extra.push(e); taken.add(n); }
         ids.forEach(id => { e.topics.push(id); placed.add(id); });
       }
       for (const t of nts) if (!placed.has(t.id)) {   // anything Claude skipped: its own top researched keyword
-        const n = ((S.nfPools[t.id] || [])[0] || {}).t || kwNorm(t.name);
+        const n = hrHome(t, S.nfPools[t.id]);
         let e = S.extra.find(x => x.name === n) || (S.clusters.find(x => x.name === n) ? null : (S.extra.push({ name: n, why: "top researched search for this topic", volume: vol.get(n) || 0, topics: [] }), S.extra[S.extra.length - 1]));
         if (e) e.topics.push(t.id); else S.fit[t.id] = n;
       }
