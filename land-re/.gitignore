@@ -1,3 +1,13 @@
 data/
 __pycache__/
 *.tmp
+
+# Land Arbitrage Scout local state and credentials
+.venv/
+scout/data/
+.pytest_cache/
+**/__pycache__/
+.env
+*.duckdb
+*.wal
+!.env.example

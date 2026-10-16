@@ -1813,9 +1813,9 @@
   </div>
 
   <!-- ── TRADES TAB ───────────────────────────────────────────────────── -->
-  <!-- nationwide-land-re-20261015: national cycle research workbench -->
+  <!-- land-arbitrage-scout-20261015: staged investment discovery and underwriting -->
   <div class="tab-panel" id="tabLandre">
-    <iframe id="landREFrame" title="Land Appreciation Intelligence" style="width:100%;height:calc(100vh - 180px);min-height:700px;border:0;border-radius:10px;background:#101713;"></iframe>
+    <iframe id="landREFrame" title="Land Arbitrage Scout" style="width:100%;height:calc(100vh - 180px);min-height:700px;border:0;border-radius:10px;background:#101713;"></iframe>
   </div>
 
   <div class="tab-panel" id="tabTrades">
@@ -5748,7 +5748,7 @@ function jumpToDev(campId) {
 // when a session expired reloads itself the instant you're re-authenticated
 // instead of sitting on a stale error until you click away and back.
 function loadTabContent(name) {
-  if (name === 'landre') { const frame = document.getElementById('landREFrame'); if (!frame.getAttribute('src')) frame.src = 'land-re/?v=2026101502'; }
+  if (name === 'landre') { const frame = document.getElementById('landREFrame'); if (!frame.getAttribute('src')) frame.src = 'land-re/?v=2026101503'; }
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   // 'development' deliberately NOT auto-loaded here — every widget in this
   // tab (NEXT, Last 30 Published, Development Titles) is default-collapsed
