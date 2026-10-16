@@ -15207,7 +15207,7 @@ async function hubJobsPoll() {
   { const now = ((_hubJobs.last && _hubJobs.last.jobs.titles) || {}).states || {}, slugs = new Set();   // a title job just finished → refresh that hub's titles
     Object.entries(now).forEach(([id, s]) => { if (s.done && prevT[id] && !prevT[id].done && s.slug) { slugs.add(s.slug);
       if (s.kind === 'product' && s.productId && !s.error) { const K = _hubKw[s.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === s.productId); if (p) p.outOfSync = false; (_hubResState[s.slug] = _hubResState[s.slug] || {})[s.productId] = 'updated'; } } });
-    slugs.forEach(sl => { hubResLoad(sl, true); if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); else hubKwRefresh(sl); }); }
+    slugs.forEach(sl => { if (_hub2Pool[sl]) hub2PoolLoad(sl, true); hubResLoad(sl, true); if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); else hubKwRefresh(sl); }); }
   const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
   if (wasBusy && !busy) _hubJobs.justDone = true;   // keep a ✓ finished line until ✕
   hubJobsDraw();
@@ -15562,6 +15562,10 @@ function renderHubs2() {
         <details class="hub-sec" ontoggle="if(this.open)hub2StrategiesLoad('${slug}')">
           <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
+        </details>
+        <details class="hub-sec" ontoggle="if(this.open)hub2PoolLoad('${slug}')">
+          <summary title="Digest"><span title="Digest">Digest</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">researched items · ★ premium · 📰 news</span><button onclick="event.preventDefault();event.stopPropagation();hub2PoolLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <div id="hub2Pool-${slug}" style="padding:8px 12px;">${hub2PoolHtml(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hubKwLoad('${slug}')">
           <summary title="Keywords"><span title="Keywords">Keywords</span><span id="hub2KwN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2KwCountText(slug)}</span><span id="hubKwW-${slug}">${hubKwWork(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();delete _hubKw['${slug}'];hubKwLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
@@ -15927,6 +15931,47 @@ async function hub2DigestModal(slug) {
 }
 // ＋ Add these keywords to the hub as a topic (operator 2026-10-15) — kwHubApply (same save + backup as the Keywords tab):
 // unassign them from every topic (Main untouched), then one new topic holding them, under the chosen cluster
+// ── Digest section: the hub's pool of researched digest items (every digest run — the twice-weekly cron or the Digest
+// modal — replaces the untagged ones). ★ Premium = keep + build an evergreen premium piece; 📰 News = keep + write a News
+// SEO post on it. Untagged = drops off at the next run. Tagging queues the build (server job, ⚙ panel). ──
+const _hub2Pool = {};
+async function hub2PoolLoad(slug, force) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  if (_hub2Pool[slug] && !force && !_hub2Pool[slug].error) return hub2PoolPaint(slug);
+  _hub2Pool[slug] = { loading: true }; hub2PoolPaint(slug);
+  try { const r = await call('getDigestPool', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); _hub2Pool[slug] = { items: r.items || [], last: r.last || null }; }
+  catch (e) { _hub2Pool[slug] = { error: e.message }; }
+  hub2PoolPaint(slug);
+}
+function hub2PoolPaint(slug) { const el = document.getElementById('hub2Pool-' + slug); if (el) el.innerHTML = hub2PoolHtml(slug); }
+function hub2PoolHtml(slug) {
+  const P = _hub2Pool[slug];
+  if (!P) return '<div style="font-size:11px;color:var(--text3);">Open to load.</div>';
+  if (P.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
+  if (P.error) return `<div style="font-size:11px;color:#f87171;">${esc(P.error)}</div>`;
+  if (!P.items.length) return '<div style="font-size:11px;color:var(--text3);">No digest items yet — they arrive with the next digest run (Tuesday / Friday, or the Digest modal).</div>';
+  const B = (on, col) => `font-size:10px;padding:1px 7px;border:1px solid ${on ? col : 'var(--border2)'};border-radius:4px;background:${on ? col + '22' : 'transparent'};color:${on ? col : 'var(--text2)'};cursor:pointer;`;
+  const row = x => { const lock = x.status && x.status !== 'error';
+    const st = x.status === 'queued' ? '<span style="font-size:10px;color:#f6ad55;">⏳ building</span>' : x.status === 'done' ? `<span style="font-size:10px;color:#4ade80;">✓ built</span>${x.assetId || x.titleId ? ` <a href="https://www.notion.so/${esc(x.assetId || x.titleId)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">↗</a>` : ''}` : x.status === 'error' ? `<span title="${esc(x.error || '')}" style="font-size:10px;color:#f87171;cursor:help;">✗ failed — tag again to retry</span>` : '';
+    return `<div class="hkw-row" style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
+      <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.claim)}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.split === 'premium' ? ' · research said premium' : ''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">source ↗</a>` : ''}</div></div>
+      <div style="display:flex;gap:4px;align-items:center;flex-shrink:0;">${st}
+        <button ${lock && x.tag !== 'premium' ? 'disabled' : ''} style="${B(x.tag === 'premium', '#f5c542')}" title="Keep as premium — builds an evergreen premium piece (title in Main · research · pillar)" onclick="hub2PoolTag('${slug}','${esc(x.id)}','${x.tag === 'premium' ? '' : 'premium'}')">★ Premium</button>
+        <button ${lock && x.tag !== 'news' ? 'disabled' : ''} style="${B(x.tag === 'news', '#8ab4f8')}" title="Keep for news — writes a News SEO post on it (left unpublished)" onclick="hub2PoolTag('${slug}','${esc(x.id)}','${x.tag === 'news' ? '' : 'news'}')">📰 News</button></div></div>`; };
+  const tagged = P.items.filter(x => x.tag), rest = P.items.filter(x => !x.tag);
+  return `<div style="font-size:10.5px;color:var(--text3);margin-bottom:6px;">${P.last && P.last.at ? 'Latest research: ' + esc(String(P.last.at).slice(0, 10)) + ' · ' : ''}Tag to keep — ★ Premium builds an evergreen premium piece, 📰 News writes a news post. Untagged items drop off at the next digest run.</div>`
+    + (tagged.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:6px 0 2px;">Kept (${tagged.length})</div>` + tagged.map(row).join('') : '')
+    + (rest.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:10px 0 2px;">This run — untagged, will be replaced (${rest.length})</div>` + rest.map(row).join('') : '');
+}
+async function hub2PoolTag(slug, itemId, tag) {
+  const h = HUB_SITES.find(x => x.slug === slug), P = _hub2Pool[slug]; if (!h || !P || !P.items) return;
+  const it = P.items.find(x => x.id === itemId); if (!it) return;
+  if (it.status && it.status !== 'error' && !tag) return showToast('Already ' + (it.status === 'done' ? 'built' : 'building') + ' — it stays kept', 'error');
+  const r = await call('tagDigestItem', { campaignId: h.campaignId, itemId, tag, slug }).catch(e => ({ error: e.message }));
+  if (!r || r.error) return showToast('Not tagged: ' + ((r && r.error) || 'no response'), 'error');
+  Object.assign(it, r.item); hub2PoolPaint(slug);
+  if (r.queued) { call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); showToast((tag === 'news' ? '📰 News post' : '★ Evergreen premium piece') + ' queued — ⚙ bottom-right', 'success'); }
+}
 async function hub2DigestTopicOpen() {
   const sel = h2dEl('h2dTopicCluster'), nm = h2dEl('h2dTopicName'); if (!sel) return;
   if (nm && !nm.value) nm.value = h2dKeywords()[0] || '';

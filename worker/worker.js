@@ -11913,6 +11913,24 @@ async function kwHubPlaceTick(env) {
 // KV titlejob:queue = [jobId…], titlejob:state:<jobId> = { titleId, name, slug, steps:[{action,label}], i, done, errors }.
 // Each step runs the real action through the worker's own fetch handler (a self-signed token) — same code as the page.
 // Started right away by the page (runTitleJobs) and resumed by the */4 cron if the tab went away. One runner at a time.
+// DIGEST POOL (operator 2026-10-16) — KV digest:pool:<cid> = [{ id, claim, publisher, url, date, tier, split, at, tag, status,
+// titleId, assetId, error }]. Each ranked digest run (cron or the Digest modal) replaces the UNTAGGED items with its new
+// ones; tagged items stay. Tag ★ premium → a job builds an evergreen premium piece (title in Main · research · pillar);
+// tag 📰 news → a job writes a News SEO post on that item (left unpublished). Jobs run in the title-job queue.
+const dpId = s => { let h = 5381; const x = String(s || ""); for (let i = 0; i < x.length; i++) h = ((h << 5) + h + x.charCodeAt(i)) | 0; return "di" + (h >>> 0).toString(36); };
+async function digestPoolMerge(env, cid, ranked) {
+  cid = String(cid || "").replace(/-/g, ""); if (!cid || !ranked) return;
+  const key = "digest:pool:" + cid, pool = (await env.TRADES.get(key, "json")) || [], keep = pool.filter(x => x.tag);
+  const have = new Set(keep.map(x => x.id)), now = Date.now();
+  const add = (ranked.sources || []).map(s => ({ id: dpId((s.url || "") + "|" + (s.claim || "")), claim: String(s.claim || s.title || "").slice(0, 600), publisher: s.publisher || "", url: s.url || "", date: s.date || "",
+    tier: s.tier || "", split: s.split || "", at: now, tag: "", status: "" })).filter(x => x.claim && !have.has(x.id) && (have.add(x.id) || true));
+  await env.TRADES.put(key, JSON.stringify([...keep, ...add].slice(0, 200)));
+}
+async function digestPoolUpdate(env, cid, itemId, patch) {
+  const key = "digest:pool:" + cid, pool = (await env.TRADES.get(key, "json")) || [], it = pool.find(x => x.id === itemId);
+  if (it) { Object.assign(it, patch); await env.TRADES.put(key, JSON.stringify(pool)); }
+}
+const DP_EVERGREEN_STYLE = "PILLAR TYPE: Evergreen premium — a definitive, evergreen deep-dive built from this development: the underlying issue, why it keeps mattering, how it works, what the reader should do, and the questions it raises. Written to stay useful long after the news; cite the original source by name once.";
 async function titleJobsRun(env, invoke) {
   if (await env.TRADES.get("titlejob:lock")) return { busy: true };
   await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 300 });
@@ -11927,7 +11945,23 @@ async function titleJobsRun(env, invoke) {
       if (step) {
         S.running = step.label; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
         try {
-          if (step.action === "pfield") {   // product research: one field — regenerate, then save (saving clears the product's out-of-sync)
+          if (step.action === "dnews") {   // 📰 a News SEO post on this one digest item (existing news writer), left unpublished
+            const mains = await hubMainList(env, S.cid);
+            const t = await invoke({ action: "createNewsBlogTitle", campaignId: S.cid, productId: mains[0] || undefined, newsTitle: S.item.claim.slice(0, 180), newsBody: S.item.claim,
+              newsSource: [S.item.publisher, S.item.url].filter(Boolean).join(" "), newsDate: S.item.date || "", allowDuplicate: true });
+            if (!t || !t.success || !t.titleId) throw new Error("title: " + ((t && t.error) || "no response"));
+            S.titleId = String(t.titleId).replace(/-/g, "");
+            const g = await invoke({ action: "generateTitleAssets", titleId: S.titleId, campaignId: S.cid, productId: mains[0] || undefined, methodId: t.methodId, title: t.headline, assetType: "Blog - SEO - News", count: 1 });
+            const aid = g && ((g.assets || [])[0] || {}).id; if (!aid) throw new Error("article: " + ((g && g.error) || "no asset"));
+            S.assetId = String(aid).replace(/-/g, "");
+          } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
+            const mains = await hubMainList(env, S.cid);
+            const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Planning", skipPillar: true,
+              researchInstructions: "Evergreen premium piece built from this digest item: " + S.item.claim + (S.item.publisher ? " — source: " + S.item.publisher : "") + (S.item.url ? " " + S.item.url : "") });
+            if (!c || c.error || !c.id) throw new Error("title: " + ((c && c.error) || "no response"));
+            S.titleId = String(c.id).replace(/-/g, "");
+            await invoke({ action: "setTitleTopic", titleId: S.titleId, topicId: "__main" }).catch(() => {});
+          } else if (step.action === "pfield") {   // product research: one field — regenerate, then save (saving clears the product's out-of-sync)
             const g = await invoke({ action: "regenerateStrategyField", productId: S.productId, campaignId: S.campaignId || undefined, field: step.field });
             if (!g || g.error) throw new Error((g && g.error) || "no response");
             const u = await invoke({ action: "updateProductStrategyField", productId: S.productId, field: step.field, value: g.text || "" });
@@ -11939,7 +11973,8 @@ async function titleJobsRun(env, invoke) {
         S.i++; ran++;
       }
       delete S.running;
-      if (S.i >= S.steps.length) { S.done = true; S.finishedAt = Date.now(); }
+      if (S.i >= S.steps.length) { S.done = true; S.finishedAt = Date.now();
+        if (S.kind === "ditem") await digestPoolUpdate(env, S.cid, S.item.id, { status: (S.errors || []).length ? "error" : "done", error: (S.errors || []).join(" · "), titleId: S.titleId || "", assetId: S.assetId || "" }).catch(() => {}); }
       await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
       if (S.done) await drop(id);
     }
@@ -17318,6 +17353,28 @@ ${JSON.stringify(products)}`;
           steps: fields.map(f => ({ action: "pfield", field: f, label: f })), i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
         await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
         return json({ ok: true, id });
+      }
+      if (body.action === "getDigestPool") {
+        const cid = String(body.campaignId || "").replace(/-/g, ""); if (!cid) return json({ error: "campaignId required" }, 400);
+        return json({ ok: true, items: (await env.TRADES.get("digest:pool:" + cid, "json")) || [], last: await env.TRADES.get("digest:last:" + cid, "json") });
+      }
+      // tagDigestItem {campaignId, itemId, tag: "premium" | "news" | ""} — tagging queues the build job (once per item)
+      if (body.action === "tagDigestItem") {
+        const cid = String(body.campaignId || "").replace(/-/g, ""), tag = ["premium", "news"].includes(body.tag) ? body.tag : "";
+        const key = "digest:pool:" + cid, pool = (await env.TRADES.get(key, "json")) || [], it = pool.find(x => x.id === body.itemId);
+        if (!it) return json({ error: "Item not found — it may have been replaced by a newer digest run" }, 404);
+        if (it.status && it.status !== "error" && it.tag && tag !== it.tag) return json({ error: "Already " + (it.status === "done" ? "built" : "building") + " as " + it.tag }, 400);
+        it.tag = tag;
+        if (tag && (!it.status || it.status === "error")) {
+          const id = "dj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+          const steps = tag === "news" ? [{ action: "dnews", label: "news post" }] : [{ action: "etitle", label: "title" }, { action: "research", label: "title research" }, { action: "pillar", label: "evergreen pillar" }];
+          await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ kind: "ditem", cid, item: it, name: (tag === "news" ? "📰 " : "★ ") + it.claim.slice(0, 80), slug: String(body.slug || ""),
+            styleGuidance: tag === "premium" ? DP_EVERGREEN_STYLE : "", steps, i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
+          await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
+          it.status = "queued"; it.error = "";
+        }
+        await env.TRADES.put(key, JSON.stringify(pool));
+        return json({ ok: true, item: it, queued: it.status === "queued" });
       }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
@@ -51822,6 +51879,7 @@ Return ONLY a fenced \`\`\`json array of {"name","publication":"their main journ
     job.ranked = await drRank(env, job); job.rankedAt = new Date().toISOString();
     await save();
     await env.TRADES.put("digest:last:" + job.campaignId, JSON.stringify({ jobId: job.id, at: job.rankedAt, sources: job.ranked.sources.map(s => ({ url: s.url, title: s.title })) }));
+    await digestPoolMerge(env, job.campaignId, job.ranked).catch(e => console.error("digestPoolMerge", e.message));   // the hub's Digest section pool
     return { success: true, job: drPublic(job) };
   }
   if (op === "attach") {   // record which sources a written digest title used
