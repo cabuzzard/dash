@@ -15438,6 +15438,7 @@ Return: {
           const p = t.properties || {};
           titleById[id] = {
             title: (p.Title?.title || []).map(x => x.plain_text).join("") || "Untitled",
+            created: t.created_time ? String(t.created_time).slice(0, 10) : "",
             notes: (p.Notes?.rich_text || []).map(x => x.plain_text).join("") || "",
             status: p.Status?.select?.name || "",
             campId: (p.Campaign?.relation || [])[0]?.id ? dropDash((p.Campaign.relation)[0].id) : null,
@@ -15561,7 +15562,7 @@ Return: {
             hub: t.campId ? (hubByCampId[t.campId] || "") : "",
             productStack: prod ? (prod.stack || "No Stack") : "No Product",
             product: prod ? prod.name : "No Product",
-            title: t.title,
+            title: t.title, titleCreated: t.created || "",
             titleId,
             titleNotes: t.notes || "",
             titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
@@ -20741,6 +20742,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
           stage: p.properties?.["Product Stage"]?.select?.name || null,   // Raw / Keyword Research / Development (productStage*)
           description: (p.properties?.["Description"]?.rich_text || []).map(t => t.plain_text).join("") || "",
+          created: p.created_time ? String(p.created_time).slice(0, 10) : "",
         }));
         // Group → Stack → Product: the campaign's product groups (stack → group name, + the saved group order)
         let sg = null; try { sg = await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json"); } catch (e) {}
