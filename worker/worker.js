@@ -15722,6 +15722,7 @@ Return: {
             productId: (p.product?.relation || [])[0]?.id ? dropDash((p.product.relation)[0].id) : null,
             methodId: (p.method?.relation || [])[0]?.id ? dropDash((p.method.relation)[0].id) : null,
             pillarStatus: p["Pillar Status"]?.select?.name || "",
+            topicId: (p["Topic ID"]?.rich_text || []).map(x => x.plain_text).join("").trim().replace(/-/g, ""),   // the title's own keyword topic ("" = its product's)
             strategySlotId: (p["Strategy Slot"]?.relation || [])[0]?.id ? dropDash(p["Strategy Slot"].relation[0].id) : null,
             growthStrategyId: (p["Growth Strategy"]?.relation || [])[0]?.id ? dropDash(p["Growth Strategy"].relation[0].id) : null,
           };
@@ -15843,7 +15844,7 @@ Return: {
             titleId,
             titleNotes: t.notes || "",
             titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
-            pillarStatus: t.pillarStatus || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
+            pillarStatus: t.pillarStatus || "", titleStatus: t.status || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
             ...scheduleFields(t.strategySlotId),
           };
           (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
@@ -15930,7 +15931,9 @@ Return: {
         rows.forEach(r => {
           r.group = (r.campId && (groupMaps[r.campId] || {})[r.productStack]) || ""; if (!r.kind) r.kind = r.assetId ? "asset" : "title";
           const prod = r.productId ? productById[r.productId] : null, topics = keywordTopics[r.campId] || {}, assign = keywordTopicClusters[r.campId] || {};
-          let topicId = prod && prod.topicId || "", topicName = "";
+          const ownTopic = (r.titleId && titleById[r.titleId] && titleById[r.titleId].topicId) || "";
+          r.titleTopicId = ownTopic;
+          let topicId = ownTopic || (prod && prod.topicId) || "", topicName = "";
           if (topicId === "__main") { topicName = "★ Main Keywords"; }
           else if (topicId && topics[topicId]) topicName = topics[topicId];
           else if (prod && prod.stack) {
@@ -17692,6 +17695,21 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       // grading (gradeAssetSeo below) offers as its "regenerate title
       // research" recommended fix. Resolves the cluster the same way: via
       // the Title's Product's Product Stack.
+      // ── setTitleTopic {titleId, topicId} — the title's own keyword topic ("" = follow its product's topic, "__main" = Main).
+      // Titles are organized by topic and take their keywords from it; the product link only decides the offer / CTA.
+      if (body.action === "setTitleTopic") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
+        const topicId = String(body.topicId || "").replace(/-/g, "").slice(0, 60);
+        if (!(await env.TRADES.get("titles:topicprop"))) {
+          const r = await fetch("https://api.notion.com/v1/databases/" + CONTENT_STRATEGY_DB, { method: "PATCH",
+            headers: { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+            body: JSON.stringify({ properties: { "Topic ID": { rich_text: {} } } }) });
+          if (!r.ok) { const e = await r.json().catch(() => ({})); return json({ error: "Could not add Topic ID to titles: " + (e.message || r.status) }, 500); }
+          await env.TRADES.put("titles:topicprop", "1");
+        }
+        await kwNotionPatch(env, titleId, { "Topic ID": { rich_text: topicId ? [{ type: "text", text: { content: topicId } }] : [] } });
+        return json({ ok: true, titleId, topicId });
+      }
       if (body.action === "regenerateTitleKeywords") {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
@@ -17703,10 +17721,16 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         const tp = titlePage.properties || {};
         const titleName = (tp.Name?.title || []).map(t => t.plain_text).join("") || "Title";
         const currentKeywords = (tp["seed idea"]?.rich_text || []).map(t => t.plain_text).join("");
-        const productId = (tp.Product?.relation || [])[0]?.id || null;
+        const productId = (tp.Product?.relation || tp.product?.relation || [])[0]?.id || null;
+        // a title's keywords come from ITS topic (title "Topic ID"); no topic of its own → its product's topic (as before)
+        const titleTopic = (tp["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").trim().replace(/-/g, "");
+        const titleCamp = (tp.Campaign?.relation || [])[0]?.id || null;
 
         let clusterBlock = "";
-        if (productId) {
+        if (titleTopic && titleCamp) {
+          const topicKeywords = titleTopic === "__main" ? "" : await findClusterKeywordsForStack(env, hdr, "", titleCamp, titleTopic);
+          if (topicKeywords) clusterBlock = `\nSEO TOPIC THIS TITLE LIVES IN — stay faithful to these, merge with the title's own keywords rather than drifting from them: ${topicKeywords}\n`;
+        } else if (productId) {
           const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(productId))}`, { headers: hdr }).then(r => r.json());
           const stack = (productPage.properties?.["Product Stack"]?.rich_text || []).map(t => t.plain_text).join("");
           const campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
@@ -17767,8 +17791,13 @@ Return 8-12 real, specific keywords/phrases this piece of content should target 
         let clusterName = "", clusterKeywords = "", mainKeywords = "", campaignId = null;
         if (titleId) {
           const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(titleId))}`, { headers: hdr }).then(r => r.json());
-          const productId = (titlePage.properties?.Product?.relation || [])[0]?.id || null;
-          if (productId) {
+          const productId = (titlePage.properties?.Product?.relation || titlePage.properties?.product?.relation || [])[0]?.id || null;
+          const titleTopic = rtx(titlePage.properties, "Topic ID").trim().replace(/-/g, ""), titleCamp = (titlePage.properties?.Campaign?.relation || [])[0]?.id || null;
+          if (titleTopic && titleCamp && titleTopic !== "__main") {   // the title's own topic wins
+            campaignId = titleCamp;
+            const found = await findClusterKeywordsForStack(env, hdr, "", titleCamp, titleTopic);
+            if (found) { clusterName = "topic " + titleTopic; clusterKeywords = found; }
+          } else if (productId) {
             const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(productId))}`, { headers: hdr }).then(r => r.json());
             const stack = rtx(productPage.properties, "Product Stack");
             campaignId = (productPage.properties?.Campaigns?.relation || [])[0]?.id || null;
