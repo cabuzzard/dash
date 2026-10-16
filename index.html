@@ -15526,6 +15526,13 @@ const HUB2_CHECKLIST_COLS = [
   {key:'name',label:'Method'}, {key:'published',label:'Published',num:true}, {key:'inProgress',label:'In progress',num:true},
   {key:'target',label:'Goal',num:true}, {key:'periodLabel',label:'Period'}, {key:'dev',label:'Dev',num:true}, {key:'progress',label:'This period',num:true}, {key:'due',label:'Next due'}, {key:'status',label:'Status'}, {key:'trackedLabel',label:'Track'}, {key:'grayLabel',label:'Gray'}
 ];
+// Checklist row naming (operator 2026-10-15): a parent row that has children = "<Parent> - parent" (Digest - parent);
+// a parent row with no children stays bare (Hub, Product); the generic group's children = "<Asset> - Any Parent"
+// (written from any written parent, or the title pillar); every other child = "<Parent> - <Asset>".
+function hub2RowName(parent, asset, hasKids) {
+  if (hub2GenericGroup(parent)) return asset ? asset + ' - Any Parent' : 'Any Parent';
+  return asset ? parent + ' - ' + asset : (hasKids ? parent + ' - parent' : parent);
+}
 const HUB2_WS = { parent: 'cmuzq03ywty8b', asset: 'cmuzq36hb77sq', name: 'cname01', pillar: 'c1', tier: 'civtier01', match: 'cmatch01', goal: 'cgoal01', cadence: 'ccad01', day: 'cday01', schedule: 'csched01', notes: 'c2' };
 function hub2MethodsFrom(table) {
   return ((table && table.rows) || []).map(r => { const c = r.cells || {}, W = HUB2_WS, asset = (c[W.asset] || '').trim(), parent = (c[W.parent] || c[W.pillar] || '').trim();
@@ -15685,6 +15692,9 @@ async function hub2ChecklistSave(slug, id) {
     [W.goal]: String(Math.max(1, +v('h2gTarget') || 1)), [W.cadence]: cadence, [W.day]: cadence === 'Weekly' ? v('h2gDay') : '', [W.schedule]: v('h2gSchedule'), [W.notes]: document.getElementById('h2gNotes')?.value || '' });
   if (id && wasPillar && !asset && oldParent && oldParent !== parent) table.rows.forEach(r => { const k = r.cells || {}; if (r !== row && (k[W.parent] || '').trim() === oldParent && (k[W.asset] || '').trim()) {
     const prev = k[W.name]; k[W.parent] = parent; k[W.name] = parent + ' - ' + k[W.asset].trim(); if (prev && prev !== k[W.name]) k[W.match] = [k[W.match], prev].filter(Boolean).join('; '); } });
+  table.rows.forEach(r => { const k = r.cells || {}, p = (k[W.parent] || '').trim(), a = (k[W.asset] || '').trim(); if (!p || /^notes\b/i.test(k[W.pillar] || '')) return;
+    const nm = hub2RowName(p, a, !a && table.rows.some(x => x !== r && ((x.cells || {})[W.parent] || '').trim() === p && ((x.cells || {})[W.asset] || '').trim())), prev = (k[W.name] || '').trim();
+    if (prev && prev !== nm) { k[W.name] = nm; if (!String(k[W.match] || '').split(';').some(x => hub2Norm(x) === hub2Norm(prev))) k[W.match] = [k[W.match], prev].filter(Boolean).join('; '); } });
   table.at = Date.now();
   const saved = await call('saveInfoFlowTable', { name: 'currentmethods', table }); if (!saved || saved.error) return (saved && saved.error) || 'Worksheet not saved';
   if (FLOWS.methods && FLOWS.methods.data) { FLOWS.methods.data = table; if (document.getElementById(FLOWS.methods.body)) renderFlowTable('methods'); if (FLOWS.subassets && FLOWS.subassets.data) flowSyncRows('subassets'); }
@@ -15705,7 +15715,7 @@ async function hub2ChecklistSave(slug, id) {
 // instead of the title pillar and stamps "Parent Asset"). "Parent - …" (formerly "Pillar - …") children can come from any written parent.
 const HUB2_PILLAR_TYPE = { Digest: 'Digest', Topical: 'Long Form Topical', Sales: 'Long Form Sales', Product: 'Product', Interactive: 'Interactivity', Job: 'Job Application', Marketplace: 'Marketplace Listing', Pillar: 'Generic', Parent: 'Generic' };
 // the generic group (worksheet "Parent" / "Parent - X", formerly "Pillar"): its children can come from ANY written parent of the title
-const hub2GenericGroup = p => /^(parent|pillar)$/i.test(String(p || '').trim());
+const hub2GenericGroup = p => /^(any parent|parent|pillar)$/i.test(String(p || '').trim());
 const _hub2Writing = {};   // parent assetId → true while writeParentAsset runs
 // products the checklist modals must never offer (operator 2026-10-15): Keywords Out of Sync (orange) or research out of sync
 function hub2OutOfSyncProducts(slug) { const set = new Set(); ((_hub2Checklist[slug] || {}).hubRows || []).forEach(r => { if (r.productId && r.keywordOutOfSync) set.add(hub2Id(r.productId)); }); return set; }
@@ -16156,16 +16166,16 @@ async function hub2CreateStep(slug, id) {
   const st = _hub2Checklist[slug] || {}, m = (st.methods || []).find(x => x.id === id), el = document.getElementById('h2cStep'), tid = document.getElementById('h2cTitle')?.value; if (!m || !el || !tid) return;
   const B = 'font-size:11px;padding:5px 11px;border:1px solid var(--accent);border-radius:6px;background:transparent;color:var(--accent);cursor:pointer;', nlink = aid => `<a href="https://www.notion.so/${esc(hub2Id(aid))}" target="_blank" rel="noopener" style="font-size:11px;color:var(--accent);margin-left:8px;">Notion ↗</a>`;
   const parentStep = (prow, why) => { const pa = hub2ParentAssetFor(st, tid, prow), iv = /^interview/i.test(prow.tier);
-    if (pa && _hub2Writing[pa.assetId]) return `${why}<div style="color:var(--text2);">⏳ Writing the ${esc(prow.name)} parent (1-2 min)…</div>`;
-    if (!pa) return `${why}<button style="${B}" onclick="hub2ParentCreate('${slug}','${esc(id)}','${esc(prow.id)}',this)">Create ${esc(prow.name)} parent${iv ? ' + interview' : ''}</button>`;
-    if (hub2ParentReady(pa)) return `<div style="color:#4ade80;margin-bottom:6px;">✓ ${esc(prow.name)} parent written${nlink(pa.assetId)}</div><button style="${B}border-color:var(--border2);color:var(--text2);" onclick="hub2ParentWrite('${slug}','${esc(id)}','${esc(pa.assetId)}','${esc(prow.name)}',this)">↻ Rewrite it</button>`;
-    return `${why}<div style="margin-bottom:6px;color:var(--text2);">The ${esc(prow.name)} parent exists but isn't written yet${iv ? ' — it needs your interview first' : ''}.${nlink(pa.assetId)}</div><button style="${B}" onclick="hub2ParentWrite('${slug}','${esc(id)}','${esc(pa.assetId)}','${esc(prow.name)}',this)">${iv ? '🎤 Interview → write' : '✍ Write'} ${esc(prow.name)} parent</button>`; };
+    if (pa && _hub2Writing[pa.assetId]) return `${why}<div style="color:var(--text2);">⏳ Writing the ${esc(prow.parent)} parent (1-2 min)…</div>`;
+    if (!pa) return `${why}<button style="${B}" onclick="hub2ParentCreate('${slug}','${esc(id)}','${esc(prow.id)}',this)">Create ${esc(prow.parent)} parent${iv ? ' + interview' : ''}</button>`;
+    if (hub2ParentReady(pa)) return `<div style="color:#4ade80;margin-bottom:6px;">✓ ${esc(prow.parent)} parent written${nlink(pa.assetId)}</div><button style="${B}border-color:var(--border2);color:var(--text2);" onclick="hub2ParentWrite('${slug}','${esc(id)}','${esc(pa.assetId)}','${esc(prow.parent)}',this)">↻ Rewrite it</button>`;
+    return `${why}<div style="margin-bottom:6px;color:var(--text2);">The ${esc(prow.parent)} parent exists but isn't written yet${iv ? ' — it needs your interview first' : ''}.${nlink(pa.assetId)}</div><button style="${B}" onclick="hub2ParentWrite('${slug}','${esc(id)}','${esc(pa.assetId)}','${esc(prow.parent)}',this)">${iv ? '🎤 Interview → write' : '✍ Write'} ${esc(prow.parent)} parent</button>`; };
   if (m.isPillar) { el.innerHTML = parentStep(m, ''); return; }
   const prow = (st.methods || []).find(x => x.isPillar && x.parent === m.parent);
   let parents = hub2GenericGroup(m.parent) ? hub2TitleParents(st, tid).filter(hub2ParentReady) : [];
   if (!hub2GenericGroup(m.parent)) { const pa = prow && hub2ParentAssetFor(st, tid, prow); if (hub2ParentReady(pa)) parents = [pa]; }
   // no parent row for this group (e.g. Topical — removed 2026-10-15): the child is written straight from the title's pillar
-  if (!parents.length && prow) { el.innerHTML = parentStep(prow, `<div style="margin-bottom:8px;color:var(--text2);">${esc(m.name)} is written from this title's ${esc(prow.name)} parent — that comes first.</div>`); return; }
+  if (!parents.length && prow) { el.innerHTML = parentStep(prow, `<div style="margin-bottom:8px;color:var(--text2);">${esc(m.name)} is written from this title's ${esc(prow.parent)} parent — that comes first.</div>`); return; }
   el.innerHTML = '<div style="color:var(--text3);">Loading methods…</div>';
   try {
     if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(x => x.status === 'Live').sort((a, b) => a.name.localeCompare(b.name));
@@ -16185,11 +16195,11 @@ async function hub2CreateStep(slug, id) {
 async function hub2ParentCreate(slug, id, prowId, btn) {
   const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Checklist[slug] || {}, prow = (st.methods || []).find(x => x.id === prowId), t = hub2ReadyTitles(slug).find(x => x.id === document.getElementById('h2cTitle')?.value);
   if (!h || !prow || !t) return; btn.disabled = true; btn.textContent = 'Creating…';
-  const r = await call('createAsset', { titleId: t.id, campId: h.campaignId, productId: t.productId, assetTitle: `${t.title} — ${prow.name}`, assetType: prow.name, assetStatus: 'Development',
+  const r = await call('createAsset', { titleId: t.id, campId: h.campaignId, productId: t.productId, assetTitle: `${t.title} — ${prow.parent}`, assetType: prow.parent, assetStatus: 'Development',
     assetClass: 'Pillar', pillarType: HUB2_PILLAR_TYPE[prow.parent] || prow.parent, pillarReadiness: 'Unwritten', interviewRequired: /^interview/i.test(prow.tier) }).catch(e => ({ error: e.message }));
-  if (!r || r.error || !r.id) { btn.disabled = false; btn.textContent = `Create ${prow.name} parent`; return showToast('Not created: ' + ((r && r.error) || 'no id'), 'error'); }
-  (st.hubRows ||= []).push({ assetId: r.id, titleId: t.id, title: t.title, productId: t.productId, product: t.product, campId: h.campaignId, assetClass: 'Pillar', pillarType: HUB2_PILLAR_TYPE[prow.parent] || prow.parent, assetType: prow.name, assetStatus: 'Development', pillarReadiness: 'Unwritten', research: '✓ up to date', pillarStatus: 'Written' });
-  hub2ParentWrite(slug, id, r.id, prow.name, btn);
+  if (!r || r.error || !r.id) { btn.disabled = false; btn.textContent = `Create ${prow.parent} parent`; return showToast('Not created: ' + ((r && r.error) || 'no id'), 'error'); }
+  (st.hubRows ||= []).push({ assetId: r.id, titleId: t.id, title: t.title, productId: t.productId, product: t.product, campId: h.campaignId, assetClass: 'Pillar', pillarType: HUB2_PILLAR_TYPE[prow.parent] || prow.parent, assetType: prow.parent, assetStatus: 'Development', pillarReadiness: 'Unwritten', research: '✓ up to date', pillarStatus: 'Written' });
+  hub2ParentWrite(slug, id, r.id, prow.parent, btn);
 }
 // writeParentAsset: the worker writes the interview if the parent needs one and hasn't got a finished one → answer it
 // here; finishing it writes the parent. Otherwise it writes now (1-2 min).
@@ -16341,7 +16351,7 @@ async function hub2DevAssetsGo(slug) {
   const methods = (_hub2Checklist[slug] || {}).methods || [], picked = [...document.querySelectorAll('.h2da-cb:checked,.h2da-pcb:checked')].map(c => methods.find(m => m.id === c.dataset.id)).filter(Boolean);
   const doPillar = document.getElementById('h2daPillar').checked;
   if (!picked.length && !doPillar) return 'Tick Write pillar or at least one type';
-  const types = picked.map(m => ({ assetType: m.aliases.find(a => a !== m.name) || m.asset || m.name, label: m.asset || m.name, pillar: !!m.isPillar }));
+  const types = picked.map(m => ({ assetType: m.aliases.find(a => a !== m.name) || m.asset || m.parent, label: m.asset || m.parent, pillar: !!m.isPillar }));
   const titles = hub2PillarBulkTitles(slug);
   if (!titles.length) return 'Select titles first';
   document.getElementById('hcModal').classList.remove('open');

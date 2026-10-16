@@ -1617,7 +1617,7 @@ async function hubNewsCronTick(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
   // once per digest period per hub (operator 2026-10-15)
   let cadence = "Weekly";
-  try { const t = await env.TRADES.get("infoflow:table:currentmethods", "json"); const row = ((t && t.rows) || []).find(r => /^digest$/i.test(((r.cells || {}).cname01 || "").trim()));
+  try { const t = await env.TRADES.get("infoflow:table:currentmethods", "json"); const row = ((t && t.rows) || []).find(r => { const c = r.cells || {}; return /^digest$/i.test((c.cmuzq03ywty8b || c.cname01 || "").trim()) && !(c.cmuzq36hb77sq || "").trim(); });   // the Digest parent row (named "Digest - parent")
     if (row && (row.cells.ccad01 || "").trim()) cadence = row.cells.ccad01.trim(); } catch (e) {}
   const per = hubNewsPeriodKey(cadence);
   if (per.hour < 7 || per.hour >= 21) return { idle: true, why: "outside 07:00-21:00 Pacific" };
