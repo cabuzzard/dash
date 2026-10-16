@@ -27,7 +27,7 @@
 //   { op: "setCluster", ids: [topicId…], cluster }           file topics under a cluster ("" = none; new name = new cluster)
 //   { op: "renameCluster", from, to }
 //
-// After the ops: topics with no keywords and clusters with no topics are ORPHANS and are removed.
+// After the ops: topics with no keywords, and clusters the ops left with no topics, are ORPHANS and are removed.
 // apply() returns { model, fx } — fx describes what changed (for the preview text and for the worker's writes).
 (function (root) {
   const norm = s => String(s || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
@@ -96,9 +96,11 @@
     // orphans: empty topics, then clusters no topic uses
     const removed = m.topics.filter(t => !t.keywords.length).map(t => t.id);
     m.topics = m.topics.filter(t => t.keywords.length);
+    // only a cluster THESE ops emptied is an orphan — a cluster that was already empty (just added, waiting for topics) stays
     const used = new Set(m.topics.map(t => t.cluster).filter(Boolean));
-    const clustersRemoved = m.clusters.filter(c => !used.has(c));
-    m.clusters = m.clusters.filter(c => used.has(c));
+    const usedBefore = new Set(before.topics.map(t => t.cluster).filter(Boolean).map(c => clusterRenamed[c] || c));
+    const clustersRemoved = m.clusters.filter(c => !used.has(c) && usedBefore.has(c));
+    m.clusters = m.clusters.filter(c => used.has(c) || !usedBefore.has(c));
     m.topics.forEach(t => { if (t.cluster && !m.clusters.includes(t.cluster)) t.cluster = ""; });
 
     // diff before → after (by id) — this, not the op list, is what gets written
