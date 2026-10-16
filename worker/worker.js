@@ -11783,6 +11783,63 @@ async function kwHubRestructureTick(env) {
     }
   } finally { await env.TRADES.delete("kwhub:restr:lock"); }
 }
+// ══ MAIN → PAIRED (operator 2026-10-16) ═══════════════════════════════════════════════════════════════════════
+// Products no longer live ON Main. A ★ main offering (KV hub:mainproduct:<cid>) stays in its keyword topic and is SHOWN
+// under Main too (same record, same research — so nothing is counted twice). This moves every product currently placed
+// on Main (Topic ID "__main", or stack "Master" with no Topic ID) into its best topic (Claude picks from the hub's topics;
+// none fits → the hub's Unclassified topic, else a new unclustered topic named after the product) and adds it to the
+// main offerings. Topic ID + Keywords Out of Sync only — stack, group, research untouched. KV kwhub:mainmig:queue / state.
+async function kwHubMainMigrate(env, cid) {
+  const st = await kwHubState(env, cid), topics = st.model.topics;
+  const onMain = st.products.filter(p => p.topicIdProp === "__main" || (!p.topicIdProp && kwNorm(p.stack) === "master"));
+  const out = { at: Date.now(), moved: [], errors: [] };
+  if (!onMain.length) return out;
+  const real = topics.filter(t => !hcIsUncl(t));
+  let pick = {};
+  if (real.length) {
+    const r = await hcClaude(env, `Each PRODUCT below is a hub's main offering. Put each one in the keyword TOPIC whose searches it serves best (the topic a buyer of it would be searching in). If no topic is a reasonable fit, answer "none".
+
+TOPICS — id | name | keywords:
+${real.map((t, i) => `T${i} | ${t.name} | ${t.keywords.slice(0, 12).join(", ")}`).join("\n")}
+
+PRODUCTS — id | name | keywords:
+${onMain.map((p, i) => `P${i} | ${p.name} | ${p.keywords.slice(0, 10).join(", ")}`).join("\n")}`, "place",
+      { type: "object", required: ["place"], properties: { place: { type: "array", items: { type: "object", required: ["product", "topic"], properties: { product: { type: "string" }, topic: { type: "string" } } } } } }, 3000).catch(() => ({ place: [] }));
+    (r.place || []).forEach(x => { const pi = (String(x.product).match(/\d+/) || [])[0], ti = (String(x.topic).match(/^\s*T?(\d+)/) || [])[1]; if (pi != null && ti != null && real[Number(ti)]) pick[onMain[Number(pi)] ? onMain[Number(pi)].id : ""] = real[Number(ti)].id; });
+  }
+  const uncl = topics.find(hcIsUncl), ops = [], newIds = {};
+  for (const p of onMain) if (!pick[p.id] && !uncl) { const id = "mm" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); newIds[p.id] = id;
+    ops.push({ op: "newTopics", mode: "one", keywords: [kwNorm(p.name)], ids: [id], name: p.name, cluster: "", move: false }); }
+  if (ops.length) { const r = await kwHubApply(env, cid, ops, ""); (r.errors || []).forEach(e => out.errors.push(e)); }
+  try { await kwEnsureProductProps(env); } catch (e) { out.errors.push(e.message || String(e)); return out; }
+  const mainList = await hubMainList(env, cid);
+  for (const p of onMain) {
+    const tid = pick[p.id] || (uncl ? uncl.id : newIds[p.id]); if (!tid) continue;
+    try { await kwNotionPatch(env, p.id, { "Topic ID": { rich_text: [{ type: "text", text: { content: String(tid).replace(/-/g, "") } }] }, "Keywords Out of Sync": { checkbox: true } });
+      if (!mainList.includes(p.id)) mainList.push(p.id);
+      out.moved.push({ product: p.name, topic: (topics.find(t => t.id === tid) || {}).name || p.name, how: pick[p.id] ? "best topic" : uncl ? "Unclassified" : "new topic" }); }
+    catch (e) { out.errors.push(p.name + ": " + (e.message || e)); }
+  }
+  await env.TRADES.put("hub:mainproduct:" + cid, JSON.stringify(mainList));
+  return out;
+}
+async function kwHubMainMigrateTick(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const q = (await env.TRADES.get("kwhub:mainmig:queue", "json")) || []; if (!q.length) return;
+  if (await env.TRADES.get("kwhub:mainmig:lock")) return;
+  await env.TRADES.put("kwhub:mainmig:lock", "1", { expirationTtl: 600 });
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < 150000) {
+      const cur = (await env.TRADES.get("kwhub:mainmig:queue", "json")) || []; if (!cur.length) break;
+      const cid = String(cur[0]).replace(/-/g, "");
+      let res; try { res = await kwHubMainMigrate(env, cid); } catch (e) { res = { at: Date.now(), error: e.message || String(e) }; }
+      await env.TRADES.put("kwhub:mainmig:state:" + cid, JSON.stringify(res));
+      const after = ((await env.TRADES.get("kwhub:mainmig:queue", "json")) || []).filter(x => String(x).replace(/-/g, "") !== cid);
+      await env.TRADES.put("kwhub:mainmig:queue", JSON.stringify(after));
+    }
+  } finally { await env.TRADES.delete("kwhub:mainmig:lock"); }
+}
 async function kwHubAutoTick(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   const q0 = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q0.length) return;
@@ -34756,8 +34813,11 @@ Call submit_keyword_cluster with your result.`;
         const clusters = [...new Set((Array.isArray(body.clusters) ? body.clusters : []).map(x => String(x).trim().slice(0, 120)).filter(Boolean))].slice(0, 60);
         const assign = {};
         for (const [k, v] of Object.entries(body.assign || {})) { const n = String(v || "").trim(); if (n && clusters.includes(n)) assign[String(k).replace(/-/g, "")] = n; }
-        await env.TRADES.put(`seotopicclusters:${cid}`, JSON.stringify({ clusters, assign }));
-        return json({ success: true, clusters, assign });
+        // the hub's MAIN cluster (the one most aligned with Main — listed first, own colour): kept unless changed / deleted
+        let prevMain = ""; try { prevMain = ((await env.TRADES.get(`seotopicclusters:${cid}`, "json")) || {}).mainCluster || ""; } catch (e) {}
+        const mc = String("mainCluster" in body ? body.mainCluster || "" : prevMain).trim(), mainCluster = clusters.includes(mc) ? mc : "";
+        await env.TRADES.put(`seotopicclusters:${cid}`, JSON.stringify({ clusters, assign, ...(mainCluster ? { mainCluster } : {}) }));
+        return json({ success: true, clusters, assign, mainCluster });
       }
       // generateTopicClusters {campaignId, guidance?} — groups every existing topic
       // (staged + committed) into clusters, each named with a real keyword; replaces
@@ -34808,8 +34868,11 @@ Make 2-6 BROAD clusters (fewer is better; it is acceptable to put many topics in
           ids.forEach(x => { assign[x] = n; });
         }
         if (!clusters.length) return json({ error: "No clusters came back — try again" }, 502);
-        await env.TRADES.put(`seotopicclusters:${cid}`, JSON.stringify({ clusters, assign }));
-        return json({ success: true, clusters, assign });
+        // the hub's MAIN cluster (the one most aligned with Main — listed first, own colour): kept unless changed / deleted
+        let prevMain = ""; try { prevMain = ((await env.TRADES.get(`seotopicclusters:${cid}`, "json")) || {}).mainCluster || ""; } catch (e) {}
+        const mc = String("mainCluster" in body ? body.mainCluster || "" : prevMain).trim(), mainCluster = clusters.includes(mc) ? mc : "";
+        await env.TRADES.put(`seotopicclusters:${cid}`, JSON.stringify({ clusters, assign, ...(mainCluster ? { mainCluster } : {}) }));
+        return json({ success: true, clusters, assign, mainCluster });
       }
 
       // Edits ONE staged (uncommitted) cluster in place — name/keywords, for
@@ -49659,7 +49722,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
     if (event.cron === "*/4 * * * *") {
       cw("kwHubProposeTick", kwHubProposeTick(env));
       cw("kwHubAutoTick", kwHubAutoTick(env));
-      cw("kwHubRestructureTick", kwHubRestructureTick(env));   // 🏗 cluster restructure queue (kwhub:restr:queue)
+      cw("kwHubRestructureTick", kwHubRestructureTick(env));
+      cw("kwHubMainMigrateTick", kwHubMainMigrateTick(env));   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
@@ -50833,7 +50897,8 @@ async function kwHubApply(env, campaignId, ops, name) {
   const assign = {};
   for (const [k, v] of Object.entries(st.tc.assign || {})) if (!known.has(String(k).replace(/-/g, ""))) assign[k] = v;   // ids this hub doesn't load (archived…) untouched
   for (const t of after.topics) if (t.cluster) assign[st.assignKey[t.id.replace(/-/g, "")] || t.id] = t.cluster;
-  await tryW("clusters", () => env.TRADES.put("seotopicclusters:" + cid, JSON.stringify({ ...st.tc, clusters: after.clusters, assign })));
+  const mc0 = st.tc.mainCluster || "", mc = fx.clusterRenamed[mc0] || mc0;
+  await tryW("clusters", () => env.TRADES.put("seotopicclusters:" + cid, JSON.stringify({ ...st.tc, clusters: after.clusters, assign, mainCluster: after.clusters.includes(mc) ? mc : "" })));
   // Product Groups follow a cluster rename (organizing labels only)
   if (Object.keys(fx.clusterRenamed).length) await tryW("product groups", async () => {
     const g = await env.TRADES.get("stackgroups:" + cid, "json"); if (!g || typeof g !== "object") return;
