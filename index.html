@@ -15194,7 +15194,7 @@ document.addEventListener('visibilitychange', () => {
 setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 // ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
 // job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
-const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Title research / pillars' };
+const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars' };
 let _hubJobs = { hidden: false, open: true, last: null, t: null };
 function hubJobsName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === cid); return h ? (h.name || h.slug) : cid.slice(0, 8); }
 async function hubJobsPoll() {
@@ -15204,8 +15204,9 @@ async function hubJobsPoll() {
   const prevT = ((_hubJobs.last && _hubJobs.last.jobs.titles) || {}).states || {};
   try { const r = await call('getHubJobs'); if (r && r.jobs) _hubJobs.last = r; } catch (e) {}
   { const now = ((_hubJobs.last && _hubJobs.last.jobs.titles) || {}).states || {}, slugs = new Set();   // a title job just finished → refresh that hub's titles
-    Object.entries(now).forEach(([id, s]) => { if (s.done && prevT[id] && !prevT[id].done && s.slug) slugs.add(s.slug); });
-    slugs.forEach(sl => { if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); }); }
+    Object.entries(now).forEach(([id, s]) => { if (s.done && prevT[id] && !prevT[id].done && s.slug) { slugs.add(s.slug);
+      if (s.kind === 'product' && s.productId && !s.error) { const K = _hubKw[s.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === s.productId); if (p) p.outOfSync = false; (_hubResState[s.slug] = _hubResState[s.slug] || {})[s.productId] = 'updated'; } } });
+    slugs.forEach(sl => { hubResLoad(sl, true); if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); else hubKwRefresh(sl); }); }
   const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
   if (wasBusy && !busy) _hubJobs.justDone = true;   // keep a ✓ finished line until ✕
   hubJobsDraw();
@@ -18300,7 +18301,8 @@ async function hubResSave() {
   R.busy = 'Saving ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + '…'; hubResDraw();
   const failed = [];
   for (const f of fields) { try { const r = await call('updateProductStrategyField', { productId: R.pid, field: f, value: R.fields[f] || '' }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); delete R.dirty[f]; } catch (e) { failed.push(f + ' (' + e.message + ')'); } }
-  R.busy = ''; R.log = failed.length ? '✗ Not saved: ' + failed.join(' · ') : '✓ Saved ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + '.';
+  R.busy = ''; R.log = failed.length ? '✗ Not saved: ' + failed.join(' · ') : '✓ Saved ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + ' — in sync.';
+  if (!failed.length) { const K = _hubKw[R.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === R.pid); if (p) p.outOfSync = false; (_hubResState[R.slug] = _hubResState[R.slug] || {})[R.pid] = 'updated'; hubKwRefresh(R.slug); }
   hubResDraw(); if (!failed.length) hubResLoad(R.slug, true);
 }
 async function hubResIsolate(on) {
@@ -18323,21 +18325,16 @@ async function hubResKwSave() {
   catch (e) { R.log = 'Save failed: ' + e.message; }
   R.busy = ''; hubResDraw();
 }
-async function hubResRun() {
+async function hubResRun() {   // runs on the server (⚙ Background jobs) — close the modal / tab, it carries on
   const R = _hubRes, h = HUB_SITES.find(x => x.slug === R.slug);
   if (R.kwDirty) { await hubResKwSave(); if (R.kwDirty) return; }
-  const fails = []; let ok = 0;
-  for (let i = 0; i < HUB_STRATEGY_FIELDS.length; i++) {
-    const f = HUB_STRATEGY_FIELDS[i]; R.busy = `Researching ${f} (${i + 1}/${HUB_STRATEGY_FIELDS.length})…`; hubResDraw();
-    try { const r = await call('regenerateStrategyField', { productId: R.pid, campaignId: h && h.campaignId, field: f }); if (r.error) throw new Error(r.error);
-      const u = await call('updateProductStrategyField', { productId: R.pid, field: f, value: r.text }); if (u && u.error) throw new Error(u.error);
-      R.fields[f] = r.text; ok++; }
-    catch (e) { fails.push(f + ': ' + e.message); }
-  }
-  if (ok) (_hubResState[R.slug] = _hubResState[R.slug] || {})[R.pid] = 'updated';
-  if (ok && _hubKw[R.slug] && !_hubKw[R.slug].loading) hubKwRefresh(R.slug);   // the Keywords dot turns green once research is current
-  R.busy = ''; R.log = fails.length ? `Done with ${fails.length} failure(s): ${fails.join(' · ')}` : '✓ Research re-run from the keywords — up to date.'; R.open = true;
-  hubResDraw(); const el = document.getElementById('hubProdTree-' + R.slug); if (el) el.innerHTML = hubProdTree(R.slug);
+  R.busy = 'Queuing…'; hubResDraw();
+  const q = await call('queueProductResearch', { productId: R.pid, campaignId: h && h.campaignId, name: R.name, slug: R.slug, fields: HUB_STRATEGY_FIELDS }).catch(e => ({ error: e.message }));
+  R.busy = '';
+  if (!q || q.error) { R.log = '✗ Not started: ' + ((q && q.error) || 'no response'); return hubResDraw(); }
+  call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
+  R.log = '⏳ Research is running in the background (⚙ bottom-right) — you can close this and carry on. The dot turns green when it finishes.';
+  hubResDraw();
 }   // _hubProdHide[slug] = statuses filtered OUT
 const HUB_PROD_STATUSES = ['Planning', 'Development', 'Publish', 'Published'];
 const HUB_STATUS_COLOR = { Planning: '#9aa0a6', Development: '#63b3ed', Publish: '#f6ad55', Published: '#4ade80' };

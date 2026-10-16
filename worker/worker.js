@@ -11925,8 +11925,15 @@ async function titleJobsRun(env, invoke) {
       const step = S.steps[S.i];
       if (step) {
         S.running = step.label; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
-        try { const r = await invoke(step.action === "research" ? { action: "generateTitleResearch", titleId: S.titleId } : { action: "writeTitlePillar", titleId: S.titleId, styleGuidance: S.styleGuidance || undefined });
-          if (!r || r.error) throw new Error((r && r.error) || "no response"); step.ok = true; }
+        try {
+          if (step.action === "pfield") {   // product research: one field — regenerate, then save (saving clears the product's out-of-sync)
+            const g = await invoke({ action: "regenerateStrategyField", productId: S.productId, campaignId: S.campaignId || undefined, field: step.field });
+            if (!g || g.error) throw new Error((g && g.error) || "no response");
+            const u = await invoke({ action: "updateProductStrategyField", productId: S.productId, field: step.field, value: g.text || "" });
+            if (!u || u.error) throw new Error((u && u.error) || "not saved");
+          } else { const r = await invoke(step.action === "research" ? { action: "generateTitleResearch", titleId: S.titleId } : { action: "writeTitlePillar", titleId: S.titleId, styleGuidance: S.styleGuidance || undefined });
+            if (!r || r.error) throw new Error((r && r.error) || "no response"); }
+          step.ok = true; }
         catch (e) { step.error = e.message || String(e); (S.errors = S.errors || []).push(step.label + ": " + step.error); }
         S.i++; ran++;
       }
@@ -17207,6 +17214,16 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
         return json({ ok: true, id });
       }
+      // queueProductResearch {productId, campaignId, name, slug, fields[]} — re-run a product's research on the server
+      if (body.action === "queueProductResearch") {
+        const productId = String(body.productId || "").replace(/-/g, ""); if (productId.length !== 32) return json({ error: "productId required" }, 400);
+        const fields = (Array.isArray(body.fields) && body.fields.length ? body.fields : STRATEGY_FIELDS).filter(f => STRATEGY_FIELDS.includes(f));
+        const id = "pr" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ kind: "product", productId, campaignId: String(body.campaignId || "").replace(/-/g, ""), name: "📦 " + String(body.name || "Product").slice(0, 200), slug: String(body.slug || ""),
+          steps: fields.map(f => ({ action: "pfield", field: f, label: f })), i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
+        await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
+        return json({ ok: true, id });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
@@ -17227,7 +17244,7 @@ ${JSON.stringify(products)}`;
         }
         { const queue = (await env.TRADES.get("titlejob:queue", "json")) || [], states = {};
           for (const key of (await env.TRADES.list({ prefix: "titlejob:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s) continue;
-            states[key.slice(15)] = { name: s.name, slug: s.slug, titleId: s.titleId, done: !!s.done, error: (s.errors || []).join(" · "), i: s.i || 0, total: (s.steps || []).length, running: s.running || "", at: s.finishedAt || s.at || 0 }; }
+            states[key.slice(15)] = { name: s.name, slug: s.slug, titleId: s.titleId, kind: s.kind || "title", productId: s.productId || "", done: !!s.done, error: (s.errors || []).join(" · "), i: s.i || 0, total: (s.steps || []).length, running: s.running || "", at: s.finishedAt || s.at || 0 }; }
           out.titles = { queue, states }; }
         return json({ ok: true, jobs: out, at: Date.now() });
       }
@@ -25098,6 +25115,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
             method: "PATCH", headers: { ...hdr, "Content-Type": "application/json" },
             body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks }, "Keywords Version": { number: campaignKwVersion } } }),
           });
+          await kwClearOutOfSync(env, productId);   // research saved → in sync (clears the orange)
           return json({ success: true, strategyId, url: existing.url });
         }
         const createResp = await fetch("https://api.notion.com/v1/pages", {
@@ -25115,6 +25133,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
         });
         const created = await createResp.json();
         if (!createResp.ok || !created.id) return json({ error: created.message || "Research create failed" }, createResp.status || 500);
+        await kwClearOutOfSync(env, productId);   // research saved → in sync
         return json({ success: true, strategyId: created.id.replace(/-/g,""), url: created.url });
       }
 
