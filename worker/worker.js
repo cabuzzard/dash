@@ -11614,6 +11614,9 @@ const hrLine = list => list.map(x => `${x.t} | ${x.v}`).join("\n");
 // fallback cluster name for one topic: its highest-volume researched search that shares every main word of the topic name
 // (stopwords aside), else one sharing any main word, else the topic's own name — never an unrelated high-volume search
 const HR_STOP = new Set("a an and the of for to in on with near me my your how what best top is are vs or by at from".split(" "));
+const hrCore = s => kwNorm(s).replace(/\bnear me\b/g, " ").split(" ").filter(w => w.length > 2 && !HR_STOP.has(w)).map(w => w.replace(/s$/, ""));
+function hrDup(a, b) { const A = new Set(hrCore(a)), B = new Set(hrCore(b)); if (!A.size || !B.size) return false;
+  const inB = [...A].every(w => B.has(w)), inA = [...B].every(w => A.has(w)); return inA || inB; }
 function hrHome(t, pool) {
   const words = kwNorm(t && t.name).split(" ").filter(w => w.length > 2 && !HR_STOP.has(w)), list = (pool || []).slice().sort((a, b) => b.v - a.v);
   const all = list.find(x => words.length && words.every(w => x.t.split(" ").some(y => y.startsWith(w.slice(0, Math.max(4, w.length - 2))))));
@@ -11650,12 +11653,17 @@ Each cluster name MUST be one keyword copied EXACTLY from the research list abov
 - do not overlap — a searcher for one would not be satisfied by another's pillar;
 - fit what this hub actually is (ignore off-topic, brand, competitor and job/salary keywords);
 - together cover the hub's real demand, strongest first. Fewer than ${HR_MAX_CLUSTERS} is fine if the data only supports fewer.
+- are NOT rewordings of each other: "medicare broker near me" and "independent medicare broker near me" are ONE cluster, not two — each cluster must be a different SUBJECT, never the same subject with a modifier (near me, local, best, cheap, independent…).
 For each: name, and one short line of why (the demand it covers).`, "clusters",
       { type: "object", required: ["clusters"], properties: { clusters: { type: "array", maxItems: HR_MAX_CLUSTERS, items: { type: "object", required: ["name", "why"], properties: { name: { type: "string" }, why: { type: "string" } } } } } }, 3000);
     const poolSet = new Set(pool), mainSet = new Set(st.model.main.map(kwNorm));
     S.clusters = [];
-    for (const c of r.clusters || []) { const n = kwNorm(c.name); if (!n || !poolSet.has(n) || mainSet.has(n) || S.clusters.some(x => x.name === n)) continue; S.clusters.push({ name: n, why: String(c.why || "").slice(0, 300), volume: pv.get(n) || 0 }); }
-    if (!S.clusters.length) throw new Error("No usable cluster names came back from the research");
+    // a name not copied exactly from the research still counts when Google has volume for it (priced here)
+    const loose = (r.clusters || []).map(c => kwNorm(c.name)).filter(n => n && !poolSet.has(n));
+    if (loose.length) { try { await kwHistMetrics(env, loose, market); } catch (e) {} const lv = await kwVolumes(env, loose, market); loose.forEach(n => { if ((lv.get(n) || 0) > 0) { poolSet.add(n); pv.set(n, lv.get(n)); } }); }
+    for (const c of r.clusters || []) { const n = kwNorm(c.name); if (!n || !poolSet.has(n) || mainSet.has(n) || S.clusters.some(x => x.name === n || hrDup(x.name, n))) continue; S.clusters.push({ name: n, why: String(c.why || "").slice(0, 300), volume: pv.get(n) || 0 }); }
+    S.rejected = (r.clusters || []).map(c => kwNorm(c.name)).filter(n => n && !S.clusters.some(x => x.name === n));
+    if (!S.clusters.length) throw new Error("No usable cluster names came back from the research (Claude suggested: " + S.rejected.join(", ") + ")");
     S.step = "research"; return;
   }
   if (S.step === "research") {
@@ -11719,6 +11727,7 @@ Group these topics into as FEW new clusters as makes sense (topics on the same s
         if (!ids.length) continue;
         const shares = ids.some(id => { const tw = kwNorm((topics.find(x => x.id === id) || {}).name).split(" ").filter(w => w.length > 2 && !HR_STOP.has(w)); return tw.some(w => n.split(" ").some(y => y.startsWith(w.slice(0, Math.max(4, w.length - 2))))); });
         if (!vol.has(n) || !shares) n = hrHome(topics.find(x => x.id === ids[0]), S.nfPools[ids[0]]);   // must be a researched search about its topics
+        { const dupOf = S.clusters.find(x => x.name !== n && hrDup(x.name, n)); if (dupOf) n = dupOf.name; }
         if (taken.has(n)) { const tc = S.clusters.find(x => x.name === n); if (tc) { ids.forEach(id => { S.fit[id] = n; placed.add(id); }); continue; } }
         let e = S.extra.find(x => x.name === n); if (!e) { e = { name: n, why: String(c.why || "").slice(0, 300), volume: vol.get(n) || 0, topics: [] }; S.extra.push(e); taken.add(n); }
         ids.forEach(id => { e.topics.push(id); placed.add(id); });
