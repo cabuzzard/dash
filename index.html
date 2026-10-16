@@ -366,6 +366,7 @@
     background: var(--surface2); border: 1px solid var(--border2);
     border-radius: 20px; padding: 9px 18px; font-size: 13px; color: var(--text);
     opacity: 0; transition: all .22s; z-index: 998; white-space: nowrap;
+    pointer-events: none;   /* an invisible faded toast (it keeps its text) used to sit on modal Save buttons and swallow clicks */
   }
   .toast.show    { opacity: 1; transform: translateX(-50%) translateY(0); }
   .toast.success { border-color: var(--accent); color: var(--accent); }
