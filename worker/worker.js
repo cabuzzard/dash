@@ -11641,7 +11641,7 @@ async function kwHubRestructureStep(env, cid, S) {
     const r = await hcClaude(env, `You are designing the SEO cluster level of one website hub (pillar model: Main → clusters → topics → articles).
 
 HUB: ${S.name}
-MAIN KEYWORDS (the hub's head terms — the home page; a cluster must NOT be one of these): ${st.model.main.join(", ") || "(none — use the topic names below as the hub's subject)"}
+MAIN KEYWORDS (the hub's head terms — the home page; a cluster must not be the single top head term ${top[0] || ""}): ${st.model.main.join(", ") || "(none — use the topic names below as the hub's subject)"}
 EXISTING TOPIC NAMES (context only — what the hub already writes about; do not let them dictate the clusters): ${topics.map(t => t.name).join(", ") || "(none)"}
 
 GOOGLE KEYWORD RESEARCH off the main keywords — keyword | monthly searches (US):
@@ -11656,12 +11656,13 @@ Each cluster name MUST be one keyword copied EXACTLY from the research list abov
 - are NOT rewordings of each other: "medicare broker near me" and "independent medicare broker near me" are ONE cluster, not two — each cluster must be a different SUBJECT, never the same subject with a modifier (near me, local, best, cheap, independent…).
 For each: name, and one short line of why (the demand it covers).`, "clusters",
       { type: "object", required: ["clusters"], properties: { clusters: { type: "array", maxItems: HR_MAX_CLUSTERS, items: { type: "object", required: ["name", "why"], properties: { name: { type: "string" }, why: { type: "string" } } } } } }, 3000);
-    const poolSet = new Set(pool), mainSet = new Set(st.model.main.map(kwNorm));
+    // only the hub's single top head term is off limits (a hub whose Main list is broad can have clusters that are main keywords)
+    const poolSet = new Set(pool), mainSet = new Set(top.slice(0, 1).map(kwNorm)), okName = n => /^[a-z0-9][a-z0-9 '&.\/+-]*$/.test(n) && n.split(" ").length <= 8;
     S.clusters = [];
     // a name not copied exactly from the research still counts when Google has volume for it (priced here)
-    const loose = (r.clusters || []).map(c => kwNorm(c.name)).filter(n => n && !poolSet.has(n));
+    const loose = (r.clusters || []).map(c => kwNorm(c.name)).filter(n => n && okName(n) && !poolSet.has(n));
     if (loose.length) { try { await kwHistMetrics(env, loose, market); } catch (e) {} const lv = await kwVolumes(env, loose, market); loose.forEach(n => { if ((lv.get(n) || 0) > 0) { poolSet.add(n); pv.set(n, lv.get(n)); } }); }
-    for (const c of r.clusters || []) { const n = kwNorm(c.name); if (!n || !poolSet.has(n) || mainSet.has(n) || S.clusters.some(x => x.name === n || hrDup(x.name, n))) continue; S.clusters.push({ name: n, why: String(c.why || "").slice(0, 300), volume: pv.get(n) || 0 }); }
+    for (const c of r.clusters || []) { const n = kwNorm(c.name); if (!n || !okName(n) || !poolSet.has(n) || mainSet.has(n) || S.clusters.some(x => x.name === n || hrDup(x.name, n))) continue; S.clusters.push({ name: n, why: String(c.why || "").slice(0, 300), volume: pv.get(n) || 0 }); }
     S.rejected = (r.clusters || []).map(c => kwNorm(c.name)).filter(n => n && !S.clusters.some(x => x.name === n));
     if (!S.clusters.length) throw new Error("No usable cluster names came back from the research (Claude suggested: " + S.rejected.join(", ") + ")");
     S.step = "research"; return;
