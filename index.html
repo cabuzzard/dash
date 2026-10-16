@@ -18296,11 +18296,13 @@ function hubResClose() { const R = _hubRes, n = Object.keys((R && R.dirty) || {}
   if (n && !confirm(n + ' research field' + (n === 1 ? ' has' : 's have') + ' unsaved edits. Close without saving?')) return;
   if (R) R.dirty = {}; const m = document.getElementById('hubResModal'); if (m) m.classList.remove('open'); }
 async function hubResSave() {
-  const R = _hubRes, fields = Object.keys((R && R.dirty) || {}); if (!R) return;
-  if (!fields.length) { R.log = 'Nothing changed.'; return hubResDraw(); }
+  const R = _hubRes; if (!R) return;
+  // nothing edited → re-save the filled fields: saving is what marks the research current (clears the orange)
+  let fields = Object.keys(R.dirty || {}); if (!fields.length) fields = HUB_STRATEGY_FIELDS.filter(f => String((R.fields || {})[f] || '').trim());
+  if (!fields.length) { R.log = 'No research to save yet — fill a field or ↻ Re-run research.'; return hubResDraw(); }
   R.busy = 'Saving ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + '…'; hubResDraw();
   const failed = [];
-  for (const f of fields) { try { const r = await call('updateProductStrategyField', { productId: R.pid, field: f, value: R.fields[f] || '' }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); delete R.dirty[f]; } catch (e) { failed.push(f + ' (' + e.message + ')'); } }
+  for (const f of fields) { try { const r = await call('updateProductStrategyField', { productId: R.pid, field: f, value: R.fields[f] || '' }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); if (R.dirty) delete R.dirty[f]; } catch (e) { failed.push(f + ' (' + e.message + ')'); } }
   R.busy = ''; R.log = failed.length ? '✗ Not saved: ' + failed.join(' · ') : '✓ Saved ' + fields.length + ' field' + (fields.length === 1 ? '' : 's') + ' — in sync.';
   if (!failed.length) { const K = _hubKw[R.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === R.pid); if (p) p.outOfSync = false; (_hubResState[R.slug] = _hubResState[R.slug] || {})[R.pid] = 'updated'; hubKwRefresh(R.slug); }
   hubResDraw(); if (!failed.length) hubResLoad(R.slug, true);
