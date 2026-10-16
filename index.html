@@ -16944,7 +16944,11 @@ function hubKwDragOver(e) { const d = _hubKwDrag, el = e.currentTarget; if (d ==
 function hubKwDrop(e, slug) { const d = _hubKwDrag, el = e.currentTarget; if (d == null) return;
   if (typeof d === 'object' ? el.dataset.pdrop == null : el.dataset.drop == null) return;
   e.preventDefault(); e.stopPropagation(); el.style.outline = ''; _hubKwDrag = null;
-  if (typeof d === 'object') hubKwMoveProduct(slug, d.p, el.dataset.pdrop); else hubKwMoveTopic(slug, d, el.dataset.drop || ''); }
+  if (typeof d === 'object' && d.ti) { const row = ((_hubTitles[slug] || {}).rows || []).find(r => r.titleId === d.ti); if (row && hubTitleTopicOf(slug, row) !== el.dataset.pdrop) hubTitleSetTopic(slug, d.ti, el.dataset.pdrop); }
+  else if (typeof d === 'object') hubKwMoveProduct(slug, d.p, el.dataset.pdrop); else hubKwMoveTopic(slug, d, el.dataset.drop || ''); }
+function hubKwTitleDragStart(e, tid) { e.stopPropagation(); _hubKwDrag = { ti: tid }; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'ti:' + tid); } catch (x) {} }
+function hubKwTitleEdit(slug, tid) { const r = ((_hubTitles[slug] || {}).rows || []).find(x => x.titleId === tid); if (!r) return;
+  _hubTitleIdx[tid] = { id: tid, title: r.title, notes: r.notes || '', status: r.titleStatus || 'Planning', productId: r.productId || '', product: r.product || '' }; hcTitleEdit(slug, '', tid); }
 function hubKwProdDragStart(e, pid) { e.stopPropagation(); _hubKwDrag = { p: pid }; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'p:' + pid); } catch (x) {} }
 // drag a product onto another topic (or Master = ★ Main): sets only its Topic ID (stack/group untouched) and marks its
 // research out of sync, same as the Titles tree move (attachProductToTopic markOutOfSync)
@@ -17229,6 +17233,13 @@ function renderHubKw(slug) {
     return `<div style="margin-top:4px;border-left:2px solid var(--border2);padding-left:7px;"><div onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none;font-size:11px;font-weight:600;"><span style="font-size:9px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>${label}<span style="font-weight:400;color:var(--text3);">(${n})</span>${tools ? `<span style="margin-left:auto;display:flex;gap:4px;" onclick="event.stopPropagation()">${tools}</span>` : ''}</div>${open ? `<div style="padding:2px 0 3px 16px;">${body}</div>` : ''}</div>`; };
   // one Existing-product row (＋ title · 🔬 research) — shared by Master and every topic
   const exRow = p => `<div class="hkw-row hkw-ex" draggable="true" ondragstart="hubKwProdDragStart(event,'${esc(p.id)}')" title="Drag onto another topic (or Master) to move it" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">📦 ${esc(p.name)}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${(K.mainIds || []).includes(String(p.id).replace(/-/g, '')) ? '<span title="Main offering of this hub" style="color:#f5c542;font-size:12px;line-height:1;cursor:help;">★</span>' : ''}${hubKwStageTag(slug, p)}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button></span></div>`;
+  // titles live in topics (their own Topic ID, else their product's topic) — needs the Titles data; loaded once on first paint
+  if (!_hubTitles[slug]) setTimeout(() => hubTitlesLoad(slug).then(() => hubKwRefresh(slug)), 0);
+  const TT = _hubTitles[slug], tByTopic = TT && TT.rows ? hubTitlesByTopic(slug) : null;
+  const titleSec = id => { if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
+    const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
+    return sec('ti:' + id, 'Titles', ts.length, '', ts.map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${x.status ? `<span style="font-size:10px;color:var(--text3);">${esc(x.status)}</span>` : ''}${x.pillar ? `<span style="font-size:10px;color:${/^written$/i.test(x.pillar) ? '#4ade80' : 'var(--text3)'};">pillar ${esc(x.pillar.toLowerCase())}</span>` : ''}${x.own ? '<span title="Lives here by its own choice (not its product’s topic)" style="font-size:10px;color:#8ab4f8;">🔑</span>' : ''}${x.pid ? `<span title="Sells: ${esc(x.product)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;color:var(--text2);white-space:nowrap;">📦 ${esc(x.product)}${(K.mainIds || []).includes(x.pid) ? ' <span style="color:#f5c542;">★</span>' : ''}</span>` : ''}<button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>'); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
   const keep = p => (!F.states.length || F.states.includes(hubKwStateOf(slug, p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
   // blue = flagged for keyword research · green = Development in sync · orange = Development out of sync (incl. no research);
@@ -17250,7 +17261,7 @@ function renderHubKw(slug) {
     // keyword pills only when they add something — a topic whose only keyword is its own name shows no pill line
     const extraKws = kws.filter(k => k.trim().toLowerCase() !== String(t.name || '').trim().toLowerCase());
     const inner = sec('kw:' + t.id, 'Keywords', kws.length, '', kws.length ? pills(kws) : '<span style="font-size:11px;color:var(--text3);">No keywords.</span>')   // collapsed; same level as Existing / Proposed
-      + prods;   // the topic's stored rationale note is not shown (operator 2026-10-15)
+      + titleSec(t.id) + prods;   // the topic's stored rationale note is not shown (operator 2026-10-15)
     // green = Development products in sync · orange = Development products out of sync (incl. no research yet)
     const counts = kwCounts(ps);
     return node('t:' + t.id, depth, t.staged ? '#c9860f' : '#2f6f6a', esc(t.name), '', inner, { topicId: t.id, pdrop: t.id, tools: counts + moveSel + `<button style="${btn}" title="Rename this topic (products and titles stay attached)" onclick="hubKwRename('${slug}','topic','${esc(t.id)}')">✎</button><button style="${btn}" title="Open this topic in the Keywords tab — research its keywords there and save the results back to it" onclick="hubKwOpenInTool('${slug}','${esc(t.id)}')">🔬</button>` + addBtn });
@@ -17262,6 +17273,7 @@ function renderHubKw(slug) {
   let out = `<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap;"><button style="${btn}" onclick="hubKwAddCluster('${slug}')">＋ Cluster</button><button style="${btn}" title="Add a topic (name + starting keywords) — then 🔬 it to research in the Keywords tab" onclick="hubKwAddTopic('${slug}')">＋ Topic</button><button style="${btn}" title="Open every cluster, topic, and its Existing / Proposed products" onclick="hubKwExpandAll('${slug}',true)">▾ Expand all</button><button style="${btn}" title="Close everything" onclick="hubKwExpandAll('${slug}',false)">▸ Collapse all</button><button style="${btn}" title="Open every cluster and topic with its Existing products — Proposed products stay closed" onclick="hubKwExpandAll('${slug}',true,true)">▾ Expand existing</button><button style="${btn}" title="Open Master, every cluster and topic heading — Keywords, Existing and Proposed stay closed" onclick="hubKwExpandAll('${slug}',true,'topics')">▾ Expand topics</button>${hubKwFilterBar(slug)}${K.msg ? `<span style="font-size:10.5px;color:var(--text3);margin-left:auto;">${esc(K.msg)}</span>` : ''}</div>`;
   const mainPs = (K.products || []).filter(p => p.topicId === '__main' && (!fOn || keep(p))), mainIdeas = hubKwMainIdeas(slug);
   const mainInner = sec('kw:__master', 'Keywords', master.length, '', master.length ? pills(master) : '<span style="font-size:11px;color:var(--text3);">No keywords yet.</span>')
+    + titleSec('__main')
     + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.map(exRow).join('') || '<span style="font-size:11px;color:var(--text3);">No ★ Main products yet.</span>')
     + sec('pr:__main', 'Proposed products', mainIdeas.length, `<button style="${btn}" title="Research product ideas off the Master keywords (replaces this list — care-gap's Main Stack ideas)" onclick="hubKwMainPropose('${slug}',this)">💡 propose</button>`,
         mainIdeas.map((x, i) => `<div class="hkw-row" style="padding:3px 4px;border-bottom:1px dashed var(--border);font-size:11px;"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-weight:600;color:var(--text);">💡 ${esc(x.name)}</span><span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}border-color:var(--accent);color:var(--accent);" title="Create this as a real product in the ★ Main group — it moves up into Existing products" onclick="hubKwMainIdeaCreate('${slug}',${i},false)">＋ add to topic</button><button style="${btn}" title="Add to ★ Main AND to this hub's main offerings" onclick="hubKwMainIdeaCreate('${slug}',${i},true)">★</button><button style="${btn}" title="View sources" onclick="hubKwMainIdeaSources('${slug}',${i})">🔗</button><button style="${btn}" title="Dismiss this idea" onclick="hubKwMainIdeaDismiss('${slug}',${i},this)">✕</button></span></div>${x.desc ? `<div style="color:var(--text3);margin-top:1px;">${esc(x.desc)}</div>` : ''}</div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No proposals yet — 💡 propose.</span>');
@@ -17347,53 +17359,89 @@ function hubTiTopicOf(slug, p) {
   const st = String(p.stack || '').trim().toLowerCase(); if (st === 'master') return '__main';
   const m = st && topics.find(x => String(x.name || '').trim().toLowerCase() === st); return m ? m.id : '';
 }
-function hubTitlesTopicTree(slug, prods, prodRow, prodWork, node, T) {
+// A TITLE's keyword topic (Information Flow Contract 2026-10-16): titles are organized by topic and take their keywords
+// from it. Its own "Topic ID" (setTitleTopic) wins; none → its product's topic (hubTiTopicOf). The product link only
+// decides the offer / CTA. Returns a topic id, '__main' or ''.
+function hubTitleTopicOf(slug, row) {
+  const K = _hubKw[slug] || {}, T = _hubTitles[slug] || {}, nid = x => String(x || '').replace(/-/g, ''), own = nid(row && row.titleTopicId);
+  if (own === '__main') return '__main';
+  if (own) { const t = [...(K.staged || []), ...(K.committed || [])].find(x => nid(x.id) === own); if (t) return t.id; }
+  if (!row || !row.productId) return '';
+  const p = (T.products || []).find(x => nid(x.id) === nid(row.productId)); return p ? hubTiTopicOf(slug, p) : '';
+}
+// topic id → [{ id, title, status, pillar, pid, product, own }] (one entry per title)
+function hubTitlesByTopic(slug) {
+  const T = _hubTitles[slug], m = new Map(), seen = new Set(); if (!T || !T.rows) return m;
+  T.rows.forEach(r => { if (!r.titleId || r.kind === 'interview' || seen.has(r.titleId)) return; seen.add(r.titleId);
+    const k = hubTitleTopicOf(slug, r); if (!m.has(k)) m.set(k, []);
+    m.get(k).push({ id: r.titleId, title: r.title || '(untitled)', status: r.titleStatus || (r.kind === 'title' ? r.status : '') || '', pillar: r.pillarStatus || '', pid: String(r.productId || '').replace(/-/g, ''), product: r.productId ? r.product : '', own: !!r.titleTopicId }); });
+  return m;
+}
+// move a title to a topic ('' = back to its product's topic) — only the title's Topic ID changes
+async function hubTitleSetTopic(slug, titleId, topicId) {
+  const T = _hubTitles[slug], K = _hubKw[slug] || {}, nid = x => String(x || '').replace(/-/g, '');
+  const rows = ((T && T.rows) || []).filter(r => nid(r.titleId) === nid(titleId)), name = (rows[0] || {}).title || 'title';
+  const tname = topicId === '__main' ? 'Main' : topicId ? (([...(K.staged || []), ...(K.committed || [])].find(t => t.id === topicId) || {}).name || 'topic') : 'its product’s topic';
+  const r = await call('setTitleTopic', { titleId, topicId: topicId ? nid(topicId) === '__main' ? '__main' : nid(topicId) : '' }).catch(e => ({ error: e.message }));
+  const msg = !r || r.error ? '✗ Title not moved: ' + ((r && r.error) || 'no response') : '✓ "' + name + '" → ' + tname + ' (regenerate its keywords to follow the new topic)';
+  if (r && !r.error) { rows.forEach(x => { x.titleTopicId = topicId ? (nid(topicId) === '__main' ? '__main' : nid(topicId)) : ''; }); (DEV2_ROWS || []).forEach(x => { if (nid(x.titleId) === nid(titleId)) x.titleTopicId = rows.length ? rows[0].titleTopicId : x.titleTopicId; }); }
+  if (T) T.msg = msg; if (K) K.msg = msg;
+  if (topicId) { _hubContentOpen[slug + '|ti:tp:' + topicId] = true; _hubKwOpen[slug + '|ti:' + topicId] = true; }
+  hubTitlesRefresh(slug); hubKwRefresh(slug);
+  return !r || r.error ? msg : true;
+}
+function hubTitlesTopicTree(slug, prods, prodRow, prodWork, node, T, titleNode, prodStatus) {
   const K = _hubKw[slug];
   if (!K || K.loading) return '<div style="font-size:11px;color:var(--text3);">Loading keyword topics…</div>';
   if (K.error) return `<div style="font-size:11px;color:#f87171;">Couldn't load keyword topics: ${esc(K.error)}</div>`;
-  const nid = x => String(x || '').replace(/-/g, '');
-  const all = new Map(prods.map(e => [e[0], e]));
-  (T.products || []).forEach(p => { const id = nid(p.id); if (!all.has(id)) all.set(id, [id, { name: p.name, titles: new Map() }]); });
+  const nid = x => String(x || '').replace(/-/g, ''), plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
   const info = {}; (T.products || []).forEach(p => { info[nid(p.id)] = p; });
-  const byTopic = new Map(), noProd = [];
-  for (const [pid, e] of all) { if (!pid) { noProd.push(e); continue; } const tid = hubTiTopicOf(slug, info[pid] || {}); if (!byTopic.has(tid)) byTopic.set(tid, []); byTopic.get(tid).push(e); }
-  const plural = (n, w) => n + ' ' + w + (n === 1 ? '' : 's');
-  const sortP = list => list.sort((a, b) => String(a[1].name).localeCompare(String(b[1].name)));
-  const prodHtml = e => `<div draggable="true" ondragstart="hubTiDragStart(event,'p','${esc(e[0])}')">${prodRow(e)}</div>`;
-  const work = list => list.reduce((a, e) => a + prodWork(e[0], e[1]), 0);
-  const titlesN = list => list.reduce((a, e) => a + e[1].titles.size, 0);
+  const pByTopic = new Map(); (T.products || []).forEach(p => { const k = hubTiTopicOf(slug, p); if (!pByTopic.has(k)) pByTopic.set(k, []); pByTopic.get(k).push(p); });
+  // every title entry: [pid, P, t] → its keyword topic
+  const tByTopic = new Map(), rowOf = {}; T.rows.forEach(r => { if (r.titleId && !rowOf[r.titleId]) rowOf[r.titleId] = r; });
+  for (const [pid, P] of prods) for (const t of P.titles.values()) { const k = hubTitleTopicOf(slug, rowOf[t.id] || { productId: pid }); if (!tByTopic.has(k)) tByTopic.set(k, []); tByTopic.get(k).push({ pid, P, t }); }
+  const mainIds = new Set((K.mainIds || []).map(nid));
+  const prodChip = (pid, P, own) => { if (!pid) return ' <span style="font-size:10px;color:var(--text3);">no product</span>';
+    const st = prodStatus(pid, true), col = st.stale ? '#f6ad55' : 'var(--text2)';
+    return ` <span title="Sells: ${esc(P.name)}${st.stale ? ' — the product needs updating (keywords / research)' : ''}" style="font-size:10px;padding:0 6px;border:1px solid ${st.stale ? '#f6ad55' : 'var(--border2)'};border-radius:4px;color:${col};white-space:nowrap;">📦 ${esc(P.name)}${mainIds.has(nid(pid)) ? ' <span style="color:#f5c542;">★</span>' : ''}</span>${own ? ' <span title="This title lives in this topic by its own choice (not its product’s topic)" style="font-size:10px;color:#8ab4f8;">🔑 own topic</span>' : ''}`; };
+  const titleHtml = x => `<div draggable="true" ondragstart="hubTiDragStart(event,'ti','${esc(x.t.id)}')">${titleNode(x.t, prodStatus(x.pid, true), prodChip(x.pid, x.P, !!(rowOf[x.t.id] || {}).titleTopicId))}</div>`;
+  const prodLine = list => list.length ? `<div style="font-size:10.5px;color:var(--text3);margin:2px 0 4px;display:flex;gap:4px;flex-wrap:wrap;align-items:center;">Products here:${list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(p => `<span draggable="true" ondragstart="hubTiDragStart(event,'p','${esc(nid(p.id))}')" title="Drag onto another topic to move the product" style="cursor:grab;padding:0 6px;border:1px solid var(--border2);border-radius:4px;color:var(--text2);">📦 ${esc(p.name)}${mainIds.has(nid(p.id)) ? ' ★' : ''}</span>`).join('')}</div>` : '';
   const drop = (kind, v) => ` data-ti-${kind}="${esc(v)}" ondragover="hubTiDragOver(event)" ondragleave="this.style.outline=''" ondrop="hubTiDrop(event,'${slug}')"`;
-  const topicNode = t => { const list = sortP(byTopic.get(t.id) || []);
+  const sortT = list => list.sort((a, b) => b.t.pub.length - a.t.pub.length || String(a.t.title).localeCompare(String(b.t.title)));
+  const topicBody = id => { const ts = sortT(tByTopic.get(id) || []);
+    return prodLine(pByTopic.get(id) || []) + (ts.length ? ts.map(titleHtml).join('') : '<div style="font-size:11px;color:var(--text3);">No titles — drag one here.</div>'); };
+  const topicNode = t => { const ts = tByTopic.get(t.id) || [];
     return `<div${drop('topic', t.id)} draggable="true" ondragstart="hubTiDragStart(event,'t','${esc(t.id)}')">` + node('ti:tp:' + t.id, 0, '🔑 ' + esc(t.name),
-      `— ${plural(list.length, 'product')} · ${plural(titlesN(list), 'title')}${t.staged ? ' · proposed' : ''}`, hubWorkTag(work(list)),
-      list.length ? list.map(prodHtml).join('') : '<div style="font-size:11px;color:var(--text3);">No products — drag one here.</div>') + '</div>'; };
+      `— ${plural(ts.length, 'title')} · ${plural((pByTopic.get(t.id) || []).length, 'product')}${t.staged ? ' · proposed' : ''}`, '', topicBody(t.id)) + '</div>'; };
   const topics = [...K.staged.map(t => ({ ...t, staged: true })), ...K.committed.map(t => ({ ...t, staged: false }))];
   const clusters = K.tc.clusters || [], assign = K.tc.assign || {}, cOf = t => { const c = assign[t.id]; return c && clusters.includes(c) ? c : ''; };
   let out = '';
-  const main = sortP(byTopic.get('__main') || []);
-  out += `<div${drop('topic', '__main')}>` + node('ti:tp:__main', 0, '★ Main', `— ${plural(main.length, 'product')} · ${plural(titlesN(main), 'title')} · the hub's main keywords`, hubWorkTag(work(main)),
-    main.length ? main.map(prodHtml).join('') : '<div style="font-size:11px;color:var(--text3);">No products on Main — drag one here.</div>') + '</div>';
-  const clusterNode = (c, label, list) => { const prodsIn = list.flatMap(t => byTopic.get(t.id) || []);
-    return `<div${drop('cluster', c)}>` + node('ti:cl:' + c, 0, label, `— ${plural(list.length, 'topic')} · ${plural(prodsIn.length, 'product')}`, hubWorkTag(work(prodsIn)),
+  { const ts = tByTopic.get('__main') || [];
+    out += `<div${drop('topic', '__main')}>` + node('ti:tp:__main', 0, '★ Main', `— ${plural(ts.length, 'title')} · ${plural((pByTopic.get('__main') || []).length, 'product')} · the hub's main keywords`, '', topicBody('__main')) + '</div>'; }
+  const clusterNode = (c, label, list) => { const n = list.reduce((a, t) => a + (tByTopic.get(t.id) || []).length, 0);
+    return `<div${drop('cluster', c)}>` + node('ti:cl:' + c, 0, label, `— ${plural(list.length, 'topic')} · ${plural(n, 'title')}`, '',
       list.length ? list.sort((a, b) => String(a.name).localeCompare(String(b.name))).map(topicNode).join('') : '<div style="font-size:11px;color:var(--text3);">No topics — drag one here.</div>') + '</div>'; };
   clusters.forEach(c => { out += clusterNode(c, '🧩 ' + esc(c), topics.filter(t => cOf(t) === c)); });
   const loose = topics.filter(t => !cOf(t));
   if (loose.length || clusters.length) out += clusterNode('', 'Topics with no cluster <span style="font-weight:400;color:var(--text3);">(isolated)</span>', loose);
-  const none = sortP(byTopic.get('') || []);
-  if (none.length) out += node('ti:tp:__none', 0, '<span style="color:#f6ad55;">⚠ Products with no topic</span>', `— ${plural(none.length, 'product')} · drag each onto a topic`, hubWorkTag(none.length, 'product'), none.map(prodHtml).join(''));
-  if (noProd.length) out += noProd.map(prodRow).join('');
+  const none = sortT(tByTopic.get('') || []);
+  const noneP = pByTopic.get('') || [];
+  if (none.length || noneP.length) out += `<div${drop('topic', '')}>` + node('ti:tp:__none', 0, '<span style="color:#f6ad55;">⚠ No topic</span>', `— ${plural(none.length, 'title')} · ${plural(noneP.length, 'product')} · drag each onto a topic`, '', prodLine(noneP) + none.map(titleHtml).join('')) + '</div>';
   return out;
 }
-let _hubTiDrag = null;
 function hubTiDragStart(e, kind, id) { e.stopPropagation(); _hubTiDrag = { kind, id }; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', kind + ':' + id); } catch (x) {} }
 function hubTiDragOver(e) {
   const d = _hubTiDrag; if (!d) return; const el = e.currentTarget;
-  const ok = d.kind === 'p' ? el.dataset.tiTopic != null : d.kind === 't' ? el.dataset.tiCluster != null : false;
+  const ok = d.kind === 'p' || d.kind === 'ti' ? el.dataset.tiTopic != null : d.kind === 't' ? el.dataset.tiCluster != null : false;
   if (!ok) return; e.preventDefault(); e.stopPropagation(); el.style.outline = '2px dashed #8ab4f8';
 }
 async function hubTiDrop(e, slug) {
   const el = e.currentTarget, d = _hubTiDrag; e.preventDefault(); e.stopPropagation(); el.style.outline = ''; _hubTiDrag = null; if (!d) return;
   const T = _hubTitles[slug], K = _hubKw[slug], h = HUB_SITES.find(x => x.slug === slug); if (!T || !K || !h) return;
+  if (d.kind === 'ti' && el.dataset.tiTopic != null) {   // a title → this topic (its own Topic ID; '' = its product's topic)
+    const row = T.rows.find(r => r.titleId === d.id); if (!row || hubTitleTopicOf(slug, row) === el.dataset.tiTopic) return;
+    await hubTitleSetTopic(slug, d.id, el.dataset.tiTopic); return;
+  }
   if (d.kind === 'p' && el.dataset.tiTopic != null) {
     const to = el.dataset.tiTopic, p = (T.products || []).find(x => String(x.id).replace(/-/g, '') === d.id); if (!p) return;
     if (hubTiTopicOf(slug, p) === to) return;
@@ -17854,18 +17902,20 @@ function renderHubTitles(slug, counter) {
     const inside = titles.reduce((a, t) => a + (titleStatus(t.id, { stale: false }, true).own.length ? 1 : 0) + t.pub.filter(assetFlagged).length, 0);
     if (counter) counter.n += titles.reduce((a, t) => a + t.pub.filter(assetFlagged).length, 0);
     return node('ti:p:' + (pid || 'none'), 0, (pid ? '📦 ' : '') + esc(P.name), `— ${titles.length} title${titles.length === 1 ? '' : 's'} · ${pubN} published`, pst.own.join(' ') + hubWorkTag(inside),
-      titles.map(t => { const tst = titleStatus(t.id, pst);
-        return node('ti:t:' + t.id, 0, esc(t.title || '(untitled)'), `— ${t.pub.length} published${t.wip ? ' · ' + t.wip + ' in progress' : ''}`, tst.own.concat(tst.up).join(' ') + hubWorkTag(t.pub.filter(assetFlagged).length, 'asset')
+      titles.map(t => titleNode(t, pst)).join(''));
+  };
+  // one title (its statuses + published assets); extra = what's shown after the badges (the topic tree's product chip)
+  const titleNode = (t, pst, extra) => { const tst = titleStatus(t.id, pst);
+        return node('ti:t:' + t.id, 0, esc(t.title || '(untitled)'), `— ${t.pub.length} published${t.wip ? ' · ' + t.wip + ' in progress' : ''}`, tst.own.concat(tst.up).join(' ') + hubWorkTag(t.pub.filter(assetFlagged).length, 'asset') + (extra || '')
           + ` <span style="display:inline-flex;gap:4px;margin-left:4px;"><button onclick="event.stopPropagation();hubTitlePillarModal('${slug}','${esc(t.id)}')" title="Write this title's pillar" style="font-size:10px;padding:0 6px;border:1px solid var(--accent);border-radius:4px;background:transparent;color:var(--accent);cursor:pointer;">✍ Pillar</button><button onclick="event.stopPropagation();hubTitleAssetModal('${slug}','${esc(t.id)}')" title="Create an asset for this title" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">＋ Asset</button></span>`,
           (t.pub.length ? t.pub.sort((a, b) => String(b.datePublished || '').localeCompare(String(a.datePublished || ''))).map(a => `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:11.5px;padding:2px 0;border-bottom:1px solid var(--border);">
               <span style="flex:1;min-width:160px;">${esc(a.assetName || '(untitled asset)')} <span style="color:var(--text3);">· ${esc(a.assetType || '')}${a.datePublished ? ' · ' + esc(String(a.datePublished).slice(0, 10)) : ''}${a.hubSection ? ' · hub: ' + esc(a.hubSection) : ''}</span></span>
               ${assetStatus(a, tst)}
               <a href="https://www.notion.so/${esc(nid(a.assetId))}" target="_blank" rel="noopener" style="${B}">Notion ↗</a></div>`).join('')
             : '<div style="font-size:11px;color:var(--text3);">Nothing published yet.</div>')
-          + `<div style="margin-top:3px;"><a href="https://www.notion.so/${esc(nid(t.id))}" target="_blank" rel="noopener" style="${B}">title in Notion ↗</a></div>`); }).join(''));
-  };
+          + `<div style="margin-top:3px;"><a href="https://www.notion.so/${esc(nid(t.id))}" target="_blank" rel="noopener" style="${B}">title in Notion ↗</a></div>`); };
   const orgBar = `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:10.5px;margin-bottom:6px;"><span style="color:var(--text3);">Organize by</span>${[['topic', 'Keyword topics'], ['stack', 'Groups & stacks']].map(([v, l]) => `<button onclick="hubTitlesSetOrganize('${slug}','${v}')" style="font-size:10.5px;padding:1px 8px;border:1px solid ${(T.organize || 'topic') === v ? 'var(--accent)' : 'var(--border2)'};border-radius:4px;background:transparent;color:${(T.organize || 'topic') === v ? 'var(--accent)' : 'var(--text2)'};cursor:pointer;">${l}</button>`).join('')}${(T.organize || 'topic') === 'topic' ? '<span style="color:var(--text3);">· drag a 📦 product onto a topic · drag a 🔑 topic onto a cluster</span>' : ''}${T.msg ? `<span style="margin-left:auto;color:var(--text3);">${esc(T.msg)}</span>` : ''}</div>`;
-  return orgBar + intro + ((T.organize || 'topic') === 'topic' ? hubTitlesTopicTree(slug, prods, prodRow, prodWork, node, T) : hubTitlesTree(slug, prods, prodRow, prodWork, node, T));
+  return orgBar + intro + ((T.organize || 'topic') === 'topic' ? hubTitlesTopicTree(slug, prods, prodRow, prodWork, node, T, titleNode, prodStatus) : hubTitlesTree(slug, prods, prodRow, prodWork, node, T));
 }
 // ── Production → Titles actions: ＋ Title (title · guidance · existing product), per title ✍ Write pillar and ＋ Asset ──
 // ＋ Title = createDevTitle at Planning (guidance → the title's research instructions / Notes, read by every writer).
@@ -18443,6 +18493,8 @@ function hcTitleEdit(slug, sid, tid) {
     <input id="hcEdTitle" value="${esc(t.title)}" style="${IN}">
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>
     <select id="hcEdProduct" style="${IN}"><option value="">— no product —</option>${products.map(p => `<option value="${esc(p.id)}" ${kwNid(t.productId) === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword topic <span style="text-transform:none;letter-spacing:0;">— where the title lives and takes its keywords from (the product only decides what it sells)</span></label>
+    <select id="hcEdTopic" style="${IN}"><option value="">Loading topics…</option></select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label>
     <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
@@ -18457,6 +18509,10 @@ function hcTitleEdit(slug, sid, tid) {
       </div>
       <div id="hcPillarMsg" style="font-size:11px;color:var(--text3);margin-top:6px;">Writes the pillar onto this title (1-2 min) and promotes it Planning → Development. Same writer as All Output's "generate pillar".</div>
     </div>`);
+  const own = ((((_hubTitles[slug] || {}).rows) || []).find(r => r.titleId === tid) || (DEV2_ROWS || []).find(r => r.titleId === tid) || {}).titleTopicId || '';
+  kwTopicsFor(h.campaignId).then(dd => { const sel = document.getElementById('hcEdTopic'); if (!sel) return;
+    sel.innerHTML = kwTopicOptions(dd, own).replace('— pick a keyword topic —', '(its product’s topic)'); sel.dataset.cur = own; })
+    .catch(e => { const sel = document.getElementById('hcEdTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; });
 }
 // ✍ Write pillar from the title modal: writeTitlePillar with the chosen pillar type (writes the pillar + Planning → Development)
 async function hcWritePillar(slug, sid, tid, btn) {
@@ -18480,6 +18536,8 @@ async function hcTitleSave(slug, sid, tid) {
       const r = await call('updateAllOutputField', { kind: 'title', field: f, value: nv[f], titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     }
     if (nv.productId !== cur.productId) { const r = await call('updateTitleStrategy', { titleId: tid, productId: nv.productId || null }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
+    { const sel = document.getElementById('hcEdTopic'); if (sel && sel.dataset.cur != null && sel.value !== sel.dataset.cur && !/^Loading|^Couldn/.test(sel.options[sel.selectedIndex]?.text || '')) {
+        const x = await hubTitleSetTopic(slug, tid, sel.value); if (x !== true) throw new Error(x); } }
     t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; t.productId = nv.productId;
     const h2 = _hub2Content[slug] && (_hub2Content[slug].rows || []).find(x => x.type === 'Title' && x.id === tid); if (h2) { h2.name = nv.title; h2.notes = nv.titleNotes; h2.status = nv.status; h2.productId = nv.productId; }
     if (nv.productId !== cur.productId) await hub2ContentLoad(slug, true); else hub2ContentPaint(slug);
