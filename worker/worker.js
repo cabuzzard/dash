@@ -50551,6 +50551,10 @@ async function runTitleIdleSweep(env, opts) {
     if (!opts.dryRun) { await env.TRADES.put("titleidle:last", JSON.stringify({ ...out, sample: moved.slice(0, 40) }));
       if (moved.length) await env.TRADES.put("titleidle:moved:" + out.at, JSON.stringify(moved), { expirationTtl: 90 * 86400 }); }   // full list → undo-able
     return out;
+  } catch (e) {   // never fail silently — the error lands in titleidle:last (and the cron log)
+    console.error("runTitleIdleSweep failed: " + (e && e.stack || e));
+    await env.TRADES.put("titleidle:last", JSON.stringify({ at: new Date().toISOString(), error: String(e && e.message || e), moved: 0, perHub: {} })).catch(() => {});
+    throw e;
   } finally { await env.TRADES.delete("titleidle:lock"); }
 }
 async function kwEnsureProductProps(env) {
