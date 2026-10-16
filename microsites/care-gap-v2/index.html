@@ -624,7 +624,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
       <div style="display:flex;flex-direction:column;gap:10px;">
         <label style="font-size:11px;color:var(--ink2);">Pillar type <span style="color:var(--ink3);">— fills the guidance below (edit it freely)</span>
           <select id="rpPillarType" class="finput" style="width:100%;box-sizing:border-box;margin-top:4px;" onchange="document.getElementById('rpGuidance').value = PILLAR_TYPES[this.value] || ''">
-            <option value="">— none (write from the guidance below) —</option><option>Long Form Topical</option><option>Long Form Sales</option><option>Digest</option></select>
+            <option value="">— none (write from the guidance below) —</option><option selected>SEO Main</option><option>Long Form Topical</option><option>Long Form Sales</option><option>Digest</option></select>
         </label>
         <label style="font-size:11px;color:var(--ink2);">Guidance <span style="color:var(--ink3);">— the style, angle, or take you want this rewrite to follow</span>
           <textarea id="rpGuidance" rows="4" style="width:100%;margin-top:4px;" placeholder="e.g. Rewrite this as a skeptical, data-first take instead of an emotional appeal. Lead with the counterintuitive claim."></textarea>
@@ -4610,6 +4610,7 @@ async function deleteTitleRow(id, title) {
 // research grounding, no forced steer.
 let RP_TITLE_ID = null, RP_HAS_PILLAR = false;
 const PILLAR_TYPES = {   // same as dash's DEV2_PILLAR_TYPES
+  'SEO Main': 'PILLAR TYPE: SEO Main — the title\'s best long-form SEO post (the default): 1500-2500 words, ## sections that answer the real questions searchers ask, an FAQ at the end, the primary keyword in the opening paragraph and at least one subheading, the rest woven in naturally. Informational first; the product only as a soft, late mention.',
   'Long Form Topical': 'PILLAR TYPE: Long Form Topical — an informational long-form piece on this sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people search; product only as a soft, late mention.',
   'Long Form Sales': 'PILLAR TYPE: Long Form Sales — the sales pillar for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader’s awareness level; never hype.',
   'Digest': 'PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).',
@@ -4620,7 +4621,7 @@ function openRewritePillarModal(titleId, title, hasPillar) {
   document.getElementById('rewritePillarModal').querySelector('.mtitle').textContent = RP_HAS_PILLAR ? 'Rewrite Pillar' : 'Write Pillar';
   document.getElementById('rpTitleLabel').textContent = title;
   document.getElementById('rpGuidance').value = '';
-  { const pt = document.getElementById('rpPillarType'); if (pt) pt.value = ''; }
+  { const pt = document.getElementById('rpPillarType'); if (pt) pt.value = 'SEO Main'; }   // SEO Main = the default pillar type
   document.getElementById('rpNewTitle').value = '';
   // Show the existing title as a placeholder (not a value) — visible for
   // context without counting as an edit; runRewritePillar already treats a

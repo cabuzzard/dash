@@ -11785,6 +11785,7 @@ function dev2PickFromRows(kind) {
 }
 // Pillar types (Current Methods pillars) → the writing brief passed to writeTitlePillar as styleGuidance
 const DEV2_PILLAR_TYPES = {
+  'SEO Main': 'PILLAR TYPE: SEO Main — the title\'s best long-form SEO post (the default): 1500-2500 words, ## sections that answer the real questions searchers ask, an FAQ at the end, the primary keyword in the opening paragraph and at least one subheading, the rest woven in naturally. Informational first; the product only as a soft, late mention.',
   'Long Form Topical': 'PILLAR TYPE: Long Form Topical — an informational long-form piece on this sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people search; product only as a soft, late mention.',
   'Long Form Sales': 'PILLAR TYPE: Long Form Sales — the sales pillar for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader’s awareness level; never hype.',
   'Digest': 'PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).',
@@ -16995,6 +16996,45 @@ function hubKwDrop(e, slug) { const d = _hubKwDrag, el = e.currentTarget; if (d 
   e.preventDefault(); e.stopPropagation(); el.style.outline = ''; _hubKwDrag = null;
   if (typeof d === 'object' && d.ti) { const row = ((_hubTitles[slug] || {}).rows || []).find(r => r.titleId === d.ti); if (row && hubTitleTopicOf(slug, row) !== el.dataset.pdrop) hubTitleSetTopic(slug, d.ti, el.dataset.pdrop); }
   else if (typeof d === 'object') hubKwMoveProduct(slug, d.p, el.dataset.pdrop); else hubKwMoveTopic(slug, d, el.dataset.drop || ''); }
+// ＋ title on a topic: title · guidance · product (this topic's, ★ main offerings, any other) · ☐ research · ☐ pillar (type).
+// createDevTitle (Planning) → its Topic ID = this topic → [generateTitleResearch] → [writeTitlePillar with the pillar type]
+function hubKwTitleAdd(slug, topicId) {
+  const K = _hubKw[slug]; if (!K) return;
+  const nid = x => String(x || '').replace(/-/g, ''), all = (K.products || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const t = [...K.staged, ...K.committed].find(x => x.id === topicId), tname = topicId === '__main' ? 'Main' : (t ? t.name : 'topic');
+  const inTopic = all.filter(p => topicId === '__main' ? p.topicId === '__main' : p.topicId === nid(topicId)), mains = all.filter(p => !inTopic.includes(p) && (K.mainIds || []).includes(nid(p.id))), rest = all.filter(p => !inTopic.includes(p) && !mains.includes(p));
+  const opt = p => `<option value="${esc(nid(p.id))}">📦 ${esc(p.name)}</option>`, grp = (l, list) => list.length ? `<optgroup label="${esc(l)}">${list.map(opt).join('')}</optgroup>` : '';
+  hcModal(`<h3 style="margin:0 0 4px;">＋ Title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">In topic <b>${esc(tname)}</b> — it lives here and takes its keywords from this topic.</div>
+    ${HT_LBL('Title (platform title)')}<input id="hkTaTitle" style="${HT_IN}" placeholder="The title as it will be published">
+    ${HT_LBL('Guidance')}<textarea id="hkTaGuide" rows="5" style="${HT_IN}resize:vertical;" placeholder="Angle, audience, points to make, sources, tone… (the title's research instructions — every writer reads it)"></textarea>
+    ${HT_LBL('Product it sells')}<select id="hkTaProd" style="${HT_IN}"><option value="">— no product —</option>${grp('This topic', inTopic)}${grp('★ Main offerings', mains)}${grp('Other products', rest)}</select>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaRes" checked>Run title research and save it (from this topic's keywords)</label>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="hkTaPil" onchange="document.getElementById('hkTaPilType').disabled=!this.checked">Write the pillar</label>
+    <select id="hkTaPilType" disabled style="${HT_IN}">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
+    <div id="hkTaMsg" style="font-size:11.5px;color:var(--text3);min-height:16px;margin-bottom:8px;"></div>
+    <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwTitleAddGo('${slug}','${esc(topicId)}'))">Add title</button>${HC_CANCEL}</div>`);
+  setTimeout(() => { const i = document.getElementById('hkTaTitle'); if (i) i.focus(); }, 50);
+}
+async function hubKwTitleAddGo(slug, topicId) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
+  const title = document.getElementById('hkTaTitle').value.trim(); if (!title) return 'Enter a title';
+  const guide = document.getElementById('hkTaGuide').value.trim(), productId = document.getElementById('hkTaProd').value || undefined;
+  const doRes = document.getElementById('hkTaRes').checked, doPil = document.getElementById('hkTaPil').checked, ptype = document.getElementById('hkTaPilType').value;
+  const msg = t => { const m = document.getElementById('hkTaMsg'); if (m) m.textContent = t; };
+  msg('Creating the title…');
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
+  if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+  const id = String(r.id).replace(/-/g, ''), notes = [];
+  msg('Placing it in the topic…');
+  const s = await call('setTitleTopic', { titleId: id, topicId: topicId === '__main' ? '__main' : String(topicId).replace(/-/g, '') }).catch(e => ({ error: e.message }));
+  if (!s || s.error) notes.push('topic not set: ' + ((s && s.error) || 'no response'));
+  if (doRes) { msg('Researching from the topic’s keywords…'); const x = await call('generateTitleResearch', { titleId: id }).catch(e => ({ error: e.message })); if (!x || x.error) notes.push('research failed: ' + ((x && x.error) || 'no response')); }
+  if (doPil) { msg('Writing the ' + ptype + ' pillar (1-2 min)…'); const x = await call('writeTitlePillar', { titleId: id, styleGuidance: DEV2_PILLAR_TYPES[ptype] }).catch(e => ({ error: e.message })); if (!x || x.error) notes.push('pillar failed: ' + ((x && x.error) || 'no response')); }
+  _hubKwOpen[slug + '|ti:' + topicId] = true;
+  const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (doRes ? ' · research saved' : '') + (doPil ? ' · ' + ptype + ' pillar written' : '');
+  await hubTitlesLoad(slug, true); hubKwRefresh(slug);
+  return true;
+}
 function hubKwTitleDragStart(e, tid) { e.stopPropagation(); _hubKwDrag = { ti: tid }; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'ti:' + tid); } catch (x) {} }
 function hubKwTitleEdit(slug, tid) { const r = ((_hubTitles[slug] || {}).rows || []).find(x => x.titleId === tid); if (!r) return;
   _hubTitleIdx[tid] = { id: tid, title: r.title, notes: r.notes || '', status: r.titleStatus || 'Planning', productId: r.productId || '', product: r.product || '' }; hcTitleEdit(slug, '', tid); }
@@ -17300,7 +17340,7 @@ function renderHubKw(slug) {
   const TT = _hubTitles[slug], tByTopic = TT && TT.rows ? hubTitlesByTopic(slug) : null;
   const titleSec = id => { if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
     const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
-    return sec('ti:' + id, 'Titles', ts.length, '', ts.map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
+    return sec('ti:' + id, 'Titles', ts.length, `<button style="${btn}" title="Add a title to this topic" onclick="hubKwTitleAdd('${slug}','${esc(id)}')">＋ title</button>`, ts.map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
       <span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span style="display:inline-block;width:12px;"></span><span class="hkw-act">${hubTitleSyncDot(x)}<button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>'); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
   const keep = p => (!F.states.length || F.states.includes(hubKwStateOf(slug, p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
