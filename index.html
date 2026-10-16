@@ -6812,6 +6812,11 @@ KW.hubFocus = null;
 const kwHubFocusTopic = () => KW.hub && KW.hubFocus ? kwHubDraft().model.topics.find(x => x.id === KW.hubFocus.id) : null;
 function kwHubFocusSet(id) {
   if (!KW.hub) return;
+  if (String(id || '').startsWith('c:')) {   // 🧩 a cluster: its name is the one keyword to research
+    const c = id.slice(2); if (!kwHubDraft().model.clusters.includes(c)) return kwHubFocusSet('');
+    KW.selected.clear(); KW.hubFocus = { cluster: c }; KW.hubF = { topic: '', cluster: c, src: '' };
+    return kwLoadResults(0);
+  }
   const t = id && kwHubDraft().model.topics.find(x => x.id === id);
   KW.selected.clear();
   if (!t) { KW.hubFocus = null; KW.hubF.topic = ''; return kwLoadResults(0); }
@@ -6820,11 +6825,21 @@ function kwHubFocusSet(id) {
   kwLoadResults(0);
 }
 function kwHubFocusResearch() {
+  if (KW.hubFocus && KW.hubFocus.cluster) {   // research the cluster name as one keyword; results show next to the hub
+    KW.selected.clear(); KW.selected.add(KW.hubFocus.cluster.trim().toLowerCase()); KW.hubF.cluster = ''; return kwHubResearch();
+  }
   const t = kwHubFocusTopic(); if (!t) return;
   if (!t.keywords.length) return alert('This topic has no keywords yet — add some first.');
   KW.selected.clear(); t.keywords.forEach(k => KW.selected.add(k));
   KW.hubF.topic = '';   // the run's new keywords aren't in the topic yet — show everything
   kwHubResearch();
+}
+// cluster focus: the ticked results → ONE new topic in this cluster, named after its highest-volume keyword (then 💾 Apply)
+function kwHubFocusNewTopic() {
+  const c = KW.hubFocus && KW.hubFocus.cluster; if (!c) return;
+  const kws = [...KW.selected]; if (!kws.length) return alert('Tick the keywords for the new topic first.');
+  const byVol = (KW.rows || []).filter(r => KW.selected.has(r.keyword)).sort((a, b) => (Number(b.vol) || 0) - (Number(a.vol) || 0));
+  kwHubOp({ op: 'newTopics', mode: 'one', keywords: kws, ids: [kwHubNewId(0)], name: String((byVol[0] || {}).keyword || kws[0]).trim(), cluster: c, move: false });
 }
 function kwHubFocusAdd(move) {
   const t = kwHubFocusTopic(); if (!t) return;
@@ -6835,6 +6850,10 @@ function kwHubFocusAdd(move) {
 async function kwOpenTopic(cid, name, topicId) {
   const tab = document.querySelector(".tab[onclick=\"switchTab('keywords')\"]"); if (tab) tab.click();
   if (!(KW.hub && kwNid(KW.hub.cid) === kwNid(cid))) { await kwHubLoadUI(cid, name); if (!(KW.hub && kwNid(KW.hub.cid) === kwNid(cid))) return; }
+  if (String(topicId).startsWith('c:')) {   // a cluster
+    if (!kwHubDraft().model.clusters.includes(topicId.slice(2))) return alert('That cluster is not in the loaded hub — try ↻ Reload hub.');
+    kwHubFocusSet(topicId); setTimeout(() => { const el = document.getElementById('kwHubPanel'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 100); return;
+  }
   const t = kwHubDraft().model.topics.find(x => kwNid(x.id) === kwNid(topicId));
   if (!t) return alert('That topic is not in the loaded hub — try ↻ Reload hub.');
   kwHubFocusSet(t.id);
@@ -7000,8 +7019,17 @@ function kwHubRender() {
       </span>
     </div>
     ${H.warn ? `<div style="color:#f6ad55;margin-top:4px;">⚠ ${esc(H.warn)}</div>` : ''}
-    ${(() => { const ft = kwHubFocusTopic(); const pick = `<select class="kw-sel" style="max-width:260px;${ft ? 'outline:2px solid #f6c344;' : ''}" onchange="kwHubFocusSet(this.value)"><option value="">🎯 pull in a topic…</option>${topicOpts(ft ? ft.id : '', KwHubOps.MAIN)}</select>`;
-      if (!ft) return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">${pick}<span style="color:var(--text3);">work on one topic: research its keywords, then add the results back to it</span></div>`;
+    ${(() => { const ft = kwHubFocusTopic(), fc = KW.hubFocus && KW.hubFocus.cluster && m.clusters.includes(KW.hubFocus.cluster) ? KW.hubFocus.cluster : '';
+      const pick = `<select class="kw-sel" style="max-width:260px;${ft || fc ? 'outline:2px solid #f6c344;' : ''}" onchange="kwHubFocusSet(this.value)"><option value="">🎯 pull in a topic or cluster…</option>${m.clusters.length ? `<optgroup label="🧩 Clusters (research the name)">${m.clusters.map(c => `<option value="c:${esc(c)}" ${c === fc ? 'selected' : ''}>🧩 ${esc(c)}</option>`).join('')}</optgroup>` : ''}${topicOpts(ft ? ft.id : '', KwHubOps.MAIN)}</select>`;
+      if (fc) { const nT = m.topics.filter(t => t.cluster === fc).length;
+        return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;padding:6px;border:1px solid #f6c344;border-radius:4px;">
+        ${pick}<b>🧩 ${esc(fc)}</b><span style="color:var(--text3);">cluster · ${nT} topic${nT === 1 ? '' : 's'}</span>
+        <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwHubFocusResearch()" title="Run the keyword tool on the cluster name as one keyword (Quick / Discover = the search form's settings, the hub's market) — the run opens next to the hub">🔬 Research "${esc(fc.toLowerCase())}"</button>
+        <button class="kw-btn" onclick="kwHubFocusNewTopic()" title="The ticked keywords become ONE new topic in this cluster, named after the highest-volume one — then 💾 Apply">＋ New topic in cluster from ticked</button>
+        <span style="color:var(--text3);">or tick → pick a topic below → ＋ Add</span>
+        <span class="kw-x" onclick="KW.hubF.cluster=KW.hubF.cluster?'':${esc(JSON.stringify(fc))};kwLoadResults(0)">${KW.hubF.cluster === fc ? 'show all keywords' : 'show only this cluster'}</span>
+        <span class="kw-x" onclick="kwHubFocusSet('')">✕ done</span></div>`; }
+      if (!ft) return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;">${pick}<span style="color:var(--text3);">work on one topic (research its keywords, add results back) or one cluster (research its name)</span></div>`;
       return `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;padding:6px;border:1px solid #f6c344;border-radius:4px;">
         ${pick}<b>🎯 ${esc(ft.name)}</b><span style="color:var(--text3);">${ft.keywords.length} keyword${ft.keywords.length === 1 ? '' : 's'}${ft.cluster ? ' · 🧩 ' + esc(ft.cluster) : ''}</span>
         <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwHubFocusResearch()" title="Run the keyword tool on this topic's keywords (Quick / Discover = the search form's settings, the hub's market) — the run opens next to the hub">🔬 Research its keywords</button>
@@ -7020,7 +7048,7 @@ function kwHubRender() {
     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:6px;padding:6px;border:1px solid #2a5a2a;border-radius:4px;">
       <b id="kwHubSelN">${n ? n + ' selected →' : 'tick keywords, then →'}</b>
       <select id="kwHubTarget" class="kw-sel" style="max-width:260px;"><option value="">topic…</option><option value="__one">＋ one new topic (all together)</option><option value="__each">＋ new topic per keyword (explode)</option>${topicOpts('')}</select>
-      <select id="kwHubNewCluster" class="kw-sel" title="Cluster for a NEW topic"><option value="">new topic: no cluster</option>${m.clusters.map(c => `<option>${esc(c)}</option>`).join('')}</select>
+      <select id="kwHubNewCluster" class="kw-sel" title="Cluster for a NEW topic"><option value="">new topic: no cluster</option>${m.clusters.map(c => `<option ${KW.hubFocus && KW.hubFocus.cluster === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
       <button class="kw-btn" onclick="kwHubSelAct('move')" title="Into the chosen topic and OUT of every other topic">⇢ Move</button>
       <button class="kw-btn" onclick="kwHubSelAct('add')" title="Into the chosen topic; keep their other topics too">＋ Add</button>
       ${f.topic && f.topic !== '__none' ? `<button class="kw-btn" onclick="kwHubSelAct('rmOne')">− From this topic</button>` : ''}
@@ -16850,6 +16878,7 @@ function hubKwAddCluster(slug) {
 }
 // ✎ rename a topic / cluster — kwHubApply (same save + backup + ↶ undo as the Keywords tab's hub view). A topic keeps
 // its id, so its products and titles stay attached; renaming a cluster onto an existing cluster merges them.
+function hubKwOpenClusterInTool(slug, ci) { const h = HUB_SITES.find(x => x.slug === slug), c = ((_hubKw[slug] || {}).tc || {}).clusters?.[ci]; if (h && c) kwOpenTopic(h.campaignId, h.campaign || h.name, 'c:' + c); }
 function hubKwOpenInTool(slug, tid) { const h = HUB_SITES.find(x => x.slug === slug); if (h) kwOpenTopic(h.campaignId, h.campaign || h.name, tid); }
 // ＋ Topic — a new proposed topic (no AI): name + starting keywords (the name alone if none), optional cluster.
 // kwHubApply newTopics (same save + backup + ↶ undo as the Keywords tab). Then 🔬 it to research in the Keywords tab.
@@ -17240,7 +17269,7 @@ function renderHubKw(slug) {
     if (fOn && !ts.some(t => topic(t, 0))) return;
     out += node('c:' + ci, 0, '#8ab4f8', '🧩 ' + esc(c), `— cluster · ${ts.length} topic${ts.length === 1 ? '' : 's'}`,
       ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster — drag one here.</span>',
-      { drop: c, tools: `<button style="${btn}" title="Rename this cluster" onclick="hubKwRename('${slug}','cluster',${ci})">✎</button><button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
+      { drop: c, tools: `<button style="${btn}" title="Rename this cluster" onclick="hubKwRename('${slug}','cluster',${ci})">✎</button><button style="${btn}" title="Open this cluster in the Keywords tab — research its name as a keyword there and file the results into topics" onclick="hubKwOpenClusterInTool('${slug}',${ci})">🔬</button><button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
   if ((un.length || clusters.length) && (!fOn || un.some(t => topic(t, 0)))) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`,
     un.length ? un.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">None — drag a topic here to take it out of its cluster.</span>', { drop: '' });
   if (!topics.length && !clusters.length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
