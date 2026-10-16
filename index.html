@@ -16258,8 +16258,8 @@ async function hub2ContentLoad(slug, force) {
       r.stage = r.productId ? (stageOf[String(r.productId).replace(/-/g, '')] || '') : '';   // product stage (titles / assets show their product's)
       r.sync = r.productId ? (syncOf[String(r.productId).replace(/-/g, '')] || '') : '';
       r.created = createdOf[(r.type === 'Product' ? 'p:' : r.type === 'Title' ? 't:' : 'a:') + String(r.id).replace(/-/g, '')] || ''; });
-    ['Product', 'Title'].forEach(type => rows.filter(r => r.type === type).sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).forEach((r, i) => { r.short = type + ' ' + (i + 1); }));
-    rows.filter(r => r.type === 'Asset').forEach(r => { r.short = r.name; });
+    rows.filter(r => r.type === 'Product').sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)).forEach((r, i) => { r.short = 'Product ' + (i + 1); });
+    rows.filter(r => r.type === 'Title' || r.type === 'Asset').forEach(r => { r.short = r.name; });   // real title / platform title, one line, clipped like product names
     _hub2Content[slug] = { loading: false, rows };
   } catch (e) { _hub2Content[slug] = { loading: false, rows: null, error: e.message }; }
   hub2ContentPaint(slug);
