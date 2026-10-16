@@ -1467,7 +1467,7 @@ footer{margin-top:30px;padding-top:16px;border-top:1px solid var(--border);font-
   <!-- ══════════════════════ TAB: KEYWORDS ══════════════════════ -->
   <div class="panel active" data-panel="keywords">
     <div class="stage-hd"><h2>Keywords</h2><span class="stagetag">stage 1 · root</span><button class="btn" type="button" style="font-size:10px;padding:2px 8px;margin-left:8px;" title="Close every header in this tab" onclick="collapseAllIn('keywords')">&#9656; Collapse all</button><button class="notebtn tabnotebtn" onclick="openNoteModal('tab-keywords','Keywords tab','keywords')">📝 Tab note</button></div>
-    <p class="stage-sub">Master + every SEO cluster, all as one flat, fully-collapsible stack, collapsed by default (Master is a cluster like any other). Product Ideas mirrors it on the right: a Main Stack plus one Cluster Ideas group per cluster.</p>
+    <p class="stage-sub">🧩 Main (holding the one Main topic) + every 🧩 cluster, collapsed by default. Product Ideas mirrors it on the right: the Main topic plus one ideas group per topic.</p>
     <section style="margin:0 0 14px;padding:12px 14px;border:1px solid var(--border2);border-radius:10px;background:var(--surface2);">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <b style="font-size:13.5px;color:var(--ink, var(--text));">🧰 Utility site scout</b>
@@ -2401,8 +2401,9 @@ function renderKeywordsAndIdeas() {
   const { staged, committed } = SEO_CLUSTERS;
 
   const masterPills = (RAW_KEYWORDS || '').split(',').map(s => s.trim()).filter(Boolean);
+  // Main = its own cluster holding the one Main topic (Research › Keywords)
   let l = `<div class="kwgroup" data-ckey="kw-master" style="--kwc:#4ade80;">
-    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Master
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>🔑 Main
       <span class="kwbtns">
         <button class="iconbtn primary" title="Regenerate Master keywords" onclick="event.stopPropagation();openRegenModal('Regenerate Master Keywords', 'Refreshes the keyword pool in place — guidance adds direction, it never wipes the existing keywords.', (steer, omit, intent) => runRegenKeywords(steer, omit, intent), { current: '', label: 'Search Intent (optional — bias the generated keywords)' })">⟳</button>
         <button class="iconbtn" title="Generate topics (batch, from Master)" onclick="event.stopPropagation();openRegenModal('Generate Clusters — batch', 'Groups the Master keyword pool into new thematic clusters, alongside whatever already exists.', (steer, omit, intent) => runGenerateClusters(steer, omit, intent), { current: '', label: 'Restrict batch to one intent (optional)' })">🗂️</button>
@@ -2415,6 +2416,7 @@ function renderKeywordsAndIdeas() {
     </div>
     <div class="kwgbody">${masterPills.map((k, i) => `<span class="kw-pill">${esc(k)}<button title="Remove this keyword" onclick="event.stopPropagation();removeMasterKeyword(${i})" style="margin-left:5px;border:0;background:none;color:inherit;opacity:.55;cursor:pointer;font-size:11px;padding:0;">✕</button></span>`).join('')}<span class="kw-pill" id="kwAddPill" title="Add keywords (comma-separated)" onclick="event.stopPropagation();startAddMasterKeyword()" style="cursor:pointer;border-style:dashed;opacity:.8;">+ add keyword</span>${masterPills.length ? '' : '<span style="color:var(--ink3);font-size:11px;margin-left:6px;">No keywords yet.</span>'}</div>
   </div>`;
+  l = clusterWrap('kwcl-__main', '🧩 Main', '— cluster · 1 topic', l, '', '#8ab4f8');
 
   const stagedHtml = c => `<div class="kwgroup" data-ckey="kw-${esc(c.id)}" style="--kwc:#c9860f;">
       <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>${esc(c.name)} <span style="font-weight:400;text-transform:none;color:var(--ink3);">— staged</span>${intentBadge(c.searchIntent)}
@@ -2452,7 +2454,7 @@ function renderKeywordsAndIdeas() {
   // support this — generateClusterProductStacks/removeClusterProductStack
   // handle either kind server-side) ──────────
   let r = `<div class="kwgroup" data-ckey="pi-main" style="--kwc:#8ab4f8;">
-    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>Main Stack <span style="font-weight:400;text-transform:none;color:var(--ink3);">— off Master</span>
+    <div class="kwghd" onclick="toggleGrp(this.parentElement)"><span class="kwarrow">▸</span>🔑 Main <span style="font-weight:400;text-transform:none;color:var(--ink3);">— topic ideas off the Main keywords</span>
       <span class="kwbtns">
         <button class="iconbtn" title="Search product ideas" onclick="event.stopPropagation();openRegenModal('Search Product Ideas — Main Stack', 'Steer merges with Master keywords; omit excludes topics from the results.', (steer, omit) => runProductIdeas(steer, omit))">⟳</button>
         <button class="notebtn" title="Note" onclick="event.stopPropagation();openNoteModal('keywords-prodideas','Product Ideas — Main Stack','keywords')">📝</button>
@@ -2460,6 +2462,7 @@ function renderKeywordsAndIdeas() {
     </div>
     <div class="kwgbody" id="r-prodideas">${renderIdeaLines(MAIN_PRODUCT_IDEAS_TEXT)}</div>
   </div>`;
+  r = clusterWrap('picl-__main', '🧩 Main', '— cluster · 1 topic', r, '', '#7c5cff');
 
   const clusterIdeaGroup = (c, statusLabel) => {
     const has = c.products && c.products.length;
