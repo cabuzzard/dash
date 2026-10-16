@@ -17158,15 +17158,11 @@ const HUB_STAGES = [['Raw', 'var(--text3)'], ['Keyword Research', '#3b82f6'], ['
 const HUB_STAGE_TIP = { 'Raw': 'Raw — just an idea', 'Keyword Research': 'Keyword Research — flagged: work on its keyword topics', 'Development': 'Development — research + titles' };
 // the dot (operator 2026-10-15): Raw / no stage = nothing · Keyword Research = blue · Development in sync = green ·
 // Development out of sync = orange. Hover says which.
-function hubKwStageTag(slug, p) {
-  const st = p.stage || ''; if (!st || st === 'Raw') return '';
+function hubKwStageTag(slug, p) {   // the product's dot = its SYNC status only (not its stage)
   const sync = hubKwSyncState(slug, p);
-  const [col, tip] = st === 'Keyword Research' ? ['#3b82f6', 'Keyword Research — flagged: work on its keyword topics']
-    : sync === 'noresearch' ? ['#ff7a00', 'Development — out of sync: no research yet (run 🔬 research)']
-    : sync === 'out' ? ['#ff7a00', 'Development — out of sync: something upstream changed (keywords or research)']
-    : sync === 'unknown' ? ['var(--text3)', 'Development — checking research…']
-    : ['#4ade80', 'Development — in sync: research current, ready for titles'];
-  return `<span title="${tip}" style="font-size:13px;line-height:1;color:${col};cursor:help;padding:0 2px;">●</span>`;
+  const [col, tip] = sync === 'out' ? ['#ff7a00', 'Out of sync — something upstream changed (keywords or research)'] : sync === 'noresearch' ? ['#ff7a00', 'Out of sync — no research yet (run 🔬 research)']
+    : sync === 'in' ? ['#4ade80', 'In sync — research current'] : ['var(--text3)', 'Checking research…'];
+  return `<span title="${tip}" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${col};cursor:help;"></span>`;
 }
 // ✎ edit product modal (stage for now; standard hcModal)
 function hubKwEditProduct(slug, pid) {
@@ -17206,8 +17202,8 @@ function hubKwStagePicker(slug, p) {
 }
 // sync of a Development product: in sync ONLY when its 🔬 research exists and is current with the keywords
 // (researchState 'updated') and no keywords-changed flag. No research yet counts as out of sync. Unknown = still checking.
+// sync status only — independent of the product's stage (operator 2026-10-16)
 function hubKwSyncState(slug, p) {
-  if (p.stage !== 'Development') return 'n/a';
   const map = _hubResState[slug], st = map ? map[String(p.id).replace(/-/g, '')] : undefined;
   if (p.outOfSync || st === 'off-main') return 'out';
   if (st === 'empty') return 'noresearch';
@@ -17297,7 +17293,7 @@ function renderHubKw(slug) {
   const titleSec = id => { if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
     const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
     return sec('ti:' + id, 'Titles', ts.length, '', ts.map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
-      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${hubTitleSyncDot(x)}${x.status ? `<span style="font-size:10px;color:var(--text3);">${esc(x.status)}</span>` : ''}${x.pillar ? `<span style="font-size:10px;color:${/^written$/i.test(x.pillar) ? '#4ade80' : 'var(--text3)'};">pillar ${esc(x.pillar.toLowerCase())}</span>` : ''}${x.own ? '<span title="Lives here by its own choice (not its product’s topic)" style="font-size:10px;color:#8ab4f8;">🔑</span>' : ''}${x.pid ? `<span title="Sells: ${esc(x.product)}" style="font-size:10px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;color:var(--text2);white-space:nowrap;">📦 ${esc(x.product)}${(K.mainIds || []).includes(x.pid) ? ' <span style="color:#f5c542;">★</span>' : ''}</span>` : ''}<button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>'); };
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${hubTitleSyncDot(x)}<button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>'); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
   const keep = p => (!F.states.length || F.states.includes(hubKwStateOf(slug, p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
   // blue = flagged for keyword research · green = Development in sync · orange = Development out of sync (incl. no research);
@@ -17305,7 +17301,8 @@ function renderHubKw(slug) {
   const kwCounts = (ps, ts) => { ts = ts || []; const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
     const nKw = ps.filter(p => p.stage === 'Keyword Research').length, pIn = ps.filter(p => hubKwSyncState(slug, p) === 'in').length, pOut = ps.filter(p => hubKwOutOfSync(slug, p)).length;
     const tIn = ts.filter(x => !x.oos && x.res).length, tOut = ts.filter(x => x.oos || !x.res).length, nIn = pIn + tIn, nOut = pOut + tOut;
-    return cell(nKw, '#3b82f6', `${nKw} product${nKw === 1 ? '' : 's'} flagged for keyword research`) + cell(nIn, '#4ade80', `in sync: ${pIn} Development product${pIn === 1 ? '' : 's'} · ${tIn} title${tIn === 1 ? '' : 's'}`) + cell(nOut, '#ff7a00', `out of sync / no research yet: ${pOut} Development product${pOut === 1 ? '' : 's'} · ${tOut} title${tOut === 1 ? '' : 's'}`); };
+    const box = (n, ico, tip) => `<span title="${tip}" style="display:inline-block;width:38px;text-align:right;color:var(--text2);font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;">${n ? '<span style="font-weight:400;font-size:10px;opacity:.75;">' + ico + '</span> ' + n : ''}</span>`;
+    return box(ps.length, '📦', `${ps.length} product${ps.length === 1 ? '' : 's'} — ${pIn} in sync · ${pOut} out of sync / no research${nKw ? ' · ' + nKw + ' flagged for keyword research' : ''}`) + box(ts.length, '✍', `${ts.length} title${ts.length === 1 ? '' : 's'} — ${tIn} in sync · ${tOut} out of sync / no research`); };
   const topic = (t, depth) => {
     const kws = split(t.keywords), ps = prodsOf(t).filter(p => !fOn || keep(p)), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
     if (fOn && !ps.length) return '';
