@@ -4180,6 +4180,36 @@ async function clearExistingPillarSection(hdr, titleId) {
     }
   } catch (e) { /* best-effort — worst case the new section appends after a stale one */ }
 }
+// TITLE RESEARCH — a title's own research, built from its keyword topic (Topic ID; none → its product's topic).
+// Fields live on the title (Content Strategy): Title Intent / Title Questions / Title Angle / Title Audience, plus
+// "Keywords Out of Sync" (set when the title is placed / moved / its topic's keywords change; cleared when its research
+// is generated or saved). The product only decides the offer / CTA.
+const TITLE_RES_FIELDS = ["Title Intent", "Title Questions", "Title Angle", "Title Audience"];
+async function kwEnsureTitleProps(env) {
+  if (await env.TRADES.get("titles:props2")) return;
+  const props = { "Topic ID": { rich_text: {} }, "Keywords Out of Sync": { checkbox: {} } }; TITLE_RES_FIELDS.forEach(f => { props[f] = { rich_text: {} }; });
+  const r = await fetch("https://api.notion.com/v1/databases/" + CONTENT_STRATEGY_DB, { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ properties: props }) });
+  if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error("Could not add title research fields: " + (e.message || r.status)); }
+  await env.TRADES.put("titles:props2", "1"); await env.TRADES.put("titles:topicprop", "1");
+}
+const trRt = (props, k) => (props?.[k]?.rich_text || []).map(t => t.plain_text).join("");
+// the title's research block for writers (empty string when it has none)
+async function titleResearchBlock(env, titleId) {
+  if (!titleId) return "";
+  const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(String(titleId).replace(/-/g, "")), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => null);
+  const lines = TITLE_RES_FIELDS.map(f => [f, trRt(pg && pg.properties, f).trim()]).filter(x => x[1]);
+  return lines.length ? "TITLE RESEARCH (primary — the search intent, questions and angle THIS piece is built on; the product is only the offer / call to action):\n" + lines.map(([k, v]) => `${k.replace(/^Title /, "")}: ${v}`).join("\n") : "";
+}
+// the keyword topic a title takes its research from: its own Topic ID, else its product's; returns { cid, topicId, keywords }
+async function titleTopicKeywords(env, hdr, tp) {
+  const own = trRt(tp, "Topic ID").trim().replace(/-/g, ""), cid = (tp.Campaign?.relation || [])[0]?.id || null;
+  if (own && own !== "__main" && cid) return { cid, topicId: own, keywords: await findClusterKeywordsForStack(env, hdr, "", cid, own) };
+  const pid = (tp.Product?.relation || tp.product?.relation || [])[0]?.id || null; if (!pid) return { cid, topicId: own, keywords: "" };
+  const pp = await fetch(`https://api.notion.com/v1/pages/${kwDashId(pid.replace(/-/g, ""))}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
+  const pcid = (pp.properties?.Campaigns?.relation || [])[0]?.id || cid, ptid = trRt(pp.properties, "Topic ID").trim();
+  return { cid: pcid, topicId: ptid, keywords: pcid ? await findClusterKeywordsForStack(env, hdr, trRt(pp.properties, "Product Stack"), pcid, ptid) : "" };
+}
 async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext, addKeywords, omitKeywords, targetKeywords }) {
   if (!env.ANTHROPIC_API_KEY) return { skipped: true, reason: "no ANTHROPIC_API_KEY" };
   const dash = id => { const s = String(id).replace(/-/g, ""); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
@@ -4259,6 +4289,7 @@ async function writePillarContent(hdr, env, { titleId, titleText, campaignId, pr
   // accepted (some call sites resolve it anyway for their own title-
   // generation prompt) but intentionally unused here.
 
+  { const tr = await titleResearchBlock(env, titleId).catch(() => ""); if (tr) parts.push(tr); }   // the title's own research leads
   if (extraContext) parts.push(String(extraContext).slice(0, 4000));
   if (guidance) parts.push(`OPERATOR GUIDANCE (follow this): ${guidance}`);
   if (styleGuidance) parts.push(`WRITING STYLE (match this tone/voice/structure): ${styleGuidance}`);
@@ -11840,6 +11871,43 @@ async function kwHubMainMigrateTick(env) {
     }
   } finally { await env.TRADES.delete("kwhub:mainmig:lock"); }
 }
+async function kwHubPlaceTitles(env, cid, S) {
+  const st = await kwHubState(env, cid);
+  if (!S.plan) {
+    const prodTopic = Object.fromEntries(st.products.map(p => [p.id, String(p.topicId || (p.topicIdProp === "__main" ? "__main" : "")).replace(/-/g, "")]));
+    S.plan = [...st.titles.map(t => ({ k: "t", id: t.id, topic: t.topicIdProp ? "" : (prodTopic[t.productId] || "") })), ...st.products.map(p => ({ k: "p", id: p.id }))];
+    S.i = 0; S.placed = 0; S.marked = 0; S.errors = [];
+  }
+  await kwEnsureTitleProps(env); await kwEnsureProductProps(env);
+  const t0 = Date.now();
+  while (S.i < S.plan.length && Date.now() - t0 < 100000) {
+    const x = S.plan[S.i];
+    try { const props = { "Keywords Out of Sync": { checkbox: true } };
+      if (x.k === "t" && x.topic) { props["Topic ID"] = { rich_text: [{ type: "text", text: { content: x.topic } }] }; S.placed++; }
+      await kwNotionPatch(env, x.id, props); S.marked++; }
+    catch (e) { if (S.errors.length < 20) S.errors.push((x.k === "t" ? "title " : "product ") + x.id + ": " + (e.message || e)); }
+    S.i++;
+  }
+  if (S.i >= S.plan.length) { S.done = true; S.total = S.plan.length; delete S.plan; }
+}
+async function kwHubPlaceTick(env) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
+  const q = (await env.TRADES.get("kwhub:place:queue", "json")) || []; if (!q.length) return;
+  if (await env.TRADES.get("kwhub:place:lock")) return;
+  await env.TRADES.put("kwhub:place:lock", "1", { expirationTtl: 600 });
+  const t0 = Date.now();
+  try {
+    while (Date.now() - t0 < 140000) {
+      const cur = (await env.TRADES.get("kwhub:place:queue", "json")) || []; if (!cur.length) break;
+      const cid = String(cur[0]).replace(/-/g, ""), key = "kwhub:place:state:" + cid;
+      const S = (await env.TRADES.get(key, "json")) || { at: Date.now() };
+      try { await kwHubPlaceTitles(env, cid, S); } catch (e) { S.error = e.message || String(e); S.done = true; }
+      await env.TRADES.put(key, JSON.stringify(S));
+      if (S.done) await env.TRADES.put("kwhub:place:queue", JSON.stringify(((await env.TRADES.get("kwhub:place:queue", "json")) || []).filter(x => String(x).replace(/-/g, "") !== cid)));
+      else break;
+    }
+  } finally { await env.TRADES.delete("kwhub:place:lock"); }
+}
 async function kwHubAutoTick(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   const q0 = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q0.length) return;
@@ -15723,6 +15791,7 @@ Return: {
             methodId: (p.method?.relation || [])[0]?.id ? dropDash((p.method.relation)[0].id) : null,
             pillarStatus: p["Pillar Status"]?.select?.name || "",
             topicId: (p["Topic ID"]?.rich_text || []).map(x => x.plain_text).join("").trim().replace(/-/g, ""),   // the title's own keyword topic ("" = its product's)
+            kwOutOfSync: !!p["Keywords Out of Sync"]?.checkbox, hasResearch: ["Title Intent", "Title Questions", "Title Angle", "Title Audience"].some(f => (p[f]?.rich_text || []).length),
             strategySlotId: (p["Strategy Slot"]?.relation || [])[0]?.id ? dropDash(p["Strategy Slot"].relation[0].id) : null,
             growthStrategyId: (p["Growth Strategy"]?.relation || [])[0]?.id ? dropDash(p["Growth Strategy"].relation[0].id) : null,
           };
@@ -15844,7 +15913,7 @@ Return: {
             titleId,
             titleNotes: t.notes || "",
             titleStatus: t.status || "", productStatus: prod ? (prod.status || "") : "",
-            pillarStatus: t.pillarStatus || "", titleStatus: t.status || "", methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
+            pillarStatus: t.pillarStatus || "", titleStatus: t.status || "", titleOutOfSync: !!t.kwOutOfSync, titleHasResearch: !!t.hasResearch, methodName: t.methodId ? (methNames[t.methodId] || "?") : "", productId: t.productId || null,
             ...scheduleFields(t.strategySlotId),
           };
           (ivByTitle[titleId] || []).forEach(iv => rows.push({ ...base, kind: "interview", interviewId: iv.id, ivStatus: iv.status, assetId: null,
@@ -17700,15 +17769,45 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
       if (body.action === "setTitleTopic") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
         const topicId = String(body.topicId || "").replace(/-/g, "").slice(0, 60);
-        if (!(await env.TRADES.get("titles:topicprop"))) {
-          const r = await fetch("https://api.notion.com/v1/databases/" + CONTENT_STRATEGY_DB, { method: "PATCH",
-            headers: { Authorization: "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-            body: JSON.stringify({ properties: { "Topic ID": { rich_text: {} } } }) });
-          if (!r.ok) { const e = await r.json().catch(() => ({})); return json({ error: "Could not add Topic ID to titles: " + (e.message || r.status) }, 500); }
-          await env.TRADES.put("titles:topicprop", "1");
+        try { await kwEnsureTitleProps(env); } catch (e) { return json({ error: e.message }, 500); }
+        await kwNotionPatch(env, titleId, { "Topic ID": { rich_text: topicId ? [{ type: "text", text: { content: topicId } }] : [] }, "Keywords Out of Sync": { checkbox: true } });
+        return json({ ok: true, titleId, topicId, outOfSync: true });
+      }
+      // ── title research: get / save (operator edits) / generate (from its keyword topic) — saving or generating = in sync
+      if (body.action === "getTitleResearch" || body.action === "saveTitleResearch" || body.action === "generateTitleResearch") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
+        try { await kwEnsureTitleProps(env); } catch (e) { return json({ error: e.message }, 500); }
+        const hdr = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
+        const pg = await fetch(`https://api.notion.com/v1/pages/${kwDashId(titleId)}`, { headers: hdr }).then(r => r.json());
+        if (!pg || pg.object === "error") return json({ error: "Title not found" }, 404);
+        const tp = pg.properties || {}, name = (tp.Title?.title || tp.Name?.title || []).map(t => t.plain_text).join("") || "Title";
+        const cur = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, trRt(tp, f)]));
+        const topic = await titleTopicKeywords(env, hdr, tp);
+        if (body.action === "getTitleResearch") return json({ ok: true, titleId, name, fields: cur, outOfSync: !!tp["Keywords Out of Sync"]?.checkbox, topicId: topic.topicId || "", topicKeywords: topic.keywords || "", ownTopic: trRt(tp, "Topic ID").trim() });
+        let fields = cur;
+        if (body.action === "saveTitleResearch") fields = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, String((body.fields || {})[f] ?? cur[f] ?? "").slice(0, 1990)]));
+        else {
+          if (!env.ANTHROPIC_API_KEY) return json({ error: "ANTHROPIC_API_KEY not configured" }, 500);
+          const seed = trRt(tp, "seed idea"), notes = trRt(tp, "Notes").slice(0, 1500);
+          const demand = await kwDemandBlock(env, [topic.keywords, seed, name].filter(Boolean).join(", "), { related: 15 }).catch(() => "");
+          const r = await hcClaude(env, `Research ONE content title as an SEO piece. Ground it in its keyword topic and the real search demand — not in any product.
+
+TITLE: ${name}
+KEYWORD TOPIC THIS TITLE LIVES IN: ${topic.keywords || "(none set — use the title and its keywords)"}
+TITLE'S OWN KEYWORDS: ${seed || "(none)"}
+${notes ? "OPERATOR NOTES: " + notes + "\n" : ""}${demand}
+Give:
+- intent: the search intent this piece serves (informational / commercial / transactional / local) and what the searcher wants to walk away with — 1-2 sentences
+- questions: the 5-8 real questions this piece must answer, one per line
+- angle: the angle that makes this piece better than what ranks now — 1-3 sentences
+- audience: who is searching this, their situation and level — 1-2 sentences`, "title_research",
+            { type: "object", required: ["intent", "questions", "angle", "audience"], properties: { intent: { type: "string" }, questions: { type: "string" }, angle: { type: "string" }, audience: { type: "string" } } }, 2000);
+          fields = { "Title Intent": String(r.intent || ""), "Title Questions": String(r.questions || ""), "Title Angle": String(r.angle || ""), "Title Audience": String(r.audience || "") };
         }
-        await kwNotionPatch(env, titleId, { "Topic ID": { rich_text: topicId ? [{ type: "text", text: { content: topicId } }] : [] } });
-        return json({ ok: true, titleId, topicId });
+        const props = { "Keywords Out of Sync": { checkbox: false } };
+        TITLE_RES_FIELDS.forEach(f => { props[f] = { rich_text: fields[f] ? [{ type: "text", text: { content: String(fields[f]).slice(0, 1990) } }] : [] }; });
+        await kwNotionPatch(env, titleId, props);
+        return json({ ok: true, titleId, name, fields, outOfSync: false, topicId: topic.topicId || "", topicKeywords: topic.keywords || "" });
       }
       if (body.action === "regenerateTitleKeywords") {
         const { titleId } = body;
@@ -49752,7 +49851,8 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("kwHubProposeTick", kwHubProposeTick(env));
       cw("kwHubAutoTick", kwHubAutoTick(env));
       cw("kwHubRestructureTick", kwHubRestructureTick(env));
-      cw("kwHubMainMigrateTick", kwHubMainMigrateTick(env));   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
+      cw("kwHubMainMigrateTick", kwHubMainMigrateTick(env));
+      cw("kwHubPlaceTick", kwHubPlaceTick(env));   // one-time: titles → their product's topic, everything out of sync   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
@@ -50685,7 +50785,7 @@ async function kwHubState(env, campaignId) {
       topicIdProp: prop, topicId, linkedBy: byId ? "id" : topicId ? "name" : "", keywords: kwSplit(kwRt(p, "Keywords")),
       outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox };
   });
-  const titles = titleRows.map(t => ({ id: t.id.replace(/-/g, ""), name: kwTitleOf(t), productId: (((t.properties?.product?.relation || t.properties?.Product?.relation) || [])[0]?.id || "").replace(/-/g, ""),
+  const titles = titleRows.map(t => ({ id: t.id.replace(/-/g, ""), name: kwTitleOf(t), topicIdProp: kwRt(t, "Topic ID").trim().replace(/-/g, ""), productId: (((t.properties?.product?.relation || t.properties?.Product?.relation) || [])[0]?.id || "").replace(/-/g, ""),
     status: ((t.properties?.Status?.select || t.properties?.Status?.status) || {}).name || "", keywords: kwSplit(kwRt(t, "seed idea")) }));
   const model = { main: research ? kwSplit(kwRt(research, "Keywords")) : [], topics,
     clusters: [...new Set([...(Array.isArray(tc && tc.clusters) ? tc.clusters : []), ...topics.map(t => t.cluster).filter(Boolean)])],
@@ -50951,6 +51051,13 @@ async function kwHubApply(env, campaignId, ops, name) {
       if (Object.keys(props).length) await tryW(`product "${p.name}"`, () => kwNotionPatch(env, p.id, props));
     }
   }
+  // titles whose topic's keywords changed (own Topic ID, else their product's topic) → out of sync
+  { const kwOf = m => new Map(m.topics.map(t => [t.id.replace(/-/g, ""), t.keywords.slice().sort().join("|")]));
+    const b4 = kwOf(before), af = kwOf(after), moved = new Set([...b4.keys()].filter(k => b4.get(k) !== af.get(k)));
+    const prodTopic = Object.fromEntries(after.products.map(p => [p.id, String(p.topicId || "").replace(/-/g, "")]));
+    const hit = st.titles.filter(t => moved.has(t.topicIdProp || prodTopic[t.productId] || ""));
+    if (hit.length) { let ok = true; try { await kwEnsureTitleProps(env); } catch (e) { ok = false; errors.push(e.message); }
+      if (ok) for (const t of hit) await tryW(`title "${t.name}"`, () => kwNotionPatch(env, t.id, { "Keywords Out of Sync": { checkbox: true } })); } }
   const load = await kwHubLoad(env, cid, name);
   return { ...load, applied: true, lines, errors };
 }
