@@ -20635,6 +20635,18 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         catch (e) { return json({ error: e.message }, 502); }
         return json({ success: true, productId: pid, stage });
       }
+      // saveProductBasics {productId, name?, description?} — the ✎ edit product modal (Content Hubs 2 → Keywords).
+      // Only the fields sent are written; Description is rich text (chunked at 2,000 chars).
+      if (body.action === "saveProductBasics") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const pid = String(body.productId || "").replace(/-/g, ""); if (!pid) return json({ error: "productId required" }, 400);
+        const props = {};
+        if (typeof body.name === "string") { const n = body.name.trim(); if (!n) return json({ error: "The product name can't be empty" }, 400); props.Name = { title: [{ type: "text", text: { content: n.slice(0, 1990) } }] }; }
+        if (typeof body.description === "string") { const s = body.description; const ch = []; for (let i = 0; i < Math.max(s.length, 1) && i < 20000; i += 2000) ch.push({ type: "text", text: { content: s.slice(i, i + 2000) } }); props.Description = { rich_text: s ? ch : [] }; }
+        if (!Object.keys(props).length) return json({ success: true, unchanged: true });
+        try { await kwNotionPatch(env, pid, props); } catch (e) { return json({ error: e.message }, 502); }
+        return json({ success: true });
+      }
       if (body.action === "productStageBackfill") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         try { return json({ success: true, ...(await productStageBackfill(env, !!body.force)) }); } catch (e) { return json({ error: e.message }, 502); }
@@ -20686,6 +20698,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
           topicId: (p.properties?.["Topic ID"]?.rich_text || []).map(t => t.plain_text).join("").replace(/-/g, "") || null,
           outOfSync: !!p.properties?.["Keywords Out of Sync"]?.checkbox,
           stage: p.properties?.["Product Stage"]?.select?.name || null,   // Raw / Keyword Research / Development (productStage*)
+          description: (p.properties?.["Description"]?.rich_text || []).map(t => t.plain_text).join("") || "",
         }));
         // Group → Stack → Product: the campaign's product groups (stack → group name, + the saved group order)
         let sg = null; try { sg = await env.TRADES.get("stackgroups:" + String(campaignId).replace(/-/g, ""), "json"); } catch (e) {}
