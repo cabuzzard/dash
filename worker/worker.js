@@ -11908,6 +11908,36 @@ async function kwHubPlaceTick(env) {
     }
   } finally { await env.TRADES.delete("kwhub:place:lock"); }
 }
+// ══ TITLE JOBS (operator 2026-10-16) ══ ＋ title's research + pillar run on the SERVER so the operator can close the tab.
+// KV titlejob:queue = [jobId…], titlejob:state:<jobId> = { titleId, name, slug, steps:[{action,label}], i, done, errors }.
+// Each step runs the real action through the worker's own fetch handler (a self-signed token) — same code as the page.
+// Started right away by the page (runTitleJobs) and resumed by the */4 cron if the tab went away. One runner at a time.
+async function titleJobsRun(env, invoke) {
+  if (await env.TRADES.get("titlejob:lock")) return { busy: true };
+  await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 300 });
+  const t0 = Date.now(), drop = async id => env.TRADES.put("titlejob:queue", JSON.stringify(((await env.TRADES.get("titlejob:queue", "json")) || []).filter(x => x !== id)));
+  let ran = 0;
+  try {
+    while (Date.now() - t0 < 140000) {
+      const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.length) break;
+      const id = q[0], key = "titlejob:state:" + id, S = await env.TRADES.get(key, "json");
+      if (!S || !Array.isArray(S.steps)) { await drop(id); continue; }
+      const step = S.steps[S.i];
+      if (step) {
+        S.running = step.label; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
+        try { const r = await invoke(step.action === "research" ? { action: "generateTitleResearch", titleId: S.titleId } : { action: "writeTitlePillar", titleId: S.titleId, styleGuidance: S.styleGuidance || undefined });
+          if (!r || r.error) throw new Error((r && r.error) || "no response"); step.ok = true; }
+        catch (e) { step.error = e.message || String(e); (S.errors = S.errors || []).push(step.label + ": " + step.error); }
+        S.i++; ran++;
+      }
+      delete S.running;
+      if (S.i >= S.steps.length) { S.done = true; S.finishedAt = Date.now(); }
+      await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
+      if (S.done) await drop(id);
+    }
+  } finally { await env.TRADES.delete("titlejob:lock"); }
+  return { ok: true, ran };
+}
 async function kwHubAutoTick(env) {
   NOTION_TOKEN = (env.NOTION_TOKEN || "").trim();
   const q0 = (await env.TRADES.get("kwhub:auto:queue", "json")) || []; if (!q0.length) return;
@@ -17167,6 +17197,22 @@ ${JSON.stringify(products)}`;
       // ── setHubMainOffering ── the hub's main offering = one real Products record. Stores the choice (KV
       // hub:mainproduct:<campaignId>, read first by resolveHub + getHubMainProduct), links the product to the
       // campaign if it isn't yet, and mirrors it onto the Content Hub asset's Product + the hub-method title's product.
+      // queueTitleJob {titleId, name, slug, research, pillar, styleGuidance, pillarType} → the job id (run it with runTitleJobs)
+      if (body.action === "queueTitleJob") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
+        const steps = [...(body.research ? [{ action: "research", label: "title research" }] : []), ...(body.pillar ? [{ action: "pillar", label: (body.pillarType || "SEO Main") + " pillar" }] : [])];
+        if (!steps.length) return json({ error: "nothing to run" }, 400);
+        const id = "tj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+        await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ titleId, name: String(body.name || "Title").slice(0, 200), slug: String(body.slug || ""), styleGuidance: String(body.styleGuidance || "").slice(0, 3000), steps, i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
+        await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
+        return json({ ok: true, id });
+      }
+      if (body.action === "runTitleJobs") {
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        return json(await titleJobsRun(env, invoke));
+      }
       // getHubJobs — progress of the background hub jobs (dash flyout): per job, the queue + every hub's state
       if (body.action === "getHubJobs") {
         const jobs = { place: "kwhub:place", restr: "kwhub:restr", mainmig: "kwhub:mainmig" }, out = {};
@@ -17179,6 +17225,10 @@ ${JSON.stringify(products)}`;
               placed: s.placed, marked: s.marked, at: s.finishedAt || s.at || s.startedAt || 0 }; }
           out[k] = { queue, states };
         }
+        { const queue = (await env.TRADES.get("titlejob:queue", "json")) || [], states = {};
+          for (const key of (await env.TRADES.list({ prefix: "titlejob:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s) continue;
+            states[key.slice(15)] = { name: s.name, slug: s.slug, titleId: s.titleId, done: !!s.done, error: (s.errors || []).join(" · "), i: s.i || 0, total: (s.steps || []).length, running: s.running || "", at: s.finishedAt || s.at || 0 }; }
+          out.titles = { queue, states }; }
         return json({ ok: true, jobs: out, at: Date.now() });
       }
       if (body.action === "getHubMainOfferings") {   // the hub's main offerings (KV hub:mainproduct:<cid>) — for the ★ toggles
@@ -49866,7 +49916,12 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("kwHubAutoTick", kwHubAutoTick(env));
       cw("kwHubRestructureTick", kwHubRestructureTick(env));
       cw("kwHubMainMigrateTick", kwHubMainMigrateTick(env));
-      cw("kwHubPlaceTick", kwHubPlaceTick(env));   // one-time: titles → their product's topic, everything out of sync   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
+      cw("kwHubPlaceTick", kwHubPlaceTick(env));
+      cw("titleJobsRun", (async () => { const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.length) return;
+        const self = this, invoke = async b => { const token = await signToken((env.HMAC_SECRET || "").trim(), 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        await titleJobsRun(env, invoke); })());   // ＋ title research / pillar jobs left by a closed tab   // one-time: titles → their product's topic, everything out of sync   // Main-only products → their best topic + ★ main offering   // 🏗 cluster restructure queue (kwhub:restr:queue)
       // Trade price poller (replaced the local Windows poller 2026-09-28) —
       // every tick in market hours, hourly otherwise. See runTradePoll.
       cw("runTradePoll", runTradePoll(env).then(async r => { if (r.ran) { try { await paperUpdate(env); } catch (e) { console.error("paperUpdate:", e.message); } } if (r.ran) console.log(`tradePoll: ${r.updated}/${r.polled} of ${r.active} active, ${r.expired} expired, ${r.errors.length} err`); }).catch(e => console.error('runTradePoll failed:', e.message)));
