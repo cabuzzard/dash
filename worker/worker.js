@@ -50475,7 +50475,7 @@ async function productStageBackfill(env, force) {
   } finally { await env.TRADES.delete("prodstage:backfill:lock"); }
 }
 // ── Title idle sweep (operator 2026-10-15): any hub title at Status Development with NO work on it for 7 days
-// (the title and every asset linked to it untouched — Notion last_edited_time) moves to Status "Idea" (pre-Planning
+// (not created this week, and no linked asset created / edited this week) moves to Status "Idea" (pre-Planning
 // parking; promote it back by hand). Weekly (Mondays, 15 0 cron) + on demand (titleIdleSweep action, or KV
 // titleidle:runnow picked up by the */30 cron). Max 150 moves per run; a run that hits the cap re-arms runnow.
 async function runTitleIdleSweep(env, opts) {
@@ -50497,7 +50497,9 @@ async function runTitleIdleSweep(env, opts) {
       const slug = hubOf[nid(((t.properties?.Campaign?.relation) || [])[0]?.id)]; if (!slug) continue;
       const ph = perHub[slug] || (perHub[slug] = { kept: 0, idea: 0 });
       const assets = (t.properties?.Assets?.relation || []).map(a => nid(a.id));
-      const worked = Date.parse(t.last_edited_time) >= cutoff || assets.some(a => recentAsset.has(a));
+      // "work" = the title was CREATED this week, or one of its assets was created / edited this week. The title's own
+      // last_edited_time is useless here: automated jobs (keyword cleanup, sync stamps) touch every title's properties.
+      const worked = Date.parse(t.created_time) >= cutoff || assets.some(a => recentAsset.has(a));
       if (worked) { ph.kept++; continue; }
       if (opts.dryRun) { ph.idea++; continue; }
       if (moved.length >= cap) { left++; continue; }
