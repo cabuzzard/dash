@@ -21713,6 +21713,14 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         if (!r.ok) return json({ error: d.message || "Could not restore" }, 502);
         return json({ success: true, title: (d.properties?.Title?.title || []).map(t => t.plain_text).join("") });
       }
+      // archiveProduct {productId, campaignId} — Keywords ✕: Archived + Status Archived (recoverable), off the hub's ★ main list
+      if (body.action === "archiveProduct") {
+        const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32) return json({ error: "productId required" }, 400);
+        await kwNotionPatch(env, pid, { Archived: { checkbox: true }, Status: { select: { name: "Archived" } } });
+        const cid = String(body.campaignId || "").replace(/-/g, "");
+        if (cid) { const list = await hubMainList(env, cid); if (list.includes(pid)) await env.TRADES.put("hub:mainproduct:" + cid, JSON.stringify(list.filter(x => x !== pid))); }
+        return json({ ok: true });
+      }
       if (body.action === "deleteTitle") {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
