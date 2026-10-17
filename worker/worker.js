@@ -29773,10 +29773,30 @@ Return ONLY a JSON array of exactly ${count} items, no markdown fences:
         if (ivOwnTier(holdTier) && !body.__client && !body.skipInterview) {
           let ivs = await ivForTitle(titleId).catch(() => null);
           if (ivs) ivs = ivs.filter(x => x.scope === "Asset" && ivTypeMatch(x.forType, assetType));
-          if (ivs && !ivs.length) ivs = ((await ivCreateForTitle(env, titleId, { force: true, own: assetType }).catch(() => null)) || {}).interviews || [];
+          // register the asset (operator 2026-10-17): an EMPTY Development asset of this type under the title, with the
+          // interview attached to it — so the Development asset counts and its 🎤 flag shows while it waits
+          let heldAssetId = "";
+          try {
+            const nidH = x => String(x || "").replace(/-/g, ""), dashH = s => { s = nidH(s); return `${s.slice(0,8)}-${s.slice(8,12)}-${s.slice(12,16)}-${s.slice(16,20)}-${s.slice(20)}`; };
+            const ex = await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: dashH(titleId) } } }).catch(() => []);
+            const mine = ex.find(x => { const pp = x.properties || {}; return String(pp["Asset Type"]?.select?.name || "").toLowerCase() === String(assetType).toLowerCase() && (pp["Asset Status"]?.select?.name || "") === "Development"; });
+            if (mine) heldAssetId = nidH(mine.id);
+            else {
+              const hub = HUB_SITES.find(h => nidH(h.campaignId) === nidH(campaignId));
+              const props = { "Asset Title": { title: [{ type: "text", text: { content: `${String(title || "Untitled").slice(0, 150)} — ${String(assetType).slice(0, 100)}` } }] },
+                "Asset Status": { select: { name: "Development" } }, "Asset Class": { select: { name: "Publishable" } }, "Asset Type": { select: { name: String(assetType).slice(0, 100) } },
+                "Content Strategy": { relation: [{ id: dashH(titleId) }] },
+                ...(body.productId ? { Product: { relation: [{ id: dashH(body.productId) }] } } : {}), ...(campaignId ? { Campaign: { relation: [{ id: dashH(campaignId) }] } } : {}),
+                ...(hub ? { "Content Hub": { select: { name: hub.slug } } } : {}), ...(await assetMethodProp(methodId || null, assetType).catch(() => ({}))) };
+              const cr = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
+              const cj = await cr.json().catch(() => ({})); if (cr.ok && cj.id) heldAssetId = nidH(cj.id);
+            }
+            if (heldAssetId && ivs) for (const iv of ivs) if (!(iv.assetIds || []).includes(heldAssetId)) await kwNotionPatch(env, iv.id, { Asset: { relation: [...(iv.assetIds || []), heldAssetId].map(x => ({ id: dashH(x) })) } }).catch(() => {});
+          } catch (e) { console.error("held asset", e.message); }
+          if (ivs && !ivs.length) ivs = ((await ivCreateForTitle(env, titleId, { force: true, own: assetType, assetId: heldAssetId || undefined }).catch(() => null)) || {}).interviews || [];
           if (ivs && ivs.length && !ivs.some(x => x.status === "Finished" && x.answers.some(a => a.trim())))
             return json({ error: holdTier === "short" ? `This ${assetType} is written from a short 5-question interview (rewritten for SEO) — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.` : `A ${assetType} is built from its OWN interview — it's flagged and waiting. Answer it (phone page, All Output, or the 🎤 flag on the build checklist) and generate again.`,
-              needsInterview: true, interviews: ivs.map(x => ({ id: x.id, angle: x.angle })) }, 409);
+              needsInterview: true, heldAssetId, interviews: ivs.map(x => ({ id: x.id, angle: x.angle })) }, 409);
         }
         // The Generate Assets modal doesn't surface a Product picker (it's
         // parked), so when the caller doesn't pass one, fall back to the

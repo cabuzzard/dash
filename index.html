@@ -18307,8 +18307,12 @@ async function hubTitleAssetGo(slug, tid) {
   if (/single post/i.test(methodName)) payload.contentType = document.getElementById('htAssetCTv').value;
   if (t.productId) payload.productId = t.productId;
   const r = await call('generateTitleAssets', payload).catch(e => ({ error: e.message }));
+  if (r && r.error && /interview/i.test(r.error)) {   // an interview-led type: the empty Development asset is registered + its interview flagged
+    showToast('Development asset registered — its interview is flagged (🎤 at the top of the hub)', 'success');
+    hubTitlesLoad(slug, true).then(() => { hubKwRefresh(slug); hub2IvLoad(slug, true); }); return true;
+  }
   if (!r || r.error) return 'Asset not created: ' + ((r && r.error) || 'no response');
-  _hubContentOpen[slug + '|ti:t:' + tid] = true; hubTitlesLoad(slug, true); return true;
+  _hubContentOpen[slug + '|ti:t:' + tid] = true; hubTitlesLoad(slug, true).then(() => hubKwRefresh(slug)); return true;
 }
 // ── Production → 🛠 Interactive tools (worker interactiveTool + utilityScout) ──
 // Pick a seed → Utility site scout finds tool searches and groups them into ideas → 🔎 checks Google's top 10
