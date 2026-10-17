@@ -17114,9 +17114,10 @@ function hubKwDrop(e, slug) { const d = _hubKwDrag, el = e.currentTarget; if (d 
 // createDevTitle (Planning) → its Topic ID = this topic → [generateTitleResearch] → [writeTitlePillar with the pillar type]
 function hubKwTitleAdd(slug, topicId) {
   const K = _hubKw[slug]; if (!K) return;
-  const nid = x => String(x || '').replace(/-/g, ''), all = (K.products || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+  const nid = x => String(x || '').replace(/-/g, ''), all = (K.products || []).filter(p => hubKwSyncState(slug, p) === 'in').sort((a, b) => String(a.name).localeCompare(String(b.name)));   // in-sync products only
   const t = [...K.staged, ...K.committed].find(x => x.id === topicId), tname = topicId === '__main' ? 'Main' : (t ? t.name : 'topic');
-  const inTopic = all.filter(p => topicId === '__main' ? p.topicId === '__main' : p.topicId === nid(topicId)), mains = all.filter(p => !inTopic.includes(p) && (K.mainIds || []).includes(nid(p.id))), rest = all.filter(p => !inTopic.includes(p) && !mains.includes(p));
+  const MC = hubMainClusterProducts(slug), inTopic = all.filter(p => topicId === '__main' ? p.topicId === '__main' : p.topicId === nid(topicId)), inMc = all.filter(p => !inTopic.includes(p) && MC.ids.has(nid(p.id))),
+    mains = all.filter(p => !inTopic.includes(p) && !inMc.includes(p) && (K.mainIds || []).includes(nid(p.id))), rest = all.filter(p => !inTopic.includes(p) && !inMc.includes(p) && !mains.includes(p));
   const opt = p => `<option value="${esc(nid(p.id))}">📦 ${esc(p.name)}</option>`, grp = (l, list) => list.length ? `<optgroup label="${esc(l)}">${list.map(opt).join('')}</optgroup>` : '';
   hcModal(`<h3 style="margin:0 0 4px;">＋ Title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">It lives in the topic below and takes its keywords from it — opened from <b>${esc(tname)}</b>.</div>
     ${HT_LBL('Title (platform title)')}<input id="hkTaTitle" style="${HT_IN}" placeholder="The title as it will be published">
@@ -17125,7 +17126,7 @@ function hubKwTitleAdd(slug, topicId) {
       return o('__main', 'Main (the hub\'s main keywords)') + cl.map(c => { const ts = tps.filter(t => cOf(t) === c); return ts.length ? `<optgroup label="🧩 ${esc(c)}">${ts.map(t => o(t.id, t.name)).join('')}</optgroup>` : ''; }).join('')
         + (() => { const ts = tps.filter(t => !cOf(t)); return ts.length ? `<optgroup label="Topics with no cluster">${ts.map(t => o(t.id, t.name)).join('')}</optgroup>` : ''; })(); })()}</select>
     ${HT_LBL('Guidance')}<textarea id="hkTaGuide" rows="5" style="${HT_IN}resize:vertical;" placeholder="Angle, audience, points to make, sources, tone… (the title's research instructions — every writer reads it)"></textarea>
-    ${HT_LBL('Product it sells')}<select id="hkTaProd" style="${HT_IN}"><option value="">— no product —</option>${grp('This topic', inTopic)}${grp('★ Main offerings', mains)}${grp('Other products', rest)}</select>
+    ${HT_LBL('Product it sells')}<select id="hkTaProd" style="${HT_IN}"><option value="">— no product —</option>${grp('This topic', inTopic)}${MC.name ? grp('🧩 Main cluster — ' + MC.name, inMc) : ''}${grp('★ Main offerings', mains)}${grp('Other products', rest)}</select>
     ${HT_LBL('Child assets to create now (empty Development assets — interview-led types get their interview flagged)')}<div id="hkTaAssets" style="max-height:30vh;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;margin:3px 0 12px;font-size:12px;color:var(--text3);">Loading the hub's checklist…</div>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaKw" checked>Generate the title's keywords (from this topic)</label>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaRes" checked>Run title research and save it (from this topic's keywords)</label>
@@ -17303,6 +17304,13 @@ async function hubSeriesUse(kind, src, ideaId) {
   if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
   else { S.used = new Set(r.used || []); S.msg = '✓ ' + ({ single: 'Single Post', carousel: 'Carousel', seo: 'SEO Post (interview flagged)', youtube: 'YouTube' })[kind] + ' created from the idea — it counts as a Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
   hubSeriesDraw();
+}
+// products whose topic is in the hub's main cluster (★ gold cluster) — listed first in product pickers
+function hubMainClusterProducts(slug) {
+  const K = _hubKw[slug] || {}, mc = (K.tc || {}).mainCluster || '', as = (K.tc || {}).assign || {}, nid = x => String(x || '').replace(/-/g, '');
+  if (!mc) return { name: '', ids: new Set() };
+  const tids = new Set([...(K.staged || []), ...(K.committed || [])].filter(t => as[t.id] === mc).map(t => nid(t.id)));
+  return { name: mc, ids: new Set((K.products || []).filter(p => tids.has(nid(p.topicId))).map(p => nid(p.id))) };
 }
 function hubKwShowPil() { try { return localStorage.getItem('hkwPil') !== 'off'; } catch (e) { return true; } }
 function hubKwTogglePil(slug) { try { localStorage.setItem('hkwPil', hubKwShowPil() ? 'off' : 'on'); } catch (e) {} hubKwRefresh(slug); }
@@ -18981,8 +18989,10 @@ function hcTitleEdit(slug, sid, tid) {
     <input id="hcEdTitle" value="${esc(t.title)}" style="${IN}">
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>
     <select id="hcEdProduct" style="${IN}"><option value="">— no product —</option>${(() => { const mainSet = new Set((((_hubKw[slug] || {}).mainIds) || []).map(kwNid)), op = p => `<option value="${esc(p.id)}" ${kwNid(t.productId) === p.id ? 'selected' : ''}>${mainSet.has(p.id) ? '★ ' : ''}${esc(p.name)}</option>`;
-      const mains = products.filter(p => mainSet.has(p.id)), rest = products.filter(p => !mainSet.has(p.id));
-      return (mains.length ? `<optgroup label="★ Main offerings">${mains.map(op).join('')}</optgroup>` : '') + (rest.length ? `<optgroup label="${mains.length ? 'Other products' : 'Products'}">${rest.map(op).join('')}</optgroup>` : ''); })()}</select>
+      const syncOk = p => { const kp = ((_hubKw[slug] || {}).products || []).find(x => kwNid(x.id) === p.id); return !kp || hubKwSyncState(slug, kp) === 'in' || kwNid(t.productId) === p.id; };   // pickers never offer out-of-sync products
+      const MC = hubMainClusterProducts(slug), inMc = products.filter(p => MC.ids.has(p.id) && syncOk(p));
+      const mains = products.filter(p => !MC.ids.has(p.id) && mainSet.has(p.id) && syncOk(p)), rest = products.filter(p => !MC.ids.has(p.id) && !mainSet.has(p.id) && syncOk(p));
+      return (inMc.length ? `<optgroup label="🧩 Main cluster — ${esc(MC.name)}">${inMc.map(op).join('')}</optgroup>` : '') + (mains.length ? `<optgroup label="★ Main offerings">${mains.map(op).join('')}</optgroup>` : '') + (rest.length ? `<optgroup label="${inMc.length || mains.length ? 'Other products' : 'Products'}">${rest.map(op).join('')}</optgroup>` : ''); })()}</select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword topic <span style="text-transform:none;letter-spacing:0;">— where the title lives and takes its keywords from (the product only decides what it sells)</span></label>
     <select id="hcEdTopic" style="${IN}" onchange="this.dataset.changed='1'"><option value="">Loading topics…</option></select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label>
