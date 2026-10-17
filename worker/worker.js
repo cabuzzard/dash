@@ -12068,6 +12068,17 @@ async function adEnsureTitle(env, cid, name, invoke) {
   await env.TRADES.put(key, id);
   return id;
 }
+// the blank "next issue" Digest asset under the Weekly Digest title — created once, filled by the Sunday run, then replaced
+async function adEnsureBlank(env, cid, titleId, name, invoke) {
+  const key = "digest:asset:" + cid, have = await env.TRADES.get(key);
+  if (have) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(have), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => null);
+    if (pg && pg.object !== "error" && !pg.archived && !pg.in_trash) return have; }
+  const mains = await hubMainList(env, cid);
+  const pa = await invoke({ action: "createAsset", titleId, campId: cid, productId: mains[0] || undefined, assetTitle: `Weekly Digest — next issue (${name})`, assetType: "Digest", assetStatus: "Development",
+    assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Unwritten", interviewRequired: false });
+  if (!pa || pa.error || !pa.id) throw new Error("blank digest asset: " + ((pa && pa.error) || "no id"));
+  const id = String(pa.id).replace(/-/g, ""); await env.TRADES.put(key, id); return id;
+}
 async function adStep(env, cid, S, invoke) {
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
@@ -12095,10 +12106,13 @@ async function adStep(env, cid, S, invoke) {
     S.titleId = await adEnsureTitle(env, cid, S.name, invoke);
     const w = await adPerplexityDigest(env, job, S.names);
     await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
-    const label = adPeriod().label, pa = ok(await invoke({ action: "createAsset", titleId: S.titleId, campId: cid, productId: S.mainIds[0], assetTitle: `Weekly Digest — ${label} (${S.name})`, assetType: "Digest", assetStatus: "Review",
-      assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Ready", interviewRequired: false }), "digest asset");
-    S.assetId = String(pa.id).replace(/-/g, "");
-    await adSavePillar(env, S.assetId, w.digest);   // the issue itself, on the asset (unpublished — Review)
+    const label = adPeriod().label;
+    S.assetId = await adEnsureBlank(env, cid, S.titleId, S.name, invoke);   // fill this week's blank asset
+    await adSavePillar(env, S.assetId, w.digest);   // the issue itself, on the asset
+    await kwNotionPatch(env, S.assetId, { "Asset Title": { title: [{ type: "text", text: { content: `Weekly Digest — ${label} (${S.name})` } }] },
+      "Asset Status": { select: { name: "Review" } }, "Pillar Readiness": { select: { name: "Ready" } } });   // written, unpublished
+    await env.TRADES.delete("digest:asset:" + cid);
+    await adEnsureBlank(env, cid, S.titleId, S.name, invoke).catch(() => {});   // next week's blank
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
     S.items = w.sources.length; S.step = "done"; return;
   }
@@ -12112,9 +12126,9 @@ async function autoDigestRun(env, invoke) {
     const cids = [...new Set(HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(c => c.length === 32))];
     for (const cid of cids.slice()) {   // the permanent Weekly Digest title, set up any time (cheap, no Claude)
       if (Date.now() - t0 > 60000) break;
-      if (await env.TRADES.get("digest:title:" + cid)) continue;
-      const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid);
-      try { await adEnsureTitle(env, cid, (h && (h.campaign || h.name)) || "Hub", invoke); out.push({ cid, title: "created" }); } catch (e) { out.push({ cid, title: "error: " + e.message }); }
+      if ((await env.TRADES.get("digest:title:" + cid)) && (await env.TRADES.get("digest:asset:" + cid))) continue;
+      const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
+      try { const tid = await adEnsureTitle(env, cid, nm, invoke); await adEnsureBlank(env, cid, tid, nm, invoke); out.push({ cid, title: "ready" }); } catch (e) { out.push({ cid, title: "error: " + e.message }); }
     }
     for (const cid of cids) {
       if (Date.now() - t0 > 120000) break;
