@@ -17117,18 +17117,23 @@ function hubKwTitleAdd(slug, topicId) {
     ${HT_LBL('Title (platform title)')}<input id="hkTaTitle" style="${HT_IN}" placeholder="The title as it will be published">
     ${HT_LBL('Guidance')}<textarea id="hkTaGuide" rows="5" style="${HT_IN}resize:vertical;" placeholder="Angle, audience, points to make, sources, tone… (the title's research instructions — every writer reads it)"></textarea>
     ${HT_LBL('Product it sells')}<select id="hkTaProd" style="${HT_IN}"><option value="">— no product —</option>${grp('This topic', inTopic)}${grp('★ Main offerings', mains)}${grp('Other products', rest)}</select>
+    ${HT_LBL('Development asset (optional — registered empty, filled later)')}<select id="hkTaAsset" style="${HT_IN}"><option value="">— none —</option><option disabled>loading methods…</option></select>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaKw" checked>Generate the title's keywords (from this topic)</label>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaRes" checked>Run title research and save it (from this topic's keywords)</label>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="hkTaPil" onchange="document.getElementById('hkTaPilType').disabled=!this.checked">Write the pillar</label>
     <select id="hkTaPilType" disabled style="${HT_IN}">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
     <div id="hkTaMsg" style="font-size:11.5px;color:var(--text3);min-height:16px;margin-bottom:8px;"></div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwTitleAddGo('${slug}','${esc(topicId)}'))">Add title</button>${HC_CANCEL}</div>`);
   setTimeout(() => { const i = document.getElementById('hkTaTitle'); if (i) i.focus(); }, 50);
+  (async () => { try { if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(m => m.status === 'Live').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) {}
+    const sel = document.getElementById('hkTaAsset'); if (sel) sel.innerHTML = '<option value="">— none —</option>' + (_htMethods || []).map(m => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join(''); })();
 }
 async function hubKwTitleAddGo(slug, topicId) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const title = document.getElementById('hkTaTitle').value.trim(); if (!title) return 'Enter a title';
   const guide = document.getElementById('hkTaGuide').value.trim(), productId = document.getElementById('hkTaProd').value || undefined;
   const doRes = document.getElementById('hkTaRes').checked, doPil = document.getElementById('hkTaPil').checked, ptype = document.getElementById('hkTaPilType').value;
+  const doKw = document.getElementById('hkTaKw').checked, devType = (document.getElementById('hkTaAsset') || {}).value || '';
   const msg = t => { const m = document.getElementById('hkTaMsg'); if (m) m.textContent = t; };
   msg('Creating the title…');
   const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
@@ -17138,13 +17143,14 @@ async function hubKwTitleAddGo(slug, topicId) {
   const s = await call('setTitleTopic', { titleId: id, topicId: topicId === '__main' ? '__main' : String(topicId).replace(/-/g, '') }).catch(e => ({ error: e.message }));
   if (!s || s.error) notes.push('topic not set: ' + ((s && s.error) || 'no response'));
   let queued = false;
-  if (doRes || doPil) {   // runs on the server — close the modal / tab, it carries on (⚙ Background jobs shows it)
-    const q = await call('queueTitleJob', { titleId: id, name: title, slug, research: doRes, pillar: doPil, pillarType: ptype, styleGuidance: doPil ? DEV2_PILLAR_TYPES[ptype] : undefined }).catch(e => ({ error: e.message }));
+  if (doRes || doPil || doKw || devType) {   // runs on the server — close the modal / tab, it carries on (⚙ Background jobs shows it)
+    const h2 = HUB_SITES.find(x => x.slug === slug) || {};
+    const q = await call('queueTitleJob', { titleId: id, name: title, slug, campaignId: h2.campaignId, productId: productId || undefined, keywords: doKw, research: doRes, devAssetType: devType || undefined, pillar: doPil, pillarType: ptype, styleGuidance: doPil ? DEV2_PILLAR_TYPES[ptype] : undefined }).catch(e => ({ error: e.message }));
     if (!q || q.error) notes.push('research / pillar not queued: ' + ((q && q.error) || 'no response'));
     else { queued = true; if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); }
   }
   _hubKwOpen[slug + '|ti:' + topicId] = true;
-  const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (queued ? ' · ' + [doRes && 'research', doPil && ptype + ' pillar'].filter(Boolean).join(' + ') + ' running in the background (⚙ bottom-right) — you can carry on' : '');
+  const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (queued ? ' · ' + [doKw && 'keywords', doRes && 'research', devType && devType + ' asset', doPil && ptype + ' pillar'].filter(Boolean).join(' + ') + ' running in the background (⚙ bottom-right) — you can carry on' : '');
   await hubTitlesLoad(slug, true); hubKwRefresh(slug);
   return true;
 }

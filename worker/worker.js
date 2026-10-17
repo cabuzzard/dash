@@ -11954,6 +11954,13 @@ async function titleJobsRun(env, invoke) {
             const g = await invoke({ action: "generateTitleAssets", titleId: S.titleId, campaignId: S.cid, productId: mains[0] || undefined, methodId: t.methodId, title: t.headline, assetType: "Blog - SEO - News", count: 1 });
             const aid = g && ((g.assets || [])[0] || {}).id; if (!aid) throw new Error("article: " + ((g && g.error) || "no asset"));
             S.assetId = String(aid).replace(/-/g, "");
+          } else if (step.action === "keywords") {   // the title's own keywords (seed idea), from its topic
+            const k = await invoke({ action: "regenerateTitleKeywords", titleId: S.titleId }); if (!k || k.error) throw new Error((k && k.error) || "no response");
+          } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written); interview-led types get their interview flagged on it
+            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: step.assetType }] });
+            if (!c || c.error) throw new Error((c && c.error) || "no response");
+            const aid = ((c.created || [])[0] || {}).id;
+            if (aid && ivOwnTier((await ivTierFn(env))(step.assetType))) await ivCreateForAsset(env, { assetId: aid, titleId: S.titleId, own: step.assetType }).catch(() => {});
           } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
             const mains = await hubMainList(env, S.cid);
             const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Planning", skipPillar: true,
@@ -17413,10 +17420,12 @@ ${JSON.stringify(products)}`;
       // queueTitleJob {titleId, name, slug, research, pillar, styleGuidance, pillarType} → the job id (run it with runTitleJobs)
       if (body.action === "queueTitleJob") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
-        const steps = [...(body.research ? [{ action: "research", label: "title research" }] : []), ...(body.pillar ? [{ action: "pillar", label: (body.pillarType || "SEO Main") + " pillar" }] : [])];
+        const steps = [...(body.keywords ? [{ action: "keywords", label: "title keywords" }] : []), ...(body.research ? [{ action: "research", label: "title research" }] : []),
+          ...(body.devAssetType ? [{ action: "devasset", label: "Development asset (" + String(body.devAssetType).slice(0, 60) + ")", assetType: String(body.devAssetType).slice(0, 100) }] : []),
+          ...(body.pillar ? [{ action: "pillar", label: (body.pillarType || "SEO Main") + " pillar" }] : [])];
         if (!steps.length) return json({ error: "nothing to run" }, 400);
         const id = "tj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-        await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ titleId, name: String(body.name || "Title").slice(0, 200), slug: String(body.slug || ""), styleGuidance: String(body.styleGuidance || "").slice(0, 3000), steps, i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
+        await env.TRADES.put("titlejob:state:" + id, JSON.stringify({ titleId, name: String(body.name || "Title").slice(0, 200), slug: String(body.slug || ""), cid: String(body.campaignId || "").replace(/-/g, ""), productId: String(body.productId || "").replace(/-/g, ""), styleGuidance: String(body.styleGuidance || "").slice(0, 3000), steps, i: 0, at: Date.now() }), { expirationTtl: 7 * 86400 });
         await env.TRADES.put("titlejob:queue", JSON.stringify([...((await env.TRADES.get("titlejob:queue", "json")) || []), id]));
         return json({ ok: true, id });
       }
