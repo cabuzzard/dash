@@ -12046,6 +12046,28 @@ function adSourcesBlock(R) {
   const prem = list.filter(s => s.split === "premium"), free = list.filter(s => s.split !== "premium");
   return `RESEARCHED SOURCES (ranked; write ONLY from these facts and cite the publisher by name):\n${R.whatChanged ? "What changed this week: " + R.whatChanged + "\n" : ""}FREE-TIER ITEMS${R.freeAngle ? " (angle: " + R.freeAngle + ")" : ""}:\n${free.map(line).join("\n") || "- none"}\nPREMIUM ITEMS — tease these in the free issue, do not give them away${R.premiumAngle ? " (angle: " + R.premiumAngle + ")" : ""}:\n${prem.map(line).join("\n") || "- none"}`;
 }
+// The hub's permanent "Weekly Digest" title (operator 2026-10-16): in Main, its title research saved from a fixed digest
+// template (no Claude) so it is in sync. KV digest:title:<cid> = titleId. Each week's digest is written into a new Digest
+// asset under it. Exempt from the title idle sweep.
+async function adEnsureTitle(env, cid, name, invoke) {
+  const key = "digest:title:" + cid, have = await env.TRADES.get(key);
+  if (have) { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(have), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json()).catch(() => null);
+    if (pg && pg.object !== "error" && !pg.archived && !pg.in_trash) return have; }
+  const mains = await hubMainList(env, cid);
+  const ms = await invoke({ action: "searchMethods", query: "" }), dm = ((ms && ms.methods) || []).find(m => /^digest$/i.test(m.name || "") && m.status === "Live");
+  const c = await invoke({ action: "createDevTitle", title: "Weekly Digest", campaignId: cid, productId: mains[0] || undefined, methodId: dm ? dm.id : undefined, status: "Development", skipPillar: true,
+    researchInstructions: "The hub's weekly digest — everything important this week across the hub's ★ main offerings. Each week's issue is written into a new Digest asset under this title." });
+  if (!c || c.error || !c.id) throw new Error("weekly digest title: " + ((c && c.error) || "no response"));
+  const id = String(c.id).replace(/-/g, "");
+  await invoke({ action: "setTitleTopic", titleId: id, topicId: "__main" }).catch(() => {});
+  await invoke({ action: "saveTitleResearch", titleId: id, fields: {
+    "Title Intent": `Informational, recurring: readers of ${name} who want to know what changed this week in their world and what to do about it — a quick, trustworthy weekly briefing.`,
+    "Title Questions": "What changed this week that matters to me?\nWhy does it matter for my situation?\nWhat should I do now?\nWhat is coming next?\nWhich sources can I trust on this?",
+    "Title Angle": "A curated weekly briefing: the few developments that actually matter, each with why it matters and what to do — sourced from primary publishers, with deeper premium analysis teased.",
+    "Title Audience": `The audience of ${name}: people already engaged with its main offerings who want to stay current without reading everything themselves.` } }).catch(() => {});
+  await env.TRADES.put(key, id);
+  return id;
+}
 async function adStep(env, cid, S, invoke) {
   const ok = (r, what) => { if (!r || r.error || r.success === false) throw new Error(what + ": " + ((r && r.error) || "no response")); return r; };
   if (S.step === "start") {
@@ -12067,28 +12089,18 @@ async function adStep(env, cid, S, invoke) {
     if (g === "running" && Date.now() - S.waitFrom < 25 * 60000) return;
     S.step = "rank"; return;
   }
-  if (S.step === "rank") { S.step = "title"; return; }   // (older runs) ranking now happens in the Perplexity write
-  if (S.step === "title") {
-    const ms = ok(await invoke({ action: "searchMethods", query: "" }), "methods"), dm = (ms.methods || []).find(m => /^digest$/i.test(m.name || "") && m.status === "Live");
-    S.titleName = `Digest — ${adPeriod().label} (${S.name})`;
-    const c = ok(await invoke({ action: "createDevTitle", title: S.titleName, campaignId: cid, productId: S.mainIds[0], methodId: dm ? dm.id : undefined, status: "Development", skipPillar: true,
-      researchInstructions: "Hub digest covering all main offerings: " + S.names.join("; ") }), "title");
-    S.titleId = String(c.id).replace(/-/g, "");
-    await invoke({ action: "setTitleTopic", titleId: S.titleId, topicId: "__main" }).catch(() => {});
-    S.step = "pillar"; return;
-  }
-  if (S.step === "pillar") {   // Perplexity ranks + writes (no Claude); its items feed the hub's Digest pool
+  if (S.step === "rank" || S.step === "title") { S.step = "write"; return; }   // (older runs) — the title is permanent now
+  if (S.step === "write" || S.step === "pillar") {   // Perplexity ranks + writes (no Claude) → this week's Digest asset under the permanent title
     const job = await env.TRADES.get("digres:" + S.jobId, "json"); if (!job) throw new Error("research run expired");
+    S.titleId = await adEnsureTitle(env, cid, S.name, invoke);
     const w = await adPerplexityDigest(env, job, S.names);
     await digestPoolMerge(env, cid, { sources: w.sources }).catch(() => {});
+    const label = adPeriod().label, pa = ok(await invoke({ action: "createAsset", titleId: S.titleId, campId: cid, productId: S.mainIds[0], assetTitle: `Weekly Digest — ${label} (${S.name})`, assetType: "Digest", assetStatus: "Review",
+      assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Ready", interviewRequired: false }), "digest asset");
+    S.assetId = String(pa.id).replace(/-/g, "");
+    await adSavePillar(env, S.assetId, w.digest);   // the issue itself, on the asset (unpublished — Review)
     await env.TRADES.put("digest:sources:" + S.titleId, JSON.stringify({ jobId: S.jobId, keywords: job.keywords, sources: w.sources, at: new Date().toISOString() })).catch(() => {});
-    await adSavePillar(env, S.titleId, w.digest);
-    S.items = w.sources.length; S.step = "parent"; return;
-  }
-  if (S.step === "parent") {   // the Digest parent — created UNWRITTEN (Development), so it counts on the checklist
-    const pa = ok(await invoke({ action: "createAsset", titleId: S.titleId, campId: cid, productId: S.mainIds[0], assetTitle: S.titleName + " — Digest", assetType: "Digest", assetStatus: "Development",
-      assetClass: "Pillar", pillarType: "Digest", pillarReadiness: "Unwritten", interviewRequired: false }), "parent");
-    S.parentId = String(pa.id).replace(/-/g, ""); S.step = "done"; return;
+    S.items = w.sources.length; S.step = "done"; return;
   }
 }
 async function autoDigestRun(env, invoke) {
@@ -12098,6 +12110,12 @@ async function autoDigestRun(env, invoke) {
   const t0 = Date.now(), per = adPeriod(), done = (await env.TRADES.get("digest:auto:done", "json")) || {}, out = [];
   try {
     const cids = [...new Set(HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(c => c.length === 32))];
+    for (const cid of cids.slice()) {   // the permanent Weekly Digest title, set up any time (cheap, no Claude)
+      if (Date.now() - t0 > 60000) break;
+      if (await env.TRADES.get("digest:title:" + cid)) continue;
+      const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid);
+      try { await adEnsureTitle(env, cid, (h && (h.campaign || h.name)) || "Hub", invoke); out.push({ cid, title: "created" }); } catch (e) { out.push({ cid, title: "error: " + e.message }); }
+    }
     for (const cid of cids) {
       if (Date.now() - t0 > 120000) break;
       const key = "digest:auto:state:" + cid; let S = await env.TRADES.get(key, "json");
@@ -17440,7 +17458,7 @@ ${JSON.stringify(products)}`;
         }
         { const per = adPeriod(), states = {}, queue = [];
           for (const key of (await env.TRADES.list({ prefix: "digest:auto:state:" })).keys.map(x => x.name)) { const s = await env.TRADES.get(key, "json"); if (!s || s.period !== per.key) continue;
-            const cid = key.slice(18), steps = ["start", "perplexity", "wait", "title", "pillar", "parent", "done"], fin = ["done", "skip", "error"].includes(s.step);
+            const cid = key.slice(18), steps = ["start", "perplexity", "wait", "write", "done"], fin = ["done", "skip", "error"].includes(s.step);
             if (!fin) queue.push(cid);
             states[cid] = { name: s.name, done: fin, error: s.error || "", i: Math.max(0, steps.indexOf(s.step)), total: steps.length - 1, running: fin ? "" : (s.step === "wait" ? "waiting on research" : s.step), at: s.finishedAt || s.startedAt || 0 }; }
           out.digest = { queue, states }; }
@@ -51249,12 +51267,13 @@ async function runTitleIdleSweep(env, opts) {
       notionQuery(ASSETS_DB, { filter: { property: "Asset Status", select: { equals: "Published" } } }),   // must load — a miss would demote everything
     ]);
     const pubAsset = new Set(published.map(a => nid(a.id)));
+    const digestTitles = new Set(); for (const k of (await env.TRADES.list({ prefix: "digest:title:" })).keys) { const v = await env.TRADES.get(k.name); if (v) digestTitles.add(nid(v)); }   // Weekly Digest titles are exempt
     const perHub = {}, moved = []; let left = 0;
     for (const t of titles) {
       const slug = hubOf[nid(((t.properties?.Campaign?.relation) || [])[0]?.id)]; if (!slug) continue;
       const ph = perHub[slug] || (perHub[slug] = { kept: 0, idea: 0 });
       const assets = (t.properties?.Assets?.relation || []).map(a => nid(a.id));
-      const worked = assets.some(a => pubAsset.has(a));   // kept only when at least one of its assets is Published
+      const worked = digestTitles.has(nid(t.id)) || assets.some(a => pubAsset.has(a));   // kept only when at least one of its assets is Published
       if (worked) { ph.kept++; continue; }
       if (opts.dryRun) { ph.idea++; continue; }
       if (moved.length >= cap) { left++; continue; }
