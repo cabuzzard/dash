@@ -17574,10 +17574,12 @@ ${JSON.stringify(products)}`;
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
-        const idea = String(body.idea || "").slice(0, 600), label = { single: "Single Post", carousel: "Carousel", youtube: "YouTube" }[body.kind] || "Asset";
+        const idea = String(body.idea || "").slice(0, 600), label = { single: "Single Post", carousel: "Carousel", seo: "SEO Post", youtube: "YouTube" }[body.kind] || "Asset";
         const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
           allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: label + " — " + idea.slice(0, 120), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        // interview-led children (SEO Post short interview · YouTube own interview) get their interview flagged on the new asset
+        try { if (ivOwnTier((await ivTierFn(env))(String(body.assetType)))) await ivCreateForAsset(env, { assetId: r.created[0].id, titleId, own: String(body.assetType), direction: "Series idea: " + idea }); } catch (e) {}
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used });

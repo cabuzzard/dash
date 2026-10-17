@@ -17237,8 +17237,8 @@ async function hubSeriesOpen(slug, tid, seriesAssetId, force) {
 }
 function hubSeriesType(slug, kind) {   // the checklist's asset type for each child kind
   const ms = (((_hub2Checklist[slug] || {}).methods) || []).filter(m => !m.isPillar), t = m => m.aliases.find(a => a !== m.name) || m.asset || m.name;
-  const pick = kind === 'single' ? ms.find(m => /single post/i.test(m.name) && !/carousel/i.test(m.name)) : kind === 'carousel' ? ms.find(m => /carousel/i.test(m.name)) : ms.find(m => /youtube/i.test(m.name));
-  return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel', youtube: 'YouTube Longform — Interview' })[kind];
+  const pick = kind === 'single' ? ms.find(m => /single post/i.test(m.name) && !/carousel/i.test(m.name)) : kind === 'carousel' ? ms.find(m => /carousel/i.test(m.name)) : kind === 'seo' ? ms.find(m => /seo post/i.test(m.name)) : ms.find(m => /youtube/i.test(m.name));
+  return pick ? t(pick) : ({ single: 'single post', carousel: 'single post carousel', seo: 'Topical Post', youtube: 'YouTube Longform — Interview' })[kind];
 }
 function hubSeriesDraw() {
   const S = _series; if (!S) return; let m = document.getElementById('seriesModal');
@@ -17247,13 +17247,13 @@ function hubSeriesDraw() {
   const card = (src, x) => { const used = S.used && S.used.has(x.id);
     return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);${used ? 'opacity:.55;' : ''}">
       <div style="flex:1;min-width:0;font-size:12px;">${used ? '✓ ' : ''}${esc(x.t)}${x.v ? ` <span style="color:var(--text3);font-size:10.5px;">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? `<div style="font-size:10px;color:var(--text3);margin-top:1px;">${esc(x.meta)}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">open ↗</a>` : ''}</div>` : x.url ? `<div style="font-size:10px;"><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">open ↗</a></div>` : ''}</div>
-      <div style="display:flex;gap:4px;flex-shrink:0;"><button style="${B}" onclick="hubSeriesUse('single','${esc(src)}','${esc(x.id)}')">＋ Single Post</button><button style="${B}" onclick="hubSeriesUse('carousel','${esc(src)}','${esc(x.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','${esc(src)}','${esc(x.id)}')">▶ YouTube</button></div></div>`; };
+      <div style="display:flex;gap:4px;flex-shrink:0;"><button style="${B}" onclick="hubSeriesUse('seo','${esc(src)}','${esc(x.id)}')">＋ SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','${esc(src)}','${esc(x.id)}')">＋ Single Post</button><button style="${B}" onclick="hubSeriesUse('carousel','${esc(src)}','${esc(x.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','${esc(src)}','${esc(x.id)}')">▶ YouTube</button></div></div>`; };
   const order = ['Your interviews', 'Pain points', 'Benefits & proof', 'Search questions', 'YouTube autocomplete', 'Google autocomplete', 'Reddit', "What's new (Digest)", 'Title research'];
   const srcs = D ? order.filter(k => (D.sources[k] || []).length).concat(Object.keys(D.sources).filter(k => !order.includes(k) && D.sources[k].length)) : [];
   S.open = S.open || {};
   m.innerHTML = `<div class="modal" style="max-width:780px;max-height:88vh;overflow:auto;">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;"><h3 style="margin:0;">✨ Series ideas${D ? ' — ' + esc(D.name) : ''}</h3><button style="${B}margin-left:auto;" onclick="hubSeriesOpen(_series.slug,_series.tid,_series.seriesAssetId,true)">⟳ refresh sources</button></div>
-    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:8px;">From research you already have. Each button makes an empty Development child of this Series with the idea on it — SEO Post / YouTube also get their interview flagged (✓ = used). ${D && D.notes ? esc(D.notes.join(' · ')) : ''}</div>
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
       <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button><div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
@@ -17297,7 +17297,7 @@ async function hubSeriesUse(kind, src, ideaId) {
   S.msg = '⏳ Creating…'; hubSeriesDraw();
   const r = await call('seriesUseIdea', { titleId: S.tid, titleName: row.title || '', seriesAssetId: S.seriesAssetId, ideaId, idea: x.t, source: src, kind, assetType: hubSeriesType(S.slug, kind), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug }).catch(e => ({ error: e.message }));
   if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
-  else { S.used = new Set(r.used || []); S.msg = '✓ ' + ({ single: 'Single Post', carousel: 'Carousel', youtube: 'YouTube' })[kind] + ' created from the idea — it counts as a Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
+  else { S.used = new Set(r.used || []); S.msg = '✓ ' + ({ single: 'Single Post', carousel: 'Carousel', seo: 'SEO Post (interview flagged)', youtube: 'YouTube' })[kind] + ' created from the idea — it counts as a Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
   hubSeriesDraw();
 }
 function hubKwTitleDragStart(e, tid) { e.stopPropagation(); _hubKwDrag = { ti: tid }; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'ti:' + tid); } catch (x) {} }
