@@ -51506,11 +51506,15 @@ async function runTitleIdleSweep(env, opts) {
     const nid = x => String(x || "").replace(/-/g, "");
     const hubOf = {}; HUB_SITES.forEach(h => { if (h.campaignId) hubOf[nid(h.campaignId)] = h.slug; });
     const cutoff = Date.now() - days * 864e5, cutIso = new Date(cutoff).toISOString();
-    const [titles, published] = await Promise.all([
+    const [titles, published, series] = await Promise.all([
       notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Status", select: { equals: "Development" } } }),
       notionQuery(ASSETS_DB, { filter: { property: "Asset Status", select: { equals: "Published" } } }),   // must load — a miss would demote everything
+      // a Series parent is a standing, never-expiring Development asset: while one exists its title (and so its product)
+      // stays in Development (operator 2026-10-17). Must load too — a miss would park every series title.
+      notionQuery(ASSETS_DB, { filter: { and: [{ property: "Pillar Type", select: { equals: "Series" } }, { property: "Asset Status", select: { does_not_equal: "Delete" } }] } }),
     ]);
-    const pubAsset = new Set(published.map(a => nid(a.id)));
+    const pubAsset = new Set(published.map(a => nid(a.id))), seriesTitle = new Set();
+    series.forEach(a => (a.properties?.["Content Strategy"]?.relation || []).forEach(r => seriesTitle.add(nid(r.id))));
     const digestTitles = new Set(); for (const k of (await env.TRADES.list({ prefix: "digest:title:" })).keys) { const v = await env.TRADES.get(k.name); if (v) digestTitles.add(nid(v)); }   // Weekly Digest titles are exempt
     const perHub = {}, moved = []; let left = 0;
     for (const t of titles) {
@@ -51519,7 +51523,7 @@ async function runTitleIdleSweep(env, opts) {
       const assets = (t.properties?.Assets?.relation || []).map(a => nid(a.id));
       // in sync (title research saved and current) = being worked on → never parked (operator 2026-10-17)
       const tp = t.properties || {}, inSync = !tp["Keywords Out of Sync"]?.checkbox && ["Title Intent", "Title Questions", "Title Angle", "Title Audience"].some(f => (tp[f]?.rich_text || []).length);
-      const worked = inSync || digestTitles.has(nid(t.id)) || assets.some(a => pubAsset.has(a));   // kept only when at least one of its assets is Published
+      const worked = inSync || digestTitles.has(nid(t.id)) || seriesTitle.has(nid(t.id)) || assets.some(a => pubAsset.has(a));   // kept: in sync, a digest, a Series, or one of its assets Published
       if (worked) { ph.kept++; continue; }
       if (opts.dryRun) { ph.idea++; continue; }
       if (moved.length >= cap) { left++; continue; }
