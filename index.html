@@ -15559,7 +15559,7 @@ function renderHubs2() {
     </div>
     <div class="hub-layout">
       <div class="hub-left">
-        <details class="hub-sec" id="hub2IvSec-${slug}" ${(_hub2Iv[slug] && (_hub2Iv[slug].list || []).length) ? 'open' : ''} ontoggle="if(this.open)hub2IvLoad('${slug}')">
+        <details class="hub-sec" id="hub2IvSec-${slug}" ${_hub2IvOpen[slug] ? 'open' : ''} ontoggle="_hub2IvOpen['${slug}']=this.open;if(this.open)hub2IvLoad('${slug}')">
           <summary title="Interviews to answer"><span title="Interviews">🎤 Interviews</span><span id="hub2IvN-${slug}" style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">${hub2IvCount(slug)}</span><button onclick="event.preventDefault();event.stopPropagation();hub2IvLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Iv-${slug}" style="padding:8px 12px;">${hub2IvHtml(slug)}</div>
         </details>
@@ -15941,14 +15941,22 @@ async function hub2DigestModal(slug) {
 // ── 🎤 Interviews (top of every Content Hubs 2 card): the hub's FLAGGED interviews — questions waiting for the operator's
 // answers before their pillar / assets can use them (topical posts, parents, Own-tier children flag them). Loads with
 // the card; 🎤 Answer opens the interview panel. ──
-const _hub2Iv = {};
+const _hub2Iv = {}, _hub2IvOpen = {};
+// only TITLE interviews whose title is in sync (title research current) — the ones ready to feed writing (operator 2026-10-16)
+function hub2IvShown(slug) {
+  const I = _hub2Iv[slug], T = _hubTitles[slug]; if (!I || !I.list || !T || !T.rows) return null;
+  const nid = x => String(x || '').replace(/-/g, ''), synced = new Set();
+  T.rows.forEach(r => { if (r.titleId && !r.titleOutOfSync && r.titleHasResearch) synced.add(nid(r.titleId)); });
+  return I.list.filter(x => (x.scope || 'Title') === 'Title' && x.titleId && synced.has(nid(x.titleId)));
+}
 function hub2IvCount(slug) { const I = _hub2Iv[slug]; if (!I) return 'flagged — to answer'; if (I.loading) return 'loading…'; if (I.error) return 'couldn’t load';
-  const n = (I.list || []).length; return n ? `<span style="color:#ff7a00;font-weight:700;">${n}</span> to answer` : 'none to answer'; }
+  const L = hub2IvShown(slug); if (!L) return 'loading…'; const n = L.length; return n ? `<span style="color:#ff7a00;font-weight:700;">${n}</span> to answer` : 'none to answer'; }
 async function hub2IvLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h || !SESSION_TOKEN) return;
   if (_hub2Iv[slug] && !force && (_hub2Iv[slug].list || _hub2Iv[slug].loading)) return hub2IvPaint(slug);
   _hub2Iv[slug] = { loading: true }; hub2IvPaint(slug);
-  try { const r = await call('getInterviews', { campaignId: h.campaignId, status: 'Flagged' }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+  try { const [r] = await Promise.all([call('getInterviews', { campaignId: h.campaignId, status: 'Flagged' }), _hubTitles[slug] && _hubTitles[slug].rows ? null : hubTitlesLoad(slug)]);
+    if (!r || r.error) throw new Error((r && r.error) || 'no response');
     _hub2Iv[slug] = { list: r.interviews || [] }; }
   catch (e) { _hub2Iv[slug] = { error: e.message }; }
   hub2IvPaint(slug);
@@ -15956,15 +15964,15 @@ async function hub2IvLoad(slug, force) {
 function hub2IvPaint(slug) {
   const el = document.getElementById('hub2Iv-' + slug); if (el) el.innerHTML = hub2IvHtml(slug);
   const n = document.getElementById('hub2IvN-' + slug); if (n) n.innerHTML = hub2IvCount(slug);
-  const sec = document.getElementById('hub2IvSec-' + slug); if (sec && (_hub2Iv[slug] || {}).list && _hub2Iv[slug].list.length && !sec.dataset.auto) { sec.dataset.auto = '1'; sec.open = true; }
 }
 function hub2IvHtml(slug) {
   const I = _hub2Iv[slug];
   if (!I) { setTimeout(() => hub2IvLoad(slug), 0); return '<div style="font-size:11px;color:var(--text3);">Loading…</div>'; }
   if (I.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   if (I.error) return `<div style="font-size:11px;color:#f87171;">${esc(I.error)}</div>`;
-  if (!I.list.length) return '<div style="font-size:11px;color:var(--text3);">Nothing to answer — interviews flagged by topical posts, parents and Own-tier assets show up here.</div>';
-  return I.list.map(x => { const done = (x.answers || []).filter(a => String(a || '').trim()).length, tot = (x.qs || []).length;
+  const L = hub2IvShown(slug); if (!L) return '<div style="font-size:11px;color:var(--text3);">Loading titles…</div>';
+  if (!L.length) return '<div style="font-size:11px;color:var(--text3);">Nothing to answer — title interviews show here once their title is in sync (🔬 title research saved).</div>';
+  return L.map(x => { const done = (x.answers || []).filter(a => String(a || '').trim()).length, tot = (x.qs || []).length;
     return `<div class="hkw-row" style="display:flex;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
       <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.title || 'Interview')}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.scope || '')}${x.forType ? ' · ' + esc(x.forType) : ''}${x.angle ? ' · ' + esc(x.angle) : ''}${tot ? ' · ' + done + ' / ' + tot + ' answered' : ''}</div></div>
       <button onclick="ivFlagOpen('${esc(x.id)}')" style="font-size:10.5px;padding:2px 9px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;white-space:nowrap;">🎤 Answer</button></div>`; }).join('');
@@ -17646,7 +17654,7 @@ function hubTitleResClose() { const R = _titleRes, n = Object.keys((R && R.dirty
 function hubTitleResApplied(R, r) { R.fields = r.fields || R.fields; R.oos = false; R.dirty = {};
   const has = TITLE_RES_FIELDS.some(([f]) => (R.fields[f] || '').trim());
   [((_hubTitles[R.slug] || {}).rows || []), (DEV2_ROWS || [])].forEach(rows => rows.forEach(x => { if (x.titleId === R.tid) { x.titleOutOfSync = false; x.titleHasResearch = has; } }));
-  hubKwRefresh(R.slug); hubTitlesRefresh(R.slug); }
+  hubKwRefresh(R.slug); hubTitlesRefresh(R.slug); hub2IvPaint(R.slug); }   // a title just came into sync → its interview can show
 async function hubTitleResGenerate() {
   const R = _titleRes; if (!R) return; if (Object.keys(R.dirty).length && !confirm('Generating replaces your unsaved edits. Continue?')) return;
   R.busy = '⏳ Researching from its keyword topic…'; hubTitleResDraw();
