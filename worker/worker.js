@@ -12040,7 +12040,7 @@ async function titleJobsRun(env, invoke) {
           } else if (step.action === "keywords") {   // the title's own keywords (seed idea), from its topic
             const k = await invoke({ action: "regenerateTitleKeywords", titleId: S.titleId }); if (!k || k.error) throw new Error((k && k.error) || "no response");
           } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written); interview-led types get their interview flagged on it
-            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: step.assetType }] });
+            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: step.assetType, pillar: /^series$/i.test(step.assetType) }] });   // Series = a parent (Pillar · Series)
             if (!c || c.error) throw new Error((c && c.error) || "no response");
             const aid = ((c.created || [])[0] || {}).id;
             if (aid && ivOwnTier((await ivTierFn(env))(step.assetType))) await ivCreateForAsset(env, { assetId: aid, titleId: S.titleId, own: step.assetType }).catch(() => {});

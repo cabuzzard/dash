@@ -17133,18 +17133,24 @@ function hubKwTitleAdd(slug, topicId) {
   hubKidBoxes(slug, 'hkTaAssets', 'hkTaKid');
 }
 // checkboxes of the hub's checklist CHILD asset types (value = the asset type the checklist counts) — ＋ Title and Edit title
-async function hubKidBoxes(slug, boxId, cls) {
+async function hubKidBoxes(slug, boxId, cls, tid) {
   try { if (!(_hub2Checklist[slug] && _hub2Checklist[slug].methods)) await hub2ChecklistLoad(slug); } catch (e) {}
   const box = document.getElementById(boxId); if (!box) return;
+  // this title's Development assets, by every name their type goes by
+  const exist = {}; if (tid) ((_hubTitles[slug] || {}).rows || []).forEach(r => { if (r.titleId === tid && r.kind === 'asset' && r.assetId && r.assetStatus === 'Development')
+    [r.rawAssetType, r.assetType, r.pillarType].filter(Boolean).forEach(n => { const k = String(n).toLowerCase(); (exist[k] = exist[k] || new Set()).add(r.assetId); }); });
+  const ex = type => [...(exist[String(type).toLowerCase()] || [])];
+  const boxRow = (type, label, extra) => { const ids = ex(type); return `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(type)}" ${ids.length ? `checked data-existing="${esc(ids.join(','))}"` : ''}>${label}${ids.length ? ` <span style="font-size:10px;color:var(--text3);">· ${ids.length} in Development${tid ? ' — untick to delete' : ''}</span>` : ''}${extra || ''}</label>`; };
   const kids = (((_hub2Checklist[slug] || {}).methods) || []).filter(m => !m.isPillar && !hub2IsGrayed(m)).sort((a, b) => a.name.localeCompare(b.name));
-  box.innerHTML = kids.length ? kids.map(m => { const type = m.aliases.find(a => a !== m.name) || m.asset || m.name;
-    return `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(type)}">${esc(m.name)}${m.tier && !/none|parent|title|product/i.test(m.tier) ? ' <span style="font-size:10px;color:#ff7a00;">🎤 ' + esc(m.tier) + '</span>' : ''}</label>`; }).join('')
-    : 'No child asset types on this hub’s checklist.';
+  box.innerHTML = boxRow('Series', '<b style="color:#f5c542;">✨ Series</b> <span style="font-size:10px;color:var(--text3);">(a recurring theme — topic generator + runs)</span>')
+    + (kids.length ? kids.map(m => { const type = m.aliases.find(a => a !== m.name) || m.asset || m.name;
+    return boxRow(type, esc(m.name), m.tier && !/none|parent|title|product/i.test(m.tier) ? ' <span style="font-size:10px;color:#ff7a00;">🎤 ' + esc(m.tier) + '</span>' : ''); }).join('')
+    : '<div>No child asset types on this hub’s checklist.</div>');
   // every other Live method (asset types not on the checklist — Listing, …), collapsed underneath
   try { if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(m => m.status === 'Live').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) {}
   const have = new Set([...box.querySelectorAll('input')].map(i => i.value.toLowerCase()));
   const more = (_htMethods || []).filter(m => !have.has(String(m.name).toLowerCase()));
-  if (more.length && document.getElementById(boxId)) box.insertAdjacentHTML('beforeend', `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:11px;color:var(--text3);">Other asset types (${more.length})</summary>${more.map(m => `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(m.name)}">${esc(m.name)}</label>`).join('')}</details>`);
+  if (more.length && document.getElementById(boxId)) box.insertAdjacentHTML('beforeend', `<details ${more.some(m => ex(m.name).length) ? 'open' : ''} style="margin-top:6px;"><summary style="cursor:pointer;font-size:11px;color:var(--text3);">Other asset types (${more.length})</summary>${more.map(m => boxRow(m.name, esc(m.name))).join('')}</details>`);
 }
 async function hubKwTitleAddGo(slug, topicIdFrom) {
   const topicId = ((document.getElementById('hkTaTopic') || {}).value) || topicIdFrom;
@@ -17616,7 +17622,7 @@ function renderHubKw(slug) {
     if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
     const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
     return sec('ti:' + id, 'Titles', ts.length, `<button style="${btn}" title="Add a title to this topic" onclick="hubKwTitleAdd('${slug}','${esc(id)}')">＋ title</button>`, ts.filter(x => showT(x) && keepT(x)).map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
-      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot"></span><span class="hkw-slot">${hubTitleSyncDot(x)}</span>${pilDot(x.pil)}${devSlot(!x.oos && x.res ? x.dev : 0, 'Development assets — click to see this title’s assets in Content', `hub2ContentShowTitle('${slug}','${esc(x.id)}',${esc(JSON.stringify(x.title))})`)}<span class="hkw-ctl"><button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button>${x.series ? `<button style="${btn}border-color:#f5c542;color:#f5c542;" title="Series topic generator — ideas from your research, search questions, autocomplete, Reddit, Digest, interviews" onclick="event.stopPropagation();hubSeriesOpen('${slug}','${esc(x.id)}','${esc(x.series)}')">✨ ideas</button>` : ''}<button style="${btn}" title="Create an asset from this title — method · platform · count · guidance (same as Create Asset)" onclick="event.stopPropagation();hubTitleAssetModal('${slug}','${esc(x.id)}')">＋ asset</button><button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this title (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteTitle('${slug}','${esc(x.id)}')">✕</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>', '<span class="hkw-slot"></span>' + slotCnt(0, ts.filter(x => !x.oos && x.res).length, 'titles in sync') + slotCnt(0, ts.filter(x => x.pil === 'in').length, 'pillars in sync') + devSlot(ts.filter(x => !x.oos && x.res).reduce((a, x) => a + (x.dev || 0), 0), 'Development assets on in-sync titles')); };
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot"></span><span class="hkw-slot">${hubTitleSyncDot(x)}</span>${pilDot(x.pil)}${devSlot(!x.oos && x.res ? x.dev : 0, 'Development assets — click to see this title’s assets in Content', `hub2ContentShowTitle('${slug}','${esc(x.id)}',${esc(JSON.stringify(x.title))})`)}<span class="hkw-ctl"><button style="${btn}" title="Edit title — product, topic, notes, status, and its child assets (add / remove)" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button>${x.series ? `<button style="${btn}border-color:#f5c542;color:#f5c542;" title="Series topic generator — ideas from your research, search questions, autocomplete, Reddit, Digest, interviews" onclick="event.stopPropagation();hubSeriesOpen('${slug}','${esc(x.id)}','${esc(x.series)}')">✨ ideas</button>` : ''}<button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this title (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteTitle('${slug}','${esc(x.id)}')">✕</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>', '<span class="hkw-slot"></span>' + slotCnt(0, ts.filter(x => !x.oos && x.res).length, 'titles in sync') + slotCnt(0, ts.filter(x => x.pil === 'in').length, 'pillars in sync') + devSlot(ts.filter(x => !x.oos && x.res).reduce((a, x) => a + (x.dev || 0), 0), 'Development assets on in-sync titles')); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
   const pIn = p => hubKwSyncState(slug, p) === 'in', tIn = x => !x.oos && x.res;
   const keep = p => (!F.states.length || F.states.some(s => s === 'Keyword Research' ? p.stage === 'Keyword Research' : s === 'In sync' ? pIn(p) : !pIn(p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
@@ -18975,7 +18981,7 @@ function hcTitleEdit(slug, sid, tid) {
     <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
     <select id="hcEdStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
-    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Add child assets <span style="text-transform:none;letter-spacing:0;">— empty Development assets, created on Save (interview-led types get their interview flagged)</span></label>
+    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Child assets <span style="text-transform:none;letter-spacing:0;">— ticked = has one in Development · tick to add (empty, interview flagged where needed) · untick to delete it (archived)</span></label>
     <div id="hcEdKids" style="max-height:26vh;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;margin:3px 0 10px;font-size:12px;color:var(--text3);">Loading the hub's checklist…</div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>
     <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border2);">
@@ -18988,7 +18994,7 @@ function hcTitleEdit(slug, sid, tid) {
       <div id="hcPillarMsg" style="font-size:11px;color:var(--text3);margin-top:6px;">Writes the pillar onto this title (1-2 min) and promotes it Planning → Development. Same writer as All Output's "generate pillar".</div>
     </div>`);
   const own = ((((_hubTitles[slug] || {}).rows) || []).find(r => r.titleId === tid) || (DEV2_ROWS || []).find(r => r.titleId === tid) || {}).titleTopicId || '';
-  hubKidBoxes(slug, 'hcEdKids', 'hcEdKid');
+  hubKidBoxes(slug, 'hcEdKids', 'hcEdKid', tid);
   kwTopicsFor(h.campaignId).then(dd => { const sel = document.getElementById('hcEdTopic'); if (!sel) return;
     sel.innerHTML = kwTopicOptions(dd, own).replace('— pick a keyword topic —', '(its product’s topic)').replace('</option>', `</option><option value="__main" ${own === '__main' ? 'selected' : ''}>Main (the hub’s main keywords)</option>`); sel.dataset.cur = own; })
     .catch(e => { const sel = document.getElementById('hcEdTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; });
@@ -19017,7 +19023,14 @@ async function hcTitleSave(slug, sid, tid) {
     if (nv.productId !== cur.productId) { const r = await call('updateTitleStrategy', { titleId: tid, productId: nv.productId || null }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
     { const sel = document.getElementById('hcEdTopic'); if (sel && sel.dataset.changed === '1' && sel.dataset.cur != null && sel.value !== sel.dataset.cur && !/^Loading|^Couldn/.test(sel.options[sel.selectedIndex]?.text || '')) {
         const x = await hubTitleSetTopic(slug, tid, sel.value); if (x !== true) throw new Error(x); } }
-    { const kids = [...document.querySelectorAll('.hcEdKid:checked')].map(c => c.value), hh = HUB_SITES.find(x => x.slug === slug) || {};
+    { const gone = [...document.querySelectorAll('.hcEdKid[data-existing]:not(:checked)')], goneIds = [...new Set(gone.flatMap(c => c.dataset.existing.split(',').filter(Boolean)))];
+      if (goneIds.length) {
+        if (!confirm('Delete ' + goneIds.length + ' Development asset' + (goneIds.length === 1 ? '' : 's') + ' (' + gone.map(c => c.value).join(', ') + ')? They are archived in Notion (recoverable).')) return 'Not saved — nothing deleted';
+        for (const aid of goneIds) { const x = await call('deleteAsset', { assetId: aid }).catch(e => ({ error: e.message })); if (!x || x.error) throw new Error('could not delete an asset: ' + ((x && x.error) || 'no response')); }
+        [((_hubTitles[slug] || {}).rows || []), (DEV2_ROWS || [])].forEach(rows => { for (let i = rows.length - 1; i >= 0; i--) if (goneIds.includes(rows[i].assetId)) rows.splice(i, 1); });
+        hubKwRefresh(slug);
+      } }
+    { const kids = [...document.querySelectorAll('.hcEdKid:checked:not([data-existing])')].map(c => c.value), hh = HUB_SITES.find(x => x.slug === slug) || {};
       if (kids.length) { const q = await call('queueTitleJob', { titleId: tid, name: nv.title, slug, campaignId: hh.campaignId, productId: nv.productId || undefined, devAssetTypes: kids }).catch(e => ({ error: e.message }));
         if (!q || q.error) throw new Error('child assets not queued: ' + ((q && q.error) || 'no response'));
         if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
