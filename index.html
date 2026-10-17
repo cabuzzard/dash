@@ -15215,7 +15215,7 @@ async function hubJobsPoll() {
   const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
   if (wasBusy && !busy) _hubJobs.justDone = true;   // keep a ✓ finished line until ✕
   hubJobsDraw();
-  _hubJobs.t = setTimeout(hubJobsPoll, busy ? 30000 : 300000);
+  _hubJobs.t = setTimeout(hubJobsPoll, _hubJobs.mine.size ? 10000 : busy ? 30000 : 300000);   // 10 s while a job this page queued is running
 }
 function hubJobsDraw() {
   let el = document.getElementById('hubJobsFly'); const R = _hubJobs.last;
