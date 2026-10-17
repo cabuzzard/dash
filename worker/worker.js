@@ -51263,8 +51263,8 @@ async function productStageBackfill(env, force) {
     return out;
   } finally { await env.TRADES.delete("prodstage:backfill:lock"); }
 }
-// ── Title idle sweep (operator 2026-10-15; rule changed 2026-10-16): any hub title at Status Development with NO
-// PUBLISHED asset moves to Status "Idea" (pre-Planning parking; promote it back by hand) — however new it is, and even
+// ── Title idle sweep (operator 2026-10-15; rule changed 2026-10-16/17): any hub title at Status Development with NO
+// PUBLISHED asset — and NOT in sync (in-sync titles are being worked on) — moves to Status "Idea" (pre-Planning parking; promote it back by hand) — however new it is, and even
 // when it has Development / Review assets. Weekly (Mondays, 15 0 cron) + on demand (titleIdleSweep action, or KV
 // titleidle:runnow picked up by the */30 cron). Max 150 moves per run; a run that hits the cap re-arms runnow.
 async function runTitleIdleSweep(env, opts) {
@@ -51287,7 +51287,9 @@ async function runTitleIdleSweep(env, opts) {
       const slug = hubOf[nid(((t.properties?.Campaign?.relation) || [])[0]?.id)]; if (!slug) continue;
       const ph = perHub[slug] || (perHub[slug] = { kept: 0, idea: 0 });
       const assets = (t.properties?.Assets?.relation || []).map(a => nid(a.id));
-      const worked = digestTitles.has(nid(t.id)) || assets.some(a => pubAsset.has(a));   // kept only when at least one of its assets is Published
+      // in sync (title research saved and current) = being worked on → never parked (operator 2026-10-17)
+      const tp = t.properties || {}, inSync = !tp["Keywords Out of Sync"]?.checkbox && ["Title Intent", "Title Questions", "Title Angle", "Title Audience"].some(f => (tp[f]?.rich_text || []).length);
+      const worked = inSync || digestTitles.has(nid(t.id)) || assets.some(a => pubAsset.has(a));   // kept only when at least one of its assets is Published
       if (worked) { ph.kept++; continue; }
       if (opts.dryRun) { ph.idea++; continue; }
       if (moved.length >= cap) { left++; continue; }
