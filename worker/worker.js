@@ -17562,10 +17562,24 @@ ${JSON.stringify(products)}`;
         const q = await invoke({ action: "queueTitleJob", titleId, name, slug: body.slug || "", campaignId: cid, productId: body.productId || undefined, keywords: true, research: true });
         return json({ ok: true, titleId, seriesAssetId, jobId: q && q.id });
       }
+      // seriesCats {titleId, op:"get"|"save", style, cats:[{id,name,def}]} — a Series' standing CATEGORIES (each one a lane
+      // the series keeps putting out, never "used up") + its RESEARCH STYLE (the spec every ChatGPT prompt is built from).
+      // KV series:cats:<titleId>, no expiry.
+      if (body.action === "seriesCats") {
+        const tid = String(body.titleId || "").replace(/-/g, ""); if (!tid) return json({ error: "titleId required" }, 400);
+        const key = "series:cats:" + tid;
+        if (body.op === "save") {
+          const cats = (Array.isArray(body.cats) ? body.cats : []).map(c => ({ id: String(c.id || ("cat:" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5))), name: String(c.name || "").trim().slice(0, 120), def: String(c.def || "").trim().slice(0, 1500) })).filter(c => c.name).slice(0, 40);
+          const v = { style: String(body.style || "").slice(0, 30000), cats, at: Date.now() };
+          await env.TRADES.put(key, JSON.stringify(v)); return json({ ok: true, ...v });
+        }
+        return json({ ok: true, ...((await env.TRADES.get(key, "json")) || { style: "", cats: [] }) });
+      }
       if (body.action === "seriesIdeas") {
         if (!body.titleId) return json({ error: "titleId required" }, 400);
         try { const r = await seriesIdeas(env, body.titleId, !!body.force); const used = (await env.TRADES.get("series:used:" + String(body.titleId).replace(/-/g, ""), "json")) || [];
-          return json({ ok: true, ...r, used, runTypes: RUN_TYPES }); } catch (e) { return json({ error: e.message }, 500); }
+          const cs = (await env.TRADES.get("series:cats:" + String(body.titleId).replace(/-/g, ""), "json")) || { style: "", cats: [] };
+          return json({ ok: true, ...r, used, runTypes: RUN_TYPES, cats: cs.cats || [], style: cs.style || "" }); } catch (e) { return json({ error: e.message }, 500); }
       }
       // seriesUseIdea {titleId, seriesAssetId, ideaId, idea, kind: single|carousel|youtube, assetType, campaignId, productId, slug}
       // → an EMPTY Development child (linked to the Series parent, the idea noted on it); the idea is marked used
@@ -17580,7 +17594,7 @@ ${JSON.stringify(products)}`;
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
         // interview-led children (SEO Post short interview · YouTube own interview) get their interview flagged on the new asset
         try { if (ivOwnTier((await ivTierFn(env))(String(body.assetType)))) await ivCreateForAsset(env, { assetId: r.created[0].id, titleId, own: String(body.assetType), direction: "Series idea: " + idea }); } catch (e) {}
-        const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !used.includes(body.ideaId)) used.push(body.ideaId);
+        const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !/^cat:/.test(body.ideaId) && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used });
       }

@@ -17264,11 +17264,70 @@ function hubSeriesDraw() {
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
       <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button><div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
     <div style="font-size:11.5px;color:${S.err ? '#f87171' : 'var(--text3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
+    ${D ? hubSeriesCatsHtml(B) : ''}
     ${srcs.map(k => { const list = D.sources[k], open = S.open[k] !== false;
       return `<div style="margin:6px 0;border:1px solid var(--border);border-radius:6px;"><div class="hkw-hd" onclick="_series.open['${esc(k)}']=${open ? 'false' : 'true'};hubSeriesDraw()" style="padding:5px 8px;cursor:pointer;font-weight:600;font-size:12px;display:flex;gap:6px;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span>${esc(k)} <span style="font-weight:400;color:var(--text3);">(${list.length}${S.used ? ' · ' + list.filter(x => S.used.has(x.id)).length + ' used' : ''})</span></div>
         ${open ? `<div style="padding:0 8px 4px;">${list.map(x => card(k, x)).join('')}</div>` : ''}</div>`; }).join('') || (D ? '<div style="font-size:12px;color:var(--text3);">No ideas found yet — save the title research, add keywords to its topic, or attach a product.</div>' : '')}
     <div style="margin-top:10px;"><button class="modal-btn" onclick="document.getElementById('seriesModal').classList.remove('open')" style="background:transparent;border-color:var(--border2);color:var(--text3);">Close</button></div></div>`;
   m.classList.add('open');
+}
+// 🗂 Categories: a Series' standing lanes (e.g. the 8 deal stories) — each keeps producing outputs, never "used up".
+// 📋 copies a ChatGPT prompt built from the category + the series' RESEARCH STYLE (the spec), shaped for the output kind;
+// ＋ makes the empty Development child (category noted on it). Worker seriesCats (KV series:cats:<titleId>).
+function hubSeriesCatsHtml(B) {
+  const S = _series, D = S.data, cats = D.cats || [];
+  if (S.catEdit) return `<div style="margin:6px 0 10px;border:1px solid #8ab4f8;border-radius:6px;padding:8px;">
+      <div style="font-weight:600;font-size:12px;margin-bottom:4px;">🗂 Edit categories &amp; research style</div>
+      <div style="font-size:10.5px;color:var(--text3);margin-bottom:3px;">One category per line — <b>Name :: definition</b></div>
+      <textarea id="srCatsTa" rows="9" style="width:100%;box-sizing:border-box;font-size:11.5px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:6px;">${esc(cats.map(c => c.name + ' :: ' + c.def).join('\n'))}</textarea>
+      <div style="font-size:10.5px;color:var(--text3);margin:6px 0 3px;">Research style — the spec every prompt from this series is built from</div>
+      <textarea id="srStyleTa" rows="12" style="width:100%;box-sizing:border-box;font-size:11.5px;background:var(--surface2);color:var(--text);border:1px solid var(--border2);border-radius:6px;padding:6px;">${esc(D.style || '')}</textarea>
+      <div style="display:flex;gap:6px;margin-top:6px;"><button class="modal-btn" onclick="hubSeriesCatsSave()">Save</button><button class="modal-btn" style="background:transparent;border-color:var(--border2);color:var(--text3);" onclick="_series.catEdit=false;hubSeriesDraw()">Cancel</button></div></div>`;
+  const open = S.open.__cats !== false;
+  return `<div style="margin:6px 0 10px;border:1px solid #8ab4f8;border-radius:6px;">
+    <div class="hkw-hd" style="padding:5px 8px;font-weight:600;font-size:12px;display:flex;gap:6px;align-items:center;"><span onclick="_series.open.__cats=${open ? 'false' : 'true'};hubSeriesDraw()" style="cursor:pointer;flex:1;"><span style="font-size:10px;color:var(--text3);">${open ? '▼' : '▶'}</span> 🗂 Categories <span style="font-weight:400;color:var(--text3);">(${cats.length}) · standing lanes — never used up${D.style ? ' · research style set' : ' · no research style yet'}</span></span>
+      <select id="srCatKind" class="kw-sel" title="What the 📋 prompt asks ChatGPT to write" style="font-size:10.5px;"><option value="seo">prompt: SEO Post</option><option value="single">prompt: Single Post</option><option value="carousel">prompt: Carousel</option><option value="youtube">prompt: YouTube</option></select>
+      <button style="${B}" onclick="_series.catEdit=true;hubSeriesDraw()">✎ edit</button></div>
+    ${open ? `<div style="padding:0 8px 4px;">${cats.map(c => `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);">
+        <div style="flex:1;min-width:0;font-size:12px;"><b>${esc(c.name)}</b>${c.def ? `<div style="font-size:10.5px;color:var(--text3);margin-top:1px;">${esc(c.def)}</div>` : ''}</div>
+        <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;max-width:330px;"><button style="${B}border-color:#8ab4f8;color:#8ab4f8;" title="Copy a ChatGPT prompt for this category (kind picked above), built from the research style" onclick="hubSeriesPrompt('${esc(c.id)}',this)">📋 ChatGPT prompt</button><button style="${B}" onclick="hubSeriesUse('seo','__cat','${esc(c.id)}')">＋ SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','__cat','${esc(c.id)}')">＋ Single</button><button style="${B}" onclick="hubSeriesUse('carousel','__cat','${esc(c.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','__cat','${esc(c.id)}')">▶ YouTube</button></div></div>`).join('') || '<div style="font-size:11.5px;color:var(--text3);padding:4px 0;">No categories yet — ✎ edit to add them (Name :: definition, one per line).</div>'}</div>` : ''}</div>`;
+}
+async function hubSeriesCatsSave() {
+  const S = _series, D = S && S.data; if (!D) return;
+  const cats = document.getElementById('srCatsTa').value.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const i = l.indexOf('::'), name = (i < 0 ? l : l.slice(0, i)).trim(), def = i < 0 ? '' : l.slice(i + 2).trim();
+    const old = (D.cats || []).find(c => c.name.toLowerCase() === name.toLowerCase()); return { id: old ? old.id : undefined, name, def }; });
+  const r = await call('seriesCats', { titleId: S.tid, op: 'save', cats, style: document.getElementById('srStyleTa').value }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { S.msg = '✗ ' + ((r && r.error) || 'not saved'); return hubSeriesDraw(); }
+  D.cats = r.cats; D.style = r.style; S.catEdit = false; S.msg = '✓ Categories saved'; hubSeriesDraw();
+}
+function hubSeriesPromptText(c, kind) {
+  const S = _series, D = S.data, h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
+  const task = {
+    seo: 'Write a long-form SEO article (1,500–2,200 words, H2/H3 headings, an FAQ of 4–5 questions at the end) that teaches this deal type through ONE worked example deal, walked through the research style below.',
+    single: 'Write ONE single-image social post about this deal type built on one example deal: a headline (max 10 words), an accent line (max 8 words), a 40–70 word body, a caption (80–150 words) and 5 hashtags.',
+    carousel: 'Write a 7–9 slide carousel that walks one example deal of this type through the research style: for each slide a headline (max 8 words) and 15–35 words of body; slide 1 is the hook, the last slide is the verdict (Pursue / Investigate / Watch / Pass) plus a call to action. Then a caption and 5 hashtags.',
+    youtube: 'Write a 10–12 minute YouTube script (hook, 5–7 sections, outro) that breaks down one example deal of this type using the research style — spoken, plain language, with on-screen number callouts in [brackets].'
+  }[kind];
+  return `You are a multifamily / commercial real estate acquisitions analyst writing for ${h.name || 'our hub'}${row.product ? ' (offer: ' + row.product + ')' : ''}.
+Series: ${row.title || D.name}
+Deal category: ${c.name}${c.def ? ' — ' + c.def : ''}
+
+TASK
+${task}
+
+THE EXAMPLE DEAL
+Use a real, current listing or recent sale that fits this category if you can find one (Crexi, LoopNet, broker sites, county records) and cite the source. If you cannot verify one, build a clearly labelled ILLUSTRATIVE composite with realistic numbers for the market — never present invented numbers as fact. Label every number ACTUAL / SELLER PROVIDED / BROKER PRO FORMA / CALCULATED / ESTIMATED.
+
+RESEARCH STYLE — follow it exactly
+${D.style || '(no research style saved on this series yet)'}
+
+Write for first-time and early-stage multifamily buyers. No hype; show the reasoning. End with the deal story block for the example deal.`;
+}
+function hubSeriesPrompt(catId, btn) {
+  const S = _series, c = ((S.data || {}).cats || []).find(x => x.id === catId); if (!c) return;
+  const kind = (document.getElementById('srCatKind') || {}).value || 'seo', text = hubSeriesPromptText(c, kind);
+  navigator.clipboard.writeText(text).then(() => { if (btn) { btn.textContent = '✓ Copied'; setTimeout(() => { btn.textContent = '📋 ChatGPT prompt'; }, 1800); } S.msg = '📋 ' + c.name + ' prompt copied (' + kind + ') — paste it into ChatGPT'; },
+    () => { S.msg = '✗ Clipboard blocked — the prompt is in the console'; console.log(text); hubSeriesDraw(); });
 }
 // the ideas a run type would use: unused, round-robin across its sources (so a run mixes sources)
 function hubSeriesRunPick(rt) {
@@ -17297,7 +17356,10 @@ async function hubSeriesRun() {
   hubSeriesDraw();
 }
 async function hubSeriesUse(kind, src, ideaId) {
-  const S = _series; if (!S || !S.data) return; const x = (S.data.sources[src] || []).find(i => i.id === ideaId); if (!x) return;
+  const S = _series; if (!S || !S.data) return;
+  const cat = src === '__cat' ? (S.data.cats || []).find(c => c.id === ideaId) : null;
+  const x = cat ? { id: cat.id, t: cat.name + (cat.def ? ' — ' + cat.def : '') } : (S.data.sources[src] || []).find(i => i.id === ideaId); if (!x) return;
+  if (cat) src = 'Category: ' + cat.name;
   const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
   if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
   S.msg = '⏳ Creating…'; hubSeriesDraw();
