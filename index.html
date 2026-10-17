@@ -16730,7 +16730,7 @@ async function hub2ProductSave(slug, pid, keepOpen) {
 }
 async function hub2ProductAddTitle(slug, pid) {
   const h = HUB_SITES.find(x => x.slug === slug), title = (document.getElementById('h2pTitle')?.value || '').trim(); if (!h) return 'Hub not found'; if (!title) return 'Enter a title';
-  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId: pid, status: 'Planning', skipPillar: true });
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId: pid, status: 'Development', skipPillar: true });
   if (!r || r.error || !r.id) return (r && r.error) || 'Title not created';
   await hub2ContentLoad(slug, true); return true;
 }
@@ -17112,13 +17112,13 @@ function hubKwDrop(e, slug) { const d = _hubKwDrag, el = e.currentTarget; if (d 
   else if (typeof d === 'object') hubKwMoveProduct(slug, d.p, el.dataset.pdrop); else hubKwMoveTopic(slug, d, el.dataset.drop || ''); }
 // ＋ title on a topic: title · guidance · product (this topic's, ★ main offerings, any other) · ☐ research · ☐ pillar (type).
 // createDevTitle (Planning) → its Topic ID = this topic → [generateTitleResearch] → [writeTitlePillar with the pillar type]
-function hubKwTitleAdd(slug, topicId) {
+function hubKwTitleAdd(slug, topicId, presetPid) {
   const K = _hubKw[slug]; if (!K) return;
-  const nid = x => String(x || '').replace(/-/g, ''), all = (K.products || []).filter(p => hubKwSyncState(slug, p) === 'in').sort((a, b) => String(a.name).localeCompare(String(b.name)));   // in-sync products only
+  const nid = x => String(x || '').replace(/-/g, ''), all = (K.products || []).filter(p => hubKwSyncState(slug, p) === 'in' || (presetPid && nid(p.id) === nid(presetPid))).sort((a, b) => String(a.name).localeCompare(String(b.name)));   // in-sync products only (+ the product it was opened from)
   const t = [...K.staged, ...K.committed].find(x => x.id === topicId), tname = topicId === '__main' ? 'Main' : (t ? t.name : 'topic');
   const MC = hubMainClusterProducts(slug), inTopic = all.filter(p => topicId === '__main' ? p.topicId === '__main' : p.topicId === nid(topicId)), inMc = all.filter(p => !inTopic.includes(p) && MC.ids.has(nid(p.id))),
     mains = all.filter(p => !inTopic.includes(p) && !inMc.includes(p) && (K.mainIds || []).includes(nid(p.id))), rest = all.filter(p => !inTopic.includes(p) && !inMc.includes(p) && !mains.includes(p));
-  const opt = p => `<option value="${esc(nid(p.id))}">📦 ${esc(p.name)}</option>`, grp = (l, list) => list.length ? `<optgroup label="${esc(l)}">${list.map(opt).join('')}</optgroup>` : '';
+  const opt = p => `<option value="${esc(nid(p.id))}" ${presetPid && nid(p.id) === nid(presetPid) ? 'selected' : ''}>📦 ${esc(p.name)}</option>`, grp = (l, list) => list.length ? `<optgroup label="${esc(l)}">${list.map(opt).join('')}</optgroup>` : '';
   hcModal(`<h3 style="margin:0 0 4px;">＋ Title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">It lives in the topic below and takes its keywords from it — opened from <b>${esc(tname)}</b>.</div>
     ${HT_LBL('Title (platform title)')}<input id="hkTaTitle" style="${HT_IN}" placeholder="The title as it will be published">
     ${HT_LBL('Topic')}<select id="hkTaTopic" style="${HT_IN}">${(() => { const cl = K.tc.clusters || [], as = K.tc.assign || {}, tps = [...K.staged, ...K.committed].slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
@@ -17166,7 +17166,7 @@ async function hubKwTitleAddGo(slug, topicIdFrom) {
   const doKw = document.getElementById('hkTaKw').checked, devTypes = [...document.querySelectorAll('.hkTaKid:checked')].map(c => c.value), devType = devTypes.join(', ');
   const msg = t => { const m = document.getElementById('hkTaMsg'); if (m) m.textContent = t; };
   msg('Creating the title…');
-  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Development', skipPillar: true, researchInstructions: guide || undefined });
   if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
   const id = String(r.id).replace(/-/g, ''), notes = []; _hubKwRecent.add(id);
   msg('Placing it in the topic…');
@@ -17626,7 +17626,7 @@ function renderHubKw(slug) {
   const sec = (k, label, n, tools, body, slots) => { const open = !!_hubKwOpen[slug + '|' + k];
     return `<div style="margin-top:4px;border-left:2px solid var(--border2);padding-left:7px;"><div class="hkw-hd" onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:2px 0;cursor:pointer;user-select:none;font-size:11px;font-weight:600;"><span style="font-size:9px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span>${label}<span style="font-weight:400;color:var(--text3);">(${n})</span>${slots != null ? `<span style="margin-left:auto;display:flex;gap:4px;align-items:center;padding-right:4px;" onclick="event.stopPropagation()">${slots}<span class="hkw-ctl">${tools || ''}</span></span>` : tools ? `<span style="margin-left:auto;display:flex;gap:4px;" onclick="event.stopPropagation()">${tools}</span>` : ''}</div>${open ? `<div style="padding:2px 0 3px 16px;">${body}</div>` : ''}</div>`; };
   // one Existing-product row (＋ title · 🔬 research) — shared by Master and every topic
-  const exRow = (p, also) => `<div class="hkw-row hkw-ex" draggable="true" ondragstart="hubKwProdDragStart(event,'${esc(p.id)}')" title="Drag onto another topic to move it — onto Master to make it a ★ main offering (it stays in its topic)" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;"><span onclick="event.stopPropagation();hub2ContentShowProduct('${slug}',${esc(JSON.stringify(p.name))})" title="Open Content filtered to this product — all its titles and assets" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;">📦 ${esc(p.name)}</span>${also ? ` <span title="The same product — it lives in this topic and shows in Main because it is a ★ main offering" style="font-size:10px;color:#8ab4f8;">↗ ${esc(also)}</span>` : ''}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot">${hubKwStageTag(slug, p)}</span><span class="hkw-slot"></span>${showPil ? '<span class="hkw-slot"></span>' : ''}<span class="hkw-slot"></span><span class="hkw-ctl">${(K.mainIds || []).includes(String(p.id).replace(/-/g, '')) ? '<span title="Main offering of this hub" style="color:#f5c542;font-size:12px;line-height:1;cursor:help;margin-right:auto;">★</span>' : ''}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button><button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this product (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteProduct('${slug}','${esc(p.id)}')">✕</button></span></span></div>`;
+  const exRow = (p, also) => `<div class="hkw-row hkw-ex" draggable="true" ondragstart="hubKwProdDragStart(event,'${esc(p.id)}')" title="Drag onto another topic to move it — onto Master to make it a ★ main offering (it stays in its topic)" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;"><span onclick="event.stopPropagation();hub2ContentShowProduct('${slug}',${esc(JSON.stringify(p.name))})" title="Open Content filtered to this product — all its titles and assets" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;">📦 ${esc(p.name)}</span>${also ? ` <span title="The same product — it lives in this topic and shows in Main because it is a ★ main offering" style="font-size:10px;color:#8ab4f8;">↗ ${esc(also)}</span>` : ''}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot">${hubKwStageTag(slug, p)}</span><span class="hkw-slot"></span>${showPil ? '<span class="hkw-slot"></span>' : ''}<span class="hkw-slot"></span><span class="hkw-ctl">${(K.mainIds || []).includes(String(p.id).replace(/-/g, '')) ? '<span title="Main offering of this hub" style="color:#f5c542;font-size:12px;line-height:1;cursor:help;margin-right:auto;">★</span>' : ''}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubKwTitleAdd('${slug}','${esc(p.topicId || '__main')}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button><button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this product (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteProduct('${slug}','${esc(p.id)}')">✕</button></span></span></div>`;
   // ✓ In sync only (toolbar toggle): every cluster / topic stays, only in-sync products and titles are listed (header counts stay complete)
   const syncOnly = !!_hubKwSyncOnly[slug], showP = p => !syncOnly || hubKwSyncState(slug, p) === 'in', showT = x => !syncOnly || (!x.oos && x.res) || _hubKwRecent.has(String(x.id).replace(/-/g, ''));   // titles you just made / edited stay visible
   // titles live in topics (their own Topic ID, else their product's topic) — needs the Titles data; loaded once on first paint
@@ -18413,7 +18413,7 @@ async function hubTitleNewGo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const title = document.getElementById('htNewTitle').value.trim(); if (!title) return 'Enter a title';
   const guide = document.getElementById('htNewGuide').value.trim(), productId = document.getElementById('htNewProd').value || undefined;
-  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Development', skipPillar: true, researchInstructions: guide || undefined });
   if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
   _hubContentOpen[slug + '|ti:p:' + (productId || 'none')] = true;
   hubTitlesLoad(slug, true); return true;
@@ -18929,7 +18929,7 @@ function hcSectionTitleModal(slug, section) {
       const r = await call('setHubSectionProducts', { campaignId: h.campaignId, section, productId: tid, op: 'add', kind: 'title' }); if (!r || r.error) return (r && r.error) || 'Not saved'; _hubTitlesNeedRefetch(slug, section); return true; };
     if (window._hcTab === 'ex') hcModalRun(this, async () => window._hcPick ? add(window._hcPick) : 'Pick a title from the list');
     else hcModalRun(this, async () => { const v = document.getElementById('hcNewTitleName').value.trim(); if (!v) return 'Enter a title';
-      const r = await call('createDevTitle', { title: v, campaignId: h.campaignId, status: 'Planning', skipPillar: true }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+      const r = await call('createDevTitle', { title: v, campaignId: h.campaignId, status: 'Development', skipPillar: true }); if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
       return add(r.id); });
   };
 }
@@ -18962,7 +18962,7 @@ function hcProdTitleGo(btn, slug, pid) {
   const done = async r => { if (!r || r.error) return (r && r.error) || 'Not saved'; _hubTitlesNeedRefetch(slug); return true; };
   if (window._hcTab === 'ex') hcModalRun(btn, async () => window._hcPick ? done(await call('updateTitleStrategy', { titleId: window._hcPick, productId: pid })) : 'Pick a title from the list');
   else hcModalRun(btn, async () => { const v = document.getElementById('hcNewTitleName').value.trim(); if (!v) return 'Enter a title';
-    return done(await call('createDevTitle', { title: v, campaignId: h.campaignId, productId: pid, status: 'Planning', skipPillar: true })); });
+    return done(await call('createDevTitle', { title: v, campaignId: h.campaignId, productId: pid, status: 'Development', skipPillar: true })); });
 }
 function _hubTitlesNeedRefetch(slug, section) { _hubContentTitles[slug] = null; _hubPageOpen[slug + '|page-' + (section || 'cta')] = true; _hubBuildFetched[slug] = false; renderHubsTab(); }
 // ✎ title modal: title text, notes, status — each changed field saved to the title's Content Strategy record
