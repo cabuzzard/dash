@@ -51292,12 +51292,23 @@ async function runTitleIdleSweep(env, opts) {
       if (opts.dryRun) { ph.idea++; continue; }
       if (moved.length >= cap) { left++; continue; }
       try { await kwNotionPatch(env, t.id, { Status: { select: { name: "Idea" } } }); ph.idea++;
-        moved.push({ id: nid(t.id), slug, title: (t.properties?.Title?.title || []).map(x => x.plain_text).join("") }); }
+        moved.push({ id: nid(t.id), slug, assets, title: (t.properties?.Title?.title || []).map(x => x.plain_text).join("") }); }
       catch (e) { console.error("titleIdleSweep " + nid(t.id) + ": " + e.message); }
       await new Promise(r => setTimeout(r, 340));
     }
-    if (left && !opts.dryRun) await env.TRADES.put("titleidle:runnow", "1");   // finish on the next */30 tick
-    const out = { at: new Date().toISOString(), days, dryRun: !!opts.dryRun, moved: moved.length, left, perHub };
+    if (left && !opts.dryRun) await env.TRADES.put("titleidle:runnow", "1");
+    // a title parked in Idea takes its FLAGGED interviews with it (its own + its assets') → Status "Idea" (operator 2026-10-17)
+    let ivIdea = 0;
+    if (moved.length && !opts.dryRun) {
+      const mt = new Set(moved.map(m => m.id)), ma = new Set(moved.flatMap(m => m.assets || []));
+      const flagged = await ivList({ property: "Status", select: { equals: "Flagged" } }).catch(() => []);
+      for (const iv of flagged) {
+        if (!(mt.has(nid(iv.titleId)) || (iv.assetIds || []).some(a => ma.has(nid(a))))) continue;
+        try { await kwNotionPatch(env, iv.id, { Status: { select: { name: "Idea" } } }); ivIdea++; } catch (e) { console.error("titleIdleSweep interview " + iv.id + ": " + e.message); }
+        await new Promise(r => setTimeout(r, 340));
+      }
+    }   // finish on the next */30 tick
+    const out = { at: new Date().toISOString(), days, dryRun: !!opts.dryRun, moved: moved.length, left, perHub, interviewsToIdea: ivIdea };
     if (!opts.dryRun) { await env.TRADES.put("titleidle:last", JSON.stringify({ ...out, sample: moved.slice(0, 40) }));
       if (moved.length) await env.TRADES.put("titleidle:moved:" + out.at, JSON.stringify(moved), { expirationTtl: 90 * 86400 }); }   // full list → undo-able
     return out;

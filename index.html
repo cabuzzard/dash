@@ -15947,11 +15947,12 @@ async function hub2DigestModal(slug) {
 // the card; 🎤 Answer opens the interview panel. ──
 const _hub2Iv = {}, _hub2IvOpen = {};
 // only TITLE interviews whose title is in sync (title research current) — the ones ready to feed writing (operator 2026-10-16)
-function hub2IvShown(slug) {
+function hub2IvShown(slug) {   // only interviews of DEVELOPMENT ASSETS (not title / product interviews) whose title is in sync
   const I = _hub2Iv[slug], T = _hubTitles[slug]; if (!I || !I.list || !T || !T.rows) return null;
-  const nid = x => String(x || '').replace(/-/g, ''), synced = new Set();
-  T.rows.forEach(r => { if (r.titleId && !r.titleOutOfSync && r.titleHasResearch) synced.add(nid(r.titleId)); });
-  return I.list.filter(x => (x.scope || 'Title') === 'Title' && x.titleId && synced.has(nid(x.titleId)));
+  const nid = x => String(x || '').replace(/-/g, ''), synced = new Set(), devAsset = {};
+  T.rows.forEach(r => { if (r.titleId && !r.titleOutOfSync && r.titleHasResearch) synced.add(nid(r.titleId));
+    if (r.kind === 'asset' && r.assetId && r.assetStatus === 'Development') devAsset[nid(r.assetId)] = nid(r.titleId); });
+  return I.list.filter(x => x.scope === 'Asset' && (x.assetIds || []).some(a => devAsset[nid(a)] && synced.has(devAsset[nid(a)])));
 }
 function hub2IvCount(slug) { const I = _hub2Iv[slug]; if (!I) return 'flagged — to answer'; if (I.loading) return 'loading…'; if (I.error) return 'couldn’t load';
   const L = hub2IvShown(slug); if (!L) return 'loading…'; const n = L.length; return n ? `<span style="color:#ff7a00;font-weight:700;">${n}</span> to answer` : 'none to answer'; }
@@ -15975,7 +15976,7 @@ function hub2IvHtml(slug) {
   if (I.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   if (I.error) return `<div style="font-size:11px;color:#f87171;">${esc(I.error)}</div>`;
   const L = hub2IvShown(slug); if (!L) return '<div style="font-size:11px;color:var(--text3);">Loading titles…</div>';
-  if (!L.length) return '<div style="font-size:11px;color:var(--text3);">Nothing to answer — title interviews show here once their title is in sync (🔬 title research saved).</div>';
+  if (!L.length) return '<div style="font-size:11px;color:var(--text3);">Nothing to answer — interviews of Development assets show here once their title is in sync (🔬 title research saved).</div>';
   return L.map(x => { const done = (x.answers || []).filter(a => String(a || '').trim()).length, tot = (x.qs || []).length;
     return `<div class="hkw-row" style="display:flex;gap:8px;align-items:center;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
       <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.title || 'Interview')}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.scope || '')}${x.forType ? ' · ' + esc(x.forType) : ''}${x.angle ? ' · ' + esc(x.angle) : ''}${tot ? ' · ' + done + ' / ' + tot + ' answered' : ''}</div></div>
