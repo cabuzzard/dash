@@ -17394,20 +17394,12 @@ function hubKwFilterToggle(slug, s) { const F = hubKwFilterOf(slug); F.states = 
 // ▾ Expand all / ▸ Collapse all — every node of the Keywords tree: Master, clusters, Unclustered, topics, Existing + Proposed
 function hubKwExpandAll(slug, open, existingOnly) {
   const K = _hubKw[slug]; if (!K || K.loading || K.error) return;
-  if (existingOnly === 'synced') {   // ▾ Expand synced: open the path down to every in-sync product / title only (and list only in-sync rows)
-    const nid = x => String(x || '').replace(/-/g, ''), cl = (K.tc && K.tc.clusters) || [], asg = (K.tc && K.tc.assign) || {}, mainSet = new Set((K.mainIds || []).map(nid));
-    const tBy = _hubTitles[slug] && _hubTitles[slug].rows ? hubTitlesByTopic(slug) : new Map(), open = new Set();
-    const inP = p => hubKwSyncState(slug, p) === 'in', inT = x => !x.oos && x.res;
-    const openTopic = (t, what) => { open.add('t:' + t.id); open.add(what + ':' + t.id); const c = asg[t.id]; open.add(c && cl.includes(c) ? 'c:' + cl.indexOf(c) : 'unclustered'); };
-    [...(K.staged || []), ...(K.committed || [])].forEach(t => {
-      const ps = (K.products || []).filter(p => p.topicId ? p.topicId === nid(t.id) : String(p.stack || '').trim().toLowerCase() === String(t.name || '').trim().toLowerCase());
-      if (ps.some(inP)) openTopic(t, 'ex'); if ((tBy.get(t.id) || []).some(inT)) openTopic(t, 'ti'); });
-    if ((K.products || []).some(p => (p.topicId === '__main' || mainSet.has(nid(p.id))) && inP(p))) { open.add('master'); open.add('ex:__main'); }
-    if ((tBy.get('__main') || []).some(inT)) { open.add('master'); open.add('ti:__main'); }
-    if ((tBy.get('') || []).some(inT)) { open.add('notopic'); open.add('ti:'); }
-    Object.keys(_hubKwOpen).forEach(k => { if (k.startsWith(slug + '|')) delete _hubKwOpen[k]; });
-    open.forEach(k => { _hubKwOpen[slug + '|' + k] = true; });
-    _hubKwSyncOnly[slug] = true; K.msg = open.size ? '▾ Opened every in-sync product and title' : 'Nothing is in sync yet';
+  if (existingOnly === 'synced') {   // green only (operator 2026-10-17): open EVERYTHING down to the rows, list only rows with a green dot
+    const ks = ['master', 'ti:__main', 'ex:__main', 'unclustered', 'notopic', 'ti:'].concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
+    [...(K.staged || []), ...(K.committed || [])].forEach(t => ks.push('t:' + t.id, 'ti:' + t.id, 'ex:' + t.id));
+    Object.keys(_hubKwOpen).forEach(k => { if (k.startsWith(slug + '|') && /\|(pr|kw):/.test(k)) delete _hubKwOpen[k]; });
+    ks.forEach(k => { _hubKwOpen[slug + '|' + k] = true; });
+    _hubKwSyncOnly[slug] = true; K.msg = 'Showing only green (in sync) titles and products';
     return hubKwRefresh(slug);
   }
   if (existingOnly === 'clusters') {   // ▾ Expand clusters: Master + every cluster + Unclustered open, every topic closed
@@ -17463,7 +17455,7 @@ function renderHubKw(slug) {
   const titleSec = id => { if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
     const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
     return sec('ti:' + id, 'Titles', ts.length, `<button style="${btn}" title="Add a title to this topic" onclick="hubKwTitleAdd('${slug}','${esc(id)}')">＋ title</button>`, ts.filter(x => showT(x) && keepT(x)).map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
-      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot"></span><span class="hkw-slot">${hubTitleSyncDot(x)}</span><span class="hkw-ctl"><button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>', '<span class="hkw-slot"></span>' + slotCnt(0, ts.filter(x => !x.oos && x.res).length, 'titles in sync')); };
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot"></span><span class="hkw-slot">${hubTitleSyncDot(x)}</span><span class="hkw-ctl"><button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button><button style="${btn}" title="Create an asset from this title — method · platform · count · guidance (same as Create Asset)" onclick="event.stopPropagation();hubTitleAssetModal('${slug}','${esc(x.id)}')">＋ asset</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>', '<span class="hkw-slot"></span>' + slotCnt(0, ts.filter(x => !x.oos && x.res).length, 'titles in sync')); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
   const pIn = p => hubKwSyncState(slug, p) === 'in', tIn = x => !x.oos && x.res;
   const keep = p => (!F.states.length || F.states.some(s => s === 'Keyword Research' ? p.stage === 'Keyword Research' : s === 'In sync' ? pIn(p) : !pIn(p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
