@@ -15205,7 +15205,9 @@ async function hubJobsPoll() {
   const prevT = ((_hubJobs.last && _hubJobs.last.jobs.titles) || {}).states || {};
   try { const r = await call('getHubJobs'); if (r && r.jobs) _hubJobs.last = r; } catch (e) {}
   { const now = ((_hubJobs.last && _hubJobs.last.jobs.titles) || {}).states || {}, slugs = new Set();   // a title job just finished → refresh that hub's titles
-    Object.entries(now).forEach(([id, s]) => { if (s.done && prevT[id] && !prevT[id].done && s.slug) { slugs.add(s.slug);
+    const firstPoll = !_hubJobs.seen; _hubJobs.seen = _hubJobs.seen || new Set();
+    Object.entries(now).forEach(([id, s]) => { const fresh = s.done && !_hubJobs.seen.has(id); if (s.done) _hubJobs.seen.add(id);
+      if (fresh && !firstPoll && s.slug) { slugs.add(s.slug);
       if (s.kind === 'product' && s.productId && !s.error) { const K = _hubKw[s.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === s.productId); if (p) p.outOfSync = false; (_hubResState[s.slug] = _hubResState[s.slug] || {})[s.productId] = 'updated'; } } });
     slugs.forEach(sl => { if (_hub2Pool[sl]) hub2PoolLoad(sl, true); hubResLoad(sl, true); if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); else hubKwRefresh(sl); }); }
   const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
@@ -17623,7 +17625,10 @@ let _titleRes = null;
 async function hubTitleResOpen(slug, tid) {
   _titleRes = { slug, tid, name: '', fields: null, busy: 'Loading…', log: '', dirty: {} }; hubTitleResDraw();
   try { const r = await call('getTitleResearch', { titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
-    Object.assign(_titleRes, { name: r.name, fields: r.fields || {}, oos: r.outOfSync, topicKeywords: r.topicKeywords || '', busy: '' }); }
+    Object.assign(_titleRes, { name: r.name, fields: r.fields || {}, oos: r.outOfSync, topicKeywords: r.topicKeywords || '', busy: '' });
+    const has = TITLE_RES_FIELDS.some(([f]) => String((r.fields || {})[f] || '').trim()); let changed = false;   // correct a stale dot from the saved state
+    [((_hubTitles[slug] || {}).rows || []), (DEV2_ROWS || [])].forEach(rows => rows.forEach(x => { if (x.titleId === tid && (x.titleOutOfSync !== !!r.outOfSync || x.titleHasResearch !== has)) { x.titleOutOfSync = !!r.outOfSync; x.titleHasResearch = has; changed = true; } }));
+    if (changed) { hubKwRefresh(slug); hubTitlesRefresh(slug); hub2IvPaint(slug); } }
   catch (e) { _titleRes.busy = ''; _titleRes.log = 'Load failed: ' + e.message; }
   hubTitleResDraw();
 }
