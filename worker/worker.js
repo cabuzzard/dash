@@ -17422,7 +17422,7 @@ ${JSON.stringify(products)}`;
       if (body.action === "queueTitleJob") {
         const titleId = String(body.titleId || "").replace(/-/g, ""); if (titleId.length !== 32) return json({ error: "titleId required" }, 400);
         const steps = [...(body.keywords ? [{ action: "keywords", label: "title keywords" }] : []), ...(body.research ? [{ action: "research", label: "title research" }] : []),
-          ...(body.devAssetType ? [{ action: "devasset", label: "Development asset (" + String(body.devAssetType).slice(0, 60) + ")", assetType: String(body.devAssetType).slice(0, 100) }] : []),
+          ...[...(Array.isArray(body.devAssetTypes) ? body.devAssetTypes : []), ...(body.devAssetType ? [body.devAssetType] : [])].slice(0, 12).map(t => ({ action: "devasset", label: "Development asset (" + String(t).slice(0, 60) + ")", assetType: String(t).slice(0, 100) })),
           ...(body.pillar ? [{ action: "pillar", label: (body.pillarType || "SEO Main") + " pillar" }] : [])];
         if (!steps.length) return json({ error: "nothing to run" }, 400);
         const id = "tj" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
