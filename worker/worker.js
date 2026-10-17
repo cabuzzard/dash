@@ -11955,6 +11955,29 @@ async function srReddit(q) {   // Reddit's free RSS search (the keyless JSON API
     return { posts }; }
   catch (e) { return { blocked: e.message }; }
 }
+// RUN TYPES (operator 2026-10-17: "put them all in") — a run = a set of posts made together from one source, one copy
+// strategy, one design treatment. Each: shape (single = separate posts · carousel = one carousel), posts, cadence, the idea
+// sources that feed it, and the copy formula. Writing / robust designer / Buffer per hub login come later.
+const RUN_TYPES = [
+  { id: "faq", group: "Educational", name: "FAQ run", shape: "single", posts: 6, cadence: "over a week", sources: ["Search questions", "YouTube autocomplete", "Google autocomplete", "Title research"], formula: "The question as the hook → a 2-3 line answer → 'full answer on the blog'" },
+  { id: "myth", group: "Educational", name: "Myth vs fact", shape: "single", posts: 5, cadence: "over a week", sources: ["Reddit", "Pain points", "Search questions"], formula: "'Myth: …' / 'Truth: …' + one proof point" },
+  { id: "mistakes", group: "Educational", name: "Mistakes run", shape: "single", posts: 5, cadence: "over a week", sources: ["Pain points", "Reddit", "Search questions"], formula: "'Mistake #n: …' → why it hurts → the fix" },
+  { id: "tips", group: "Educational", name: "Tip countdown", shape: "carousel", posts: 7, cadence: "one carousel", sources: ["Title research", "Your interviews", "Search questions"], formula: "'Tip n of 7' → one action they can take today" },
+  { id: "glossary", group: "Educational", name: "Glossary / term of the week", shape: "single", posts: 4, cadence: "one a week", sources: ["Search questions", "Title research"], formula: "Term → plain-English meaning → why it matters to them" },
+  { id: "diary", group: "Trust & story", name: "Behind the scenes / diary", shape: "single", posts: 4, cadence: "3-5 a week", sources: ["Your interviews", "What's new (Digest)"], formula: "What happened → what it means → a small invitation" },
+  { id: "own-words", group: "Trust & story", name: "Your own words", shape: "single", posts: 4, cadence: "over two weeks", sources: ["Your interviews"], formula: "A pull-quote from your answer → one line of context" },
+  { id: "story", group: "Trust & story", name: "Customer story", shape: "carousel", posts: 5, cadence: "one carousel", sources: ["Benefits & proof", "Pain points", "Your interviews"], formula: "Problem → the turn → result → CTA" },
+  { id: "before-after", group: "Trust & story", name: "Before / after", shape: "single", posts: 3, cadence: "over a week", sources: ["Benefits & proof", "Your interviews"], formula: "Two frames, a short caption" },
+  { id: "pain-solution", group: "Selling", name: "Pain → solution", shape: "single", posts: 3, cadence: "3 in a row, building", sources: ["Pain points", "Benefits & proof"], formula: "Name the pain → why it happens → how the offer solves it" },
+  { id: "objections", group: "Selling", name: "Objection handler", shape: "single", posts: 4, cadence: "over a week", sources: ["Pain points", "Reddit"], formula: "'It's too …' — the real answer, with proof" },
+  { id: "spotlight", group: "Selling", name: "Offer spotlight sequence", shape: "single", posts: 5, cadence: "over a week, building", sources: ["Benefits & proof", "Pain points", "Search questions"], formula: "Tease → feature → proof → FAQ → last call" },
+  { id: "compare", group: "Selling", name: "Comparison", shape: "carousel", posts: 5, cadence: "one carousel", sources: ["Search questions", "Google autocomplete"], formula: "Side by side → who each one is for" },
+  { id: "this-week", group: "Timely & engagement", name: "This week in…", shape: "single", posts: 3, cadence: "per digest", sources: ["What's new (Digest)"], formula: "Headline → why it matters → what to do" },
+  { id: "trend", group: "Timely & engagement", name: "Trend reaction", shape: "single", posts: 2, cadence: "fast", sources: ["Reddit", "Google autocomplete", "YouTube autocomplete"], formula: "'Everyone's asking about X — here's the short answer'" },
+  { id: "poll", group: "Timely & engagement", name: "Poll / question", shape: "single", posts: 2, cadence: "1-2 a week", sources: ["Search questions", "Reddit"], formula: "A question with 2-4 options (answers feed future ideas)" },
+  { id: "seasonal", group: "Timely & engagement", name: "Seasonal calendar", shape: "single", posts: 4, cadence: "monthly set", sources: ["Title research", "Search questions", "What's new (Digest)"], formula: "'It's <month> — here's what to do now'" },
+  { id: "challenge", group: "Timely & engagement", name: "7-day challenge", shape: "single", posts: 7, cadence: "daily for a week", sources: ["Title research", "Your interviews", "Search questions"], formula: "Day n task → small win → share prompt" },
+];
 async function seriesIdeas(env, titleId, force) {
   titleId = String(titleId || "").replace(/-/g, "");
   const ck = "seriesideas:" + titleId; if (!force) { const c = await env.TRADES.get(ck, "json"); if (c) return c; }
@@ -17542,7 +17565,7 @@ ${JSON.stringify(products)}`;
       if (body.action === "seriesIdeas") {
         if (!body.titleId) return json({ error: "titleId required" }, 400);
         try { const r = await seriesIdeas(env, body.titleId, !!body.force); const used = (await env.TRADES.get("series:used:" + String(body.titleId).replace(/-/g, ""), "json")) || [];
-          return json({ ok: true, ...r, used }); } catch (e) { return json({ error: e.message }, 500); }
+          return json({ ok: true, ...r, used, runTypes: RUN_TYPES }); } catch (e) { return json({ error: e.message }, 500); }
       }
       // seriesUseIdea {titleId, seriesAssetId, ideaId, idea, kind: single|carousel|youtube, assetType, campaignId, productId, slug}
       // → an EMPTY Development child (linked to the Series parent, the idea noted on it); the idea is marked used
@@ -17558,6 +17581,22 @@ ${JSON.stringify(products)}`;
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used });
+      }
+      // seriesRun {titleId, titleName, seriesAssetId, runType, ideas:[{id,t,src}], assetType, campaignId, productId, slug}
+      if (body.action === "seriesRun") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""), rt = RUN_TYPES.find(x => x.id === body.runType);
+        if (!titleId || !rt || !body.assetType) return json({ error: "titleId, runType and assetType required" }, 400);
+        const ideas = (Array.isArray(body.ideas) ? body.ideas : []).slice(0, 12); if (!ideas.length) return json({ error: "no unused ideas in this run type's sources — refresh or add sources" }, 400);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const plan = `RUN · ${rt.name} (${rt.group}) — ${rt.shape === "carousel" ? "one carousel, " + ideas.length + " slides" : ideas.length + " posts"}, ${rt.cadence}\nCopy formula: ${rt.formula}\n\n` + ideas.map((x, i) => `${i + 1}. ${String(x.t).slice(0, 220)}${x.src ? " (" + x.src + ")" : ""}`).join("\n");
+        const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
+          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label: rt.name, titleOverride: `Run · ${rt.name} — ${body.titleName || "Series"}`, note: plan }] });
+        if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; ideas.forEach(x => { if (x.id && !used.includes(x.id)) used.push(x.id); });
+        await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
+        return json({ ok: true, assetId: r.created[0].id, used, posts: ideas.length });
       }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
