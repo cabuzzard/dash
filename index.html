@@ -15198,7 +15198,7 @@ setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
 // ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
 // job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
 const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Weekly hub digests (Sunday night)' };
-let _hubJobs = { hidden: false, open: true, last: null, t: null };
+let _hubJobs = { hidden: false, open: true, last: null, t: null, mine: new Set() };   // mine = jobs this page queued (always refreshed when done)
 function hubJobsName(cid) { const h = HUB_SITES.find(x => String(x.campaignId || '').replace(/-/g, '') === cid); return h ? (h.name || h.slug) : cid.slice(0, 8); }
 async function hubJobsPoll() {
   clearTimeout(_hubJobs.t);
@@ -15209,7 +15209,7 @@ async function hubJobsPoll() {
   { const now = ((_hubJobs.last && _hubJobs.last.jobs.titles) || {}).states || {}, slugs = new Set();   // a title job just finished → refresh that hub's titles
     const firstPoll = !_hubJobs.seen; _hubJobs.seen = _hubJobs.seen || new Set();
     Object.entries(now).forEach(([id, s]) => { const fresh = s.done && !_hubJobs.seen.has(id); if (s.done) _hubJobs.seen.add(id);
-      if (fresh && !firstPoll && s.slug) { slugs.add(s.slug);
+      if (s.done && s.slug && (_hubJobs.mine.has(id) || (fresh && !firstPoll))) { _hubJobs.mine.delete(id); slugs.add(s.slug);
       if (s.kind === 'product' && s.productId && !s.error) { const K = _hubKw[s.slug], p = K && (K.products || []).find(x => String(x.id).replace(/-/g, '') === s.productId); if (p) p.outOfSync = false; (_hubResState[s.slug] = _hubResState[s.slug] || {})[s.productId] = 'updated'; } } });
     slugs.forEach(sl => { if (_hub2Pool[sl]) hub2PoolLoad(sl, true); hubResLoad(sl, true); if (_hubTitles[sl]) hubTitlesLoad(sl, true).then(() => hubKwRefresh(sl)); else hubKwRefresh(sl); }); }
   const busy = _hubJobs.last && Object.values(_hubJobs.last.jobs).some(j => j.queue.length);
@@ -17130,7 +17130,7 @@ async function hubKwTitleAddGo(slug, topicId) {
   if (doRes || doPil) {   // runs on the server — close the modal / tab, it carries on (⚙ Background jobs shows it)
     const q = await call('queueTitleJob', { titleId: id, name: title, slug, research: doRes, pillar: doPil, pillarType: ptype, styleGuidance: doPil ? DEV2_PILLAR_TYPES[ptype] : undefined }).catch(e => ({ error: e.message }));
     if (!q || q.error) notes.push('research / pillar not queued: ' + ((q && q.error) || 'no response'));
-    else { queued = true; call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); }
+    else { queued = true; if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); }
   }
   _hubKwOpen[slug + '|ti:' + topicId] = true;
   const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (queued ? ' · ' + [doRes && 'research', doPil && ptype + ' pillar'].filter(Boolean).join(' + ') + ' running in the background (⚙ bottom-right) — you can carry on' : '');
@@ -18457,7 +18457,7 @@ async function hubResRun() {   // runs on the server (⚙ Background jobs) — c
   const q = await call('queueProductResearch', { productId: R.pid, campaignId: h && h.campaignId, name: R.name, slug: R.slug, fields: HUB_STRATEGY_FIELDS }).catch(e => ({ error: e.message }));
   R.busy = '';
   if (!q || q.error) { R.log = '✗ Not started: ' + ((q && q.error) || 'no response'); return hubResDraw(); }
-  call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
+  if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
   R.log = '⏳ Research is running in the background (⚙ bottom-right) — you can close this and carry on. The dot turns green when it finishes.';
   hubResDraw();
 }   // _hubProdHide[slug] = statuses filtered OUT
