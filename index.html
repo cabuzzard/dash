@@ -15158,6 +15158,7 @@ async function hubSitesExtraLoad() {
     for (const e of (r.hubs || [])) if (!HUB_SITES.some(h => h.slug === e.slug)) { HUB_SITES.push({ name: e.name || e.slug, slug: e.slug, campaignId: String(e.campaignId).replace(/-/g, ''), campaign: e.name || e.slug,
       microsite: null, domain: e.domain || null, contact: null, products: 0, blogPosts: 0, routing: 'pending', routingNote: 'Scaffolded from dash — registered in KV hub:sites:extra.', domainOptions: [] }); added++; }
     if (added) renderHubsTab();
+    _hubExtraDone = true; if (document.getElementById('hubs2TabContent') && (added || !_hub2Restored)) renderHubs2();   // restore a remembered KV-registered hub card
   } catch (e) { setTimeout(() => { _hubExtraLoaded = false; }, 30000); }   // one retry window, never a retry per draw
 }
 // ── Bulk job banner (top of dash): long server-side runs report progress in KV; shown while running + once when done ──
@@ -15546,7 +15547,7 @@ function renderHubsTab() {
 // Intentionally minimal parallel workspace. The original Content Hubs tab
 // stays untouched while this version starts with only a hub picker, the live
 // preview, and an independent Codex Design panel (collapsed on every render).
-let HUB2_IDX = 0;
+let HUB2_IDX = 0, _hub2Restored = false, _hubExtraDone = false;   // the hub card you were on is remembered (localStorage hub2Slug)
 const _hub2CodexPanels = {}, _hub2Preview = {};
 const _hub2Content = {}, _hub2ContentSort = {}, _hub2ContentGroup = {}, _hub2ContentClosed = {}, _hub2ContentFilters = {}, _hub2ContentFilterOpen = {}, _hub2Selected = {}, _hub2BulkMsg = {}, _hub2Checklist = {}, _hub2ChecklistSort = {}, _hub2ChecklistFilters = {}, _hub2ChecklistFilterOpen = {};
 function hub2Jump(i) { HUB2_IDX = Math.max(0, Math.min(HUB_SITES.length - 1, i)); renderHubs2(); }
@@ -15554,7 +15555,10 @@ function hub2Go(d) { if (!HUB_SITES.length) return; HUB2_IDX = (HUB2_IDX + d + H
 function renderHubs2() {
   const el = document.getElementById('hubs2TabContent'); if (!el) return;
   hubSitesExtraLoad(); if (!HUB_SITES.length) { el.innerHTML = '<div class="empty">No hubs found.</div>'; return; }
+  if (!_hub2Restored) { try { const s = localStorage.getItem('hub2Slug'), i = s ? HUB_SITES.findIndex(x => x.slug === s) : -1;
+    if (i >= 0) { HUB2_IDX = i; _hub2Restored = true; } else if (!s || _hubExtraDone) _hub2Restored = true; } catch (e) { _hub2Restored = true; } }
   if (HUB2_IDX >= HUB_SITES.length) HUB2_IDX = 0;
+  if (_hub2Restored) { try { localStorage.setItem('hub2Slug', HUB_SITES[HUB2_IDX].slug); } catch (e) {} }   // (a hub that loads late — KV-registered — is not overwritten before it arrives)
   const h = HUB_SITES[HUB2_IDX], slug = h.slug, url = 'https://cabuzzard.github.io/dash/web/hub/' + slug + '/';
   const B = 'font-size:10px;padding:4px 9px;border:1px solid var(--border2);border-radius:5px;background:transparent;color:var(--text3);cursor:pointer;';
   el.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
