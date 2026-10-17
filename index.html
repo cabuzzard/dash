@@ -17113,8 +17113,12 @@ function hubKwTitleAdd(slug, topicId) {
   const t = [...K.staged, ...K.committed].find(x => x.id === topicId), tname = topicId === '__main' ? 'Main' : (t ? t.name : 'topic');
   const inTopic = all.filter(p => topicId === '__main' ? p.topicId === '__main' : p.topicId === nid(topicId)), mains = all.filter(p => !inTopic.includes(p) && (K.mainIds || []).includes(nid(p.id))), rest = all.filter(p => !inTopic.includes(p) && !mains.includes(p));
   const opt = p => `<option value="${esc(nid(p.id))}">📦 ${esc(p.name)}</option>`, grp = (l, list) => list.length ? `<optgroup label="${esc(l)}">${list.map(opt).join('')}</optgroup>` : '';
-  hcModal(`<h3 style="margin:0 0 4px;">＋ Title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">In topic <b>${esc(tname)}</b> — it lives here and takes its keywords from this topic.</div>
+  hcModal(`<h3 style="margin:0 0 4px;">＋ Title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">It lives in the topic below and takes its keywords from it — opened from <b>${esc(tname)}</b>.</div>
     ${HT_LBL('Title (platform title)')}<input id="hkTaTitle" style="${HT_IN}" placeholder="The title as it will be published">
+    ${HT_LBL('Topic')}<select id="hkTaTopic" style="${HT_IN}">${(() => { const cl = K.tc.clusters || [], as = K.tc.assign || {}, tps = [...K.staged, ...K.committed].slice().sort((a, b) => String(a.name).localeCompare(String(b.name)));
+      const o = (v, l) => `<option value="${esc(v)}" ${v === topicId ? 'selected' : ''}>${esc(l)}</option>`, cOf = t => { const c = as[t.id]; return c && cl.includes(c) ? c : ''; };
+      return o('__main', 'Main (the hub\'s main keywords)') + cl.map(c => { const ts = tps.filter(t => cOf(t) === c); return ts.length ? `<optgroup label="🧩 ${esc(c)}">${ts.map(t => o(t.id, t.name)).join('')}</optgroup>` : ''; }).join('')
+        + (() => { const ts = tps.filter(t => !cOf(t)); return ts.length ? `<optgroup label="Topics with no cluster">${ts.map(t => o(t.id, t.name)).join('')}</optgroup>` : ''; })(); })()}</select>
     ${HT_LBL('Guidance')}<textarea id="hkTaGuide" rows="5" style="${HT_IN}resize:vertical;" placeholder="Angle, audience, points to make, sources, tone… (the title's research instructions — every writer reads it)"></textarea>
     ${HT_LBL('Product it sells')}<select id="hkTaProd" style="${HT_IN}"><option value="">— no product —</option>${grp('This topic', inTopic)}${grp('★ Main offerings', mains)}${grp('Other products', rest)}</select>
     ${HT_LBL('Development asset (optional — registered empty, filled later)')}<select id="hkTaAsset" style="${HT_IN}"><option value="">— none —</option><option disabled>loading methods…</option></select>
@@ -17128,7 +17132,8 @@ function hubKwTitleAdd(slug, topicId) {
   (async () => { try { if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(m => m.status === 'Live').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) {}
     const sel = document.getElementById('hkTaAsset'); if (sel) sel.innerHTML = '<option value="">— none —</option>' + (_htMethods || []).map(m => `<option value="${esc(m.name)}">${esc(m.name)}</option>`).join(''); })();
 }
-async function hubKwTitleAddGo(slug, topicId) {
+async function hubKwTitleAddGo(slug, topicIdFrom) {
+  const topicId = ((document.getElementById('hkTaTopic') || {}).value) || topicIdFrom;
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const title = document.getElementById('hkTaTitle').value.trim(); if (!title) return 'Enter a title';
   const guide = document.getElementById('hkTaGuide').value.trim(), productId = document.getElementById('hkTaProd').value || undefined;
