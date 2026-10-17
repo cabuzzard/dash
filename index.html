@@ -17140,6 +17140,11 @@ async function hubKidBoxes(slug, boxId, cls) {
   box.innerHTML = kids.length ? kids.map(m => { const type = m.aliases.find(a => a !== m.name) || m.asset || m.name;
     return `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(type)}">${esc(m.name)}${m.tier && !/none|parent|title|product/i.test(m.tier) ? ' <span style="font-size:10px;color:#ff7a00;">🎤 ' + esc(m.tier) + '</span>' : ''}</label>`; }).join('')
     : 'No child asset types on this hub’s checklist.';
+  // every other Live method (asset types not on the checklist — Listing, …), collapsed underneath
+  try { if (!_htMethods) _htMethods = ((await call('searchMethods', { query: '' })).methods || []).filter(m => m.status === 'Live').sort((a, b) => a.name.localeCompare(b.name)); } catch (e) {}
+  const have = new Set([...box.querySelectorAll('input')].map(i => i.value.toLowerCase()));
+  const more = (_htMethods || []).filter(m => !have.has(String(m.name).toLowerCase()));
+  if (more.length && document.getElementById(boxId)) box.insertAdjacentHTML('beforeend', `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:11px;color:var(--text3);">Other asset types (${more.length})</summary>${more.map(m => `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(m.name)}">${esc(m.name)}</label>`).join('')}</details>`);
 }
 async function hubKwTitleAddGo(slug, topicIdFrom) {
   const topicId = ((document.getElementById('hkTaTopic') || {}).value) || topicIdFrom;
