@@ -50745,10 +50745,36 @@ async function kwRunSummary(env, runId) {
 }
 
 async function kwFinish(env, runId, status, notes) {
+  try { const pr = await env.KWDB.prepare("SELECT params_json FROM kw_runs WHERE id = ?").bind(runId).first(); const pb = pr && JSON.parse(pr.params_json).broadened;
+    if (pb && pb.length) notes += " · seeds broadened (Google had too few ideas): " + pb.slice(0, 8).join(", ") + (pb.length > 8 ? " …" : ""); } catch (e) {}
   await env.KWDB.prepare("UPDATE kw_runs SET status=?, notes=?, finished_at=? WHERE id=?").bind(status, notes, kwNow(), runId).run();
   try { await kwBuildSnapshot(env, runId); } catch (e) { console.error("snapshot", runId, e && e.message); }
   await env.TRADES.delete("kw:stats");
   return { done: true, line: "■ " + notes, run: await kwRunSummary(env, runId) };
+}
+
+// Thin-result fallback (2026-10-17): Keyword Planner only expands seeds it recognises as searched phrases — a coined,
+// narrow or misspelled seed ("commercial aquisitions", "bio generative construction") comes back as just itself.
+// Broader seeds, in order: Claude Haiku's broader, correctly spelled searched phrases on the same topic (fixes typos and
+// coined terms — autocomplete doesn't), then the top Google autocomplete phrases, then the seed with words trimmed
+// (every shorter run of ≥2 words). No single bare words — they pull in everything.
+async function kwBroadenSeeds(env, texts) {
+  const orig = new Set(texts.map(t => kwNorm(t))), out = [];
+  const add = t => { const k = kwNorm(String(t).replace(/["'.]/g, "")); if (k && k.includes(" ") && k.length < 80 && !orig.has(k) && !out.includes(k)) out.push(k); };
+  if (env.ANTHROPIC_API_KEY) try {
+    const r = await fetch("https://api.anthropic.com/v1/messages", { method: "POST",
+      headers: { "x-api-key": env.ANTHROPIC_API_KEY.trim(), "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 200, messages: [{ role: "user", content:
+        `These keyword seeds got no related searches from Google Keyword Planner — too narrow, coined, or misspelled: ${texts.join("; ")}\n`
+        + `Give 8 broader phrases (2-4 words, correctly spelled) that people actually type into Google, staying on the same topic and intent. Comma-separated, nothing else.` }] }) });
+    const j = await r.json(); (((j.content || [])[0] || {}).text || "").split(/[,\n]/).forEach(add);
+  } catch (e) {}
+  for (const t of texts.slice(0, 5)) {
+    (await srSuggest(t)).slice(0, 3).forEach(add);
+    const words = kwNorm(t).split(" ").filter(Boolean);
+    for (let n = words.length - 1; n >= 2; n--) for (let i = 0; i + n <= words.length; i++) add(words.slice(i, i + n).join(" "));
+  }
+  return out.slice(0, 15);
 }
 
 // Run the request for `seeds` (rows {id,text,root}) at `depth`; results land at depth+1.
@@ -50759,20 +50785,36 @@ async function kwStepRequest(env, run, p, seeds, depth, extra) {
   const out = await kwIdeasRequest(env, req, p.market, { runId: run.id });
   const parent = seeds.length === 1 ? seeds[0].id : null;   // several seeds → Google doesn't attribute; kw_request_seeds keeps all
   const root = seeds.length ? seeds[0].root : null;
+  // fewer than 5 ideas for typed seeds → one more request with broadened seeds (results land at the same depth)
+  let fb = null, broad = [];
+  if (depth === 0 && !extra.site && !extra.url && seeds.length && out.ideaCount < 5) {
+    broad = await kwBroadenSeeds(env, seeds.map(s => s.text));
+    if (broad.length) fb = await kwIdeasRequest(env, { keywords: broad, url: null, site: null }, p.market, { runId: run.id });
+  }
   const stmts = [
     db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, parent_keyword_id, root_seed_id, request_id) "
       + "SELECT ?1, keyword_id, ?2, ?3, ?4, ?5 FROM kw_request_results WHERE request_id = ?5").bind(run.id, depth + 1, parent, root, out.requestId),
     db.prepare("UPDATE kw_runs SET api_calls = api_calls + ?, requests = requests + 1, cache_hits = cache_hits + ? WHERE id = ?")
       .bind(out.apiCalls, out.cached ? 1 : 0, run.id),
   ];
+  if (fb) {
+    p.broadened = [...new Set([...(p.broadened || []), ...broad])].slice(0, 30);
+    stmts.push(
+      db.prepare("INSERT OR IGNORE INTO kw_frontier(run_id, keyword_id, depth, parent_keyword_id, root_seed_id, request_id) "
+        + "SELECT ?1, keyword_id, ?2, NULL, ?3, ?4 FROM kw_request_results WHERE request_id = ?4").bind(run.id, depth + 1, root, fb.requestId),
+      db.prepare("UPDATE kw_runs SET api_calls = api_calls + ?, requests = requests + 1, cache_hits = cache_hits + ?, params_json = ? WHERE id = ?")
+        .bind(fb.apiCalls, fb.cached ? 1 : 0, JSON.stringify(p), run.id));
+  }
   if (seeds.length) stmts.push(db.prepare("UPDATE kw_frontier SET expanded = 1, queued = 0 WHERE run_id = ?1 AND keyword_id IN (SELECT value FROM json_each(?2))")
     .bind(run.id, JSON.stringify(seeds.map(s => s.id))));
   const res = await db.batch(stmts);
-  const added = (res[0].meta && res[0].meta.changes) || 0;
+  const added = ((res[0].meta && res[0].meta.changes) || 0) + (fb ? ((res[2].meta && res[2].meta.changes) || 0) : 0);
   if (added) await db.prepare("UPDATE kw_runs SET keywords = IFNULL(keywords, 0) + ? WHERE id = ?").bind(added, run.id).run();
   const label = extra.site || [req.keywords.join(", "), extra.url].filter(Boolean).join(" + ");
-  return { line: "L" + depth + " " + label + " — " + out.ideaCount.toLocaleString() + " ideas, " + added.toLocaleString() + " new ["
-    + (out.cached ? "cache" : "1 API call") + "]" };
+  const calls = (out.cached ? 0 : 1) + (fb && !fb.cached ? 1 : 0);
+  return { line: "L" + depth + " " + label + " — " + out.ideaCount.toLocaleString() + " ideas"
+    + (fb ? " → too few, broadened to " + broad.slice(0, 6).join(", ") + (broad.length > 6 ? " …" : "") + " — " + fb.ideaCount.toLocaleString() + " ideas" : "")
+    + ", " + added.toLocaleString() + " new [" + (calls ? calls + " API call" + (calls > 1 ? "s" : "") : "cache") + "]" };
 }
 
 async function kwStepRun(env, runId) {
