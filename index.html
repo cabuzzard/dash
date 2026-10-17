@@ -16978,7 +16978,7 @@ function hubGridRow(o) {
 // "Unclustered topics" (or its 🧩 move-to select on touch) — saved with saveTopicClusters, the same store care-gap uses.
 // Each topic lists its 📦 products (Topic ID, else Product Stack = topic name) and ＋ product creates a Planning product
 // on that topic (createProduct with stack + topicId — no research runs here). Every level starts collapsed.
-const _hubKw = {}, _hubKwOpen = {}, _hubKwSyncOnly = {};
+const _hubKw = {}, _hubKwOpen = {}, _hubKwSyncOnly = {}, _hubKwRecent = new Set();   // _hubKwRecent: titles created / edited this session — never hidden by the sync filters
 let _hubCategorizing = false;
 async function hubCategorizeAll(btn) {
   if (_hubCategorizing) return;
@@ -17168,7 +17168,7 @@ async function hubKwTitleAddGo(slug, topicIdFrom) {
   msg('Creating the title…');
   const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
   if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
-  const id = String(r.id).replace(/-/g, ''), notes = [];
+  const id = String(r.id).replace(/-/g, ''), notes = []; _hubKwRecent.add(id);
   msg('Placing it in the topic…');
   const s = await call('setTitleTopic', { titleId: id, topicId: topicId === '__main' ? '__main' : String(topicId).replace(/-/g, '') }).catch(e => ({ error: e.message }));
   if (!s || s.error) notes.push('topic not set: ' + ((s && s.error) || 'no response'));
@@ -17228,6 +17228,7 @@ async function hubSeriesNewGo(slug) {
   const r = await call('createSeries', { campaignId: h.campaignId, name, topicId: document.getElementById('srTopic').value, productId: document.getElementById('srProd').value || undefined, slug }).catch(e => ({ error: e.message }));
   if (!r || r.error) return r && r.error || 'Not created';
   if (r.jobId) _hubJobs.mine.add(r.jobId); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
+  if (r.titleId) _hubKwRecent.add(String(r.titleId).replace(/-/g, ''));
   document.getElementById('hcModal').classList.remove('open');
   const K = _hubKw[slug]; if (K) K.msg = '✓ Series "' + name + '" created — its keywords + research are running; ✨ ideas on its title row';
   await hubTitlesLoad(slug, true); hubKwRefresh(slug); return true;
@@ -17627,7 +17628,7 @@ function renderHubKw(slug) {
   // one Existing-product row (＋ title · 🔬 research) — shared by Master and every topic
   const exRow = (p, also) => `<div class="hkw-row hkw-ex" draggable="true" ondragstart="hubKwProdDragStart(event,'${esc(p.id)}')" title="Drag onto another topic to move it — onto Master to make it a ★ main offering (it stays in its topic)" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;"><span onclick="event.stopPropagation();hub2ContentShowProduct('${slug}',${esc(JSON.stringify(p.name))})" title="Open Content filtered to this product — all its titles and assets" style="cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px;">📦 ${esc(p.name)}</span>${also ? ` <span title="The same product — it lives in this topic and shows in Main because it is a ★ main offering" style="font-size:10px;color:#8ab4f8;">↗ ${esc(also)}</span>` : ''}<span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot">${hubKwStageTag(slug, p)}</span><span class="hkw-slot"></span>${showPil ? '<span class="hkw-slot"></span>' : ''}<span class="hkw-slot"></span><span class="hkw-ctl">${(K.mainIds || []).includes(String(p.id).replace(/-/g, '')) ? '<span title="Main offering of this hub" style="color:#f5c542;font-size:12px;line-height:1;cursor:help;margin-right:auto;">★</span>' : ''}<button style="${btn}" title="Edit product — stage" onclick="hubKwEditProduct('${slug}','${esc(p.id)}')">✎ edit</button><button style="${btn}" title="Add a title for this product (Planning)" onclick="hubTitleNewModal('${slug}','${esc(p.id)}')">＋ title</button><button style="${btn}" title="Open this product's research — keywords, isolate, re-run" onclick="hubResOpen('${slug}','${esc(p.id)}')">🔬 research</button><button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this product (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteProduct('${slug}','${esc(p.id)}')">✕</button></span></span></div>`;
   // ✓ In sync only (toolbar toggle): every cluster / topic stays, only in-sync products and titles are listed (header counts stay complete)
-  const syncOnly = !!_hubKwSyncOnly[slug], showP = p => !syncOnly || hubKwSyncState(slug, p) === 'in', showT = x => !syncOnly || (!x.oos && x.res);
+  const syncOnly = !!_hubKwSyncOnly[slug], showP = p => !syncOnly || hubKwSyncState(slug, p) === 'in', showT = x => !syncOnly || (!x.oos && x.res) || _hubKwRecent.has(String(x.id).replace(/-/g, ''));   // titles you just made / edited stay visible
   // titles live in topics (their own Topic ID, else their product's topic) — needs the Titles data; loaded once on first paint
   if (!_hubTitles[slug]) setTimeout(() => hubTitlesLoad(slug).then(() => hubKwRefresh(slug)), 0);
   const titlesErr = _hubTitles[slug] && _hubTitles[slug].error;   // a failed titles load shows its error + ⟳ (it used to say "Loading titles…" forever)
@@ -17641,7 +17642,7 @@ function renderHubKw(slug) {
   const pIn = p => hubKwSyncState(slug, p) === 'in', tIn = x => !x.oos && x.res;
   const keep = p => (!F.states.length || F.states.some(s => s === 'Keyword Research' ? p.stage === 'Keyword Research' : s === 'In sync' ? pIn(p) : !pIn(p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
   // titles: In sync / Out of sync (the title dot); 'Main offerings only' is a product filter, so it hides titles
-  const keepT = x => !fOn || (!F.main && F.states.some(s => s === 'In sync' ? tIn(x) : s === 'Out of sync' ? !tIn(x) : false));
+  const keepT = x => !fOn || _hubKwRecent.has(String(x.id).replace(/-/g, '')) || (!F.main && F.states.some(s => s === 'In sync' ? tIn(x) : s === 'Out of sync' ? !tIn(x) : false));
   // blue = flagged for keyword research · green = Development in sync · orange = Development out of sync (incl. no research);
   // fixed-width cells so the counts line up in one column on every topic AND Master; zero = blank
   const kwCounts = (ps, ts) => { ts = ts || []; const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
@@ -19030,6 +19031,7 @@ async function hcWritePillar(slug, sid, tid, btn) {
   } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ Pillar failed: ' + e.message; btn.disabled = false; btn.textContent = '✍ Write pillar'; }
 }
 async function hcTitleSave(slug, sid, tid) {
+  _hubKwRecent.add(String(tid || '').replace(/-/g, ''));
   const t = hubTitleFind(slug, sid, tid); if (!t) return 'Title not found';
   const nv = { title: document.getElementById('hcEdTitle').value.trim(), titleNotes: document.getElementById('hcEdNotes').value, status: document.getElementById('hcEdStatus').value, productId: kwNid(document.getElementById('hcEdProduct').value) };
   const cur = { title: t.title, titleNotes: t.notes || '', status: t.status, productId: kwNid(t.productId) };
