@@ -1610,8 +1610,8 @@ function hubNewsPeriodKey(cadence) {
   if (cadence === "Monthly") d.setUTCDate(1);
   else if (cadence === "Twice monthly") d.setUTCDate(d.getUTCDate() < 16 ? 1 : 16);
   else if (cadence === "Quarterly") { d.setUTCMonth(Math.floor(d.getUTCMonth() / 3) * 3); d.setUTCDate(1); }
-  else d.setUTCDate(d.getUTCDate() - ((wd + 1) % 7));
-  return { key: d.toISOString().slice(0, 10), hour: +p.hour };
+  else d.setUTCDate(d.getUTCDate() - ((wd + 6) % 7));   // Weekly = Monday → Sunday, so News follows Sunday night's digest
+  return { key: d.toISOString().slice(0, 10), hour: +p.hour, wd };
 }
 async function hubNewsCronTick(env) {
   if (await env.TRADES.get("hubnews:busy").catch(() => null)) return { busy: true };
@@ -1623,7 +1623,8 @@ async function hubNewsCronTick(env) {
   const per = hubNewsPeriodKey(cadence);
   if (per.hour < 7 || per.hour >= 21) return { idle: true, why: "outside 07:00-21:00 Pacific" };
   const done = (await env.TRADES.get("hubnews:period", "json").catch(() => null)) || {}, retry = (await env.TRADES.get("hubnews:retry", "json").catch(() => null)) || {};
-  const pc = HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(Boolean).find(c => done[c] !== per.key && !(retry[c] > Date.now()));
+  const dDone = (await env.TRADES.get("digest:auto:done", "json").catch(() => null)) || {}, dKey = adPeriod().key, early = cadence === "Weekly" && per.wd === 1 && per.hour < 12;
+  const pc = HUB_SITES.map(h => String(h.campaignId || "").replace(/-/g, "")).filter(Boolean).find(c => done[c] !== per.key && !(retry[c] > Date.now()) && !(early && dDone[c] !== dKey));   // Monday morning: only once its Weekly Digest is done
   if (!pc) return { idle: true };
   await env.TRADES.put("hubnews:busy", pc, { expirationTtl: 1800 });
   let r;
@@ -50295,8 +50296,10 @@ Produce all of this by calling the submit_listing tool — do not include any of
         .catch(e => console.error('buildEcosystemGraph failed:', e.message))
     );
     cw("runListingRepostReminders", runListingRepostReminders(env).catch(e => console.error('runListingRepostReminders failed:', e.message)));
-    cw("runHubFrontReminders", runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
-    cw("runStrategySequenceReminders", runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
+    // OFF (operator 2026-10-17 — Hub Fronts UI removed 09-09) — re-enable with KV cron:on:hubfronts = 1
+    if (await env.TRADES.get("cron:on:hubfronts")) cw("runHubFrontReminders", runHubFrontReminders(env).catch(e => console.error('runHubFrontReminders failed:', e.message)));
+    // OFF (operator 2026-10-17 — older Growth Strategy slots) — re-enable with KV cron:on:strategyseq = 1
+    if (await env.TRADES.get("cron:on:strategyseq")) cw("runStrategySequenceReminders", runStrategySequenceReminders(env).catch(e => console.error('runStrategySequenceReminders failed:', e.message)));
     // OFF (operator 2026-10-16, API cost: a web-search agent daily) — re-enable with KV cron:on:affiliatescan = 1
     if (await env.TRADES.get("cron:on:affiliatescan")) cw("runAffiliateScan", runAffiliateScan(env).catch(e => console.error('runAffiliateScan failed:', e.message)));
     // Lead sourcing — OPT-IN: no-ops unless a vertical key is in KV `leadsrc:auto`
