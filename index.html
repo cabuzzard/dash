@@ -18859,7 +18859,7 @@ function hcTitleEdit(slug, sid, tid) {
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>
     <select id="hcEdProduct" style="${IN}"><option value="">— no product —</option>${products.map(p => `<option value="${esc(p.id)}" ${kwNid(t.productId) === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword topic <span style="text-transform:none;letter-spacing:0;">— where the title lives and takes its keywords from (the product only decides what it sells)</span></label>
-    <select id="hcEdTopic" style="${IN}"><option value="">Loading topics…</option></select>
+    <select id="hcEdTopic" style="${IN}" onchange="this.dataset.changed='1'"><option value="">Loading topics…</option></select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label>
     <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
@@ -18879,7 +18879,7 @@ function hcTitleEdit(slug, sid, tid) {
   const own = ((((_hubTitles[slug] || {}).rows) || []).find(r => r.titleId === tid) || (DEV2_ROWS || []).find(r => r.titleId === tid) || {}).titleTopicId || '';
   hubKidBoxes(slug, 'hcEdKids', 'hcEdKid');
   kwTopicsFor(h.campaignId).then(dd => { const sel = document.getElementById('hcEdTopic'); if (!sel) return;
-    sel.innerHTML = kwTopicOptions(dd, own).replace('— pick a keyword topic —', '(its product’s topic)'); sel.dataset.cur = own; })
+    sel.innerHTML = kwTopicOptions(dd, own).replace('— pick a keyword topic —', '(its product’s topic)').replace('</option>', `</option><option value="__main" ${own === '__main' ? 'selected' : ''}>Main (the hub’s main keywords)</option>`); sel.dataset.cur = own; })
     .catch(e => { const sel = document.getElementById('hcEdTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; });
 }
 // ✍ Write pillar from the title modal: writeTitlePillar with the chosen pillar type (writes the pillar + Planning → Development)
@@ -18904,7 +18904,7 @@ async function hcTitleSave(slug, sid, tid) {
       const r = await call('updateAllOutputField', { kind: 'title', field: f, value: nv[f], titleId: tid }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
     }
     if (nv.productId !== cur.productId) { const r = await call('updateTitleStrategy', { titleId: tid, productId: nv.productId || null }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
-    { const sel = document.getElementById('hcEdTopic'); if (sel && sel.dataset.cur != null && sel.value !== sel.dataset.cur && !/^Loading|^Couldn/.test(sel.options[sel.selectedIndex]?.text || '')) {
+    { const sel = document.getElementById('hcEdTopic'); if (sel && sel.dataset.changed === '1' && sel.dataset.cur != null && sel.value !== sel.dataset.cur && !/^Loading|^Couldn/.test(sel.options[sel.selectedIndex]?.text || '')) {
         const x = await hubTitleSetTopic(slug, tid, sel.value); if (x !== true) throw new Error(x); } }
     { const kids = [...document.querySelectorAll('.hcEdKid:checked')].map(c => c.value), hh = HUB_SITES.find(x => x.slug === slug) || {};
       if (kids.length) { const q = await call('queueTitleJob', { titleId: tid, name: nv.title, slug, campaignId: hh.campaignId, productId: nv.productId || undefined, devAssetTypes: kids }).catch(e => ({ error: e.message }));
