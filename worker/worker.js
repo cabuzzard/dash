@@ -11935,6 +11935,62 @@ async function digestPoolUpdate(env, cid, itemId, patch) {
   if (it) { Object.assign(it, patch); await env.TRADES.put(key, JSON.stringify(pool)); }
 }
 const DP_EVERGREEN_STYLE = "PILLAR TYPE: Evergreen premium — a definitive, evergreen deep-dive built from this development: the underlying issue, why it keeps mattering, how it works, what the reader should do, and the questions it raises. Written to stay useful long after the news; cite the original source by name once.";
+// A Series = a permanent title + a "Series" parent asset (Development — it counts, the operator's prompt to feed it).
+// seriesIdeas gathers topic ideas from research that already exists — the title's research, its topic's question-shaped
+// keywords (with volume, from the keyword store), Google + YouTube autocomplete, Reddit (free public search, cached), the
+// linked product's research (pain points / objections / benefits / proof), the hub's Digest items and the title's answered
+// interviews. KV seriesideas:<titleId> (24 h) · series:used:<titleId> = used idea ids. No Claude anywhere here.
+const SR_SPLIT = s => String(s || "").split(/\n+|(?<=[.!?])\s+(?=[A-Z])/).map(x => x.replace(/^[\s\-•*\d.)]+/, "").trim()).filter(x => x.length > 12 && x.length < 260);
+async function srSuggest(q, ds) {
+  try { const r = await fetch(`https://suggestqueries.google.com/complete/search?client=firefox${ds ? "&ds=" + ds : ""}&q=${encodeURIComponent(q)}`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const j = await r.json(); return Array.isArray(j[1]) ? j[1].slice(0, 10) : []; } catch (e) { return []; }
+}
+async function srReddit(q) {   // Reddit's free RSS search (the keyless JSON API answers 403 now)
+  try { const r = await fetch(`https://www.reddit.com/search.rss?q=${encodeURIComponent(q)}&sort=relevance&t=year&limit=25&type=link`, { headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" } });
+    if (!r.ok) return { blocked: r.status };
+    const x = await r.text(), un = s => s.replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+    const posts = [...x.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map(m => { const e = m[1];
+      const t = un((e.match(/<title>([\s\S]*?)<\/title>/) || [])[1] || ""), url = (e.match(/<link href="([^"]+)"/) || [])[1] || "", sub = (e.match(/<category[^>]*label="([^"]+)"/) || [])[1] || "";
+      return { t: t.slice(0, 240), sub, n: 0, url }; }).filter(p => p.t && /\/comments\//.test(p.url));
+    return { posts }; }
+  catch (e) { return { blocked: e.message }; }
+}
+async function seriesIdeas(env, titleId, force) {
+  titleId = String(titleId || "").replace(/-/g, "");
+  const ck = "seriesideas:" + titleId; if (!force) { const c = await env.TRADES.get(ck, "json"); if (c) return c; }
+  const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION };
+  const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(titleId), { headers: hdr }).then(r => r.json());
+  if (!pg || pg.object === "error") throw new Error("Title not found");
+  const tp = pg.properties || {}, name = (tp.Title?.title || tp.Name?.title || []).map(t => t.plain_text).join("") || "Series", cid = String((tp.Campaign?.relation || [])[0]?.id || "").replace(/-/g, "");
+  const pid = String((tp.Product?.relation || tp.product?.relation || [])[0]?.id || "").replace(/-/g, "");
+  const topic = await titleTopicKeywords(env, hdr, tp).catch(() => ({ keywords: "" }));
+  const topicKw = String(topic.keywords || "").split(/[,\n]/).map(kwNorm).filter(Boolean);
+  const seeds = hcUniq([kwNorm(name).replace(/\bupdates?\b|\bseries\b/g, "").trim(), ...topicKw.slice(0, 3)]).filter(Boolean).slice(0, 3);
+  const out = { name, at: Date.now(), sources: {} }, add = (src, items) => { out.sources[src] = (out.sources[src] || []).concat(items.filter(x => x && x.t)); };
+  // the title's own research
+  ["Title Questions", "Title Angle"].forEach(f => add("Title research", SR_SPLIT(trRt(tp, f)).map(t => ({ t }))));
+  // question-shaped keywords in the topic (Answer-the-Public style), with volume — keyword store, cached per title
+  try { const core = (seeds[0] || "").split(" ").sort((a, b) => b.length - a.length)[0] || "";
+    if (core.length > 3) { const rows = (await env.KWDB.prepare("SELECT k.text t, MAX(m.avg_monthly_searches) v FROM kw_keywords k JOIN kw_metrics m ON m.keyword_id = k.id WHERE k.text LIKE ?1 AND (k.text LIKE 'how %' OR k.text LIKE 'why %' OR k.text LIKE 'what %' OR k.text LIKE 'can %' OR k.text LIKE 'when %' OR k.text LIKE 'is %' OR k.text LIKE 'do %' OR k.text LIKE 'does %' OR k.text LIKE 'should %' OR k.text LIKE 'where %' OR k.text LIKE 'which %') GROUP BY k.id ORDER BY v DESC LIMIT 30").bind("%" + core + "%").all()).results;
+      add("Search questions", rows.map(r => ({ t: r.t, v: Number(r.v) || 0 }))); } } catch (e) { out.notes = (out.notes || []).concat("keyword store: " + e.message); }
+  // Google + YouTube autocomplete (free)
+  for (const s of seeds.slice(0, 2)) {
+    for (const pre of ["", "how ", "why "]) { (await srSuggest(pre + s)).forEach(t => add("Google autocomplete", [{ t }])); (await srSuggest(pre + s, "yt")).forEach(t => add("YouTube autocomplete", [{ t }])); }
+  }
+  // Reddit — free public search (cached with the rest); blocked → noted, no paid fallback
+  for (const s of seeds.slice(0, 2)) { const r = await srReddit(s); if (r.posts) add("Reddit", r.posts.map(p => ({ t: p.t, meta: p.sub + (p.n ? " · " + p.n + " comments" : ""), url: p.url }))); else out.notes = (out.notes || []).concat("Reddit unavailable right now (" + r.blocked + ")"); }
+  // the linked product's research
+  if (pid) { try { const rr = await findBestProductResearchRecord(hdr, pid);
+    const P = rr && rr.properties; if (P) [["Pain points", ["Pain Points", "Objections", "Emotions"]], ["Benefits & proof", ["Benefits", "Transformation", "Proof Points"]]].forEach(([src, fs]) => fs.forEach(f => add(src, SR_SPLIT(trRt(P, f)).slice(0, 8).map(t => ({ t, meta: f })))));
+  } catch (e) {} }
+  // the hub's Digest items + the title's answered interviews
+  if (cid) { const pool = (await env.TRADES.get("digest:pool:" + cid, "json")) || []; add("What's new (Digest)", pool.slice(0, 15).map(x => ({ t: x.claim, meta: x.publisher || "", url: x.url || "" }))); }
+  try { (await ivForTitle(titleId)).filter(x => x.status === "Finished").forEach(iv => iv.answers.forEach((a, i) => { if (String(a || "").trim().length > 40) add("Your interviews", [{ t: String(a).trim().slice(0, 240), meta: iv.qs[i] || "" }]); })); } catch (e) {}
+  // ids + dedupe
+  for (const k of Object.keys(out.sources)) { const seen = new Set(); out.sources[k] = out.sources[k].filter(x => { const key = kwNorm(x.t); if (seen.has(key)) return false; seen.add(key); return true; }).slice(0, 30).map(x => ({ ...x, id: dpId(k + "|" + x.t) })); }
+  await env.TRADES.put(ck, JSON.stringify(out), { expirationTtl: 86400 });
+  return out;
+}
 async function titleJobsRun(env, invoke) {
   if (await env.TRADES.get("titlejob:lock")) return { busy: true };
   await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 300 });
@@ -17465,6 +17521,44 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put(key, JSON.stringify(pool));
         return json({ ok: true, item: it, queued: it.status === "queued" });
       }
+      // createSeries {campaignId, topicId, name, productId?, slug} — title (Development, in its topic) + the Series parent asset;
+      // the title's keywords + research run in the background (title-job queue) so it comes into sync
+      if (body.action === "createSeries") {
+        const cid = String(body.campaignId || "").replace(/-/g, ""), name = String(body.name || "").trim().slice(0, 150);
+        if (!cid || !name) return json({ error: "campaignId and name required" }, 400);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const c = await invoke({ action: "createDevTitle", title: name, campaignId: cid, productId: body.productId || undefined, status: "Development", skipPillar: true,
+          researchInstructions: "A Series — recurring single posts / carousels / YouTube episodes on this theme, made from the Series topic generator." });
+        if (!c || c.error || !c.id) return json({ error: "title: " + ((c && c.error) || "no response") }, 500);
+        const titleId = String(c.id).replace(/-/g, "");
+        if (body.topicId) await invoke({ action: "setTitleTopic", titleId, topicId: String(body.topicId).replace(/-/g, "") === "__main" ? "__main" : String(body.topicId).replace(/-/g, "") });
+        const a = await invoke({ action: "createDevAssets", titleId, title: name, productId: body.productId || undefined, campaignId: cid, slug: body.slug || undefined, types: [{ assetType: "Series", label: "Series", pillar: true }] });
+        const seriesAssetId = ((a && a.created) || [])[0]?.id || "";
+        const q = await invoke({ action: "queueTitleJob", titleId, name, slug: body.slug || "", campaignId: cid, productId: body.productId || undefined, keywords: true, research: true });
+        return json({ ok: true, titleId, seriesAssetId, jobId: q && q.id });
+      }
+      if (body.action === "seriesIdeas") {
+        if (!body.titleId) return json({ error: "titleId required" }, 400);
+        try { const r = await seriesIdeas(env, body.titleId, !!body.force); const used = (await env.TRADES.get("series:used:" + String(body.titleId).replace(/-/g, ""), "json")) || [];
+          return json({ ok: true, ...r, used }); } catch (e) { return json({ error: e.message }, 500); }
+      }
+      // seriesUseIdea {titleId, seriesAssetId, ideaId, idea, kind: single|carousel|youtube, assetType, campaignId, productId, slug}
+      // → an EMPTY Development child (linked to the Series parent, the idea noted on it); the idea is marked used
+      if (body.action === "seriesUseIdea") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""); if (!titleId || !body.assetType) return json({ error: "titleId and assetType required" }, 400);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const idea = String(body.idea || "").slice(0, 600), label = { single: "Single Post", carousel: "Carousel", youtube: "YouTube" }[body.kind] || "Asset";
+        const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
+          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: label + " — " + idea.slice(0, 120), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
+        if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !used.includes(body.ideaId)) used.push(body.ideaId);
+        await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
+        return json({ ok: true, assetId: r.created[0].id, used });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
@@ -21401,7 +21495,7 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         for (const t of types) {
           const assetType = String(t.assetType || "").trim().slice(0, 100), label = String(t.label || assetType).trim().slice(0, 120), pillar = !!t.pillar;
           if (!assetType) continue;
-          if (have.has(assetType.toLowerCase())) { skipped.push(label); continue; }
+          if (have.has(assetType.toLowerCase()) && !body.allowMulti) { skipped.push(label); continue; }
           const props = {
             "Asset Title": { title: [{ type: "text", text: { content: `${String(body.title || "Untitled").slice(0, 150)} — ${label}` } }] },
             "Asset Status": { select: { name: "Development" } },
@@ -21413,11 +21507,14 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             ...(body.campaignId ? { Campaign: { relation: [{ id: dashC(body.campaignId) }] } } : {}),
             ...(body.slug ? { "Content Hub": { select: { name: String(body.slug).slice(0, 100) } } } : {}),
             ...(await assetMethodProp(null, assetType).catch(() => ({}))),
+            ...(body.parentAssetId ? { "Parent Asset": { relation: [{ id: dashC(body.parentAssetId) }] } } : {}),
           };
+          if (t.titleOverride) props["Asset Title"] = { title: [{ type: "text", text: { content: String(t.titleOverride).slice(0, 190) } }] };
           try {
             const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdrC, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
             const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || "Notion " + r.status);
             created.push({ id: nidC(j.id), label }); have.add(assetType.toLowerCase());
+            if (t.note) await fetch(`https://api.notion.com/v1/blocks/${j.id}/children`, { method: "PATCH", headers: hdrC, body: JSON.stringify({ children: [{ object: "block", type: "callout", callout: { icon: { emoji: "💡" }, rich_text: [{ type: "text", text: { content: String(t.note).slice(0, 1900) } }] } }] }) }).catch(() => {});
           } catch (e) { failed.push(label + ": " + e.message); }
           await new Promise(r => setTimeout(r, 340));
         }
