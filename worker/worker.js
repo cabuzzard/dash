@@ -12046,7 +12046,7 @@ async function titleJobsRun(env, invoke) {
             if (aid && ivOwnTier((await ivTierFn(env))(step.assetType))) await ivCreateForAsset(env, { assetId: aid, titleId: S.titleId, own: step.assetType }).catch(() => {});
           } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
             const mains = await hubMainList(env, S.cid);
-            const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Planning", skipPillar: true,
+            const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Development", skipPillar: true,
               researchInstructions: "Evergreen premium piece built from this digest item: " + S.item.claim + (S.item.publisher ? " — source: " + S.item.publisher : "") + (S.item.url ? " " + S.item.url : "") });
             if (!c || c.error || !c.id) throw new Error("title: " + ((c && c.error) || "no response"));
             S.titleId = String(c.id).replace(/-/g, "");
@@ -18281,7 +18281,8 @@ Give:
         const hdr = { "Authorization": `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const titlePage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(titleId))}`, { headers: hdr }).then(r => r.json());
         const tp = titlePage.properties || {};
-        const titleName = (tp.Name?.title || []).map(t => t.plain_text).join("") || "Title";
+        const titleName = (Object.values(tp).find(v => v && v.type === "title")?.title || []).map(t => t.plain_text).join("").trim();
+        if (!titleName) return json({ error: "The title has no name" }, 400);
         const currentKeywords = (tp["seed idea"]?.rich_text || []).map(t => t.plain_text).join("");
         const productId = (tp.Product?.relation || tp.product?.relation || [])[0]?.id || null;
         // a title's keywords come from ITS topic (title "Topic ID"); no topic of its own → its product's topic (as before)
@@ -18290,7 +18291,12 @@ Give:
 
         let clusterBlock = "";
         if (titleTopic && titleCamp) {
-          const topicKeywords = titleTopic === "__main" ? "" : await findClusterKeywordsForStack(env, hdr, "", titleCamp, titleTopic);
+          let topicKeywords = "";
+          if (titleTopic === "__main") {
+            const resRows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: dash(norm(titleCamp)) } } }).catch(() => []);
+            const rk = r => lfReadRich(r?.properties?.Keywords);
+            topicKeywords = rk(resRows.slice().sort((a, b) => rk(b).length - rk(a).length)[0]);
+          } else topicKeywords = await findClusterKeywordsForStack(env, hdr, "", titleCamp, titleTopic);
           if (topicKeywords) clusterBlock = `\nSEO TOPIC THIS TITLE LIVES IN — stay faithful to these, merge with the title's own keywords rather than drifting from them: ${topicKeywords}\n`;
         } else if (productId) {
           const productPage = await fetch(`https://api.notion.com/v1/pages/${dash(norm(productId))}`, { headers: hdr }).then(r => r.json());
@@ -18306,7 +18312,7 @@ Give:
 
 TITLE: ${titleName}
 ${currentKeywords ? `CURRENT KEYWORDS (refine and expand these, don't just repeat them back): ${currentKeywords}` : ''}
-${clusterBlock}${await kwDemandBlock(env, [currentKeywords, titleName].filter(Boolean).join(", "), { related: 15 })}
+${clusterBlock}${await kwDemandBlock(env, [currentKeywords, titleName, clusterBlock ? clusterBlock.replace(/^[^:]*:\s*/, "") : ""].filter(Boolean).join(", "), { related: 15 })}
 Return 8-12 real, specific keywords/phrases this piece of content should target — comma-separated, no other text, no numbering, no explanation.`;
 
         const aiResp = await fetch("https://api.anthropic.com/v1/messages", {
