@@ -18980,7 +18980,9 @@ function hcTitleEdit(slug, sid, tid) {
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Title</label>
     <input id="hcEdTitle" value="${esc(t.title)}" style="${IN}">
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Product</label>
-    <select id="hcEdProduct" style="${IN}"><option value="">— no product —</option>${products.map(p => `<option value="${esc(p.id)}" ${kwNid(t.productId) === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+    <select id="hcEdProduct" style="${IN}"><option value="">— no product —</option>${(() => { const mainSet = new Set((((_hubKw[slug] || {}).mainIds) || []).map(kwNid)), op = p => `<option value="${esc(p.id)}" ${kwNid(t.productId) === p.id ? 'selected' : ''}>${mainSet.has(p.id) ? '★ ' : ''}${esc(p.name)}</option>`;
+      const mains = products.filter(p => mainSet.has(p.id)), rest = products.filter(p => !mainSet.has(p.id));
+      return (mains.length ? `<optgroup label="★ Main offerings">${mains.map(op).join('')}</optgroup>` : '') + (rest.length ? `<optgroup label="${mains.length ? 'Other products' : 'Products'}">${rest.map(op).join('')}</optgroup>` : ''); })()}</select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Keyword topic <span style="text-transform:none;letter-spacing:0;">— where the title lives and takes its keywords from (the product only decides what it sells)</span></label>
     <select id="hcEdTopic" style="${IN}" onchange="this.dataset.changed='1'"><option value="">Loading topics…</option></select>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Notes</label>
