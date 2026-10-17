@@ -17374,9 +17374,9 @@ function hubKwStageBackfill(slug) {
 }
 // ── Keywords filter: multi-select by product state + ★ Main (per hub, this session) ──
 const _hubKwFilter = {};
-const HUB_KW_STATES = [['Raw', 'var(--text3)'], ['Keyword Research', '#3b82f6'], ['Development · in sync', '#4ade80'], ['Development · out of sync', '#ff7a00']];
+const HUB_KW_STATES = [['In sync', '#4ade80'], ['Out of sync', '#ff7a00'], ['Keyword Research', '#3b82f6']];   // products AND titles (sync = the dots); Keyword Research = product stage
 const hubKwFilterOf = slug => _hubKwFilter[slug] || (_hubKwFilter[slug] = { states: [], main: false, open: false });
-function hubKwStateOf(slug, p) { return p.stage === 'Keyword Research' ? 'Keyword Research' : p.stage === 'Development' ? (hubKwOutOfSync(slug, p) ? 'Development · out of sync' : 'Development · in sync') : 'Raw'; }
+function hubKwStateOf(slug, p) { return p.stage === 'Keyword Research' ? 'Keyword Research' : hubKwSyncState(slug, p) === 'in' ? 'In sync' : 'Out of sync'; }
 function hubKwFilterBar(slug) {
   const F = hubKwFilterOf(slug), n = F.states.length + (F.main ? 1 : 0), B = 'font-size:10px;padding:1px 7px;border-radius:4px;background:transparent;cursor:pointer;';
   const box = (on, label, dot, js) => `<label style="display:flex;align-items:center;gap:6px;font-size:11px;padding:2px 0;cursor:pointer;white-space:nowrap;"><input type="checkbox" ${on ? 'checked' : ''} onchange="${js}">${dot}${label}</label>`;
@@ -17385,7 +17385,7 @@ function hubKwFilterBar(slug) {
     ${n ? `<button style="${B}border:1px solid var(--border2);color:var(--text2);" title="Remove the filter" onclick="Object.assign(hubKwFilterOf('${slug}'),{states:[],main:false});hubKwRefresh('${slug}')">✕ Remove filter</button>` : ''}
     ${F.open ? `<div style="position:absolute;top:100%;left:0;z-index:20;margin-top:3px;padding:7px 10px;border:1px solid var(--border2);border-radius:6px;background:var(--surface);box-shadow:0 4px 14px rgba(0,0,0,.35);">
       <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin-bottom:2px;">Status</div>
-      ${HUB_KW_STATES.map(([s, c]) => box(F.states.includes(s), s, `<span style="color:${c};font-size:12px;">${s === 'Raw' ? '○' : '●'}</span>`, `hubKwFilterToggle('${slug}','${s}')`)).join('')}
+      ${HUB_KW_STATES.map(([s, c]) => box(F.states.includes(s), s, `<span style="color:${c};font-size:12px;">●</span>`, `hubKwFilterToggle('${slug}','${s}')`)).join('')}
       <div style="font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:6px 0 2px;">Main</div>
       ${box(F.main, 'Main offerings only', '<span style="color:#f5c542;">★</span>', `hubKwFilterOf('${slug}').main=this.checked;hubKwRefresh('${slug}')`)}
       <div style="text-align:right;margin-top:5px;"><button style="${B}border:1px solid var(--border2);color:var(--text2);" onclick="hubKwFilterOf('${slug}').open=false;hubKwRefresh('${slug}')">Done</button></div></div>` : ''}</span>`;
@@ -17459,10 +17459,13 @@ function renderHubKw(slug) {
   const TT = _hubTitles[slug], tByTopic = TT && TT.rows ? hubTitlesByTopic(slug) : null;
   const titleSec = id => { if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
     const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
-    return sec('ti:' + id, 'Titles', ts.length, `<button style="${btn}" title="Add a title to this topic" onclick="hubKwTitleAdd('${slug}','${esc(id)}')">＋ title</button>`, ts.filter(showT).map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
+    return sec('ti:' + id, 'Titles', ts.length, `<button style="${btn}" title="Add a title to this topic" onclick="hubKwTitleAdd('${slug}','${esc(id)}')">＋ title</button>`, ts.filter(x => showT(x) && keepT(x)).map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
       <span style="margin-left:auto;display:flex;gap:4px;align-items:center;"><span class="hkw-slot"></span><span class="hkw-slot">${hubTitleSyncDot(x)}</span><span class="hkw-ctl"><button style="${btn}" title="Edit title — product, keyword topic, notes, status" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>'); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
-  const keep = p => (!F.states.length || F.states.includes(hubKwStateOf(slug, p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
+  const pIn = p => hubKwSyncState(slug, p) === 'in', tIn = x => !x.oos && x.res;
+  const keep = p => (!F.states.length || F.states.some(s => s === 'Keyword Research' ? p.stage === 'Keyword Research' : s === 'In sync' ? pIn(p) : !pIn(p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
+  // titles: In sync / Out of sync (the title dot); 'Main offerings only' is a product filter, so it hides titles
+  const keepT = x => !fOn || (!F.main && F.states.some(s => s === 'In sync' ? tIn(x) : s === 'Out of sync' ? !tIn(x) : false));
   // blue = flagged for keyword research · green = Development in sync · orange = Development out of sync (incl. no research);
   // fixed-width cells so the counts line up in one column on every topic AND Master; zero = blank
   const kwCounts = (ps, ts) => { ts = ts || []; const cell = (n, col, tip) => `<span title="${n ? tip : ''}" style="display:inline-block;width:22px;text-align:right;color:${col};font-weight:700;font-variant-numeric:tabular-nums;">${n || ''}</span>`;
@@ -17474,7 +17477,7 @@ function renderHubKw(slug) {
     return box(pOut, pIn, `products: ${pOut} out of sync / no research · ${pIn} in sync (of ${ps.length})`) + box(tOut, tIn, `titles: ${tOut} out of sync / no research · ${tIn} in sync (of ${ts.length})`); };
   const topic = (t, depth) => {
     const kws = split(t.keywords), ps = prodsOf(t).filter(p => !fOn || keep(p)), cur = (K.tc.assign && K.tc.assign[t.id]) || '';
-    if (fOn && !ps.length) return '';
+    if (fOn && !ps.length && !(tByTopic && (tByTopic.get(t.id) || []).some(keepT))) return '';   // a topic stays when a title matches
     const moveSel = clusters.length ? `<select title="Move this topic to a cluster" style="font-size:10px;padding:1px 3px;border:1px solid var(--border2);border-radius:4px;background:var(--surface2);color:var(--text2);width:130px;" onchange="hubKwMoveTopic('${slug}','${esc(t.id)}',this.value)"><option value="__">🧩 move to…</option>${cur ? '<option value="">— unclustered —</option>' : ''}${clusters.filter(c => c !== cur).map(c => `<option>${esc(c)}</option>`).join('')}</select>` : '';
     const addBtn = `<button style="${btn}" title="Add a product to this topic (Planning — run its research from Products)" onclick="hubKwAddProduct('${slug}','${esc(t.id)}')">＋ product</button>`;
     // two collapsed sub-headers under the topic: Existing products (＋ title · 🔬 research) and Proposed products (💡 propose · ＋ add to topic · ★ · ✕ · 🔗)
@@ -17506,7 +17509,7 @@ function renderHubKw(slug) {
     + sec('ex:__main', 'Existing products', mainPs.length, '', mainPs.filter(showP).map(p => exRow(p, homeOf(p))).join('') || '<span style="font-size:11px;color:var(--text3);">No ★ Main products yet.</span>')
     + sec('pr:__main', 'Proposed products', mainIdeas.length, `<button style="${btn}" title="Research product ideas off the Master keywords (replaces this list — care-gap's Main Stack ideas)" onclick="hubKwMainPropose('${slug}',this)">💡 propose</button>`,
         mainIdeas.map((x, i) => `<div class="hkw-row" style="padding:3px 4px;border-bottom:1px dashed var(--border);font-size:11px;"><div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;"><span style="font-weight:600;color:var(--text);">💡 ${esc(x.name)}</span><span style="margin-left:auto;display:flex;gap:4px;"><button style="${btn}border-color:var(--accent);color:var(--accent);" title="Create this as a real product in the ★ Main group — it moves up into Existing products" onclick="hubKwMainIdeaCreate('${slug}',${i},false)">＋ add to topic</button><button style="${btn}" title="Add to ★ Main AND to this hub's main offerings" onclick="hubKwMainIdeaCreate('${slug}',${i},true)">★</button><button style="${btn}" title="View sources" onclick="hubKwMainIdeaSources('${slug}',${i})">🔗</button><button style="${btn}" title="Dismiss this idea" onclick="hubKwMainIdeaDismiss('${slug}',${i},this)">✕</button></span></div>${x.desc ? `<div style="color:var(--text3);margin-top:1px;">${esc(x.desc)}</div>` : ''}</div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No proposals yet — 💡 propose.</span>');
-  if (!fOn || mainPs.length) out += node('master', 0, '#4ade80', 'Master', `— ${master.length} keyword${master.length === 1 ? '' : 's'}${mainPs.length ? ' · ' + mainPs.length + ' product' + (mainPs.length === 1 ? '' : 's') : ''}`, mainInner, { pdrop: '__main', tools: kwCounts(mainPs, tByTopic ? tByTopic.get('__main') || [] : []) + `<span class="hkw-ctl"></span>` });
+  if (!fOn || mainPs.length || (tByTopic && (tByTopic.get('__main') || []).some(keepT))) out += node('master', 0, '#4ade80', 'Master', `— ${master.length} keyword${master.length === 1 ? '' : 's'}${mainPs.length ? ' · ' + mainPs.length + ' product' + (mainPs.length === 1 ? '' : 's') : ''}`, mainInner, { pdrop: '__main', tools: kwCounts(mainPs, tByTopic ? tByTopic.get('__main') || [] : []) + `<span class="hkw-ctl"></span>` });
   clusters.map((c, ci) => [c, ci]).sort((a, b) => (b[0] === mainCl) - (a[0] === mainCl)).forEach(([c, ci]) => { const ts = by[c] || [];
     if (fOn && !ts.some(t => topic(t, 0))) return;
     out += node('c:' + ci, 0, c === mainCl ? '#f5c542' : '#8ab4f8', (c === mainCl ? '★ ' : '') + '🧩 ' + esc(c), `— ${c === mainCl ? 'main cluster' : 'cluster'} · ${ts.length} topic${ts.length === 1 ? '' : 's'}`,
@@ -17515,7 +17518,7 @@ function renderHubKw(slug) {
   if ((un.length || clusters.length) && (!fOn || un.some(t => topic(t, 0)))) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`,
     un.length ? un.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">None — drag a topic here to take it out of its cluster.</span>', { drop: '' });
   if (!topics.length && !clusters.length) out += '<div style="font-size:11px;color:var(--text3);padding:2px 0;">No clusters or topics yet.</div>';
-  if (fOn && !(K.products || []).some(keep)) out +='<div style="font-size:11px;color:var(--text3);padding:4px 0;">No products match this filter.</div>';
+  if (fOn && !(K.products || []).some(keep) && !(tByTopic && [...tByTopic.values()].some(l => l.some(keepT)))) out +='<div style="font-size:11px;color:var(--text3);padding:4px 0;">Nothing matches this filter.</div>';
   return out;
 }
 // ── Production → Titles: everything the CAMPAIGN produces, not only the hub sections — every title of the hub's
