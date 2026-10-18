@@ -4615,7 +4615,9 @@ function renderFlowTable(k = 'main') {
     return `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;cursor:pointer;" onclick="flowOptOpen(event,'${k}',${ri},'${esc(c.id)}')" title="Click to choose (several allowed)"><div style="display:flex;flex-wrap:wrap;gap:3px;min-height:24px;padding:2px;">${vals.length ? vals.map(v => `<span style="font-size:11px;padding:1px 6px;border-radius:9px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);">${esc(v)}</span>`).join('') : '<span style="font-size:11px;color:var(--text3);">＋ choose</span>'}</div></td>`; };
   const chkCell = (c, r, ri) => { const on = !!((r.cells || {})[c.id] || '').trim();
     return `<td title="${esc(c.name)} — click to ${on ? 'clear' : 'mark as needed'}" onclick="flowCheck('${k}',${ri},'${esc(c.id)}')" style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:middle;cursor:pointer;font-weight:700;color:${on ? '#4ade80' : 'var(--text3)'};${on ? 'background:rgba(74,222,128,.08);' : ''}">${on ? '✕' : '·'}</td>`; };
-  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => c.check ? chkCell(c, r, ri) : Array.isArray(c.options) && c.options.length ? optCell(c, r, ri) : `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this);flowAcHide()" onkeydown="flowAcKey(event)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this);flowAc('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
+  const prioCell = (c, r, ri) => { const cur = String((r.cells || {})[c.id] || '').trim(), opts = FLOW_PRIO_VALS.concat(cur && !FLOW_PRIO_VALS.includes(cur) ? [cur] : []);
+    return `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;text-align:center;"><select onchange="flowPrioSet('${k}',${ri},'${esc(c.id)}',this.value)" title="Priority — one number" style="font-size:12px;font-weight:700;padding:3px 4px;background:var(--surface2);color:${cur ? 'var(--text)' : 'var(--text3)'};border:1px solid var(--border2);border-radius:5px;cursor:pointer;"><option value="">—</option>${opts.map(v => `<option value="${esc(v)}" ${v === cur ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></td>`; };
+  const rowHtml = (r, ri) => `<tr data-ri="${ri}">${F.columns.map(c => c.check ? chkCell(c, r, ri) : flowIsPrio(c) ? prioCell(c, r, ri) : Array.isArray(c.options) && c.options.length ? optCell(c, r, ri) : `<td style="padding:2px;border:1px solid var(--border);vertical-align:top;overflow:hidden;word-wrap:break-word;"><textarea rows="1" style="${ta}" onfocus="this.style.borderColor='var(--accent)';flowTipHide();flowGrow(this)" onblur="this.style.borderColor='transparent';flowGrow(this);flowAcHide()" onkeydown="flowAcKey(event)" oninput="flowCell('${k}',${ri},'${esc(c.id)}',this);flowAc('${k}',${ri},'${esc(c.id)}',this)">${esc((r.cells || {})[c.id] || '')}</textarea></td>`).join('')}
       <td style="padding:2px;border:1px solid var(--border);text-align:center;vertical-align:top;white-space:nowrap;"><span title="Drag to move this row" style="cursor:grab;color:var(--text3);padding:0 4px;touch-action:none;user-select:none;" onpointerdown="flowDragRow(event,'${k}',${ri})">⠿</span>${ri > 0 ? `<button style="${xbtn}" title="Move up" onclick="flowMoveRow('${k}',${ri},-1)">▲</button>` : ''}${ri < F.rows.length - 1 ? `<button style="${xbtn}" title="Move down" onclick="flowMoveRow('${k}',${ri},1)">▼</button>` : ''}<button style="${xbtn}" title="Delete this row" onclick="flowDelRow('${k}',${ri})">✕</button></td></tr>`;
   const view = T.view ? fvBuild(k) : null, manual = !view || view.manual;
   const bodyHtml = view ? view.html(rowHtml) : F.rows.map(rowHtml).join('');
@@ -4710,7 +4712,8 @@ function fvBuild(k) {
   const S = V.S.filter(x => colIds.has(x.col)).slice(0, FV_MAX);
   const fresh = FLOWS[k].fresh || new Set(), isFresh = i => fresh.has(F.rows[i].id);
   const pinned = F.rows.map((r, i) => i).filter(isFresh);
-  let idx = F.rows.map((r, i) => i).filter(i => !isFresh(i) && fvPass(F.rows[i], V.F[0]) && fvPass(F.rows[i], V.F[1]));
+  const pc = F.columns.find(flowIsPrio), pv = pc && V.P ? V.P : '';
+  let idx = F.rows.map((r, i) => i).filter(i => !isFresh(i) && fvPass(F.rows[i], V.F[0]) && fvPass(F.rows[i], V.F[1]) && (!pv || (pv === FV_BLANK ? !fvVal(F.rows[i], pc.id) : fvVal(F.rows[i], pc.id) === pv)));
   if (S.length) idx.sort((a, b) => {
     for (const x of S) {
       const av = fvVal(F.rows[a], x.col), bv = fvVal(F.rows[b], x.col);
@@ -4719,7 +4722,7 @@ function fvBuild(k) {
     }
     return a - b;
   });
-  const filtered = V.F.some(f => f.col && f.val), manual = !S.length && !filtered;
+  const filtered = V.F.some(f => f.col && f.val) || !!pv, manual = !S.length && !filtered;
   const top = pinned.map(i => i);
   return { S, idx: top.concat(idx), total: F.rows.length, manual,
     html(rowHtml) {
@@ -4772,6 +4775,9 @@ function fvBar(k, view) {
     <button style="${B}" onclick="fvState('${k}').group=!fvState('${k}').group;renderFlowTable('${k}')">☰ Group by sort: ${V.group ? 'on' : 'off'}</button>
     <button style="${B}" onclick="fvCollapseAll('${k}', true)">▸ Collapse all</button>
     <button style="${B}" onclick="fvCollapseAll('${k}', false)">▾ Expand all</button>
+    ${(() => { const pc = FLOWS[k].data.columns.find(flowIsPrio); if (!pc) return '';
+      const vals = [...new Set(FLOWS[k].data.rows.map(r => fvVal(r, pc.id)))].sort((a, b) => (!a) - (!b) || a.localeCompare(b, undefined, { numeric: true }));
+      return `<label style="font-size:11.5px;color:var(--text2);display:flex;gap:4px;align-items:center;">${esc(pc.name)}<select onchange="fvState('${k}').P=this.value;renderFlowTable('${k}')" style="font-size:11.5px;padding:3px;background:var(--surface2);color:var(--text);border:1px solid ${V.P ? 'var(--accent)' : 'var(--border2)'};border-radius:6px;"><option value="">All</option>${vals.map(v => v ? `<option value="${esc(v)}" ${v === V.P ? 'selected' : ''}>${esc(v)}</option>` : `<option value="${FV_BLANK}" ${V.P === FV_BLANK ? 'selected' : ''}>(blank)</option>`).join('')}</select></label>`; })()}
     ${chips}<span style="margin-left:auto;font-size:11px;color:var(--text3);">${view.idx.length} / ${view.total} rows${view.manual ? '' : ' · drag / ▲▼ off while sorted or filtered'}</span></div>`;
 }
 function fvCollapseAll(k, close) {
@@ -4894,6 +4900,10 @@ function flowOptOpen(e, k, ri, cid) {
   pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pop.offsetWidth - 8)) + 'px';
   pop.style.top = (r.bottom + ph + 8 < innerHeight ? r.bottom + 4 : Math.max(8, r.top - ph - 4)) + 'px';
 }
+// "Priority" columns (any flow table, by column name): a single-number dropdown + a quick filter in the table's bar
+const FLOW_PRIO_VALS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+function flowIsPrio(c) { return /^priority$/i.test(String((c && c.name) || '').trim()); }
+function flowPrioSet(k, ri, cid, v) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; if (v) r.cells[cid] = v; else delete r.cells[cid]; flowSaveSoon(k); renderFlowTable(k); }
 function flowCheck(k, ri, cid) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; if ((r.cells[cid] || '').trim()) delete r.cells[cid]; else r.cells[cid] = 'x'; flowSaveSoon(k); renderFlowTable(k); }
 function flowCell(k, ri, cid, t) { const r = FLOWS[k].data.rows[ri]; r.cells = r.cells || {}; r.cells[cid] = t.value; flowGrow(t); flowSaveSoon(k); }
 function flowAddRow(k) {
