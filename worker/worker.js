@@ -53001,7 +53001,9 @@ async function handleDesignSpec(body, env, ctx) {
 
   if (op === "chatPrompt") {
     const demand = await kwDemandBlock(env, inputs.keywords || kwFallback).catch(() => "");
-    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, staged, facts, { only: body.only, note: body.note, demand }) });
+    const promptSpec = Array.isArray(body.only) && body.only.length ? { ...((saved && saved.spec) || {}) } : staged;
+    if (promptSpec !== staged) for (const k of body.only) { if (DS_KEYS.has(k) && Object.prototype.hasOwnProperty.call(staged, k)) promptSpec[k] = staged[k]; }
+    return out({ prompt: dsChatPrompt(campName || "this campaign", { ...inputs, keywords: inputs.keywords || kwFallback, plate: plateUrl }, promptSpec, facts, { only: body.only, note: body.note, demand }) });
   }
   if (op === "chatReply") {
     const j = dsParseJson(body.text); if (!j) return { error: "couldn't find any spec fields in that text (looking for lines like \"color.bg\": {\"v\": \"#FBFAF7\"}) — paste ChatGPT's whole reply" };
@@ -53221,7 +53223,10 @@ Reply with ONE JSON object only — just the fields you change: {"fields": {"key
     return out({ applied: m.applied, suggested: m.suggested });
   }
   if (op === "repaint") {  // the STAGED (or saved) cosmetic fields → an override stylesheet for the hub's EXISTING page
-    const src = body.from === "saved" ? ((saved && saved.spec) || {}) : staged, slug = hubSlugForCampaign(cid);
+    const baseline = (saved && saved.spec) || {};
+    const isolated = { ...baseline };
+    if (scoped) for (const k of scoped) { if (Object.prototype.hasOwnProperty.call(staged, k)) isolated[k] = staged[k]; }
+    const src = body.from === "saved" ? baseline : scoped ? isolated : staged, slug = hubSlugForCampaign(cid);
     if (!slug) return { error: "this campaign has no hub page to repaint" };
     const paint = Object.keys(src).filter(k => dsIsPaint(k) && src[k] && src[k].v).sort();
     const sigSrc = paint.map(k => k + "=" + src[k].v).join("\n"); let h = 5381; for (let i = 0; i < sigSrc.length; i++) h = ((h * 33) ^ sigSrc.charCodeAt(i)) >>> 0;
