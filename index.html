@@ -582,7 +582,6 @@
 .hkw-act{display:inline-flex;gap:4px;align-items:center;justify-content:flex-end;width:200px;flex-shrink:0;}
 .hkw-act>:first-child{margin-right:auto;}   /* the dot sits at the left edge, the buttons at the right */
 </style>
-<script src="shared/hub-revenue.js?v=2026101701"></script>
 </head>
 <body>
 
@@ -15573,7 +15572,7 @@ function renderHubs2() {
           <div id="hub2Iv-${slug}" style="padding:8px 12px;">${hub2IvHtml(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2StrategiesLoad('${slug}')">
-          <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <summary title="Strategies"><span title="Strategies">Strategies</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">editable table · sort · filter · this hub</span><button onclick="event.preventDefault();event.stopPropagation();hub2StrategiesLoad('${slug}')" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2PoolLoad('${slug}')">
@@ -15680,9 +15679,10 @@ function hub2KwCount(slug) { const el = document.getElementById('hub2KwN-' + slu
 // Strategies: a free-form table per hub — the same Flow-table editor (sort / filter / add row + column / rename headings),
 // one FLOWS entry per hub, saved via saveInfoFlowTable as KV infoflow:table:hubstrat-<slug>
 const hub2StratKey = slug => 'hs_' + slug.replace(/[^a-z0-9]/gi, '_');
+// Revenue planner rollback 20261018: original Strategies table restored.
 function hub2StrategiesShell(slug) { const k = hub2StratKey(slug);
-  return `${hrShell(slug)}<hr style="border:0;border-top:1px solid var(--border);margin:14px 0"><div style="font-size:11px;color:var(--text3);margin-bottom:6px">Other strategies (existing free-form table)</div><div id="fv${k}Bar"></div><div id="fv${k}Panel" style="display:none;"></div><div id="${k}Body"></div><div id="${k}Msg" style="font-size:10px;color:var(--text3);margin-top:4px;"></div>`; }
-function hub2StrategiesLoad(slug, force = false) { hrLoad(force); const k = hub2StratKey(slug);
+  return `<div id="fv${k}Bar"></div><div id="fv${k}Panel" style="display:none;"></div><div id="${k}Body"></div><div id="${k}Msg" style="font-size:10px;color:var(--text3);margin-top:4px;"></div>`; }
+function hub2StrategiesLoad(slug) { const k = hub2StratKey(slug);
   FLOWS[k] = FLOWS[k] || { name: ('hubstrat-' + slug).slice(0, 40), body: k + 'Body', msg: k + 'Msg', data: null, t: null, view: true, seed: ['Strategy', 'Goal', 'Status', 'Post Ideas'] };
   loadFlowTable(k); }
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }

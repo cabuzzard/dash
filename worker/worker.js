@@ -1,4 +1,3 @@
-import { revenueAction } from "./hub-revenue.mjs";
 ﻿// NOTION_TOKEN, PIN, HMAC_SECRET, TURNSTILE_SECRET, ETSY_KEYSTRING, ETSY_SHARED_SECRET
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
@@ -20784,14 +20783,6 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         try { return json({ success: true, ...(await utilityScout(env, body)) }); }
         catch (e) { return json({ error: e.message }, e.budget ? 429 : 400); }
-      }
-      if (["getHubRevenue", "saveHubRevenueCell", "changeHubRevenueColumn"].includes(body.action)) {
-        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
-        try {
-          const extra = await env.TRADES.get("hub:sites:extra", "json") || [];
-          const hubs = [...new Map([...HUB_SITES, ...extra].filter(h => h.campaignId).map(h => [h.campaignId.replace(/-/g, "").toLowerCase(), h])).values()];
-          return json(await revenueAction(env, body, hubs));
-        } catch (e) { return json({ error: e.message }, 400); }
       }
       if (body.action === "getInfoFlowTable") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
