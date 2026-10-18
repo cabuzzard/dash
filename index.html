@@ -17101,12 +17101,23 @@ function hubKwMoveTopic(slug, topicId, cluster) {
   hubKwSaveClusters(slug, [...(K.tc.clusters || [])], assign, cluster ? 'Moved to "' + cluster + '"' : 'Moved to unclustered');
 }
 let _hubKwDrag = null;
+// drag a cluster onto another: it takes that cluster's place (moving down → lands after it, up → before). Main cluster stays first.
+function hubKwMoveCluster(slug, fromIdx, targetName) {
+  const K = _hubKw[slug]; if (!K) return; const cl = [...(K.tc.clusters || [])], name = cl[fromIdx], to = cl.indexOf(targetName);
+  if (name == null || to < 0 || name === targetName) return hubKwRefresh(slug);
+  const rest = cl.filter(c => c !== name), at = rest.indexOf(targetName) + (fromIdx < to ? 1 : 0); rest.splice(at, 0, name);
+  hubKwSaveClusters(slug, rest, { ...(K.tc.assign || {}) }, 'Moved "' + name + '"');
+}
 function hubKwDragStart(e, topicId) { e.stopPropagation(); _hubKwDrag = topicId; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', topicId); } catch (x) {} }
 // topics drop on clusters (data-drop); products drop on topics / Master (data-pdrop = topic id or '__main')
+function hubKwClusterDragStart(e, ci) { e.stopPropagation(); _hubKwDrag = { ci }; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', 'cluster'); } catch (x) {} }
+function hubKwClusterTarget(el) { return el.dataset.drop != null && el.dataset.drop !== '' && el.getAttribute('draggable') === 'true'; }   // another movable cluster
 function hubKwDragOver(e) { const d = _hubKwDrag, el = e.currentTarget; if (d == null) return;
+  if (typeof d === 'object' && d.ci != null) { if (!hubKwClusterTarget(el)) return; e.preventDefault(); e.stopPropagation(); el.style.outline = '2px dashed #f5c542'; return; }
   if (typeof d === 'object' ? el.dataset.pdrop == null : el.dataset.drop == null) return;
   e.preventDefault(); e.stopPropagation(); el.style.outline = '2px dashed #8ab4f8'; }
 function hubKwDrop(e, slug) { const d = _hubKwDrag, el = e.currentTarget; if (d == null) return;
+  if (typeof d === 'object' && d.ci != null) { if (!hubKwClusterTarget(el)) return; e.preventDefault(); e.stopPropagation(); el.style.outline = ''; _hubKwDrag = null; return hubKwMoveCluster(slug, d.ci, el.dataset.drop); }
   if (typeof d === 'object' ? el.dataset.pdrop == null : el.dataset.drop == null) return;
   e.preventDefault(); e.stopPropagation(); el.style.outline = ''; _hubKwDrag = null;
   if (typeof d === 'object' && d.ti) { const row = ((_hubTitles[slug] || {}).rows || []).find(r => r.titleId === d.ti); if (row && hubTitleTopicOf(slug, row) !== el.dataset.pdrop) hubTitleSetTopic(slug, d.ti, el.dataset.pdrop); }
@@ -17676,10 +17687,10 @@ function renderHubKw(slug) {
   // opt.drop = a cluster name ('' = unclustered) when topics can be dropped on this node; opt.topicId = draggable topic
   const node = (k, depth, color, label, sub, inner, opt) => { opt = opt || {}; const open = !!_hubKwOpen[slug + '|' + k];
     const dropAttr = (opt.drop != null || opt.pdrop != null) ? `${opt.drop != null ? ` data-drop="${esc(opt.drop)}"` : ''}${opt.pdrop != null ? ` data-pdrop="${esc(opt.pdrop)}"` : ''} ondragover="hubKwDragOver(event)" ondragleave="this.style.outline=''" ondrop="hubKwDrop(event,'${slug}')"` : '';
-    const dragAttr = opt.topicId ? ` draggable="true" ondragstart="hubKwDragStart(event,'${esc(opt.topicId)}')"` : '';
+    const dragAttr = opt.topicId ? ` draggable="true" ondragstart="hubKwDragStart(event,'${esc(opt.topicId)}')"` : opt.clusterDrag != null ? ` draggable="true" ondragstart="hubKwClusterDragStart(event,${opt.clusterDrag})"` : '';
     const tools = opt.tools ? `<span style="margin-left:auto;display:flex;gap:4px;align-items:center;" onclick="event.stopPropagation()">${opt.tools}</span>` : '';
     return `<div${dropAttr}${dragAttr} style="margin-left:${depth * 14}px;border-left:3px solid ${color};padding-left:8px;margin-bottom:4px;">
-      <div class="hkw-hd" onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 4px;cursor:${opt.topicId ? 'grab' : 'pointer'};user-select:none;font-size:11.5px;flex-wrap:wrap;${opt.topicId ? 'background:color-mix(in srgb, var(--text) 2.5%, transparent);border-radius:4px;' : ''}">
+      <div class="hkw-hd" onclick="hubKwToggle('${slug}','${esc(k)}')" style="display:flex;align-items:center;gap:6px;padding:3px 4px;cursor:${opt.topicId || opt.clusterDrag != null ? 'grab' : 'pointer'};user-select:none;font-size:11.5px;flex-wrap:wrap;${opt.topicId ? 'background:color-mix(in srgb, var(--text) 2.5%, transparent);border-radius:4px;' : ''}">
         <span style="font-size:10px;color:var(--text3);width:10px;">${open ? '▼' : '▶'}</span><span style="font-weight:600;">${label}</span><span style="color:var(--text3);font-size:10.5px;">${sub}</span>${tools}</div>
       ${open ? `<div style="padding:2px 0 4px 16px;">${inner}</div>` : ''}</div>`; };
   const clusters = K.tc.clusters || [];
@@ -17758,7 +17769,7 @@ function renderHubKw(slug) {
     if (fOn && !ts.some(t => topic(t, 0))) return;
     out += node('c:' + ci, 0, c === mainCl ? '#f5c542' : '#8ab4f8', (c === mainCl ? '★ ' : '') + '🧩 ' + esc(c), `— ${c === mainCl ? 'main cluster' : 'cluster'} · ${ts.length} topic${ts.length === 1 ? '' : 's'}`,
       ts.length ? ts.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">No topics in this cluster — drag one here.</span>',
-      { drop: c, tools: `<button style="${btn}${c === mainCl ? 'border-color:#f5c542;color:#f5c542;' : ''}" title="${c === mainCl ? 'This is the main cluster — click to unset' : 'Make this the MAIN cluster (the one most aligned with Main) — listed first, gold bar'}" onclick="hubKwSetMainCluster('${slug}',${ci})">★</button><button style="${btn}" title="Rename this cluster" onclick="hubKwRename('${slug}','cluster',${ci})">✎</button><button style="${btn}" title="Open this cluster in the Keywords tab — research its name as a keyword there and file the results into topics" onclick="hubKwOpenClusterInTool('${slug}',${ci})">🔬</button><button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
+      { drop: c, clusterDrag: c === mainCl ? null : ci, tools: `<button style="${btn}${c === mainCl ? 'border-color:#f5c542;color:#f5c542;' : ''}" title="${c === mainCl ? 'This is the main cluster — click to unset' : 'Make this the MAIN cluster (the one most aligned with Main) — listed first, gold bar'}" onclick="hubKwSetMainCluster('${slug}',${ci})">★</button><button style="${btn}" title="Rename this cluster" onclick="hubKwRename('${slug}','cluster',${ci})">✎</button><button style="${btn}" title="Open this cluster in the Keywords tab — research its name as a keyword there and file the results into topics" onclick="hubKwOpenClusterInTool('${slug}',${ci})">🔬</button><button style="${btn}" title="Delete this cluster (its topics become unclustered — nothing else is deleted)" onclick="hubKwDeleteCluster('${slug}',${ci})">🗑</button>` }); });
   if ((un.length || clusters.length) && (!fOn || un.some(t => topic(t, 0)))) out += node('unclustered', 0, 'var(--border2)', 'Unclustered topics', `— ${un.length}`,
     un.length ? un.map(t => topic(t, 0)).join('') : '<span style="font-size:11px;color:var(--text3);">None — drag a topic here to take it out of its cluster.</span>', { drop: '' });
   if (tByTopic && (tByTopic.get('') || []).length && (!fOn || (tByTopic.get('') || []).some(keepT)) && (!syncOnly || (tByTopic.get('') || []).some(showT)))
