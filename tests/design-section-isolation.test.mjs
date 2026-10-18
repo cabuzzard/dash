@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync('shared/codex-design-panel.js','utf8');
 const schema=[{id:'color',fields:[['color.bg','Background'],['color.primary','Primary']]},{id:'type',fields:[['type.display_font','Display'],['type.body_font','Body']]},{id:'intent',fields:[['intent.page_job','Job']]},{id:'imagery',fields:[['img.motif','Motif']]},{id:'asset.youtube_thumb',tier:'asset',fields:[['asset.youtube_thumb.layout','Layout']]}];
 const saved={'color.bg':{v:'#FFFFFF'},'type.body_font':{v:'Arial'},'img.motif':{v:'Saved motif'}};
-async function setup({empty=false,repaintError=false}={}){
+async function setup({empty=false,repaintError=false,thumbnailError=false}={}){
  const handlers={},renders=[],calls=[];
  const root={innerHTML:'',addEventListener:(name,fn)=>handlers[name]=fn,querySelector:()=>null};
  let stage={...saved,'color.bg':{v:'#FF0000'},'type.body_font':{v:'Uncommitted font'},'img.motif':{v:'Uncommitted motif'}};
@@ -13,7 +13,8 @@ async function setup({empty=false,repaintError=false}={}){
  vm.runInContext(source,context);
  const api=context.window.CodexDesignPanel.mount(root,{campaignId:'hub',preview:d=>renders.push(JSON.parse(JSON.stringify(d))),call:async(action,body)=>{
   calls.push({action,...JSON.parse(JSON.stringify(body))});
-  if(action==='renderSpecTest')return {imageUrl:'https://example.test/thumb.png'};
+  if(action==='renderSpecTest' && thumbnailError)return {error:'Generation failed'};
+  if(action==='renderSpecTest')return {imageUrl:'https://example.test/thumb.png',prompt:'Original thumbnail prompt'};
   if(body.op==='repaint')return repaintError?{error:'Preview service unavailable'}:{css:'.hero{border-radius:12px}'};
   if(body.op==='chatReply')for(const [k,v] of Object.entries(JSON.parse(body.text).fields))if(body.only.includes(k))stage[k]=v;
   if(body.op==='revert')for(const k of body.keys){if(saved[k])stage[k]=saved[k];else delete stage[k];}
@@ -72,4 +73,27 @@ test('worker section prompt context excludes unrelated staged edits',()=>{
  const env={saved:{spec:saved},staged:{'color.bg':{v:'#000000'},'type.body_font':{v:'Inter'}},body:{only:['color.bg']},DS_KEYS:new Set(['color.bg','type.body_font']),result:null};
  vm.runInNewContext(worker.slice(a,b)+'\nresult=promptSpec;',env);
  assert.equal(env.result['color.bg'].v,'#000000');assert.equal(env.result['type.body_font'].v,'Arial');
+});
+
+test('regeneration requires direction and carries the previous prompt plus isolated spec',async()=>{
+ const x=await setup();x.api.state.group='motif';x.click('testThumb');await x.flush();
+ assert.equal(x.calls.filter(c=>c.action==='renderSpecTest').length,1);
+ assert.match(x.root.innerHTML,/Regeneration direction/);
+ x.click('testThumb');await x.flush();assert.equal(x.calls.filter(c=>c.action==='renderSpecTest').length,1);
+ assert.match(x.api.state.msg,/Add regeneration direction/);
+ x.api.state.thumbDirection='Keep the palette; simplify the scene and move the subject right';
+ x.click('testThumb');await x.flush();const r=x.calls.filter(c=>c.action==='renderSpecTest').at(-1);
+ assert.equal(r.previousPrompt,'Original thumbnail prompt');assert.match(r.guidance,/simplify the scene/);assert.match(r.guidance,/wordless/);assert.match(r.spec,/#FFFFFF/);assert.doesNotMatch(r.spec,/#FF0000/);
+ assert.equal(x.api.state.testThumb.direction,'Keep the palette; simplify the scene and move the subject right');assert.equal(x.api.state.thumbDirection,'');
+});
+test('thumbnail regeneration direction is kept separately for each section',async()=>{
+ const x=await setup();x.api.state.group='motif';x.api.state.thumbDirection='Warmer light';
+ x.click('group',{group:'assets'});assert.equal(x.api.state.thumbDirection,'');
+ x.api.state.thumbDirection='More space left';x.click('group',{group:'motif'});assert.equal(x.api.state.thumbDirection,'Warmer light');
+});
+
+test('failed regeneration retains the current thumbnail and the requested direction',async()=>{
+ const x=await setup({thumbnailError:true});x.api.state.group='motif';
+ x.api.state.testThumb={url:'https://example.test/keep.png',prompt:'Keep this prompt'};x.api.state.thumbDirection='Softer lighting';
+ x.click('testThumb');await x.flush();assert.equal(x.api.state.testThumb.url,'https://example.test/keep.png');assert.equal(x.api.state.thumbDirection,'Softer lighting');assert.equal(x.api.state.thumbStarted,null);assert.match(x.api.state.msg,/Generation failed/);
 });
