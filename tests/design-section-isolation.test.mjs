@@ -5,14 +5,16 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync('shared/codex-design-panel.js','utf8');
 const schema=[{id:'color',fields:[['color.bg','Background'],['color.primary','Primary']]},{id:'type',fields:[['type.display_font','Display'],['type.body_font','Body']]},{id:'intent',fields:[['intent.page_job','Job']]},{id:'imagery',fields:[['img.motif','Motif']]},{id:'asset.youtube_thumb',tier:'asset',fields:[['asset.youtube_thumb.layout','Layout']]}];
 const saved={'color.bg':{v:'#FFFFFF'},'type.body_font':{v:'Arial'},'img.motif':{v:'Saved motif'}};
-async function setup({empty=false,repaintError=false,thumbnailError=false,references=[]}={}){
+async function setup({empty=false,repaintError=false,thumbnailError=false,references=[],libraryError=false}={}){
  const handlers={},renders=[],calls=[];
- const root={innerHTML:'',addEventListener:(name,fn)=>handlers[name]=fn,querySelector:()=>null};
+ const modal={addEventListener:(name,fn)=>handlers['modal:'+name]=fn,showModal:()=>{},focus:()=>{}};
+ const root={innerHTML:'',insertAdjacentHTML:(where,html)=>root.innerHTML+=html,addEventListener:(name,fn)=>handlers[name]=fn,querySelector:selector=>selector==='[data-library-dialog]'?modal:null};
  let stage={...saved,'color.bg':{v:'#FF0000'},'type.body_font':{v:'Uncommitted font'},'img.motif':{v:'Uncommitted motif'}};
  const context=vm.createContext({window:{},navigator:{clipboard:{writeText:async()=>{}}},CSS:{escape:x=>x},console,Date,Promise});
  vm.runInContext(source,context);
  const api=context.window.CodexDesignPanel.mount(root,{campaignId:'hub',preview:d=>renders.push(JSON.parse(JSON.stringify(d))),call:async(action,body)=>{
   calls.push({action,...JSON.parse(JSON.stringify(body))});
+  if(body.op==='library' && body.update){if(libraryError)return {error:'Could not save guidance'};references=references.map(x=>x.id===body.update.id?{...x,...body.update}:x);}
   if(body.op==='library' && body.remove)references=references.filter(x=>x.id!==body.remove);
   if(action==='renderSpecTest' && thumbnailError)return {error:'Generation failed'};
   if(action==='renderSpecTest')return {imageUrl:'https://example.test/thumb.png',prompt:'Original thumbnail prompt'};
@@ -24,7 +26,7 @@ async function setup({empty=false,repaintError=false,thumbnailError=false,refere
  for(let n=0;n<20;n++)await Promise.resolve();
  const click=(act,extra={})=>handlers.click({target:{closest:()=>({dataset:{act,...extra}})}});
  const flush=async()=>{for(let n=0;n<20;n++)await Promise.resolve();};
- return {api,root,renders,calls,click,flush};
+ return {api,root,renders,calls,click,flush,submit:()=>handlers.submit({target:{matches:()=>true},preventDefault(){}}),editInput:(key,value)=>handlers.input({target:{dataset:{libEdit:key},value}}),cancel:()=>handlers['modal:cancel']({preventDefault(){}})};
 }
 test('one staged color previews without complete palette or fonts; unrelated drafts stay out',async()=>{
  const x=await setup();x.api.state.group='colors';await x.api.previewStaged();const last=x.renders.at(-1);
@@ -104,4 +106,21 @@ test('library exposes a visible Remove image action and updates references after
  assert.match(x.root.innerHTML,/>Remove image<\/button>/);
  x.click('libRemove',{id:'ref'});await x.flush();
  assert.equal(x.calls.find(c=>c.op==='library').remove,'ref');assert.equal(x.api.state.inputs.mediaLibrary.length,0);assert.doesNotMatch(x.root.innerHTML,/Uploaded guide/);
+});
+
+test('Edit spec opens populated modal and saves guidance on the same image record',async()=>{
+ const x=await setup({references:[{id:'ref',url:'https://example.test/original.png',name:'Guide',role:'brand-guide',notes:'Original note'}]});
+ x.click('libEdit',{id:'ref'});assert.match(x.root.innerHTML,/Edit spec image/);assert.match(x.root.innerHTML,/How to use this image/);assert.equal(x.api.state.libraryEdit.notes,'Original note');
+ x.editInput('notes','Original note. Keep the ink outlines; avoid glossy 3D.');x.submit();await x.flush();
+ const request=x.calls.find(c=>c.op==='library'&&c.update);assert.equal(request.update.id,'ref');assert.match(request.update.notes,/Keep the ink outlines/);assert.equal(request.update.url,undefined);
+ assert.equal(x.api.state.inputs.mediaLibrary[0].url,'https://example.test/original.png');assert.equal(x.api.state.libraryEdit,null);assert.match(x.api.state.msg,/guidance saved/);
+});
+test('Cancel and Escape discard modal edits without changing the saved guidance',async()=>{
+ const x=await setup({references:[{id:'ref',url:'https://example.test/original.png',name:'Guide',role:'brand-guide',notes:'Original note'}]});
+ x.click('libEdit',{id:'ref'});x.editInput('notes','Unsaved note');x.click('libEditCancel');assert.equal(x.api.state.inputs.mediaLibrary[0].notes,'Original note');
+ x.click('libEdit',{id:'ref'});assert.equal(x.api.state.libraryEdit.notes,'Original note');x.cancel();assert.equal(x.api.state.libraryEdit,null);assert.equal(x.calls.filter(c=>c.update).length,0);
+});
+test('failed metadata save leaves guidance available in the open modal',async()=>{
+ const x=await setup({libraryError:true,references:[{id:'ref',url:'https://example.test/original.png',name:'Guide',role:'brand-guide',notes:'Original note'}]});
+ x.click('libEdit',{id:'ref'});x.editInput('notes','Retry this guidance');x.submit();await x.flush();assert.equal(x.api.state.libraryEdit.notes,'Retry this guidance');assert.match(x.api.state.libraryEditError,/Could not save/);assert.equal(x.api.state.inputs.mediaLibrary[0].notes,'Original note');
 });

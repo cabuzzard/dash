@@ -398,7 +398,7 @@ async function grokImageFetch(env, context, options) {
   const rank = { "approved-example": 0, "brand-guide": 1, "motif-reference": 2, "site-image": 3, logo: 4 };
   const references = [], add = (url, label) => { if (/^https:\/\//i.test(url || "") && !references.some(x => x.url === url)) references.push({ url, label }); };
   add(context.previousImageUrl, "Previous test image: revise this composition according to the operator direction");
-  (inputs.mediaLibrary || []).filter(x => x && /^https:\/\//i.test(x.url || "")).slice().sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9)).forEach(x => add(x.url, `${x.role || "reference"}: ${String(x.name || "Untitled").slice(0, 60)}${x.notes ? "; " + String(x.notes).slice(0, 140) : ""}`));
+  (inputs.mediaLibrary || []).filter(x => x && /^https:\/\//i.test(x.url || "")).slice().sort((a, b) => (rank[a.role] ?? 9) - (rank[b.role] ?? 9)).forEach(x => add(x.url, `${x.role || "reference"}: ${String(x.name || "Untitled").slice(0, 60)}${x.notes ? "; " + String(x.notes).slice(0, 500) : ""}`));
   add(inputs.photo?.url, "Seed photo: style reference");
   const selected = references.slice(0, 5), payload = JSON.parse(options.body);
   let endpoint = "https://api.x.ai/v1/images/generations";
@@ -52984,6 +52984,28 @@ async function handleDesignSpec(body, env, ctx) {
   }
   if (op === "library") {  // brand guides + site-image catalog, automatically included in every design prompt
     inputs.mediaLibrary = Array.isArray(inputs.mediaLibrary) ? inputs.mediaLibrary : [];
+    if (body.update) {
+      const update = body.update, index = inputs.mediaLibrary.findIndex(x => x.id === String(update.id || ""));
+      if (index < 0) return { error: "Reference image not found. Refresh the library and try again." };
+      const item = { ...inputs.mediaLibrary[index] };
+      if (Object.prototype.hasOwnProperty.call(update, "name")) {
+        const name = String(update.name).trim();
+        if (!name || name.length > 120) return { error: "Enter an image name of 1 to 120 characters." };
+        item.name = name;
+      }
+      if (Object.prototype.hasOwnProperty.call(update, "role")) {
+        if (!["brand-guide", "site-image", "motif-reference", "approved-example", "logo"].includes(update.role)) return { error: "Choose a valid reference role." };
+        item.role = update.role;
+      }
+      if (Object.prototype.hasOwnProperty.call(update, "notes")) {
+        const notes = String(update.notes).trim();
+        if (notes.length > 500) return { error: "Keep image guidance within 500 characters." };
+        item.notes = notes;
+      }
+      item.updatedAt = new Date().toISOString();
+      inputs.mediaLibrary[index] = item;
+      await put(K.inputs, inputs); return out({ mediaLibrary: inputs.mediaLibrary });
+    }
     if (body.remove) {
       inputs.mediaLibrary = inputs.mediaLibrary.filter(x => x.id !== String(body.remove));
       await put(K.inputs, inputs); return out({ mediaLibrary: inputs.mediaLibrary });

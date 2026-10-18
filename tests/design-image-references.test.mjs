@@ -64,3 +64,20 @@ test('reference-read failure fails the request rather than silently generating w
  const x=setup();x.env.TRADES.get=async()=>{throw Error('Library unavailable');};
  await assert.rejects(x.call(),/Library unavailable/);assert.equal(x.requests.length,0);
 });
+
+const libraryOperation=worker.slice(worker.indexOf('  if (op === "library")'),worker.indexOf('  if (op === "edit")',worker.indexOf('  if (op === "library")')));
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+const editLibrary=new AsyncFunction('body','inputs','put','out','env','cid','K','op',libraryOperation);
+test('persisted image metadata update keeps URL, ID, cached description and other images',async()=>{
+ const inputs={mediaLibrary:[{id:'ref',url:'https://example.test/ref.png',name:'Guide',role:'brand-guide',notes:'Old',visualRead:'Observed watercolor',at:'original'},{id:'other',url:'https://example.test/other.png',notes:'Untouched'}]};let stored;
+ await editLibrary({update:{id:'ref',name:'Revised guide',role:'motif-reference',notes:'Use the texture; avoid the scene',url:'https://example.test/ignore.png'}},inputs,async(k,v)=>stored=JSON.parse(JSON.stringify(v)),extra=>extra,{},'hub',{inputs:'inputs'},'library');
+ assert.equal(stored.mediaLibrary.length,2);assert.equal(stored.mediaLibrary[0].id,'ref');assert.equal(stored.mediaLibrary[0].url,'https://example.test/ref.png');assert.equal(stored.mediaLibrary[0].visualRead,'Observed watercolor');assert.equal(stored.mediaLibrary[1].notes,'Untouched');assert.equal(stored.mediaLibrary[0].notes,'Use the texture; avoid the scene');
+ const x=setup(stored.mediaLibrary);await x.call();assert.match(x.requests.at(-1).body.prompt,/Use the texture; avoid the scene/);
+});
+test('metadata validation rejects missing images and invalid fields without writes',async()=>{
+ const inputs={mediaLibrary:[{id:'ref',name:'Guide',notes:'Old',role:'brand-guide'}]};let writes=0;
+ for(const update of [{id:'missing',notes:'New'},{id:'ref',name:''},{id:'ref',role:'invalid'},{id:'ref',notes:'x'.repeat(501)}]){
+  const result=await editLibrary({update},structuredClone(inputs),async()=>writes++,extra=>extra,{},'hub',{inputs:'inputs'},'library');assert.ok(result.error);
+ }
+ assert.equal(writes,0);
+});
