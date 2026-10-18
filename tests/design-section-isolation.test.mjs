@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 const source=readFileSync('shared/codex-design-panel.js','utf8');
 const schema=[{id:'color',fields:[['color.bg','Background'],['color.primary','Primary']]},{id:'type',fields:[['type.display_font','Display'],['type.body_font','Body']]},{id:'intent',fields:[['intent.page_job','Job']]},{id:'imagery',fields:[['img.motif','Motif']]},{id:'asset.youtube_thumb',tier:'asset',fields:[['asset.youtube_thumb.layout','Layout']]}];
 const saved={'color.bg':{v:'#FFFFFF'},'type.body_font':{v:'Arial'},'img.motif':{v:'Saved motif'}};
-async function setup({empty=false,repaintError=false,thumbnailError=false}={}){
+async function setup({empty=false,repaintError=false,thumbnailError=false,references=[]}={}){
  const handlers={},renders=[],calls=[];
  const root={innerHTML:'',addEventListener:(name,fn)=>handlers[name]=fn,querySelector:()=>null};
  let stage={...saved,'color.bg':{v:'#FF0000'},'type.body_font':{v:'Uncommitted font'},'img.motif':{v:'Uncommitted motif'}};
@@ -13,12 +13,13 @@ async function setup({empty=false,repaintError=false,thumbnailError=false}={}){
  vm.runInContext(source,context);
  const api=context.window.CodexDesignPanel.mount(root,{campaignId:'hub',preview:d=>renders.push(JSON.parse(JSON.stringify(d))),call:async(action,body)=>{
   calls.push({action,...JSON.parse(JSON.stringify(body))});
+  if(body.op==='library' && body.remove)references=references.filter(x=>x.id!==body.remove);
   if(action==='renderSpecTest' && thumbnailError)return {error:'Generation failed'};
   if(action==='renderSpecTest')return {imageUrl:'https://example.test/thumb.png',prompt:'Original thumbnail prompt'};
   if(body.op==='repaint')return repaintError?{error:'Preview service unavailable'}:{css:'.hero{border-radius:12px}'};
   if(body.op==='chatReply')for(const [k,v] of Object.entries(JSON.parse(body.text).fields))if(body.only.includes(k))stage[k]=v;
   if(body.op==='revert')for(const k of body.keys){if(saved[k])stage[k]=saved[k];else delete stage[k];}
-  return {schema,saved:empty?{}:saved,staged:empty&&body.op==='get'?{}:stage,inputs:{},applied:body.op==='chatReply'?body.only:[]};
+  return {schema,saved:empty?{}:saved,staged:empty&&body.op==='get'?{}:stage,inputs:{mediaLibrary:references},applied:body.op==='chatReply'?body.only:[]};
  }});
  for(let n=0;n<20;n++)await Promise.resolve();
  const click=(act,extra={})=>handlers.click({target:{closest:()=>({dataset:{act,...extra}})}});
@@ -83,7 +84,7 @@ test('regeneration requires direction and carries the previous prompt plus isola
  assert.match(x.api.state.msg,/Add regeneration direction/);
  x.api.state.thumbDirection='Keep the palette; simplify the scene and move the subject right';
  x.click('testThumb');await x.flush();const r=x.calls.filter(c=>c.action==='renderSpecTest').at(-1);
- assert.equal(r.previousPrompt,'Original thumbnail prompt');assert.match(r.guidance,/simplify the scene/);assert.match(r.guidance,/wordless/);assert.match(r.spec,/#FFFFFF/);assert.doesNotMatch(r.spec,/#FF0000/);
+ assert.equal(r.previousPrompt,'Original thumbnail prompt');assert.equal(r.previousImageUrl,'https://example.test/thumb.png');assert.match(r.guidance,/simplify the scene/);assert.match(r.guidance,/wordless/);assert.match(r.spec,/#FFFFFF/);assert.doesNotMatch(r.spec,/#FF0000/);
  assert.equal(x.api.state.testThumb.direction,'Keep the palette; simplify the scene and move the subject right');assert.equal(x.api.state.thumbDirection,'');
 });
 test('thumbnail regeneration direction is kept separately for each section',async()=>{
@@ -96,4 +97,11 @@ test('failed regeneration retains the current thumbnail and the requested direct
  const x=await setup({thumbnailError:true});x.api.state.group='motif';
  x.api.state.testThumb={url:'https://example.test/keep.png',prompt:'Keep this prompt'};x.api.state.thumbDirection='Softer lighting';
  x.click('testThumb');await x.flush();assert.equal(x.api.state.testThumb.url,'https://example.test/keep.png');assert.equal(x.api.state.thumbDirection,'Softer lighting');assert.equal(x.api.state.thumbStarted,null);assert.match(x.api.state.msg,/Generation failed/);
+});
+
+test('library exposes a visible Remove image action and updates references after removal',async()=>{
+ const x=await setup({references:[{id:'ref',url:'https://example.test/ref.png',name:'Uploaded guide',role:'brand-guide'}]});
+ assert.match(x.root.innerHTML,/>Remove image<\/button>/);
+ x.click('libRemove',{id:'ref'});await x.flush();
+ assert.equal(x.calls.find(c=>c.op==='library').remove,'ref');assert.equal(x.api.state.inputs.mediaLibrary.length,0);assert.doesNotMatch(x.root.innerHTML,/Uploaded guide/);
 });
