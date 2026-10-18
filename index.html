@@ -4695,6 +4695,7 @@ function fvDefault() { return { F: [{ col: '', val: '', neg: false }, { col: '',
 function fvState(k) {
   const T = FLOWS[k];
   if (!T.vs) { try { T.vs = JSON.parse(localStorage.getItem('flowView:' + k) || 'null'); } catch (e) {} if (!T.vs || !Array.isArray(T.vs.F)) T.vs = fvDefault(); }
+  if (T.vs.P === undefined && /^hs_/.test(k)) T.vs.P = '1';   // every hub's Strategies table opens filtered to Priority = 1 (operator 2026-10-18)
   return T.vs;
 }
 function fvSave(k, btn) { try { localStorage.setItem('flowView:' + k, JSON.stringify(fvState(k))); } catch (e) {} if (btn) { const o = btn.textContent; btn.textContent = '✓ Saved'; setTimeout(() => { btn.textContent = o; }, 1500); } }
