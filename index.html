@@ -1055,8 +1055,7 @@
       <div class="oc-hd" onclick="ocToggle(event,this)" style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">
         <span style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--text3);"><span class="oc-chev" style="display:inline-block;width:12px;font-size:10px;">▶</span>This Week <span id="wpRange" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--text3);"></span></span>
         <span style="display:flex;gap:6px;">
-          <button onclick="wpSetAllGroups(true)" title="Expand all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▾ all</button>
-          <button onclick="wpSetAllGroups(false)" title="Collapse all campaigns" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▶ all</button>
+          <button id="wpAllToggle" onclick="wpToggleAllGroups()" title="Expand all campaigns — click again to collapse all" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">▾ expand all</button>
           <button onclick="wpShiftWeek(-1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">←</button>
           <button onclick="wpShiftWeek(0)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">Today</button>
           <button onclick="wpShiftWeek(1)" style="font-size:11px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text2);cursor:pointer;">→</button>
@@ -23796,6 +23795,16 @@ function wpSetAllGroups(open) {
   wpSaveGroupsOpen();
   renderWpBoard(wpLastRender.monday, wpLastRender.items);
 }
+// one toggle: any campaign collapsed → expand all; all open → collapse all. The label says what the next click does.
+function wpAllGroupsOpen() {
+  const names = wpLastRender ? [...new Set(wpLastRender.items.map(it => it.campaignName || '—'))] : [];
+  return names.length > 0 && names.every(n => wpGroupsOpen[n]);
+}
+function wpToggleAllGroups() { wpSetAllGroups(!wpAllGroupsOpen()); }
+function wpSyncAllToggle() {
+  const b = document.getElementById('wpAllToggle'); if (!b) return; const open = wpAllGroupsOpen();
+  b.textContent = open ? '▶ collapse all' : '▾ expand all'; b.title = open ? 'Collapse all campaigns' : 'Expand all campaigns';
+}
 function wpMonday(offsetWeeks) {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -23837,6 +23846,7 @@ function wpCampaignOptions() {
 }
 function renderWpBoard(monday, items) {
   wpLastRender = { monday, items };
+  wpSyncAllToggle();
   const board = document.getElementById('wpBoard');
   const byDay = {};
   for (let i = 0; i < 7; i++) { const d = new Date(monday); d.setUTCDate(monday.getUTCDate() + i); byDay[wpIso(d)] = []; }
