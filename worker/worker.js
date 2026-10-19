@@ -17804,6 +17804,7 @@ ${JSON.stringify(products)}`;
       // and interviews are untouched. Operator 2026-10-19: swept records are NOT archived or trashed — titles get Status "Idea", assets
       // Asset Status "Idea", products Status "Idea" (records already at Idea are skipped). Each write logs the record's previous status
       // in KV reset:batch:<cid>, so op "undo" puts every one back exactly (and re-adds removed ★ mains).
+      // all: true = keep ONLY Published assets (+ their titles/products); Dev / Review / Publish, Series and Runs go to Idea too.
       // One hub per call, at most `max` writes (default 120) — re-run apply until it reports left: 0.
       if (body.action === "hubResetSweep") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
@@ -17830,7 +17831,7 @@ ${JSON.stringify(products)}`;
         const aSt = a => a.properties?.["Asset Status"]?.select?.name || "", aTitle = a => nid((a.properties?.["Content Strategy"]?.relation || [])[0]?.id);
         const isDigestA = a => /^digest$/i.test(a.properties?.["Pillar Type"]?.select?.name || "") || /digest/i.test(a.properties?.["Asset Type"]?.select?.name || "");
         const isDigestT = t => /\bdigest\b/i.test(tName(t));
-        const live = a => aSt(a) === "Published", keepA = a => live(a) || (!isDigestA(a) && ["Development", "Review", "Publish"].includes(aSt(a)));
+        const live = a => aSt(a) === "Published", keepA = a => live(a) || (!body.all && !isDigestA(a) && ["Development", "Review", "Publish"].includes(aSt(a)));   // all: true (operator 2026-10-19 "completely clear content table") keeps only Published
         const keptA = assets.filter(keepA), keptTitleIds = new Set(keptA.map(aTitle).filter(Boolean));
         const keptT = titles.filter(t => keptTitleIds.has(nid(t.id)) && (!isDigestT(t) || keptA.some(a => aTitle(a) === nid(t.id) && live(a))));
         const keptTIds = new Set(keptT.map(t => nid(t.id)));
