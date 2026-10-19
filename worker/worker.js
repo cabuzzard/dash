@@ -17801,8 +17801,9 @@ ${JSON.stringify(products)}`;
       // parents + Runs included) with its title and product — except Digests. SWEEP: titles with no kept asset, every other asset
       // (Planning / Delete / no status, orphans), every Digest (title + assets, unless an asset is Published = live), and every product
       // no kept title/asset points at (all Raw ones included) — swept products also leave the ★ main list. Keywords, clusters, topics
-      // and interviews are untouched. Titles + assets go to Notion's trash (hidden everywhere, like ✕ — Notion purges trash after
-      // 30 days); products get Archived + Status Archived. Every write is logged in KV reset:batch:<cid> so op "undo" restores the lot.
+      // and interviews are untouched. Operator 2026-10-19: swept records are NOT archived or trashed — titles get Status "Idea", assets
+      // Asset Status "Idea", products Status "Idea" (records already at Idea are skipped). Each write logs the record's previous status
+      // in KV reset:batch:<cid>, so op "undo" puts every one back exactly (and re-adds removed ★ mains).
       // One hub per call, at most `max` writes (default 120) — re-run apply until it reports left: 0.
       if (body.action === "hubResetSweep") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
@@ -17811,11 +17812,10 @@ ${JSON.stringify(products)}`;
         const cid = String(hub.campaignId).replace(/-/g, ""), nid = x => String(x || "").replace(/-/g, ""), op = body.op || "preview", cap = Math.max(1, Math.min(300, Number(body.max) || 120));
         const bk = "reset:batch:" + cid, batch = (await env.TRADES.get(bk, "json")) || { titles: [], assets: [], products: [], mains: [] };
         const H = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
-        const trash = (id, v) => fetch("https://api.notion.com/v1/pages/" + kwDashId(nid(id)), { method: "PATCH", headers: H, body: JSON.stringify({ archived: v }) }).then(async r => { if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.message || "Notion " + r.status); } });
         if (op === "undo") {
           let n = 0; const errors = [];
-          for (const k of ["assets", "titles"]) for (const x of batch[k].filter(x => !x.restored)) { if (n >= cap) break; try { await trash(x.id, false); x.restored = true; n++; } catch (e) { errors.push(x.name + ": " + e.message); } }
-          for (const x of batch.products.filter(x => !x.restored)) { if (n >= cap) break; try { await kwNotionPatch(env, x.id, { Archived: { checkbox: false }, Status: { select: x.status ? { name: x.status } : null } }); x.restored = true; n++; } catch (e) { errors.push(x.name + ": " + e.message); } }
+          for (const k of ["assets", "titles", "products"]) for (const x of batch[k].filter(x => !x.restored)) { if (n >= cap) break;
+            try { await kwNotionPatch(env, x.id, { [k === "assets" ? "Asset Status" : "Status"]: { select: x.status ? { name: x.status } : null } }); x.restored = true; n++; } catch (e) { errors.push(x.name + ": " + e.message); } }
           if (batch.mains.length && ![...batch.titles, ...batch.assets, ...batch.products].some(x => !x.restored)) { const cur = await hubMainList(env, cid); await env.TRADES.put("hub:mainproduct:" + cid, JSON.stringify([...new Set([...cur, ...batch.mains])])); batch.mains = []; }
           await env.TRADES.put(bk, JSON.stringify(batch));
           return json({ ok: true, op, hub: hub.name, restored: n, left: [...batch.titles, ...batch.assets, ...batch.products].filter(x => !x.restored).length, errors });
@@ -17834,12 +17834,13 @@ ${JSON.stringify(products)}`;
         const keptA = assets.filter(keepA), keptTitleIds = new Set(keptA.map(aTitle).filter(Boolean));
         const keptT = titles.filter(t => keptTitleIds.has(nid(t.id)) && (!isDigestT(t) || keptA.some(a => aTitle(a) === nid(t.id) && live(a))));
         const keptTIds = new Set(keptT.map(t => nid(t.id)));
-        const sweepA = assets.filter(a => !keepA(a) || (aTitle(a) && !keptTIds.has(aTitle(a)) && !live(a)));
-        const sweepT = titles.filter(t => !keptTIds.has(nid(t.id)));
-        const keptAfinal = assets.filter(a => !sweepA.includes(a)), keptPIds = new Set();
+        const tSt = t => t.properties?.Status?.select?.name || "";
+        const sweepA0 = assets.filter(a => !keepA(a) || (aTitle(a) && !keptTIds.has(aTitle(a)) && !live(a))), sweepA = sweepA0.filter(a => aSt(a) !== "Idea");
+        const sweepT = titles.filter(t => !keptTIds.has(nid(t.id)) && tSt(t) !== "Idea");
+        const keptAfinal = assets.filter(a => !sweepA0.includes(a)), keptPIds = new Set();
         keptT.forEach(t => (t.properties?.product?.relation || []).forEach(r => keptPIds.add(nid(r.id))));
         keptAfinal.forEach(a => (a.properties?.Product?.relation || []).forEach(r => keptPIds.add(nid(r.id))));
-        const liveProds = prods.filter(p => !p.properties?.Archived?.checkbox), sweepP = liveProds.filter(p => !keptPIds.has(nid(p.id))), keptP = liveProds.filter(p => keptPIds.has(nid(p.id)));
+        const liveProds = prods.filter(p => !p.properties?.Archived?.checkbox), sweepP = liveProds.filter(p => !keptPIds.has(nid(p.id)) && (p.properties?.Status?.select?.name || "") !== "Idea"), keptP = liveProds.filter(p => keptPIds.has(nid(p.id)));
         const mains = await hubMainList(env, cid), sweepPIds = new Set(sweepP.map(p => nid(p.id)));
         const summary = { hub: hub.name, op,
           keep: { titles: keptT.length, assets: keptAfinal.length, products: keptP.map(p => pName(p) + (p.properties?.["Product Stage"]?.select?.name === "Raw" ? " (Raw — has kept content)" : "")) },
@@ -17848,9 +17849,9 @@ ${JSON.stringify(products)}`;
         if (op !== "apply") return json({ ok: true, ...summary });
         let n = 0; const errors = [];
         const left = () => sweepA.length + sweepT.length + sweepP.length - n;
-        for (const a of sweepA) { if (n >= cap) break; try { await trash(a.id, true); batch.assets.push({ id: nid(a.id), name: aName(a) }); n++; } catch (e) { errors.push(aName(a) + ": " + e.message); if (/rate/i.test(e.message)) break; } }
-        for (const t of sweepT) { if (n >= cap || errors.length) break; try { await trash(t.id, true); batch.titles.push({ id: nid(t.id), name: tName(t) }); n++; } catch (e) { errors.push(tName(t) + ": " + e.message); if (/rate/i.test(e.message)) break; } }
-        for (const p of sweepP) { if (n >= cap || errors.length) break; try { await kwNotionPatch(env, nid(p.id), { Archived: { checkbox: true }, Status: { select: { name: "Archived" } } }); batch.products.push({ id: nid(p.id), name: pName(p), status: p.properties?.Status?.select?.name || "" }); n++; } catch (e) { errors.push(pName(p) + ": " + e.message); if (/rate/i.test(e.message)) break; } }
+        for (const a of sweepA) { if (n >= cap) break; try { await kwNotionPatch(env, nid(a.id), { "Asset Status": { select: { name: "Idea" } } }); batch.assets.push({ id: nid(a.id), name: aName(a), status: aSt(a) }); n++; } catch (e) { errors.push(aName(a) + ": " + e.message); if (/rate/i.test(e.message)) break; } }
+        for (const t of sweepT) { if (n >= cap || errors.length) break; try { await kwNotionPatch(env, nid(t.id), { Status: { select: { name: "Idea" } } }); batch.titles.push({ id: nid(t.id), name: tName(t), status: tSt(t) }); n++; } catch (e) { errors.push(tName(t) + ": " + e.message); if (/rate/i.test(e.message)) break; } }
+        for (const p of sweepP) { if (n >= cap || errors.length) break; try { await kwNotionPatch(env, nid(p.id), { Status: { select: { name: "Idea" } } }); batch.products.push({ id: nid(p.id), name: pName(p), status: p.properties?.Status?.select?.name || "" }); n++; } catch (e) { errors.push(pName(p) + ": " + e.message); if (/rate/i.test(e.message)) break; } }
         const gone = mains.filter(id => batch.products.some(x => x.id === nid(id)));
         if (gone.length) { await env.TRADES.put("hub:mainproduct:" + cid, JSON.stringify(mains.filter(id => !gone.includes(id)))); batch.mains = [...new Set([...batch.mains, ...gone.map(nid)])]; }
         await env.TRADES.put(bk, JSON.stringify(batch));
