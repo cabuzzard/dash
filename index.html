@@ -17293,11 +17293,11 @@ function hubSeriesDraw() {
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
       <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button><div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
     ${D ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid var(--accent);border-radius:6px;margin-bottom:8px;">
-      <b style="font-size:12px;">✍ Ask Claude</b><span style="font-size:10.5px;color:var(--text3);">a specific ask → Claude writes the ideas → a new Run on this Series</span>
-      <textarea id="srAsk" rows="2" placeholder="e.g. one post per micro app a plumbing business could use — what it does, the hours it saves" style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.ask || '')}</textarea>
-      <select id="srAskN" class="kw-sel">${[3, 4, 5, 6, 7, 8, 9, 10, 12].map(k => `<option value="${k}"${k === (S.askN || 6) ? ' selected' : ''}>${k} ideas</option>`).join('')}</select>
+      <b style="font-size:12px;">✍ Ask Claude</b><select id="srAskMode" class="kw-sel" onchange="_series.askMode=this.value;_series.askN=undefined;_series.ask=document.getElementById('srAsk').value;hubSeriesDraw()"><option value="ask"${S.askMode !== 'split' ? ' selected' : ''}>write ideas for my ask</option><option value="split"${S.askMode === 'split' ? ' selected' : ''}>split my pasted list</option></select><span style="font-size:10.5px;color:var(--text3);">${S.askMode === 'split' ? 'paste your info → Claude splits it into one idea per item (nothing invented) → a new Run' : 'a specific ask → Claude writes the ideas → a new Run on this Series'}</span>
+      <textarea id="srAsk" rows="${S.askMode === 'split' ? 8 : 2}" placeholder="${S.askMode === 'split' ? 'Paste your list / notes / doc here — each item becomes one post (or slide)' : 'e.g. one post per micro app a plumbing business could use — what it does, the hours it saves'}" style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.ask || '')}</textarea>
+      <select id="srAskN" class="kw-sel">${(S.askMode === 'split' ? [0, 3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30] : [3, 4, 5, 6, 7, 8, 9, 10, 12]).map(k => `<option value="${k}"${k === (S.askN ?? (S.askMode === 'split' ? 0 : 6)) ? ' selected' : ''}>${k ? k + ' ideas' : 'one per item'}</option>`).join('')}</select>
       <select id="srAskShape" class="kw-sel"><option value="single"${S.askShape !== 'carousel' ? ' selected' : ''}>single posts</option><option value="carousel"${S.askShape === 'carousel' ? ' selected' : ''}>one carousel</option></select>
-      <button style="${B}border-color:var(--accent);color:var(--accent);" onclick="hubSeriesAsk()">Ask → new run</button></div>` : ''}
+      <button style="${B}border-color:var(--accent);color:var(--accent);" onclick="hubSeriesAsk()">${S.askMode === 'split' ? 'Split → new run' : 'Ask → new run'}</button></div>` : ''}
     <div style="font-size:11.5px;color:${S.err ? '#f87171' : 'var(--text3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
     ${D ? hubSeriesCatsHtml(B) : ''}
     ${srcs.map(k => { const list = D.sources[k], open = S.open[k] !== false;
@@ -17393,15 +17393,16 @@ async function hubSeriesRun() {
 // ✍ Ask Claude: the operator's text ask → worker seriesAsk → Claude's ideas become a new Run (Development child of the Series)
 async function hubSeriesAsk() {
   const S = _series, D = S && S.data; if (!D) return;
-  S.ask = document.getElementById('srAsk').value.trim(); S.askN = Number(document.getElementById('srAskN').value) || 6; S.askShape = document.getElementById('srAskShape').value;
-  if (!S.ask) { S.msg = '✗ Type what you want ideas for'; return hubSeriesDraw(); }
+  S.ask = document.getElementById('srAsk').value.trim(); S.askN = Number(document.getElementById('srAskN').value) || 0; S.askShape = document.getElementById('srAskShape').value;
+  const split = S.askMode === 'split';
+  if (!S.ask) { S.msg = split ? '✗ Paste the list to split' : '✗ Type what you want ideas for'; return hubSeriesDraw(); }
   const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
   if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
-  S.msg = '⏳ Asking Claude for ' + S.askN + ' ideas…'; hubSeriesDraw();
-  const r = await call('seriesAsk', { titleId: S.tid, titleName: row.title || D.name, seriesAssetId: S.seriesAssetId, prompt: S.ask, count: S.askN, shape: S.askShape, assetType: hubSeriesType(S.slug, S.askShape === 'carousel' ? 'carousel' : 'single'), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug }).catch(e => ({ error: e.message }));
+  S.msg = split ? '⏳ Claude is splitting your list' + (S.askN ? ' into ' + S.askN + ' ideas' : '') + '…' : '⏳ Asking Claude for ' + (S.askN || 6) + ' ideas…'; hubSeriesDraw();
+  const r = await call('seriesAsk', { titleId: S.tid, titleName: row.title || D.name, seriesAssetId: S.seriesAssetId, prompt: S.ask, count: S.askN, shape: S.askShape, mode: split ? 'split' : 'ask', assetType: hubSeriesType(S.slug, S.askShape === 'carousel' ? 'carousel' : 'single'), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug }).catch(e => ({ error: e.message }));
   if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
-  else { S.used = new Set(r.used || []); D.sources['Claude asks'] = r.ideas.map(x => ({ id: x.id, t: x.t, meta: 'Ask: ' + r.ask.slice(0, 120) })).concat((D.sources['Claude asks'] || []).filter(x => !r.ideas.some(y => y.id === x.id)));
-    S.open['Claude asks'] = true; S.ask = ''; S.msg = '✓ Run created — ' + r.ideas.length + ' ideas from Claude on one Development asset (listed under Claude asks)'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
+  else { S.used = new Set(r.used || []); D.sources['Claude asks'] = r.ideas.map(x => ({ id: x.id, t: x.t, meta: r.split ? 'From your list' : 'Ask: ' + r.ask.slice(0, 120) })).concat((D.sources['Claude asks'] || []).filter(x => !r.ideas.some(y => y.id === x.id)));
+    S.open['Claude asks'] = true; S.ask = ''; S.msg = '✓ Run created — ' + r.ideas.length + (r.split ? ' ideas split from your list' : ' ideas from Claude') + ' on one Development asset (listed under Claude asks)'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
   hubSeriesDraw();
 }
 async function hubSeriesUse(kind, src, ideaId) {
