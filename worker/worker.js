@@ -17724,6 +17724,50 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: aid, loaded: ideas.length, archived: archived.length, kept, failed, used });
       }
+      // hubPlaceholderCleanup {op: preview|apply} — retires every "<Hub> - Main Offering" placeholder product (2026-10-18, operator:
+      // "do away with all placeholders"). Per hub: the replacement = the first IN-SYNC ★ main offering (research 'updated' + keywords
+      // not out of sync — the Keywords dot rule), else the first in-sync hub product; titles (product) + assets (Product) linked to a
+      // placeholder are relinked to it, the placeholder leaves the ★ main list (KV hub:mainproduct) and is archived (Archived +
+      // Status Archived — recoverable). A hub with no in-sync product is reported and left untouched. preview changes nothing.
+      if (body.action === "hubPlaceholderCleanup") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        const apply = body.op === "apply", nid = x => String(x || "").replace(/-/g, ""), out = [];
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const nm = p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
+        for (const hub of HUB_SITES) {
+          const cid = nid(hub.campaignId); if (!cid) continue;
+          const prods = (await notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: kwDashId(cid) } } }).catch(e => { console.error("placeholder cleanup products", e); return []; }))
+            .filter(p => !p.properties?.Archived?.checkbox);
+          const ph = prods.filter(p => / - Main Offering$/.test(nm(p))); if (!ph.length) continue;
+          const cs = await invoke({ action: "getCampaignStrategies", campaignId: cid });
+          const state = Object.fromEntries(((cs && cs.products) || []).map(p => [nid(p.productId), p.researchState]));
+          const inSync = p => state[nid(p.id)] === "updated" && !p.properties?.["Keywords Out of Sync"]?.checkbox;
+          const real = prods.filter(p => !/ - Main Offering$/.test(nm(p))), mains = await hubMainList(env, cid), phIds = new Set(ph.map(p => nid(p.id)));
+          const rep = mains.map(id => real.find(p => nid(p.id) === nid(id))).find(p => p && inSync(p)) || real.find(inSync) || null;
+          const H = { hub: hub.name, placeholders: ph.map(nm), replacement: rep ? { id: nid(rep.id), name: nm(rep), main: mains.some(id => nid(id) === nid(rep.id)) } : null, titles: [], assets: [], errors: [] };
+          for (const p of ph) {
+            const [ts, as] = await Promise.all([
+              notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "product", relation: { contains: kwDashId(nid(p.id)) } } }).catch(e => { H.errors.push("titles: " + e.message); return []; }),
+              notionQuery(ASSETS_DB, { filter: { property: "Product", relation: { contains: kwDashId(nid(p.id)) } } }).catch(e => { H.errors.push("assets: " + e.message); return []; })]);
+            ts.forEach(t => H.titles.push({ id: nid(t.id), name: (t.properties?.Title?.title || []).map(x => x.plain_text).join("") }));
+            as.forEach(a => H.assets.push({ id: nid(a.id), name: (a.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") }));
+          }
+          if (apply && rep) {
+            const swap = rel => [...new Set((rel || []).map(r => nid(r.id)).map(id => phIds.has(id) ? nid(rep.id) : id))].map(id => ({ id: kwDashId(id) }));
+            for (const t of H.titles) { try { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(t.id), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+              await kwNotionPatch(env, t.id, { product: { relation: swap(pg.properties?.product?.relation) } }); t.done = true; } catch (e) { H.errors.push(t.name + ": " + e.message); } }
+            for (const a of H.assets) { try { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(a.id), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+              await kwNotionPatch(env, a.id, { Product: { relation: swap(pg.properties?.Product?.relation) } }); a.done = true; } catch (e) { H.errors.push(a.name + ": " + e.message); } }
+            const left = mains.filter(id => !phIds.has(nid(id))); if (left.length !== mains.length) await env.TRADES.put("hub:mainproduct:" + cid, JSON.stringify(left));
+            if (!H.errors.length) for (const p of ph) { try { await kwNotionPatch(env, nid(p.id), { Archived: { checkbox: true }, Status: { select: { name: "Archived" } } }); } catch (e) { H.errors.push("archive " + nm(p) + ": " + e.message); } }
+            H.applied = true;
+          }
+          out.push(H);
+        }
+        return json({ ok: true, op: apply ? "apply" : "preview", hubs: out });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
