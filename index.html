@@ -16591,7 +16591,10 @@ async function hub2IdleSweep(slug, btn) {
 // The operator then fills each asset from the asset modal (Development → Publish → Published); a child initiates its parent
 // from the publish modal, so parent rows are listed separately and never ticked by "all". A title whose pillar fails gets
 // no assets. A type the title already has is skipped (worker).
-async function hub2DevAssetsModal(slug) {
+// titles: optional explicit list (the Keywords title row's ＋ assets) — else the Content tab selection
+const _hub2DaTitles = {};
+async function hub2DevAssetsModal(slug, titles) {
+  _hub2DaTitles[slug] = titles || null;
   if (!(_hub2Checklist[slug] && _hub2Checklist[slug].methods)) { await hub2ChecklistLoad(slug); }
   const methods = ((_hub2Checklist[slug] || {}).methods || []).filter(m => !hub2IsGrayed(m) && !/^hub$/i.test(m.parent)).sort((a, b) => a.name.localeCompare(b.name));
   const sel = hub2PillarBulkTitles(slug), tc = sel.length, written = sel.filter(t => /^written$/i.test(t.pillarStatus || '')).length;
@@ -16605,6 +16608,7 @@ async function hub2DevAssetsModal(slug) {
     <div style="display:flex;gap:8px;margin-top:12px;"><button class="modal-btn" onclick="hcModalRun(this, () => hub2DevAssetsGo('${slug}'))">Run</button>${HC_CANCEL}</div>`);
 }
 function hub2PillarBulkTitles(slug) {
+  if (_hub2DaTitles[slug]) return _hub2DaTitles[slug];
   const rows = ((_hub2Content[slug] || {}).rows || []);
   return [...(_hub2Selected[slug] || [])].filter(x => x.startsWith('t:')).map(x => rows.find(r => r.type === 'Title' && String(r.id) === x.slice(2))).filter(Boolean);
 }
@@ -16636,7 +16640,9 @@ async function hub2DevAssetsGo(slug) {
   await Promise.all([worker(), worker(), worker()]);
   _hub2BulkMsg[slug] = `✍ ${doPillar ? pw + ' pillars written' + (pskip ? ' (' + pskip + ' already had one)' : '') + ' · ' : ''}${made} Dev assets created${skip ? ' · ' + skip + ' skipped (already had that type)' : ''}${fails.length ? ' · ' + fails.length + ' failed: ' + fails.slice(0, 2).join(' · ') : ''}`;
   if (fails.length) console.error('Pillar + Dev assets failures:', fails);
+  const fromKw = !!_hub2DaTitles[slug]; _hub2DaTitles[slug] = null;
   await hub2ContentLoad(slug, true); hub2ChecklistLoad(slug, true);
+  if (fromKw) { showToast(_hub2BulkMsg[slug]); hubTitlesLoad(slug, true).then(() => hubKwRefresh(slug)); }
   return true;
 }
 async function hub2BulkKeywords(slug, btn, withResearch) {
@@ -17724,7 +17730,7 @@ function renderHubKw(slug) {
     if (!tByTopic) return sec('ti:' + id, 'Titles', '…', '', '<span style="font-size:11px;color:var(--text3);">Loading titles…</span>');
     const ts = (tByTopic.get(id) || []).sort((a, b) => String(a.title).localeCompare(String(b.title)));
     return sec('ti:' + id, 'Titles', ts.length, `<button style="${btn}" title="Add a title to this topic" onclick="hubKwTitleAdd('${slug}','${esc(id)}')">＋ title</button>`, ts.filter(x => showT(x) && keepT(x)).map(x => `<div class="hkw-row" draggable="true" ondragstart="hubKwTitleDragStart(event,'${esc(x.id)}')" title="Drag onto another topic (or Master) — the title takes its keywords from its topic" style="cursor:grab;display:flex;align-items:center;gap:5px;padding:2px 4px;font-size:11px;flex-wrap:wrap;">✍ ${esc(x.title)}
-      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${pSlot('<span class="hkw-slot"></span>')}<span class="hkw-slot">${hubTitleSyncDot(x)}</span>${pilDot(x.pil)}${devSlot(!x.oos && x.res ? x.dev : 0, 'Development assets — click to see this title’s assets in Content', `hub2ContentShowTitle('${slug}','${esc(x.id)}',${esc(JSON.stringify(x.title))})`)}<span class="hkw-ctl"><button style="${btn}" title="Edit title — product, topic, notes, status, and its child assets (add / remove)" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button>${x.series ? `<button style="${btn}border-color:#f5c542;color:#f5c542;" title="Series topic generator — ideas from your research, search questions, autocomplete, Reddit, Digest, interviews" onclick="event.stopPropagation();hubSeriesOpen('${slug}','${esc(x.id)}','${esc(x.series)}')">✨ ideas</button>` : ''}<button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this title (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteTitle('${slug}','${esc(x.id)}')">✕</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>', pSlot('<span class="hkw-slot"></span>') + slotCnt(0, ts.filter(x => !x.oos && x.res).length, 'titles in sync') + (showPil ? slotCnt(0, ts.filter(x => x.pil === 'in').length, 'pillars in sync') : '') + devSlot(ts.filter(x => !x.oos && x.res).reduce((a, x) => a + (x.dev || 0), 0), 'Development assets on in-sync titles')); };
+      <span style="margin-left:auto;display:flex;gap:4px;align-items:center;">${pSlot('<span class="hkw-slot"></span>')}<span class="hkw-slot">${hubTitleSyncDot(x)}</span>${pilDot(x.pil)}${devSlot(!x.oos && x.res ? x.dev : 0, 'Development assets — click to see this title’s assets in Content', `hub2ContentShowTitle('${slug}','${esc(x.id)}',${esc(JSON.stringify(x.title))})`)}<span class="hkw-ctl"><button style="${btn}" title="Create assets — write the pillar (if not yet) and add empty Development assets of the checklist types you pick" onclick="event.stopPropagation();hubKwTitleAssets('${slug}','${esc(x.id)}')">＋ assets</button><button style="${btn}" title="Edit title — product, topic, notes, status, and its child assets (add / remove)" onclick="event.stopPropagation();hubKwTitleEdit('${slug}','${esc(x.id)}')">✎</button><button style="${btn}" title="Title research — built from its keyword topic" onclick="event.stopPropagation();hubTitleResOpen('${slug}','${esc(x.id)}')">🔬</button>${x.series ? `<button style="${btn}border-color:#f5c542;color:#f5c542;" title="Series topic generator — ideas from your research, search questions, autocomplete, Reddit, Digest, interviews" onclick="event.stopPropagation();hubSeriesOpen('${slug}','${esc(x.id)}','${esc(x.series)}')">✨ ideas</button>` : ''}<button style="font-size:11px;padding:0 6px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;line-height:16px;" title="Delete this title (archived in Notion — recoverable)" onmouseover="this.style.color='#f87171'" onmouseout="this.style.color='var(--text3)'" onclick="event.stopPropagation();hubKwDeleteTitle('${slug}','${esc(x.id)}')">✕</button></span></span></div>`).join('') || '<span style="font-size:11px;color:var(--text3);">No titles on this topic — drag one here.</span>', pSlot('<span class="hkw-slot"></span>') + slotCnt(0, ts.filter(x => !x.oos && x.res).length, 'titles in sync') + (showPil ? slotCnt(0, ts.filter(x => x.pil === 'in').length, 'pillars in sync') : '') + devSlot(ts.filter(x => !x.oos && x.res).reduce((a, x) => a + (x.dev || 0), 0), 'Development assets on in-sync titles')); };
   const F = hubKwFilterOf(slug), fOn = F.states.length > 0 || F.main;
   const pIn = p => hubKwSyncState(slug, p) === 'in', tIn = x => !x.oos && x.res;
   const keep = p => (!F.states.length || F.states.some(s => s === 'Keyword Research' ? p.stage === 'Keyword Research' : s === 'In sync' ? pIn(p) : !pIn(p))) && (!F.main || (K.mainIds || []).includes(String(p.id).replace(/-/g, '')));
@@ -17870,6 +17876,11 @@ function hubTitleTopicOf(slug, row) {
   const p = (T.products || []).find(x => nid(x.id) === nid(row.productId)); return p ? hubTiTopicOf(slug, p) : '';
 }
 // topic id → [{ id, title, status, pillar, pid, product, own }] (one entry per title)
+// ＋ assets on a Keywords title row → the ✍ Pillar + Dev assets modal for just that title
+function hubKwTitleAssets(slug, tid) {
+  const r = ((_hubTitles[slug] || {}).rows || []).find(x => x.titleId === tid); if (!r) return showToast('Title not loaded', 'error');
+  hub2DevAssetsModal(slug, [{ id: tid, name: r.title || '(untitled)', productId: r.productId || '', pillarStatus: r.pillarStatus || '' }]);
+}
 function hubTitlesByTopic(slug) {
   const T = _hubTitles[slug], m = new Map(), seen = new Set(), dev = {}; if (!T || !T.rows) return m;
   const series = {}; T.rows.forEach(r => { if (r.titleId && r.kind === 'asset' && r.assetStatus === 'Development') dev[r.titleId] = (dev[r.titleId] || 0) + 1;
