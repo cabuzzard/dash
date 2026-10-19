@@ -51717,9 +51717,11 @@ async function kwHubRun(env, cid, name, keywords, market) {
   return id;
 }
 
-async function kwHubLoad(env, campaignId, name) {
+// extra: a pasted list (📋 Paste → Main, 2026-10-19) — priced with the hub's keywords and added to its run so it can be vetted there
+async function kwHubLoad(env, campaignId, name, extra) {
   const st = await kwHubState(env, campaignId);
-  const all = [...new Set([...st.model.main, ...st.model.topics.flatMap(t => t.keywords), ...st.model.clusters.map(kwNorm),
+  const ex = [...new Set((Array.isArray(extra) ? extra : []).map(kwNorm).filter(Boolean))].slice(0, 2000);
+  const all = [...new Set([...ex, ...st.model.main, ...st.model.topics.flatMap(t => t.keywords), ...st.model.clusters.map(kwNorm),
     ...st.products.flatMap(p => p.keywords), ...st.titles.flatMap(t => t.keywords)])].filter(Boolean).slice(0, 8000);
   const market = await kwMarket(env, {});
   let warn = "", metrics = { fetched: 0, calls: 0 };
@@ -51727,7 +51729,7 @@ async function kwHubLoad(env, campaignId, name) {
   const hubName = String(name || (st.research ? kwTitleOf(st.research) : "") || "Hub").slice(0, 100);
   const runId = await kwHubRun(env, st.cid, hubName, all, market);
   let backup = null; try { backup = await env.TRADES.get("kwhub:backup:" + st.cid, "json"); } catch (e) {}
-  return { ok: true, runId, cid: st.cid, name: hubName, model: st.model, warn, metrics,
+  return { ok: true, runId, cid: st.cid, name: hubName, model: st.model, warn, metrics, extra: ex,
     products: st.products.map(({ id, name, stack, status, topicId, linkedBy, keywords, outOfSync }) => ({ id, name, stack, status, topicId, linkedBy, keywords, outOfSync })),
     titles: st.titles, undo: backup ? { at: backup.at, lines: backup.lines || [] } : null };
 }
@@ -52111,7 +52113,7 @@ async function handleKeywordAction(body, env) {
   }
 
   // 🌐 hub keywords: load into the tool / apply a reorganize / undo the last apply
-  if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
+  if (a === "kwHubLoad") { try { return json(await kwHubLoad(env, body.campaignId, body.name, body.extra)); } catch (e) { return json({ error: e.message || String(e) }, 500); } }
   if (a === "kwHubProposalGet") { const cid = String(body.campaignId || "").replace(/-/g, ""); const p = await env.TRADES.get("kwhub:proposal:" + cid, "json");
     const q = (await env.TRADES.get("kwhub:propose:queue", "json")) || []; const at = q.findIndex(x => String(x.cid).replace(/-/g, "") === cid);
     const auto = await env.TRADES.get("kwhub:auto:state:" + cid, "json");

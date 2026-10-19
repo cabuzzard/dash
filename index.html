@@ -6661,6 +6661,27 @@ function kwHubSet(r) {
   KW.group = null; KW.view = [r.runId]; KW.selected.clear();
   kwViewChanged();
 }
+// 📋 Paste → Main: a pasted list is priced (exact Google numbers, 30-day cache) and loaded into the hub ticked + filtered to
+// itself; untick the weak ones, then ★ + Main (add) or ★ = Main (replace) → 💾 Apply writes Research Keywords (↶ undo).
+function kwHubPasteOpen() {
+  if (!KW.hub) return;
+  hcModal(`<h3 style="margin:0 0 4px;">📋 Paste → Main — ${esc(KW.hub.name)}</h3><div style="font-size:11px;color:var(--text3);margin-bottom:8px;">One keyword per line (commas / tabs work too). They're priced with exact Google numbers and shown ticked — untick the weak ones, then ★ + Main or ★ = Main, then 💾 Apply.</div>
+    <textarea id="kwPasteMain" rows="12" style="width:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);" placeholder="keyword one&#10;keyword two"></textarea>
+    <div style="display:flex;gap:8px;margin-top:10px;"><button class="modal-btn" onclick="hcModalRun(this, () => kwHubPasteGo())">Price these</button>${HC_CANCEL}</div>`);
+}
+async function kwHubPasteGo() {
+  const H = KW.hub; if (!H) return 'Load a hub first';
+  const list = [...new Set(document.getElementById('kwPasteMain').value.split(/[\r\n\t,]+/).map(x => x.trim().toLowerCase().replace(/\s+/g, ' ')).filter(Boolean))];
+  if (!list.length) return 'Paste some keywords first';
+  if (KW.hubOps.length && !confirm('Pricing reloads the hub — discard the unsaved hub changes?')) return 'Cancelled';
+  const msg = document.getElementById('kwHubLoadMsg'); if (msg) msg.textContent = '⏳ Pricing ' + list.length + ' pasted keyword(s)…';
+  const r = await call('kwHubLoad', { campaignId: H.cid, name: H.name, extra: list }); if (!r || r.error) return (r && r.error) || 'Pricing failed';
+  KW.hubOps = []; kwHubSet(r);
+  (r.extra || []).forEach(k => KW.selected.add(k)); KW.selOnly = true; kwLoadResults(0);
+  if (msg) msg.textContent = `✓ ${(r.extra || []).length} pasted keyword(s) priced` + (r.metrics && r.metrics.calls ? ` (${r.metrics.fetched} new from Google)` : ' (all from cache)') + ' — showing just them, ticked. Untick the weak ones → ★ + Main / ★ = Main → 💾 Apply.' + (r.warn ? ' ⚠ ' + r.warn : '');
+  document.getElementById('hcModal').classList.remove('open');
+  return true;
+}
 async function kwHubLoadUI(cid, name) {
   const msg = document.getElementById('kwHubLoadMsg');
   if (KW.hub && KW.hub.cid === cid && KW.hubOps.length && !confirm('Discard the unsaved hub changes and reload?')) return;
@@ -6921,6 +6942,12 @@ function kwHubSelAct(kind) {
   const kws = [...KW.selected]; if (!kws.length) return;
   const target = document.getElementById('kwHubTarget').value, cluster = (document.getElementById('kwHubNewCluster') || {}).value || '';
   if (kind === 'main+' || kind === 'main-') return kwHubOp({ op: 'main', keywords: kws, add: kind === 'main+' });
+  if (kind === 'mainSet') {   // ★ = Main: Main becomes exactly the ticked keywords
+    const drop = kwHubDraft().model.main.filter(k => !KW.selected.has(k));
+    if (!confirm('Replace Main Keywords with the ' + kws.length + ' ticked keyword(s)?' + (drop.length ? ' ' + drop.length + ' current Main keyword(s) leave Main.' : '') + ' (Nothing is saved until 💾 Apply.)')) return;
+    if (drop.length) kwHubOp({ op: 'main', keywords: drop, add: false });
+    return kwHubOp({ op: 'main', keywords: kws, add: true });
+  }
   if (kind === 'rmAll') return kwHubOp({ op: 'unassign', keywords: kws, from: '*' });
   if (kind === 'rmOne') return KW.hubF.topic && KW.hubF.topic !== '__none' ? kwHubOp({ op: 'unassign', keywords: kws, from: KW.hubF.topic }) : null;
   const move = kind === 'move';
@@ -7067,6 +7094,7 @@ function kwHubRender() {
         <button class="kw-btn" style="border-color:var(--accent);color:var(--accent);" onclick="kwHubPropose3()" title="Propose Main → 3 clusters → up to 3 topics (volume decides) → Unclassified, read from the hub's records + Google numbers — loads as a draft">🧭 Propose 3×3</button>
         <button class="kw-btn" onclick="kwHubCleanOpen()" title="File the hub's products + titles into its saved topics: real products keep a topic, the rest become titles under bridge products — reviewed first">🧹 Clean up records</button>
         <button class="kw-btn" onclick="kwHubAutoCluster()" title="Use Main Keywords plus every topic's keywords to replace the current grouping with a few broad clusters">✨ Broad-cluster topics</button>
+        <button class="kw-btn" style="border-color:#f5c542;color:#f5c542;" onclick="kwHubPasteOpen()" title="Paste a keyword list → exact Google numbers → tick the good ones → ★ + Main / ★ = Main → 💾 Apply">📋 Paste → Main</button>
         <button class="kw-btn" onclick="kwHubLoadUI('${H.cid}', ${esc(JSON.stringify(H.name))})" title="Re-read the hub (picks up changes made elsewhere)">↻ Reload hub</button>
         <button class="kw-btn" onclick="kwHubClose()">✕ Close hub</button>
       </span>
@@ -7108,6 +7136,7 @@ function kwHubRender() {
       <button class="kw-btn" onclick="kwHubSelAct('rmAll')">− From all topics</button>
       <button class="kw-btn" onclick="kwHubSelAct('main+')">★ + Main</button>
       <button class="kw-btn" onclick="kwHubSelAct('main-')">☆ − Main</button>
+      <button class="kw-btn" onclick="kwHubSelAct('mainSet')" title="Replace Main Keywords with exactly the ticked keywords (everything else leaves Main)">★ = Main</button>
       <button class="kw-btn" onclick="kwHubResearch()" title="Run the keyword tool on the selected keywords — your Quick / Discover settings, the hub's market — and open the result next to the hub (gaps = 'not in the hub')">🔬 Research selection</button>
     </div>
     ${kwHubResearchRuns()}
