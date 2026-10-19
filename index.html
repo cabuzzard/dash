@@ -11552,6 +11552,12 @@ const HP_COLS = [
 ];
 let HP_ROWS = [], HP_SORT = [{col:'hub',asc:true}], HP_F = [{col:'',val:''},{col:'',val:''}];
 const HP_BLANK = '__blank__';
+let HP_SCOPE = 'all';
+const HP_HUB_VIEWS = {};
+let HP_LIVE_STATS = null, HP_LIVE_AT = 0, HP_LIVE_PENDING = null;
+const hpStorageKey = key => HP_SCOPE === 'all' ? key : key + ':' + HP_SCOPE;
+const hpScopedId = (id, scope = HP_SCOPE) => scope === 'all' ? id : 'hubProducts-' + scope + '-' + id;
+const hpEl = id => document.getElementById(hpScopedId(id));
 function hpInit() {
  if (HP_ROWS.length) return;
  HP_ROWS = JSON.parse(document.getElementById('hubProductsAuditData').textContent);
@@ -11572,79 +11578,81 @@ function hpCmp(a,b) {
  return a.product.localeCompare(b.product);
 }
 function hpSaveClick(btn) {
- try {localStorage.setItem('hpView',JSON.stringify({S:HP_SORT,F:HP_F,group:HP_GROUP,orders:hpOrders()}));}catch(e){}
+ try {localStorage.setItem(hpStorageKey('hpView'),JSON.stringify({S:HP_SORT,F:HP_F,group:HP_GROUP,orders:hpOrders()}));}catch(e){}
  const prev=btn.textContent;btn.textContent='✓ Saved';setTimeout(()=>btn.textContent=prev,1500);
 }
 function hpLoadSaved() {
- try {const v=JSON.parse(localStorage.getItem('hpView')||'null');
-  HP_SORT=v&&Array.isArray(v.S)?v.S.filter(x=>HP_COLS.some(c=>c.key===x.col)).slice(0,7):[{col:'hub',asc:true}];
+ try {const v=JSON.parse(localStorage.getItem(hpStorageKey('hpView'))||'null');
+  HP_SORT=v&&Array.isArray(v.S)?v.S.filter(x=>HP_COLS.some(c=>c.key===x.col)).slice(0,7):[HP_SCOPE==='all'?{col:'hub',asc:true}:{col:'fit',asc:false}];
   HP_F=v&&Array.isArray(v.F)&&v.F.length===2?v.F:[{col:'',val:''},{col:'',val:''}];
-  HP_GROUP=v?v.group!==false:true;if(v&&v.orders)hpSaveOrders(v.orders);
+  HP_GROUP=v?v.group!==false:HP_SCOPE==='all';if(v&&v.orders)hpSaveOrders(v.orders);
  }catch(e){HP_SORT=[{col:'hub',asc:true}];HP_F=[{col:'',val:''},{col:'',val:''}];}
  hpDrawPanel();renderHp();
 }
 function hpApplyLive(stats) {
  hpInit();
+ HP_LIVE_STATS = stats || null; HP_LIVE_AT = stats ? Date.now() : 0;
  HP_ROWS.forEach(r=>{const p=stats&&stats[r.id];r.development=p?p.development:null;r.published=p?p.published:null;r.synced=p?p.synced:'Unavailable';});
- document.getElementById('hpLiveMsg').textContent=stats?'Live counts & product sync updated '+new Date().toLocaleTimeString():'Live counts unavailable — refresh after deployment.';
- hpDrawPanel();renderHp();
+ hpEl('hpLiveMsg').textContent=stats?'Live counts & product sync updated '+new Date().toLocaleTimeString():'Live counts unavailable — refresh after deployment.';
+ hpDrawPanel();renderHp();hpRefreshHubViews();
 }
 function hpLiveFailed(message) {
  hpInit();HP_ROWS.forEach(r=>{r.development=null;r.published=null;r.synced='Unavailable';});
- document.getElementById('hpLiveMsg').textContent='Could not refresh counts & sync: '+message;renderHp();
+ hpEl('hpLiveMsg').textContent='Could not refresh counts & sync: '+message;renderHp();HP_LIVE_STATS=null;HP_LIVE_AT=0;hpRefreshHubViews();
 }
 function hpVal(r, col) { if (col === 'created') return String(r.dateCreated || r.titleCreated || ''); return String(r[col] == null ? '' : r[col]); }
 function hpPass(r, f) { if (!f.col || !f.val) return true; const v = hpVal(r, f.col), hit = f.val === HP_BLANK ? !v : v === f.val; return f.neg ? !hit : hit; }
-function hpFilterNeg(k) { HP_F[k].neg = document.getElementById('hpF' + k + 'n').value === 'not'; if (k === 0) HP_F[1].val = ''; hpOnFilterChange(); hpDrawPanel(); }
-function hpTogglePanel() { const p = document.getElementById('hpPanel'); p.style.display = p.style.display === 'none' ? '' : 'none'; hpDrawPanel(); }
+function hpFilterNeg(k) { HP_F[k].neg = hpEl('hpF' + k + 'n').value === 'not'; if (k === 0) HP_F[1].val = ''; hpOnFilterChange(); hpDrawPanel(); }
+function hpTogglePanel() { const p = hpEl('hpPanel'); p.style.display = p.style.display === 'none' ? '' : 'none'; hpDrawPanel(); }
 function hpDrawPanel() {
   const colOpts = (sel, withNone) => (withNone ? '<option value="">(none)</option>' : '') + HP_COLS.map(c => `<option value="${c.key}" ${c.key === sel ? 'selected' : ''}>${c.label}</option>`).join('');
   for (const k of [0, 1]) {
-    const cEl = document.getElementById('hpF' + k + 'c'), vEl = document.getElementById('hpF' + k + 'v'); if (!cEl) return;
+    const cEl = hpEl('hpF' + k + 'c'), vEl = hpEl('hpF' + k + 'v'); if (!cEl) return;
     cEl.innerHTML = colOpts(HP_F[k].col, true);
     const base = k === 0 ? HP_ROWS : HP_ROWS.filter(r => hpPass(r, HP_F[0]));
     const vals = HP_F[k].col ? [...new Set(base.map(r => hpVal(r, HP_F[k].col)))].sort((a, b) => a.localeCompare(b)) : [];
     vEl.innerHTML = '<option value="">(any)</option>' + vals.map(v => v ? `<option value="${esc(v)}">${esc(v)}</option>` : `<option value="${HP_BLANK}">(blank)</option>`).join('');
     vEl.value = HP_F[k].val; vEl.disabled = !HP_F[k].col;
-    const nEl = document.getElementById('hpF' + k + 'n'); if (nEl) { nEl.value = HP_F[k].neg ? 'not' : ''; nEl.disabled = !HP_F[k].col; }
+    const nEl = hpEl('hpF' + k + 'n'); if (nEl) { nEl.value = HP_F[k].neg ? 'not' : ''; nEl.disabled = !HP_F[k].col; }
   }
   for (let k = 0; k < HP_MAX_LEVELS; k++) {
-    const cEl = document.getElementById('hpS' + k + 'c'), dEl = document.getElementById('hpS' + k + 'd'), s0 = HP_SORT[k]; if (!cEl) continue;
+    const cEl = hpEl('hpS' + k + 'c'), dEl = hpEl('hpS' + k + 'd'), s0 = HP_SORT[k]; if (!cEl) continue;
     cEl.innerHTML = colOpts(s0 ? s0.col : '', k > 0); dEl.value = s0 && s0.custom ? 'custom' : s0 && !s0.asc ? 'desc' : 'asc';
   }
 }
-function hpFilterCol(k) { HP_F[k] = { col: document.getElementById('hpF' + k + 'c').value, val: '', neg: !!HP_F[k].neg }; if (k === 0) HP_F[1].val = ''; hpOnFilterChange(); hpDrawPanel(); }
-function hpFilterVal(k) { HP_F[k].val = document.getElementById('hpF' + k + 'v').value; if (k === 0) HP_F[1].val = ''; hpOnFilterChange(); hpDrawPanel(); }
+function hpFilterCol(k) { HP_F[k] = { col: hpEl('hpF' + k + 'c').value, val: '', neg: !!HP_F[k].neg }; if (k === 0) HP_F[1].val = ''; hpOnFilterChange(); hpDrawPanel(); }
+function hpFilterVal(k) { HP_F[k].val = hpEl('hpF' + k + 'v').value; if (k === 0) HP_F[1].val = ''; hpOnFilterChange(); hpDrawPanel(); }
 function hpClearFilters() { HP_F = [{ col: '', val: '' }, { col: '', val: '' }]; hpOnFilterChange(); hpDrawPanel(); }
 function hpSortSel() {
   const out = [];
   for (let k = 0; k < HP_MAX_LEVELS; k++) {
-    const c = document.getElementById('hpS' + k + 'c').value;
+    const c = hpEl('hpS' + k + 'c').value;
     if (k === 0 && !c) { out.push({ col: 'hub', asc: true }); continue; }
     if (!c) continue;   // a blank level is removed; the levels below move up
-    const dv = document.getElementById('hpS' + k + 'd').value;
+    const dv = hpEl('hpS' + k + 'd').value;
     if (!out.some(x => x.col === c)) out.push({ col: c, asc: dv !== 'desc', ...(dv === 'custom' ? { custom: true } : {}) });
   }
   HP_SORT = out; hpDrawPanel(); renderHp();
 }
 // ── Group by sort: each sort level becomes a collapsible header tier (up to 5) ──
 const HP_MAX_LEVELS = 7;
-let HP_GROUP = (() => { try { return localStorage.getItem('hpGroup') !== 'off'; } catch (e) { return true; } })();
+let HP_GROUP = (() => { try { return localStorage.getItem(hpStorageKey('hpGroup')) !== 'off'; } catch (e) { return true; } })();
 let HP_OPEN = {};
 function hpOpenMap() { return Object.assign({}, HP_OPEN); }
 function hpSaveOpen(o) { HP_OPEN = o; }
 // headings default to COLLAPSED: a heading is closed unless it has been opened
 function hpClosed() { const o = hpOpenMap(); return new Proxy({}, { get: (t, k) => typeof k === 'string' && !o[k] }); }
-function hpSetGroup(on) { HP_GROUP = on; try { localStorage.setItem('hpGroup', on ? 'on' : 'off'); } catch (e) {} renderHp(); }
+function hpSetGroup(on) { HP_GROUP = on; try { localStorage.setItem(hpStorageKey('hpGroup'), on ? 'on' : 'off'); } catch (e) {} renderHp(); }
 function hpGKey(r, d) { return HP_SORT.slice(0, d + 1).map(x => x.col + '=' + hpVal(r, x.col)).join('|'); }
 function hpHeadDrag(e, handle) {
+  const dragScope = HP_SCOPE;
   e.preventDefault(); e.stopPropagation();
   const row = handle.closest('tr'), body = row.parentElement, d = row.dataset.d, pk = row.dataset.pk, col = row.dataset.col;
   const sibs = () => [...body.querySelectorAll('tr[data-k]')].filter(t => t.dataset.d === d && t.dataset.pk === pk);
   // children of a heading travel with it visually only on drop (the table re-renders), so collapse the view while dragging
   [...body.children].forEach(t => { if (t !== row && !(t.dataset.k && t.dataset.d === d && t.dataset.pk === pk)) t.style.opacity = '.35'; });
   row.style.outline = '2px solid var(--accent)';
-  const move = ev => {
+  const move = hpInScope(dragScope, ev => {
     if (ev.pointerId !== e.pointerId) return; ev.preventDefault();
     if (ev.clientY < 70) window.scrollBy(0, -14); else if (ev.clientY > innerHeight - 70) window.scrollBy(0, 14);
     const others = sibs().filter(t => t !== row);
@@ -11653,8 +11661,8 @@ function hpHeadDrag(e, handle) {
     else if (others.length) { const last = others[others.length - 1]; let after = last.nextElementSibling;
       while (after && !(after.dataset.k && +after.dataset.d <= +d)) after = after.nextElementSibling;
       body.insertBefore(row, after); }
-  };
-  const up = ev => {
+  });
+  const up = hpInScope(dragScope, ev => {
     if (ev.pointerId !== e.pointerId) return;
     window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); window.removeEventListener('pointercancel', up);
     const vals = sibs().map(t => t.dataset.v);
@@ -11669,7 +11677,7 @@ function hpHeadDrag(e, handle) {
     O[col] = cur; hpSaveOrders(O);
     const lvl = HP_SORT.find(x => x.col === col); if (lvl) lvl.custom = true;
     hpDrawPanel(); renderHp();
-  };
+  });
   window.addEventListener('pointermove', move, { passive: false }); window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
 }
 function hpToggleGroup(k) { const o = hpOpenMap(); if (o[k]) delete o[k]; else o[k] = 1; hpSaveOpen(o); renderHp(); }
@@ -11697,17 +11705,17 @@ function hpSetSort(col, ev) {
   hpDrawPanel();   // keep the Filter & sort panel in step with heading clicks
   renderHp();
 }
-function hpOrders() { try { return JSON.parse(localStorage.getItem('hpCustomOrder') || '{}'); } catch (e) { return {}; } }
-function hpSaveOrders(o) { try { localStorage.setItem('hpCustomOrder', JSON.stringify(o)); } catch (e) {} }
+function hpOrders() { try { return JSON.parse(localStorage.getItem(hpStorageKey('hpCustomOrder')) || '{}'); } catch (e) { return {}; } }
+function hpSaveOrders(o) { try { localStorage.setItem(hpStorageKey('hpCustomOrder'), JSON.stringify(o)); } catch (e) {} }
 
 function renderHp() {
- const el=document.getElementById('hpContent');if(!el)return;
+ const el=hpEl('hpContent');if(!el)return;
  const rows=HP_ROWS.filter(r=>hpPass(r,HP_F[0])&&hpPass(r,HP_F[1])).slice().sort(hpCmp);
  const gOn=HP_GROUP&&HP_SORT.length>0,L=gOn?Math.min(HP_SORT.length,HP_MAX_LEVELS):0,closedMap=hpClosed();
  const isHidden=r=>{for(let d=0;d<L;d++)if(closedMap[hpGKey(r,d)])return true;return false;};
- document.getElementById('hpCount').textContent=rows.length+' / '+HP_ROWS.length+' products';
- document.getElementById('hpGroupBtn').textContent='☰ Group by sort: '+(HP_GROUP?'on':'off');
- document.getElementById('hpChips').innerHTML=HP_F.filter(f=>f.col&&f.val).map(f=>'<span>'+esc((HP_COLS.find(c=>c.key===f.col)||{}).label)+' '+(f.neg?'≠':'=')+' '+esc(f.val===HP_BLANK?'(blank)':f.val)+'</span>').join(' · ');
+ hpEl('hpCount').textContent=rows.length+' / '+HP_ROWS.length+' products';
+ hpEl('hpGroupBtn').textContent='☰ Group by sort: '+(HP_GROUP?'on':'off');
+ hpEl('hpChips').innerHTML=HP_F.filter(f=>f.col&&f.val).map(f=>'<span>'+esc((HP_COLS.find(c=>c.key===f.col)||{}).label)+' '+(f.neg?'≠':'=')+' '+esc(f.val===HP_BLANK?'(blank)':f.val)+'</span>').join(' · ');
  const thead='<tr>'+HP_COLS.map(c=>{const i=HP_SORT.findIndex(x=>x.col===c.key),x=HP_SORT[i];return `<th onclick="hpSetSort('${c.key}',event)" title="Click: sort · Ctrl/Shift-click: add level · Alt-click: remove level" style="cursor:pointer;white-space:nowrap;padding:8px;text-align:left;border-bottom:1px solid var(--border2);">${esc(c.label)}${x?' '+(x.custom?'✥':x.asc?'▲':'▼')+(HP_SORT.length>1?i+1:''):''}</th>`;}).join('')+'</tr>';
  const rowHtml=r=>'<tr>'+HP_COLS.map(c=>{
   const v=r[c.key];let cell=v===null||v===undefined||v===''?'—':esc(v);
@@ -11742,7 +11750,84 @@ function renderHp() {
     });
   }
 
- el.innerHTML=`<div style="overflow:auto;max-height:75vh;"><table id="hubProductsTable" style="width:100%;min-width:1650px;border-collapse:collapse;font-size:12px;"><thead style="position:sticky;top:0;background:var(--surface);z-index:1;">${thead}</thead><tbody>${tbody||'<tr><td colspan="11">No matching products.</td></tr>'}</tbody></table></div>`;
+ el.innerHTML=`<div style="overflow:auto;max-height:75vh;"><table id="${hpScopedId('hubProductsTable')}" style="width:100%;min-width:1650px;border-collapse:collapse;font-size:12px;"><thead style="position:sticky;top:0;background:var(--surface);z-index:1;">${thead}</thead><tbody>${tbody||'<tr><td colspan="11">No matching products.</td></tr>'}</tbody></table></div>`;
+ hpWireHubControls(el);
+}
+
+
+// Hub Products inside Strategies: locked hub membership, independent saved table views.
+function hpWithHub(slug, action) {
+ hpInit();
+ const hub=HUB_SITES.find(h=>h.slug===slug);if(!hub)return;
+ const previous={rows:HP_ROWS,sort:HP_SORT,filters:HP_F,group:HP_GROUP,open:HP_OPEN,scope:HP_SCOPE};
+ const source=HP_SCOPE==='all'?HP_ROWS:HP_ALL_ROWS();
+ const view=HP_HUB_VIEWS[slug] ||= {rows:[],sort:[{col:'fit',asc:false}],filters:[{col:'',val:''},{col:'',val:''}],group:false,open:{},loaded:false};
+ view.rows=source.filter(r=>r.hub===hub.name);
+ HP_ROWS=view.rows;HP_SORT=view.sort;HP_F=view.filters;HP_GROUP=view.group;HP_OPEN=view.open;HP_SCOPE=slug;
+ try {return action(view);}
+ finally {
+  Object.assign(view,{rows:HP_ROWS,sort:HP_SORT,filters:HP_F,group:HP_GROUP,open:HP_OPEN});
+  HP_ROWS=previous.rows;HP_SORT=previous.sort;HP_F=previous.filters;HP_GROUP=previous.group;HP_OPEN=previous.open;HP_SCOPE=previous.scope;
+ }
+}
+function HP_ALL_ROWS() { return JSON.parse(document.getElementById('hubProductsAuditData').textContent).map(r=>{const p=HP_LIVE_STATS&&HP_LIVE_STATS[r.id];return {...r,development:p?p.development:null,published:p?p.published:null,synced:p?p.synced:'Unavailable'};}); }
+function hpInScope(scope, fn) { return (...args)=>scope==='all'?fn(...args):hpWithHub(scope,()=>fn(...args)); }
+function hpFlipGroup() { hpSetGroup(!HP_GROUP); }
+function hpHubAction(slug, name, ...args) {
+ const actions={hpTogglePanel,hpSaveClick,hpLoadSaved,hpSetGroup,hpFlipGroup,hpCollapseAll,hpFilterNeg,hpFilterCol,hpFilterVal,hpClearFilters,hpSortSel,hpSetSort,hpToggleGroup,hpHeadDrag};
+ if(!actions[name])return;
+ return hpWithHub(slug,()=>actions[name](...args));
+}
+function hpWireHubControls(root) {
+ if(HP_SCOPE==='all'||!root)return;
+ const scope=HP_SCOPE;
+ root.querySelectorAll('*').forEach(el=>{
+  for(const attr of [...el.attributes]) {
+   if(!/^on/.test(attr.name))continue;
+   let code=attr.value.replace('hpSetGroup(!HP_GROUP)','hpFlipGroup()');
+   code=code.replace(/\b(hp(?:TogglePanel|SaveClick|LoadSaved|SetGroup|FlipGroup|CollapseAll|FilterNeg|FilterCol|FilterVal|ClearFilters|SortSel|SetSort|ToggleGroup|HeadDrag))\(/g,(_,name)=>`hpHubAction('${scope}','${name}',`);
+   el.setAttribute(attr.name,code);
+  }
+ });
+}
+function hub2ProductsShell(slug) {
+ return `<section id="hubProductsView-${slug}" style="margin-top:20px;padding-top:12px;border-top:1px solid var(--border2);"><h3 style="font-size:13px;margin:0 0 8px;">Hub Products</h3><p style="font-size:11px;color:var(--text3);">This hub’s products and keywords · same audit as All Output · live asset counts and product sync.</p><div id="hubProductsControls-${slug}"></div><div id="${hpScopedId('hpLiveMsg',slug)}" style="font-size:11px;color:var(--text3);margin:8px 0;">Loading live counts &amp; product sync…</div><div id="${hpScopedId('hpContent',slug)}"></div></section>`;
+}
+function hpMountHub(slug) {
+ const controls=document.getElementById('hubProductsControls-'+slug);if(!controls)return;
+ if(!controls.children.length) {
+  const source=document.getElementById('hpPanel');
+  const toolbar=source.previousElementSibling.cloneNode(true); // All Output toolbar, without audit summaries.
+  const panel=source.cloneNode(true);
+  panel.style.display='none';
+  [toolbar,panel].forEach(root=>{
+   if(root.id)root.id=hpScopedId(root.id,slug);
+   root.querySelectorAll('[id]').forEach(el=>el.id=hpScopedId(el.id,slug));
+   controls.appendChild(root);
+  });
+  const refresh=document.createElement('button');refresh.textContent='↻ Refresh counts & sync';refresh.style.cssText='font-size:11px;margin:6px 0;';refresh.onclick=()=>hub2ProductsLoad(slug,true);controls.appendChild(refresh);
+ }
+ hpWithHub(slug,view=>{
+  hpWireHubControls(controls);
+  if(!view.loaded){view.loaded=true;hpLoadSaved();}else{hpDrawPanel();renderHp();}
+  hpEl('hpLiveMsg').textContent=HP_LIVE_AT?'Live counts & product sync updated '+new Date(HP_LIVE_AT).toLocaleTimeString():'Loading live counts & product sync…';
+ });
+}
+function hpRefreshHubViews() {
+ for(const slug of Object.keys(HP_HUB_VIEWS)) {
+  if(!document.getElementById('hubProductsControls-'+slug))continue;
+  hpMountHub(slug);
+ }
+}
+async function hub2ProductsLoad(slug,force=false) {
+ hpInit();hpMountHub(slug);
+ if(!force&&HP_LIVE_AT&&Date.now()-HP_LIVE_AT<60000)return;
+ try {
+  if(!HP_LIVE_PENDING)HP_LIVE_PENDING=call('getDevAssetsTable').then(data=>{if(data.error)throw new Error(data.error);hpApplyLive(data.productStats);}).finally(()=>{HP_LIVE_PENDING=null;});
+  await HP_LIVE_PENDING;
+ }catch(e){
+  const msg=document.getElementById(hpScopedId('hpLiveMsg',slug));if(msg)msg.textContent='Could not refresh counts & sync: '+e.message;
+ }
 }
 
 // Flat, cross-campaign, one row per asset — see getDevAssetsTable in
@@ -15969,10 +16054,10 @@ function hub2KwCount(slug) { const el = document.getElementById('hub2KwN-' + slu
 const hub2StratKey = slug => 'hs_' + slug.replace(/[^a-z0-9]/gi, '_');
 // Revenue planner rollback 20261018: original Strategies table restored.
 function hub2StrategiesShell(slug) { const k = hub2StratKey(slug);
-  return `<div id="fv${k}Bar"></div><div id="fv${k}Panel" style="display:none;"></div><div id="${k}Body"></div><div id="${k}Msg" style="font-size:10px;color:var(--text3);margin-top:4px;"></div>`; }
+  return `<div id="fv${k}Bar"></div><div id="fv${k}Panel" style="display:none;"></div><div id="${k}Body"></div><div id="${k}Msg" style="font-size:10px;color:var(--text3);margin-top:4px;"></div>${hub2ProductsShell(slug)}`; }
 function hub2StrategiesLoad(slug) { const k = hub2StratKey(slug);
   FLOWS[k] = FLOWS[k] || { name: ('hubstrat-' + slug).slice(0, 40), body: k + 'Body', msg: k + 'Msg', data: null, t: null, view: true, seed: ['Strategy', 'Goal', 'Status', 'Post Ideas'] };
-  loadFlowTable(k); }
+  loadFlowTable(k); hub2ProductsLoad(slug); }
 function hub2ChecklistPaint(slug) { const el = document.getElementById('hub2Checklist-' + slug); if (el) el.innerHTML = hub2ChecklistHtml(slug); }
 const HUB2_TIERS = ['Interview', 'Own interview', 'Short interview', 'From parent', 'None'];   // parents: Interview / None · children: From parent / Own / Short / None
 const HUB2_CADENCES = ['Weekly', 'Twice monthly', 'Monthly', 'Quarterly', 'Once', 'On demand', 'Inherited', 'Milestone'];
@@ -16006,6 +16091,7 @@ async function hub2ChecklistLoad(slug, force) {
     const cid = hub2Id(h.campaignId);
     const [worksheet, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), call('getDevAssetsTable')]);
     const err = worksheet.error || goals.error || dev.error; if (err) throw new Error(err);
+    hpApplyLive(dev.productStats);
     DEV2_ROWS = dev.rows || []; const hubRows = DEV2_ROWS.filter(r => hub2Id(r.campId) === cid);
     _hub2Checklist[slug] = { loading: false, table: worksheet.table, methods: hub2MethodsFrom(worksheet.table), goals: goals.goals || {}, hubRows }; _hub2Grayed = goals.grayed || null;
     hub2ChecklistPaint(slug); hub2SaveWeeklyMetrics(slug, hubRows);

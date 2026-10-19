@@ -24,4 +24,16 @@ run('HP_F=[{col:"hub",val:"Surf Vacations"},{col:"",val:""}];HP_SORT=[{col:"hub"
 assert.match(get('hpContent').innerHTML,/Surf Vacations/);assert.doesNotMatch(get('hpContent').innerHTML,/Build Watcher/);
 run('hpCollapseAll(false)');assert.match(get('hpContent').innerHTML,/Show keywords/);run('hpCollapseAll(true)');assert.doesNotMatch(get('hpContent').innerHTML,/Show keywords/);
 run('hpSaveClick({textContent:"Save"});HP_F=[{col:"",val:""},{col:"",val:""}];hpLoadSaved()');assert.equal(run('HP_F[0].val'),'Surf Vacations');
-console.log('PASS: inline syntax, linked asset deduplication/statuses, product sync, numeric sorting, filters, nested headings, expand/collapse, saved views.');
+run("const HUB_SITES=[...new Set(HP_ROWS.map(r=>r.hub))].map((name,i)=>({name,slug:'test-'+i}));");
+const allSort=run('JSON.stringify(HP_SORT)'),allFilters=run('JSON.stringify(HP_F)');
+for(let i=0;i<12;i++){
+ assert.equal(run(`hpWithHub('test-${i}',()=>HP_ROWS.every(r=>r.hub===HUB_SITES[${i}].name))`),true);
+ run(`hpWithHub('test-${i}',()=>{HP_SORT=[{col:'published',asc:false}];HP_F=[{col:'synced',val:'Synced'},{col:'',val:''}];})`);
+ assert.equal(run(`hpWithHub('test-${i}',()=>HP_F[0].val)`),'Synced');
+}
+assert.equal(run('HP_ROWS.length'),262);assert.equal(run('JSON.stringify(HP_SORT)'),allSort);assert.equal(run('JSON.stringify(HP_F)'),allFilters);
+assert.throws(()=>run("hpWithHub('test-0',()=>{throw new Error('scope test')})"),/scope test/);assert.equal(run('HP_SCOPE'),'all');
+assert.equal(run("hpWithHub('test-0',()=>hpStorageKey('hpView'))"),'hpView:test-0');
+assert.equal(run("hpStorageKey('hpView')"),'hpView');
+run("const deferredScope=hpWithHub('test-0',()=>hpInScope(HP_SCOPE,()=>HP_SCOPE));");assert.equal(run('deferredScope()'),'test-0');assert.equal(run('HP_SCOPE'),'all');
+console.log('PASS: asset stats, sync, sorting, filters, headings, saved views, 12 locked hub scopes, independent state, and deferred drag scope.');
