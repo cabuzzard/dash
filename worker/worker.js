@@ -17859,6 +17859,39 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put(bk, JSON.stringify(batch));
         return json({ ok: true, ...summary, written: n, left: left(), errors });
       }
+      // kwHubClearTopics {slug, op: preview|apply|undo} — operator 2026-10-19: "clear out all the keywords … full clear out" (clusters +
+      // topics only; Main Keywords, product/title keywords and the Google keyword store are kept). apply backs up to KV
+      // kwclear:backup:<cid>, then: committed topics (Keyword Clusters DB) → Status Archived, staged topics → [], cluster layout
+      // (seotopicclusters) → no clusters / no assignments / no main cluster, committed topics' proposed products → cleared.
+      // undo restores the backup (committed rows → Active). Products/titles keep their old Topic IDs (re-placed after the re-run).
+      if (body.action === "kwHubClearTopics") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        await hubSitesMerge(env);
+        const hub = HUB_SITES.find(h => h.slug === body.slug); if (!hub) return json({ error: "slug required (one hub per call)" }, 400);
+        const cid = String(hub.campaignId).replace(/-/g, ""), op = body.op || "preview", bk = "kwclear:backup:" + cid;
+        if (op === "undo") {
+          const b = await env.TRADES.get(bk, "json"); if (!b) return json({ error: "no backup for this hub" }, 404);
+          const errors = [];
+          for (const r of b.committed || []) { try { await kwNotionPatch(env, r.id, { Status: { select: { name: r.status || "Active" } } }); } catch (e) { errors.push(r.name + ": " + e.message); } }
+          await env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify(b.staged || []));
+          if (b.tc) await env.TRADES.put("seotopicclusters:" + cid, JSON.stringify(b.tc));
+          if (b.commproducts) await env.TRADES.put("seoclusters:commproducts:" + cid, JSON.stringify(b.commproducts));
+          return json({ ok: true, op, hub: hub.name, restored: (b.committed || []).length + (b.staged || []).length, errors });
+        }
+        let st; try { st = await kwHubState(env, cid); } catch (e) { return json({ error: "read failed (rate limit?) — " + e.message }, 503); }
+        const committed = (st.committedRows || []).map(r => ({ id: String(r.id).replace(/-/g, ""), name: kwTitleOf(r), status: r.properties?.Status?.select?.name || "Active" }));
+        const staged = Array.isArray(st.staged) ? st.staged : [], tc = st.tc || {};
+        const summary = { hub: hub.name, op, committedTopics: committed.length, stagedTopics: staged.length, clusters: (tc.clusters || []).length, mainCluster: tc.mainCluster || "" };
+        if (op !== "apply") return json({ ok: true, ...summary });
+        const commproducts = await env.TRADES.get("seoclusters:commproducts:" + cid, "json").catch(() => null);
+        await env.TRADES.put(bk, JSON.stringify({ at: Date.now(), committed, staged, tc, commproducts }));   // backup BEFORE any write
+        const errors = [];
+        for (const r of committed) { try { await kwNotionPatch(env, r.id, { Status: { select: { name: "Archived" } } }); } catch (e) { errors.push(r.name + ": " + e.message); if (/rate/i.test(e.message)) break; } }
+        await env.TRADES.put("seoclusters:staged:" + cid, JSON.stringify([]));
+        await env.TRADES.put("seotopicclusters:" + cid, JSON.stringify({ ...tc, clusters: [], assign: {}, mainCluster: "" }));
+        if (commproducts) await env.TRADES.put("seoclusters:commproducts:" + cid, JSON.stringify(Array.isArray(commproducts) ? [] : {}));
+        return json({ ok: true, ...summary, archived: committed.length - errors.length, errors });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
