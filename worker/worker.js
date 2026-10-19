@@ -17682,6 +17682,48 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used, ideas, ask, split });
       }
+      // seriesLoadTitles {titleId (the Series), titleName, seriesAssetId, titleIds[], shape: single|carousel, assetType, archive, campaignId, productId, slug}
+      // → existing (usually unwritten) titles become ONE Run on the Series: each title = one idea; its page body (copy, caption,
+      // image / Canva links) is carried onto the Run page under that idea. archive: source titles with NO assets are archived
+      // (recoverable in Notion); titles that have assets are kept and reported. Ideas land in the cached ideas as "Loaded titles", marked used.
+      if (body.action === "seriesLoadTitles") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""), carousel = body.shape === "carousel";
+        const ids = [...new Set((Array.isArray(body.titleIds) ? body.titleIds : []).map(x => String(x).replace(/-/g, "")))].filter(x => x && x !== titleId).slice(0, 40);
+        if (!titleId || !ids.length || !body.assetType) return json({ error: "titleId, titleIds and assetType required" }, 400);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const hdr = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" };
+        const src = [], failed = [];
+        for (const id of ids) {
+          try { const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: hdr }).then(r => r.json());
+            if (!pg || pg.object === "error") throw new Error((pg && pg.message) || "not found");
+            const tp = pg.properties || {}, name = (tp.Title?.title || tp.Name?.title || []).map(t => t.plain_text).join("").trim() || "(untitled)";
+            const text = (await extractBlocksTextRecursive(hdr, id).catch(() => "")).split("\n").filter(l => !/^\s*Converted from a Development/i.test(l)).join("\n").trim();
+            src.push({ id, name, text, assets: (tp.Assets?.relation || []).length }); }
+          catch (e) { failed.push(id + ": " + e.message); }
+        }
+        if (!src.length) return json({ error: "no titles could be read" + (failed.length ? " — " + failed.join(" · ") : "") }, 500);
+        const ideas = src.map(s => ({ id: dpId("Loaded titles|" + s.name), t: s.name }));
+        const label = "Loaded titles", plan = `RUN · ${label} — ${carousel ? "one carousel, " + ideas.length + " slides" : ideas.length + " posts"}\nFrom ${ideas.length} existing title${ideas.length === 1 ? "" : "s"} (their copy is on this page)\n\n` + ideas.map((x, i) => `${i + 1}. ${x.t}`).join("\n");
+        const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
+          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: `Run · ${label} (${ideas.length}) — ${body.titleName || "Series"}`, note: plan }] });
+        if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        const aid = r.created[0].id, para = s => ({ object: "block", type: "paragraph", paragraph: { rich_text: [{ type: "text", text: { content: s } }] } });
+        const blocks = [{ object: "block", type: "heading_2", heading_2: { rich_text: [{ type: "text", text: { content: "Loaded posts" } }] } }];
+        src.forEach((s, i) => { blocks.push({ object: "block", type: "heading_3", heading_3: { rich_text: [{ type: "text", text: { content: `${i + 1}. ${s.name}`.slice(0, 1900) } }] } });
+          let cur = ""; s.text.split("\n").forEach(l => { if ((cur + "\n" + l).length > 1900) { if (cur) blocks.push(para(cur)); cur = l.slice(0, 1900); } else cur = cur ? cur + "\n" + l : l; }); if (cur) blocks.push(para(cur)); });
+        for (let i = 0; i < blocks.length; i += 90) await fetch(`https://api.notion.com/v1/blocks/${aid}/children`, { method: "PATCH", headers: hdr, body: JSON.stringify({ children: blocks.slice(i, i + 90) }) }).catch(() => {});
+        const archived = [], kept = [];
+        if (body.archive) for (const s of src) { if (s.assets) { kept.push(s.name); continue; }
+          const a = await fetch("https://api.notion.com/v1/pages/" + kwDashId(s.id), { method: "PATCH", headers: hdr, body: JSON.stringify({ archived: true }) }).then(x => x.ok).catch(() => false);
+          (a ? archived : kept).push(s.name); }
+        const ck = "seriesideas:" + titleId, cache = await env.TRADES.get(ck, "json");
+        if (cache) { cache.sources["Loaded titles"] = ideas.map(x => ({ ...x, meta: "Loaded from an existing title" })).concat((cache.sources["Loaded titles"] || []).filter(x => !ideas.some(y => y.id === x.id))).slice(0, 80); await env.TRADES.put(ck, JSON.stringify(cache), { expirationTtl: 86400 }); }
+        const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; ideas.forEach(x => { if (!used.includes(x.id)) used.push(x.id); });
+        await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
+        return json({ ok: true, assetId: aid, loaded: ideas.length, archived: archived.length, kept, failed, used });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
