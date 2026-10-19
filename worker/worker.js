@@ -17728,7 +17728,7 @@ ${JSON.stringify(products)}`;
       // "do away with all placeholders"). Per hub: the replacement = the first IN-SYNC ★ main offering (research 'updated' + keywords
       // not out of sync — the Keywords dot rule), else the first in-sync hub product; titles (product) + assets (Product) linked to a
       // placeholder are relinked to it, the placeholder leaves the ★ main list (KV hub:mainproduct) and is archived (Archived +
-      // Status Archived — recoverable). A hub with no in-sync product is reported and left untouched. preview changes nothing.
+      // Status Archived — recoverable). A hub with no in-sync product falls back to its first ★ main, else its first product. slug = one hub. preview changes nothing.
       if (body.action === "hubPlaceholderCleanup") {
         if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
         const apply = body.op === "apply", nid = x => String(x || "").replace(/-/g, ""), out = [];
@@ -17737,7 +17737,7 @@ ${JSON.stringify(products)}`;
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
         const nm = p => (p.properties?.Name?.title || []).map(t => t.plain_text).join("").trim();
         for (const hub of HUB_SITES) {
-          const cid = nid(hub.campaignId); if (!cid) continue;
+          const cid = nid(hub.campaignId); if (!cid || (body.slug && hub.slug !== body.slug)) continue;   // slug: one hub per call
           const prods = (await notionQuery(PRODUCTS_DB, { filter: { property: "Campaigns", relation: { contains: kwDashId(cid) } } }).catch(e => { console.error("placeholder cleanup products", e); return []; }))
             .filter(p => !p.properties?.Archived?.checkbox);
           const ph = prods.filter(p => / - Main Offering$/.test(nm(p))); if (!ph.length) continue;
@@ -17745,8 +17745,9 @@ ${JSON.stringify(products)}`;
           const state = Object.fromEntries(((cs && cs.products) || []).map(p => [nid(p.productId), p.researchState]));
           const inSync = p => state[nid(p.id)] === "updated" && !p.properties?.["Keywords Out of Sync"]?.checkbox;
           const real = prods.filter(p => !/ - Main Offering$/.test(nm(p))), mains = await hubMainList(env, cid), phIds = new Set(ph.map(p => nid(p.id)));
-          const rep = mains.map(id => real.find(p => nid(p.id) === nid(id))).find(p => p && inSync(p)) || real.find(inSync) || null;
-          const H = { hub: hub.name, placeholders: ph.map(nm), replacement: rep ? { id: nid(rep.id), name: nm(rep), main: mains.some(id => nid(id) === nid(rep.id)) } : null, titles: [], assets: [], errors: [] };
+          const mainReal = mains.map(id => real.find(p => nid(p.id) === nid(id))).filter(Boolean);
+          const rep = mainReal.find(inSync) || real.find(inSync) || mainReal[0] || real[0] || null;   // no in-sync product → best available (operator 2026-10-18)
+          const H = { hub: hub.name, placeholders: ph.map(nm), replacement: rep ? { id: nid(rep.id), name: nm(rep), main: mains.some(id => nid(id) === nid(rep.id)), inSync: inSync(rep) } : null, titles: [], assets: [], errors: [] };
           for (const p of ph) {
             const [ts, as] = await Promise.all([
               notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "product", relation: { contains: kwDashId(nid(p.id)) } } }).catch(e => { H.errors.push("titles: " + e.message); return []; }),
