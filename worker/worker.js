@@ -2,6 +2,33 @@
 // are set as Cloudflare Worker secrets (env vars). They are loaded from env at
 // the start of each request  -  never hardcoded here.
 import "./kw-hub-ops.mjs";   // globalThis.KwHubOps — hub keyword reorganize rules (shared with the dash Keywords tab)
+// Product → every linked title → every linked asset. No direct-product/orphan fallback.
+// Sets deduplicate assets linked through multiple titles of the same product.
+function hubProductAssetStats(productRows, titleRows, assetRows) {
+  const id = v => String(v || "").replace(/-/g, ""), stats = {}, titles = {};
+  for (const p of productRows) {
+    if (p.archived || p.in_trash || p.properties?.Archived?.checkbox) continue;
+    stats[id(p.id)] = { development: new Set(), published: new Set(),
+      synced: p.properties?.["Keywords Out of Sync"]?.checkbox ? "Out of sync" : "Synced" };
+  }
+  for (const t of titleRows) {
+    if (t.archived || t.in_trash) continue;
+    const rel = t.properties?.product?.relation || t.properties?.Product?.relation || [];
+    titles[id(t.id)] = [...new Set(rel.map(r => id(r.id)).filter(pid => stats[pid]))];
+  }
+  for (const a of assetRows) {
+    if (a.archived || a.in_trash) continue;
+    const status = a.properties?.["Asset Status"]?.select?.name || a.properties?.["Asset Status"]?.status?.name || "";
+    const bucket = status === "Development" ? "development" : status === "Published" ? "published" : "";
+    if (!bucket) continue;
+    for (const t of a.properties?.["Content Strategy"]?.relation || []) {
+      for (const pid of titles[id(t.id)] || []) stats[pid][bucket].add(id(a.id));
+    }
+  }
+  return Object.fromEntries(Object.entries(stats).map(([pid, s]) => [pid,
+    { development: s.development.size, published: s.published.size, synced: s.synced }]));
+}
+
 let NOTION_TOKEN = ""; // set per-request from env.NOTION_TOKEN
 const NOTION_VERSION     = "2022-06-28";
 const ETSY_REDIRECT_URI  = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev/etsy/callback";
@@ -16409,7 +16436,7 @@ Return: {
             : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
             : r.assetSync === "Out of Sync · Regenerate" ? "Regenerate asset" : r.assetSync === "Out of Sync · Review" ? "Review asset" : "✓ Ready";
         });
-        return json({ rows });
+        return json({ rows, productStats: hubProductAssetStats(productRows, titleRows, assetRows) });
       }
 
       // Output bulk delete is deliberately a soft delete: Assets remain in
