@@ -17642,6 +17642,37 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used, posts: ideas.length });
       }
+      // seriesAsk {titleId, titleName, seriesAssetId, prompt, count, shape: single|carousel, assetType, campaignId, productId, slug}
+      // → Claude writes `count` specific ideas for the operator's ask (series style + categories + gathered ideas as context)
+      // → a new Run (Development child of the Series, the ideas as its plan — same shape as seriesRun); the ideas are also
+      // added to the cached ideas under "Claude asks" and marked used
+      if (body.action === "seriesAsk") {
+        const titleId = String(body.titleId || "").replace(/-/g, ""), ask = String(body.prompt || "").trim().slice(0, 2000), n = Math.max(1, Math.min(12, Number(body.count) || 6)), carousel = body.shape === "carousel";
+        if (!titleId || !ask || !body.assetType) return json({ error: "titleId, prompt and assetType required" }, 400);
+        const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
+          const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
+          return res.json().catch(() => ({ error: "bad response " + res.status })); };
+        const ck = "seriesideas:" + titleId, cache = await env.TRADES.get(ck, "json"), cs = (await env.TRADES.get("series:cats:" + titleId, "json")) || { style: "", cats: [] };
+        const have = cache ? Object.values(cache.sources || {}).flat().map(x => x.t).slice(0, 60) : [];
+        let out;
+        try { out = await hcClaude(env, `You write post ideas for a recurring content series.\n\nSERIES: ${body.titleName || (cache && cache.name) || "Series"}\n`
+          + (cs.style ? `SERIES RESEARCH STYLE (the spec every post follows):\n${String(cs.style).slice(0, 4000)}\n` : "")
+          + ((cs.cats || []).length ? `STANDING CATEGORIES:\n${cs.cats.map(c => "- " + c.name + (c.def ? ": " + c.def : "")).join("\n")}\n` : "")
+          + (have.length ? `IDEAS ALREADY GATHERED (don't repeat these):\n${have.map(t => "- " + String(t).slice(0, 160)).join("\n")}\n` : "")
+          + `\nTHE OPERATOR'S ASK:\n${ask}\n\nWrite exactly ${n} distinct, specific ideas that answer the ask — ${carousel ? "each one a slide of ONE cohesive carousel" : "each one its own single post"}. Each idea is one concrete line (a named subject + the angle), not a generic theme.`,
+          "series_ideas", { type: "object", properties: { ideas: { type: "array", items: { type: "string" } } }, required: ["ideas"] }, 3000); }
+        catch (e) { return json({ error: "Claude: " + e.message }, 500); }
+        const ideas = (out.ideas || []).map(t => String(t).trim()).filter(Boolean).slice(0, n).map(t => ({ id: dpId("Claude asks|" + t), t, src: "Claude asks" }));
+        if (!ideas.length) return json({ error: "Claude returned no ideas" }, 500);
+        const label = "Claude ask", plan = `RUN · ${label} — ${carousel ? "one carousel, " + ideas.length + " slides" : ideas.length + " posts"}\nAsk: ${ask}\n\n` + ideas.map((x, i) => `${i + 1}. ${x.t.slice(0, 220)}`).join("\n");
+        const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
+          allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: `Run · ${label}: ${ask.slice(0, 80)} — ${body.titleName || "Series"}`, note: plan }] });
+        if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
+        if (cache) { cache.sources["Claude asks"] = ideas.map(x => ({ id: x.id, t: x.t, meta: "Ask: " + ask.slice(0, 120) })).concat(cache.sources["Claude asks"] || []).slice(0, 60); await env.TRADES.put(ck, JSON.stringify(cache), { expirationTtl: 86400 }); }
+        const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; ideas.forEach(x => { if (!used.includes(x.id)) used.push(x.id); });
+        await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
+        return json({ ok: true, assetId: r.created[0].id, used, ideas, ask });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);

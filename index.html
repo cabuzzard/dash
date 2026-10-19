@@ -17283,7 +17283,7 @@ function hubSeriesDraw() {
     return `<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);${used ? 'opacity:.55;' : ''}">
       <div style="flex:1;min-width:0;font-size:12px;">${used ? '✓ ' : ''}${esc(x.t)}${x.v ? ` <span style="color:var(--text3);font-size:10.5px;">· ${Number(x.v).toLocaleString()}/mo</span>` : ''}${x.meta ? `<div style="font-size:10px;color:var(--text3);margin-top:1px;">${esc(x.meta)}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">open ↗</a>` : ''}</div>` : x.url ? `<div style="font-size:10px;"><a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">open ↗</a></div>` : ''}</div>
       <div style="display:flex;gap:4px;flex-shrink:0;"><button style="${B}" onclick="hubSeriesUse('seo','${esc(src)}','${esc(x.id)}')">＋ SEO Post</button><button style="${B}" onclick="hubSeriesUse('single','${esc(src)}','${esc(x.id)}')">＋ Single Post</button><button style="${B}" onclick="hubSeriesUse('carousel','${esc(src)}','${esc(x.id)}')">＋ Carousel</button><button style="${B}" onclick="hubSeriesUse('youtube','${esc(src)}','${esc(x.id)}')">▶ YouTube</button></div></div>`; };
-  const order = ['Your interviews', 'Pain points', 'Benefits & proof', 'Search questions', 'YouTube autocomplete', 'Google autocomplete', 'Reddit', "What's new (Digest)", 'Title research'];
+  const order = ['Claude asks', 'Your interviews', 'Pain points', 'Benefits & proof', 'Search questions', 'YouTube autocomplete', 'Google autocomplete', 'Reddit', "What's new (Digest)", 'Title research'];
   const srcs = D ? order.filter(k => (D.sources[k] || []).length).concat(Object.keys(D.sources).filter(k => !order.includes(k) && D.sources[k].length)) : [];
   S.open = S.open || {};
   m.innerHTML = `<div class="modal" style="max-width:780px;max-height:88vh;overflow:auto;">
@@ -17292,6 +17292,12 @@ function hubSeriesDraw() {
     ${D && D.runTypes ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid #f5c542;border-radius:6px;margin-bottom:8px;">
       <b style="font-size:12px;">＋ Run</b><select id="srRunType" class="kw-sel" style="max-width:320px;" onchange="hubSeriesRunInfo()">${[...new Set(D.runTypes.map(r => r.group))].map(g => `<optgroup label="${esc(g)}">${D.runTypes.filter(r => r.group === g).map(r => `<option value="${esc(r.id)}">${esc(r.name)} · ${r.shape === 'carousel' ? 'carousel' : r.posts + ' posts'}</option>`).join('')}</optgroup>`).join('')}</select>
       <button style="${B}border-color:#f5c542;color:#f5c542;" onclick="hubSeriesRun()">Create run</button><div id="srRunInfo" style="flex-basis:100%;font-size:10.5px;color:var(--text3);">${esc(hubSeriesRunInfoText())}</div></div>` : ''}
+    ${D ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:7px 8px;border:1px solid var(--accent);border-radius:6px;margin-bottom:8px;">
+      <b style="font-size:12px;">✍ Ask Claude</b><span style="font-size:10.5px;color:var(--text3);">a specific ask → Claude writes the ideas → a new Run on this Series</span>
+      <textarea id="srAsk" rows="2" placeholder="e.g. one post per micro app a plumbing business could use — what it does, the hours it saves" style="flex-basis:100%;box-sizing:border-box;font-size:12px;padding:6px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);resize:vertical;">${esc(S.ask || '')}</textarea>
+      <select id="srAskN" class="kw-sel">${[3, 4, 5, 6, 7, 8, 9, 10, 12].map(k => `<option value="${k}"${k === (S.askN || 6) ? ' selected' : ''}>${k} ideas</option>`).join('')}</select>
+      <select id="srAskShape" class="kw-sel"><option value="single"${S.askShape !== 'carousel' ? ' selected' : ''}>single posts</option><option value="carousel"${S.askShape === 'carousel' ? ' selected' : ''}>one carousel</option></select>
+      <button style="${B}border-color:var(--accent);color:var(--accent);" onclick="hubSeriesAsk()">Ask → new run</button></div>` : ''}
     <div style="font-size:11.5px;color:${S.err ? '#f87171' : 'var(--text3)'};min-height:14px;margin-bottom:4px;">${esc(S.busy || S.err || S.msg || '')}</div>
     ${D ? hubSeriesCatsHtml(B) : ''}
     ${srcs.map(k => { const list = D.sources[k], open = S.open[k] !== false;
@@ -17382,6 +17388,20 @@ async function hubSeriesRun() {
   const r = await call('seriesRun', { titleId: S.tid, titleName: row.title || D.name, seriesAssetId: S.seriesAssetId, runType: rt.id, ideas, assetType: hubSeriesType(S.slug, rt.shape === 'carousel' ? 'carousel' : 'single'), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug }).catch(e => ({ error: e.message }));
   if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
   else { S.used = new Set(r.used || []); S.msg = '✓ ' + rt.name + ' created — ' + r.posts + ' planned ' + (rt.shape === 'carousel' ? 'slides' : 'posts') + ' on one Development asset'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
+  hubSeriesDraw();
+}
+// ✍ Ask Claude: the operator's text ask → worker seriesAsk → Claude's ideas become a new Run (Development child of the Series)
+async function hubSeriesAsk() {
+  const S = _series, D = S && S.data; if (!D) return;
+  S.ask = document.getElementById('srAsk').value.trim(); S.askN = Number(document.getElementById('srAskN').value) || 6; S.askShape = document.getElementById('srAskShape').value;
+  if (!S.ask) { S.msg = '✗ Type what you want ideas for'; return hubSeriesDraw(); }
+  const h = HUB_SITES.find(y => y.slug === S.slug) || {}, row = ((_hubTitles[S.slug] || {}).rows || []).find(r => r.titleId === S.tid) || {};
+  if (!(_hub2Checklist[S.slug] && _hub2Checklist[S.slug].methods)) { try { await hub2ChecklistLoad(S.slug); } catch (e) {} }
+  S.msg = '⏳ Asking Claude for ' + S.askN + ' ideas…'; hubSeriesDraw();
+  const r = await call('seriesAsk', { titleId: S.tid, titleName: row.title || D.name, seriesAssetId: S.seriesAssetId, prompt: S.ask, count: S.askN, shape: S.askShape, assetType: hubSeriesType(S.slug, S.askShape === 'carousel' ? 'carousel' : 'single'), campaignId: h.campaignId, productId: row.productId || undefined, slug: S.slug }).catch(e => ({ error: e.message }));
+  if (!r || r.error) S.msg = '✗ ' + ((r && r.error) || 'no response');
+  else { S.used = new Set(r.used || []); D.sources['Claude asks'] = r.ideas.map(x => ({ id: x.id, t: x.t, meta: 'Ask: ' + r.ask.slice(0, 120) })).concat((D.sources['Claude asks'] || []).filter(x => !r.ideas.some(y => y.id === x.id)));
+    S.open['Claude asks'] = true; S.ask = ''; S.msg = '✓ Run created — ' + r.ideas.length + ' ideas from Claude on one Development asset (listed under Claude asks)'; hubTitlesLoad(S.slug, true).then(() => hubKwRefresh(S.slug)); }
   hubSeriesDraw();
 }
 async function hubSeriesUse(kind, src, ideaId) {
