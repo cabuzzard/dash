@@ -17832,7 +17832,7 @@ ${JSON.stringify(products)}`;
         const aSt = a => a.properties?.["Asset Status"]?.select?.name || "", aTitle = a => nid((a.properties?.["Content Strategy"]?.relation || [])[0]?.id);
         const isDigestA = a => /^digest$/i.test(a.properties?.["Pillar Type"]?.select?.name || "") || /digest/i.test(a.properties?.["Asset Type"]?.select?.name || "");
         const isDigestT = t => /\bdigest\b/i.test(tName(t));
-        const live = a => !body.everything && aSt(a) === "Published", keepA = a => live(a) || (!body.all && !isDigestA(a) && ["Development", "Review", "Publish"].includes(aSt(a)));   // all: true (operator 2026-10-19 "completely clear content table") keeps only Published
+        const live = a => !body.everything && aSt(a) === "Published", keepA = a => live(a) || (!body.all && !body.everything && !isDigestA(a) && ["Development", "Review", "Publish"].includes(aSt(a)));   // all: true (operator 2026-10-19 "completely clear content table") keeps only Published
         const keptA = assets.filter(keepA), keptTitleIds = new Set(keptA.map(aTitle).filter(Boolean));
         const keptT = titles.filter(t => keptTitleIds.has(nid(t.id)) && (!isDigestT(t) || keptA.some(a => aTitle(a) === nid(t.id) && live(a))));
         const keptTIds = new Set(keptT.map(t => nid(t.id)));
