@@ -4233,21 +4233,13 @@ async function titleResearchBlock(env, titleId) {
   const lines = TITLE_RES_FIELDS.map(f => [f, trRt(pg && pg.properties, f).trim()]).filter(x => x[1]);
   return lines.length ? "TITLE RESEARCH (primary — the search intent, questions and angle THIS piece is built on; the product is only the offer / call to action):\n" + lines.map(([k, v]) => `${k.replace(/^Title /, "")}: ${v}`).join("\n") : "";
 }
-// the hub's MAIN keywords — the Keywords tab's ★ Main list (the campaign's Research record → Keywords)
-async function hubMainKeywords(env, cid) {
-  if (!cid) return "";
-  const rows = await notionQuery(RESEARCH_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(String(cid).replace(/-/g, "")) } } }).catch(() => []);
-  return rows.map(r => (r.properties?.Keywords?.rich_text || []).map(t => t.plain_text).join("").trim()).find(Boolean) || "";
-}
-// the keyword topic a title takes its research from: its own Topic ID (__main = the hub's main keywords), else its product's; returns { cid, topicId, keywords }
+// the keyword topic a title takes its research from: its own Topic ID, else its product's; returns { cid, topicId, keywords }
 async function titleTopicKeywords(env, hdr, tp) {
   const own = trRt(tp, "Topic ID").trim().replace(/-/g, ""), cid = (tp.Campaign?.relation || [])[0]?.id || null;
-  if (own === "__main" && cid) return { cid, topicId: "__main", keywords: await hubMainKeywords(env, cid) };
-  if (own && cid) return { cid, topicId: own, keywords: await findClusterKeywordsForStack(env, hdr, "", cid, own) };
+  if (own && own !== "__main" && cid) return { cid, topicId: own, keywords: await findClusterKeywordsForStack(env, hdr, "", cid, own) };
   const pid = (tp.Product?.relation || tp.product?.relation || [])[0]?.id || null; if (!pid) return { cid, topicId: own, keywords: "" };
   const pp = await fetch(`https://api.notion.com/v1/pages/${kwDashId(pid.replace(/-/g, ""))}`, { headers: hdr }).then(r => r.json()).catch(() => ({}));
-  const pcid = (pp.properties?.Campaigns?.relation || [])[0]?.id || cid, ptid = trRt(pp.properties, "Topic ID").trim().replace(/-/g, "");
-  if (ptid === "__main" && pcid) return { cid: pcid, topicId: "__main", keywords: await hubMainKeywords(env, pcid) };
+  const pcid = (pp.properties?.Campaigns?.relation || [])[0]?.id || cid, ptid = trRt(pp.properties, "Topic ID").trim();
   return { cid: pcid, topicId: ptid, keywords: pcid ? await findClusterKeywordsForStack(env, hdr, trRt(pp.properties, "Product Stack"), pcid, ptid) : "" };
 }
 async function writePillarContent(hdr, env, { titleId, titleText, campaignId, productId, methodId, guidance, styleGuidance, useGrounding = true, extraContext, addKeywords, omitKeywords, targetKeywords }) {
