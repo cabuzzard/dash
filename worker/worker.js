@@ -12107,12 +12107,12 @@ async function seriesIdeas(env, titleId, force) {
 }
 async function titleJobsRun(env, invoke) {
   if (await env.TRADES.get("titlejob:lock")) return { busy: true };
-  await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 300 });
+  await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 480 });   // > the 210 s budget + one long step
   const t0 = Date.now(); let dq = Promise.resolve();
   const drop = id => (dq = dq.then(async () => env.TRADES.put("titlejob:queue", JSON.stringify(((await env.TRADES.get("titlejob:queue", "json")) || []).filter(x => x !== id)))).catch(() => {}));   // serialized — lanes never undo each other's drop
   let ran = 0; const claimed = new Set();
   const lane = async () => { let mine = null;
-    while (Date.now() - t0 < 140000) {
+    while (Date.now() - t0 < 210000) {   // most of each 4-min cron tick (cron invocations may run 15 min)
       const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.length) break;
       const id = mine && q.includes(mine) ? mine : q.find(x => !claimed.has(x)); if (!id) break;
       claimed.add(id); mine = id;
