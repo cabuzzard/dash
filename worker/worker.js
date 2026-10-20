@@ -2114,7 +2114,7 @@ function repairTruncatedJson(s) {
 
 async function notionQuery(dbId, body) {
   const results = [];
-  let cursor = undefined;
+  let cursor = undefined, rl = 0;
   while (true) {
     const payload = { page_size: 100, ...body };
     if (cursor) payload.start_cursor = cursor;
@@ -2127,6 +2127,8 @@ async function notionQuery(dbId, body) {
       },
       body: JSON.stringify(payload),
     });
+    if (resp.status === 429 && ++rl <= 5) {   // rate limited → wait it out, ask for the same page again (2026-10-20)
+      await new Promise(r => setTimeout(r, Math.min(8000, (parseFloat(resp.headers.get("Retry-After")) || 1) * 1000 * rl + Math.random() * 400))); continue; }
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.message || "Notion error");
     results.push(...(data.results || []));

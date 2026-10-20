@@ -11830,7 +11830,7 @@ async function hub2ProductsLoad(slug,force=false) {
  hpInit();hpMountHub(slug);
  if(!force&&HP_LIVE_AT&&Date.now()-HP_LIVE_AT<60000)return;
  try {
-  if(!HP_LIVE_PENDING)HP_LIVE_PENDING=call('getDevAssetsTable').then(data=>{if(data.error)throw new Error(data.error);hpApplyLive(data.productStats);}).finally(()=>{HP_LIVE_PENDING=null;});
+  if(!HP_LIVE_PENDING)HP_LIVE_PENDING=devAssetsTable().then(data=>{if(data.error)throw new Error(data.error);hpApplyLive(data.productStats);}).finally(()=>{HP_LIVE_PENDING=null;});
   await HP_LIVE_PENDING;
  }catch(e){
   const msg=document.getElementById(hpScopedId('hpLiveMsg',slug));if(msg)msg.textContent='Could not refresh counts & sync: '+e.message;
@@ -12113,7 +12113,7 @@ async function loadDev2() {
   const el = document.getElementById('dev2Content');
   el.innerHTML = '<div class="loading-wrap"><div class="spinner"></div>Loading...</div>';
   try {
-    const data = await call('getDevAssetsTable');
+    const data = await devAssetsTable();
     if (data.error) throw new Error(data.error);
     DEV2_ROWS = data.rows || []; DEV2_APPS = data.apps || DEV2_APPS;
     hpApplyLive(data.productStats);
@@ -16116,7 +16116,7 @@ async function hub2ChecklistLoad(slug, force) {
   _hub2Checklist[slug] = { ...(st || {}), loading: true, error: '' }; hub2ChecklistPaint(slug);
   try {
     const cid = hub2Id(h.campaignId);
-    const [worksheet, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), call('getDevAssetsTable')]);
+    const [worksheet, goals, dev] = await Promise.all([call('getInfoFlowTable', { name: 'currentmethods' }), call('getHub2ChecklistGoals'), devAssetsTable()]);
     const err = worksheet.error || goals.error || dev.error; if (err) throw new Error(err);
     hpApplyLive(dev.productStats);
     DEV2_ROWS = dev.rows || []; DEV2_APPS = dev.apps || DEV2_APPS; const hubRows = DEV2_ROWS.filter(r => hub2Id(r.campId) === cid);
@@ -16927,12 +16927,19 @@ async function hub2CreateGo(slug, id) {
   if (!r || r.error) return 'Asset not created: ' + ((r && r.error) || 'no response');
   showToast(`${m.name} created under "${t.title}" ✓`, 'success'); hub2ChecklistLoad(slug, true); return true;
 }
+var _devTblP = null, _devTblAt = 0, _devTblLast = null;
+function devAssetsTable() {
+  if (_devTblP) return _devTblP;
+  if (_devTblLast && Date.now() - _devTblAt < 5000) return Promise.resolve(_devTblLast);
+  _devTblP = call('getDevAssetsTable').then(r => { if (r && !r.error) { _devTblLast = r; _devTblAt = Date.now(); } return r; }).finally(() => { _devTblP = null; });
+  return _devTblP;
+}
 async function hub2ContentLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug), st = _hub2Content[slug]; if (!h || (st && st.loading) || (st && st.rows && !force)) return hub2ContentPaint(slug);
   _hub2Content[slug] = { loading: true, rows: st && st.rows || null }; hub2ContentPaint(slug);
   try {
     let source = DEV2_ROWS;
-    if (force || !Array.isArray(source) || !source.length) { const r = await call('getDevAssetsTable'); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; DEV2_APPS = r.apps || DEV2_APPS; }
+    if (force || !Array.isArray(source) || !source.length) { const r = await devAssetsTable(); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; DEV2_APPS = r.apps || DEV2_APPS; }
     const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map(), hubRows = source.filter(r => String(r.campId || '').replace(/-/g, '') === cid);
     const [mainR, prodR, stratR] = await Promise.all([call('getHubMainOfferings', { campaignId: cid }).catch(() => ({})), call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({})), call('getCampaignStrategies', { campaignId: h.campaignId }).catch(() => null)]);
     const mainIds = new Set(((mainR && mainR.mainIds) || []).map(x => String(x).replace(/-/g, ''))), stageOf = {}, syncOf = {}, resMap = {};
@@ -18404,7 +18411,7 @@ async function hubTitlesLoad(slug, force) {
     const h = HUB_SITES.find(x => x.slug === slug) || {}, cid = String(h.campaignId || '').replace(/-/g, '');
     // titles + assets + interviews (All Output rows), products' keyword flag, products' research-vs-keywords state
     const [dev, prods, strat] = await Promise.all([
-      force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length ? call('getDevAssetsTable') : Promise.resolve(null),
+      force || !Array.isArray(DEV2_ROWS) || !DEV2_ROWS.length ? devAssetsTable() : Promise.resolve(null),
       call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({ products: [] })),
       force || !_hubResState[slug] ? call('getCampaignStrategies', { campaignId: h.campaignId }).catch(() => null) : Promise.resolve(null),
     ]);
