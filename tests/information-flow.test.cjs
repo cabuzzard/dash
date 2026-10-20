@@ -55,3 +55,9 @@ test('Generic node and record roles support information holders and existing cus
  assert.equal(unpack(pack(g)).nodes[1].role,'record');
  g.roles.push({...g.roles[0],id:'another-node-role'});assert(validate(g).some(s=>/unique/.test(s)));
 });
+test('Layers persist independently of roles and remain reusable when unassigned',()=>{
+ const g=seed();g.layers=[{id:'layer-foundation',name:'Foundation'},{id:'layer-output',name:'Output'}];g.nodes[0].layer='Foundation';g.nodes[1].layer='Output';
+ assert.deepEqual(validate(g),[]);const restored=unpack(pack(g));assert.deepEqual(restored.layers,g.layers);assert.equal(restored.nodes[0].layer,'Foundation');assert.equal(restored.nodes[0].role,'topic');
+ delete g.nodes[0].layer;delete g.nodes[1].layer;assert.deepEqual(unpack(pack(g)).layers,g.layers);
+ g.layers.push({id:'layer-duplicate',name:'FOUNDATION'});assert(validate(g).some(s=>/Layer names must be unique/.test(s)));
+});
