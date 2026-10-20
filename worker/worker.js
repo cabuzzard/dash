@@ -12148,7 +12148,11 @@ async function titleJobsRun(env, invoke) {
           } else { const r = await invoke(step.action === "research" ? { action: "generateTitleResearch", titleId: S.titleId } : { action: "writeTitlePillar", titleId: S.titleId, styleGuidance: S.styleGuidance || undefined });
             if (!r || r.error) throw new Error((r && r.error) || "no response"); }
           step.ok = true; }
-        catch (e) { step.error = e.message || String(e); (S.errors = S.errors || []).push(step.label + ": " + step.error); }
+        catch (e) { step.error = e.message || String(e); }
+        // Notion rate limit / a just-created title not readable yet → the SAME step again on the next run (≤4 tries), not lost (2026-10-20)
+        if (step.error && !step.ok && /rate limit|429|not found|has no name|could not load|no response|timed? ?out/i.test(step.error) && (step.tries || 0) < 4) {
+          step.tries = (step.tries || 0) + 1; delete S.running; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 }); break; }
+        if (step.error && !step.ok) (S.errors = S.errors || []).push(step.label + ": " + step.error);
         S.i++; ran++;
       }
       delete S.running;
