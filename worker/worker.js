@@ -12347,6 +12347,7 @@ async function autoDigestRun(env, invoke) {
       const fresh = handNow || !S || (S.period !== per.key && !(S.manual && !finished));
       if (fresh) { const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
         if (manual.includes(cid)) { S = { period: "m" + Date.now(), manual: true, name: nm, step: "start", startedAt: Date.now(), tries: 0 };   // a hand run — same pipeline
+          await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 30 * 86400 });   // saved BEFORE it leaves the queue — an interrupted tick resumes it
           manual = manual.filter(x => x !== cid); await env.TRADES.put("digest:manual", JSON.stringify(manual)); }
         else { if (done[cid] === per.key) continue; if (!per.open) continue;   // new runs start Sunday 20:00 → Monday 06:00 Pacific
           S = { period: per.key, name: nm, step: "start", startedAt: Date.now(), tries: 0 }; } }
@@ -18002,8 +18003,7 @@ ${JSON.stringify(products)}`;
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
           return res.json().catch(() => ({ error: "bad response " + res.status })); };
-        ctx.waitUntil(autoDigestRun(env, invoke).catch(e => console.error("digestRunNow:", e.message)));
-        return json({ ok: true, queued: true });
+        return json({ ok: true, queued: true });   // the */4 cron runs it (a waitUntil kick gets cut off ~30 s after the response)
       }
       // digestCheck {assetId, itemId, target: premium|free|news, on} — the operator's saved checkbox state
       if (body.action === "digestCheck") {
