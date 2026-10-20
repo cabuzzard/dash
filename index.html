@@ -7909,6 +7909,23 @@ async function applyAnalyzeSuggestion(idx) {
   }
 }
 
+// ── GOVERNING FLOW (ADVISORY) ──────────────────────────────────────────
+// The Information Flow tab's graph governs this tool. The worker compiles
+// it (getGoverningFlow); the UI consults it and surfaces its rules as
+// advisories. Advisory only: nothing here blocks a save.
+let _govFlowCache = null;
+async function govFlow() {
+  if (_govFlowCache) return _govFlowCache;
+  try { _govFlowCache = await call('getGoverningFlow'); } catch (e) { _govFlowCache = null; }
+  return _govFlowCache;
+}
+function govTitleAdvisory() {
+  govFlow().then(g => {
+    if (!g || !g.digest) return;
+    setTimeout(() => showToast('Governing flow v' + (g.version || 1) + ' — a new title’s pillar is flagged for interview until an interview feeds it.'), 2600);
+  }).catch(() => {});
+}
+
 async function submitLinkTitle() {
   const title = document.getElementById('ltTitleInput').value.trim();
   if (!title) { document.getElementById('ltTitleInput').focus(); return; }
@@ -7934,11 +7951,13 @@ async function submitLinkTitle() {
       const r = await call('generateIdeaTitles', { title, count: ltCount, ...common });
       closeLinkTitleModal();
       showToast('Generated ' + r.created + ' titles ✓' + (r.failed ? ' (' + r.failed + ' failed)' : ''), 'success');
+      govTitleAdvisory();
     } else {
       status.textContent = 'Creating title…';
       await call('createDevTitle', { title, status: 'Development', ...common });
       closeLinkTitleModal();
       showToast('Title created ✓', 'success');
+      govTitleAdvisory();
     }
   } catch(e) {
     status.textContent = 'Error: ' + e.message;
