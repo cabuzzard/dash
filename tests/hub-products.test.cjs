@@ -15,7 +15,7 @@ get('hubProductsAuditData').textContent=html.match(/<script id="hubProductsAudit
 const storage=new Map();const ui=vm.createContext({document:{getElementById:get},localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v)},esc:s=>String(s??'').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;'),setTimeout:()=>{}});
 const code=html.slice(html.indexOf('// Hub Products: independent'),html.indexOf('// Flat, cross-campaign'));
 vm.runInContext(code,ui);const run=code=>vm.runInContext(code,ui);
-run('hpInit()');assert.equal(run('HP_ROWS.length'),278);assert.equal(run('HP_COLS.length'),11);
+run('hpInit()');assert.equal(run('HP_ROWS.length'),279);assert.equal(run('HP_COLS.length'),11);
 assert.equal(run('hpCmp({development:2,product:"a"},{development:10,product:"b"})'),-1); // default hub blank ties by product
 run('HP_SORT=[{col:"development",asc:true}]');assert.ok(run('hpCmp({development:2},{development:10})')<0);
 run('HP_SORT=[{col:"development",asc:false}]');assert.ok(run('hpCmp({development:2},{development:10})')>0);assert.ok(run('hpCmp({development:null},{development:0})')>0);
@@ -31,7 +31,7 @@ for(let i=0;i<12;i++){
  run(`hpWithHub('test-${i}',()=>{HP_SORT=[{col:'published',asc:false}];HP_F=[{col:'synced',val:'Synced'},{col:'',val:''}];})`);
  assert.equal(run(`hpWithHub('test-${i}',()=>HP_F[0].val)`),'Synced');
 }
-assert.equal(run('HP_ROWS.length'),278);assert.equal(run('JSON.stringify(HP_SORT)'),allSort);assert.equal(run('JSON.stringify(HP_F)'),allFilters);
+assert.equal(run('HP_ROWS.length'),279);assert.equal(run('JSON.stringify(HP_SORT)'),allSort);assert.equal(run('JSON.stringify(HP_F)'),allFilters);
 assert.throws(()=>run("hpWithHub('test-0',()=>{throw new Error('scope test')})"),/scope test/);assert.equal(run('HP_SCOPE'),'all');
 assert.equal(run("hpWithHub('test-0',()=>hpStorageKey('hpView'))"),'hpView:test-0');
 assert.equal(run("hpStorageKey('hpView')"),'hpView');
