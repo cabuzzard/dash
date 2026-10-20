@@ -41,3 +41,11 @@ test('Custom role definitions persist even when unused and old drafts remain val
  g.roles.push({id:'role-dupe',name:'APPROVAL GATE',description:'',color:'#ffffff'});assert(validate(g).some(s=>/unique/.test(s)));
  g.roles.pop();g.roles[0].name='parent';assert(validate(g).some(s=>/unique/.test(s)));
 });
+test('Sync links allow bidirectional feedback without weakening dependency validation',()=>{
+ const g=seed();g.edges.push({id:'sync',source:'pillar',target:'topic',kind:'syncs with',description:'Refresh either side when the other changes.'});
+ assert.deepEqual(validate(g),[]);assert.deepEqual(unpack(pack(g)).edges,g.edges);assert.deepEqual(validate(arrange(g)),[]);
+ const arranged=arrange(g);assert(arranged.nodes.find(n=>n.id==='pillar').x>arranged.nodes.find(n=>n.id==='topic').x);
+ g.edges.push({id:'reverse-sync',source:'topic',target:'pillar',kind:'Syncs with'});assert(validate(g).some(s=>/Duplicate/.test(s)));g.edges.pop();
+ g.edges.push({id:'dependency-cycle',source:'pillar',target:'topic',kind:'feeds'});assert(validate(g).some(s=>/Circular dependency/.test(s)));
+ g.edges.pop();g.edges.at(-1).target='pillar';assert(validate(g).some(s=>/itself/.test(s)));
+});
