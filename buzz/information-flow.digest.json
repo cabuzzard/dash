@@ -1,6 +1,6 @@
 {
   "governing_flow_version": 1,
-  "source_graph": "information-flow (accepted Oct 20, 2026)",
+  "source_graph": "information-flow (campaign-authority revision, Oct 20, 2026 — pending import)",
   "forms": [
     {
       "id": "idea",
@@ -33,13 +33,6 @@
     {
       "id": "nb9c3752bee3a4d9baaae",
       "label": "topic",
-      "kind": "FORM",
-      "role": "parent",
-      "interview_rule": "Unspecified"
-    },
-    {
-      "id": "na9a611a3f430434ba71b",
-      "label": "hub",
       "kind": "FORM",
       "role": "parent",
       "interview_rule": "Unspecified"
@@ -109,7 +102,7 @@
     },
     {
       "id": "n104a54ef4674499bbf7b",
-      "label": "Direct Assets \u2014 brand & profile",
+      "label": "Direct Assets — brand & profile",
       "kind": "ASSET CLASS",
       "role": "parent",
       "interview_rule": "Unspecified"
@@ -158,7 +151,7 @@
     },
     {
       "id": "unclusteredholding",
-      "label": "Unclustered topic \u2014 holding",
+      "label": "Unclustered topic — holding",
       "kind": "FORM (topic state)",
       "role": "topic",
       "interview_rule": "None"
@@ -169,6 +162,13 @@
       "kind": "DATABASE (singular, governing)",
       "role": "parent",
       "interview_rule": "None"
+    },
+    {
+      "id": "campaign",
+      "label": "campaign",
+      "kind": "FORM — THE AUTHORITY",
+      "role": "parent",
+      "interview_rule": "Unspecified"
     }
   ],
   "relations": [
@@ -183,88 +183,88 @@
       "from": "Keyword topic",
       "to": "Match",
       "kind": "routes to",
-      "condition": "Match",
+      "condition": "",
       "rule": "The idea matches an existing keyword topic."
     },
     {
       "from": "Keyword topic",
       "to": "Keyword research tool",
       "kind": "routes to",
-      "condition": "Keyword research tool",
-      "rule": "No match \u2014 route to the keyword research tool."
+      "condition": "",
+      "rule": "No match — route to the keyword research tool."
     },
     {
       "from": "Match",
-      "to": "hub",
+      "to": "campaign",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Match",
       "to": "cluster",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Match",
       "to": "topic",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Match",
       "to": "products",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Keyword research tool",
-      "to": "hub",
+      "to": "campaign",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Keyword research tool",
       "to": "cluster",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Keyword research tool",
       "to": "topic",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Keyword research tool",
       "to": "products",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Match",
       "to": "title",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
       "from": "Keyword research tool",
       "to": "title",
       "kind": "feeds",
       "condition": "",
-      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+      "rule": "Evaluates against this form — insertion lands at the single best position only, non-destructively."
     },
     {
-      "from": "hub",
+      "from": "campaign",
       "to": "cluster",
       "kind": "feeds",
       "condition": "",
@@ -316,7 +316,7 @@
       "from": "title",
       "to": "Interview",
       "kind": "feeds",
-      "condition": "Optional",
+      "condition": "",
       "rule": ""
     },
     {
@@ -362,7 +362,7 @@
       "rule": ""
     },
     {
-      "from": "hub",
+      "from": "campaign",
       "to": "Research",
       "kind": "feeds",
       "condition": "",
@@ -391,24 +391,24 @@
     },
     {
       "from": "Strategy",
-      "to": "Direct Assets \u2014 brand & profile",
+      "to": "Direct Assets — brand & profile",
       "kind": "feeds",
       "condition": "",
-      "rule": "Routes to Direct Assets \u2014 the output of the direct (pillar) lane."
+      "rule": "Routes to Direct Assets — the output of the direct (pillar) lane."
     },
     {
       "from": "Match",
-      "to": "Unclustered topic \u2014 holding",
+      "to": "Unclustered topic — holding",
       "kind": "fallback",
       "condition": "",
-      "rule": "Not inserted \u2014 held, unclustered."
+      "rule": "Not inserted — held, unclustered."
     },
     {
       "from": "Keyword research tool",
-      "to": "Unclustered topic \u2014 holding",
+      "to": "Unclustered topic — holding",
       "kind": "fallback",
       "condition": "",
-      "rule": "Not inserted \u2014 held, unclustered."
+      "rule": "Not inserted — held, unclustered."
     },
     {
       "from": "Title Pillar",
@@ -450,35 +450,35 @@
       "to": "Child Assets SEO",
       "kind": "feeds",
       "condition": "",
-      "rule": "Routes to the SEO child class \u2014 the output of SEO parents."
+      "rule": "Routes to the SEO child class — the output of SEO parents."
     },
     {
       "from": "Strategy",
       "to": "Child Assets Topical",
       "kind": "feeds",
       "condition": "",
-      "rule": "Routes to the Topic Engagement child class \u2014 the output of Topic Engagement parents."
+      "rule": "Routes to the Topic Engagement child class — the output of Topic Engagement parents."
     },
     {
       "from": "Strategy",
       "to": "Child Assets Sales",
       "kind": "feeds",
       "condition": "",
-      "rule": "Routes to the Sales child class \u2014 the output of Sales parents."
+      "rule": "Routes to the Sales child class — the output of Sales parents."
     }
   ],
   "rules": [
     {
       "id": "insertion",
-      "rule": "The AI evaluates an idea against all forms and inserts it non-destructively at the single best position. Manual rearrangement happens via the keyword section in hub cards."
+      "rule": "The AI evaluates an idea against all forms and inserts it non-destructively at the single best position. Manual rearrangement happens via the campaign's keyword sections, as recorded in the registry."
     },
     {
       "id": "holding",
-      "rule": "An idea that is not inserted becomes an unclustered topic inside a hub, or a title with 'idea' status unattached to any hub. Held items are isolated from publication and SEO strategy."
+      "rule": "An idea that is not inserted becomes an unclustered topic inside a campaign, or a title with 'idea' status unattached to any campaign. Held items are isolated from publication and SEO strategy."
     },
     {
-      "id": "new-hub",
-      "rule": "Creating a hub is a human call today. Target rule: compulsion approx CPC value + total search volume, compared against existing clusters."
+      "id": "new-campaign",
+      "rule": "Creating a new campaign (a new silo) is a human call today. Target rule: compulsion approx CPC value + total search volume, compared against existing clusters. Hubs are separate entities tracked in their own registry; they are never authorities in the flow."
     },
     {
       "id": "research-dependency",
@@ -525,8 +525,16 @@
       "rule": "A write the worker refuses is never destroyed: it is routed to holding with its full payload and the refusal reason recorded. Repair = fix the data or the modal that produced it, then replay the held write. Nothing is dropped silently."
     },
     {
+      "id": "keyword-strategy-registry",
+      "rule": "The campaign is the authority and the top form of the flow; each campaign is recorded in the Hub Registry (buzz/hub-registry.json). Hubs are separate entities from campaigns, tracked in their own registry, and are not part of the asset flow; hubs hold no keywords. A campaign's keyword strategy IS its main keywords on the campaign record plus the recorded organization of clusters and topics, as captured in the registry. Arranging, adding, or removing clusters or topics constitutes a change to the campaign's recorded keyword strategy; the registry must be re-recorded to match, and any model or tool must surface such rearrangements as strategy changes for the operator's decision, never as silent reorganizations."
+    },
+    {
+      "id": "campaign-seo-strategy",
+      "rule": "Campaign research is re-run off the campaign's main keywords and records an SEO strategy for the campaign. The recorded SEO strategy is part of the campaign's recorded strategy, alongside its keyword strategy, and governs downstream cluster, topic, product, and title work."
+    },
+    {
       "id": "filter-doctrine",
-      "rule": "AI (Claude, Buzz) is a FILTER, not a source. It may present opinions as options to edit the source; it never originates changes to the source. Sources: this flow, the hub cards, research, the operator's decisions. Outputs: Notion and the publishing platforms."
+      "rule": "AI (Claude, Buzz) is a FILTER, not a source. It may present opinions as options to edit the source; it never originates changes to the source. Sources: this flow, the campaigns and their hub cards, research, the operator's decisions. Outputs: Notion and the publishing platforms."
     }
   ]
 }

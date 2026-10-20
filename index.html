@@ -14795,6 +14795,7 @@ async function hpCommitSeoAudit(slug, btn){
     _hpSeoFetched[slug] = false;
     hpLoadSeoAudit(slug);
     btn.textContent = 'Saved ✓';
+    setTimeout(() => showToast('Keyword strategy — this save changes the recorded keyword strategy for ' + h.name + '. The hub registry must be re-recorded to match.'), 2600);
   } catch (e) {
     alert('Save failed: ' + e.message);
     btn.textContent = o;
