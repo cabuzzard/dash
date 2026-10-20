@@ -1981,6 +1981,74 @@ function json(data, status = 200) {
   });
 }
 
+// ── Governing information flow ─────────────────────────────────────────────
+// The accepted Information Flow graph (edited in the dash's Information Flow
+// tab, stored as a packed table in KV) is the tool's governing document.
+// These helpers let the worker READ it: unpack the packed table into a graph
+// and compile a structural digest (forms, relations, requirements) that any
+// modal, script, or agent session can consult via the getGoverningFlow
+// action. Enforcement lives here, on the write path — it is model-agnostic
+// by construction: it binds every input, whoever produced it.
+function unpackInfoFlow(t) {
+  if (!t || !Array.isArray(t.columns) || !t.columns.some(c => c.id === "kind")) return null;
+  const g = { version: 1, nodes: [], edges: [] };
+  for (const r of t.rows || []) {
+    const c = r.cells || {};
+    if (c.kind === "layer") { (g.layers || (g.layers = [])).push({ id: r.id, name: c.label }); }
+    else if (c.kind === "role") { (g.roles || (g.roles = [])).push({ id: r.id, name: c.label, description: c.description || "", color: c.color }); }
+    else if (c.kind === "node") g.nodes.push({ id: r.id, label: c.label, role: c.role, interview: c.interview, x: Number(c.x), y: Number(c.y), notes: c.notes || "", method: c.method || "", ...(c.layer ? { layer: c.layer } : {}), ...(c.nx !== undefined && c.ny !== undefined && c.nz !== undefined ? { network: { x: Number(c.nx), y: Number(c.ny), z: Number(c.nz) } } : {}) });
+    else if (c.kind === "edge") g.edges.push({ id: r.id, source: c.source, target: c.target, kind: c.relation, ...(c.condition ? { condition: c.condition } : {}), ...(c.description ? { description: c.description } : {}) });
+  }
+  return g;
+}
+
+let GOVERNING_FLOW_CACHE = null; // { at, data } — isolate-lifetime, 60s TTL
+async function governingFlow(env) {
+  const now = Date.now();
+  if (GOVERNING_FLOW_CACHE && now - GOVERNING_FLOW_CACHE.at < 60000) return GOVERNING_FLOW_CACHE.data;
+  let table = null;
+  try { table = await env.TRADES.get("infoflow:table:informationflowgraph", "json"); } catch (e) {}
+  const graph = unpackInfoFlow(table);
+  if (!graph) throw new Error("Governing flow graph is not available.");
+  const labels = {}; graph.nodes.forEach(n => { labels[n.id] = n.label; });
+  const kindOf = n => { const m = String(n.notes || "").match(/^([A-Za-z][A-Za-z /(),]+?)\./); return m ? m[1].trim() : (n.role || ""); };
+  const digest = {
+    forms: graph.nodes.map(n => ({ id: n.id, label: n.label, kind: kindOf(n), role: n.role, interview: n.interview })),
+    relations: graph.edges.map(e => ({ from: labels[e.source] || e.source, to: labels[e.target] || e.target, kind: e.kind, condition: e.condition || "", rule: e.description || "" })),
+    requirements: graph.edges.filter(e => ["requires written parent", "requires interview", "requires completion"].includes(e.kind))
+      .map(e => ({ target: labels[e.target] || e.target, requires: e.kind, source: labels[e.source] || e.source })),
+  };
+  const data = { version: graph.version || 1, savedAt: (table && table.at) || null, graph, digest };
+  GOVERNING_FLOW_CACHE = { at: now, data };
+  return data;
+}
+
+// ── Flow guard: refusal-and-repair ─────────────────────────────────────────
+// Checks on the write path. Violations are ALWAYS recorded in holding
+// (flow:held:v1, full context + rule + reason) — a refused or warned write is
+// never silently dropped. Enforcement is off until the operator sets
+// flow:enforce:v1 to true in KV; advisory mode only warns. Legacy-model
+// notices are never hard-blocked (grandfathered production data).
+async function flowHold(env, entry) {
+  try {
+    const key = "flow:held:v1";
+    const held = (await env.TRADES.get(key, "json")) || [];
+    held.push({ at: Date.now(), ...entry });
+    await env.TRADES.put(key, JSON.stringify(held.slice(-200)));
+  } catch (e) {}
+}
+async function flowEnforced(env) {
+  try { return (await env.TRADES.get("flow:enforce:v1", "json")) === true; } catch (e) { return false; }
+}
+function flowAssetViolations(v) {
+  const out = [];
+  const klass = v.assetClass === "Pillar" ? "Pillar" : "Publishable";
+  if (klass === "Pillar") out.push({ rule: "legacy-pillar-asset", hard: false, message: "Pillar-class asset is the legacy model: the governing flow writes the pillar to the title and assets draw from it." });
+  if (klass === "Publishable" && !v.parentAssetId) out.push({ rule: "child-no-parent", hard: true, message: "Publishable (child) asset has no parent asset: the governing flow ties every child asset to a parent." });
+  return out;
+}
+
+
 // The Research DB "News Feed" field is LLM-generated free text with no fixed
 // shape — either "HEADLINE: ..." blocks separated by blank lines, or a
 // "1. ... (source.com)" numbered list. Pull best-effort { title, source, date }
@@ -21253,6 +21321,17 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         return json({ success: true, saved: rows.length });
       }
 
+      if (body.action === "getGoverningFlow") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        try { return json({ success: true, ...(await governingFlow(env)) }); }
+        catch (e) { return json({ error: e.message }, 400); }
+      }
+      if (body.action === "getFlowHeld") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let held = []; try { held = (await env.TRADES.get("flow:held:v1", "json")) || []; } catch (e) {}
+        return json({ success: true, held });
+      }
+
       // Content Hubs 2 production checklist. Methods define which asset
       // types are available; this small KV record only stores the operator's
       // per-hub decision to track a type and its cadence/goal.
@@ -33901,6 +33980,13 @@ Rules:
           if ((parent.properties?.["Asset Class"]?.select?.name || "") !== "Pillar") return json({ error: "The selected parent must be a Pillar asset" }, 400);
         }
 
+        const flowViolations = flowAssetViolations({ assetClass, parentAssetId });
+        if (flowViolations.length) {
+          for (const v of flowViolations) await flowHold(env, { action: "createAsset", rule: v.rule, hard: v.hard, assetTitle, titleId, parentAssetId: parentAssetId || "" });
+          const hard = flowViolations.find(v => v.hard);
+          if (hard && await flowEnforced(env)) return json({ error: "Governing flow: " + hard.message, flowViolation: hard.rule }, 400);
+        }
+
         const properties = {
           "Asset Title": { title: [{ text: { content: assetTitle } }] },
           "Asset Status": { select: { name: assetStatus || "Publish" } },
@@ -33929,7 +34015,7 @@ Rules:
         });
         const result = await resp.json();
         if (!resp.ok) return json({ error: result.message || "Create failed" }, resp.status);
-        return json({ id: result.id?.replace(/-/g,"") || "", url: result.url || "" });
+        return json({ id: result.id?.replace(/-/g,"") || "", url: result.url || "", ...(flowViolations.length ? { flowWarnings: flowViolations.map(v => v.rule) } : {}) });
       }
 
       // -- generateVideo (Kie.ai text-to-video) ----------------------------------------
