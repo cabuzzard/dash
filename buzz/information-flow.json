@@ -1,0 +1,524 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "idea",
+      "label": "Idea",
+      "role": "research",
+      "interview": "None",
+      "x": 60,
+      "y": 120,
+      "notes": "PROCESS. A raw idea enters here.",
+      "method": ""
+    },
+    {
+      "id": "keywordtopicswitch",
+      "label": "Keyword topic",
+      "role": "switch",
+      "interview": "None",
+      "x": 323,
+      "y": 120,
+      "notes": "PROCESS. The switch: does the idea match an existing keyword topic, or does it go to the keyword research tool?",
+      "method": ""
+    },
+    {
+      "id": "match",
+      "label": "Match",
+      "role": "decision",
+      "interview": "None",
+      "x": 444,
+      "y": -185,
+      "notes": "PROCESS. Match \u2014 the idea  is evaluated by AI as to its nearness or relevance to all content forms in the tool  from hub to cluster to topic to products to existing titles. Manual rearrangement is available via the keyword section in hub cards.",
+      "method": ""
+    },
+    {
+      "id": "keywordresearchtool",
+      "label": "Keyword research tool",
+      "role": "decision",
+      "interview": "None",
+      "x": 809,
+      "y": 345,
+      "notes": "PROCESS. No match \u2014 the idea goes to the keyword research tool.   keyword research is performed manually and then insertion to downstream parent forms is decided.",
+      "method": ""
+    },
+    {
+      "id": "nb9c3752bee3a4d9baaae",
+      "label": "topic",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 1571,
+      "y": -102,
+      "notes": "FORM. Topics all belong under clusters if they dont fit a cluster they need to move to another cluster or create their own cluster if they do not fit eht seo strategy that governs the other clusters in the hub they may belong in a new hub",
+      "method": ""
+    },
+    {
+      "id": "na9a611a3f430434ba71b",
+      "label": "hub",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 979,
+      "y": -403,
+      "notes": "FORM. input requires new hub because it is too compelling or isolated form any other cluster topic product or title New hub today: a human call. Target rule \u2014 compulsion \u2248 CPC value + total search volume, compared against existing clusters.",
+      "method": ""
+    },
+    {
+      "id": "nf04f962e2c0c466a89e7",
+      "label": "cluster",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 1362,
+      "y": -242,
+      "notes": "FORM. clusters fit a defined SEO strategy for exisitng hubs.  inputs are evaluated for their relevance to existing clusters",
+      "method": ""
+    },
+    {
+      "id": "nc0f11e52d446478d9044",
+      "label": "Parent Asset Sales",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 2349,
+      "y": 197,
+      "notes": "ASSET CLASS (parent). Never published. Carries the direct sales intent and draws only from the Title Pillar. Universal datasets (voice, layout, design, imagery) are set here and inherited by its children \u2014 never re-decided downstream.",
+      "method": ""
+    },
+    {
+      "id": "ndbd9e6b2af5e48a4baf2",
+      "label": "title",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 1911,
+      "y": 3,
+      "notes": "FORM. The record everything hangs from: the pillar is written to it, the interview attaches to it, and a title with 'idea' status is this form in its uninserted state.",
+      "method": ""
+    },
+    {
+      "id": "n2b2ee07bb0714a5c9d94",
+      "label": "products",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 1631,
+      "y": 283,
+      "notes": "FORM. Sellable outcomes created from the keyword flow, fitted to hub, cluster, and topic. Syncs with Research \u2014 an insertion here triggers a research update.",
+      "method": ""
+    },
+    {
+      "id": "n727bb530dc78459c93fc",
+      "label": "Parent Asset SEO",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 2316,
+      "y": -100,
+      "notes": "ASSET CLASS (parent). Never published. Carries the SEO intent and draws only from the Title Pillar. Universal datasets (voice, layout, design, imagery) are set here and inherited by its children \u2014 never re-decided downstream.",
+      "method": ""
+    },
+    {
+      "id": "n4f23dfddc7d14f63b9a7",
+      "label": "Parent Asset Topic Engagement",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 2341,
+      "y": 48,
+      "notes": "ASSET CLASS (parent). Never published. Carries the topical engagement intent and draws only from the Title Pillar. Universal datasets (voice, layout, design, imagery) are set here and inherited by its children \u2014 never re-decided downstream.",
+      "method": ""
+    },
+    {
+      "id": "n1232bc696b04425e922e",
+      "label": "Interview",
+      "role": "interview",
+      "interview": "Unspecified",
+      "x": 1972,
+      "y": -234,
+      "notes": "PROCESS. Conducted from the title; feeds the Title Pillar and teaches Voice. Optional \u2014 see the flag rule on Title Pillar.",
+      "method": ""
+    },
+    {
+      "id": "n27b97b4d837649c4819a",
+      "label": "Title Pillar",
+      "role": "pillar",
+      "interview": "Unspecified",
+      "x": 2270,
+      "y": -245,
+      "notes": "FIELD (on the title). One pillar per title, written to the title; long and verbose enough to inform all downstream assets; never published or deployed. Written without an interview, the pillar is flagged 'for interview' (the flag lives on the title) \u2014 the interview humanizes the content; it never blocks writing.",
+      "method": ""
+    },
+    {
+      "id": "nf3b85ebceda14e959df1",
+      "label": "Research",
+      "role": "research",
+      "interview": "Unspecified",
+      "x": 1995,
+      "y": 685,
+      "notes": "FIELD GROUP (on each form). Two sources: (1) it pulls all upstream keywords plus the input at this level and matches them to market and customer queries, filling the customer-knowledge and market-data fields; (2) Internet Search \u2014 outside queries per title/product (see Internet Search). Rules: any insertion at a research-tied form triggers a research update for that insertion; the keyword flow is semi-dominant \u2014 research updates are non-destructive and never negate the upstream SEO strategy.",
+      "method": ""
+    },
+    {
+      "id": "n104a54ef4674499bbf7b",
+      "label": "Direct Assets \u2014 brand & profile",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 3147,
+      "y": -240,
+      "notes": "ASSET CLASS. The fourth parent lane: made off the pillar with no parent asset, routing through the shared Method and Strategy like every other lane. Direct growth and engagement of the brand/profile; not product-focused. The profile carries its own productization, downstream of the hub's main product focus.",
+      "method": ""
+    },
+    {
+      "id": "n9c064e4981b34a4f95cf",
+      "label": "Child Assets Sales",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 3132,
+      "y": 200,
+      "notes": "ASSET CLASS (child). Publishable. Tied to its Sales parent; inherits the parent's intent and universal datasets, and varies only what its platform forces. It is an instance of the asset type its Method defines \u2014 and unlike the method, the asset record stores fields.",
+      "method": ""
+    },
+    {
+      "id": "n4d27692194884c5da8be",
+      "label": "Child Assets Topical",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 3134,
+      "y": 62,
+      "notes": "ASSET CLASS (child). Publishable. Tied to its Topical parent; inherits the parent's intent and universal datasets, and varies only what its platform forces. It is an instance of the asset type its Method defines \u2014 and unlike the method, the asset record stores fields.",
+      "method": ""
+    },
+    {
+      "id": "ne10574f613a84cc7abf0",
+      "label": "Child Assets SEO",
+      "role": "parent",
+      "interview": "Unspecified",
+      "x": 3126,
+      "y": -53,
+      "notes": "ASSET CLASS (child). Publishable. Tied to its SEO parent; inherits the parent's intent and universal datasets, and varies only what its platform forces. It is an instance of the asset type its Method defines \u2014 and unlike the method, the asset record stores fields.",
+      "method": ""
+    },
+    {
+      "id": "n94c7511df36141b29ec8",
+      "label": "Voice",
+      "role": "research",
+      "interview": "None",
+      "x": 2315,
+      "y": 424,
+      "notes": "DATASET. The operator's voice, learned from interview responses \u2014 how he talks, how he writes, how he interprets. Consulted wherever content is written: voice decides HOW, research decides WHAT."
+    },
+    {
+      "id": "n1e609d74bfbb4eaf8353",
+      "label": "Internet Search",
+      "role": "research",
+      "interview": "None",
+      "x": 2348,
+      "y": 690,
+      "notes": "PROCESS (outside research). individual titles and products are maekt researched here indpedndently of keywords but matched overall with seo .   sources consulted exist alreay in the research methods stored in notion and python worker.  but it is reeddit, google, amazon, and other useful product research modalityies also social media.   refer to the existing worker for this"
+    },
+    {
+      "id": "n6bd8d0a366ed483ca8da",
+      "label": "Strategy",
+      "role": "switch",
+      "interview": "None",
+      "x": 2880,
+      "y": -40,
+      "notes": "DATABASE (singular, governing). THE Strategy table \u2014 one node, because there is one table. It receives everything from Method and routes it to the asset class matching its parent type: SEO to Child Assets SEO, Topic Engagement to Child Assets Topical, Sales to Child Assets Sales, and the direct lane to Direct Assets. It sets periodicity, repetition, schedule, number of iterations, and topical arcs. Informed by what flows in through Method \u2014 it does not inform the parents. It also consults the hub card's design, voice, and audience information and evaluates each platform's growth strategy."
+    },
+    {
+      "id": "unclusteredholding",
+      "label": "Unclustered topic \u2014 holding",
+      "role": "topic",
+      "interview": "None",
+      "x": 1150,
+      "y": -580,
+      "notes": "FORM (topic state). Uninserted ideas land here \u2014 inside a hub but unclustered \u2014 or as titles with 'idea' status, unattached to any hub. Isolated from publication and SEO strategy."
+    },
+    {
+      "id": "n60e21a9897344b75bf04",
+      "label": "Method",
+      "role": "parent",
+      "interview": "None",
+      "x": 2600,
+      "y": -40,
+      "notes": "DATABASE (singular, governing). THE Method database \u2014 one node, because there is one database. Every asset parent routes through it: the three Parent Assets (SEO, Topic Engagement, Sales) and the direct lane from the pillar. A method organizes upstream information into a platform- and intent-specific form; that form is the asset type. The method is descriptive and instructive \u2014 it does not store the asset's fields; the asset record stores the fields. Routing through Method stays distinct by parent type."
+    }
+  ],
+  "edges": [
+    {
+      "id": "e1",
+      "source": "idea",
+      "target": "keywordtopicswitch",
+      "kind": "routes to",
+      "description": "Every idea hits the keyword-topic switch first."
+    },
+    {
+      "id": "e2",
+      "source": "keywordtopicswitch",
+      "target": "match",
+      "kind": "routes to",
+      "condition": "Match",
+      "description": "The idea matches an existing keyword topic."
+    },
+    {
+      "id": "e3",
+      "source": "keywordtopicswitch",
+      "target": "keywordresearchtool",
+      "kind": "routes to",
+      "condition": "Keyword research tool",
+      "description": "No match \u2014 route to the keyword research tool."
+    },
+    {
+      "id": "ebed675277068494fb82c",
+      "source": "match",
+      "target": "na9a611a3f430434ba71b",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "efe62ff4a5e5f44959034",
+      "source": "match",
+      "target": "nf04f962e2c0c466a89e7",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "efc6e06bdb19b48e9a065",
+      "source": "match",
+      "target": "nb9c3752bee3a4d9baaae",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "e8ea56443fbf14fb89e8c",
+      "source": "match",
+      "target": "n2b2ee07bb0714a5c9d94",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "eda44b0d5c7d147a799bd",
+      "source": "keywordresearchtool",
+      "target": "na9a611a3f430434ba71b",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "ee114247fdcf74675a9ed",
+      "source": "keywordresearchtool",
+      "target": "nf04f962e2c0c466a89e7",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "ea9e254d712864ece9135",
+      "source": "keywordresearchtool",
+      "target": "nb9c3752bee3a4d9baaae",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "e5ab8d8f702614575aa14",
+      "source": "keywordresearchtool",
+      "target": "n2b2ee07bb0714a5c9d94",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "eeba6d0231c744ca1ac53",
+      "source": "match",
+      "target": "ndbd9e6b2af5e48a4baf2",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "e92c9361d39774a7fa4a6",
+      "source": "keywordresearchtool",
+      "target": "ndbd9e6b2af5e48a4baf2",
+      "kind": "feeds",
+      "description": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "id": "e134453047acd463aba47",
+      "source": "na9a611a3f430434ba71b",
+      "target": "nf04f962e2c0c466a89e7",
+      "kind": "feeds"
+    },
+    {
+      "id": "eb70fb40cb36a429eba06",
+      "source": "nf04f962e2c0c466a89e7",
+      "target": "nb9c3752bee3a4d9baaae",
+      "kind": "feeds"
+    },
+    {
+      "id": "e24931f5189a643f0b907",
+      "source": "nb9c3752bee3a4d9baaae",
+      "target": "n2b2ee07bb0714a5c9d94",
+      "kind": "feeds"
+    },
+    {
+      "id": "eb83f37dfb9f54056883e",
+      "source": "n2b2ee07bb0714a5c9d94",
+      "target": "ndbd9e6b2af5e48a4baf2",
+      "kind": "feeds"
+    },
+    {
+      "id": "e0e7f41d1c7c24f14bf1f",
+      "source": "nb9c3752bee3a4d9baaae",
+      "target": "ndbd9e6b2af5e48a4baf2",
+      "kind": "feeds",
+      "description": "Pillar written to title is a complete keyword flow all the way from the main hub keywords through cluster, topic and product if product is attached.  product is optional to title attachement is specified in title creation and title edit.  "
+    },
+    {
+      "id": "e34dcdd942f394750a154",
+      "source": "n2b2ee07bb0714a5c9d94",
+      "target": "nf3b85ebceda14e959df1",
+      "kind": "syncs with",
+      "description": "bi directional relationship"
+    },
+    {
+      "id": "ec634d3b5db3047e9a156",
+      "source": "ndbd9e6b2af5e48a4baf2",
+      "target": "nf3b85ebceda14e959df1",
+      "kind": "syncs with"
+    },
+    {
+      "id": "e7346b7dbb27f4ecba382",
+      "source": "ndbd9e6b2af5e48a4baf2",
+      "target": "n1232bc696b04425e922e",
+      "kind": "feeds",
+      "condition": "Optional"
+    },
+    {
+      "id": "ec0c5e0a4ccb1462c8259",
+      "source": "n1232bc696b04425e922e",
+      "target": "n27b97b4d837649c4819a",
+      "kind": "feeds"
+    },
+    {
+      "id": "e71045fb94efd4fcca814",
+      "source": "n27b97b4d837649c4819a",
+      "target": "n727bb530dc78459c93fc",
+      "kind": "feeds"
+    },
+    {
+      "id": "e476fb133e84148bf9efa",
+      "source": "n27b97b4d837649c4819a",
+      "target": "n4f23dfddc7d14f63b9a7",
+      "kind": "feeds"
+    },
+    {
+      "id": "e99cdd45a0dbb476fb270",
+      "source": "n27b97b4d837649c4819a",
+      "target": "nc0f11e52d446478d9044",
+      "kind": "feeds"
+    },
+    {
+      "id": "e477d45058abf4b038010",
+      "source": "n1232bc696b04425e922e",
+      "target": "n94c7511df36141b29ec8",
+      "kind": "feeds",
+      "description": "voice learns from my responses how I talk and how I write and also how I interpet.  voice feeds back into the writing engine without skewing the overall voice away from audience and product fit.  "
+    },
+    {
+      "id": "ea6edfc294b884f12bf29",
+      "source": "n94c7511df36141b29ec8",
+      "target": "nf3b85ebceda14e959df1",
+      "kind": "feeds"
+    },
+    {
+      "id": "e165671bb3ea549a8b297",
+      "source": "na9a611a3f430434ba71b",
+      "target": "nf3b85ebceda14e959df1",
+      "kind": "feeds"
+    },
+    {
+      "id": "e388baa13bc034fb3a6a5",
+      "source": "nf04f962e2c0c466a89e7",
+      "target": "nf3b85ebceda14e959df1",
+      "kind": "feeds"
+    },
+    {
+      "id": "e76bc066aff314f3ca78f",
+      "source": "nb9c3752bee3a4d9baaae",
+      "target": "nf3b85ebceda14e959df1",
+      "kind": "feeds"
+    },
+    {
+      "id": "ef05fbf67256645f2a995",
+      "source": "nf3b85ebceda14e959df1",
+      "target": "n1e609d74bfbb4eaf8353",
+      "kind": "syncs with"
+    },
+    {
+      "id": "ea892cce67da54c2693de",
+      "source": "n6bd8d0a366ed483ca8da",
+      "target": "n104a54ef4674499bbf7b",
+      "kind": "feeds",
+      "description": "Routes to Direct Assets \u2014 the output of the direct (pillar) lane."
+    },
+    {
+      "id": "ebuzzholding1",
+      "source": "match",
+      "target": "unclusteredholding",
+      "kind": "fallback",
+      "description": "Not inserted \u2014 held, unclustered."
+    },
+    {
+      "id": "ebuzzholding2",
+      "source": "keywordresearchtool",
+      "target": "unclusteredholding",
+      "kind": "fallback",
+      "description": "Not inserted \u2014 held, unclustered."
+    },
+    {
+      "id": "ebuzzmethod0",
+      "source": "n27b97b4d837649c4819a",
+      "target": "n60e21a9897344b75bf04",
+      "kind": "feeds",
+      "description": "The direct lane: the pillar routes through the single Method database, with no parent asset."
+    },
+    {
+      "id": "ebuzzmethod0b",
+      "source": "n60e21a9897344b75bf04",
+      "target": "n6bd8d0a366ed483ca8da",
+      "kind": "feeds",
+      "description": "Method -> Strategy. Both are singular governing databases."
+    },
+    {
+      "id": "ebuzzroute2",
+      "source": "n727bb530dc78459c93fc",
+      "target": "n60e21a9897344b75bf04",
+      "kind": "feeds",
+      "description": "SEO parent routes through the single Method database. Routing stays distinct by parent type."
+    },
+    {
+      "id": "ebuzzroute3",
+      "source": "n4f23dfddc7d14f63b9a7",
+      "target": "n60e21a9897344b75bf04",
+      "kind": "feeds",
+      "description": "Topic Engagement parent routes through the single Method database. Routing stays distinct by parent type."
+    },
+    {
+      "id": "ebuzzroute4",
+      "source": "nc0f11e52d446478d9044",
+      "target": "n60e21a9897344b75bf04",
+      "kind": "feeds",
+      "description": "Sales parent routes through the single Method database. Routing stays distinct by parent type."
+    },
+    {
+      "id": "ebuzzroute6",
+      "source": "n6bd8d0a366ed483ca8da",
+      "target": "ne10574f613a84cc7abf0",
+      "kind": "feeds",
+      "description": "Routes to the SEO child class \u2014 the output of SEO parents."
+    },
+    {
+      "id": "ebuzzroute7",
+      "source": "n6bd8d0a366ed483ca8da",
+      "target": "n4d27692194884c5da8be",
+      "kind": "feeds",
+      "description": "Routes to the Topic Engagement child class \u2014 the output of Topic Engagement parents."
+    },
+    {
+      "id": "ebuzzroute8",
+      "source": "n6bd8d0a366ed483ca8da",
+      "target": "n9c064e4981b34a4f95cf",
+      "kind": "feeds",
+      "description": "Routes to the Sales child class \u2014 the output of Sales parents."
+    }
+  ]
+}

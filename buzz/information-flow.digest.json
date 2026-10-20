@@ -1,0 +1,532 @@
+{
+  "governing_flow_version": 1,
+  "source_graph": "information-flow (accepted Oct 20, 2026)",
+  "forms": [
+    {
+      "id": "idea",
+      "label": "Idea",
+      "kind": "PROCESS",
+      "role": "research",
+      "interview_rule": "None"
+    },
+    {
+      "id": "keywordtopicswitch",
+      "label": "Keyword topic",
+      "kind": "PROCESS",
+      "role": "switch",
+      "interview_rule": "None"
+    },
+    {
+      "id": "match",
+      "label": "Match",
+      "kind": "PROCESS",
+      "role": "decision",
+      "interview_rule": "None"
+    },
+    {
+      "id": "keywordresearchtool",
+      "label": "Keyword research tool",
+      "kind": "PROCESS",
+      "role": "decision",
+      "interview_rule": "None"
+    },
+    {
+      "id": "nb9c3752bee3a4d9baaae",
+      "label": "topic",
+      "kind": "FORM",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "na9a611a3f430434ba71b",
+      "label": "hub",
+      "kind": "FORM",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "nf04f962e2c0c466a89e7",
+      "label": "cluster",
+      "kind": "FORM",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "nc0f11e52d446478d9044",
+      "label": "Parent Asset Sales",
+      "kind": "ASSET CLASS (parent)",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "ndbd9e6b2af5e48a4baf2",
+      "label": "title",
+      "kind": "FORM",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n2b2ee07bb0714a5c9d94",
+      "label": "products",
+      "kind": "FORM",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n727bb530dc78459c93fc",
+      "label": "Parent Asset SEO",
+      "kind": "ASSET CLASS (parent)",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n4f23dfddc7d14f63b9a7",
+      "label": "Parent Asset Topic Engagement",
+      "kind": "ASSET CLASS (parent)",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n1232bc696b04425e922e",
+      "label": "Interview",
+      "kind": "PROCESS",
+      "role": "interview",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n27b97b4d837649c4819a",
+      "label": "Title Pillar",
+      "kind": "FIELD (on the title)",
+      "role": "pillar",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "nf3b85ebceda14e959df1",
+      "label": "Research",
+      "kind": "FIELD GROUP (on each form)",
+      "role": "research",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n104a54ef4674499bbf7b",
+      "label": "Direct Assets \u2014 brand & profile",
+      "kind": "ASSET CLASS",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n9c064e4981b34a4f95cf",
+      "label": "Child Assets Sales",
+      "kind": "ASSET CLASS (child)",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n4d27692194884c5da8be",
+      "label": "Child Assets Topical",
+      "kind": "ASSET CLASS (child)",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "ne10574f613a84cc7abf0",
+      "label": "Child Assets SEO",
+      "kind": "ASSET CLASS (child)",
+      "role": "parent",
+      "interview_rule": "Unspecified"
+    },
+    {
+      "id": "n94c7511df36141b29ec8",
+      "label": "Voice",
+      "kind": "DATASET",
+      "role": "research",
+      "interview_rule": "None"
+    },
+    {
+      "id": "n1e609d74bfbb4eaf8353",
+      "label": "Internet Search",
+      "kind": "PROCESS (outside research)",
+      "role": "research",
+      "interview_rule": "None"
+    },
+    {
+      "id": "n6bd8d0a366ed483ca8da",
+      "label": "Strategy",
+      "kind": "DATABASE (singular, governing)",
+      "role": "switch",
+      "interview_rule": "None"
+    },
+    {
+      "id": "unclusteredholding",
+      "label": "Unclustered topic \u2014 holding",
+      "kind": "FORM (topic state)",
+      "role": "topic",
+      "interview_rule": "None"
+    },
+    {
+      "id": "n60e21a9897344b75bf04",
+      "label": "Method",
+      "kind": "DATABASE (singular, governing)",
+      "role": "parent",
+      "interview_rule": "None"
+    }
+  ],
+  "relations": [
+    {
+      "from": "Idea",
+      "to": "Keyword topic",
+      "kind": "routes to",
+      "condition": "",
+      "rule": "Every idea hits the keyword-topic switch first."
+    },
+    {
+      "from": "Keyword topic",
+      "to": "Match",
+      "kind": "routes to",
+      "condition": "Match",
+      "rule": "The idea matches an existing keyword topic."
+    },
+    {
+      "from": "Keyword topic",
+      "to": "Keyword research tool",
+      "kind": "routes to",
+      "condition": "Keyword research tool",
+      "rule": "No match \u2014 route to the keyword research tool."
+    },
+    {
+      "from": "Match",
+      "to": "hub",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Match",
+      "to": "cluster",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Match",
+      "to": "topic",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Match",
+      "to": "products",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Keyword research tool",
+      "to": "hub",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Keyword research tool",
+      "to": "cluster",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Keyword research tool",
+      "to": "topic",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Keyword research tool",
+      "to": "products",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Match",
+      "to": "title",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "Keyword research tool",
+      "to": "title",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Evaluates against this form \u2014 insertion lands at the single best position only, non-destructively."
+    },
+    {
+      "from": "hub",
+      "to": "cluster",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "cluster",
+      "to": "topic",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "topic",
+      "to": "products",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "products",
+      "to": "title",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "topic",
+      "to": "title",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Pillar written to title is a complete keyword flow all the way from the main hub keywords through cluster, topic and product if product is attached.  product is optional to title attachement is specified in title creation and title edit.  "
+    },
+    {
+      "from": "products",
+      "to": "Research",
+      "kind": "syncs with",
+      "condition": "",
+      "rule": "bi directional relationship"
+    },
+    {
+      "from": "title",
+      "to": "Research",
+      "kind": "syncs with",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "title",
+      "to": "Interview",
+      "kind": "feeds",
+      "condition": "Optional",
+      "rule": ""
+    },
+    {
+      "from": "Interview",
+      "to": "Title Pillar",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "Title Pillar",
+      "to": "Parent Asset SEO",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "Title Pillar",
+      "to": "Parent Asset Topic Engagement",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "Title Pillar",
+      "to": "Parent Asset Sales",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "Interview",
+      "to": "Voice",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "voice learns from my responses how I talk and how I write and also how I interpet.  voice feeds back into the writing engine without skewing the overall voice away from audience and product fit.  "
+    },
+    {
+      "from": "Voice",
+      "to": "Research",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "hub",
+      "to": "Research",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "cluster",
+      "to": "Research",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "topic",
+      "to": "Research",
+      "kind": "feeds",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "Research",
+      "to": "Internet Search",
+      "kind": "syncs with",
+      "condition": "",
+      "rule": ""
+    },
+    {
+      "from": "Strategy",
+      "to": "Direct Assets \u2014 brand & profile",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Routes to Direct Assets \u2014 the output of the direct (pillar) lane."
+    },
+    {
+      "from": "Match",
+      "to": "Unclustered topic \u2014 holding",
+      "kind": "fallback",
+      "condition": "",
+      "rule": "Not inserted \u2014 held, unclustered."
+    },
+    {
+      "from": "Keyword research tool",
+      "to": "Unclustered topic \u2014 holding",
+      "kind": "fallback",
+      "condition": "",
+      "rule": "Not inserted \u2014 held, unclustered."
+    },
+    {
+      "from": "Title Pillar",
+      "to": "Method",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "The direct lane: the pillar routes through the single Method database, with no parent asset."
+    },
+    {
+      "from": "Method",
+      "to": "Strategy",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Method -> Strategy. Both are singular governing databases."
+    },
+    {
+      "from": "Parent Asset SEO",
+      "to": "Method",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "SEO parent routes through the single Method database. Routing stays distinct by parent type."
+    },
+    {
+      "from": "Parent Asset Topic Engagement",
+      "to": "Method",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Topic Engagement parent routes through the single Method database. Routing stays distinct by parent type."
+    },
+    {
+      "from": "Parent Asset Sales",
+      "to": "Method",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Sales parent routes through the single Method database. Routing stays distinct by parent type."
+    },
+    {
+      "from": "Strategy",
+      "to": "Child Assets SEO",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Routes to the SEO child class \u2014 the output of SEO parents."
+    },
+    {
+      "from": "Strategy",
+      "to": "Child Assets Topical",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Routes to the Topic Engagement child class \u2014 the output of Topic Engagement parents."
+    },
+    {
+      "from": "Strategy",
+      "to": "Child Assets Sales",
+      "kind": "feeds",
+      "condition": "",
+      "rule": "Routes to the Sales child class \u2014 the output of Sales parents."
+    }
+  ],
+  "rules": [
+    {
+      "id": "insertion",
+      "rule": "The AI evaluates an idea against all forms and inserts it non-destructively at the single best position. Manual rearrangement happens via the keyword section in hub cards."
+    },
+    {
+      "id": "holding",
+      "rule": "An idea that is not inserted becomes an unclustered topic inside a hub, or a title with 'idea' status unattached to any hub. Held items are isolated from publication and SEO strategy."
+    },
+    {
+      "id": "new-hub",
+      "rule": "Creating a hub is a human call today. Target rule: compulsion approx CPC value + total search volume, compared against existing clusters."
+    },
+    {
+      "id": "research-dependency",
+      "rule": "Research pulls all upstream keywords plus the input at its level and matches them to market and customer queries. Any insertion at a research-tied form triggers a research update for that insertion."
+    },
+    {
+      "id": "semi-dominance",
+      "rule": "The keyword flow is semi-dominant: insertions and research updates are non-destructive and never negate the upstream SEO strategy."
+    },
+    {
+      "id": "internet-search",
+      "rule": "Individual titles and products are also market-researched directly from the internet, independently of keywords, then reconciled with SEO."
+    },
+    {
+      "id": "pillar",
+      "rule": "One pillar per title, written to the title, long and verbose enough to inform all downstream assets. Pillars are never published or deployed. 'Pillar' appears nowhere in asset creation; assets draw from the pillar in the title only."
+    },
+    {
+      "id": "interview",
+      "rule": "An interview is optional and never blocks a pillar. A pillar written without an interview is flagged 'for interview' on the title. The interview humanizes the content and teaches Voice."
+    },
+    {
+      "id": "voice",
+      "rule": "Voice is learned from the operator's interview responses. Voice decides HOW content is written; research decides WHAT it says."
+    },
+    {
+      "id": "method",
+      "rule": "Method is a singular governing database. A method organizes upstream information into a platform- and intent-specific form; that form is the asset type. A method is descriptive and instructive and stores no asset fields; the asset record stores the fields."
+    },
+    {
+      "id": "strategy",
+      "rule": "Strategy is a singular governing table, downstream of Method. It sets periodicity, repetition, schedule, iterations, and topical arcs, and routes productions to the asset class matching their parent type. It is informed by parents through Method; it never informs parents."
+    },
+    {
+      "id": "parents-children",
+      "rule": "Parent assets are never published and carry intent (SEO, topical engagement, direct sales). Child assets are publishable instances tied to a parent, inheriting its intent and universal datasets. Direct assets come off the pillar with no parent asset and serve brand/profile growth, not product sales."
+    },
+    {
+      "id": "model-agnostic-enforcement",
+      "rule": "Enforcement lives in the tool, not in any model. The flow binds every input regardless of which AI (Claude, ChatGPT, Grok, any other) or human produced it, because every write passes the worker's validation. Models produce drafts and proposals; they never hold unvalidated write access."
+    },
+    {
+      "id": "refusal-and-repair",
+      "rule": "A write the worker refuses is never destroyed: it is routed to holding with its full payload and the refusal reason recorded. Repair = fix the data or the modal that produced it, then replay the held write. Nothing is dropped silently."
+    },
+    {
+      "id": "filter-doctrine",
+      "rule": "AI (Claude, Buzz) is a FILTER, not a source. It may present opinions as options to edit the source; it never originates changes to the source. Sources: this flow, the hub cards, research, the operator's decisions. Outputs: Notion and the publishing platforms."
+    }
+  ]
+}
