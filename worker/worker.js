@@ -12201,11 +12201,9 @@ async function titleJobsRun(env, invoke) {
             S.assetId = String(aid).replace(/-/g, "");
           } else if (step.action === "keywords") {   // the title's own keywords (seed idea), from its topic
             const k = await invoke({ action: "regenerateTitleKeywords", titleId: S.titleId }); if (!k || k.error) throw new Error((k && k.error) || "no response");
-          } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written); interview-led types get their interview flagged on it
+          } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written)
             const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: /^digest$/i.test(step.assetType) ? "Digest parent" : step.assetType, pillar: /^(series|digest)$/i.test(step.assetType) }] });   // Series + Digest parent are parents (pillars)   // Series = a parent (Pillar · Series)
             if (!c || c.error) throw new Error((c && c.error) || "no response");
-            const aid = ((c.created || [])[0] || {}).id;
-            if (aid && ivOwnTier((await ivTierFn(env))(step.assetType))) await ivCreateForAsset(env, { assetId: aid, titleId: S.titleId, own: step.assetType }).catch(() => {});
           } else if (step.action === "etitle") {   // ★ evergreen premium: the title (in Main), then research + pillar steps
             const mains = await hubMainList(env, S.cid);
             const c = await invoke({ action: "createDevTitle", title: S.item.claim.slice(0, 150), campaignId: S.cid, productId: mains[0] || undefined, status: "Development", skipPillar: true,
@@ -15191,24 +15189,6 @@ the one aesthetic risk taken + why:`;
             return { id: "page-" + sec.key, key: sec.key, phase: sec.phase || "Page content", label: sec.label, pageSection: true, items, done: items.length > 0,
               hint: items.length ? "" : "no assets in this section yet" };
           });
-          // 🎤 an asset whose title still has a FLAGGED interview is out of sync with it (no interview done yet):
-          // each such row carries the first flagged interview, so the checklist row links straight to it.
-          if (campaignId) {
-            const ivAll = await ivList({ property: "Campaign", relation: { contains: ivDash(campaignId) } }).catch(() => []), ivF = ivAll.filter(x => x.status !== "Finished");
-            const byT = {}; ivF.forEach(x => { const k = x.scope === "Product" ? "p:" + x.productId : x.titleId; (byT[k] = byT[k] || []).push(x); });
-            const t2p = {}; (await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: ivDash(campaignId) } } }).catch(() => []))
-              .forEach(t => { t2p[t.id.replace(/-/g, "")] = ivRid(t.properties, "product"); });
-            const tierOf = await ivTierFn(env);
-            pageSections.forEach(sec => sec.items.forEach(it => {
-              const tier = tierOf(it.method || it.type); it.ivTier = IV_TIER_LABEL[tier];
-              if (tier === "none" || !it.titleId) return;
-              const l = ivOwnTier(tier) ? (byT[it.titleId] || []).filter(x => x.scope === "Asset" && (x.assetIds.includes(it.id) || ivTypeMatch(x.forType, it.method || it.type)))
-                : [...(byT["p:" + t2p[it.titleId]] || []), ...(byT[it.titleId] || []).filter(x => x.scope === "Asset" && x.assetIds.includes(it.id))];
-              if (l.length) it.ivFlag = { id: l[0].id, n: l.length, angle: l[0].angle, own: tier === "depends" };
-              else if (ivOwnTier(tier) && !ivAll.some(x => x.scope === "Asset" && x.titleId === it.titleId && (x.assetIds.includes(it.id) || ivTypeMatch(x.forType, it.method || it.type))))
-                it.ivFlag = { id: null, n: 0, own: true, missing: true, ownType: it.method || it.type };   // needs its own interview — none yet
-            }));
-          }
           const secIds = Object.fromEntries(await P_secIds);
           { const tids = [...new Set(pageSections.flatMap(ps => ps.items.map(it => it.titleId)).filter(Boolean))];
             const tinfo = Object.fromEntries(await Promise.all(tids.map(async id => { try {
@@ -16567,11 +16547,17 @@ Return: {
           return pr.v < (((prod && prod.campId && campKw[prod.campId]) || {}).v || 0) ? "✗ out of sync" : "✓ up to date"; };
         const ivSum = {}, add = (k, iv) => { if (!k) return; const x = ivSum[k] = ivSum[k] || { f: 0, d: 0 }; if (iv.status === "Finished") x.d++; else x.f++; };
         ivRows.forEach(iv => add(iv.scope === "Product" ? "p:" + iv.productId : iv.titleId, iv));
+        const titleInterviewStats = {};
+        ivRows.filter(iv => iv.scope === "Title" && iv.titleId).forEach(iv => {
+          const stat = titleInterviewStats[iv.titleId] ||= { count: 0, finished: 0 };
+          stat.count++; if (iv.status === "Finished") stat.finished++;
+        });
         const tierOf = await ivTierFn(env);
         rows.forEach(r => {
+          r.titleInterviewCount = titleInterviewStats[r.titleId]?.count || 0;
+          r.titleInterviewFinished = titleInterviewStats[r.titleId]?.finished || 0;
           r.ivTier = r.kind === "asset" ? IV_TIER_LABEL[tierOf(r.assetType || r.rawAssetType)] : "";
-          // Pillar/title interview dependence follows the title's assigned
-          // Method row in the same Current Methods interview-tier matrix.
+          // Retain method-tier metadata for display; title interview flags use titleInterviewStats.
           r.methodIvTier = r.titleId && r.methodName ? IV_TIER_LABEL[tierOf(r.methodName)] : "";
           r.research = researchOf(r.productId);
           r.keywordOutOfSync = !!(r.productId && productById[r.productId] && productById[r.productId].outOfSync);
@@ -17796,8 +17782,6 @@ ${JSON.stringify(products)}`;
         const r = await invoke({ action: "createDevAssets", titleId, title: body.titleName || "Series", productId: body.productId || undefined, campaignId: body.campaignId || undefined, slug: body.slug || undefined,
           allowMulti: true, parentAssetId: body.seriesAssetId || undefined, types: [{ assetType: String(body.assetType).slice(0, 100), label, titleOverride: label + " — " + idea.slice(0, 120), note: "Series idea: " + idea + (body.source ? " (from " + body.source + ")" : "") }] });
         if (!r || r.error || !(r.created || []).length) return json({ error: (r && (r.error || (r.failed || []).join(" · "))) || "not created" }, 500);
-        // interview-led children (SEO Post short interview · YouTube own interview) get their interview flagged on the new asset
-        try { if (ivOwnTier((await ivTierFn(env))(String(body.assetType)))) await ivCreateForAsset(env, { assetId: r.created[0].id, titleId, own: String(body.assetType), direction: "Series idea: " + idea }); } catch (e) {}
         const key = "series:used:" + titleId, used = (await env.TRADES.get(key, "json")) || []; if (body.ideaId && !/^cat:/.test(body.ideaId) && !used.includes(body.ideaId)) used.push(body.ideaId);
         await env.TRADES.put(key, JSON.stringify(used.slice(-1000)));
         return json({ ok: true, assetId: r.created[0].id, used });
