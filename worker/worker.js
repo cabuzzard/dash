@@ -25742,6 +25742,7 @@ Return ONLY this JSON object, no other text, no markdown fences:
 
         await promoteProductStatus(hdr, productId, "Planning");   // research generated ⇒ at least Planning
         await kwClearOutOfSync(env, productId);   // product research re-ran → keyword group change absorbed
+        await kwReviveProduct(env, productId);   // researched → out of Idea
         return json({ success: true, strategyId, url: strategyUrl, fields });
       }
 
@@ -25854,6 +25855,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
             body: JSON.stringify({ properties: { [field]: { rich_text: rtChunks }, "Keywords Version": { number: campaignKwVersion } } }),
           });
           await kwClearOutOfSync(env, productId);   // research saved → in sync (clears the orange)
+          await kwReviveProduct(env, productId);   // researched → out of Idea
           return json({ success: true, strategyId, url: existing.url });
         }
         const createResp = await fetch("https://api.notion.com/v1/pages", {
@@ -25872,6 +25874,7 @@ Write 2-5 sentences, or a short bulleted list where naturally list-shaped (Pain 
         const created = await createResp.json();
         if (!createResp.ok || !created.id) return json({ error: created.message || "Research create failed" }, createResp.status || 500);
         await kwClearOutOfSync(env, productId);   // research saved → in sync
+        await kwReviveProduct(env, productId);   // researched → out of Idea
         return json({ success: true, strategyId: created.id.replace(/-/g,""), url: created.url });
       }
 
@@ -51900,6 +51903,14 @@ async function kwEnsureProductProps(env) {
   await env.TRADES.put("kwhub:props", "1"); await env.TRADES.put("kwhub:props2", "1");
 }
 // a product's research / keywords re-ran → it is in sync again (best effort; no-op until the property exists)
+// operator 2026-10-19: "running research should reset status. period." — a product at Idea (parked by the hub reset) whose
+// research is written goes back to Planning (the status a new product starts at). Any other status is left alone.
+async function kwReviveProduct(env, productId) {
+  try { const id = String(productId || "").replace(/-/g, ""); if (id.length !== 32) return;
+    const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json());
+    if ((pg.properties?.Status?.select?.name || "") === "Idea") await kwNotionPatch(env, id, { Status: { select: { name: "Planning" } } });
+  } catch (e) { console.error("kwReviveProduct:", e.message); }
+}
 async function kwClearOutOfSync(env, productId) {
   try { if (productId && await env.TRADES.get("kwhub:props")) await kwNotionPatch(env, productId, { "Keywords Out of Sync": { checkbox: false } }); } catch (e) {}
 }
