@@ -440,3 +440,12 @@ Per operator direction: images are built in ChatGPT (the raw image API doesn't m
 - HMAC tokens expire after 8 hours
 - GitHub repo should be private (pending)
 - Rotate Notion integration token if ever exposed (pending)
+
+## Governing information flow (ratified Oct 20, 2026)
+
+The graph in the dash's **Information Flow tab** is the governing document for how information is created and saved in this tool. Its storage is the worker KV table `infoflow:table:informationflowgraph` — what the operator sees and edits in the tab is the authority.
+
+- The worker reads that graph and compiles it: the `getGoverningFlow` action returns the graph plus a structural digest. `buzz/information-flow.digest.md` is the compiled, human-readable rendering — it is generated from the graph, never edit it as a source.
+- AI (Claude, ChatGPT, Grok, Buzz) is a **filter, not a source**: present opinions as options to edit the source; never originate changes to the flow. Flow changes are made by the operator editing the graph in the tab.
+- New modals and save paths must consult the flow (via `getGoverningFlow`) and must not bypass the worker's flow guard or its refusal-and-repair holding (`flow:held:v1`). Enforcement stays advisory until the operator sets `flow:enforce:v1` in KV.
+- The `buzz/*.json` files are frozen audit snapshots. If they and the tab ever disagree, the tab wins.
