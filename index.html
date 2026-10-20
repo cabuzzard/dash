@@ -15976,7 +15976,7 @@ function renderHubs2() {
           <div style="padding:8px 12px;">${hub2StrategiesShell(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hub2PoolLoad('${slug}')">
-          <summary title="Digest"><span title="Digest">Digest</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">researched items · ★ premium · 📰 news</span><button onclick="event.preventDefault();event.stopPropagation();hub2PoolLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
+          <summary title="Digest"><span title="Digest">Digest</span><span style="font-weight:400;color:var(--text3);text-transform:none;letter-spacing:0;">one dropdown per digest · Premium / Free · check → issues + News SEO</span><button onclick="event.preventDefault();event.stopPropagation();hub2PoolLoad('${slug}',true)" title="Reload" style="margin-left:auto;font-size:10px;padding:2px 8px;border:1px solid var(--border2);border-radius:4px;background:transparent;color:var(--text3);cursor:pointer;">⟳</button></summary>
           <div id="hub2Pool-${slug}" style="padding:8px 12px;">${hub2PoolHtml(slug)}</div>
         </details>
         <details class="hub-sec" ontoggle="if(this.open)hubKwLoad('${slug}')">
@@ -16389,12 +16389,20 @@ function hub2IvHtml(slug) {
       <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.title || 'Interview')}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.scope || '')}${x.forType ? ' · ' + esc(x.forType) : ''}${x.angle ? ' · ' + esc(x.angle) : ''}${tot ? ' · ' + done + ' / ' + tot + ' answered' : ''}</div></div>
       <button onclick="ivFlagOpen('${esc(x.id)}')" style="font-size:10.5px;padding:2px 9px;border:1px solid #ff7a00;border-radius:4px;background:transparent;color:#ff7a00;cursor:pointer;white-space:nowrap;">🎤 Answer</button></div>`; }).join('');
 }
-const _hub2Pool = {};
+// ── Digest section (operator 2026-10-20): ONE collapsible dropdown per Digest parent asset (the weekly cron and a hand run make
+// the same asset). Its findings are pre-grouped PREMIUM / FREE; per item, check → Premium issue (many → one), → Free issue
+// (many → one), → News SEO (one post per item). Checks are saved; ⚙ Generate writes the checked children as unpublished
+// Development assets under the digest. ▶ Run a digest now = the cron's own research + write, by hand. Worker: getDigests ·
+// digestCheck · digestGenerate · digestRunNow (KV digest:items:<assetId>). ──
+const _hub2Pool = {}, _hub2DigOpen = {};
 async function hub2PoolLoad(slug, force) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
   if (_hub2Pool[slug] && !force && !_hub2Pool[slug].error) return hub2PoolPaint(slug);
   _hub2Pool[slug] = { loading: true }; hub2PoolPaint(slug);
-  try { const r = await call('getDigestPool', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response'); _hub2Pool[slug] = { items: r.items || [], last: r.last || null }; }
+  try { const r = await call('getDigests', { campaignId: h.campaignId }); if (!r || r.error) throw new Error((r && r.error) || 'no response');
+    _hub2Pool[slug] = { digests: r.digests || [], run: r.run || null, last: r.last || null };
+    if (r.digests && r.digests[0] && _hub2DigOpen[slug + '|' + r.digests[0].assetId] === undefined) _hub2DigOpen[slug + '|' + r.digests[0].assetId] = true;   // newest open
+    clearTimeout(_hub2Pool[slug].timer); if (r.run) _hub2Pool[slug].timer = setTimeout(() => hub2PoolLoad(slug, true), 60000); }   // a run is going — check again in a minute
   catch (e) { _hub2Pool[slug] = { error: e.message }; }
   hub2PoolPaint(slug);
 }
@@ -16404,28 +16412,59 @@ function hub2PoolHtml(slug) {
   if (!P) return '<div style="font-size:11px;color:var(--text3);">Open to load.</div>';
   if (P.loading) return '<div style="font-size:11px;color:var(--text3);">Loading…</div>';
   if (P.error) return `<div style="font-size:11px;color:#f87171;">${esc(P.error)}</div>`;
-  if (!P.items.length) return '<div style="font-size:11px;color:var(--text3);">No digest items yet — they arrive with the next digest run (Sunday night, or the Digest modal).</div>';
-  const B = (on, col) => `font-size:10px;padding:1px 7px;border:1px solid ${on ? col : 'var(--border2)'};border-radius:4px;background:${on ? col + '22' : 'transparent'};color:${on ? col : 'var(--text2)'};cursor:pointer;`;
-  const row = x => { const lock = x.status && x.status !== 'error';
-    const st = x.status === 'queued' ? '<span style="font-size:10px;color:#f6ad55;">⏳ building</span>' : x.status === 'done' ? `<span style="font-size:10px;color:#4ade80;">✓ built</span>${x.assetId || x.titleId ? ` <a href="https://www.notion.so/${esc(x.assetId || x.titleId)}" target="_blank" rel="noopener" style="font-size:10px;color:var(--accent);">↗</a>` : ''}` : x.status === 'error' ? `<span title="${esc(x.error || '')}" style="font-size:10px;color:#f87171;cursor:help;">✗ failed — tag again to retry</span>` : '';
-    return `<div class="hkw-row" style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
-      <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.claim)}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.split === 'premium' ? ' · research said premium' : ''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">source ↗</a>` : ''}</div></div>
-      <div style="display:flex;gap:4px;align-items:center;flex-shrink:0;">${st}
-        <button ${lock && x.tag !== 'premium' ? 'disabled' : ''} style="${B(x.tag === 'premium', '#f5c542')}" title="Keep as premium — builds an evergreen premium piece (title in Main · research · pillar)" onclick="hub2PoolTag('${slug}','${esc(x.id)}','${x.tag === 'premium' ? '' : 'premium'}')">★ Premium</button>
-        <button ${lock && x.tag !== 'news' ? 'disabled' : ''} style="${B(x.tag === 'news', '#8ab4f8')}" title="Keep for news — writes a News SEO post on it (left unpublished)" onclick="hub2PoolTag('${slug}','${esc(x.id)}','${x.tag === 'news' ? '' : 'news'}')">📰 News</button></div></div>`; };
-  const tagged = P.items.filter(x => x.tag), rest = P.items.filter(x => !x.tag);
-  return `<div style="font-size:10.5px;color:var(--text3);margin-bottom:6px;">${P.last && P.last.at ? 'Latest research: ' + esc(String(P.last.at).slice(0, 10)) + ' · ' : ''}Tag to keep — ★ Premium builds an evergreen premium piece, 📰 News writes a news post. Untagged items drop off at the next digest run.</div>`
-    + (tagged.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:6px 0 2px;">Kept (${tagged.length})</div>` + tagged.map(row).join('') : '')
-    + (rest.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);margin:10px 0 2px;">This run — untagged, will be replaced (${rest.length})</div>` + rest.map(row).join('') : '');
+  const B = col => `font-size:10.5px;padding:2px 9px;border:1px solid ${col};border-radius:4px;background:transparent;color:${col};cursor:pointer;`;
+  const runLine = P.run ? `<span style="color:#f6ad55;">⏳ A digest run is ${P.run.step === 'queued' ? 'queued' : 'running (' + esc(P.run.step) + ')'} — research takes 10–30 min; this updates itself.</span>`
+    : P.last ? `<span style="color:var(--text3);">Last run: ${esc(P.last.step)}${P.last.note ? ' — ' + esc(P.last.note) : ''}${P.last.at ? ' · ' + new Date(P.last.at).toLocaleString() : ''}</span>` : '';
+  const top = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px;"><button ${P.run ? 'disabled' : ''} style="${B('#60a5fa')}" title="Same research + write as the weekly cron — a new Digest parent appears here when it is done" onclick="hub2DigRunNow('${slug}',this)">▶ Run a digest now</button>${runLine}</div>`;
+  if (!P.digests.length) return top + '<div style="font-size:11px;color:var(--text3);">No Digest parents yet — ▶ Run a digest now, tick 📰 Digest parent on a title, or wait for Sunday night’s run.</div>';
+  return top + P.digests.map(d => hub2DigHtml(slug, d)).join('');
 }
-async function hub2PoolTag(slug, itemId, tag) {
-  const h = HUB_SITES.find(x => x.slug === slug), P = _hub2Pool[slug]; if (!h || !P || !P.items) return;
-  const it = P.items.find(x => x.id === itemId); if (!it) return;
-  if (it.status && it.status !== 'error' && !tag) return showToast('Already ' + (it.status === 'done' ? 'built' : 'building') + ' — it stays kept', 'error');
-  const r = await call('tagDigestItem', { campaignId: h.campaignId, itemId, tag, slug }).catch(e => ({ error: e.message }));
-  if (!r || r.error) return showToast('Not tagged: ' + ((r && r.error) || 'no response'), 'error');
-  Object.assign(it, r.item); hub2PoolPaint(slug);
-  if (r.queued) { call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); showToast((tag === 'news' ? '📰 News post' : '★ Evergreen premium piece') + ' queued — ⚙ bottom-right', 'success'); }
+function hub2DigHtml(slug, d) {
+  const B = col => `font-size:10.5px;padding:2px 9px;border:1px solid ${col};border-radius:4px;background:transparent;color:${col};cursor:pointer;`;
+  const k = slug + '|' + d.assetId, open = !!_hub2DigOpen[k], items = d.items || [], ch = d.children || { premium: [], free: [], news: [] }, checks = d.checks || {};
+  const used = { premium: new Set(ch.premium.flatMap(c => c.items || [])), free: new Set(ch.free.flatMap(c => c.items || [])), news: new Set(ch.news.map(c => c.itemId)) };
+  const n = t => items.filter(x => (checks[x.id] || {})[t]).length, np = n('premium'), nf = n('free'), nn = n('news');
+  const stCol = d.status === 'Review' ? '#ff7a00' : d.status === 'Published' ? '#4ade80' : 'var(--text3)';
+  const head = `<summary style="cursor:pointer;padding:6px 8px;font-size:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;" ontoggle="">
+      <b style="color:var(--text);">${esc(d.title)}</b><span style="font-size:10.5px;color:${stCol};">${esc(d.status || '')}${d.readiness ? ' · ' + esc(d.readiness) : ''}</span>
+      <span style="font-size:10.5px;color:var(--text3);">${items.length} finding${items.length === 1 ? '' : 's'}${ch.premium.length ? ' · ' + ch.premium.length + ' premium issue' + (ch.premium.length === 1 ? '' : 's') : ''}${ch.free.length ? ' · ' + ch.free.length + ' free issue' + (ch.free.length === 1 ? '' : 's') : ''}${ch.news.length ? ' · ' + ch.news.length + ' news post' + (ch.news.length === 1 ? '' : 's') : ''}</span>
+      <a href="https://www.notion.so/${esc(d.assetId)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="margin-left:auto;font-size:10px;color:var(--text3);">Notion ↗</a></summary>`;
+  if (!open) return `<details style="border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;" ontoggle="_hub2DigOpen['${k}']=this.open;if(this.open)hub2PoolPaint('${slug}')">${head}</details>`;
+  const box = (x, t, label, col) => { const on = !!(checks[x.id] || {})[t], was = used[t].has(x.id);
+    return `<label title="${was ? 'Already in a ' + label + ' — check again to use it in another' : 'Check to include in the ' + label}" style="display:inline-flex;gap:3px;align-items:center;font-size:10px;color:${on ? col : 'var(--text3)'};cursor:pointer;white-space:nowrap;"><input type="checkbox" ${on ? 'checked' : ''} onchange="hub2DigCheck('${slug}','${esc(d.assetId)}','${esc(x.id)}','${t}',this.checked)">${label}${was ? ' ✓' : ''}</label>`; };
+  const row = x => `<div class="hkw-row" style="display:flex;gap:8px;align-items:flex-start;padding:5px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
+      <div style="flex:1;min-width:0;"><div style="color:var(--text);">${esc(x.claim)}</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">${esc(x.publisher || '')}${x.date ? ' · ' + esc(x.date) : ''}${x.tier ? ' · tier ' + esc(String(x.tier)) : ''}${x.url ? ` · <a href="${esc(x.url)}" target="_blank" rel="noopener" style="color:var(--text3);">source ↗</a>` : ''}</div></div>
+      <div style="display:flex;gap:8px;flex-shrink:0;">${box(x, 'premium', 'Premium issue', '#f5c542')}${box(x, 'free', 'Free issue', '#4ade80')}${box(x, 'news', 'News SEO', '#8ab4f8')}</div></div>`;
+  const grp = (label, col, list) => list.length ? `<div style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:${col};margin:8px 0 2px;">${label} (${list.length})</div>` + list.map(row).join('') : '';
+  const link = (id, txt) => id ? `<a href="https://www.notion.so/${esc(id)}" target="_blank" rel="noopener" style="color:var(--accent);">${txt}</a>` : txt;
+  const kids = [...ch.premium.map((c, i) => link(c.assetId, '★ Premium issue ' + (i + 1))), ...ch.free.map((c, i) => link(c.assetId, 'Free issue ' + (i + 1))),
+    ...ch.news.map(c => { const it = items.find(x => x.id === c.itemId); return link(c.assetId, '📰 ' + esc((it ? it.claim : 'news post').slice(0, 50)) + (c.state === 'error' ? ' ✗' : c.assetId ? '' : ' ⏳')); })];
+  const body = !items.length ? `<div style="font-size:11px;color:var(--text3);padding:6px 8px;">No findings stored for this digest (it was written before findings were kept per digest) — its issue is on the asset.</div>`
+    : grp('Premium', '#f5c542', items.filter(x => x.split === 'premium')) + grp('Free', '#4ade80', items.filter(x => x.split !== 'premium'))
+      + `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;"><button ${np + nf + nn ? '' : 'disabled'} style="${B('#f5c542')}" onclick="hub2DigGenerate('${slug}','${esc(d.assetId)}',this)">⚙ Generate checked — ${np ? '1 premium issue (' + np + ' items)' : 'no premium'} · ${nf ? '1 free issue (' + nf + ' items)' : 'no free'} · ${nn} news post${nn === 1 ? '' : 's'}</button><span style="font-size:10px;color:var(--text3);">children are created at Development — publish them from the asset modal</span></div>`;
+  return `<details open style="border:1px solid var(--border2);border-radius:6px;margin-bottom:6px;" ontoggle="_hub2DigOpen['${k}']=this.open;if(!this.open)hub2PoolPaint('${slug}')">${head}<div style="padding:4px 10px 10px;">${body}${kids.length ? `<div style="font-size:10.5px;color:var(--text3);margin-top:8px;">Made from this digest: ${kids.join(' · ')}</div>` : ''}</div></details>`;
+}
+async function hub2DigCheck(slug, assetId, itemId, target, on) {
+  const P = _hub2Pool[slug], d = P && (P.digests || []).find(x => x.assetId === assetId); if (!d) return;
+  d.checks = d.checks || {}; d.checks[itemId] = { ...(d.checks[itemId] || {}), [target]: on }; hub2PoolPaint(slug);   // optimistic
+  const r = await call('digestCheck', { assetId, itemId, target, on }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Not saved: ' + ((r && r.error) || 'no response'), 'error'); d.checks[itemId][target] = !on; hub2PoolPaint(slug); }
+}
+async function hub2DigGenerate(slug, assetId, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return; btn.disabled = true; btn.textContent = '⏳ Writing the checked children…';
+  const r = await call('digestGenerate', { assetId, campaignId: h.campaignId, slug }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Generate failed: ' + ((r && r.error) || 'no response'), 'error'); btn.disabled = false; return; }
+  const m = r.made || {}, parts = [m.premium && 'premium issue', m.free && 'free issue', (m.news || []).length && (m.news.length + ' news post' + (m.news.length === 1 ? '' : 's') + ' queued')].filter(Boolean);
+  showToast((parts.length ? '✓ ' + parts.join(' · ') + ' — at Development' : 'Nothing generated') + ((r.errors || []).length ? ' · ✗ ' + r.errors.join(' · ') : ''), (r.errors || []).length ? 'error' : 'success');
+  if ((m.news || []).length) setTimeout(hubJobsPoll, 1500);
+  hub2PoolLoad(slug, true);
+}
+async function hub2DigRunNow(slug, btn) {
+  const h = HUB_SITES.find(x => x.slug === slug); if (!h) return;
+  if (!confirm('Run a digest for ' + h.name + ' now?\n\nSame research + write as the weekly run (Gemini deep research + Perplexity, ~10–30 min, paid). A new Digest parent appears here when it is done.')) return;
+  btn.disabled = true; const r = await call('digestRunNow', { campaignId: h.campaignId }).catch(e => ({ error: e.message }));
+  if (!r || r.error) { showToast('Not started: ' + ((r && r.error) || 'no response'), 'error'); btn.disabled = false; return; }
+  showToast('▶ Digest run started — it updates here', 'success'); hub2PoolLoad(slug, true);
 }
 async function hub2DigestTopicOpen() {
   const sel = h2dEl('h2dTopicCluster'), nm = h2dEl('h2dTopicName'); if (!sel) return;
