@@ -742,6 +742,7 @@
     <div class="tab" onclick="switchTab('keywords')">Keywords</div>
     <div class="tab" onclick="switchTab('globals')">Globals</div>
     <div class="tab" onclick="switchTab('ecosystem')">Ecosystem</div>
+    <div class="tab" onclick="switchTab('informationFlow')">Information Flow</div>
   </div>
 
   <div id="stickyThead" class="sticky-thead"><table><thead><tr id="stickyTheadRow"></tr></thead></table></div>
@@ -1654,6 +1655,7 @@
        (getEcosystemGraph, KV-cached). Replaced the old Knowledge Atlas
        tab; the getKnowledgeGraph worker action is still there, pending a
        links/knowledge revisit. -->
+  <div class="tab-panel" id="tabInformationFlow"></div>
   <div class="tab-panel" id="tabEcosystem">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px;flex-wrap:wrap;">
       <div>
@@ -4327,6 +4329,7 @@
 <script src="shared/interview-panel.js?v=2026101101"></script>
 <script src="worker/kw-hub-ops.mjs?v=2026101602"></script>
 <script src="shared/hub-rerun.js?v=202610091300"></script>
+<script src="shared/information-flow.js?v=2026102001"></script>
 <script>
 const WORKER_URL = "https://jolly-darkness-5dcc.trailnotes2026.workers.dev";
 
@@ -5826,6 +5829,7 @@ function loadTabContentNow(name) {
   if (name === 'dev2') { reviewFlagsLoad(); ivFlagsLoad(); ivSyncLoad(); }
   if (name === 'dev2'      && !dev2Loaded)    { dev2Loaded    = true; ocApply(); loadDev2(); loadFlowTable('new'); loadFlowTable('methods').then(() => loadFlowTable('subassets')); }
   if (name === 'landingpages' && !landingTabLoaded) { landingTabLoaded = true; renderLandingTab(); }
+  if (name === 'informationFlow') window.InformationFlow.load();
   if (name === 'ecosystem' && !ecoLoaded)    { ecoLoaded    = true; loadEcosystemGraph(); }
   if (name === 'trades') {
     if (!tradesLoaded) { tradesLoaded = true; loadTrades(); loadWatchlist(); loadOrbPanel(); }
