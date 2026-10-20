@@ -1261,12 +1261,26 @@ ${parentType ? `THIS INTERVIEW FEEDS A PARENT PIECE — the long-form "${parentT
     "For Asset Type": { rich_text: ivRt(String(atype).slice(0, 200)) }, ...(assetId ? { "Asset": { relation: [{ id: ivDash(assetId) }] } } : {}) });
   return { interviews: made };
 }
-// legacy entry point kept for callers: {own} → asset interview; otherwise → the title's PRODUCT interview
+// The title's interview feeds its pillar; asset production keeps its explicit own/asset branch.
 async function ivCreateForTitle(env, titleId, opts = {}) {
   if (opts.own || opts.assetId) return ivCreateForAsset(env, { assetId: opts.assetId, titleId, own: opts.own, direction: opts.direction });
-  const tp = await ivPage(titleId), pid = ivRid(tp.properties, "product");
-  if (!pid) throw new Error("this title has no product — interviews are per product (or request one inside an asset)");
-  return ivCreateForProduct(env, pid, { force: !!opts.force && !!opts.another, direction: opts.direction });
+  const tp = await ivPage(titleId), T = tp.properties, name = (T.Title?.title || []).map(t => t.plain_text).join("").trim();
+  const cid = ivRid(T, "Campaign"), pid = ivRid(T, "product"), existing = (await ivForTitle(titleId)).filter(iv => iv.scope === "Title");
+  if (existing.length && !(opts.force && opts.another)) return { interviews: existing, existing: true };
+  const [audience, research, pillar] = await Promise.all([cid ? hubAudienceBlock(env, cid).catch(() => "") : "", titleResearchBlock(env, titleId).catch(() => ""), extractPillarContent(ivHdr(), ivDash(titleId)).catch(() => "")]);
+  const prompt = `Prepare ONE INTERVIEW of the operator for this TITLE'S PILLAR. The interview humanizes the pillar and teaches the operator's voice; research determines WHAT it says, and voice determines HOW it is written. It informs all downstream assets and is not tied to an asset type.
+
+TITLE: ${name}
+${audience}
+${research}
+${pillar ? "CURRENT PILLAR (excerpt):\n" + String(pillar).slice(0, 5000) : ""}
+${opts.direction ? "OPERATOR'S DIRECTION: " + opts.direction : ""}
+Ask 5-8 short, specific questions that draw out firsthand stories, examples, opinions, experience, and concrete details relevant to this title. Ask for what the research cannot supply; do not invent experiences, ask generic questions, or ask yes/no questions. Call submit_interviews.`;
+  const made = await ivSavePages(await ivClaudeInterviews(env, prompt, 1, 5, 8), {
+    "Name": { title: ivRt(name.slice(0, 200)) }, "Title": { relation: [{ id: ivDash(titleId) }] },
+    ...(cid ? { "Campaign": { relation: [{ id: ivDash(cid) }] } } : {}), ...(pid ? { "Product": { relation: [{ id: ivDash(pid) }] } } : {}),
+    "Scope": { select: { name: "Title" } } });
+  return { interviews: made };
 }
 // ── Interview SYNC: when an interview changes state (first Finish, answers edited after finishing, reopened,
 // removed while Finished) what it feeds goes OUT OF SYNC — a separate status, never Asset Status (visibility):
