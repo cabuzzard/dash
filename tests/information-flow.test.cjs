@@ -49,3 +49,9 @@ test('Sync links allow bidirectional feedback without weakening dependency valid
  g.edges.push({id:'dependency-cycle',source:'pillar',target:'topic',kind:'feeds'});assert(validate(g).some(s=>/Circular dependency/.test(s)));
  g.edges.pop();g.edges.at(-1).target='pillar';assert(validate(g).some(s=>/itself/.test(s)));
 });
+test('Generic node and record roles support information holders and existing custom definitions',()=>{
+ const g=seed();g.nodes[0].role='node';g.nodes[1].role='record';g.roles=[{id:'existing-node-role',name:'node',description:'Information holder',color:'#94a3b8'}];
+ assert.deepEqual(validate(g),[]);assert.deepEqual(unpack(pack(g)).roles,g.roles);
+ assert.equal(unpack(pack(g)).nodes[1].role,'record');
+ g.roles.push({...g.roles[0],id:'another-node-role'});assert(validate(g).some(s=>/unique/.test(s)));
+});
