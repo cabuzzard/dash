@@ -18289,8 +18289,9 @@ function hubKwExpandAll(slug, open, existingOnly) {
     return hubKwRefresh(slug);
   }
   const keys = ['c:__main', 't:__main', 'unclustered', 'ex:__main'].concat(existingOnly ? [] : ['pr:__main']).concat(((K.tc && K.tc.clusters) || []).map((c, ci) => 'c:' + ci));
-  // Expand existing = products only: keyword lists and Proposed stay closed
-  [...(K.staged || []), ...(K.committed || [])].forEach(t => { keys.push('t:' + t.id, 'ex:' + t.id); if (existingOnly) { delete _hubKwOpen[slug + '|pr:' + t.id]; delete _hubKwOpen[slug + '|kw:' + t.id]; } else keys.push('pr:' + t.id, 'kw:' + t.id); });
+  // Expand existing = existing titles AND products (operator 2026-10-20): keyword lists and Proposed stay closed
+  if (existingOnly) keys.push('ti:__main', 'notopic', 'ti:');
+  [...(K.staged || []), ...(K.committed || [])].forEach(t => { keys.push('t:' + t.id, 'ex:' + t.id); if (existingOnly) { keys.push('ti:' + t.id); delete _hubKwOpen[slug + '|pr:' + t.id]; delete _hubKwOpen[slug + '|kw:' + t.id]; } else keys.push('pr:' + t.id, 'kw:' + t.id); });
   if (existingOnly) { delete _hubKwOpen[slug + '|pr:__main']; delete _hubKwOpen[slug + '|kw:__main']; } else keys.push('kw:__main');
   keys.forEach(k => { if (open) _hubKwOpen[slug + '|' + k] = true; else delete _hubKwOpen[slug + '|' + k]; });
   hubKwRefresh(slug);
