@@ -16877,7 +16877,7 @@ async function hub2ContentLoad(slug, force) {
   _hub2Content[slug] = { loading: true, rows: st && st.rows || null }; hub2ContentPaint(slug);
   try {
     let source = DEV2_ROWS;
-    if (force || !Array.isArray(source) || !source.length) { const r = await call('getDevAssetsTable'); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; }
+    if (force || !Array.isArray(source) || !source.length) { const r = await call('getDevAssetsTable'); if (!r || r.error) throw new Error((r && r.error) || 'No response'); source = r.rows || []; DEV2_ROWS = source; DEV2_APPS = r.apps || DEV2_APPS; }
     const cid = String(h.campaignId || '').replace(/-/g, ''), byId = new Map(), hubRows = source.filter(r => String(r.campId || '').replace(/-/g, '') === cid);
     const [mainR, prodR, stratR] = await Promise.all([call('getHubMainOfferings', { campaignId: cid }).catch(() => ({})), call('getCampaignProducts', { campaignId: h.campaignId }).catch(() => ({})), call('getCampaignStrategies', { campaignId: h.campaignId }).catch(() => null)]);
     const mainIds = new Set(((mainR && mainR.mainIds) || []).map(x => String(x).replace(/-/g, ''))), stageOf = {}, syncOf = {}, resMap = {};
