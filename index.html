@@ -4336,6 +4336,8 @@ let pinBuffer    = '';
 // "Remember this device" (localStorage, survives closing the browser) takes
 // priority over the normal per-tab session (sessionStorage) — see checkPin.
 let SESSION_TOKEN = localStorage.getItem('hermes_token_remember') || sessionStorage.getItem('hermes_token') || null;
+// hub registry: HUB_SITES (hard-coded) + the KV-registered hubs — loaded once per session, shared by everyone who waits on it
+let _hubRegistryReady = false, _hubRegistryP = null;
 
 // Auto-restore is handled after all functions are defined — see bottom of script
 
@@ -4378,6 +4380,7 @@ async function checkPin() {
 
     if (data.token) {
       SESSION_TOKEN = data.token;
+      hubSitesExtraLoad();   // every hub (incl. KV-registered) before any hub view draws
       // Remembered devices persist the token in localStorage (survives
       // closing the browser); everyone else gets the normal per-tab
       // sessionStorage token. Always clear the other slot so switching
@@ -5802,6 +5805,10 @@ function jumpToDev(campId) {
 // when a session expired reloads itself the instant you're re-authenticated
 // instead of sitting on a stale error until you click away and back.
 function loadTabContent(name) {
+  if (SESSION_TOKEN && !_hubRegistryReady) { const p = hubSitesExtraLoad(); if (p && p.then) return p.then(() => loadTabContentNow(name)); }
+  return loadTabContentNow(name);
+}
+function loadTabContentNow(name) {
   if (name === 'landre') { const frame = document.getElementById('landREFrame'); if (!frame.getAttribute('src')) frame.src = 'land-re/?v=2026101503'; }
   if (name === 'products'    && !prodLoaded)      { prodLoaded      = true; loadProducts(); }
   // 'development' deliberately NOT auto-loaded here — every widget in this
@@ -15536,14 +15543,20 @@ function copyHubImageSpec(slug, btn) {
 
 // hubs registered only in KV (new scaffolds) → merged into HUB_SITES once per page load
 let _hubExtraLoaded = false;
-async function hubSitesExtraLoad() {
-  if (_hubExtraLoaded || !SESSION_TOKEN) return; _hubExtraLoaded = true;
-  try { const r = await call('getHubSitesExtra'); let added = 0;
+async function hubSitesExtraLoad() {   // returns the ONE shared load — callers that await it really wait for all hubs
+  if (_hubRegistryReady || !SESSION_TOKEN) return;
+  if (_hubRegistryP) return _hubRegistryP;
+  _hubRegistryP = hubSitesExtraLoadOnce().finally(() => { _hubRegistryP = null; });
+  return _hubRegistryP;
+}
+async function hubSitesExtraLoadOnce() {
+  _hubExtraLoaded = true;
+  try { const r = await call('getHubSitesExtra'); if (!r || r.error) throw new Error((r && r.error) || 'no response'); let added = 0;
     for (const e of (r.hubs || [])) if (!HUB_SITES.some(h => h.slug === e.slug)) { HUB_SITES.push({ name: e.name || e.slug, slug: e.slug, campaignId: String(e.campaignId).replace(/-/g, ''), campaign: e.name || e.slug,
       microsite: null, domain: e.domain || null, contact: null, products: 0, blogPosts: 0, routing: 'pending', routingNote: 'Scaffolded from dash — registered in KV hub:sites:extra.', domainOptions: [] }); added++; }
     if (added) renderHubsTab();
-    _hubExtraDone = true; if (document.getElementById('hubs2TabContent') && (added || !_hub2Restored)) renderHubs2();   // restore a remembered KV-registered hub card
-  } catch (e) { setTimeout(() => { _hubExtraLoaded = false; }, 30000); }   // one retry window, never a retry per draw
+    _hubExtraDone = true; _hubRegistryReady = true; if (document.getElementById('hubs2TabContent') && (added || !_hub2Restored)) renderHubs2();   // restore a remembered KV-registered hub card
+  } catch (e) { _hubExtraLoaded = false; console.error('hub registry:', e.message); }   // not ready → the next caller retries
 }
 // ── Bulk job banner (top of dash): long server-side runs report progress in KV; shown while running + once when done ──
 async function bulkJobsPoll() {   // every long server-side run (KV bulk:*) → one banner: running jobs first, then unseen finished ones
@@ -15579,7 +15592,7 @@ document.addEventListener('visibilitychange', () => {
   _hubBuildFetched[h.slug] = false; renderHubsTab();
 });
 // registry hubs merge as soon as the page is signed in — before Content Hubs is opened, so no extra re-render
-setTimeout(() => { try { hubSitesExtraLoad(); } catch (e) {} }, 1500);
+try { hubSitesExtraLoad(); } catch (e) {}   // remembered session: load every hub right away
 // ── Background hub jobs flyout (bottom-right): progress of the worker's queued hub jobs (getHubJobs) — shows while any
 // job has a queue, polls every 30 s, ✓ when finished; ✕ hides it until the next job starts ──
 const HUB_JOB_LABELS = { place: 'Placing titles + marking out of sync', restr: 'Restructuring clusters', mainmig: 'Moving products out of Main', titles: 'Research / pillars', digest: 'Weekly hub digests (Sunday night)' };

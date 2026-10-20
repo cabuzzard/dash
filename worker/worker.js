@@ -683,13 +683,22 @@ const SINGLE_POST_FIELDS = ["Headline Primary", "Headline Accent", "Body"];
 // The scaffold can't edit worker.js / index.html any more (both are past the GitHub Contents API's 1 MB read limit), so
 // a new hub is registered ONLY in KV hub:sites:extra. Merge it into HUB_SITES once a minute per isolate, so every
 // HUB_SITES lookup (hub slug for a campaign, feeds, design repaint, crons…) sees new hubs without a code edit.
-let _hubExtraAt = 0;
+let _hubExtraAt = 0, _hubExtraP = null;
 const _hubMethodNames = new Map();   // method page id → name (methods rarely rename; per isolate)
+// Every hub = the hard-coded HUB_SITES + the KV registry (hub:sites:extra — hubs scaffolded from dash). Called first thing in
+// every request and cron. Concurrent callers share ONE in-flight read (a second request used to skip the wait and run with
+// only the hard-coded hubs); a failed read is retried on the next call instead of being skipped for a minute.
 async function hubSitesMerge(env) {
-  if (Date.now() - _hubExtraAt < 60000) return; _hubExtraAt = Date.now();
-  try { const extra = (await env.TRADES.get("hub:sites:extra", "json")) || [];
-    for (const e of extra) if (e && e.slug && e.campaignId && !HUB_SITES.some(h => h.slug === e.slug)) HUB_SITES.push({ slug: e.slug, name: e.name || e.slug, campaignId: e.campaignId, domain: e.domain || null });
-  } catch (e) {}
+  if (_hubExtraP) return _hubExtraP;
+  if (Date.now() - _hubExtraAt < 60000) return;
+  _hubExtraP = (async () => {
+    try { const extra = (await env.TRADES.get("hub:sites:extra", "json")) || [];
+      for (const e of extra) if (e && e.slug && e.campaignId && !HUB_SITES.some(h => h.slug === e.slug)) HUB_SITES.push({ slug: e.slug, name: e.name || e.slug, campaignId: e.campaignId, domain: e.domain || null });
+      _hubExtraAt = Date.now();
+    } catch (e) { console.error("hubSitesMerge:", e.message); }
+    finally { _hubExtraP = null; }
+  })();
+  return _hubExtraP;
 }
 // ── Product Ideas (care-gap Keywords › Main Stack 🔎): campaign main keywords → 15 staged ideas on Research "Product Ideas" ──
 const PRODUCT_IDEAS_SYSTEM = `You are a product strategist. Given campaign keywords, identify 15 specific product or offer ideas that would sell well to this audience. Focus on digital products, info products, services, or physical products that directly address the audience's pain points and desires.
