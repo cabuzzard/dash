@@ -789,6 +789,30 @@ async function runMainProductResearch(env, only) {
 // [{d, topic, qs, answers, assetId, title, minutes, at, updatedAt}]; client:rate:<id>:<day> = daily limits.
 const STUDIO_INTERVIEW_METHOD_ID = "3eb1f7d3a4bb81189890e536a35ae1ed";   // YouTube Longform — Interview
 const STUDIO_DAILY = { start: 30, generate: 12 };
+// Input App (2026-10-19, operator: "identify customer input … app id … link it to the app"): an asset written from a Client
+// Studio interview carries that studio link's id in Assets "Input App"; dash shows it as an App column linking to the studio.
+async function inputAppEnsureProp(env) {
+  if (await env.TRADES.get("inputapp:prop")) return;
+  const r = await fetch("https://api.notion.com/v1/databases/" + ASSETS_DB, { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
+    body: JSON.stringify({ properties: { "Input App": { rich_text: {} } } }) });
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error("Could not add Input App to Assets: " + (d.message || r.status)); }
+  await env.TRADES.put("inputapp:prop", "1");
+}
+async function stampInputApp(env, assetId, appId) {
+  await inputAppEnsureProp(env);
+  await kwNotionPatch(env, String(assetId).replace(/-/g, ""), { "Input App": { rich_text: [{ type: "text", text: { content: String(appId).slice(0, 60) } }] } });
+}
+// every studio link → { id, label, hub, product, url } (the operator's own view; url = the client's private studio page)
+async function studioApps(env) {
+  const out = {};
+  for (const k of (await env.TRADES.list({ prefix: "client:link:" })).keys) {
+    const l = await env.TRADES.get(k.name, "json").catch(() => null); if (!l || !l.id) continue;
+    out[l.id] = { id: l.id, label: l.label || l.productName || l.id, hub: l.hubName || "", product: l.productName || "", revoked: !!l.revoked,
+      url: `https://cabuzzard.github.io/dash/web/studio/?k=${l.id}.${(await hmacHex((env.HMAC_SECRET || "").trim(), "cl:" + l.id)).slice(0, 32)}` };
+  }
+  return out;
+}
 async function studioInner(env, action, extra) {
   const token = await signToken((env.HMAC_SECRET || "").trim());
   const r = await (env.SELF || { fetch }).fetch(BULK_HUB_SELF, { method: "POST", headers: { "Content-Type": "application/json", "Origin": "https://cabuzzard.github.io" },
@@ -886,6 +910,7 @@ async function handleStudio(env, body) {
     const cur = items.find(x => x.d === it.d) || it; delete cur.generating;
     if (!r || r.error || !r.assetId) { await saveItems(); return { error: (r && r.error) || "The script didn't come back. Try again." }; }
     Object.assign(cur, { assetId: r.assetId, title: r.title || "", minutes: r.minutes || 0, updatedAt: Date.now() });
+    try { await stampInputApp(env, r.assetId, link.id); } catch (e) { console.error("stampInputApp:", e.message); }   // App column in dash
     if (!items.includes(cur)) items.push(cur);
     await saveItems();
     return { ok: true, item: studioPublicItem(cur) };
@@ -16225,6 +16250,7 @@ Return: {
             hubSection: p["Hub Section"]?.select?.name || "",
             hubSectionKey: hubSectionOf(p) || "",
             contentHub: p["Content Hub"]?.select?.name || "",
+            inputApp: (p["Input App"]?.rich_text || []).map(x => x.plain_text).join("").trim(),
             liveUrl: hubPagePath(p) || (p["Site URL"]?.url || "").trim() || (p["Content URL"]?.url || "").trim(),
             ivSync: p["Interview Sync"]?.select?.name || "",
             assetClass: p["Asset Class"]?.select?.name || "Publishable",
@@ -16280,7 +16306,7 @@ Return: {
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
           // etc. and would falsely make old work look newly published.
           datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
-          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null,
+          dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, inputApp: a.inputApp || "",
           assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
           interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
           deploymentStatus: a.deploymentStatus || "",
@@ -16330,7 +16356,7 @@ Return: {
               interviewRequired: !!a.interviewRequired, parentAssetId: a.parentAssetId || null,
               deploymentStatus: a.deploymentStatus || "",
               datePublished: a.status === "Published" ? (a.publishingDate || null) : null,
-              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null,
+              dateCreated: a.createdTime ? String(a.createdTime).slice(0, 10) : null, inputApp: a.inputApp || "",
               ...hubPublishFields(a, t.campId),
               ...scheduleFields(a.strategySlotId || t.strategySlotId),
             });
@@ -16436,7 +16462,7 @@ Return: {
             : r.pillarStatus === "Not Written" ? "Write pillar" : r.pillarStatus === "Out of Sync" ? "Rewrite pillar"
             : r.assetSync === "Out of Sync · Regenerate" ? "Regenerate asset" : r.assetSync === "Out of Sync · Review" ? "Review asset" : "✓ Ready";
         });
-        return json({ rows, productStats: hubProductAssetStats(productRows, titleRows, assetRows) });
+        return json({ rows, productStats: hubProductAssetStats(productRows, titleRows, assetRows), apps: await studioApps(env).catch(() => ({})) });
       }
 
       // Output bulk delete is deliberately a soft delete: Assets remain in
@@ -17891,6 +17917,16 @@ ${JSON.stringify(products)}`;
         await env.TRADES.put("seotopicclusters:" + cid, JSON.stringify({ ...tc, clusters: [], assign: {}, mainCluster: "" }));
         if (commproducts) await env.TRADES.put("seoclusters:commproducts:" + cid, JSON.stringify(Array.isArray(commproducts) ? [] : {}));
         return json({ ok: true, ...summary, archived: committed.length - errors.length, errors });
+      }
+      // studioStampInputApps — backfill: every Client Studio interview's asset gets its link's id in Assets "Input App"
+      if (body.action === "studioStampInputApps") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        let n = 0; const errors = [];
+        for (const k of (await env.TRADES.list({ prefix: "client:link:" })).keys) {
+          const id = k.name.slice("client:link:".length), items = (await env.TRADES.get("client:items:" + id, "json").catch(() => null)) || [];
+          for (const it of items) if (it.assetId) { try { await stampInputApp(env, it.assetId, id); n++; } catch (e) { errors.push(it.assetId + ": " + e.message); } }
+        }
+        return json({ ok: true, stamped: n, errors });
       }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
