@@ -22209,23 +22209,28 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         return json({ success: true, title: (d.properties?.Title?.title || []).map(t => t.plain_text).join("") });
       }
       // archiveProduct {productId, campaignId} — Keywords ✕: Archived + Status Archived (recoverable), off the hub's ★ main list
+      // archiveProduct {productId, campaignId} — Keywords ✕ on a product. Delete means delete (operator 2026-10-20): the product is
+      // archived AND everything under it goes with it — its titles and their assets, and any asset pointing at the product, to
+      // Notion's trash. Off the hub's ★ main list too.
       if (body.action === "archiveProduct") {
         const pid = String(body.productId || "").replace(/-/g, ""); if (pid.length !== 32) return json({ error: "productId required" }, 400);
         await kwNotionPatch(env, pid, { Archived: { checkbox: true }, Status: { select: { name: "Archived" } } });
+        let titlesGone = 0, assetsGone = 0;
+        try {
+          const titles = await notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "product", relation: { contains: kwDashId(pid) } } });
+          for (const t of titles) { assetsGone += await trashTitleWithAssets(env, t.id); titlesGone++; }
+          for (const a of await notionQuery(ASSETS_DB, { filter: { property: "Product", relation: { contains: kwDashId(pid) } } })) { if (await trashPage(env, a.id)) assetsGone++; }
+        } catch (e) { console.error("archiveProduct cascade:", e.message); }
         const cid = String(body.campaignId || "").replace(/-/g, "");
         if (cid) { const list = await hubMainList(env, cid); if (list.includes(pid)) await env.TRADES.put("hub:mainproduct:" + cid, JSON.stringify(list.filter(x => x !== pid))); }
-        return json({ ok: true });
+        return json({ ok: true, titlesGone, assetsGone });
       }
+      // deleteTitle {titleId} — the title AND its assets go to Notion's trash (delete means delete — no orphaned assets left behind)
       if (body.action === "deleteTitle") {
         const { titleId } = body;
         if (!titleId) return json({ error: "titleId required" }, 400);
-        const dash = id => id.replace(/-/g,"").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
-        await fetch("https://api.notion.com/v1/pages/" + dash(titleId), {
-          method: "PATCH",
-          headers: { "Authorization": "Bearer " + NOTION_TOKEN, "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" },
-          body: JSON.stringify({ archived: true })
-        });
-        return json({ success: true });
+        const assetsGone = await trashTitleWithAssets(env, titleId);
+        return json({ success: true, assetsGone });
       }
 
       if (body.action === "getPlatforms") {
@@ -51910,6 +51915,19 @@ async function kwReviveProduct(env, productId) {
     const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json());
     if ((pg.properties?.Status?.select?.name || "") === "Idea") await kwNotionPatch(env, id, { Status: { select: { name: "Planning" } } });
   } catch (e) { console.error("kwReviveProduct:", e.message); }
+}
+async function trashPage(env, id) {
+  const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(String(id).replace(/-/g, "")), { method: "PATCH",
+    headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) });
+  return r.ok;
+}
+// a title + every asset that points at it → Notion trash; returns how many assets went
+async function trashTitleWithAssets(env, titleId) {
+  const tid = String(titleId).replace(/-/g, ""); let n = 0;
+  const assets = await notionQuery(ASSETS_DB, { filter: { property: "Content Strategy", relation: { contains: kwDashId(tid) } } }).catch(e => { console.error("trashTitleWithAssets:", e.message); return []; });
+  for (const a of assets) if (await trashPage(env, a.id)) n++;
+  await trashPage(env, tid);
+  return n;
 }
 async function kwClearOutOfSync(env, productId) {
   try { if (productId && await env.TRADES.get("kwhub:props")) await kwNotionPatch(env, productId, { "Keywords Out of Sync": { checkbox: false } }); } catch (e) {}
