@@ -17096,6 +17096,7 @@ async function hub2DevAssetsModal(slug, titles) {
   const cb = (m, cls) => `<label style="display:flex;gap:8px;align-items:center;padding:3px 0;font-size:12px;cursor:pointer;"><input type="checkbox" class="${cls}" data-id="${esc(m.id)}">${esc(m.name)}</label>`;
   hcModal(`<h3 style="margin:0 0 4px;">✍ Pillar + Dev assets</h3><div style="font-size:11.5px;color:var(--text3);margin-bottom:10px;">For each of the <b>${tc}</b> selected title${tc === 1 ? '' : 's'}: <b>1.</b> writes the pillar — the long-form SEO post from its research and keywords (1-2 min; skipped if already written${written ? ` — <b>${written}</b> are` : ''}), then <b>2.</b> adds an empty <b>Development</b> asset record of each type you tick. They count in the checklist's blue Dev column and stay unwritten until you fill them from the asset modal; types a title already has are skipped. A title whose pillar fails gets no assets.</div>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:10px;"><input type="checkbox" id="h2daPillar" checked>Write pillar first</label>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="h2daSeries"><b style="color:#f5c542;">✨ Series</b> <span style="font-size:10.5px;color:var(--text3);">(a recurring theme — topic generator + runs)</span></label>
     <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;"><span style="color:var(--text3);">Dev asset types:</span><a href="#" onclick="event.preventDefault();document.querySelectorAll('.h2da-cb').forEach(c=>c.checked=true)">all</a><a href="#" onclick="event.preventDefault();document.querySelectorAll('.h2da-cb,.h2da-pcb').forEach(c=>c.checked=false)">none</a></div>
     <div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:4px 8px;">${kids.map(m => cb(m, 'h2da-cb')).join('') || '<div style="font-size:11px;color:var(--text3);">No child types on the checklist.</div>'}${parents.length ? `<div style="font-size:10.5px;color:var(--text3);margin:8px 0 2px;border-top:1px solid var(--border);padding-top:6px;">Parents — normally started by a child from its publish modal</div>${parents.map(m => cb(m, 'h2da-pcb')).join('')}` : ''}</div>
     <div style="display:flex;gap:8px;margin-top:12px;"><button class="modal-btn" onclick="hcModalRun(this, () => hub2DevAssetsGo('${slug}'))">Run</button>${HC_CANCEL}</div>`);
@@ -17142,8 +17143,10 @@ async function hub2DevAssetsGo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const methods = (_hub2Checklist[slug] || {}).methods || [], picked = [...document.querySelectorAll('.h2da-cb:checked,.h2da-pcb:checked')].map(c => methods.find(m => m.id === c.dataset.id)).filter(Boolean);
   const doPillar = document.getElementById('h2daPillar').checked;
-  if (!picked.length && !doPillar) return 'Tick Write pillar or at least one type';
-  const types = picked.map(m => ({ assetType: m.aliases.find(a => a !== m.name) || m.asset || m.parent, label: m.asset || m.parent, pillar: !!m.isPillar }));
+  if (!picked.length && !doPillar && !(document.getElementById('h2daSeries') || {}).checked) return 'Tick Write pillar or at least one type';
+  const types = picked.map(m => m.isPillar && /^digest$/i.test(m.parent) ? { assetType: 'Digest', label: 'Digest parent', pillar: true }   // the real Digest parent (the hub's digest — the weekly method writes into it)
+    : { assetType: m.aliases.find(a => a !== m.name) || m.asset || m.parent, label: m.asset || m.parent, pillar: !!m.isPillar });
+  if ((document.getElementById('h2daSeries') || {}).checked) types.unshift({ assetType: 'Series', label: 'Series', pillar: true });
   const titles = hub2PillarBulkTitles(slug);
   if (!titles.length) return 'Select titles first';
   document.getElementById('hcModal').classList.remove('open');
