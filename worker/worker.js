@@ -18698,7 +18698,7 @@ Return 10-15 real, specific keywords/phrases this product should be associated w
         try { await kwEnsureTitleProps(env); } catch (e) { return json({ error: e.message }, 500); }
         const hdr = { Authorization: `Bearer ${NOTION_TOKEN}`, "Notion-Version": NOTION_VERSION };
         const pg = await fetch(`https://api.notion.com/v1/pages/${kwDashId(titleId)}`, { headers: hdr }).then(r => r.json());
-        if (!pg || pg.object === "error") return json({ error: "Title not found" }, 404);
+        if (!pg || pg.object === "error") return json({ error: pg && pg.status === 429 ? "Notion rate limit — try again shortly" : "Title not found" + (pg && pg.message ? " (" + pg.message.slice(0, 120) + ")" : "") }, pg && pg.status === 429 ? 429 : 404);
         const tp = pg.properties || {}, name = (tp.Title?.title || tp.Name?.title || []).map(t => t.plain_text).join("") || "Title";
         const cur = Object.fromEntries(TITLE_RES_FIELDS.map(f => [f, trRt(tp, f)]));
         const topic = await titleTopicKeywords(env, hdr, tp);
