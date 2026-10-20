@@ -21450,6 +21450,9 @@ async function glHubFormsPullLists() {
 // job is added, removed, or re-timed there, update this array to match.
 // `cron` is the raw 5-field expression; `when` is the human reading (UTC).
 const CRON_REGISTRY = [
+  { fn: 'assetOrphanSweep', cron: '15 0 * * *', when: 'Nightly · 00:15 UTC (also on demand: assetOrphanSweep action)', group: 'Content',
+    what: 'Every hub in the registry: any asset whose title has been deleted (trashed / missing) — or that has no title at all — goes to Notion trash. A title read failure stops the sweep instead of deleting.',
+    io: 'Notion: Assets → trash' },
   { fn: 'runTitleIdleSweep', cron: '15 0 * * *', when: 'Weekly · Mondays 00:15 UTC (also on demand: titleIdleSweep action / KV titleidle:runnow via the */30 cron)', group: 'Content',
     what: 'Any hub title at Status Development that is out of sync and has no Published asset moves to Status Idea (in-sync titles are never moved; its flagged interviews go to Idea too) (pre-Planning parking). Max 150 moves per run; a capped run finishes on the next */30 tick.',
     io: 'Notion: Content Strategy Status → Idea · KV: titleidle:last, titleidle:lock, titleidle:runnow' },

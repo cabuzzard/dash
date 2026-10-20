@@ -17937,6 +17937,10 @@ ${JSON.stringify(products)}`;
         }
         return json({ ok: true, stamped: n, errors });
       }
+      if (body.action === "assetOrphanSweep") {
+        if (!await verifyToken(body.token, HMAC_SECRET)) return json({ error: "Unauthorized" }, 401);
+        return json({ ok: true, ...(await assetOrphanSweep(env, { op: body.op, slug: body.slug })) });
+      }
       if (body.action === "runTitleJobs") {
         const self = this, invoke = async b => { const token = await signToken(HMAC_SECRET, 900000);
           const res = await self.fetch(new Request("https://internal.local/", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...b, token }) }), env, ctx);
@@ -50732,6 +50736,7 @@ Produce all of this by calling the submit_listing tool — do not include any of
       cw("runTitleIdleSweep", runTitleIdleSweep(env).then(r => console.log(`titleIdleSweep: ${r.moved || 0} → Idea${r.left ? ', ' + r.left + ' left' : ''}`)).catch(e => console.error("runTitleIdleSweep failed:", e.message)));
     }
     if (event.cron === "15 0 * * *") {
+      cw("assetOrphanSweep", assetOrphanSweep(env, { op: "apply" }).then(r => console.log("assetOrphanSweep:", JSON.stringify((r.hubs || []).filter(h => h.orphans.length || h.errors.length).map(h => ({ hub: h.hub, deleted: h.deleted, errors: h.errors }))).slice(0, 400))).catch(e => console.error("assetOrphanSweep failed:", e.message)));   // assets whose title is gone → trash (operator 2026-10-20)
       // Nightly bulk link sweep — its own cron (15 min after the main
       // nightly batch) so it gets a fresh subrequest budget. Transcribes /
       // mines / one-pass re-mines a capped batch of the 🔗 Saved Posts
@@ -51915,6 +51920,44 @@ async function kwReviveProduct(env, productId) {
     const pg = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION } }).then(r => r.json());
     if ((pg.properties?.Status?.select?.name || "") === "Idea") await kwNotionPatch(env, id, { Status: { select: { name: "Planning" } } });
   } catch (e) { console.error("kwReviveProduct:", e.message); }
+}
+// ── Orphan assets (operator 2026-10-20: "delete anything that the title is gone. period.") ── every hub in the registry: an asset
+// whose title has been deleted (trashed / missing) — or that has no title at all — goes to Notion's trash. Runs nightly on the
+// 0 0 * * * cron and on demand (assetOrphanSweep {op: preview|apply, slug?}). A title counts as present only when its page loads
+// and isn't archived / in trash, so a read failure never deletes anything (the sweep stops instead).
+async function assetOrphanSweep(env, opts) {
+  opts = opts || {}; await hubSitesMerge(env);
+  const H = { Authorization: "Bearer " + (env.NOTION_TOKEN || "").trim(), "Notion-Version": NOTION_VERSION }, nid = x => String(x || "").replace(/-/g, "");
+  const out = [], alive = new Map();
+  const titleAlive = async id => {
+    if (alive.has(id)) return alive.get(id);
+    const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(id), { headers: H });
+    if (r.status === 404) { alive.set(id, false); return false; }
+    if (!r.ok) throw new Error("title read failed (" + r.status + ")");   // rate limit etc. → stop, never guess
+    const p = await r.json(); const ok = !(p.archived || p.in_trash); alive.set(id, ok); return ok;
+  };
+  for (const hub of HUB_SITES) {
+    if (opts.slug && hub.slug !== opts.slug) continue;
+    const cid = nid(hub.campaignId); if (!cid) continue;
+    const H1 = { hub: hub.name || hub.slug, orphans: [], deleted: 0, errors: [] };
+    try {
+      const [titles, assets] = await Promise.all([notionQuery(CONTENT_STRATEGY_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } }),
+        notionQuery(ASSETS_DB, { filter: { property: "Campaign", relation: { contains: kwDashId(cid) } } })]);
+      titles.forEach(t => alive.set(nid(t.id), true));
+      for (const a of assets) {
+        const tids = (a.properties?.["Content Strategy"]?.relation || []).map(r => nid(r.id));
+        let gone = !tids.length;
+        if (!gone) { gone = true; for (const t of tids) if (await titleAlive(t)) { gone = false; break; } }
+        if (gone) H1.orphans.push({ id: nid(a.id), name: (a.properties?.["Asset Title"]?.title || []).map(x => x.plain_text).join("") || "(untitled)", status: a.properties?.["Asset Status"]?.select?.name || "", noTitle: !tids.length });
+      }
+      if (opts.op === "apply") for (const o of H1.orphans) {
+        const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(o.id), { method: "PATCH", headers: { ...H, "Content-Type": "application/json" }, body: JSON.stringify({ archived: true }) });
+        if (r.ok) H1.deleted++; else { H1.errors.push(o.name + ": " + r.status); if (r.status === 429) break; }
+      }
+    } catch (e) { H1.errors.push(e.message); }
+    out.push(H1);
+  }
+  return { op: opts.op === "apply" ? "apply" : "preview", hubs: out };
 }
 async function trashPage(env, id) {
   const r = await fetch("https://api.notion.com/v1/pages/" + kwDashId(String(id).replace(/-/g, "")), { method: "PATCH",
