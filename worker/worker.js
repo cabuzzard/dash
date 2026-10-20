@@ -12108,13 +12108,16 @@ async function seriesIdeas(env, titleId, force) {
 async function titleJobsRun(env, invoke) {
   if (await env.TRADES.get("titlejob:lock")) return { busy: true };
   await env.TRADES.put("titlejob:lock", "1", { expirationTtl: 300 });
-  const t0 = Date.now(), drop = async id => env.TRADES.put("titlejob:queue", JSON.stringify(((await env.TRADES.get("titlejob:queue", "json")) || []).filter(x => x !== id)));
-  let ran = 0;
-  try {
+  const t0 = Date.now(); let dq = Promise.resolve();
+  const drop = id => (dq = dq.then(async () => env.TRADES.put("titlejob:queue", JSON.stringify(((await env.TRADES.get("titlejob:queue", "json")) || []).filter(x => x !== id)))).catch(() => {}));   // serialized — lanes never undo each other's drop
+  let ran = 0; const claimed = new Set();
+  const lane = async () => { let mine = null;
     while (Date.now() - t0 < 140000) {
       const q = (await env.TRADES.get("titlejob:queue", "json")) || []; if (!q.length) break;
-      const id = q[0], key = "titlejob:state:" + id, S = await env.TRADES.get(key, "json");
-      if (!S || !Array.isArray(S.steps)) { await drop(id); continue; }
+      const id = mine && q.includes(mine) ? mine : q.find(x => !claimed.has(x)); if (!id) break;
+      claimed.add(id); mine = id;
+      const key = "titlejob:state:" + id, S = await env.TRADES.get(key, "json");
+      if (!S || !Array.isArray(S.steps)) { await drop(id); mine = null; continue; }
       const step = S.steps[S.i];
       if (step) {
         S.running = step.label; await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
@@ -12161,9 +12164,10 @@ async function titleJobsRun(env, invoke) {
       if (S.i >= S.steps.length) { S.done = true; S.finishedAt = Date.now();
         if (S.kind === "ditem") await digestPoolUpdate(env, S.cid, S.item.id, { status: (S.errors || []).length ? "error" : "done", error: (S.errors || []).join(" · "), titleId: S.titleId || "", assetId: S.assetId || "" }).catch(() => {}); }
       await env.TRADES.put(key, JSON.stringify(S), { expirationTtl: 7 * 86400 });
-      if (S.done) await drop(id);
-    }
-  } finally { await env.TRADES.delete("titlejob:lock"); }
+      if (S.done) { await drop(id); mine = null; }
+    } };
+  try { await Promise.all([lane(), lane(), lane()]); await dq; }
+  finally { await env.TRADES.delete("titlejob:lock"); }
   return { ok: true, ran };
 }
 // ══ DIGEST PARENT (operator 2026-10-20): ONE method, ONE asset type — the weekly cron and a hand run make the same Digest
