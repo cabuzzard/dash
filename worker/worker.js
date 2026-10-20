@@ -16345,7 +16345,7 @@ Return: {
         const assetFields = (a, campId) => ({
           assetId: a.id, assetName: a.name,
           platformTitle: a.platformTitle || "",
-          assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+          assetType: a.assetClass === "Pillar" && a.pillarType ? a.pillarType + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
           rawAssetType: a.assetType || "", assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "",
           // Cadence progress must use the explicit publication event only.
           // last_edited_time changes for thumbnails, copy edits, bulk cleanup,
@@ -16394,7 +16394,7 @@ Return: {
               // differently (e.g. Method "Blog - SEO - News" vs a legacy
               // Asset Type of "SEO Post") — the bulk thumbnail-generation
               // dispatch on the Dev 2 tab needs THIS one to route correctly.
-              assetType: a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
+              assetType: a.assetClass === "Pillar" && a.pillarType ? a.pillarType + " parent" : a.methodId ? (methNames[a.methodId] || a.assetType || "?") : (a.assetType || ""),
               rawAssetType: a.assetType || "",
               assetStatus: a.status || "", hubSection: a.hubSection || "", hubSectionKey: a.hubSectionKey || "", contentHub: a.contentHub || "", liveUrl: a.liveUrl || "", ivSync: a.ivSync || "",
               assetClass: a.assetClass || "Publishable", pillarType: a.pillarType || "", pillarReadiness: a.pillarReadiness || "", pillarSync: a.pillarSync || "",
