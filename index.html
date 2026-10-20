@@ -12200,16 +12200,9 @@ function dev2PickFromRows(kind) {
   DEV2_SELECTED.forEach(k => { const r = DEV2_ROWS.find(x => dev2RowKey(x) === k); if (!r) return; if (kind === 't' && r.titleId) DEV2_SEL_T.add(r.titleId); if (kind === 'p' && r.productId) DEV2_SEL_P.add(r.productId); });
   renderDev2();
 }
-// Pillar types (Current Methods pillars) → the writing brief passed to writeTitlePillar as styleGuidance
-const DEV2_PILLAR_TYPES = {
-  'SEO Main': 'PILLAR TYPE: SEO Main — the title\'s best long-form SEO post (the default): 1500-2500 words, ## sections that answer the real questions searchers ask, an FAQ at the end, the primary keyword in the opening paragraph and at least one subheading, the rest woven in naturally. Informational first; the product only as a soft, late mention.',
-  'Long Form Topical': 'PILLAR TYPE: Long Form Topical — an informational long-form piece on this sub-keyword, written for engagement and long reading (interview/QA or SEO-topical structure, whichever fits the search intent). Answer the real questions people search; product only as a soft, late mention.',
-  'Long Form Sales': 'PILLAR TYPE: Long Form Sales — the sales pillar for the attached product: who it is for, their pain, why it happens, the mechanism, what they get, proof, objections answered, and the next step. Match the reader’s awareness level; never hype.',
-  'Digest': 'PILLAR TYPE: Digest — this period’s most useful developments for this audience: each item = what happened, why it matters to them, what to do. Cite sources by name; keep premium-level analysis brief (tease it).',
-};
 const DEV2_BULK = {
   a: { label: 'Assets', acts: { edit: { label: 'Edit in publish modal' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Review', 'Published'] }, hubSection: { label: 'Set hub section', vals: ['Main Offering', 'CTA', 'Offers', 'News', 'Articles', 'Interactive', 'Unlisted', '(none — type default)'] }, thumb: { label: 'Generate thumbnails' }, del: { label: 'Delete (archive)' } } },
-  t: { label: 'Titles',   acts: { product: { label: 'Set product', opts: () => dev2ProductOpts() }, kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar', vals: Object.keys(DEV2_PILLAR_TYPES) }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
+  t: { label: 'Titles',   acts: { product: { label: 'Set product', opts: () => dev2ProductOpts() }, kw: { label: 'Examine / regen keywords' }, pillar: { label: 'Generate pillar' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] }, del: { label: 'Delete (archive)' } } },
   k: { label: 'Keyword topics', acts: { propose: { label: 'Propose products' } } },
   p: { label: 'Products', acts: { research: { label: 'Run all research' }, kw: { label: 'Examine / regen keywords' }, status: { label: 'Set status', vals: ['Planning', 'Development', 'Publish', 'Published'] } } },
 };
@@ -12305,7 +12298,7 @@ async function dev2JobRun(it) {
   }
   if (act === 'product') { const r = await call('updateTitleStrategy', { titleId: id, productId: val }); if (r && r.error) throw new Error(r.error); return val === '__none__' ? 'product removed' : 'product → ' + it.batch.valLabel.replace(/ · .*$/, ''); }
   if (act === 'kw') { const r = await call(t === 'p' ? 'generateProductKeywords' : 'regenerateTitleKeywords', t === 'p' ? { productId: id } : { titleId: id }); if (r.error) throw new Error(r.error); return r.keywords || ''; }
-  if (act === 'pillar') { step('writing ' + val + ' pillar…'); const r = await call('writeTitlePillar', { titleId: id, styleGuidance: DEV2_PILLAR_TYPES[val] }); if (r.error) throw new Error(r.error); return `${val} pillar written (${r.wordCount || '?'} words)`; }
+  if (act === 'pillar') { step('writing pillar…'); const r = await call('writeTitlePillar', { titleId: id }); if (r.error) throw new Error(r.error); return `pillar written (${r.wordCount || '?'} words)`; }
   if (act === 'research') {   // every strategy field, regenerated then saved (same as the Content Hubs product research modal)
     const fails = [];
     for (let f = 0; f < HUB_STRATEGY_FIELDS.length; f++) { const fld = HUB_STRATEGY_FIELDS[f]; step(`${fld} (${f + 1}/${HUB_STRATEGY_FIELDS.length})`);
@@ -16612,7 +16605,7 @@ async function hub2DigestWrite(btn) {
     if (!created || created.error || !created.id) throw new Error((created && created.error) || 'title not created');
     if (H2D.job && picked.length) call('digestResearch', { op: 'attach', jobId: H2D.job.id, titleId: created.id, sources: picked }).catch(() => {});
     step('Writing the digest from your sources (1-2 min)…');
-    const pillar = await call('writeTitlePillar', { titleId: created.id, styleGuidance: DEV2_PILLAR_TYPES['Digest'], researchOverride: [guidance, hub2DigestSourcesBlock(picked)].filter(Boolean).join('\n\n') || undefined });
+    const pillar = await call('writeTitlePillar', { titleId: created.id, researchOverride: [guidance, hub2DigestSourcesBlock(picked)].filter(Boolean).join('\n\n') || undefined });
     if (!pillar || pillar.error) throw new Error('digest not written: ' + ((pillar && pillar.error) || 'no response'));
     step('Creating the Digest parent…');
     const pa = await call('createAsset', { titleId: created.id, campId: H2D.cid, productId, assetTitle: `${titleName} — Digest`, assetType: 'Digest', assetStatus: 'Development',
@@ -17131,8 +17124,8 @@ async function hub2DevAssetsModal(slug, titles) {
     ${pc ? `<div style="border:1px solid var(--border);border-radius:6px;padding:6px 8px;margin-bottom:10px;font-size:12px;"><div style="font-size:10.5px;color:var(--text3);margin-bottom:4px;">Each product title then runs on the server (⚙ bottom-right — you can close this) and saves as it goes:</div>
       <label style="display:flex;gap:7px;align-items:center;cursor:pointer;margin-bottom:4px;"><input type="checkbox" id="h2daKw" checked>Title keywords (from the product's topic)</label>
       <label style="display:flex;gap:7px;align-items:center;cursor:pointer;margin-bottom:4px;"><input type="checkbox" id="h2daRes" checked>Title research — run and save</label>
-      <label style="display:flex;gap:7px;align-items:center;cursor:pointer;"><input type="checkbox" id="h2daPil" checked onchange="document.getElementById('h2daPilType').disabled=!this.checked">Write the pillar</label>
-      <select id="h2daPilType" style="${HT_IN}margin-bottom:0;">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select></div>` : ''}
+      <label style="display:flex;gap:7px;align-items:center;cursor:pointer;"><input type="checkbox" id="h2daPil" checked>Write the pillar</label>
+    </div>` : ''}
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="h2daSeries"><b style="color:#f5c542;">✨ Series</b> <span style="font-size:10.5px;color:var(--text3);">(a recurring theme — topic generator + runs)</span></label>
     <div style="display:flex;gap:8px;margin-bottom:6px;font-size:11px;"><span style="color:var(--text3);">Child assets:</span><a href="#" onclick="event.preventDefault();document.querySelectorAll('.h2da-cb').forEach(c=>c.checked=true)">all</a><a href="#" onclick="event.preventDefault();document.querySelectorAll('.h2da-cb,.h2da-pcb').forEach(c=>c.checked=false)">none</a></div>
     <div style="max-height:46vh;overflow:auto;border:1px solid var(--border);border-radius:6px;padding:4px 8px;">${kids.map(m => cb(m, 'h2da-cb')).join('') || '<div style="font-size:11px;color:var(--text3);">No child types on the checklist.</div>'}${parents.length ? `<div style="font-size:10.5px;color:var(--text3);margin:8px 0 2px;border-top:1px solid var(--border);padding-top:6px;">Parent assets</div>${parents.map(m => cb(m, 'h2da-pcb')).join('')}` : ''}</div>
@@ -17190,7 +17183,7 @@ async function hub2DevAssetsGo(slug) {
   if ((document.getElementById('h2daSeries') || {}).checked) types.unshift({ assetType: 'Series', label: 'Series', pillar: true });
   const titles = hub2PillarBulkTitles(slug).slice(), prods = hub2BulkProducts(slug), crows = ((_hub2Content[slug] || {}).rows || []), tfails = [];
   if (!titles.length && !prods.length) return 'Select titles or products first';
-  const ck = id => !!(document.getElementById(id) || {}).checked, pj = { kw: ck('h2daKw'), res: ck('h2daRes'), pil: ck('h2daPil'), ptype: (document.getElementById('h2daPilType') || {}).value || 'SEO Main' };
+  const ck = id => !!(document.getElementById(id) || {}).checked, pj = { kw: ck('h2daKw'), res: ck('h2daRes'), pil: ck('h2daPil') };
   document.getElementById('hcModal').classList.remove('open');
   // products: a title named after each (reuse one that already has that name), placed in the product's topic, then ONE server
   // title job each — keywords → research → the picked assets → pillar, every step saved (operator 2026-10-20)
@@ -17205,8 +17198,7 @@ async function hub2DevAssetsGo(slug) {
       const topicId = (kprods.find(x => kwNid(x.id) === kwNid(p.id)) || {}).topicId;
       if (topicId) await call('setTitleTopic', { titleId: tid, topicId: topicId === '__main' ? '__main' : kwNid(topicId) }).catch(() => {}); }
     if (!(pj.kw || pj.res || pj.pil || types.length)) continue;
-    const q = await call('queueTitleJob', { titleId: tid, name: p.name, slug, campaignId: h.campaignId, productId: p.id, keywords: pj.kw, research: pj.res, pillar: pj.pil, pillarType: pj.ptype,
-      styleGuidance: pj.pil ? DEV2_PILLAR_TYPES[pj.ptype] : undefined, devAssetTypes: types.length ? types.map(x => x.assetType) : undefined }).catch(e => ({ error: e.message }));
+    const q = await call('queueTitleJob', { titleId: tid, name: p.name, slug, campaignId: h.campaignId, productId: p.id, keywords: pj.kw, research: pj.res, pillar: pj.pil, devAssetTypes: types.length ? types.map(x => x.assetType) : undefined }).catch(e => ({ error: e.message }));
     if (!q || q.error) tfails.push(p.name + ' — job: ' + ((q && q.error) || 'no response')); else { queued++; if (q.id) _hubJobs.mine.add(q.id); }
   }
   if (queued) { call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); }
@@ -17758,8 +17750,7 @@ function hubKwTitleAdd(slug, topicId, presetPid) {
     ${HT_LBL('Child assets to create now (empty Development assets — interview-led types get their interview flagged)')}<div id="hkTaAssets" style="max-height:30vh;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;margin:3px 0 12px;font-size:12px;color:var(--text3);">Loading the hub's checklist…</div>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaKw" checked>Generate the title's keywords (from this topic)</label>
     <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:8px;"><input type="checkbox" id="hkTaRes" checked>Run title research and save it (from this topic's keywords)</label>
-    <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="hkTaPil" onchange="document.getElementById('hkTaPilType').disabled=!this.checked">Write the pillar</label>
-    <select id="hkTaPilType" disabled style="${HT_IN}">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
+    <label style="display:flex;gap:7px;align-items:center;font-size:12px;cursor:pointer;margin-bottom:6px;"><input type="checkbox" id="hkTaPil">Write the pillar</label>
     <div id="hkTaMsg" style="font-size:11.5px;color:var(--text3);min-height:16px;margin-bottom:8px;"></div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="hcModalRun(this, () => hubKwTitleAddGo('${slug}','${esc(topicId)}'))">Add title</button>${HC_CANCEL}</div>`);
   setTimeout(() => { const i = document.getElementById('hkTaTitle'); if (i) i.focus(); }, 50);
@@ -17791,7 +17782,7 @@ async function hubKwTitleAddGo(slug, topicIdFrom) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const title = document.getElementById('hkTaTitle').value.trim(); if (!title) return 'Enter a title';
   const guide = document.getElementById('hkTaGuide').value.trim(), productId = document.getElementById('hkTaProd').value || undefined;
-  const doRes = document.getElementById('hkTaRes').checked, doPil = document.getElementById('hkTaPil').checked, ptype = document.getElementById('hkTaPilType').value;
+  const doRes = document.getElementById('hkTaRes').checked, doPil = document.getElementById('hkTaPil').checked;
   const doKw = document.getElementById('hkTaKw').checked, devTypes = [...document.querySelectorAll('.hkTaKid:checked')].map(c => c.value), devType = devTypes.join(', ');
   const msg = t => { const m = document.getElementById('hkTaMsg'); if (m) m.textContent = t; };
   msg('Creating the title…');
@@ -17804,12 +17795,12 @@ async function hubKwTitleAddGo(slug, topicIdFrom) {
   let queued = false;
   if (doRes || doPil || doKw || devType) {   // runs on the server — close the modal / tab, it carries on (⚙ Background jobs shows it)
     const h2 = HUB_SITES.find(x => x.slug === slug) || {};
-    const q = await call('queueTitleJob', { titleId: id, name: title, slug, campaignId: h2.campaignId, productId: productId || undefined, keywords: doKw, research: doRes, devAssetTypes: devTypes.length ? devTypes : undefined, pillar: doPil, pillarType: ptype, styleGuidance: doPil ? DEV2_PILLAR_TYPES[ptype] : undefined }).catch(e => ({ error: e.message }));
+    const q = await call('queueTitleJob', { titleId: id, name: title, slug, campaignId: h2.campaignId, productId: productId || undefined, keywords: doKw, research: doRes, devAssetTypes: devTypes.length ? devTypes : undefined, pillar: doPil }).catch(e => ({ error: e.message }));
     if (!q || q.error) notes.push('research / pillar not queued: ' + ((q && q.error) || 'no response'));
     else { queued = true; if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500); }
   }
   _hubKwOpen[slug + '|ti:' + topicId] = true;
-  const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (queued ? ' · ' + [doKw && 'keywords', doRes && 'research', devType && devType + ' asset', doPil && ptype + ' pillar'].filter(Boolean).join(' + ') + ' running in the background (⚙ bottom-right) — you can carry on' : '');
+  const K = _hubKw[slug]; if (K) K.msg = notes.length ? '⚠ "' + title + '" added — ' + notes.join(' · ') : '✓ "' + title + '" added' + (queued ? ' · ' + [doKw && 'keywords', doRes && 'research', devType && devType + ' asset', doPil && 'pillar'].filter(Boolean).join(' + ') + ' running in the background (⚙ bottom-right) — you can carry on' : '');
   await hubTitlesLoad(slug, true); hubKwRefresh(slug);
   return true;
 }
@@ -19137,32 +19128,38 @@ let _htMethods = null, _htPlatforms = null;
 const htTitleOf = (slug, tid) => { const T = _hubTitles[slug]; const r = T && (T.rows || []).find(x => x.titleId === tid); return r ? { id: tid, title: r.title, productId: r.productId || '', product: r.product } : null; };
 function hubTitleNewModal(slug, presetPid) {
   const T = _hubTitles[slug] || {}, prods = (T.products || (_hubKw[slug] || {}).products || []).slice().sort((a, b) => String(a.name).localeCompare(String(b.name))), nidP = x => String(x || '').replace(/-/g, '');
-  hcModal(`<h3 style="margin:0 0 4px;">New title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Created at Planning on this campaign — then ✍ Write pillar and ＋ Asset from its row.</div>
+  hcModal(`<h3 style="margin:0 0 4px;">New title</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Created at Planning on this campaign; picked asset types are created empty with it.</div>
     ${HT_LBL('Title')}<input id="htNewTitle" style="${HT_IN}" placeholder="What the piece is about">
     ${HT_LBL('Guidance / direction')}<textarea id="htNewGuide" rows="5" style="${HT_IN}resize:vertical;" placeholder="Angle, audience, points to make, sources, tone… (saved as the title's research instructions — every writer reads it)"></textarea>
     ${HT_LBL('Product')}<select id="htNewProd" style="${HT_IN}"><option value="">— no product —</option>${prods.map(p => `<option value="${esc(p.id)}" ${presetPid && nidP(p.id) === nidP(presetPid) ? 'selected' : ''}>📦 ${esc(p.name)}${p.status ? ' · ' + esc(p.status) : ''}</option>`).join('')}</select>
+    ${HT_LBL('Child assets to create now (empty Development assets — interview-led types get their interview flagged)')}<div id="htNewAssets" style="max-height:30vh;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;margin:3px 0 12px;font-size:12px;color:var(--text3);">Loading the hub's checklist…</div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" id="htNewGo" onclick="hcModalRun(this, () => hubTitleNewGo('${slug}'))">Create title</button>${HC_CANCEL}</div>`);
+  hubKidBoxes(slug, 'htNewAssets', 'htNewKid');
   setTimeout(() => { const i = document.getElementById('htNewTitle'); if (i) i.focus(); }, 50);
 }
 async function hubTitleNewGo(slug) {
   const h = HUB_SITES.find(x => x.slug === slug); if (!h) return 'Hub not found';
   const title = document.getElementById('htNewTitle').value.trim(); if (!title) return 'Enter a title';
   const guide = document.getElementById('htNewGuide').value.trim(), productId = document.getElementById('htNewProd').value || undefined;
-  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Development', skipPillar: true, researchInstructions: guide || undefined });
+  const r = await call('createDevTitle', { title, campaignId: h.campaignId, productId, status: 'Planning', skipPillar: true, researchInstructions: guide || undefined });
   if (!r || r.error || !r.id) return (r && r.error) || 'Create failed';
+  const types = [...document.querySelectorAll('.htNewKid:checked')].map(c => c.value);
+  if (types.length) {
+    const q = await call('queueTitleJob', { titleId: r.id, name: title, slug, campaignId: h.campaignId, productId: productId || undefined, devAssetTypes: types }).catch(e => ({ error: e.message }));
+    if (!q || q.error) return 'Title created, but child assets not queued: ' + ((q && q.error) || 'no response');
+    if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
+  }
   _hubContentOpen[slug + '|ti:p:' + (productId || 'none')] = true;
   hubTitlesLoad(slug, true); return true;
 }
 function hubTitlePillarModal(slug, tid) {
   const t = htTitleOf(slug, tid); if (!t) return;
   hcModal(`<h3 style="margin:0 0 4px;">✍ Write pillar</h3><div style="font-size:11px;color:var(--text3);margin-bottom:10px;">${esc(t.title)}${t.productId ? ' · 📦 ' + esc(t.product) : ''}</div>
-    ${HT_LBL('Pillar type')}<select id="htPillarType" style="${HT_IN}">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
     <div style="font-size:11px;color:var(--text3);margin-bottom:10px;">Writes the pillar onto this title (1-2 min) and moves it Planning → Development. Same writer as All Output.</div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" onclick="this.textContent='⏳ writing…';hcModalRun(this, () => hubTitlePillarGo('${slug}','${tid}'))">✍ Write pillar</button>${HC_CANCEL}</div>`);
 }
 async function hubTitlePillarGo(slug, tid) {
-  const type = document.getElementById('htPillarType').value;
-  const r = await call('writeTitlePillar', { titleId: tid, styleGuidance: DEV2_PILLAR_TYPES[type] }).catch(e => ({ error: e.message }));
+  const r = await call('writeTitlePillar', { titleId: tid }).catch(e => ({ error: e.message }));
   if (!r || r.error) return 'Pillar failed: ' + ((r && r.error) || 'no response');
   hubTitlesLoad(slug, true); return true;
 }
@@ -19735,35 +19732,30 @@ function hcTitleEdit(slug, sid, tid) {
     <textarea id="hcEdNotes" rows="6" style="${IN}resize:vertical;">${esc(t.notes || '')}</textarea>
     <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Status</label>
     <select id="hcEdStatus" style="${IN}">${HUB_PROD_STATUSES.map(x => `<option ${x === t.status ? 'selected' : ''}>${x}</option>`).join('')}</select>
-    <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">Child assets <span style="text-transform:none;letter-spacing:0;">— ticked = has one in Development · tick to add (empty, interview flagged where needed) · untick to delete it (archived)</span></label>
-    <div id="hcEdKids" style="max-height:26vh;overflow:auto;border:1px solid var(--border2);border-radius:6px;padding:4px 8px;margin:3px 0 10px;font-size:12px;color:var(--text3);">Loading the hub's checklist…</div>
     <div style="display:flex;gap:8px;"><button class="modal-btn" id="hcEdGo" onclick="hcModalRun(this, () => hcTitleSave('${slug}','${sid}','${tid}'))">Save</button>${HC_CANCEL}</div>
     <div style="margin-top:14px;padding-top:10px;border-top:1px solid var(--border2);">
       <label style="font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--text3);">✍ Rewrite pillar</label>
       <div style="display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap;">
-        <select id="hcPillarType" style="font-size:12px;padding:5px 8px;border:1px solid var(--border2);border-radius:6px;background:var(--surface2);color:var(--text);">${Object.keys(DEV2_PILLAR_TYPES).map(k => `<option>${esc(k)}</option>`).join('')}</select>
         <button class="modal-btn" id="hcPillarGo" onclick="hcWritePillar('${slug}','${sid}','${tid}', this)" style="background:transparent;border:1px solid var(--accent);color:var(--accent);">✍ Rewrite pillar</button>
-        <button class="modal-btn" onclick="document.getElementById('hcModal').classList.remove('open');openCareGapEditor('${h.campaignId}','','${tid}')" style="background:transparent;border:1px solid var(--border2);color:var(--text2);">＋ Create asset</button>
       </div>
-      <div id="hcPillarMsg" style="font-size:11px;color:var(--text3);margin-top:6px;">Writes the pillar onto this title (1-2 min) and promotes it Planning → Development. Same writer as All Output's "generate pillar".</div>
+      <div id="hcPillarMsg" style="font-size:11px;color:var(--text3);margin-top:6px;">Writes the pillar onto this title (1-2 min) and promotes it Planning → Development.</div>
     </div>`);
   const own = ((((_hubTitles[slug] || {}).rows) || []).find(r => r.titleId === tid) || (DEV2_ROWS || []).find(r => r.titleId === tid) || {}).titleTopicId || '';
-  hubKidBoxes(slug, 'hcEdKids', 'hcEdKid', tid);
   kwTopicsFor(h.campaignId).then(dd => { const sel = document.getElementById('hcEdTopic'); if (!sel) return;
     sel.innerHTML = kwTopicOptions(dd, own).replace('— pick a keyword topic —', '(its product’s topic)').replace('</option>', `</option><option value="__main" ${own === '__main' ? 'selected' : ''}>Main (the hub’s main keywords)</option>`); sel.dataset.cur = own; })
     .catch(e => { const sel = document.getElementById('hcEdTopic'); if (sel) sel.innerHTML = '<option value="">Couldn’t load topics — ' + esc(e.message) + '</option>'; });
 }
-// ✍ Write pillar from the title modal: writeTitlePillar with the chosen pillar type (writes the pillar + Planning → Development)
+// ✍ Write the title pillar (writes the pillar + Planning → Development)
 async function hcWritePillar(slug, sid, tid, btn) {
-  const t = hubTitleFind(slug, sid, tid), type = document.getElementById('hcPillarType').value, msg = document.getElementById('hcPillarMsg');
-  btn.disabled = true; btn.textContent = '⏳ writing…'; msg.style.color = 'var(--text3)'; msg.textContent = `Writing a ${type} pillar — 1-2 min, keep this open…`;
+  const t = hubTitleFind(slug, sid, tid), msg = document.getElementById('hcPillarMsg');
+  btn.disabled = true; btn.textContent = '⏳ writing…'; msg.style.color = 'var(--text3)'; msg.textContent = 'Writing the pillar — 1-2 min, keep this open…';
   try {
-    const r = await call('writeTitlePillar', { titleId: tid, styleGuidance: DEV2_PILLAR_TYPES[type] });
+    const r = await call('writeTitlePillar', { titleId: tid });
     if (!r || r.error) throw new Error((r && r.error) || 'no response');
     if (t && (!t.status || t.status === 'Planning')) { t.status = 'Development'; const sel = document.getElementById('hcEdStatus'); if (sel) sel.value = 'Development'; }
-    msg.style.color = '#4ade80'; msg.textContent = `✓ ${type} pillar written onto the title${r.url ? '' : ''}.`;
+    msg.style.color = '#4ade80'; msg.textContent = '✓ Pillar written onto the title';
     btn.textContent = '✓ Written'; hubContentRefresh(slug); hubBuildRefreshRows(slug);
-  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ Pillar failed: ' + e.message; btn.disabled = false; btn.textContent = '✍ Write pillar'; }
+  } catch (e) { msg.style.color = '#f87171'; msg.textContent = '✗ Pillar failed: ' + e.message; btn.disabled = false; btn.textContent = '✍ Rewrite pillar'; }
 }
 async function hcTitleSave(slug, sid, tid) {
   _hubKwRecent.add(String(tid || '').replace(/-/g, ''));
@@ -19778,18 +19770,6 @@ async function hcTitleSave(slug, sid, tid) {
     if (nv.productId !== cur.productId) { const r = await call('updateTitleStrategy', { titleId: tid, productId: nv.productId || null }); if (!r || r.error) throw new Error((r && r.error) || 'Could not save product'); }
     { const sel = document.getElementById('hcEdTopic'); if (sel && sel.dataset.changed === '1' && sel.dataset.cur != null && sel.value !== sel.dataset.cur && !/^Loading|^Couldn/.test(sel.options[sel.selectedIndex]?.text || '')) {
         const x = await hubTitleSetTopic(slug, tid, sel.value); if (x !== true) throw new Error(x); } }
-    { const gone = [...document.querySelectorAll('.hcEdKid[data-existing]:not(:checked)')], goneIds = [...new Set(gone.flatMap(c => c.dataset.existing.split(',').filter(Boolean)))];
-      if (goneIds.length) {
-        if (!confirm('Delete ' + goneIds.length + ' Development asset' + (goneIds.length === 1 ? '' : 's') + ' (' + gone.map(c => c.value).join(', ') + ')? They are archived in Notion (recoverable).')) return 'Not saved — nothing deleted';
-        for (const aid of goneIds) { const x = await call('deleteAsset', { assetId: aid }).catch(e => ({ error: e.message })); if (!x || x.error) throw new Error('could not delete an asset: ' + ((x && x.error) || 'no response')); }
-        [((_hubTitles[slug] || {}).rows || []), (DEV2_ROWS || [])].forEach(rows => { for (let i = rows.length - 1; i >= 0; i--) if (goneIds.includes(rows[i].assetId)) rows.splice(i, 1); });
-        hubKwRefresh(slug);
-      } }
-    { const kids = [...document.querySelectorAll('.hcEdKid:checked:not([data-existing])')].map(c => c.value), hh = HUB_SITES.find(x => x.slug === slug) || {};
-      if (kids.length) { const q = await call('queueTitleJob', { titleId: tid, name: nv.title, slug, campaignId: hh.campaignId, productId: nv.productId || undefined, devAssetTypes: kids }).catch(e => ({ error: e.message }));
-        if (!q || q.error) throw new Error('child assets not queued: ' + ((q && q.error) || 'no response'));
-        if (q.id) _hubJobs.mine.add(q.id); call('runTitleJobs').catch(() => {}); setTimeout(hubJobsPoll, 1500);
-        showToast(kids.length + ' child asset' + (kids.length === 1 ? '' : 's') + ' being created — ⚙ bottom-right', 'success'); } }
     t.title = nv.title; t.notes = nv.titleNotes; t.status = nv.status; t.productId = nv.productId;
     const h2 = _hub2Content[slug] && (_hub2Content[slug].rows || []).find(x => x.type === 'Title' && x.id === tid); if (h2) { h2.name = nv.title; h2.notes = nv.titleNotes; h2.status = nv.status; h2.productId = nv.productId; }
     if (nv.productId !== cur.productId) await hub2ContentLoad(slug, true); else hub2ContentPaint(slug);
