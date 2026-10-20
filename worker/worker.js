@@ -12343,7 +12343,8 @@ async function autoDigestRun(env, invoke) {
     for (const cid of cids) {
       if (Date.now() - t0 > 120000) break;
       const key = "digest:auto:state:" + cid; let S = await env.TRADES.get(key, "json");
-      const fresh = !S || (S.period !== per.key && !(S.manual && !["done", "skip", "error"].includes(S.step)));
+      const finished = !S || ["done", "skip", "error"].includes(S.step), handNow = manual.includes(cid) && finished;   // a queued hand run starts once nothing is running — even after this week's run is done
+      const fresh = handNow || !S || (S.period !== per.key && !(S.manual && !finished));
       if (fresh) { const h = HUB_SITES.find(x => String(x.campaignId || "").replace(/-/g, "") === cid), nm = (h && (h.campaign || h.name)) || "Hub";
         if (manual.includes(cid)) { S = { period: "m" + Date.now(), manual: true, name: nm, step: "start", startedAt: Date.now(), tries: 0 };   // a hand run — same pipeline
           manual = manual.filter(x => x !== cid); await env.TRADES.put("digest:manual", JSON.stringify(manual)); }
