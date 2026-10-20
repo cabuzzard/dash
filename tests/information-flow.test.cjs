@@ -33,3 +33,11 @@ test('Connection validation rejects oversized descriptions and edge IDs as endpo
  const g=seed();g.edges[0].description='x'.repeat(4001);assert(validate(g).some(s=>/descriptions/.test(s)));delete g.edges[0].description;
  g.edges[1].target=g.edges[0].id;assert(validate(g).some(s=>/missing endpoint/.test(s)));
 });
+test('Custom role definitions persist even when unused and old drafts remain valid',()=>{
+ const g=seed();g.roles=[{id:'role-approval',name:'Approval gate',description:'An operator reviews the draft.',color:'#38bdf8'}];g.nodes[0].role='Approval gate';
+ assert.deepEqual(validate(g),[]);const restored=unpack(pack(g));assert.deepEqual(restored.roles,g.roles);assert.equal(restored.nodes[0].role,'Approval gate');
+ g.nodes[0].role='topic';assert.deepEqual(unpack(pack(g)).roles,g.roles);
+ assert.deepEqual(validate(seed()),[]);
+ g.roles.push({id:'role-dupe',name:'APPROVAL GATE',description:'',color:'#ffffff'});assert(validate(g).some(s=>/unique/.test(s)));
+ g.roles.pop();g.roles[0].name='parent';assert(validate(g).some(s=>/unique/.test(s)));
+});
