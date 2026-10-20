@@ -23,3 +23,13 @@ test('Flowchart arrangement preserves definitions and pinned network positions',
  assert.deepEqual(validate(next),[]);assert.deepEqual(unpack(pack(next)).nodes[0].network,{x:0,y:24,z:-35});
  next.nodes[0].network.z=Infinity;assert(validate(next).some(s=>/network position/.test(s)));
 });
+test('Decisions and switches support multiple described, custom-labeled branches',()=>{
+ const g=seed();g.nodes.push({id:'decision',label:'Interview complete?',role:'decision',interview:'None',x:100,y:500});g.nodes.push({id:'switch',label:'Choose format',role:'switch',interview:'None',x:100,y:700});
+ g.edges.push({id:'yes',source:'decision',target:'switch',kind:'routes to',condition:'Yes',description:'Reuse completed answers.'},{id:'no',source:'decision',target:'switch',kind:'routes to',condition:'No',description:'Request missing answers first.'},{id:'custom',source:'switch',target:'pillar',kind:'writes an SEO draft',condition:'SEO',description:'Use the selected title research.'});
+ assert.deepEqual(validate(g),[]);assert.deepEqual(unpack(pack(g)).edges,g.edges);
+ g.edges.push({...g.edges.at(-2),id:'dupe'});assert(validate(g).length>0);
+});
+test('Connection validation rejects oversized descriptions and edge IDs as endpoints',()=>{
+ const g=seed();g.edges[0].description='x'.repeat(4001);assert(validate(g).some(s=>/descriptions/.test(s)));delete g.edges[0].description;
+ g.edges[1].target=g.edges[0].id;assert(validate(g).some(s=>/missing endpoint/.test(s)));
+});
