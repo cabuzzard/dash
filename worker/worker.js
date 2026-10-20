@@ -12129,7 +12129,7 @@ async function titleJobsRun(env, invoke) {
           } else if (step.action === "keywords") {   // the title's own keywords (seed idea), from its topic
             const k = await invoke({ action: "regenerateTitleKeywords", titleId: S.titleId }); if (!k || k.error) throw new Error((k && k.error) || "no response");
           } else if (step.action === "devasset") {   // an EMPTY Development asset of the chosen type (registered, not written); interview-led types get their interview flagged on it
-            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: step.assetType, pillar: /^series$/i.test(step.assetType) }] });   // Series = a parent (Pillar · Series)
+            const slugH = S.slug, c = await invoke({ action: "createDevAssets", titleId: S.titleId, title: S.name, productId: S.productId || undefined, campaignId: S.cid || undefined, slug: slugH || undefined, types: [{ assetType: step.assetType, label: /^digest$/i.test(step.assetType) ? "Digest parent" : step.assetType, pillar: /^(series|digest)$/i.test(step.assetType) }] });   // Series + Digest parent are parents (pillars)   // Series = a parent (Pillar · Series)
             if (!c || c.error) throw new Error((c && c.error) || "no response");
             const aid = ((c.created || [])[0] || {}).id;
             if (aid && ivOwnTier((await ivTierFn(env))(step.assetType))) await ivCreateForAsset(env, { assetId: aid, titleId: S.titleId, own: step.assetType }).catch(() => {});
@@ -21883,14 +21883,19 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
         for (const t of types) {
           const assetType = String(t.assetType || "").trim().slice(0, 100), label = String(t.label || assetType).trim().slice(0, 120), pillar = !!t.pillar;
           if (!assetType) continue;
+          // DIGEST PARENT (operator 2026-10-20: "make that into a recognizable asset type … let me choose it when creating the title"):
+          // ticking Digest - parent on a title makes THE hub's digest — this title becomes its permanent digest title and this asset its
+          // next issue, so Sunday's auto digest writes into it (KV digest:title / digest:asset) instead of keeping a title of its own.
+          const digestParent = pillar && /^digest$/i.test(assetType);
           if (have.has(assetType.toLowerCase()) && !body.allowMulti) { skipped.push(label); continue; }
           const props = {
             "Asset Title": { title: [{ type: "text", text: { content: `${String(body.title || "Untitled").slice(0, 150)} — ${label}` } }] },
             "Asset Status": { select: { name: "Development" } },
             "Asset Class": { select: { name: pillar ? "Pillar" : "Publishable" } },
-            "Asset Type": { select: { name: pillar ? "Pillar" : assetType } },
+            "Asset Type": { select: { name: digestParent ? "Digest" : pillar ? "Pillar" : assetType } },
             "Content Strategy": { relation: [{ id: dashC(titleId) }] },
             ...(pillar ? { "Pillar Type": { select: { name: assetType } } } : {}),
+            ...(digestParent ? { "Pillar Readiness": { select: { name: "Unwritten" } } } : {}),
             ...(body.productId ? { Product: { relation: [{ id: dashC(body.productId) }] } } : {}),
             ...(body.campaignId ? { Campaign: { relation: [{ id: dashC(body.campaignId) }] } } : {}),
             ...(body.slug ? { "Content Hub": { select: { name: String(body.slug).slice(0, 100) } } } : {}),
@@ -21902,6 +21907,10 @@ End with: "No people, no text, no letters, no logos, no watermarks."`;
             const r = await fetch("https://api.notion.com/v1/pages", { method: "POST", headers: hdrC, body: JSON.stringify({ parent: { database_id: ASSETS_DB }, properties: props }) });
             const j = await r.json().catch(() => ({})); if (!r.ok) throw new Error(j.message || "Notion " + r.status);
             created.push({ id: nidC(j.id), label }); have.add(assetType.toLowerCase());
+            if (digestParent && body.campaignId) {   // this title + asset are now the hub's digest (the weekly run fills this asset)
+              const dcid = nidC(body.campaignId); await env.TRADES.put("digest:title:" + dcid, nidC(titleId)); await env.TRADES.put("digest:asset:" + dcid, nidC(j.id));
+              created[created.length - 1].digest = true;
+            }
             if (t.note) await fetch(`https://api.notion.com/v1/blocks/${j.id}/children`, { method: "PATCH", headers: hdrC, body: JSON.stringify({ children: [{ object: "block", type: "callout", callout: { icon: { emoji: "💡" }, rich_text: [{ type: "text", text: { content: String(t.note).slice(0, 1900) } }] } }] }) }).catch(() => {});
           } catch (e) { failed.push(label + ": " + e.message); }
           await new Promise(r => setTimeout(r, 340));

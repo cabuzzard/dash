@@ -17675,6 +17675,7 @@ async function hubKidBoxes(slug, boxId, cls, tid) {
   const boxRow = (type, label, extra) => { const ids = ex(type); return `<label style="display:flex;gap:7px;align-items:center;padding:2px 0;cursor:pointer;color:var(--text);"><input type="checkbox" class="${cls}" value="${esc(type)}" ${ids.length ? `checked data-existing="${esc(ids.join(','))}"` : ''}>${label}${ids.length ? ` <span style="font-size:10px;color:var(--text3);">· ${ids.length} in Development${tid ? ' — untick to delete' : ''}</span>` : ''}${extra || ''}</label>`; };
   const kids = (((_hub2Checklist[slug] || {}).methods) || []).filter(m => !m.isPillar && !hub2IsGrayed(m)).sort((a, b) => a.name.localeCompare(b.name));
   box.innerHTML = boxRow('Series', '<b style="color:#f5c542;">✨ Series</b> <span style="font-size:10px;color:var(--text3);">(a recurring theme — topic generator + runs)</span>')
+    + boxRow('Digest', '<b style="color:#60a5fa;">📰 Digest parent</b> <span style="font-size:10px;color:var(--text3);">(makes this title the hub’s digest — the weekly digest is written into it)</span>')
     + (kids.length ? kids.map(m => { const type = m.aliases.find(a => a !== m.name) || m.asset || m.name;
     return boxRow(type, esc(m.name), m.tier && !/none|parent|title|product/i.test(m.tier) ? ' <span style="font-size:10px;color:#ff7a00;">🎤 ' + esc(m.tier) + '</span>' : ''); }).join('')
     : '<div>No child asset types on this hub’s checklist.</div>');
