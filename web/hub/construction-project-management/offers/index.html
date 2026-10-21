@@ -1,61 +1,23 @@
 <!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Offers — Build In Control</title>
-
-
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Libre+Franklin:wght@400;500;600;700&display=swap');
-:root { --bg:#F5F3EF; --ink:#1C1A17; --accent:#2B5278; }
-* { box-sizing:border-box; }
-body { margin:0; background:var(--bg); color:var(--ink); font-family:"Libre Franklin", system-ui, sans-serif; line-height:1.7; }
-.wrap { max-width:680px; margin:0 auto; padding:48px 24px 90px; }
-header.site { border-bottom:1px solid color-mix(in srgb, var(--ink) 15%, transparent); padding-bottom:20px; margin-bottom:40px; display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:10px; }
-header.site a { color:var(--ink); text-decoration:none; font-weight:600; }
-header.site .back { font-size:.85rem; color:var(--accent); }
-.kicker { text-transform:uppercase; letter-spacing:.14em; font-size:.72rem; color:var(--accent); font-weight:700; }
-h1,h2 { font-family:"Bricolage Grotesque", system-ui, sans-serif; color:var(--ink); line-height:1.2; }
-h1 { font-size:2.2rem; margin:.3rem 0 14px; }
-h2 { font-size:1.3rem; margin:38px 0 12px; color:var(--accent); }
-p { margin:0 0 18px; font-size:1.08rem; }
-.lede { font-size:1.2rem; }
-img.hero { display:block; width:100%; height:auto; border-radius:10px; margin:6px 0 22px; }
-ul.inc { list-style:none; padding:0; margin:0 0 18px; }
-ul.inc li { padding:8px 0 8px 26px; position:relative; border-bottom:1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
-ul.inc li::before { content:"\2192"; position:absolute; left:0; color:var(--accent); }
-.offer-form { margin-top:16px; padding:22px; border:1px solid color-mix(in srgb, var(--ink) 18%, transparent); border-radius:10px; background:color-mix(in srgb, var(--ink) 4%, transparent); }
-.offer-form input[type=email] { width:100%; padding:12px 14px; font:inherit; border:1px solid color-mix(in srgb, var(--ink) 25%, transparent); border-radius:7px; background:var(--bg); color:var(--ink); margin-bottom:10px; }
-.btn { display:inline-block; padding:12px 20px; font:inherit; font-weight:600; border:0; border-radius:7px; background:var(--accent); color:var(--bg); text-decoration:none; cursor:pointer; }
-.btn.out { background:transparent; color:var(--accent); border:1px solid var(--accent); margin-left:10px; }
-.cf-turnstile { margin:12px 0; }
-.msg { font-size:.92rem; margin-top:10px; min-height:1.2em; }
-.msg.ok { color:var(--accent); } .msg.err { color:#c0392b; }
-footer.site { margin-top:64px; padding-top:20px; border-top:1px solid color-mix(in srgb, var(--ink) 15%, transparent); font-size:.85rem; opacity:.7; }
-.offerlist { list-style:none; margin:0; padding:0; }
-.offerlist li { border-bottom:1px solid color-mix(in srgb, var(--ink) 12%, transparent); padding:22px 0; }
-.offerlist a { color:var(--ink); text-decoration:none; font-family:"Bricolage Grotesque", system-ui, sans-serif; font-size:1.3rem; }
-.offerlist a:hover { color:var(--accent); }
-.offerlist .excerpt { margin-top:6px; opacity:.75; font-size:.98rem; }
-</style>
-</head>
-<body>
-<div class="wrap">
-<header class="site">
-  <a href="../index.html">Build In Control</a>
-  
-</header>
+<style>@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Libre+Franklin:wght@400;500;600;700&display=swap');
+:root{--bg:#F5F3EF;--ink:#1C1A17;--accent:#2B5278;}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:"Libre Franklin", system-ui, sans-serif;line-height:1.7}
+.wrap{max-width:760px;margin:0 auto;padding:48px 24px 80px}
+header.site{border-bottom:1px solid color-mix(in srgb,var(--ink) 15%,transparent);padding-bottom:20px;margin-bottom:40px;display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:10px}
+header.site a{color:var(--ink);text-decoration:none;font-weight:600}
+h1{font-family:"Bricolage Grotesque", system-ui, sans-serif;font-size:2.1rem;margin:0 0 8px}
+ul{list-style:none;margin:0;padding:0}
+li{border-bottom:1px solid color-mix(in srgb,var(--ink) 12%,transparent);padding:22px 0}
+li a{color:var(--ink);text-decoration:none;font-family:"Bricolage Grotesque", system-ui, sans-serif;font-size:1.3rem}
+li a:hover{color:var(--accent)}
+.excerpt{margin-top:6px;opacity:.75;font-size:.98rem}
+footer.site{margin-top:60px;padding-top:20px;border-top:1px solid color-mix(in srgb,var(--ink) 15%,transparent);font-size:.85rem;opacity:.7}
+</style></head><body><div class="wrap">
+<header class="site"><a href="../index.html">Build In Control</a></header>
 <h1>Offers</h1>
-<ul class="offerlist">
-<li><a href="./ai-field-deployment/index.html">AI Field Deployment</a><div class="excerpt">Your operation stops running on your presence and starts running on infrastructure that works without you in the room.</div></li>
-<li><a href="./project-coordination-retainer/index.html">Project Coordination Retainer</a><div class="excerpt">Every active job gets a coordinator behind it — schedules live, subs informed, paperwork current — so you stay in the field instead of running the back office at night.</div></li>
-<li><a href="./coordination-retainer/index.html">Coordination Retainer</a><div class="excerpt">Every active job gets a coordination layer behind it — schedules tracked, subs confirmed, clients updated — so you stay in the field and stop being the bottleneck.</div></li>
-<li><a href="./preconstruction-package/index.html">Preconstruction Package</a><div class="excerpt">Every deliverable between signed plans and first day on site — scopes, bid packages, takeoffs, schedule, sub sourcing, and permit research — handed back to you as a complete, ready-to-run package.</div></li>
-<li><a href="./bid-check/index.html">Bid Check</a><div class="excerpt">Know exactly what each sub included, what is missing, and who to award — before you make the call.</div></li>
-</ul>
+<ul><li><a href="../blog/ai-field-deployment/">AI Field Deployment</a><div class="excerpt">Your operation stops running on your presence and starts running on infrastructure that works without you in the room.</div></li>
+<li><a href="../blog/project-coordination-retainer/">Project Coordination Retainer</a><div class="excerpt">Every active job gets a coordinator behind it — schedules live, subs informed, paperwork current — so you stay in the field instead of running the back office at night.</div></li></ul>
 <footer class="site">Build In Control</footer>
-</div>
-
-</body>
-</html>
+</div></body></html>
