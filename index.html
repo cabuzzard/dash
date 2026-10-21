@@ -12134,7 +12134,7 @@ async function refreshHubPublishedRows(ids){
     delete _hub2ViewData[hub.slug];if(_hub2ViewOpen[hub.slug])await hub2ViewLoad(hub.slug,true);
     const frame=document.getElementById('hub2Frame-'+hub.slug);if(frame){const url=new URL(frame.src);url.searchParams.set('v',Date.now());frame.src=url.toString();}
   }
-  hub2AllCollect();hub2ContentPaint(HUB2_ALL);renderDev2();
+  if(_hub2Content[HUB2_ALL]?.rows){hub2AllCollect();hub2ContentPaint(HUB2_ALL);}renderDev2();
 }
 async function hub2BulkPublishHub(slug,button){
   const selected=_hub2Selected[slug]||new Set(),rows=(_hub2Content[slug]?.rows||[]).filter(r=>r.type==='Asset'&&selected.has('a:'+r.id)),ids=rows.map(r=>r.id);if(!ids.length)return;
