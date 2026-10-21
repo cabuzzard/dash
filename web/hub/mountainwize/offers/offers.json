@@ -1,96 +1,66 @@
 [
   {
-    "slug": "mindset-mastery",
-    "name": "Mindset Mastery",
-    "kicker": "Self-paced video course · flat investment, full refund guarantee",
-    "promise": "You stop reacting in the rooms that matter and start running on the inner process you've already earned the right to trust.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81368be5c986d0e15906",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/mindset-mastery-program-blog-thumbnail-mvhjjvzy.png"
-  },
-  {
-    "slug": "inner-edge",
-    "name": "Inner Edge",
-    "kicker": "1-to-1 Coaching · Scope & fee set at intake",
-    "promise": "You become the master of your inner environment — a man whose inner state matches the quality of the life he has built, moving on decisions without waiting for certainty.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81478f64fe0019ec63fb"
-  },
-  {
-    "slug": "soul-purpose-call",
-    "name": "Soul Purpose Call",
-    "kicker": "Discovery call · $25–75 suggested donation",
-    "promise": "You leave knowing exactly what's underneath the restlessness — not a symptom list, the specific internal mechanics driving it.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb8116a5d5c5c4358c6a57"
-  },
-  {
+    "assetId": "4001f7d3a4bb81c3a53ec0a636b438ae",
     "slug": "strategy-intensive",
     "name": "Strategy Intensive",
-    "kicker": "One-session intensive · fee to be confirmed",
     "promise": "You leave knowing exactly what you're building, who it's for, and what the next three moves are — not because someone handed you a plan, but because you cleared the noise long enough to trust your own judgment again.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81c3a53ec0a636b438ae"
+    "url": "../blog/strategy-intensive/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47",
     "slug": "field-sessions",
     "name": "Field Sessions",
-    "kicker": "Single session or short package · pricing confirmed at booking",
     "promise": "You get out of your own theoretical space and into a working inner process — lightweight, portable, and yours to keep.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81a28e74cee82cabfd47"
+    "url": "../blog/field-sessions/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81028740d43430429914",
     "slug": "dualism-flow-intensive",
     "name": "Dualism & Flow Intensive",
-    "kicker": "One-on-one intensive · pricing to be confirmed",
     "promise": "Name the false binary stalling you, collapse it, and leave with a working inner process you own — no program required to keep it running.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81028740d43430429914"
+    "url": "../blog/dualism-flow-intensive/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb811a9721e4473364eaca",
     "slug": "inner-edge-strategy",
     "name": "Inner Edge Strategy",
-    "kicker": "1-to-1 coaching · pricing discussed at intake",
     "promise": "You stop running your business from the outside in — and start making decisions from a value set you can actually name.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb811a9721e4473364eaca"
+    "url": "../blog/inner-edge-strategy/",
+    "image": ""
   },
   {
+    "assetId": "4001f7d3a4bb81478f64fe0019ec63fb",
+    "slug": "inner-edge",
+    "name": "Inner Edge",
+    "promise": "You become the master of your inner environment — a man whose inner state matches the quality of the life he has built, moving on decisions without waiting for certainty.",
+    "url": "../blog/inner-edge/",
+    "image": ""
+  },
+  {
+    "assetId": "4001f7d3a4bb81368be5c986d0e15906",
+    "slug": "mindset-mastery",
+    "name": "Mindset Mastery",
+    "promise": "You stop reacting in the rooms that matter and start running on the inner process you've already earned the right to trust.",
+    "url": "../blog/mindset-mastery/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/mindset-mastery-program-blog-thumbnail-mvhjjvzy.png"
+  },
+  {
+    "assetId": "3ff1f7d3a4bb8116a5d5c5c4358c6a57",
+    "slug": "soul-purpose-call",
+    "name": "Soul Purpose Call",
+    "promise": "You leave knowing exactly what's underneath the restlessness — not a symptom list, the specific internal mechanics driving it.",
+    "url": "../blog/soul-purpose-call/",
+    "image": ""
+  },
+  {
+    "assetId": "3f51f7d3a4bb8108b9a0f7d342989618",
     "slug": "executive-mindset-blueprint",
     "name": "Executive Mindset Blueprint",
-    "kicker": "Self-paced digital course · price TBC at launch",
     "promise": "Build the inner process that makes decisions feel right, anger stoppable, and accountability a skill you carry — not a discipline you keep losing.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3f51f7d3a4bb8108b9a0f7d342989618",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/executive-mindset-blueprint-blog-thumbnail-mv22jb8r.png"
-  },
-  {
-    "slug": "inner-edge-coaching",
-    "name": "Inner Edge Coaching",
-    "kicker": "1:1 Private Engagement · $1,500–$3,000 / 3 months",
-    "promise": "In three months you move from decisions that feel constructed to decisions that feel right — and the inner process that gets you there stays with you when the engagement ends.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb810b862cc03ebfd24cb1",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/1-1-executive-mindset-coaching-blog-thumbnail-mv22kw0d.png"
-  },
-  {
-    "slug": "identity-reset",
-    "name": "Identity Reset",
-    "kicker": "30-Day Cohort Challenge · $97–$197 entry",
-    "promise": "Thirty days of daily inner process work that replaces value-blind decisions and willpower-based accountability with a portable skill set you own — no program required to keep it running.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb816ba501e726383920e0",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/30-day-identity-mindset-reset-paid-cohort-challenge-blog-thumbnail-mv22k3tl.png"
+    "url": "../blog/executive-mindset-blueprint/",
+    "image": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/mountainwize/executive-mindset-blueprint-blog-thumbnail-mv22jb8r.png"
   }
 ]
