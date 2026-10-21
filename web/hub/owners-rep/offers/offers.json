@@ -1,101 +1,26 @@
 [
   {
-    "slug": "direct-independent-discovery-call",
-    "name": "Direct-Independent Discovery Call",
-    "kicker": "Free · 20 minutes",
-    "promise": "Find out exactly where your current project setup leaves you exposed — and what it costs to close that gap — before your contractor's next draw lands on your desk.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3f31f7d3a4bb81209e76e96718a17017"
-  },
-  {
+    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567",
     "slug": "owner-side-contract-review",
     "name": "Owner-Side Contract Review",
-    "kicker": "Fixed-fee review · scope and fee defined before engagement",
     "promise": "Before you sign or approve another dollar, you'll know exactly what the documents say, what's missing, and what to push back on.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb81198a3cf8368899e567"
+    "url": "../blog/owner-side-contract-review/",
+    "image": ""
   },
   {
+    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d",
     "slug": "on-your-side-ongoing-build-coordination",
     "name": "On Your Side-Ongoing Build Coordination",
-    "kicker": "Monthly retainer · fee by project scale",
     "promise": "You stop being the least-informed person on your own job site — every draw, change order, and open decision lands in front of you with context before you sign anything.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "3ff1f7d3a4bb812280a3cfdfed2a286d"
+    "url": "../blog/on-your-side-ongoing-build-coordination/",
+    "image": ""
   },
   {
-    "slug": "on-your-side-construction-retainer",
-    "name": "On Your Side-Construction Retainer",
-    "kicker": "Monthly retainer · $1,500–$4,000/mo",
-    "promise": "A professional reviewing every invoice and change order before you sign — so you stop being the least-informed person in a room you are paying for.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb813e94c8dae194d3fcf4",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/construction-oversight-retainer-blog-thumbnail-mv228hh1.png"
-  },
-  {
-    "slug": "before-you-sign-owner-s-preconstruction-review",
-    "name": "Before You Sign-Owner's Preconstruction Review",
-    "kicker": "Fixed-fee review · $2,500–$6,000",
-    "promise": "Know exactly what you are signing, what is missing, and what it will actually cost — before the contract is executed.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81caae89d11e2118a3e2",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/preconstruction-owner-s-review-blog-thumbnail-mv227quf.png"
-  },
-  {
-    "slug": "project-scan",
-    "name": "Project Scan",
-    "kicker": "Fixed-fee document review · $495–$750",
-    "promise": "A ranked list of the gaps, contradictions, and cost exposures already sitting in your document set — named before the first dollar moves.",
-    "ctaUrl": "",
-    "date": "2026-10-10",
-    "assetId": "3f51f7d3a4bb81e5838ed7c336ebd3bf",
-    "thumbnail": "https://pub-74b0072d4e4947dfbaf4afa7daecbfe7.r2.dev/images/build-watcher/project-intelligence-project-scan-blog-thumbnail-mv2270el.png"
-  },
-  {
-    "slug": "project-monitoring-intro-call",
-    "name": "Project Monitoring Intro Call",
-    "kicker": "Free Introductory Call",
-    "promise": "Walk away knowing exactly where your project is exposed — and what independent oversight would fix before it costs you.",
-    "ctaUrl": "",
-    "date": "2026-09-29",
-    "assetId": "3ea1f7d3a4bb8187b9a4e58dd816f409"
-  },
-  {
-    "slug": "contractor-clarity-session",
-    "name": "Contractor Clarity Session",
-    "kicker": "Advisory session · fixed-fee",
-    "promise": "Understand exactly what your contractor can and cannot do for you — before you sign, commit, or hand over a dollar.",
-    "ctaUrl": "",
-    "date": "2026-09-03",
-    "assetId": "3d01f7d3a4bb81af8bfac5654d5965b5"
-  },
-  {
-    "slug": "construction-contract-review",
-    "name": "Construction Contract Review",
-    "kicker": "Fixed-fee review · $450",
-    "promise": "Know exactly what you're signing — and what to change — before you hand over a dollar.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "distressed-project-assessment",
-    "name": "Distressed Project Assessment",
-    "kicker": "Fixed-fee assessment · $2,500",
-    "promise": "From a frozen job site and a contractor who's gone dark to a written, step-by-step plan to get your project finished.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
-  },
-  {
-    "slug": "bid-leveling-second-opinion",
-    "name": "Bid Leveling & Second Opinion",
-    "kicker": "Fixed-fee review · $350",
-    "promise": "Know which bid is actually complete — before you sign the one that balloons.",
-    "ctaUrl": "",
-    "date": "2026-09-03"
+    "assetId": "3f31f7d3a4bb81209e76e96718a17017",
+    "slug": "direct-independent-discovery-call",
+    "name": "Direct-Independent Discovery Call",
+    "promise": "Find out exactly where your current project setup leaves you exposed — and what it costs to close that gap — before your contractor's next draw lands on your desk.",
+    "url": "../blog/direct-independent-discovery-call/",
+    "image": ""
   }
 ]
