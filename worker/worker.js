@@ -1429,6 +1429,7 @@ function topicalMdBlocks(md) {
 const TOPICAL_MODAL_WRITE = Symbol('individual-publish-modal');
 const TOPICAL_REWRITE_PROP = 'Written Without Interview';
 async function topicalPublishState(env, assetId) {
+  NOTION_TOKEN = (env.NOTION_TOKEN || '').trim(); // cron isolates have not passed through fetch's credential initialization
   const aid = String(assetId || '').replace(/-/g, '');
   if (!/^[a-f0-9]{32}$/i.test(aid)) throw new Error('Invalid asset id');
   const page = await ivPage(aid), p = page.properties || {};
@@ -13714,7 +13715,7 @@ export default {
     // errors arrive as {error} like every other action.
     // Also the longform research steps (web searches + long question lists) — they hit 524 on phones.
     if (/longform|Longform/.test(String(body.action || ""))) console.log("lf-action", body.action, body.__inner ? "inner" : "outer", body.format || "");
-    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$/.test(String(body.action || ""))) {
+    if (!body.__inner && env.SELF && /^(generate|write|regenerate)|^longform(Questions|Interview)$|^planLongformImages$|^publishYouTube$|^replaceLongformScript$|^rewriteHubNewsPost$|^ivExpertCheck$|^writeTopicalPost$|^createTopicalAssets$|^buildHubTopicIdeas$|^runHubNewsletterSequence$|^proofreadLongformScript$|^renderLongform$|^runTopicalQueue$/.test(String(body.action || ""))) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter(), enc = new TextEncoder();
       const beat = setInterval(() => { writer.write(enc.encode(" ")).catch(() => {}); }, 15000);
@@ -19968,6 +19969,7 @@ Give a YouTube title in that format. Call submit_questions.`;
       if (body.action === "publishTopicalAsset") return json(await publishTopicalAsset(env, body.assetId, { privacy: body.privacy, publishAt: body.publishAt }));
       if (body.action === "writeTopicalYouTube") return json(await writeTopicalYouTube(env, body.assetId));
       if (body.action === "writeTopicalPost") return json(await writeTopicalPost(env, body.assetId));
+      if (body.action === "runTopicalQueue") return json(await topicalCronTick(env)); // same interview-gated runner, no bypass options
       if (body.action === "queueTopicalPost" || body.action === "getTopicalQueue") {
         let q = []; try { q = (await env.TRADES.get("topical:queue", "json")) || []; } catch (e) {}
         if (body.action === "queueTopicalPost") { const id = String(body.assetId || "").replace(/-/g, ""); if (!id) return json({ error: "assetId required" }, 400);
