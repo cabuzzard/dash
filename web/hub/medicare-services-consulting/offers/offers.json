@@ -1,5 +1,14 @@
 [
   {
+    "slug": "care-command",
+    "name": "Care Command",
+    "kicker": "Planned coordination · pricing TBD",
+    "promise": "One person owns the whole board — appointments, referrals, authorizations, provider communication — so you stop being the unpaid care administrator and go back to being family.",
+    "ctaUrl": "",
+    "date": "2026-10-21",
+    "assetId": "4001f7d3a4bb814c9e8fc8c1bc4c1d8e"
+  },
+  {
     "slug": "medicare-clarity-consult-d7bc",
     "name": "Medicare Clarity Consult",
     "kicker": "Fixed-fee consult · $149–$249",
