@@ -4272,7 +4272,7 @@ async function publishHubAssetToLiveSite(env, hdr, page) {
 // Asset interview sync is shared by Output rows and Hub View eligibility (never inferred from Published).
 function hubAssetSyncFields(asset, interviews = []) {
   const assetSync = asset.ivSync || (asset.ivTier === 'None' ? 'n/a' : '');
-  const own = interviews.filter(iv=>iv.scope==='Asset' && (iv.assetId ? hubAssetId(iv.assetId)===hubAssetId(asset.assetId||asset.id) : iv.titleId && hubAssetId(iv.titleId)===hubAssetId(asset.titleId) && iv.forType===asset.rawAssetType));
+  const own = interviews.filter(iv=>iv.scope==='Asset' && ((iv.assetIds||[]).length ? iv.assetIds.some(id=>hubAssetId(id)===hubAssetId(asset.assetId||asset.id)) : iv.assetId ? hubAssetId(iv.assetId)===hubAssetId(asset.assetId||asset.id) : iv.titleId && hubAssetId(iv.titleId)===hubAssetId(asset.titleId) && iv.forType===asset.rawAssetType));
   const interviewDebt = asset.ivTier !== 'None' && own.some(iv=>iv.status!=='Finished');
   const assetSynced = !/^Out of Sync/i.test(assetSync) && !asset.writtenWithoutInterview && !interviewDebt;
   return {assetSync,assetSynced};
@@ -4299,7 +4299,7 @@ async function publishHubSectionSelection(env,assetId,section,campaignId) {
   const hub=HUB_SITES.find(h=>hubAssetId(h.campaignId)===cid);
   if(!hub || (campaignId&&hubAssetId(campaignId)!==cid))throw new Error('Asset belongs to a different hub');
   const [rows,manifest,tierOf,interviews]=await Promise.all([
-    notionQuery(ASSETS_DB,{filter:{property:'Campaign',relation:{contains:ivDash(cid)}}}),hubBlogManifest(env,hub),ivTierFn(env),ivList(cid)
+    notionQuery(ASSETS_DB,{filter:{property:'Campaign',relation:{contains:ivDash(cid)}}}),hubBlogManifest(env,hub),ivTierFn(env),ivList({property:'Campaign',relation:{contains:ivDash(cid)}})
   ]);
   const methodNames={},methodId=p.Method?.relation?.[0]?.id;
   if(methodId){const methodPage=await ivPage(methodId);methodNames[methodId]=hubRichText(methodPage.properties?.Name?.title);}
@@ -15324,7 +15324,7 @@ the one aesthetic risk taken + why:`;
           const mName = Object.fromEntries(await Promise.all(mIds.map(async id => { if (_hubMethodNames.has(id)) return [id, _hubMethodNames.get(id)];
             try { const pg = await fetch(`https://api.notion.com/v1/pages/${id}`, { headers: nhdr }).then(r => r.json());
             const nm = (pg.properties?.Name?.title || []).map(t => t.plain_text).join("").trim(); if (nm) _hubMethodNames.set(id, nm); return [id, nm]; } catch (e) { return [id, ""]; } })));
-          const [manifest,sectionTierOf,sectionInterviews]=await Promise.all([hubBlogManifest(env,{slug,campaignId}),ivTierFn(env),ivList(campaignId)]);
+          const [manifest,sectionTierOf,sectionInterviews]=await Promise.all([hubBlogManifest(env,{slug,campaignId}),ivTierFn(env),ivList({property:'Campaign',relation:{contains:dashHb(campaignId)}})]);
           const sectionAssets=hubSectionAssetRows(listed,manifest,{slug,campaignId},mName,sectionTierOf,sectionInterviews);
           const pageSections=HUB_BLOG_SECTIONS.map(sec=>{
             const candidates=sectionAssets.filter(asset=>asset.hubSectionKey===sec.key);
