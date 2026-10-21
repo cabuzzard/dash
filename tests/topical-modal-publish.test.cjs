@@ -67,6 +67,7 @@ const finished = (assetId = aid) => ({ id: 'interview', scope: 'Asset', assetIds
   const f = fixture();
   const result = await f.context.writePublishTopicalFromModal(f.env, aid, true);
   assert.equal(result.written.ok, true); assert.equal(result.published.published, true);
+  assert.equal(f.page.properties['Content URL'].url,result.published.liveUrl,'a deployed blog must record its nonempty Content URL');
   assert.equal(f.page.properties['Written Without Interview'].checkbox, true);
   assert.equal(f.counts().created, 0, 'skip write does not create/finish/cancel an interview');
   for (const sentinel of ['VOICE', 'AUDIENCE', 'PRODUCT', 'TITLE_RESEARCH', 'PILLAR']) assert.ok(f.prompts[0].includes(sentinel + '_SENTINEL'));
