@@ -1,19 +1,17 @@
 [
   {
+    "assetId": "4001f7d3a4bb81bf953de94423662009",
+    "slug": "charter-signal",
+    "name": "Charter Signal",
+    "promise": "The right boat, the right break, the right level — in your inbox before the window closes.",
+    "url": "../blog/charter-signal/"
+  },
+  {
     "assetId": "3ff1f7d3a4bb81cbba55e88797b97157",
     "slug": "surf-charters-liveaboard-trips",
     "name": "Surf Charters & Liveaboard Trips",
     "promise": "Compare boat-based surf trips by destination, ability level, itinerary and inclusions before choosing the trip that fits your group.",
     "url": "../blog/surf-charters-liveaboard-trips/"
-  },
-  {
-    "slug": "charter-signal",
-    "name": "Charter Signal",
-    "kicker": "Free newsletter",
-    "promise": "The right boat, the right break, the right level — in your inbox before the window closes.",
-    "ctaUrl": "",
-    "date": "2026-10-21",
-    "assetId": "4001f7d3a4bb81bf953de94423662009"
   },
   {
     "slug": "booksurfcamps",
